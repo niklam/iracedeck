@@ -112,16 +112,18 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 	 * When the key is pressed
 	 */
 	override async onKeyDown(ev: KeyDownEvent<ChatSettings>): Promise<void> {
+		streamDeck.logger.info('[ChatMessage] Key down received');
+
 		const message = ev.payload.settings.message?.trim();
 
 		if (!message) {
-			await ev.action.showAlert();
+			streamDeck.logger.info('[ChatMessage] No message to send');
 			return;
 		}
 
 		// Check if connected to iRacing
 		if (!this.sdkController.getConnectionStatus()) {
-			await ev.action.showAlert();
+			streamDeck.logger.info('[ChatMessage] Not connected to iRacing');
 			return;
 		}
 
@@ -129,9 +131,9 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 		const success = this.sdkController.sendChatMessage(message);
 
 		if (success) {
-			await ev.action.showOk();
+			streamDeck.logger.info('[ChatMessage] Message sent succesfully');
 		} else {
-			await ev.action.showAlert();
+			streamDeck.logger.warn('[ChatMessage] Sending message failed');
 		}
 	}
 }

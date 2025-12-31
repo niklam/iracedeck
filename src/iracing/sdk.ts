@@ -18,7 +18,8 @@ import {
 	IRSDK_MAX_DESC
 } from './types';
 import yaml from 'yaml';
-import { BroadcastMsg, ChatCommandMode, HWND_BROADCAST, MAKELONG } from './broadcast-constants';
+import { ChatCommand } from './chat-command';
+import { WindowsMessaging } from './windows-messaging';
 
 // Windows API constants
 const FILE_MAP_READ = 0x0004;
@@ -124,6 +125,13 @@ export class IRacingSDK {
 	private varHeaders: VarHeader[] = [];
 	private lastSessionInfoUpdate = -1;
 	private sessionInfo: SessionInfo | null = null;
+	private windowsMessaging: WindowsMessaging;
+	private chatCommand: ChatCommand;
+
+	constructor() {
+		this.windowsMessaging = WindowsMessaging.getInstance();
+		this.chatCommand = ChatCommand.getInstance();
+	}
 
 	/**
 	 * Check if iRacing is running and memory-mapped file is accessible
@@ -418,44 +426,28 @@ export class IRacingSDK {
 	}
 
 	/**
-	 * Send a custom chat message to iRacing using keyboard simulation
-	 * Now using keybd_event instead of SendInput
+	 * Send a custom chat message to iRacing
 	 * @param message The message to send
 	 */
 	sendChatMessage(message: string): boolean {
+		streamDeck.logger.info('[iRacing SDK] About to send a chat message');
+
 		if (!this.isConnected()) {
 			streamDeck.logger.warn('[iRacing SDK] Cannot send chat message - not connected');
 			return false;
 		}
 
 		try {
-			streamDeck.logger.info(`[iRacing SDK] Attempting to send chat message: "${message}"`);
+			const hwnd = this.windowsMessaging.getIRacingWindow();
 
-			// Register the broadcast message
-			const broadcastMsgID = RegisterWindowMessageA('IRSDK_BROADCASTMSG');
-			const res = SendNotifyMessageW(HWND_BROADCAST, broadcastMsgID, MAKELONG(BroadcastMsg.ChatCommand, ChatCommandMode.BeginChat), 0);
+			if (!hwnd) {
+				streamDeck.logger.error('[iRacing SDK] Could not find iRacing window');
+				return false;
+			}
 
-			// Keyboard messages
-			const WM_KEYDOWN = 0x0100;
-			const WM_KEYUP = 0x0101;
-			const WM_CHAR = 0x0102;
-			const WM_SYSKEYDOWN = 0x0104;
-			const WM_SYSKEYUP = 0x0105;
+			streamDeck.logger.debug('[iRacing SDK] iRacing window found');
 
-			const hwnd = FindWindowA(null, "iRacing.com Simulator"); // Find by title
-
-			setTimeout(() => {
-				for (const char of message) {
-					SendMessageW(hwnd, WM_CHAR, char.charCodeAt(0), 0);
-				}
-
-				SendMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0);
-				SendMessageW(hwnd, WM_KEYUP, VK_RETURN, 0);
-
-				SendNotifyMessageW(HWND_BROADCAST, broadcastMsgID, MAKELONG(BroadcastMsg.ChatCommand, ChatCommandMode.Cancel), 0);
-			}, 5);
-
-			return true;
+			return this.chatCommand.sendMessage(hwnd, message);
 		} catch (error) {
 			streamDeck.logger.error(`[iRacing SDK] Error sending chat message: ${error}`);
 			return false;
