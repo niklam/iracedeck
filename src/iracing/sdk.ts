@@ -18,7 +18,7 @@ import {
 	IRSDK_MAX_DESC
 } from './types';
 import yaml from 'yaml';
-import { ChatCommand } from './chat-command';
+import { ChatCommand } from './broadcast/index';
 import { WindowsMessaging } from './windows-messaging';
 
 // Windows API constants

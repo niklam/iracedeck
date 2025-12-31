@@ -3,6 +3,12 @@
  * Based on irsdk_defines.h from the iRacing SDK
  */
 
+// Re-export utility functions for easy access
+export {
+	hasFlag, hasAllFlags, hasAnyFlag, getActiveFlags, getActiveFlagNames,
+	addFlag, addFlags, removeFlag, removeFlags, toggleFlag, setFlag
+} from './utils';
+
 export const IRSDK_MAX_BUFS = 4;
 export const IRSDK_MAX_STRING = 32;
 export const IRSDK_MAX_DESC = 64;

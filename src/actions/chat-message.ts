@@ -1,5 +1,8 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { SDKController } from "../iracing/sdk-controller";
+import { hasFlag } from "../iracing/utils";
+import { CameraState } from "../iracing/types";
+import { CameraCommand } from "../iracing/broadcast/index";
 
 /**
  * Chat Message Action
@@ -8,6 +11,7 @@ import { SDKController } from "../iracing/sdk-controller";
 @action({ UUID: "fi.lampen.niklas.iracedeck.chat" })
 export class ChatMessage extends SingletonAction<ChatSettings> {
 	private sdkController = SDKController.getInstance();
+	private cameraCommand = CameraCommand.getInstance();
 	private updateInterval: NodeJS.Timeout | null = null;
 	private activeContexts = new Map<string, ChatSettings>();
 	private lastTitle = new Map<string, string>();
@@ -116,6 +120,21 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 
 		const message = ev.payload.settings.message?.trim();
 
+		const telemetry = this.sdkController.getCurrentTelemetry();
+
+		if (!telemetry || !telemetry.CamCameraState) {
+			streamDeck.logger.error("[ChatMessage] Couldn't get CamCameraState");
+
+			return;
+		}
+
+		var origCamCameraState = telemetry.CamCameraState;
+
+		// Then use hasFlag on the telemetry data
+		if (hasFlag(origCamCameraState, CameraState.UIHidden)) {
+			this.cameraCommand.showUI(origCamCameraState);
+		}
+
 		if (!message) {
 			streamDeck.logger.info('[ChatMessage] No message to send');
 			return;
@@ -135,6 +154,8 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 		} else {
 			streamDeck.logger.warn('[ChatMessage] Sending message failed');
 		}
+
+		this.cameraCommand.setState(origCamCameraState);
 	}
 }
 

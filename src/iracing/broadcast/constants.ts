@@ -156,6 +156,9 @@ export const HWND_BROADCAST = 0xFFFF;
  */
 export const IRSDK_BROADCAST_MSG_NAME = 'IRSDK_BROADCASTMSG';
 
+/**
+ * Create a MAKELONG value from low and high 16-bit values
+ */
 export function MAKELONG(low: number, high: number): number {
-    return ((high & 0xFFFF) << 16) | (low & 0xFFFF);
+	return ((high & 0xFFFF) << 16) | (low & 0xFFFF);
 }

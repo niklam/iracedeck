@@ -1,45 +1,40 @@
 /**
- * iRacing Chat Command
+ * ChatCommand - Chat commands for iRacing
+ *
  * Handles chat operations using the iRacing broadcast API and Windows messaging
  */
 
 import streamDeck from '@elgato/streamdeck';
-import { WindowsMessaging, WM_CHAR, VK_RETURN } from './windows-messaging';
-import { BroadcastMsg, ChatCommandMode, HWND_BROADCAST, IRSDK_BROADCAST_MSG_NAME, MAKELONG } from './broadcast-constants';
+import { BroadcastCommand } from './BroadcastCommand';
+import { BroadcastMsg, ChatCommandMode } from './constants';
+import { WM_CHAR, VK_RETURN } from '../windows-messaging';
 
 /**
- * Chat Command class for iRacing chat operations
+ * Chat commands
  */
-export class ChatCommand {
-	private static instance: ChatCommand;
-	private windowsMessaging: WindowsMessaging;
-	private broadcastMsgID: number;
+export class ChatCommand extends BroadcastCommand {
+	private static _instance: ChatCommand;
 
 	private constructor() {
-		this.windowsMessaging = WindowsMessaging.getInstance();
-		this.broadcastMsgID = this.windowsMessaging.registerWindowMessage(IRSDK_BROADCAST_MSG_NAME);
+		super();
 	}
 
 	/**
 	 * Get singleton instance
 	 */
 	static getInstance(): ChatCommand {
-		if (!ChatCommand.instance) {
-			ChatCommand.instance = new ChatCommand();
+		if (!ChatCommand._instance) {
+			ChatCommand._instance = new ChatCommand();
 		}
-		return ChatCommand.instance;
+		return ChatCommand._instance;
 	}
 
 	/**
-	 * Send a broadcast message to iRacing
-	 * @param command Chat command mode
-	 * @param subCommand Sub command parameter
-	 * @returns Success
+	 * Send a chat broadcast message
 	 */
-	private sendBroadcast(command: ChatCommandMode, subCommand: number = 0): boolean {
-		streamDeck.logger.info(`[ChatCommand] sendBroadcast ${command}, ${subCommand}`);
-		const wParam = MAKELONG(BroadcastMsg.ChatCommand, command);
-		return this.windowsMessaging.sendNotifyMessage(HWND_BROADCAST, this.broadcastMsgID, wParam, subCommand);
+	private sendChatBroadcast(command: ChatCommandMode, subCommand: number = 0): boolean {
+		streamDeck.logger.debug(`[ChatCommand] sendBroadcast ${ChatCommandMode[command]}, ${subCommand}`);
+		return this.sendBroadcast(BroadcastMsg.ChatCommand, command, subCommand);
 	}
 
 	/**
@@ -55,7 +50,7 @@ export class ChatCommand {
 
 		streamDeck.logger.info(`[ChatCommand] Triggering chat macro ${macroNum}`);
 		// API uses 0-based indexing, but app.ini uses 1-based numbering
-		return this.sendBroadcast(ChatCommandMode.Macro, macroNum - 1);
+		return this.sendChatBroadcast(ChatCommandMode.Macro, macroNum - 1);
 	}
 
 	/**
@@ -64,7 +59,7 @@ export class ChatCommand {
 	 */
 	beginChat(): boolean {
 		streamDeck.logger.debug('[ChatCommand] Opening chat window');
-		return this.sendBroadcast(ChatCommandMode.BeginChat);
+		return this.sendChatBroadcast(ChatCommandMode.BeginChat);
 	}
 
 	/**
@@ -73,7 +68,7 @@ export class ChatCommand {
 	 */
 	reply(): boolean {
 		streamDeck.logger.debug('[ChatCommand] Opening reply to last private message');
-		return this.sendBroadcast(ChatCommandMode.Reply);
+		return this.sendChatBroadcast(ChatCommandMode.Reply);
 	}
 
 	/**
@@ -82,7 +77,7 @@ export class ChatCommand {
 	 */
 	cancel(): boolean {
 		streamDeck.logger.debug('[ChatCommand] Closing chat window');
-		return this.sendBroadcast(ChatCommandMode.Cancel);
+		return this.sendChatBroadcast(ChatCommandMode.Cancel);
 	}
 
 	/**
