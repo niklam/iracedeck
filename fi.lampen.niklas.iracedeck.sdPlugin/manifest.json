@@ -104,6 +104,22 @@
 			]
 		},
 		{
+			"Name": "Tire Compound",
+			"UUID": "fi.lampen.niklas.iracedeck.pit.do-tire-compound",
+			"Icon": "imgs/actions/pit/do-tire-compound/icon",
+			"Tooltip": "Toggle tire compound between dry and wet.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/pit/do-tire-compound/key",
+					"TitleAlignment": "bottom",
+					"FontSize": 14
+				}
+			]
+		},
+		{
 			"Name": "Chat",
 			"UUID": "fi.lampen.niklas.iracedeck.comms.do-chat-message",
 			"Icon": "imgs/actions/comms/do-chat-message/icon",

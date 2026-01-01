@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Dry tire compound - orange/warm color, centered in top half -->
+  <!-- Outer tire circle -->
+  <circle cx="36" cy="21" r="13" fill="none" stroke="#FF8C00" stroke-width="3"/>
+  <!-- Inner rim circle -->
+  <circle cx="36" cy="21" r="6" fill="none" stroke="#FF8C00" stroke-width="2"/>
+  <!-- Tread marks (on the tire rubber, near outer edge) -->
+  <line x1="36" y1="8" x2="36" y2="11" stroke="#FF8C00" stroke-width="2" stroke-linecap="round"/>
+  <line x1="36" y1="31" x2="36" y2="34" stroke="#FF8C00" stroke-width="2" stroke-linecap="round"/>
+  <line x1="23" y1="21" x2="26" y2="21" stroke="#FF8C00" stroke-width="2" stroke-linecap="round"/>
+  <line x1="46" y1="21" x2="49" y2="21" stroke="#FF8C00" stroke-width="2" stroke-linecap="round"/>
+</svg>
