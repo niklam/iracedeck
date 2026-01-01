@@ -5,38 +5,68 @@
 	"Actions": [
 		{
 			"Name": "Speed",
-			"UUID": "fi.lampen.niklas.iracedeck.speed",
-			"Icon": "imgs/actions/speed/icon",
+			"UUID": "fi.lampen.niklas.iracedeck.vehicle.display-speed",
+			"Icon": "imgs/actions/vehicle/display-speed/icon",
 			"Tooltip": "Displays current speed from iRacing. Press to toggle between MPH and KPH.",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/speed/key",
+					"Image": "imgs/actions/vehicle/display-speed/key",
 					"TitleAlignment": "middle"
 				}
 			]
 		},
 		{
 			"Name": "Gear",
-			"UUID": "fi.lampen.niklas.iracedeck.gear",
-			"Icon": "imgs/actions/gear/icon",
+			"UUID": "fi.lampen.niklas.iracedeck.vehicle.display-gear",
+			"Icon": "imgs/actions/vehicle/display-gear/icon",
 			"Tooltip": "Displays current gear from iRacing.",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/gear/key",
+					"Image": "imgs/actions/vehicle/display-gear/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Sky",
+			"UUID": "fi.lampen.niklas.iracedeck.environment.display-sky",
+			"Icon": "imgs/actions/environment/display-sky/icon",
+			"Tooltip": "Displays current sky conditions from iRacing.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/environment/display-sky/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Fuel to Add",
+			"UUID": "fi.lampen.niklas.iracedeck.pit.display-fuel-to-add",
+			"Icon": "imgs/actions/pit/display-fuel-to-add/icon",
+			"Tooltip": "Displays amount of fuel to be added at next pit stop.",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/pit/display-fuel-to-add/key",
 					"TitleAlignment": "middle"
 				}
 			]
 		},
 		{
 			"Name": "Chat",
-			"UUID": "fi.lampen.niklas.iracedeck.chat",
-			"Icon": "imgs/actions/chat/icon",
+			"UUID": "fi.lampen.niklas.iracedeck.comms.do-chat-message",
+			"Icon": "imgs/actions/comms/do-chat-message/icon",
 			"Tooltip": "Send a custom chat message to iRacing.",
 			"PropertyInspectorPath": "ui/chat.html",
 			"Controllers": [
@@ -44,37 +74,7 @@
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/chat/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Sky",
-			"UUID": "fi.lampen.niklas.iracedeck.sky",
-			"Icon": "imgs/actions/sky/icon",
-			"Tooltip": "Displays current sky conditions from iRacing.",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/sky/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Fuel to Add",
-			"UUID": "fi.lampen.niklas.iracedeck.fuel-add",
-			"Icon": "imgs/actions/fuel-add/icon",
-			"Tooltip": "Displays amount of fuel to be added at next pit stop.",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/fuel-add/key",
+					"Image": "imgs/actions/comms/do-chat-message/key",
 					"TitleAlignment": "middle"
 				}
 			]

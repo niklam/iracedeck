@@ -1,13 +1,13 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../iracing/sdk-controller";
-import { TelemetryData } from "../iracing/types";
+import { SDKController } from "../../iracing/sdk-controller";
+import { TelemetryData } from "../../iracing/types";
 
 /**
- * Fuel Add Amount Display Action
+ * Display Fuel to Add Action
  * Displays the amount of fuel to be added at next pit stop (PitSvFuel)
  */
-@action({ UUID: "fi.lampen.niklas.iracedeck.fuel-add" })
-export class FuelAddDisplay extends SingletonAction {
+@action({ UUID: "fi.lampen.niklas.iracedeck.pit.display-fuel-to-add" })
+export class DisplayFuelToAdd extends SingletonAction {
 	private sdkController = SDKController.getInstance();
 	private lastState = new Map<string, string>();
 
@@ -31,10 +31,10 @@ export class FuelAddDisplay extends SingletonAction {
 		if (!action) return;
 
 		let title = "iRacing\nnot\nconnected";
-		let image = "imgs/actions/fuel-add/key";
+		let image = "imgs/actions/pit/display-fuel-to-add/key";
 
 		if (isConnected && telemetry) {
-			image = "imgs/actions/fuel-add/key-active";
+			image = "imgs/actions/pit/display-fuel-to-add/key-active";
 			const fuelToAdd = telemetry.PitSvFuel;
 
 			if (fuelToAdd !== null && fuelToAdd !== undefined && typeof fuelToAdd === 'number') {

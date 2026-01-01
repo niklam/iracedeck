@@ -1,15 +1,15 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../iracing/sdk-controller";
-import { hasFlag } from "../iracing/utils";
-import { CameraState } from "../iracing/types";
-import { CameraCommand } from "../iracing/broadcast/index";
+import { SDKController } from "../../iracing/sdk-controller";
+import { hasFlag } from "../../iracing/utils";
+import { CameraState } from "../../iracing/types";
+import { CameraCommand } from "../../iracing/broadcast/index";
 
 /**
- * Chat Message Action
+ * Do Chat Message Action
  * Sends a custom chat message to iRacing when pressed
  */
-@action({ UUID: "fi.lampen.niklas.iracedeck.chat" })
-export class ChatMessage extends SingletonAction<ChatSettings> {
+@action({ UUID: "fi.lampen.niklas.iracedeck.comms.do-chat-message" })
+export class DoChatMessage extends SingletonAction<ChatSettings> {
 	private sdkController = SDKController.getInstance();
 	private cameraCommand = CameraCommand.getInstance();
 	private updateInterval: NodeJS.Timeout | null = null;
@@ -116,14 +116,14 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 	 * When the key is pressed
 	 */
 	override async onKeyDown(ev: KeyDownEvent<ChatSettings>): Promise<void> {
-		streamDeck.logger.info('[ChatMessage] Key down received');
+		streamDeck.logger.info('[DoChatMessage] Key down received');
 
 		const message = ev.payload.settings.message?.trim();
 
 		const telemetry = this.sdkController.getCurrentTelemetry();
 
 		if (!telemetry || !telemetry.CamCameraState) {
-			streamDeck.logger.error("[ChatMessage] Couldn't get CamCameraState");
+			streamDeck.logger.error("[DoChatMessage] Couldn't get CamCameraState");
 
 			return;
 		}
@@ -136,13 +136,13 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 		}
 
 		if (!message) {
-			streamDeck.logger.info('[ChatMessage] No message to send');
+			streamDeck.logger.info('[DoChatMessage] No message to send');
 			return;
 		}
 
 		// Check if connected to iRacing
 		if (!this.sdkController.getConnectionStatus()) {
-			streamDeck.logger.info('[ChatMessage] Not connected to iRacing');
+			streamDeck.logger.info('[DoChatMessage] Not connected to iRacing');
 			return;
 		}
 
@@ -150,9 +150,9 @@ export class ChatMessage extends SingletonAction<ChatSettings> {
 		const success = this.sdkController.sendChatMessage(message);
 
 		if (success) {
-			streamDeck.logger.info('[ChatMessage] Message sent succesfully');
+			streamDeck.logger.info('[DoChatMessage] Message sent succesfully');
 		} else {
-			streamDeck.logger.warn('[ChatMessage] Sending message failed');
+			streamDeck.logger.warn('[DoChatMessage] Sending message failed');
 		}
 
 		this.cameraCommand.setState(origCamCameraState);

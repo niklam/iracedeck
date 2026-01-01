@@ -1,37 +1,27 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../iracing/sdk-controller";
-import { TelemetryData, Skies } from "../iracing/types";
+import { SDKController } from "../../iracing/sdk-controller";
+import { TelemetryData, Skies } from "../../iracing/types";
 
 /**
- * Sky Display Action
+ * Display Sky Action
  * Displays current sky conditions from iRacing telemetry
  */
-@action({ UUID: "fi.lampen.niklas.iracedeck.sky" })
-export class SkyDisplay extends SingletonAction {
+@action({ UUID: "fi.lampen.niklas.iracedeck.environment.display-sky" })
+export class DisplaySky extends SingletonAction {
 	private sdkController = SDKController.getInstance();
 	private lastState = new Map<string, string>();
 
-	/**
-	 * When the action appears on the Stream Deck
-	 */
 	override async onWillAppear(ev: WillAppearEvent): Promise<void> {
-		// Subscribe to telemetry updates
 		this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
 			this.updateDisplay(ev.action.id, telemetry, isConnected);
 		});
 	}
 
-	/**
-	 * When the action disappears from the Stream Deck
-	 */
 	override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
 		this.sdkController.unsubscribe(ev.action.id);
 		this.lastState.delete(ev.action.id);
 	}
 
-	/**
-	 * Get the display name for a sky condition
-	 */
 	private getSkyName(skies: number): string {
 		switch (skies) {
 			case Skies.Clear:
@@ -47,27 +37,21 @@ export class SkyDisplay extends SingletonAction {
 		}
 	}
 
-	/**
-	 * Get the image path for a sky condition
-	 */
 	private getSkyImage(skies: number): string {
 		switch (skies) {
 			case Skies.Clear:
-				return "imgs/actions/sky/key-clear";
+				return "imgs/actions/environment/display-sky/key-clear";
 			case Skies.PartlyCloudy:
-				return "imgs/actions/sky/key-partly";
+				return "imgs/actions/environment/display-sky/key-partly";
 			case Skies.MostlyCloudy:
-				return "imgs/actions/sky/key-mostly";
+				return "imgs/actions/environment/display-sky/key-mostly";
 			case Skies.Overcast:
-				return "imgs/actions/sky/key-overcast";
+				return "imgs/actions/environment/display-sky/key-overcast";
 			default:
-				return "imgs/actions/sky/key";
+				return "imgs/actions/environment/display-sky/key";
 		}
 	}
 
-	/**
-	 * Update the display for a specific action instance
-	 */
 	private async updateDisplay(
 		contextId: string,
 		telemetry: TelemetryData | null,
@@ -77,7 +61,7 @@ export class SkyDisplay extends SingletonAction {
 		if (!action) return;
 
 		let title = "iRacing\nnot\nconnected";
-		let image = "imgs/actions/sky/key";
+		let image = "imgs/actions/environment/display-sky/key";
 
 		if (isConnected && telemetry) {
 			const skies = telemetry.Skies;
@@ -90,10 +74,7 @@ export class SkyDisplay extends SingletonAction {
 			}
 		}
 
-		// Create a state key combining title and image
 		const stateKey = `${title}|${image}`;
-
-		// Only update if the state has changed
 		const lastState = this.lastState.get(contextId);
 		if (lastState !== stateKey) {
 			this.lastState.set(contextId, stateKey);
