@@ -1,2 +1,10813 @@
-import e from"events";import t from"https";import n from"http";import i from"net";import s from"tls";import r from"crypto";import o from"stream";import a from"url";import l from"zlib";import c from"buffer";import d,{existsSync as h,readFileSync as u}from"node:fs";import f,{join as p}from"node:path";import{cwd as g}from"node:process";import{randomUUID as m}from"node:crypto";import{registerWindowMessage as y,sendNotifyMessage as v,HWND_BROADCAST as S,sendChatString as _,sendKeyPress as b,VK_RETURN as w,readMemory as C,openMemoryMap as k,closeMemoryMap as x,findWindow as T}from"@iracedeck/iracing-native";import D from"yaml";class E{events=new Map;addListener(e,t){return this.add(e,t,e=>e.push({listener:t}))}disposableOn(e,t){return this.add(e,t,e=>e.push({listener:t})),function(e){let t=!1;const n=()=>{t||(e(),t=!0)};return{[Symbol.dispose]:n,dispose:n}}(()=>this.removeListener(e,t))}emit(e,...t){const n=this.events.get(e);if(void 0===n)return!1;for(let i=0;i<n.length;){const{listener:s,once:r}=n[i];r?this.remove(e,n,i):i++,s(...t)}return!0}eventNames(){return Array.from(this.events.keys())}listenerCount(e,t){const n=this.events.get(e);if(void 0===n||null==t)return n?.length||0;let i=0;return n.forEach(e=>{e.listener===t&&i++}),i}listeners(e){return Array.from(this.events.get(e)||[]).map(({listener:e})=>e)}off(e,t){const n=this.events.get(e)??[];for(let i=n.length-1;i>=0;i--)n[i].listener===t&&this.remove(e,n,i);return this}on(e,t){return this.add(e,t,e=>e.push({listener:t}))}once(e,t){return this.add(e,t,e=>e.push({listener:t,once:!0}))}prependListener(e,t){return this.add(e,t,e=>e.splice(0,0,{listener:t}))}prependOnceListener(e,t){return this.add(e,t,e=>e.splice(0,0,{listener:t,once:!0}))}removeAllListeners(e){const t=this.events.get(e)??[];for(;t.length>0;)this.remove(e,t,0);return this.events.delete(e),this}removeListener(e,t){return this.off(e,t)}add(e,t,n){let i=this.events.get(e);if(void 0===i&&(i=[],this.events.set(e,i)),n(i),"newListener"!==e){const n=[e,t];this.emit("newListener",...n)}return this}remove(e,t,n){const[{listener:i}]=t.splice(n,1);if("removeListener"!==e){const t=[e,i];this.emit("removeListener",...t)}}}function R(e){null==e||"object"!=typeof e||Object.isFrozen(e)||(Object.freeze(e),Object.values(e).forEach(R))}function I(e,t){return t.split(".").reduce((e,t)=>e&&e[t],e)}class P{#e;#t=new Map;#n;#i=new E;constructor(e,t){this.#e=e,this.#n=t}get language(){return this.#e}set language(e){this.#e!==e&&(this.#e=e,this.#i.emit("languageChange",e))}onLanguageChange(e){return this.#i.disposableOn("languageChange",e)}t(e,t=this.language){return this.translate(e,t)}translate(e,t=this.language){const n=new Set([t,t.replaceAll("_","-").split("-").at(0),"en"]);for(const t of n){const n=I(this.getTranslations(t),e);if(n)return n.toString()}return e}getTranslations(e){let t=this.#t.get(e);return void 0===t&&(t=this.#n(e),R(t),this.#t.set(e,t)),t}}class O{#s;#r;#o;constructor(e){e instanceof O?(this.#s=e.#s,this.#r=e.#r):Array.isArray(e)?(this.#s=()=>e.values(),this.#r=()=>e.length):e instanceof Map||e instanceof Set?(this.#s=()=>e.values(),this.#r=()=>e.size):(this.#s=e,this.#r=()=>{let e=0;for(const t of this)e++;return e})}get length(){return this.#r()}*[Symbol.iterator](){for(const e of this.#s())yield e}asIndexedPairs(){return new O(function*(){let e=0;for(const t of this)yield[e++,t]}.bind(this))}drop(e){if(isNaN(e)||e<0)throw new RangeError("limit must be 0, or a positive number");return new O(function*(){let t=0;for(const n of this)t++>=e&&(yield n)}.bind(this))}every(e){for(const t of this)if(!e(t))return!1;return!0}filter(e){return new O(function*(){for(const t of this)e(t)&&(yield t)}.bind(this))}find(e){for(const t of this)if(e(t))return t}findLast(e){let t;for(const n of this)e(n)&&(t=n);return t}flatMap(e){return new O(function*(){for(const t of this)for(const n of e(t))yield n}.bind(this))}forEach(e){for(const t of this)e(t)}includes(e){return this.some(t=>t===e)}map(e){return new O(function*(){for(const t of this)yield e(t)}.bind(this))}next(...e){this.#o??=this.#s();const t=this.#o.next(...e);return t.done&&(this.#o=void 0),t}reduce(e,t){if(0===this.length){if(void 0===t)throw new TypeError("Reduce of empty enumerable with no initial value.");return t}let n=t;for(const t of this)n=void 0===n?t:e(n,t);return n}return(e){return this.#o=void 0,{done:!0,value:e}}some(e){for(const t of this)if(e(t))return!0;return!1}take(e){if(isNaN(e)||e<0)throw new RangeError("limit must be 0, or a positive number");return new O(function*(){let t=0;for(const n of this)t++<e&&(yield n)}.bind(this))}throw(e){throw e}toArray(){return Array.from(this)}toJSON(){return this.toArray()}toString(){return`${this.toArray()}`}}Symbol.dispose??=Symbol("Symbol.dispose");class L{#a=void 0;#l;constructor(e){this.#l=e}get value(){return void 0===this.#a&&(this.#a=this.#l()),this.#a}}function F(){let e,t;return{promise:new Promise((n,i)=>{e=n,t=i}),resolve:e,reject:t}}function N(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}var A,B,U,$,M,W,j,V={exports:{}};function G(){if(B)return A;B=1;const e=["nodebuffer","arraybuffer","fragments"],t="undefined"!=typeof Blob;return t&&e.push("blob"),A={BINARY_TYPES:e,EMPTY_BUFFER:Buffer.alloc(0),GUID:"258EAFA5-E914-47DA-95CA-C5AB0DC85B11",hasBlob:t,kForOnEventAttribute:Symbol("kIsForOnEventAttribute"),kListener:Symbol("kListener"),kStatusCode:Symbol("status-code"),kWebSocket:Symbol("websocket"),NOOP:()=>{}}}function H(){if(U)return V.exports;U=1;const{EMPTY_BUFFER:e}=G(),t=Buffer[Symbol.species];function n(e,t,n,i,s){for(let r=0;r<s;r++)n[i+r]=e[r]^t[3&r]}function i(e,t){for(let n=0;n<e.length;n++)e[n]^=t[3&n]}if(V.exports={concat:function(n,i){if(0===n.length)return e;if(1===n.length)return n[0];const s=Buffer.allocUnsafe(i);let r=0;for(let e=0;e<n.length;e++){const t=n[e];s.set(t,r),r+=t.length}return r<i?new t(s.buffer,s.byteOffset,r):s},mask:n,toArrayBuffer:function(e){return e.length===e.buffer.byteLength?e.buffer:e.buffer.slice(e.byteOffset,e.byteOffset+e.length)},toBuffer:function e(n){if(e.readOnly=!0,Buffer.isBuffer(n))return n;let i;return n instanceof ArrayBuffer?i=new t(n):ArrayBuffer.isView(n)?i=new t(n.buffer,n.byteOffset,n.byteLength):(i=Buffer.from(n),e.readOnly=!1),i},unmask:i},!process.env.WS_NO_BUFFER_UTIL)try{const e=require("bufferutil");V.exports.mask=function(t,i,s,r,o){o<48?n(t,i,s,r,o):e.mask(t,i,s,r,o)},V.exports.unmask=function(t,n){t.length<32?i(t,n):e.unmask(t,n)}}catch(e){}return V.exports}function K(){if(j)return W;j=1;const e=l,t=H(),n=function(){if(M)return $;M=1;const e=Symbol("kDone"),t=Symbol("kRun");return $=class{constructor(n){this[e]=()=>{this.pending--,this[t]()},this.concurrency=n||1/0,this.jobs=[],this.pending=0}add(e){this.jobs.push(e),this[t]()}[t](){if(this.pending!==this.concurrency&&this.jobs.length){const t=this.jobs.shift();this.pending++,t(this[e])}}}}(),{kStatusCode:i}=G(),s=Buffer[Symbol.species],r=Buffer.from([0,0,255,255]),o=Symbol("permessage-deflate"),a=Symbol("total-length"),c=Symbol("callback"),d=Symbol("buffers"),h=Symbol("error");let u;function f(e){this[d].push(e),this[a]+=e.length}function p(e){this[a]+=e.length,this[o]._maxPayload<1||this[a]<=this[o]._maxPayload?this[d].push(e):(this[h]=new RangeError("Max payload size exceeded"),this[h].code="WS_ERR_UNSUPPORTED_MESSAGE_LENGTH",this[h][i]=1009,this.removeListener("data",p),this.reset())}function g(e){this[o]._inflate=null,this[h]?this[c](this[h]):(e[i]=1007,this[c](e))}return W=class{constructor(e,t,i){if(this._maxPayload=0|i,this._options=e||{},this._threshold=void 0!==this._options.threshold?this._options.threshold:1024,this._isServer=!!t,this._deflate=null,this._inflate=null,this.params=null,!u){const e=void 0!==this._options.concurrencyLimit?this._options.concurrencyLimit:10;u=new n(e)}}static get extensionName(){return"permessage-deflate"}offer(){const e={};return this._options.serverNoContextTakeover&&(e.server_no_context_takeover=!0),this._options.clientNoContextTakeover&&(e.client_no_context_takeover=!0),this._options.serverMaxWindowBits&&(e.server_max_window_bits=this._options.serverMaxWindowBits),this._options.clientMaxWindowBits?e.client_max_window_bits=this._options.clientMaxWindowBits:null==this._options.clientMaxWindowBits&&(e.client_max_window_bits=!0),e}accept(e){return e=this.normalizeParams(e),this.params=this._isServer?this.acceptAsServer(e):this.acceptAsClient(e),this.params}cleanup(){if(this._inflate&&(this._inflate.close(),this._inflate=null),this._deflate){const e=this._deflate[c];this._deflate.close(),this._deflate=null,e&&e(new Error("The deflate stream was closed while data was being processed"))}}acceptAsServer(e){const t=this._options,n=e.find(e=>!(!1===t.serverNoContextTakeover&&e.server_no_context_takeover||e.server_max_window_bits&&(!1===t.serverMaxWindowBits||"number"==typeof t.serverMaxWindowBits&&t.serverMaxWindowBits>e.server_max_window_bits)||"number"==typeof t.clientMaxWindowBits&&!e.client_max_window_bits));if(!n)throw new Error("None of the extension offers can be accepted");return t.serverNoContextTakeover&&(n.server_no_context_takeover=!0),t.clientNoContextTakeover&&(n.client_no_context_takeover=!0),"number"==typeof t.serverMaxWindowBits&&(n.server_max_window_bits=t.serverMaxWindowBits),"number"==typeof t.clientMaxWindowBits?n.client_max_window_bits=t.clientMaxWindowBits:!0!==n.client_max_window_bits&&!1!==t.clientMaxWindowBits||delete n.client_max_window_bits,n}acceptAsClient(e){const t=e[0];if(!1===this._options.clientNoContextTakeover&&t.client_no_context_takeover)throw new Error('Unexpected parameter "client_no_context_takeover"');if(t.client_max_window_bits){if(!1===this._options.clientMaxWindowBits||"number"==typeof this._options.clientMaxWindowBits&&t.client_max_window_bits>this._options.clientMaxWindowBits)throw new Error('Unexpected or invalid parameter "client_max_window_bits"')}else"number"==typeof this._options.clientMaxWindowBits&&(t.client_max_window_bits=this._options.clientMaxWindowBits);return t}normalizeParams(e){return e.forEach(e=>{Object.keys(e).forEach(t=>{let n=e[t];if(n.length>1)throw new Error(`Parameter "${t}" must have only a single value`);if(n=n[0],"client_max_window_bits"===t){if(!0!==n){const e=+n;if(!Number.isInteger(e)||e<8||e>15)throw new TypeError(`Invalid value for parameter "${t}": ${n}`);n=e}else if(!this._isServer)throw new TypeError(`Invalid value for parameter "${t}": ${n}`)}else if("server_max_window_bits"===t){const e=+n;if(!Number.isInteger(e)||e<8||e>15)throw new TypeError(`Invalid value for parameter "${t}": ${n}`);n=e}else{if("client_no_context_takeover"!==t&&"server_no_context_takeover"!==t)throw new Error(`Unknown parameter "${t}"`);if(!0!==n)throw new TypeError(`Invalid value for parameter "${t}": ${n}`)}e[t]=n})}),e}decompress(e,t,n){u.add(i=>{this._decompress(e,t,(e,t)=>{i(),n(e,t)})})}compress(e,t,n){u.add(i=>{this._compress(e,t,(e,t)=>{i(),n(e,t)})})}_decompress(n,i,s){const l=this._isServer?"client":"server";if(!this._inflate){const t=`${l}_max_window_bits`,n="number"!=typeof this.params[t]?e.Z_DEFAULT_WINDOWBITS:this.params[t];this._inflate=e.createInflateRaw({...this._options.zlibInflateOptions,windowBits:n}),this._inflate[o]=this,this._inflate[a]=0,this._inflate[d]=[],this._inflate.on("error",g),this._inflate.on("data",p)}this._inflate[c]=s,this._inflate.write(n),i&&this._inflate.write(r),this._inflate.flush(()=>{const e=this._inflate[h];if(e)return this._inflate.close(),this._inflate=null,void s(e);const n=t.concat(this._inflate[d],this._inflate[a]);this._inflate._readableState.endEmitted?(this._inflate.close(),this._inflate=null):(this._inflate[a]=0,this._inflate[d]=[],i&&this.params[`${l}_no_context_takeover`]&&this._inflate.reset()),s(null,n)})}_compress(n,i,r){const o=this._isServer?"server":"client";if(!this._deflate){const t=`${o}_max_window_bits`,n="number"!=typeof this.params[t]?e.Z_DEFAULT_WINDOWBITS:this.params[t];this._deflate=e.createDeflateRaw({...this._options.zlibDeflateOptions,windowBits:n}),this._deflate[a]=0,this._deflate[d]=[],this._deflate.on("data",f)}this._deflate[c]=r,this._deflate.write(n),this._deflate.flush(e.Z_SYNC_FLUSH,()=>{if(!this._deflate)return;let e=t.concat(this._deflate[d],this._deflate[a]);i&&(e=new s(e.buffer,e.byteOffset,e.length-4)),this._deflate[c]=null,this._deflate[a]=0,this._deflate[d]=[],i&&this.params[`${o}_no_context_takeover`]&&this._deflate.reset(),r(null,e)})}}}var z,q,X,Y,J,Z,Q,ee,te,ne,ie,se,re,oe={exports:{}};function ae(){if(z)return oe.exports;z=1;const{isUtf8:e}=c,{hasBlob:t}=G();function n(e){const t=e.length;let n=0;for(;n<t;)if(128&e[n])if(192==(224&e[n])){if(n+1===t||128!=(192&e[n+1])||192==(254&e[n]))return!1;n+=2}else if(224==(240&e[n])){if(n+2>=t||128!=(192&e[n+1])||128!=(192&e[n+2])||224===e[n]&&128==(224&e[n+1])||237===e[n]&&160==(224&e[n+1]))return!1;n+=3}else{if(240!=(248&e[n]))return!1;if(n+3>=t||128!=(192&e[n+1])||128!=(192&e[n+2])||128!=(192&e[n+3])||240===e[n]&&128==(240&e[n+1])||244===e[n]&&e[n+1]>143||e[n]>244)return!1;n+=4}else n++;return!0}if(oe.exports={isBlob:function(e){return t&&"object"==typeof e&&"function"==typeof e.arrayBuffer&&"string"==typeof e.type&&"function"==typeof e.stream&&("Blob"===e[Symbol.toStringTag]||"File"===e[Symbol.toStringTag])},isValidStatusCode:function(e){return e>=1e3&&e<=1014&&1004!==e&&1005!==e&&1006!==e||e>=3e3&&e<=4999},isValidUTF8:n,tokenChars:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,1,1,0,0,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0]},e)oe.exports.isValidUTF8=function(t){return t.length<24?n(t):e(t)};else if(!process.env.WS_NO_UTF_8_VALIDATE)try{const e=require("utf-8-validate");oe.exports.isValidUTF8=function(t){return t.length<32?n(t):e(t)}}catch(e){}return oe.exports}function le(){if(X)return q;X=1;const{Writable:e}=o,t=K(),{BINARY_TYPES:n,EMPTY_BUFFER:i,kStatusCode:s,kWebSocket:r}=G(),{concat:a,toArrayBuffer:l,unmask:c}=H(),{isValidStatusCode:d,isValidUTF8:h}=ae(),u=Buffer[Symbol.species];return q=class extends e{constructor(e={}){super(),this._allowSynchronousEvents=void 0===e.allowSynchronousEvents||e.allowSynchronousEvents,this._binaryType=e.binaryType||n[0],this._extensions=e.extensions||{},this._isServer=!!e.isServer,this._maxPayload=0|e.maxPayload,this._skipUTF8Validation=!!e.skipUTF8Validation,this[r]=void 0,this._bufferedBytes=0,this._buffers=[],this._compressed=!1,this._payloadLength=0,this._mask=void 0,this._fragmented=0,this._masked=!1,this._fin=!1,this._opcode=0,this._totalPayloadLength=0,this._messageLength=0,this._fragments=[],this._errored=!1,this._loop=!1,this._state=0}_write(e,t,n){if(8===this._opcode&&0==this._state)return n();this._bufferedBytes+=e.length,this._buffers.push(e),this.startLoop(n)}consume(e){if(this._bufferedBytes-=e,e===this._buffers[0].length)return this._buffers.shift();if(e<this._buffers[0].length){const t=this._buffers[0];return this._buffers[0]=new u(t.buffer,t.byteOffset+e,t.length-e),new u(t.buffer,t.byteOffset,e)}const t=Buffer.allocUnsafe(e);do{const n=this._buffers[0],i=t.length-e;e>=n.length?t.set(this._buffers.shift(),i):(t.set(new Uint8Array(n.buffer,n.byteOffset,e),i),this._buffers[0]=new u(n.buffer,n.byteOffset+e,n.length-e)),e-=n.length}while(e>0);return t}startLoop(e){this._loop=!0;do{switch(this._state){case 0:this.getInfo(e);break;case 1:this.getPayloadLength16(e);break;case 2:this.getPayloadLength64(e);break;case 3:this.getMask();break;case 4:this.getData(e);break;case 5:case 6:return void(this._loop=!1)}}while(this._loop);this._errored||e()}getInfo(e){if(this._bufferedBytes<2)return void(this._loop=!1);const n=this.consume(2);if(48&n[0]){return void e(this.createError(RangeError,"RSV2 and RSV3 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_2_3"))}const i=!(64&~n[0]);if(i&&!this._extensions[t.extensionName]){return void e(this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1"))}if(this._fin=!(128&~n[0]),this._opcode=15&n[0],this._payloadLength=127&n[1],0===this._opcode){if(i){return void e(this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1"))}if(!this._fragmented){return void e(this.createError(RangeError,"invalid opcode 0",!0,1002,"WS_ERR_INVALID_OPCODE"))}this._opcode=this._fragmented}else if(1===this._opcode||2===this._opcode){if(this._fragmented){return void e(this.createError(RangeError,`invalid opcode ${this._opcode}`,!0,1002,"WS_ERR_INVALID_OPCODE"))}this._compressed=i}else{if(!(this._opcode>7&&this._opcode<11)){return void e(this.createError(RangeError,`invalid opcode ${this._opcode}`,!0,1002,"WS_ERR_INVALID_OPCODE"))}if(!this._fin){return void e(this.createError(RangeError,"FIN must be set",!0,1002,"WS_ERR_EXPECTED_FIN"))}if(i){return void e(this.createError(RangeError,"RSV1 must be clear",!0,1002,"WS_ERR_UNEXPECTED_RSV_1"))}if(this._payloadLength>125||8===this._opcode&&1===this._payloadLength){return void e(this.createError(RangeError,`invalid payload length ${this._payloadLength}`,!0,1002,"WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH"))}}if(this._fin||this._fragmented||(this._fragmented=this._opcode),this._masked=!(128&~n[1]),this._isServer){if(!this._masked){return void e(this.createError(RangeError,"MASK must be set",!0,1002,"WS_ERR_EXPECTED_MASK"))}}else if(this._masked){return void e(this.createError(RangeError,"MASK must be clear",!0,1002,"WS_ERR_UNEXPECTED_MASK"))}126===this._payloadLength?this._state=1:127===this._payloadLength?this._state=2:this.haveLength(e)}getPayloadLength16(e){this._bufferedBytes<2?this._loop=!1:(this._payloadLength=this.consume(2).readUInt16BE(0),this.haveLength(e))}getPayloadLength64(e){if(this._bufferedBytes<8)return void(this._loop=!1);const t=this.consume(8),n=t.readUInt32BE(0);if(n>Math.pow(2,21)-1){return void e(this.createError(RangeError,"Unsupported WebSocket frame: payload length > 2^53 - 1",!1,1009,"WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH"))}this._payloadLength=n*Math.pow(2,32)+t.readUInt32BE(4),this.haveLength(e)}haveLength(e){if(this._payloadLength&&this._opcode<8&&(this._totalPayloadLength+=this._payloadLength,this._totalPayloadLength>this._maxPayload&&this._maxPayload>0)){return void e(this.createError(RangeError,"Max payload size exceeded",!1,1009,"WS_ERR_UNSUPPORTED_MESSAGE_LENGTH"))}this._masked?this._state=3:this._state=4}getMask(){this._bufferedBytes<4?this._loop=!1:(this._mask=this.consume(4),this._state=4)}getData(e){let t=i;if(this._payloadLength){if(this._bufferedBytes<this._payloadLength)return void(this._loop=!1);t=this.consume(this._payloadLength),this._masked&&0!==(this._mask[0]|this._mask[1]|this._mask[2]|this._mask[3])&&c(t,this._mask)}if(this._opcode>7)this.controlMessage(t,e);else{if(this._compressed)return this._state=5,void this.decompress(t,e);t.length&&(this._messageLength=this._totalPayloadLength,this._fragments.push(t)),this.dataMessage(e)}}decompress(e,n){this._extensions[t.extensionName].decompress(e,this._fin,(e,t)=>{if(e)return n(e);if(t.length){if(this._messageLength+=t.length,this._messageLength>this._maxPayload&&this._maxPayload>0){const e=this.createError(RangeError,"Max payload size exceeded",!1,1009,"WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");return void n(e)}this._fragments.push(t)}this.dataMessage(n),0===this._state&&this.startLoop(n)})}dataMessage(e){if(!this._fin)return void(this._state=0);const t=this._messageLength,n=this._fragments;if(this._totalPayloadLength=0,this._messageLength=0,this._fragmented=0,this._fragments=[],2===this._opcode){let i;i="nodebuffer"===this._binaryType?a(n,t):"arraybuffer"===this._binaryType?l(a(n,t)):"blob"===this._binaryType?new Blob(n):n,this._allowSynchronousEvents?(this.emit("message",i,!0),this._state=0):(this._state=6,setImmediate(()=>{this.emit("message",i,!0),this._state=0,this.startLoop(e)}))}else{const i=a(n,t);if(!this._skipUTF8Validation&&!h(i)){const t=this.createError(Error,"invalid UTF-8 sequence",!0,1007,"WS_ERR_INVALID_UTF8");return void e(t)}5===this._state||this._allowSynchronousEvents?(this.emit("message",i,!1),this._state=0):(this._state=6,setImmediate(()=>{this.emit("message",i,!1),this._state=0,this.startLoop(e)}))}}controlMessage(e,t){if(8!==this._opcode)this._allowSynchronousEvents?(this.emit(9===this._opcode?"ping":"pong",e),this._state=0):(this._state=6,setImmediate(()=>{this.emit(9===this._opcode?"ping":"pong",e),this._state=0,this.startLoop(t)}));else{if(0===e.length)this._loop=!1,this.emit("conclude",1005,i),this.end();else{const n=e.readUInt16BE(0);if(!d(n)){const e=this.createError(RangeError,`invalid status code ${n}`,!0,1002,"WS_ERR_INVALID_CLOSE_CODE");return void t(e)}const i=new u(e.buffer,e.byteOffset+2,e.length-2);if(!this._skipUTF8Validation&&!h(i)){const e=this.createError(Error,"invalid UTF-8 sequence",!0,1007,"WS_ERR_INVALID_UTF8");return void t(e)}this._loop=!1,this.emit("conclude",n,i),this.end()}this._state=0}}createError(e,t,n,i,r){this._loop=!1,this._errored=!0;const o=new e(n?`Invalid WebSocket frame: ${t}`:t);return Error.captureStackTrace(o,this.createError),o.code=r,o[s]=i,o}}}function ce(){if(J)return Y;J=1;const{Duplex:e}=o,{randomFillSync:t}=r,n=K(),{EMPTY_BUFFER:i,kWebSocket:s,NOOP:a}=G(),{isBlob:l,isValidStatusCode:c}=ae(),{mask:d,toBuffer:h}=H(),u=Symbol("kByteLength"),f=Buffer.alloc(4),p=8192;let g,m=p;class y{constructor(e,t,n){this._extensions=t||{},n&&(this._generateMask=n,this._maskBuffer=Buffer.alloc(4)),this._socket=e,this._firstFragment=!0,this._compress=!1,this._bufferedBytes=0,this._queue=[],this._state=0,this.onerror=a,this[s]=void 0}static frame(e,n){let i,s,r=!1,o=2,a=!1;n.mask&&(i=n.maskBuffer||f,n.generateMask?n.generateMask(i):(m===p&&(void 0===g&&(g=Buffer.alloc(p)),t(g,0,p),m=0),i[0]=g[m++],i[1]=g[m++],i[2]=g[m++],i[3]=g[m++]),a=0===(i[0]|i[1]|i[2]|i[3]),o=6),"string"==typeof e?s=n.mask&&!a||void 0===n[u]?(e=Buffer.from(e)).length:n[u]:(s=e.length,r=n.mask&&n.readOnly&&!a);let l=s;s>=65536?(o+=8,l=127):s>125&&(o+=2,l=126);const c=Buffer.allocUnsafe(r?s+o:o);return c[0]=n.fin?128|n.opcode:n.opcode,n.rsv1&&(c[0]|=64),c[1]=l,126===l?c.writeUInt16BE(s,2):127===l&&(c[2]=c[3]=0,c.writeUIntBE(s,4,6)),n.mask?(c[1]|=128,c[o-4]=i[0],c[o-3]=i[1],c[o-2]=i[2],c[o-1]=i[3],a?[c,e]:r?(d(e,i,c,o,s),[c]):(d(e,i,e,0,s),[c,e])):[c,e]}close(e,t,n,s){let r;if(void 0===e)r=i;else{if("number"!=typeof e||!c(e))throw new TypeError("First argument must be a valid error code number");if(void 0!==t&&t.length){const n=Buffer.byteLength(t);if(n>123)throw new RangeError("The message must not be greater than 123 bytes");r=Buffer.allocUnsafe(2+n),r.writeUInt16BE(e,0),"string"==typeof t?r.write(t,2):r.set(t,2)}else r=Buffer.allocUnsafe(2),r.writeUInt16BE(e,0)}const o={[u]:r.length,fin:!0,generateMask:this._generateMask,mask:n,maskBuffer:this._maskBuffer,opcode:8,readOnly:!1,rsv1:!1};0!==this._state?this.enqueue([this.dispatch,r,!1,o,s]):this.sendFrame(y.frame(r,o),s)}ping(e,t,n){let i,s;if("string"==typeof e?(i=Buffer.byteLength(e),s=!1):l(e)?(i=e.size,s=!1):(i=(e=h(e)).length,s=h.readOnly),i>125)throw new RangeError("The data size must not be greater than 125 bytes");const r={[u]:i,fin:!0,generateMask:this._generateMask,mask:t,maskBuffer:this._maskBuffer,opcode:9,readOnly:s,rsv1:!1};l(e)?0!==this._state?this.enqueue([this.getBlobData,e,!1,r,n]):this.getBlobData(e,!1,r,n):0!==this._state?this.enqueue([this.dispatch,e,!1,r,n]):this.sendFrame(y.frame(e,r),n)}pong(e,t,n){let i,s;if("string"==typeof e?(i=Buffer.byteLength(e),s=!1):l(e)?(i=e.size,s=!1):(i=(e=h(e)).length,s=h.readOnly),i>125)throw new RangeError("The data size must not be greater than 125 bytes");const r={[u]:i,fin:!0,generateMask:this._generateMask,mask:t,maskBuffer:this._maskBuffer,opcode:10,readOnly:s,rsv1:!1};l(e)?0!==this._state?this.enqueue([this.getBlobData,e,!1,r,n]):this.getBlobData(e,!1,r,n):0!==this._state?this.enqueue([this.dispatch,e,!1,r,n]):this.sendFrame(y.frame(e,r),n)}send(e,t,i){const s=this._extensions[n.extensionName];let r,o,a=t.binary?2:1,c=t.compress;"string"==typeof e?(r=Buffer.byteLength(e),o=!1):l(e)?(r=e.size,o=!1):(r=(e=h(e)).length,o=h.readOnly),this._firstFragment?(this._firstFragment=!1,c&&s&&s.params[s._isServer?"server_no_context_takeover":"client_no_context_takeover"]&&(c=r>=s._threshold),this._compress=c):(c=!1,a=0),t.fin&&(this._firstFragment=!0);const d={[u]:r,fin:t.fin,generateMask:this._generateMask,mask:t.mask,maskBuffer:this._maskBuffer,opcode:a,readOnly:o,rsv1:c};l(e)?0!==this._state?this.enqueue([this.getBlobData,e,this._compress,d,i]):this.getBlobData(e,this._compress,d,i):0!==this._state?this.enqueue([this.dispatch,e,this._compress,d,i]):this.dispatch(e,this._compress,d,i)}getBlobData(e,t,n,i){this._bufferedBytes+=n[u],this._state=2,e.arrayBuffer().then(e=>{if(this._socket.destroyed){const e=new Error("The socket was closed while the blob was being read");return void process.nextTick(v,this,e,i)}this._bufferedBytes-=n[u];const s=h(e);t?this.dispatch(s,t,n,i):(this._state=0,this.sendFrame(y.frame(s,n),i),this.dequeue())}).catch(e=>{process.nextTick(S,this,e,i)})}dispatch(e,t,i,s){if(!t)return void this.sendFrame(y.frame(e,i),s);const r=this._extensions[n.extensionName];this._bufferedBytes+=i[u],this._state=1,r.compress(e,i.fin,(e,t)=>{if(this._socket.destroyed){return void v(this,new Error("The socket was closed while data was being compressed"),s)}this._bufferedBytes-=i[u],this._state=0,i.readOnly=!1,this.sendFrame(y.frame(t,i),s),this.dequeue()})}dequeue(){for(;0===this._state&&this._queue.length;){const e=this._queue.shift();this._bufferedBytes-=e[3][u],Reflect.apply(e[0],this,e.slice(1))}}enqueue(e){this._bufferedBytes+=e[3][u],this._queue.push(e)}sendFrame(e,t){2===e.length?(this._socket.cork(),this._socket.write(e[0]),this._socket.write(e[1],t),this._socket.uncork()):this._socket.write(e[0],t)}}function v(e,t,n){"function"==typeof n&&n(t);for(let n=0;n<e._queue.length;n++){const i=e._queue[n],s=i[i.length-1];"function"==typeof s&&s(t)}}function S(e,t,n){v(e,t,n),e.onerror(t)}return Y=y}function de(){if(te)return ee;te=1;const{tokenChars:e}=ae();function t(e,t,n){void 0===e[t]?e[t]=[n]:e[t].push(n)}return ee={format:function(e){return Object.keys(e).map(t=>{let n=e[t];return Array.isArray(n)||(n=[n]),n.map(e=>[t].concat(Object.keys(e).map(t=>{let n=e[t];return Array.isArray(n)||(n=[n]),n.map(e=>!0===e?t:`${t}=${e}`).join("; ")})).join("; ")).join(", ")}).join(", ")},parse:function(n){const i=Object.create(null);let s,r,o=Object.create(null),a=!1,l=!1,c=!1,d=-1,h=-1,u=-1,f=0;for(;f<n.length;f++)if(h=n.charCodeAt(f),void 0===s)if(-1===u&&1===e[h])-1===d&&(d=f);else if(0===f||32!==h&&9!==h){if(59!==h&&44!==h)throw new SyntaxError(`Unexpected character at index ${f}`);{if(-1===d)throw new SyntaxError(`Unexpected character at index ${f}`);-1===u&&(u=f);const e=n.slice(d,u);44===h?(t(i,e,o),o=Object.create(null)):s=e,d=u=-1}}else-1===u&&-1!==d&&(u=f);else if(void 0===r)if(-1===u&&1===e[h])-1===d&&(d=f);else if(32===h||9===h)-1===u&&-1!==d&&(u=f);else if(59===h||44===h){if(-1===d)throw new SyntaxError(`Unexpected character at index ${f}`);-1===u&&(u=f),t(o,n.slice(d,u),!0),44===h&&(t(i,s,o),o=Object.create(null),s=void 0),d=u=-1}else{if(61!==h||-1===d||-1!==u)throw new SyntaxError(`Unexpected character at index ${f}`);r=n.slice(d,f),d=u=-1}else if(l){if(1!==e[h])throw new SyntaxError(`Unexpected character at index ${f}`);-1===d?d=f:a||(a=!0),l=!1}else if(c)if(1===e[h])-1===d&&(d=f);else if(34===h&&-1!==d)c=!1,u=f;else{if(92!==h)throw new SyntaxError(`Unexpected character at index ${f}`);l=!0}else if(34===h&&61===n.charCodeAt(f-1))c=!0;else if(-1===u&&1===e[h])-1===d&&(d=f);else if(-1===d||32!==h&&9!==h){if(59!==h&&44!==h)throw new SyntaxError(`Unexpected character at index ${f}`);{if(-1===d)throw new SyntaxError(`Unexpected character at index ${f}`);-1===u&&(u=f);let e=n.slice(d,u);a&&(e=e.replace(/\\/g,""),a=!1),t(o,r,e),44===h&&(t(i,s,o),o=Object.create(null),s=void 0),r=void 0,d=u=-1}}else-1===u&&(u=f);if(-1===d||c||32===h||9===h)throw new SyntaxError("Unexpected end of input");-1===u&&(u=f);const p=n.slice(d,u);return void 0===s?t(i,p,o):(void 0===r?t(o,p,!0):t(o,r,a?p.replace(/\\/g,""):p),t(i,s,o)),i}}}function he(){if(ie)return ne;ie=1;const l=e,c=t,d=n,h=i,u=s,{randomBytes:f,createHash:p}=r,{Duplex:g,Readable:m}=o,{URL:y}=a,v=K(),S=le(),_=ce(),{isBlob:b}=ae(),{BINARY_TYPES:w,EMPTY_BUFFER:C,GUID:k,kForOnEventAttribute:x,kListener:T,kStatusCode:D,kWebSocket:E,NOOP:R}=G(),{EventTarget:{addEventListener:I,removeEventListener:P}}=function(){if(Q)return Z;Q=1;const{kForOnEventAttribute:e,kListener:t}=G(),n=Symbol("kCode"),i=Symbol("kData"),s=Symbol("kError"),r=Symbol("kMessage"),o=Symbol("kReason"),a=Symbol("kTarget"),l=Symbol("kType"),c=Symbol("kWasClean");class d{constructor(e){this[a]=null,this[l]=e}get target(){return this[a]}get type(){return this[l]}}Object.defineProperty(d.prototype,"target",{enumerable:!0}),Object.defineProperty(d.prototype,"type",{enumerable:!0});class h extends d{constructor(e,t={}){super(e),this[n]=void 0===t.code?0:t.code,this[o]=void 0===t.reason?"":t.reason,this[c]=void 0!==t.wasClean&&t.wasClean}get code(){return this[n]}get reason(){return this[o]}get wasClean(){return this[c]}}Object.defineProperty(h.prototype,"code",{enumerable:!0}),Object.defineProperty(h.prototype,"reason",{enumerable:!0}),Object.defineProperty(h.prototype,"wasClean",{enumerable:!0});class u extends d{constructor(e,t={}){super(e),this[s]=void 0===t.error?null:t.error,this[r]=void 0===t.message?"":t.message}get error(){return this[s]}get message(){return this[r]}}Object.defineProperty(u.prototype,"error",{enumerable:!0}),Object.defineProperty(u.prototype,"message",{enumerable:!0});class f extends d{constructor(e,t={}){super(e),this[i]=void 0===t.data?null:t.data}get data(){return this[i]}}Object.defineProperty(f.prototype,"data",{enumerable:!0});const p={addEventListener(n,i,s={}){for(const r of this.listeners(n))if(!s[e]&&r[t]===i&&!r[e])return;let r;if("message"===n)r=function(e,t){const n=new f("message",{data:t?e:e.toString()});n[a]=this,g(i,this,n)};else if("close"===n)r=function(e,t){const n=new h("close",{code:e,reason:t.toString(),wasClean:this._closeFrameReceived&&this._closeFrameSent});n[a]=this,g(i,this,n)};else if("error"===n)r=function(e){const t=new u("error",{error:e,message:e.message});t[a]=this,g(i,this,t)};else{if("open"!==n)return;r=function(){const e=new d("open");e[a]=this,g(i,this,e)}}r[e]=!!s[e],r[t]=i,s.once?this.once(n,r):this.on(n,r)},removeEventListener(n,i){for(const s of this.listeners(n))if(s[t]===i&&!s[e]){this.removeListener(n,s);break}}};function g(e,t,n){"object"==typeof e&&e.handleEvent?e.handleEvent.call(e,n):e.call(t,n)}return Z={CloseEvent:h,ErrorEvent:u,Event:d,EventTarget:p,MessageEvent:f}}(),{format:O,parse:L}=de(),{toBuffer:F}=H(),N=Symbol("kAborted"),A=[8,13],B=["CONNECTING","OPEN","CLOSING","CLOSED"],U=/^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;class $ extends l{constructor(e,t,n){super(),this._binaryType=w[0],this._closeCode=1006,this._closeFrameReceived=!1,this._closeFrameSent=!1,this._closeMessage=C,this._closeTimer=null,this._errorEmitted=!1,this._extensions={},this._paused=!1,this._protocol="",this._readyState=$.CONNECTING,this._receiver=null,this._sender=null,this._socket=null,null!==e?(this._bufferedAmount=0,this._isServer=!1,this._redirects=0,void 0===t?t=[]:Array.isArray(t)||("object"==typeof t&&null!==t?(n=t,t=[]):t=[t]),M(this,e,t,n)):(this._autoPong=n.autoPong,this._isServer=!0)}get binaryType(){return this._binaryType}set binaryType(e){w.includes(e)&&(this._binaryType=e,this._receiver&&(this._receiver._binaryType=e))}get bufferedAmount(){return this._socket?this._socket._writableState.length+this._sender._bufferedBytes:this._bufferedAmount}get extensions(){return Object.keys(this._extensions).join()}get isPaused(){return this._paused}get onclose(){return null}get onerror(){return null}get onopen(){return null}get onmessage(){return null}get protocol(){return this._protocol}get readyState(){return this._readyState}get url(){return this._url}setSocket(e,t,n){const i=new S({allowSynchronousEvents:n.allowSynchronousEvents,binaryType:this.binaryType,extensions:this._extensions,isServer:this._isServer,maxPayload:n.maxPayload,skipUTF8Validation:n.skipUTF8Validation}),s=new _(e,this._extensions,n.generateMask);this._receiver=i,this._sender=s,this._socket=e,i[E]=this,s[E]=this,e[E]=this,i.on("conclude",X),i.on("drain",Y),i.on("error",J),i.on("message",te),i.on("ping",se),i.on("pong",re),s.onerror=he,e.setTimeout&&e.setTimeout(0),e.setNoDelay&&e.setNoDelay(),t.length>0&&e.unshift(t),e.on("close",fe),e.on("data",pe),e.on("end",ge),e.on("error",me),this._readyState=$.OPEN,this.emit("open")}emitClose(){if(!this._socket)return this._readyState=$.CLOSED,void this.emit("close",this._closeCode,this._closeMessage);this._extensions[v.extensionName]&&this._extensions[v.extensionName].cleanup(),this._receiver.removeAllListeners(),this._readyState=$.CLOSED,this.emit("close",this._closeCode,this._closeMessage)}close(e,t){if(this.readyState!==$.CLOSED){if(this.readyState===$.CONNECTING){const e="WebSocket was closed before the connection was established";return void z(this,this._req,e)}this.readyState!==$.CLOSING?(this._readyState=$.CLOSING,this._sender.close(e,t,!this._isServer,e=>{e||(this._closeFrameSent=!0,(this._closeFrameReceived||this._receiver._writableState.errorEmitted)&&this._socket.end())}),ue(this)):this._closeFrameSent&&(this._closeFrameReceived||this._receiver._writableState.errorEmitted)&&this._socket.end()}}pause(){this.readyState!==$.CONNECTING&&this.readyState!==$.CLOSED&&(this._paused=!0,this._socket.pause())}ping(e,t,n){if(this.readyState===$.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");"function"==typeof e?(n=e,e=t=void 0):"function"==typeof t&&(n=t,t=void 0),"number"==typeof e&&(e=e.toString()),this.readyState===$.OPEN?(void 0===t&&(t=!this._isServer),this._sender.ping(e||C,t,n)):q(this,e,n)}pong(e,t,n){if(this.readyState===$.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");"function"==typeof e?(n=e,e=t=void 0):"function"==typeof t&&(n=t,t=void 0),"number"==typeof e&&(e=e.toString()),this.readyState===$.OPEN?(void 0===t&&(t=!this._isServer),this._sender.pong(e||C,t,n)):q(this,e,n)}resume(){this.readyState!==$.CONNECTING&&this.readyState!==$.CLOSED&&(this._paused=!1,this._receiver._writableState.needDrain||this._socket.resume())}send(e,t,n){if(this.readyState===$.CONNECTING)throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");if("function"==typeof t&&(n=t,t={}),"number"==typeof e&&(e=e.toString()),this.readyState!==$.OPEN)return void q(this,e,n);const i={binary:"string"!=typeof e,mask:!this._isServer,compress:!0,fin:!0,...t};this._extensions[v.extensionName]||(i.compress=!1),this._sender.send(e||C,i,n)}terminate(){if(this.readyState!==$.CLOSED){if(this.readyState===$.CONNECTING){const e="WebSocket was closed before the connection was established";return void z(this,this._req,e)}this._socket&&(this._readyState=$.CLOSING,this._socket.destroy())}}}function M(e,t,n,i){const s={allowSynchronousEvents:!0,autoPong:!0,protocolVersion:A[1],maxPayload:104857600,skipUTF8Validation:!1,perMessageDeflate:!0,followRedirects:!1,maxRedirects:10,...i,socketPath:void 0,hostname:void 0,protocol:void 0,timeout:void 0,method:"GET",host:void 0,path:void 0,port:void 0};if(e._autoPong=s.autoPong,!A.includes(s.protocolVersion))throw new RangeError(`Unsupported protocol version: ${s.protocolVersion} (supported versions: ${A.join(", ")})`);let r;if(t instanceof y)r=t;else try{r=new y(t)}catch(e){throw new SyntaxError(`Invalid URL: ${t}`)}"http:"===r.protocol?r.protocol="ws:":"https:"===r.protocol&&(r.protocol="wss:"),e._url=r.href;const o="wss:"===r.protocol,a="ws+unix:"===r.protocol;let l;if("ws:"===r.protocol||o||a?a&&!r.pathname?l="The URL's pathname is empty":r.hash&&(l="The URL contains a fragment identifier"):l='The URL\'s protocol must be one of "ws:", "wss:", "http:", "https:", or "ws+unix:"',l){const t=new SyntaxError(l);if(0===e._redirects)throw t;return void W(e,t)}const h=o?443:80,u=f(16).toString("base64"),g=o?c.request:d.request,m=new Set;let S,_;if(s.createConnection=s.createConnection||(o?V:j),s.defaultPort=s.defaultPort||h,s.port=r.port||h,s.host=r.hostname.startsWith("[")?r.hostname.slice(1,-1):r.hostname,s.headers={...s.headers,"Sec-WebSocket-Version":s.protocolVersion,"Sec-WebSocket-Key":u,Connection:"Upgrade",Upgrade:"websocket"},s.path=r.pathname+r.search,s.timeout=s.handshakeTimeout,s.perMessageDeflate&&(S=new v(!0!==s.perMessageDeflate?s.perMessageDeflate:{},!1,s.maxPayload),s.headers["Sec-WebSocket-Extensions"]=O({[v.extensionName]:S.offer()})),n.length){for(const e of n){if("string"!=typeof e||!U.test(e)||m.has(e))throw new SyntaxError("An invalid or duplicated subprotocol was specified");m.add(e)}s.headers["Sec-WebSocket-Protocol"]=n.join(",")}if(s.origin&&(s.protocolVersion<13?s.headers["Sec-WebSocket-Origin"]=s.origin:s.headers.Origin=s.origin),(r.username||r.password)&&(s.auth=`${r.username}:${r.password}`),a){const e=s.path.split(":");s.socketPath=e[0],s.path=e[1]}if(s.followRedirects){if(0===e._redirects){e._originalIpc=a,e._originalSecure=o,e._originalHostOrSocketPath=a?s.socketPath:r.host;const t=i&&i.headers;if(i={...i,headers:{}},t)for(const[e,n]of Object.entries(t))i.headers[e.toLowerCase()]=n}else if(0===e.listenerCount("redirect")){const t=a?!!e._originalIpc&&s.socketPath===e._originalHostOrSocketPath:!e._originalIpc&&r.host===e._originalHostOrSocketPath;(!t||e._originalSecure&&!o)&&(delete s.headers.authorization,delete s.headers.cookie,t||delete s.headers.host,s.auth=void 0)}s.auth&&!i.headers.authorization&&(i.headers.authorization="Basic "+Buffer.from(s.auth).toString("base64")),_=e._req=g(s),e._redirects&&e.emit("redirect",e.url,_)}else _=e._req=g(s);s.timeout&&_.on("timeout",()=>{z(e,_,"Opening handshake has timed out")}),_.on("error",t=>{null===_||_[N]||(_=e._req=null,W(e,t))}),_.on("response",r=>{const o=r.headers.location,a=r.statusCode;if(o&&s.followRedirects&&a>=300&&a<400){if(++e._redirects>s.maxRedirects)return void z(e,_,"Maximum redirects exceeded");let r;_.abort();try{r=new y(o,t)}catch(t){const n=new SyntaxError(`Invalid URL: ${o}`);return void W(e,n)}M(e,r,n,i)}else e.emit("unexpected-response",_,r)||z(e,_,`Unexpected server response: ${r.statusCode}`)}),_.on("upgrade",(t,n,i)=>{if(e.emit("upgrade",t),e.readyState!==$.CONNECTING)return;_=e._req=null;const r=t.headers.upgrade;if(void 0===r||"websocket"!==r.toLowerCase())return void z(e,n,"Invalid Upgrade header");const o=p("sha1").update(u+k).digest("base64");if(t.headers["sec-websocket-accept"]!==o)return void z(e,n,"Invalid Sec-WebSocket-Accept header");const a=t.headers["sec-websocket-protocol"];let l;if(void 0!==a?m.size?m.has(a)||(l="Server sent an invalid subprotocol"):l="Server sent a subprotocol but none was requested":m.size&&(l="Server sent no subprotocol"),l)return void z(e,n,l);a&&(e._protocol=a);const c=t.headers["sec-websocket-extensions"];if(void 0!==c){if(!S){return void z(e,n,"Server sent a Sec-WebSocket-Extensions header but no extension was requested")}let t;try{t=L(c)}catch(t){return void z(e,n,"Invalid Sec-WebSocket-Extensions header")}const i=Object.keys(t);if(1!==i.length||i[0]!==v.extensionName){return void z(e,n,"Server indicated an extension that was not requested")}try{S.accept(t[v.extensionName])}catch(t){return void z(e,n,"Invalid Sec-WebSocket-Extensions header")}e._extensions[v.extensionName]=S}e.setSocket(n,i,{allowSynchronousEvents:s.allowSynchronousEvents,generateMask:s.generateMask,maxPayload:s.maxPayload,skipUTF8Validation:s.skipUTF8Validation})}),s.finishRequest?s.finishRequest(_,e):_.end()}function W(e,t){e._readyState=$.CLOSING,e._errorEmitted=!0,e.emit("error",t),e.emitClose()}function j(e){return e.path=e.socketPath,h.connect(e)}function V(e){return e.path=void 0,e.servername||""===e.servername||(e.servername=h.isIP(e.host)?"":e.host),u.connect(e)}function z(e,t,n){e._readyState=$.CLOSING;const i=new Error(n);Error.captureStackTrace(i,z),t.setHeader?(t[N]=!0,t.abort(),t.socket&&!t.socket.destroyed&&t.socket.destroy(),process.nextTick(W,e,i)):(t.destroy(i),t.once("error",e.emit.bind(e,"error")),t.once("close",e.emitClose.bind(e)))}function q(e,t,n){if(t){const n=b(t)?t.size:F(t).length;e._socket?e._sender._bufferedBytes+=n:e._bufferedAmount+=n}if(n){const t=new Error(`WebSocket is not open: readyState ${e.readyState} (${B[e.readyState]})`);process.nextTick(n,t)}}function X(e,t){const n=this[E];n._closeFrameReceived=!0,n._closeMessage=t,n._closeCode=e,void 0!==n._socket[E]&&(n._socket.removeListener("data",pe),process.nextTick(oe,n._socket),1005===e?n.close():n.close(e,t))}function Y(){const e=this[E];e.isPaused||e._socket.resume()}function J(e){const t=this[E];void 0!==t._socket[E]&&(t._socket.removeListener("data",pe),process.nextTick(oe,t._socket),t.close(e[D])),t._errorEmitted||(t._errorEmitted=!0,t.emit("error",e))}function ee(){this[E].emitClose()}function te(e,t){this[E].emit("message",e,t)}function se(e){const t=this[E];t._autoPong&&t.pong(e,!this._isServer,R),t.emit("ping",e)}function re(e){this[E].emit("pong",e)}function oe(e){e.resume()}function he(e){const t=this[E];t.readyState!==$.CLOSED&&(t.readyState===$.OPEN&&(t._readyState=$.CLOSING,ue(t)),this._socket.end(),t._errorEmitted||(t._errorEmitted=!0,t.emit("error",e)))}function ue(e){e._closeTimer=setTimeout(e._socket.destroy.bind(e._socket),3e4)}function fe(){const e=this[E];let t;this.removeListener("close",fe),this.removeListener("data",pe),this.removeListener("end",ge),e._readyState=$.CLOSING,this._readableState.endEmitted||e._closeFrameReceived||e._receiver._writableState.errorEmitted||null===(t=e._socket.read())||e._receiver.write(t),e._receiver.end(),this[E]=void 0,clearTimeout(e._closeTimer),e._receiver._writableState.finished||e._receiver._writableState.errorEmitted?e.emitClose():(e._receiver.on("error",ee),e._receiver.on("finish",ee))}function pe(e){this[E]._receiver.write(e)||this.pause()}function ge(){const e=this[E];e._readyState=$.CLOSING,e._receiver.end(),this.end()}function me(){const e=this[E];this.removeListener("error",me),this.on("error",R),e&&(e._readyState=$.CLOSING,this.destroy())}return Object.defineProperty($,"CONNECTING",{enumerable:!0,value:B.indexOf("CONNECTING")}),Object.defineProperty($.prototype,"CONNECTING",{enumerable:!0,value:B.indexOf("CONNECTING")}),Object.defineProperty($,"OPEN",{enumerable:!0,value:B.indexOf("OPEN")}),Object.defineProperty($.prototype,"OPEN",{enumerable:!0,value:B.indexOf("OPEN")}),Object.defineProperty($,"CLOSING",{enumerable:!0,value:B.indexOf("CLOSING")}),Object.defineProperty($.prototype,"CLOSING",{enumerable:!0,value:B.indexOf("CLOSING")}),Object.defineProperty($,"CLOSED",{enumerable:!0,value:B.indexOf("CLOSED")}),Object.defineProperty($.prototype,"CLOSED",{enumerable:!0,value:B.indexOf("CLOSED")}),["binaryType","bufferedAmount","extensions","isPaused","protocol","readyState","url"].forEach(e=>{Object.defineProperty($.prototype,e,{enumerable:!0})}),["open","error","close","message"].forEach(e=>{Object.defineProperty($.prototype,`on${e}`,{enumerable:!0,get(){for(const t of this.listeners(e))if(t[x])return t[T];return null},set(t){for(const t of this.listeners(e))if(t[x]){this.removeListener(e,t);break}"function"==typeof t&&this.addEventListener(e,t,{[x]:!0})}})}),$.prototype.addEventListener=I,$.prototype.removeEventListener=P,ne=$}!function(){if(re)return se;re=1,he();const{Duplex:e}=o;function t(e){e.emit("close")}function n(){!this.destroyed&&this._writableState.finished&&this.destroy()}function i(e){this.removeListener("error",i),this.destroy(),0===this.listenerCount("error")&&this.emit("error",e)}se=function(s,r){let o=!0;const a=new e({...r,autoDestroy:!1,emitClose:!1,objectMode:!1,writableObjectMode:!1});return s.on("message",function(e,t){const n=!t&&a._readableState.objectMode?e.toString():e;a.push(n)||s.pause()}),s.once("error",function(e){a.destroyed||(o=!1,a.destroy(e))}),s.once("close",function(){a.destroyed||a.push(null)}),a._destroy=function(e,n){if(s.readyState===s.CLOSED)return n(e),void process.nextTick(t,a);let i=!1;s.once("error",function(e){i=!0,n(e)}),s.once("close",function(){i||n(e),process.nextTick(t,a)}),o&&s.terminate()},a._final=function(e){s.readyState!==s.CONNECTING?null!==s._socket&&(s._socket._writableState.finished?(e(),a._readableState.endEmitted&&a.destroy()):(s._socket.once("finish",function(){e()}),s.close())):s.once("open",function(){a._final(e)})},a._read=function(){s.isPaused&&s.resume()},a._write=function(e,t,n){s.readyState!==s.CONNECTING?s.send(e,n):s.once("open",function(){a._write(e,t,n)})},a.on("end",n),a.on("error",i),a}}(),le(),ce();var ue,fe,pe,ge,me,ye,ve,Se,_e=N(he());function be(){if(fe)return ue;fe=1;const{tokenChars:e}=ae();return ue={parse:function(t){const n=new Set;let i=-1,s=-1,r=0;for(;r<t.length;r++){const o=t.charCodeAt(r);if(-1===s&&1===e[o])-1===i&&(i=r);else if(0===r||32!==o&&9!==o){if(44!==o)throw new SyntaxError(`Unexpected character at index ${r}`);{if(-1===i)throw new SyntaxError(`Unexpected character at index ${r}`);-1===s&&(s=r);const e=t.slice(i,s);if(n.has(e))throw new SyntaxError(`The "${e}" subprotocol is duplicated`);n.add(e),i=s=-1}}else-1===s&&-1!==i&&(s=r)}if(-1===i||-1!==s)throw new SyntaxError("Unexpected end of input");const o=t.slice(i,r);if(n.has(o))throw new SyntaxError(`The "${o}" subprotocol is duplicated`);return n.add(o),n}}}!function(){if(ge)return pe;ge=1;const t=e,i=n,{Duplex:s}=o,{createHash:a}=r,l=de(),c=K(),d=be(),h=he(),{GUID:u,kWebSocket:f}=G(),p=/^[+/0-9A-Za-z]{22}==$/;function g(e){e._state=2,e.emit("close")}function m(){this.destroy()}function y(e,t,n,s){n=n||i.STATUS_CODES[t],s={Connection:"close","Content-Type":"text/html","Content-Length":Buffer.byteLength(n),...s},e.once("finish",e.destroy),e.end(`HTTP/1.1 ${t} ${i.STATUS_CODES[t]}\r\n`+Object.keys(s).map(e=>`${e}: ${s[e]}`).join("\r\n")+"\r\n\r\n"+n)}function v(e,t,n,i,s,r){if(e.listenerCount("wsClientError")){const i=new Error(s);Error.captureStackTrace(i,v),e.emit("wsClientError",i,n,t)}else y(n,i,s,r)}pe=class extends t{constructor(e,t){if(super(),null==(e={allowSynchronousEvents:!0,autoPong:!0,maxPayload:104857600,skipUTF8Validation:!1,perMessageDeflate:!1,handleProtocols:null,clientTracking:!0,verifyClient:null,noServer:!1,backlog:null,server:null,host:null,path:null,port:null,WebSocket:h,...e}).port&&!e.server&&!e.noServer||null!=e.port&&(e.server||e.noServer)||e.server&&e.noServer)throw new TypeError('One and only one of the "port", "server", or "noServer" options must be specified');if(null!=e.port?(this._server=i.createServer((e,t)=>{const n=i.STATUS_CODES[426];t.writeHead(426,{"Content-Length":n.length,"Content-Type":"text/plain"}),t.end(n)}),this._server.listen(e.port,e.host,e.backlog,t)):e.server&&(this._server=e.server),this._server){const e=this.emit.bind(this,"connection");this._removeListeners=function(e,t){for(const n of Object.keys(t))e.on(n,t[n]);return function(){for(const n of Object.keys(t))e.removeListener(n,t[n])}}(this._server,{listening:this.emit.bind(this,"listening"),error:this.emit.bind(this,"error"),upgrade:(t,n,i)=>{this.handleUpgrade(t,n,i,e)}})}!0===e.perMessageDeflate&&(e.perMessageDeflate={}),e.clientTracking&&(this.clients=new Set,this._shouldEmitClose=!1),this.options=e,this._state=0}address(){if(this.options.noServer)throw new Error('The server is operating in "noServer" mode');return this._server?this._server.address():null}close(e){if(2===this._state)return e&&this.once("close",()=>{e(new Error("The server is not running"))}),void process.nextTick(g,this);if(e&&this.once("close",e),1!==this._state)if(this._state=1,this.options.noServer||this.options.server)this._server&&(this._removeListeners(),this._removeListeners=this._server=null),this.clients&&this.clients.size?this._shouldEmitClose=!0:process.nextTick(g,this);else{const e=this._server;this._removeListeners(),this._removeListeners=this._server=null,e.close(()=>{g(this)})}}shouldHandle(e){if(this.options.path){const t=e.url.indexOf("?");if((-1!==t?e.url.slice(0,t):e.url)!==this.options.path)return!1}return!0}handleUpgrade(e,t,n,i){t.on("error",m);const s=e.headers["sec-websocket-key"],r=e.headers.upgrade,o=+e.headers["sec-websocket-version"];if("GET"!==e.method){return void v(this,e,t,405,"Invalid HTTP method")}if(void 0===r||"websocket"!==r.toLowerCase()){return void v(this,e,t,400,"Invalid Upgrade header")}if(void 0===s||!p.test(s)){return void v(this,e,t,400,"Missing or invalid Sec-WebSocket-Key header")}if(13!==o&&8!==o){return void v(this,e,t,400,"Missing or invalid Sec-WebSocket-Version header",{"Sec-WebSocket-Version":"13, 8"})}if(!this.shouldHandle(e))return void y(t,400);const a=e.headers["sec-websocket-protocol"];let h=new Set;if(void 0!==a)try{h=d.parse(a)}catch(n){return void v(this,e,t,400,"Invalid Sec-WebSocket-Protocol header")}const u=e.headers["sec-websocket-extensions"],f={};if(this.options.perMessageDeflate&&void 0!==u){const n=new c(this.options.perMessageDeflate,!0,this.options.maxPayload);try{const e=l.parse(u);e[c.extensionName]&&(n.accept(e[c.extensionName]),f[c.extensionName]=n)}catch(n){return void v(this,e,t,400,"Invalid or unacceptable Sec-WebSocket-Extensions header")}}if(this.options.verifyClient){const r={origin:e.headers[""+(8===o?"sec-websocket-origin":"origin")],secure:!(!e.socket.authorized&&!e.socket.encrypted),req:e};if(2===this.options.verifyClient.length)return void this.options.verifyClient(r,(r,o,a,l)=>{if(!r)return y(t,o||401,a,l);this.completeUpgrade(f,s,h,e,t,n,i)});if(!this.options.verifyClient(r))return y(t,401)}this.completeUpgrade(f,s,h,e,t,n,i)}completeUpgrade(e,t,n,i,s,r,o){if(!s.readable||!s.writable)return s.destroy();if(s[f])throw new Error("server.handleUpgrade() was called more than once with the same socket, possibly due to a misconfiguration");if(this._state>0)return y(s,503);const d=["HTTP/1.1 101 Switching Protocols","Upgrade: websocket","Connection: Upgrade",`Sec-WebSocket-Accept: ${a("sha1").update(t+u).digest("base64")}`],h=new this.options.WebSocket(null,void 0,this.options);if(n.size){const e=this.options.handleProtocols?this.options.handleProtocols(n,i):n.values().next().value;e&&(d.push(`Sec-WebSocket-Protocol: ${e}`),h._protocol=e)}if(e[c.extensionName]){const t=e[c.extensionName].params,n=l.format({[c.extensionName]:[t]});d.push(`Sec-WebSocket-Extensions: ${n}`),h._extensions=e}this.emit("headers",d,i),s.write(d.concat("\r\n").join("\r\n")),s.removeListener("error",m),h.setSocket(s,r,{allowSynchronousEvents:this.options.allowSynchronousEvents,maxPayload:this.options.maxPayload,skipUTF8Validation:this.options.skipUTF8Validation}),this.clients&&(this.clients.add(h),h.on("close",()=>{this.clients.delete(h),this._shouldEmitClose&&!this.clients.size&&process.nextTick(g,this)})),o(h,i)}}}(),function(e){e[e.StreamDeck=0]="StreamDeck",e[e.StreamDeckMini=1]="StreamDeckMini",e[e.StreamDeckXL=2]="StreamDeckXL",e[e.StreamDeckMobile=3]="StreamDeckMobile",e[e.CorsairGKeys=4]="CorsairGKeys",e[e.StreamDeckPedal=5]="StreamDeckPedal",e[e.CorsairVoyager=6]="CorsairVoyager",e[e.StreamDeckPlus=7]="StreamDeckPlus",e[e.SCUFController=8]="SCUFController",e[e.StreamDeckNeo=9]="StreamDeckNeo",e[e.StreamDeckStudio=10]="StreamDeckStudio",e[e.VirtualStreamDeck=11]="VirtualStreamDeck"}(me||(me={})),function(e){e[e.Rectangle=0]="Rectangle",e[e.DoubleRectangle=1]="DoubleRectangle",e[e.Trapezoid=2]="Trapezoid",e[e.DoubleTrapezoid=3]="DoubleTrapezoid",e[e.Groove=4]="Groove"}(ye||(ye={})),function(e){e.Port="-port",e.Info="-info",e.PluginUUID="-pluginUUID",e.RegisterEvent="-registerEvent"}(ve||(ve={})),function(e){e[e.HardwareAndSoftware=0]="HardwareAndSoftware",e[e.Hardware=1]="Hardware",e[e.Software=2]="Software"}(Se||(Se={}));class we{build;major;minor;patch;constructor(e){const t=e.match(/^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$/);if(null===t)throw new Error(`Invalid format; expected "{major}[.{minor}[.{patch}[.{build}]]]" but was "${e}"`);[,this.major,this.minor,this.patch,this.build]=[...t.map(e=>parseInt(e)||0)]}compareTo(e){const t=({major:e,minor:t,build:n,patch:i})=>[e,t,n,i],n=t(this),i=t(e);for(let e=0;e<4;e++){if(n[e]<i[e])return-1;if(n[e]>i[e])return 1}return 0}toString(){return`${this.major}.${this.minor}`}}class Ce{write(e){switch(e.level){case"error":console.error(...e.data);break;case"warn":console.warn(...e.data);break;default:console.log(...e.data)}}}const ke="\n";function xe(e){switch(e){case"error":return 0;case"warn":return 1;case"info":return 2;case"debug":return 3;default:return 4}}class Te{#c;#d;#h;constructor(e){this.#d={minimumLevel:"trace",...e},this.#h=void 0===this.#d.scope||""===this.#d.scope.trim()?"":this.#d.scope,"function"!=typeof this.#d.level&&this.setLevel(this.#d.level)}get level(){return void 0!==this.#c?this.#c:"function"==typeof this.#d.level?this.#d.level():this.#d.level}createScope(e){return""===(e=e.trim())?this:new Te({...this.#d,level:()=>this.level,scope:this.#d.scope?`${this.#d.scope}->${e}`:e})}debug(...e){return this.write({level:"debug",data:e,scope:this.#h})}error(...e){return this.write({level:"error",data:e,scope:this.#h})}info(...e){return this.write({level:"info",data:e,scope:this.#h})}setLevel(e){return void 0!==e&&xe(e)>xe(this.#d.minimumLevel)?this.#c="info":this.#c=e,this}trace(...e){return this.write({level:"trace",data:e,scope:this.#h})}warn(...e){return this.write({level:"warn",data:e,scope:this.#h})}write(e){return xe(e.level)<=xe(this.level)&&this.#d.targets.forEach(t=>t.write(e)),this}}let De;function Ee(){return void 0===De&&(De=process.execArgv.some(e=>{const t=e.split("=")[0];return"--inspect"===t||"--inspect-brk"===t||"--inspect-port"===t})),De}const Re=[new class{#u;#d;#f=0;constructor(e){this.#d=e,this.#u=this.getLogFilePath(),this.reIndex()}write(e){const t=d.openSync(this.#u,"a");try{const n=this.#d.format(e);d.writeSync(t,n+"\n"),this.#f+=n.length}finally{d.closeSync(t)}this.#f>=this.#d.maxSize&&(this.reIndex(),this.#f=0)}getLogFilePath(e=0){return f.join(this.#d.dest,`${this.#d.fileName}.${e}.log`)}getLogFiles(){const e=/^\.(\d+)\.log$/;return d.readdirSync(this.#d.dest,{withFileTypes:!0}).reduce((t,n)=>{if(n.isDirectory()||n.name.indexOf(this.#d.fileName)<0)return t;const i=n.name.substring(this.#d.fileName.length).match(e);return 2!==i?.length||t.push({path:f.join(this.#d.dest,n.name),index:parseInt(i[1])}),t},[]).sort(({index:e},{index:t})=>e<t?-1:e>t?1:0)}reIndex(){if(!d.existsSync(this.#d.dest))return void d.mkdirSync(this.#d.dest);const e=this.getLogFiles();for(let t=e.length-1;t>=0;t--){const n=e[t];t>=this.#d.maxFileCount-1?d.rmSync(n.path):d.renameSync(n.path,this.getLogFilePath(t+1))}}}({dest:f.join(g(),"logs"),fileName:function(){const e=f.basename(process.cwd()),t=e.lastIndexOf(".sdPlugin");return t<0?e:e.substring(0,t)}(),format:e=>{const{data:t,level:n,scope:i}=e;let s=`${(new Date).toISOString()} ${n.toUpperCase().padEnd(5)} `;return i&&(s+=`${i}: `),`${s}${function(e){let t="",n=!1;for(const i of e)"object"==typeof i&&i instanceof Error?(t+=`${ke}${i.stack}`,n=!0):(n&&(t+=ke,n=!1),t+="object"==typeof i?JSON.stringify(i):i,t+=" ");return t.trimEnd()}(t)}`},maxFileCount:10,maxSize:52428800})];Ee()&&Re.splice(0,0,new Ce);const Ie=new Te({level:Ee()?"debug":"info",minimumLevel:Ee()?"trace":"debug",targets:Re});process.once("uncaughtException",e=>Ie.error("Process encountered uncaught exception",e));const Pe=new class extends E{_registrationParameters;_version;canConnect=!0;connection=F();logger=Ie.createScope("Connection");get registrationParameters(){return this._registrationParameters??=this.getRegistrationParameters()}get version(){return this._version??=new we(this.registrationParameters.info.application.version)}async connect(){if(this.canConnect){this.canConnect=!1;const e=new _e(`ws://127.0.0.1:${this.registrationParameters.port}`);e.onmessage=e=>this.tryEmit(e),e.onopen=()=>{e.send(JSON.stringify({event:this.registrationParameters.registerEvent,uuid:this.registrationParameters.pluginUUID})),this.connection.resolve(e),this.emit("connected",this.registrationParameters.info)}}await this.connection.promise}async send(e){const t=await this.connection.promise,n=JSON.stringify(e);this.logger.trace(n),t.send(n)}getRegistrationParameters(){const e={port:void 0,info:void 0,pluginUUID:void 0,registerEvent:void 0},t=Ie.createScope("RegistrationParameters");for(let n=0;n<process.argv.length-1;n++){const i=process.argv[n],s=process.argv[++n];switch(i){case ve.Port:t.debug(`port=${s}`),e.port=s;break;case ve.PluginUUID:t.debug(`pluginUUID=${s}`),e.pluginUUID=s;break;case ve.RegisterEvent:t.debug(`registerEvent=${s}`),e.registerEvent=s;break;case ve.Info:t.debug(`info=${s}`),e.info=JSON.parse(s);break;default:n--}}const n=[],i=(e,t)=>{void 0===t&&n.push(e)};if(i(ve.Port,e.port),i(ve.PluginUUID,e.pluginUUID),i(ve.RegisterEvent,e.registerEvent),i(ve.Info,e.info),n.length>0)throw new Error(`Unable to establish a connection with Stream Deck, missing command line arguments: ${n.join(", ")}`);return e}tryEmit(e){try{const t=JSON.parse(e.data.toString());t.event?(this.logger.trace(e.data.toString()),this.emit(t.event,t)):this.logger.warn(`Received unknown message: ${e.data}`)}catch(t){this.logger.error(`Failed to parse message: ${e.data}`,t)}}};class Oe{type;constructor(e){this.type=e.event}}class Le extends Oe{action;constructor(e,t){super(t),this.action=e}}class Fe extends Le{payload;constructor(e,t){super(e,t),this.payload=t.payload}}const Ne=new L(()=>{const e=p(process.cwd(),"manifest.json");if(!h(e))throw new Error("Failed to read manifest.json as the file does not exist.");try{return JSON.parse(u(e,{encoding:"utf-8",flag:"r"}).toString())}catch(e){if(e instanceof SyntaxError)return null;throw e}}),Ae=new L(()=>null===Ne.value?null:new we(Ne.value.Software.MinimumVersion));function Be(){return Ae.value}const Ue=new Map;class $e extends O{constructor(){super(Ue)}getActionById(e){return Ue.get(e)}}const Me=new class extends $e{delete(e){Ue.delete(e)}set(e){Ue.set(e.id,e)}};class We extends Oe{application;constructor(e){super(e),this.application=e.payload.application}}class je extends Oe{device;constructor(e,t){super(e),this.device=t}}class Ve extends Oe{url;constructor(e){super(e),this.url=new He(e.payload.url)}}const Ge="streamdeck://";class He{fragment;href;path;query;queryParameters;constructor(e){const t=new URL(`${Ge}${e}`);this.fragment=t.hash.substring(1),this.href=t.href.substring(13),this.path=He.parsePath(this.href),this.query=t.search.substring(1),this.queryParameters=t.searchParams}static parsePath(e){const t=t=>{const n=e.indexOf(t);return n>=0?n:e.length};return e.substring(0,Math.min(t("?"),t("#")))}}class Ke extends Oe{settings;constructor(e){super(e),this.settings=e.payload.settings}}class ze extends Oe{action;payload;constructor(e,t){super(t),this.action=e,this.payload=t.payload}}function qe(e,t){const n=Ne.value?.SDKVersion??null;if(null!==n&&e>n)throw new Error(`[ERR_NOT_SUPPORTED]: ${t} requires manifest SDK version ${e} or higher, but found version ${n}; please update the "SDKVersion" in the plugin's manifest to ${e} or higher.`)}function Xe(e,t,n){const i={major:Math.floor(e),minor:Number(e.toString().split(".").at(1)??0),patch:0,build:0};if(-1===t.compareTo(i))throw new Error(`[ERR_NOT_SUPPORTED]: ${n} requires Stream Deck version ${i.major}.${i.minor} or higher, but current version is ${t.major}.${t.minor}; please update Stream Deck and the "Software.MinimumVersion" in the plugin's manifest to "${i.major}.${i.minor}" or higher.`);const s=Be();if(null!==s&&-1===s.compareTo(i))throw new Error(`[ERR_NOT_SUPPORTED]: ${n} requires Stream Deck version ${i.major}.${i.minor} or higher; please update the "Software.MinimumVersion" in the plugin's manifest to "${i.major}.${i.minor}" or higher.`)}let Ye=!1;const Je={get useExperimentalMessageIdentifiers(){return Ye},set useExperimentalMessageIdentifiers(e){Xe(7.1,Pe.version,"Message identifiers"),Ye=e},getGlobalSettings:()=>new Promise(e=>{Pe.once("didReceiveGlobalSettings",t=>e(t.payload.settings)),Pe.send({event:"getGlobalSettings",context:Pe.registrationParameters.pluginUUID,id:m()})}),onDidReceiveGlobalSettings:e=>Pe.disposableOn("didReceiveGlobalSettings",t=>{Je.useExperimentalMessageIdentifiers&&t.id||e(new Ke(t))}),onDidReceiveSettings:e=>Pe.disposableOn("didReceiveSettings",t=>{if(Je.useExperimentalMessageIdentifiers&&t.id)return;const n=Me.getActionById(t.context);n&&e(new Fe(n,t))}),setGlobalSettings:async e=>{await Pe.send({event:"setGlobalSettings",context:Pe.registrationParameters.pluginUUID,payload:e})}};const Ze=new class{#p;#g=0;constructor(){this.onDidAppear(e=>{this.#m(e.action)?this.#g++:(this.#g=1,this.#p=e.action)}),this.onDidDisappear(e=>{this.#m(e.action)&&(this.#g--,this.#g<=0&&(this.#p=void 0))})}get action(){return this.#p}onDidAppear(e){return Pe.disposableOn("propertyInspectorDidAppear",t=>{const n=Me.getActionById(t.context);n&&e(new Le(n,t))})}onDidDisappear(e){return Pe.disposableOn("propertyInspectorDidDisappear",t=>{const n=Me.getActionById(t.context);n&&e(new Le(n,t))})}onSendToPlugin(e){return Pe.disposableOn("sendToPlugin",t=>{const n=Me.getActionById(t.context);n&&e(new ze(n,t))})}async sendToPropertyInspector(e){this.#p&&await Pe.send({event:"sendToPropertyInspector",context:this.#p.id,payload:e})}#m(e){return this.#p?.id===e.id&&this.#p?.manifestId===e.manifestId&&this.#p?.device?.id===e.device.id}},Qe=new Map;class et extends O{constructor(){super(Qe)}getDeviceById(e){return Qe.get(e)}}const tt=new class extends et{set(e){Qe.set(e.id,e)}};class nt{#y;#v;constructor(e){this.#v=e;const t=tt.getDeviceById(e.device);if(!t)throw new Error(`Failed to initialize action; device ${e.device} not found`);this.#y=t}get controllerType(){return this.#v.payload.controller}get device(){return this.#y}get id(){return this.#v.context}get manifestId(){return this.#v.action}toJSON(){return{controllerType:this.controllerType,device:this.device,id:this.id,manifestId:this.manifestId}}}class it extends nt{async getResources(){Xe(7.1,Pe.version,"getResources");return(await this.#S("getResources","didReceiveResources")).payload.resources}async getSettings(){return(await this.#S("getSettings","didReceiveSettings")).payload.settings}isDial(){return"Encoder"===this.controllerType}isKey(){return"Keypad"===this.controllerType}setResources(e){return Xe(7.1,Pe.version,"setResources"),Pe.send({event:"setResources",context:this.id,payload:e})}setSettings(e){return Pe.send({event:"setSettings",context:this.id,payload:e})}showAlert(){return Pe.send({event:"showAlert",context:this.id})}async#S(e,t){const{resolve:n,reject:i,promise:s}=F(),r=setTimeout(()=>{o.dispose(),i("The request timed out")},15e3),o=Pe.disposableOn(t,e=>{e.context==this.id&&(clearTimeout(r),o.dispose(),n(e))});return await Pe.send({event:e,context:this.id,id:m()}),s}}class st extends it{#_;constructor(e){if(super(e),"Encoder"!==e.payload.controller)throw new Error("Unable to create DialAction; source event is not a Encoder");this.#_=Object.freeze(e.payload.coordinates)}get coordinates(){return this.#_}setFeedback(e){return Pe.send({event:"setFeedback",context:this.id,payload:e})}setFeedbackLayout(e){return Pe.send({event:"setFeedbackLayout",context:this.id,payload:{layout:e}})}setImage(e){return Pe.send({event:"setImage",context:this.id,payload:{image:e}})}setTitle(e){return this.setFeedback({title:e})}setTriggerDescription(e){return Pe.send({event:"setTriggerDescription",context:this.id,payload:e||{}})}toJSON(){return{...super.toJSON(),coordinates:this.coordinates}}}class rt extends it{#_;#v;constructor(e){if(super(e),"Keypad"!==e.payload.controller)throw new Error("Unable to create KeyAction; source event is not a Keypad");this.#_=e.payload.isInMultiAction?void 0:Object.freeze(e.payload.coordinates),this.#v=e}get coordinates(){return this.#_}isInMultiAction(){return this.#v.payload.isInMultiAction}setImage(e,t){return Pe.send({event:"setImage",context:this.id,payload:{image:e,...t}})}setState(e){return Pe.send({event:"setState",context:this.id,payload:{state:e}})}setTitle(e,t){return Pe.send({event:"setTitle",context:this.id,payload:{title:e,...t}})}showOk(){return Pe.send({event:"showOk",context:this.id})}toJSON(){return{...super.toJSON(),coordinates:this.coordinates,isInMultiAction:this.isInMultiAction()}}}const ot=new L(()=>Ne.value);const at=new class extends $e{constructor(){super(),Pe.prependListener("willAppear",e=>{const t="Encoder"===e.payload.controller?new st(e):new rt(e);Me.set(t)}),Pe.prependListener("willDisappear",e=>Me.delete(e.context))}onDialDown(e){return Pe.disposableOn("dialDown",t=>{const n=Me.getActionById(t.context);n?.isDial()&&e(new Fe(n,t))})}onDialRotate(e){return Pe.disposableOn("dialRotate",t=>{const n=Me.getActionById(t.context);n?.isDial()&&e(new Fe(n,t))})}onDialUp(e){return Pe.disposableOn("dialUp",t=>{const n=Me.getActionById(t.context);n?.isDial()&&e(new Fe(n,t))})}onDidReceiveResources(e){return Pe.disposableOn("didReceiveResources",t=>{if(void 0!==t.id)return;const n=Me.getActionById(t.context);n&&e(new Fe(n,t))})}onKeyDown(e){return Pe.disposableOn("keyDown",t=>{const n=Me.getActionById(t.context);n?.isKey()&&e(new Fe(n,t))})}onKeyUp(e){return Pe.disposableOn("keyUp",t=>{const n=Me.getActionById(t.context);n?.isKey()&&e(new Fe(n,t))})}onTitleParametersDidChange(e){return Pe.disposableOn("titleParametersDidChange",t=>{const n=Me.getActionById(t.context);n&&e(new Fe(n,t))})}onTouchTap(e){return Pe.disposableOn("touchTap",t=>{const n=Me.getActionById(t.context);n?.isDial()&&e(new Fe(n,t))})}onWillAppear(e){return Pe.disposableOn("willAppear",t=>{const n=Me.getActionById(t.context);n&&e(new Fe(n,t))})}onWillDisappear(e){return Pe.disposableOn("willDisappear",t=>e(new Fe(new nt(t),t)))}registerAction(e){if(void 0===e.manifestId)throw new Error("The action's manifestId cannot be undefined.");if(null!==ot.value&&!ot.value.Actions.some(t=>t.UUID===e.manifestId))throw new Error(`The action's manifestId was not found within the manifest: ${e.manifestId}`);const{manifestId:t}=e,n=(n,i)=>{const s=i?.bind(e);void 0!==s&&n.bind(e)(async e=>{e.action.manifestId==t&&await s(e)})};n(this.onDialDown,e.onDialDown),n(this.onDialUp,e.onDialUp),n(this.onDialRotate,e.onDialRotate),n(Ze.onSendToPlugin,e.onSendToPlugin),n(this.onDidReceiveResources,e.onDidReceiveResources),n(Je.onDidReceiveSettings,e.onDidReceiveSettings),n(this.onKeyDown,e.onKeyDown),n(this.onKeyUp,e.onKeyUp),n(Ze.onDidAppear,e.onPropertyInspectorDidAppear),n(Ze.onDidDisappear,e.onPropertyInspectorDidDisappear),n(this.onTitleParametersDidChange,e.onTitleParametersDidChange),n(this.onTouchTap,e.onTouchTap),n(this.onWillAppear,e.onWillAppear),n(this.onWillDisappear,e.onWillDisappear)}};class lt{#b=!1;#w;id;constructor(e,t,n){this.id=e,this.#w=t,this.#b=n,Pe.prependListener("deviceDidConnect",e=>{e.device===this.id&&(this.#w=e.deviceInfo,this.#b=!0)}),Pe.prependListener("deviceDidChange",e=>{e.device===this.id&&(this.#w=e.deviceInfo)}),Pe.prependListener("deviceDidDisconnect",e=>{e.device===this.id&&(this.#b=!1)})}get actions(){return Me.filter(e=>e.device.id===this.id)}get isConnected(){return this.#b}get name(){return this.#w.name}get size(){return this.#w.size}get type(){return this.#w.type}}const ct=new class extends et{constructor(){super(),Pe.once("connected",e=>{e.devices.forEach(e=>tt.set(new lt(e.id,e,!1)))}),Pe.on("deviceDidConnect",({device:e,deviceInfo:t})=>{tt.getDeviceById(e)||tt.set(new lt(e,t,!0))}),Pe.on("deviceDidChange",({device:e,deviceInfo:t})=>{tt.getDeviceById(e)||tt.set(new lt(e,t,!1))})}onDeviceDidChange(e){return Xe(7,Pe.version,"onDeviceDidChange"),Pe.disposableOn("deviceDidChange",t=>e(new je(t,this.getDeviceById(t.device))))}onDeviceDidConnect(e){return Pe.disposableOn("deviceDidConnect",t=>e(new je(t,this.getDeviceById(t.device))))}onDeviceDidDisconnect(e){return Pe.disposableOn("deviceDidDisconnect",t=>e(new je(t,this.getDeviceById(t.device))))}};function dt(e){const t=f.join(process.cwd(),`${e}.json`);if(!d.existsSync(t))return null;try{const e=d.readFileSync(t,{flag:"r"})?.toString();return function(e){const t=JSON.parse(e);if(null!=t&&"object"==typeof t&&"Localization"in t)return t.Localization;throw new TypeError('Translations must be a JSON object nested under a property named "Localization"')}(e)}catch(e){return Ie.error(`Failed to load translations from ${t}`,e),null}}var ht=Object.freeze({__proto__:null,switchToProfile:function(e,t,n){return void 0!==n&&Xe(6.5,Pe.version,"Switching to a profile page"),Pe.send({event:"switchToProfile",context:Pe.registrationParameters.pluginUUID,device:e,payload:{page:n,profile:t}})}});var ut=Object.freeze({__proto__:null,getSecrets:function(){return Xe(6.9,Pe.version,"Secrets"),qe(3,"Secrets"),new Promise(e=>{Pe.once("didReceiveSecrets",t=>e(t.payload.secrets)),Pe.send({event:"getSecrets",context:Pe.registrationParameters.pluginUUID})})},onApplicationDidLaunch:function(e){return Pe.disposableOn("applicationDidLaunch",t=>e(new We(t)))},onApplicationDidTerminate:function(e){return Pe.disposableOn("applicationDidTerminate",t=>e(new We(t)))},onDidReceiveDeepLink:function(e){return Xe(6.5,Pe.version,"Receiving deep-link messages"),Pe.disposableOn("didReceiveDeepLink",t=>e(new Ve(t)))},onSystemDidWakeUp:function(e){return Pe.disposableOn("systemDidWakeUp",t=>e(new Oe(t)))},openUrl:function(e){return Pe.send({event:"openUrl",payload:{url:e}})}});function ft(e){const t=e.UUID;return function(e,n){return class extends e{manifestId=t}}}class pt{manifestId;get actions(){return Me.filter(e=>e.manifestId===this.manifestId)}}let gt;const mt={get actions(){return at},get devices(){return ct},get i18n(){return gt??=new P(this.info.application.language,dt)},get info(){return Pe.registrationParameters.info},get logger(){return Ie},get profiles(){return ht},get settings(){return Je},get system(){return ut},get ui(){return Ze},connect:()=>Pe.connect()};function yt(e,t,n,i,s,r){function o(e){if(void 0!==e&&"function"!=typeof e)throw new TypeError("Function expected");return e}for(var a,l=i.kind,c="getter"===l?"get":"setter"===l?"set":"value",d=!t&&e?i.static?e:e.prototype:null,h=t||(d?Object.getOwnPropertyDescriptor(d,i.name):{}),u=!1,f=n.length-1;f>=0;f--){var p={};for(var g in i)p[g]="access"===g?{}:i[g];for(var g in i.access)p.access[g]=i.access[g];p.addInitializer=function(e){if(u)throw new TypeError("Cannot add initializers after decoration has completed");r.push(o(e||null))};var m=(0,n[f])("accessor"===l?{get:h.get,set:h.set}:h[c],p);if("accessor"===l){if(void 0===m)continue;if(null===m||"object"!=typeof m)throw new TypeError("Object expected");(a=o(m.get))&&(h.get=a),(a=o(m.set))&&(h.set=a),(a=o(m.init))&&s.unshift(a)}else(a=o(m))&&("field"===l?s.unshift(a):h[c]=a)}d&&Object.defineProperty(d,i.name,h),u=!0}function vt(e,t,n){for(var i=arguments.length>2,s=0;s<t.length;s++)n=i?t[s].call(e,n):t[s].call(e);return i?n:void 0}"function"==typeof SuppressedError&&SuppressedError;let St={debug:e=>console.debug(e),info:e=>console.info(e),warn:e=>console.warn(e),error:e=>console.error(e)};function _t(){return St}function bt(e,t){return null!=e&&0!==(e&t)}var wt,Ct,kt,xt,Tt,Dt,Et,Rt,It,Pt,Ot,Lt,Ft,Nt,At,Bt,Ut,$t,Mt,Wt,jt,Vt,Gt,Ht,Kt,zt,qt,Xt,Yt;!function(e){e[e.Char=0]="Char",e[e.Bool=1]="Bool",e[e.Int=2]="Int",e[e.BitField=3]="BitField",e[e.Float=4]="Float",e[e.Double=5]="Double"}(wt||(wt={})),function(e){e[e.Connected=1]="Connected"}(Ct||(Ct={})),function(e){e[e.WaterTempWarning=1]="WaterTempWarning",e[e.FuelPressureWarning=2]="FuelPressureWarning",e[e.OilPressureWarning=4]="OilPressureWarning",e[e.EngineStalled=8]="EngineStalled",e[e.PitSpeedLimiter=16]="PitSpeedLimiter",e[e.RevLimiterActive=32]="RevLimiterActive",e[e.OilTempWarning=64]="OilTempWarning",e[e.MandRepNeeded=128]="MandRepNeeded",e[e.OptRepNeeded=256]="OptRepNeeded"}(kt||(kt={})),function(e){e[e.Checkered=1]="Checkered",e[e.White=2]="White",e[e.Green=4]="Green",e[e.Yellow=8]="Yellow",e[e.Red=16]="Red",e[e.Blue=32]="Blue",e[e.Debris=64]="Debris",e[e.Crossed=128]="Crossed",e[e.YellowWaving=256]="YellowWaving",e[e.OneLapToGreen=512]="OneLapToGreen",e[e.GreenHeld=1024]="GreenHeld",e[e.TenToGo=2048]="TenToGo",e[e.FiveToGo=4096]="FiveToGo",e[e.RandomWaving=8192]="RandomWaving",e[e.Caution=16384]="Caution",e[e.CautionWaving=32768]="CautionWaving",e[e.Black=65536]="Black",e[e.Disqualify=131072]="Disqualify",e[e.Servicible=262144]="Servicible",e[e.Furled=524288]="Furled",e[e.Repair=1048576]="Repair",e[e.DqScoringInvalid=2097152]="DqScoringInvalid",e[e.StartHidden=268435456]="StartHidden",e[e.StartReady=536870912]="StartReady",e[e.StartSet=1073741824]="StartSet",e[e.StartGo=2147483648]="StartGo"}(xt||(xt={})),function(e){e[e.NotInWorld=-1]="NotInWorld",e[e.OffTrack=0]="OffTrack",e[e.InPitStall=1]="InPitStall",e[e.AproachingPits=2]="AproachingPits",e[e.OnTrack=3]="OnTrack"}(Tt||(Tt={})),function(e){e[e.NotInWorld=-1]="NotInWorld",e[e.Undefined=0]="Undefined",e[e.Asphalt1=1]="Asphalt1",e[e.Asphalt2=2]="Asphalt2",e[e.Asphalt3=3]="Asphalt3",e[e.Asphalt4=4]="Asphalt4",e[e.Concrete1=5]="Concrete1",e[e.Concrete2=6]="Concrete2",e[e.RacingDirt1=7]="RacingDirt1",e[e.RacingDirt2=8]="RacingDirt2",e[e.Paint1=9]="Paint1",e[e.Paint2=10]="Paint2",e[e.Rumble1=11]="Rumble1",e[e.Rumble2=12]="Rumble2",e[e.Rumble3=13]="Rumble3",e[e.Rumble4=14]="Rumble4",e[e.Grass1=15]="Grass1",e[e.Grass2=16]="Grass2",e[e.Grass3=17]="Grass3",e[e.Grass4=18]="Grass4",e[e.Dirt1=19]="Dirt1",e[e.Dirt2=20]="Dirt2",e[e.Dirt3=21]="Dirt3",e[e.Dirt4=22]="Dirt4",e[e.Sand=23]="Sand",e[e.Gravel1=24]="Gravel1",e[e.Gravel2=25]="Gravel2",e[e.Grasscrete=26]="Grasscrete",e[e.Astroturf=27]="Astroturf"}(Dt||(Dt={})),function(e){e[e.Invalid=0]="Invalid",e[e.GetInCar=1]="GetInCar",e[e.Warmup=2]="Warmup",e[e.ParadeLaps=3]="ParadeLaps",e[e.Racing=4]="Racing",e[e.Checkered=5]="Checkered",e[e.CoolDown=6]="CoolDown"}(Et||(Et={})),function(e){e[e.IsSessionScreen=1]="IsSessionScreen",e[e.IsScenicActive=2]="IsScenicActive",e[e.CamToolActive=4]="CamToolActive",e[e.UIHidden=8]="UIHidden",e[e.UseAutoShotSelection=16]="UseAutoShotSelection",e[e.UseTemporaryEdits=32]="UseTemporaryEdits",e[e.UseKeyAcceleration=64]="UseKeyAcceleration",e[e.UseKey10xAcceleration=128]="UseKey10xAcceleration",e[e.UseMouseAimMode=256]="UseMouseAimMode"}(Rt||(Rt={})),function(e){e[e.LFTireChange=1]="LFTireChange",e[e.RFTireChange=2]="RFTireChange",e[e.LRTireChange=4]="LRTireChange",e[e.RRTireChange=8]="RRTireChange",e[e.FuelFill=16]="FuelFill",e[e.WindshieldTearoff=32]="WindshieldTearoff",e[e.FastRepair=64]="FastRepair"}(It||(It={})),function(e){e[e.None=0]="None",e[e.InProgress=1]="InProgress",e[e.Complete=2]="Complete",e[e.TooFarLeft=100]="TooFarLeft",e[e.TooFarRight=101]="TooFarRight",e[e.TooFarForward=102]="TooFarForward",e[e.TooFarBack=103]="TooFarBack",e[e.BadAngle=104]="BadAngle",e[e.CantFixThat=105]="CantFixThat"}(Pt||(Pt={})),function(e){e[e.SingleFileStart=0]="SingleFileStart",e[e.DoubleFileStart=1]="DoubleFileStart",e[e.SingleFileRestart=2]="SingleFileRestart",e[e.DoubleFileRestart=3]="DoubleFileRestart",e[e.NotPacing=4]="NotPacing"}(Ot||(Ot={})),function(e){e[e.EndOfLine=1]="EndOfLine",e[e.FreePass=2]="FreePass",e[e.WavedAround=4]="WavedAround"}(Lt||(Lt={})),function(e){e[e.Off=0]="Off",e[e.Clear=1]="Clear",e[e.CarLeft=2]="CarLeft",e[e.CarRight=3]="CarRight",e[e.CarLeftRight=4]="CarLeftRight",e[e.TwoCarsLeft=5]="TwoCarsLeft",e[e.TwoCarsRight=6]="TwoCarsRight"}(Ft||(Ft={})),function(e){e[e.Unknown=0]="Unknown",e[e.Dry=1]="Dry",e[e.MostlyDry=2]="MostlyDry",e[e.VeryLightlyWet=3]="VeryLightlyWet",e[e.LightlyWet=4]="LightlyWet",e[e.ModeratelyWet=5]="ModeratelyWet",e[e.VeryWet=6]="VeryWet",e[e.ExtremelyWet=7]="ExtremelyWet"}(Nt||(Nt={})),function(e){e[e.RepNoReport=0]="RepNoReport",e[e.RepOutOfControl=1]="RepOutOfControl",e[e.RepOffTrack=2]="RepOffTrack",e[e.RepOffTrackOngoing=3]="RepOffTrackOngoing",e[e.RepContactWithWorld=4]="RepContactWithWorld",e[e.RepCollisionWithWorld=5]="RepCollisionWithWorld",e[e.RepCollisionWithWorldOngoing=6]="RepCollisionWithWorldOngoing",e[e.RepContactWithCar=7]="RepContactWithCar",e[e.RepCollisionWithCar=8]="RepCollisionWithCar",e[e.PenNoReport=0]="PenNoReport",e[e.PenZeroX=256]="PenZeroX",e[e.PenOneX=512]="PenOneX",e[e.PenTwoX=768]="PenTwoX",e[e.PenFourX=1024]="PenFourX"}(At||(At={})),function(e){e[e.Clear=0]="Clear",e[e.PartlyCloudy=1]="PartlyCloudy",e[e.MostlyCloudy=2]="MostlyCloudy",e[e.Overcast=3]="Overcast"}(Bt||(Bt={})),function(e){e[e.English=0]="English",e[e.Metric=1]="Metric"}(Ut||(Ut={})),function(e){e[e.Enter=0]="Enter",e[e.Exit=1]="Exit",e[e.Reset=2]="Reset"}($t||($t={})),function(e){e[e.CamSwitchPos=0]="CamSwitchPos",e[e.CamSwitchNum=1]="CamSwitchNum",e[e.CamSetState=2]="CamSetState",e[e.ReplaySetPlaySpeed=3]="ReplaySetPlaySpeed",e[e.ReplaySetPlayPosition=4]="ReplaySetPlayPosition",e[e.ReplaySearch=5]="ReplaySearch",e[e.ReplaySetState=6]="ReplaySetState",e[e.ReloadTextures=7]="ReloadTextures",e[e.ChatCommand=8]="ChatCommand",e[e.PitCommand=9]="PitCommand",e[e.TelemCommand=10]="TelemCommand",e[e.FFBCommand=11]="FFBCommand",e[e.ReplaySearchSessionTime=12]="ReplaySearchSessionTime",e[e.VideoCapture=13]="VideoCapture",e[e.Last=14]="Last"}(Mt||(Mt={})),function(e){e[e.Macro=0]="Macro",e[e.BeginChat=1]="BeginChat",e[e.Reply=2]="Reply",e[e.Cancel=3]="Cancel"}(Wt||(Wt={})),function(e){e[e.Clear=0]="Clear",e[e.WS=1]="WS",e[e.Fuel=2]="Fuel",e[e.LF=3]="LF",e[e.RF=4]="RF",e[e.LR=5]="LR",e[e.RR=6]="RR",e[e.ClearTires=7]="ClearTires",e[e.FR=8]="FR",e[e.ClearWS=9]="ClearWS",e[e.ClearFR=10]="ClearFR",e[e.ClearFuel=11]="ClearFuel",e[e.TC=12]="TC"}(jt||(jt={})),function(e){e[e.Stop=0]="Stop",e[e.Start=1]="Start",e[e.Restart=2]="Restart"}(Vt||(Vt={})),function(e){e[e.EraseTape=0]="EraseTape",e[e.Last=1]="Last"}(Gt||(Gt={})),function(e){e[e.All=0]="All",e[e.CarIdx=1]="CarIdx"}(Ht||(Ht={})),function(e){e[e.ToStart=0]="ToStart",e[e.ToEnd=1]="ToEnd",e[e.PrevSession=2]="PrevSession",e[e.NextSession=3]="NextSession",e[e.PrevLap=4]="PrevLap",e[e.NextLap=5]="NextLap",e[e.PrevFrame=6]="PrevFrame",e[e.NextFrame=7]="NextFrame",e[e.PrevIncident=8]="PrevIncident",e[e.NextIncident=9]="NextIncident",e[e.Last=10]="Last"}(Kt||(Kt={})),function(e){e[e.Begin=0]="Begin",e[e.Current=1]="Current",e[e.End=2]="End",e[e.Last=3]="Last"}(zt||(zt={})),function(e){e[e.MaxForce=0]="MaxForce",e[e.Last=1]="Last"}(qt||(qt={})),function(e){e[e.FocusAtIncident=-3]="FocusAtIncident",e[e.FocusAtLeader=-2]="FocusAtLeader",e[e.FocusAtExiting=-1]="FocusAtExiting",e[e.FocusAtDriver=0]="FocusAtDriver"}(Xt||(Xt={})),function(e){e[e.TriggerScreenShot=0]="TriggerScreenShot",e[e.StartVideoCapture=1]="StartVideoCapture",e[e.EndVideoCapture=2]="EndVideoCapture",e[e.ToggleVideoCapture=3]="ToggleVideoCapture",e[e.ShowVideoTimer=4]="ShowVideoTimer",e[e.HideVideoTimer=5]="HideVideoTimer"}(Yt||(Yt={}));function Jt(e,t){return(65535&t)<<16|65535&e}class Zt{broadcastMsgID;constructor(){this.broadcastMsgID=y("IRSDK_BROADCASTMSG")}sendBroadcast(e,t=0,n=0,i=0){const s=Jt(e,t),r=Jt(n,i);return _t().debug(`[BroadcastCommand] Sending: msg=${Mt[e]}, var1=${t}, var2=${n}, var3=${i}`),v(S,this.broadcastMsgID,s,r)}}class Qt extends Zt{static _instance;constructor(){super()}static getInstance(){return Qt._instance||(Qt._instance=new Qt),Qt._instance}sendChatBroadcast(e,t=0){return _t().debug(`[ChatCommand] sendBroadcast ${Wt[e]}, ${t}`),this.sendBroadcast(Mt.ChatCommand,e,t)}macro(e){return e<1||e>15?(_t().warn(`[ChatCommand] Invalid macro number: ${e}. Must be 1-15.`),!1):(_t().info(`[ChatCommand] Triggering chat macro ${e}`),this.sendChatBroadcast(Wt.Macro,e-1))}beginChat(){return _t().debug("[ChatCommand] Opening chat window"),this.sendChatBroadcast(Wt.BeginChat)}reply(){return _t().debug("[ChatCommand] Opening reply to last private message"),this.sendChatBroadcast(Wt.Reply)}cancel(){return _t().debug("[ChatCommand] Closing chat window"),this.sendChatBroadcast(Wt.Cancel)}sendMessage(e,t){if(!t||0===t.trim().length)return _t().warn("[ChatCommand] Cannot send empty message"),!1;if(!e)return _t().error("[ChatCommand] Invalid window handle"),!1;try{return _t().info(`[ChatCommand] Sending chat message: "${t}"`),this.beginChat(),_t().info("[ChatCommand] Chat window opened"),setTimeout(()=>{_(e,t),b(e,w),this.cancel(),_t().info("[ChatCommand] Chat message sent successfully")},5),!0}catch(e){return _t().error(`[ChatCommand] Error sending chat message: ${e}`),!1}}}class en{memHandle=0;header=null;varHeaders=[];lastSessionInfoUpdate=-1;sessionInfo=null;isConnected(){if(!this.memHandle)return!1;if(!this.header)return!1;try{const e=C(this.memHandle,4,4).readInt32LE(0);return this.header.status=e,0!==(e&Ct.Connected)}catch(e){return _t().error(`[iRacing SDK] Failed to read status field: ${e}`),!1}}connect(){if(this.memHandle=k("Local\\IRSDKMemMapFileName"),!this.memHandle)return!1;this.parseHeader();const e=this.isConnected();return e&&_t().info(`[iRacing SDK] Connected - ${this.varHeaders.length} variables available`),e}disconnect(){this.memHandle&&(x(this.memHandle),this.memHandle=0),this.header=null,this.varHeaders=[],this.sessionInfo=null,this.lastSessionInfoUpdate=-1}parseHeader(){if(!this.memHandle)return;const e=C(this.memHandle,0,144);this.header={ver:e.readInt32LE(0),status:e.readInt32LE(4),tickRate:e.readInt32LE(8),sessionInfoUpdate:e.readInt32LE(12),sessionInfoLen:e.readInt32LE(16),sessionInfoOffset:e.readInt32LE(20),numVars:e.readInt32LE(24),varHeaderOffset:e.readInt32LE(28),numBuf:e.readInt32LE(32),bufLen:e.readInt32LE(36),padData:[],varBuf:[]};for(let t=0;t<4;t++){const n=48+16*t;this.header.varBuf.push({tickCount:e.readInt32LE(n),bufOffset:e.readInt32LE(n+4),padData:[]})}this.parseVarHeaders()}parseVarHeaders(){if(!this.memHandle||!this.header)return;this.varHeaders=[];for(let e=0;e<this.header.numVars;e++){const t=this.header.varHeaderOffset+144*e,n=C(this.memHandle,t,144),i={type:n.readInt32LE(0),offset:n.readInt32LE(4),count:n.readInt32LE(8),countAsTime:0!==n.readInt8(12),name:this.readString(n,16,32),desc:this.readString(n,48,64),unit:this.readString(n,112,32)};this.varHeaders.push(i)}}readString(e,t,n){const i=[];for(let s=0;s<n;s++){const n=e.readUInt8(t+s);if(0===n)break;i.push(n)}return Buffer.from(i).toString("ascii")}getTelemetry(){if(!this.isConnected()||!this.header||!this.memHandle)return null;for(let e=0;e<3;e++){const t=this.readVarBufs();if(!t)return null;let n=0,i=t[0].tickCount;for(let e=1;e<t.length;e++)t[e].tickCount>i&&(i=t[e].tickCount,n=e);const s=t[n];if(0===s.bufOffset)return null;const r=C(this.memHandle,s.bufOffset,this.header.bufLen),o={};for(const e of this.varHeaders){const t=this.parseVariableFromBuffer(r,e);o[e.name]=t}const a=this.readVarBufs();if(a&&a[n].tickCount===i)return o;_t().debug(`[iRacing SDK] Tick count changed during read, retrying (attempt ${e+1})`)}return _t().warn("[iRacing SDK] Failed to get consistent telemetry read after 3 attempts"),null}readVarBufs(){if(!this.memHandle)return null;try{const e=[];for(let t=0;t<4;t++){const n=48+16*t,i=C(this.memHandle,n,16);e.push({tickCount:i.readInt32LE(0),bufOffset:i.readInt32LE(4),padData:[]})}return e}catch(e){return _t().error(`[iRacing SDK] Failed to read varBufs: ${e}`),null}}parseVariableFromBuffer(e,t){const{type:n,count:i,offset:s}=t;if(i>1){const t=[];let r=4;n===wt.Char?r=1:n===wt.Double&&(r=8);for(let o=0;o<i;o++){const i=s+o*r;t.push(this.parseSingleValueFromBuffer(e,i,n))}return t}return this.parseSingleValueFromBuffer(e,s,n)}parseSingleValueFromBuffer(e,t,n){if(t<0||t>=e.length)return null;switch(n){case wt.Char:return e.readInt8(t);case wt.Bool:return 0!==e.readInt8(t);case wt.Int:case wt.BitField:return e.readInt32LE(t);case wt.Float:return e.readFloatLE(t);case wt.Double:return e.readDoubleLE(t);default:return null}}getSessionInfo(){if(!this.isConnected()||!this.header||!this.memHandle)return null;if(this.header.sessionInfoUpdate===this.lastSessionInfoUpdate&&this.sessionInfo)return this.sessionInfo;const e=C(this.memHandle,this.header.sessionInfoOffset,this.header.sessionInfoLen),t=this.readString(e,0,this.header.sessionInfoLen);try{this.sessionInfo=D.parse(t),this.lastSessionInfoUpdate=this.header.sessionInfoUpdate}catch(e){return _t().error(`[iRacing SDK] Failed to parse session info YAML: ${e}`),null}return this.sessionInfo}getVar(e){const t=this.getTelemetry();return t?t[e]:null}getVarNames(){return this.varHeaders.map(e=>e.name)}getVarHeader(e){return this.varHeaders.find(t=>t.name===e)||null}findIRacingWindow(){_t().info("[iRacing SDK] Finding iRacing window");const e=T(null,"iRacing.com Simulator");return e?_t().info("[iRacing SDK] iRacing window found"):_t().warn("[iRacing SDK] iRacing window not found"),e}sendChatMessage(e){if(_t().info("[iRacing SDK] About to send a chat message"),!this.isConnected())return _t().warn("[iRacing SDK] Cannot send chat message - not connected"),!1;try{const t=this.findIRacingWindow();return t?(_t().debug("[iRacing SDK] iRacing window found"),Qt.getInstance().sendMessage(t,e)):(_t().error("[iRacing SDK] Could not find iRacing window"),!1)}catch(e){return _t().error(`[iRacing SDK] Error sending chat message: ${e}`),!1}}}class tn extends Zt{static _instance;constructor(){super()}static getInstance(){return tn._instance||(tn._instance=new tn),tn._instance}switchPos(e,t,n){return _t().info(`[CameraCommand] SwitchPos: position=${e}, group=${t}, camera=${n}`),this.sendBroadcast(Mt.CamSwitchPos,e,t,n)}switchNum(e,t,n){return _t().info(`[CameraCommand] SwitchNum: carNumber=${e}, group=${t}, camera=${n}`),this.sendBroadcast(Mt.CamSwitchNum,e,t,n)}setState(e){return _t().info(`[CameraCommand] SetState: state=${e} (0x${e.toString(16)})`),this.sendBroadcast(Mt.CamSetState,e)}hideUI(e){const t=(n=e,i=Rt.UIHidden,(n??0)|i);var n,i;return this.setState(t)}showUI(e){const t=(n=e,i=Rt.UIHidden,(n??0)&~i);var n,i;return this.setState(t)}focusOnLeader(e,t){return this.switchPos(Xt.FocusAtLeader,e,t)}focusOnIncident(e,t){return this.switchPos(Xt.FocusAtIncident,e,t)}focusOnExiting(e,t){return this.switchPos(Xt.FocusAtExiting,e,t)}}class nn extends Zt{static _instance;constructor(){super()}static getInstance(){return nn._instance||(nn._instance=new nn),nn._instance}clear(){return _t().info("[PitCommand] Clear all"),this.sendBroadcast(Mt.PitCommand,jt.Clear)}windshield(){return _t().info("[PitCommand] Windshield tearoff"),this.sendBroadcast(Mt.PitCommand,jt.WS)}clearWindshield(){return _t().info("[PitCommand] Clear windshield"),this.sendBroadcast(Mt.PitCommand,jt.ClearWS)}fuel(e=0){return _t().info(`[PitCommand] Fuel: ${e}L`),this.sendBroadcast(Mt.PitCommand,jt.Fuel,e)}clearFuel(){return _t().info("[PitCommand] Clear fuel"),this.sendBroadcast(Mt.PitCommand,jt.ClearFuel)}leftFront(e=0){return _t().info(`[PitCommand] Left front: ${e}kPa`),this.sendBroadcast(Mt.PitCommand,jt.LF,e)}rightFront(e=0){return _t().info(`[PitCommand] Right front: ${e}kPa`),this.sendBroadcast(Mt.PitCommand,jt.RF,e)}leftRear(e=0){return _t().info(`[PitCommand] Left rear: ${e}kPa`),this.sendBroadcast(Mt.PitCommand,jt.LR,e)}rightRear(e=0){return _t().info(`[PitCommand] Right rear: ${e}kPa`),this.sendBroadcast(Mt.PitCommand,jt.RR,e)}clearTires(){return _t().info("[PitCommand] Clear tires"),this.sendBroadcast(Mt.PitCommand,jt.ClearTires)}fastRepair(){return _t().info("[PitCommand] Fast repair"),this.sendBroadcast(Mt.PitCommand,jt.FR)}clearFastRepair(){return _t().info("[PitCommand] Clear fast repair"),this.sendBroadcast(Mt.PitCommand,jt.ClearFR)}tireCompound(e){return _t().info(`[PitCommand] Tire compound: ${e}`),this.sendBroadcast(Mt.PitCommand,jt.TC,e)}allTires(e=0){const t=this.leftFront(e),n=this.rightFront(e),i=this.leftRear(e),s=this.rightRear(e);return t&&n&&i&&s}frontTires(e=0){const t=this.leftFront(e),n=this.rightFront(e);return t&&n}rearTires(e=0){const t=this.leftRear(e),n=this.rightRear(e);return t&&n}leftTires(e=0){const t=this.leftFront(e),n=this.leftRear(e);return t&&n}rightTires(e=0){const t=this.rightFront(e),n=this.rightRear(e);return t&&n}}!function(e){St=e}({debug:e=>mt.logger.debug(e),info:e=>mt.logger.info(e),warn:e=>mt.logger.warn(e),error:e=>mt.logger.error(e)});class sn{static instance;sdk;subscribers=new Map;updateInterval=null;reconnectInterval=null;isConnected=!1;lastValidTelemetry=null;constructor(){this.sdk=new en}static getInstance(){return sn.instance||(sn.instance=new sn),sn.instance}subscribe(e,t){this.subscribers.set(e,t),1===this.subscribers.size&&this.start();t(this.sdk.getTelemetry(),this.isConnected)}unsubscribe(e){this.subscribers.delete(e),0===this.subscribers.size&&this.stop()}start(){this.tryConnect(),this.reconnectInterval=setInterval(()=>{this.sdk.isConnected()||this.tryConnect()},1e3),this.updateInterval=setInterval(()=>{this.sdk.isConnected()&&this.update()},250)}stop(){this.reconnectInterval&&(clearInterval(this.reconnectInterval),this.reconnectInterval=null),this.updateInterval&&(clearInterval(this.updateInterval),this.updateInterval=null),this.sdk.disconnect(),this.isConnected=!1}tryConnect(){const e=this.isConnected,t=this.sdk.connect();this.isConnected=t,t!==e&&(t&&mt.logger.info("[iRaceDeck] Connected to iRacing"),this.notifySubscribers())}update(){if(!this.sdk.isConnected())return void(this.isConnected&&(mt.logger.info("[iRaceDeck] Disconnected from iRacing"),this.sdk.disconnect(),this.isConnected=!1,this.lastValidTelemetry=null,this.notifySubscribers(null)));const e=this.sdk.getTelemetry();e?(this.lastValidTelemetry=e,this.notifySubscribers(e)):this.lastValidTelemetry&&this.notifySubscribers(this.lastValidTelemetry)}notifySubscribers(e){const t=void 0!==e?e:this.sdk.getTelemetry();for(const e of this.subscribers.values())e(t,this.isConnected)}getConnectionStatus(){return this.isConnected}getCurrentTelemetry(){const e=this.sdk.getTelemetry();return e?(this.lastValidTelemetry=e,e):this.lastValidTelemetry}sendChatMessage(e){return this.sdk.sendChatMessage(e)}}let rn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.vehicle.display-speed"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();activeContexts=new Map;lastTitle=new Map;async onWillAppear(e){this.activeContexts.set(e.action.id,e.payload.settings),this.sdkController.subscribe(e.action.id,(t,n)=>{const i=this.activeContexts.get(e.action.id);i&&this.updateDisplay(e.action.id,i,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.activeContexts.delete(e.action.id),this.lastTitle.delete(e.action.id)}async onDidReceiveSettings(e){this.activeContexts.set(e.action.id,e.payload.settings)}async onKeyDown(e){const t="mph"===(e.payload.settings.unit||"mph")?"kph":"mph",n={...e.payload.settings,unit:t};await e.action.setSettings(n),this.activeContexts.set(e.action.id,n);const i=this.sdkController.getCurrentTelemetry(),s=this.sdkController.getConnectionStatus();this.updateDisplay(e.action.id,n,i,s)}async updateDisplay(e,t,n,i){const s=mt.actions.getActionById(e);if(!s)return;let r="iRacing\nnot\nconnected";if(i&&n){const e=n.Speed;if(null!=e&&"number"==typeof e){let n;n="kph"===(t.unit||"mph")?3.6*e:2.23694*e,r=Math.round(n).toString()}else r="N/A"}this.lastTitle.get(e)!==r&&(this.lastTitle.set(e,r),await s.setTitle(r),await s.setImage("imgs/actions/vehicle/display-speed/key"))}},t})(),on=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.vehicle.display-gear"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();lastTitle=new Map;async onWillAppear(e){this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.lastTitle.delete(e.action.id)}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;let s="iRacing\nnot\nconnected";if(n&&t){const e=t.Gear;s=null!=e&&"number"==typeof e?-1===e?"R":0===e?"N":e.toString():"N/A"}this.lastTitle.get(e)!==s&&(this.lastTitle.set(e,s),await i.setTitle(s),await i.setImage("imgs/actions/vehicle/display-gear/key"))}},t})(),an=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.environment.display-sky"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();lastState=new Map;async onWillAppear(e){this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.lastState.delete(e.action.id)}getSkyName(e){switch(e){case Bt.Clear:return"Clear";case Bt.PartlyCloudy:return"Partly\nCloudy";case Bt.MostlyCloudy:return"Mostly\nCloudy";case Bt.Overcast:return"Overcast";default:return"N/A"}}getSkyImage(e){switch(e){case Bt.Clear:return"imgs/actions/environment/display-sky/key-clear";case Bt.PartlyCloudy:return"imgs/actions/environment/display-sky/key-partly";case Bt.MostlyCloudy:return"imgs/actions/environment/display-sky/key-mostly";case Bt.Overcast:return"imgs/actions/environment/display-sky/key-overcast";default:return"imgs/actions/environment/display-sky/key"}}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;let s="iRacing\nnot\nconnected",r="imgs/actions/environment/display-sky/key";if(n&&t){const e=t.Skies;null!=e&&"number"==typeof e?(s=this.getSkyName(e),r=this.getSkyImage(e)):s="N/A"}const o=`${s}|${r}`;this.lastState.get(e)!==o&&(this.lastState.set(e,o),await i.setTitle(s),await i.setImage(r))}},t})(),ln=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.display-fuel-to-add"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();lastState=new Map;async onWillAppear(e){this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.lastState.delete(e.action.id)}async onKeyDown(e){if(mt.logger.info("[DisplayFuelToAdd] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DisplayFuelToAdd] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(!t)return void mt.logger.warn("[DisplayFuelToAdd] No telemetry data available");const n=t.PitSvFlags;if(null!=n&&"number"==typeof n)if(bt(n,It.FuelFill)){this.pitCommand.clearFuel()?mt.logger.info("[DisplayFuelToAdd] Cleared fuel fill"):mt.logger.warn("[DisplayFuelToAdd] Failed to clear fuel fill")}else{this.pitCommand.fuel(0)?mt.logger.info("[DisplayFuelToAdd] Enabled fuel fill"):mt.logger.warn("[DisplayFuelToAdd] Failed to enable fuel fill")}else mt.logger.warn("[DisplayFuelToAdd] PitSvFlags not available")}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;let s="iRacing\nnot\nconnected",r="imgs/actions/pit/display-fuel-to-add/key";if(n&&t){const e=t.PitSvFuel,n=t.PitSvFlags,i=null!=n&&"number"==typeof n&&bt(n,It.FuelFill);r=i?"imgs/actions/pit/display-fuel-to-add/key-active":"imgs/actions/pit/display-fuel-to-add/key",s=i?null!=e&&"number"==typeof e?Math.round(e)+" L":"-":"No\nRefuel"}const o=`${s}|${r}`;this.lastState.get(e)!==o&&(this.lastState.set(e,o),await i.setTitle(s),await i.setImage(r))}},t})(),cn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.do-fuel-add"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();updateInterval=null;activeContexts=new Map;lastTitle=new Map;async onWillAppear(e){this.activeContexts.set(e.action.id,e.payload.settings),e.payload.settings.amount||await e.action.setSettings({amount:1}),this.updateInterval||this.startUpdates(),this.updateDisplay(e.action.id,e.payload.settings)}async onWillDisappear(e){this.activeContexts.delete(e.action.id),this.lastTitle.delete(e.action.id),0===this.activeContexts.size&&this.stopUpdates()}startUpdates(){this.updateInterval=setInterval(()=>{for(const[e,t]of this.activeContexts)this.updateDisplay(e,t)},1e3)}stopUpdates(){this.updateInterval&&(clearInterval(this.updateInterval),this.updateInterval=null)}async updateDisplay(e,t){const n=mt.actions.getActionById(e);if(!n)return;let i="iRacing\nnot\nconnected";if(this.sdkController.getConnectionStatus()){i=`+${t.amount||1} L`}this.lastTitle.get(e)!==i&&(this.lastTitle.set(e,i),await n.setTitle(i),await n.setImage("imgs/actions/pit/do-fuel-add/key"))}async onDidReceiveSettings(e){this.activeContexts.set(e.action.id,e.payload.settings),this.updateDisplay(e.action.id,e.payload.settings)}async onKeyDown(e){if(mt.logger.info("[DoFuelAdd] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoFuelAdd] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(!t)return void mt.logger.warn("[DoFuelAdd] No telemetry data available");const n=t.PitSvFuel;if(null==n||"number"!=typeof n)return void mt.logger.warn("[DoFuelAdd] PitSvFuel not available");const i=e.payload.settings.amount||1,s=n+i;this.pitCommand.fuel(s)?mt.logger.info(`[DoFuelAdd] Set fuel to ${s}L (was ${n}L, added ${i}L)`):mt.logger.warn("[DoFuelAdd] Failed to set fuel")}},t})(),dn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.do-fuel-reduce"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();updateInterval=null;activeContexts=new Map;lastTitle=new Map;async onWillAppear(e){this.activeContexts.set(e.action.id,e.payload.settings),e.payload.settings.amount||await e.action.setSettings({amount:1}),this.updateInterval||this.startUpdates(),this.updateDisplay(e.action.id,e.payload.settings)}async onWillDisappear(e){this.activeContexts.delete(e.action.id),this.lastTitle.delete(e.action.id),0===this.activeContexts.size&&this.stopUpdates()}startUpdates(){this.updateInterval=setInterval(()=>{for(const[e,t]of this.activeContexts)this.updateDisplay(e,t)},1e3)}stopUpdates(){this.updateInterval&&(clearInterval(this.updateInterval),this.updateInterval=null)}async updateDisplay(e,t){const n=mt.actions.getActionById(e);if(!n)return;let i="iRacing\nnot\nconnected";if(this.sdkController.getConnectionStatus()){i=`-${t.amount||1} L`}this.lastTitle.get(e)!==i&&(this.lastTitle.set(e,i),await n.setTitle(i),await n.setImage("imgs/actions/pit/do-fuel-reduce/key"))}async onDidReceiveSettings(e){this.activeContexts.set(e.action.id,e.payload.settings),this.updateDisplay(e.action.id,e.payload.settings)}async onKeyDown(e){if(mt.logger.info("[DoFuelReduce] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoFuelReduce] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(!t)return void mt.logger.warn("[DoFuelReduce] No telemetry data available");const n=t.PitSvFuel;if(null==n||"number"!=typeof n)return void mt.logger.warn("[DoFuelReduce] PitSvFuel not available");const i=e.payload.settings.amount||1,s=Math.max(0,n-i);let r;0===s?(r=this.pitCommand.clearFuel(),r&&mt.logger.info(`[DoFuelReduce] Cleared fuel (was ${n}L)`)):(r=this.pitCommand.fuel(s),r&&mt.logger.info(`[DoFuelReduce] Set fuel to ${s}L (was ${n}L, reduced ${i}L)`)),r||mt.logger.warn("[DoFuelReduce] Failed to set fuel")}},t})(),hn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.do-tire-compound"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();lastState=new Map;async onWillAppear(e){this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.lastState.delete(e.action.id)}async onKeyDown(e){if(mt.logger.info("[DoTireCompound] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoTireCompound] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(!t)return void mt.logger.warn("[DoTireCompound] No telemetry data available");const n=t.PitSvTireCompound;if(null==n||"number"!=typeof n)return void mt.logger.warn("[DoTireCompound] PitSvTireCompound not available");const i=0===n?1:0;mt.logger.info(`[DoTireCompound] Switching from ${0===n?"Dry":"Wet"} to ${0===i?"Dry":"Wet"}`);this.pitCommand.tireCompound(i)?mt.logger.info("[DoTireCompound] Set tire compound to "+(0===i?"Dry":"Wet")):mt.logger.warn("[DoTireCompound] Failed to set tire compound")}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;let s="iRacing\nnot\nconnected",r="imgs/actions/pit/do-tire-compound/key";if(n&&t){const e=t.PitSvTireCompound;if(null!=e&&"number"==typeof e)switch(e){case 0:s="Dry",r="imgs/actions/pit/do-tire-compound/key-dry";break;case 1:s="Wet",r="imgs/actions/pit/do-tire-compound/key-wet";break;default:s=`TC: ${e}`,r="imgs/actions/pit/do-tire-compound/key"}else s="N/A"}const o=`${s}|${r}`;this.lastState.get(e)!==o&&(this.lastState.set(e,o),await i.setTitle(s),await i.setImage(r))}},t})(),un=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.do-change-tires"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();activeContexts=new Map;lastState=new Map;async onWillAppear(e){this.activeContexts.set(e.action.id,e.payload.settings),this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.activeContexts.delete(e.action.id),this.lastState.delete(e.action.id)}getTireColor(e,t){return e?t?"#44FF44":"#FF4444":"#000000ff"}generateCarSvg(e,t,n){const i=this.getTireColor(e.lf??!1,t.lf),s=this.getTireColor(e.rf??!1,t.rf),r=this.getTireColor(e.lr??!1,t.lr),o=this.getTireColor(e.rr??!1,t.rr),a=e.lf&&t.lf||e.rf&&t.rf||e.lr&&t.lr||e.rr&&t.rr;let l,c;n?a?(l="Change",c="#FFFFFF"):(l="No Change",c="#FF4444"):(l="Not Connected",c="#888888");const d=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">\n  \x3c!-- Car body (top half) --\x3e\n  <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="#888888" stroke-width="2"/>\n  \x3c!-- Left Front tire --\x3e\n  <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${i}" stroke="#888888" stroke-width="1"/>\n  \x3c!-- Right Front tire --\x3e\n  <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${s}" stroke="#888888" stroke-width="1"/>\n  \x3c!-- Left Rear tire --\x3e\n  <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${r}" stroke="#888888" stroke-width="1"/>\n  \x3c!-- Right Rear tire --\x3e\n  <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${o}" stroke="#888888" stroke-width="1"/>\n  \x3c!-- Title text --\x3e\n  <text x="36" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="${c}">${l}</text>\n</svg>`;return`data:image/svg+xml;base64,${Buffer.from(d).toString("base64")}`}getTireState(e){if(!e||void 0===e.PitSvFlags)return{lf:!1,rf:!1,lr:!1,rr:!1};const t=e.PitSvFlags;return{lf:bt(t,It.LFTireChange),rf:bt(t,It.RFTireChange),lr:bt(t,It.LRTireChange),rr:bt(t,It.RRTireChange)}}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;const s=this.activeContexts.get(e)||{},r=this.getTireState(t),o=this.generateCarSvg(s,r,n),a=`${n}|${s.lf}|${s.rf}|${s.lr}|${s.rr}|${r.lf}|${r.rf}|${r.lr}|${r.rr}`;this.lastState.get(e)!==a&&(this.lastState.set(e,a),await i.setTitle(""),await i.setImage(o))}async onDidReceiveSettings(e){this.activeContexts.set(e.action.id,e.payload.settings)}async onKeyDown(e){if(mt.logger.info("[DoChangeTires] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoChangeTires] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(!t)return void mt.logger.warn("[DoChangeTires] No telemetry data available");const n=this.getTireState(t),i=e.payload.settings;i.lf&&(n.lf?mt.logger.info("[DoChangeTires] Toggling LF off"):(this.pitCommand.leftFront(0),mt.logger.info("[DoChangeTires] Toggling LF on"))),i.rf&&(n.rf?mt.logger.info("[DoChangeTires] Toggling RF off"):(this.pitCommand.rightFront(0),mt.logger.info("[DoChangeTires] Toggling RF on"))),i.lr&&(n.lr?mt.logger.info("[DoChangeTires] Toggling LR off"):(this.pitCommand.leftRear(0),mt.logger.info("[DoChangeTires] Toggling LR on"))),i.rr&&(n.rr?mt.logger.info("[DoChangeTires] Toggling RR off"):(this.pitCommand.rightRear(0),mt.logger.info("[DoChangeTires] Toggling RR on")));(i.lf&&n.lf||i.rf&&n.rf||i.lr&&n.lr||i.rr&&n.rr)&&(this.pitCommand.clearTires(),n.lf&&!i.lf&&this.pitCommand.leftFront(0),n.rf&&!i.rf&&this.pitCommand.rightFront(0),n.lr&&!i.lr&&this.pitCommand.leftRear(0),n.rr&&!i.rr&&this.pitCommand.rightRear(0),!n.lf&&i.lf&&this.pitCommand.leftFront(0),!n.rf&&i.rf&&this.pitCommand.rightFront(0),!n.lr&&i.lr&&this.pitCommand.leftRear(0),!n.rr&&i.rr&&this.pitCommand.rightRear(0)),mt.logger.info("[DoChangeTires] Tire toggle complete")}},t})(),fn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.pit.do-fast-repair"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();pitCommand=nn.getInstance();activeContexts=new Set;lastState=new Map;async onWillAppear(e){this.activeContexts.add(e.action.id),this.sdkController.subscribe(e.action.id,(t,n)=>{this.updateDisplay(e.action.id,t,n)})}async onWillDisappear(e){this.sdkController.unsubscribe(e.action.id),this.activeContexts.delete(e.action.id),this.lastState.delete(e.action.id)}getFastRepairState(e){return!(!e||void 0===e.PitSvFlags)&&bt(e.PitSvFlags,It.FastRepair)}getFastRepairsAvailable(e){return e&&void 0!==e.FastRepairAvailable?e.FastRepairAvailable:0}generateSvg(e,t){const n=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">\n  \x3c!-- Magic wand (diagonal) --\x3e\n  <rect x="10" y="25" width="40" height="5" rx="2" transform="rotate(-45 28 22)" fill="${e}"/>\n  \x3c!-- 4-pointed stars (large) --\x3e\n  <path d="M48,8 L50,14 L52,8 L50,2 Z M44,8 L50,10 L56,8 L50,6 Z" fill="${e}"/>\n  <path d="M56,24 L57.5,28 L59,24 L57.5,20 Z M53.5,24 L57.5,25.5 L61.5,24 L57.5,22.5 Z" fill="${e}"/>\n  \x3c!-- 4-pointed star (small) --\x3e\n  <path d="M38,18 L39,21 L40,18 L39,15 Z M36,18 L39,19 L42,18 L39,17 Z" fill="${e}"/>\n  \x3c!-- Small dots --\x3e\n  <circle cx="28" cy="6" r="2" fill="${e}"/>\n  <circle cx="60" cy="34" r="1.5" fill="${e}"/>${t?'\n  \x3c!-- Red X (same size as fuel icon X) --\x3e\n  <line x1="21" y1="6" x2="51" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>\n  <line x1="51" y1="6" x2="21" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>':""}\n</svg>`;return`data:image/svg+xml;base64,${Buffer.from(n).toString("base64")}`}async updateDisplay(e,t,n){const i=mt.actions.getActionById(e);if(!i)return;let s,r,o=!1;if(n){const e=this.getFastRepairState(t);0===this.getFastRepairsAvailable(t)?(s="Not Avail",r="#888888",o=!0):e?(s="Fast Repair",r="#44FF44"):(s="No fast\nRepair",r="#FF4444")}else s="iRacing\nnot\nconnected",r="#888888";const a=this.generateSvg(r,o),l=`${s}|${r}|${o}`;this.lastState.get(e)!==l&&(this.lastState.set(e,l),await i.setTitle(s),await i.setImage(a))}async onKeyDown(e){if(mt.logger.info("[DoFastRepair] Key down received"),!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoFastRepair] Not connected to iRacing");const t=this.sdkController.getCurrentTelemetry();if(0===this.getFastRepairsAvailable(t))return void mt.logger.info("[DoFastRepair] No fast repairs available");this.getFastRepairState(t)?(this.pitCommand.clearFastRepair(),mt.logger.info("[DoFastRepair] Toggling fast repair OFF")):(this.pitCommand.fastRepair(),mt.logger.info("[DoFastRepair] Toggling fast repair ON"))}},t})(),pn=(()=>{let e,t,n=[ft({UUID:"fi.lampen.niklas.iracedeck.comms.do-chat-message"})],i=[],s=pt;return class extends s{static{t=this}static{const r="function"==typeof Symbol&&Symbol.metadata?Object.create(s[Symbol.metadata]??null):void 0;yt(null,e={value:t},n,{kind:"class",name:t.name,metadata:r},null,i),t=e.value,r&&Object.defineProperty(t,Symbol.metadata,{enumerable:!0,configurable:!0,writable:!0,value:r}),vt(t,i)}sdkController=sn.getInstance();cameraCommand=tn.getInstance();updateInterval=null;activeContexts=new Map;lastTitle=new Map;lastIconColor=new Map;async onWillAppear(e){this.activeContexts.set(e.action.id,e.payload.settings),e.payload.settings.message||await e.action.setSettings({message:""}),this.updateInterval||this.startUpdates(),this.updateDisplay(e.action.id,e.payload.settings)}async onWillDisappear(e){this.activeContexts.delete(e.action.id),this.lastTitle.delete(e.action.id),this.lastIconColor.delete(e.action.id),0===this.activeContexts.size&&this.stopUpdates()}startUpdates(){this.updateInterval=setInterval(()=>{for(const[e,t]of this.activeContexts)this.updateDisplay(e,t)},1e3)}stopUpdates(){this.updateInterval&&(clearInterval(this.updateInterval),this.updateInterval=null)}generateChatSvg(e){const t=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">\n  <path d="M14 18\n           h44\n           a6 6 0 0 1 6 6\n           v24\n           a6 6 0 0 1-6 6\n           H26\n           l-4 8\n           l-4 -8\n           H14\n           a6 6 0 0 1-6-6\n           V24\n           a6 6 0 0 1 6-6\n           z"\n        fill="none"\n        stroke="${e}"\n        stroke-width="2.5"\n        stroke-linejoin="round"/>\n</svg>`;return`data:image/svg+xml;base64,${Buffer.from(t).toString("base64")}`}async updateDisplay(e,t){const n=mt.actions.getActionById(e);if(!n)return;let i="iRacing\nnot\nconnected";if(this.sdkController.getConnectionStatus()){const e=t.message?.trim();i=e?e.length>20?e.substring(0,17)+"...":e:""}const s=t.iconColor||"#4a90d9",r=this.lastTitle.get(e),o=this.lastIconColor.get(e);if(r!==i||o!==s){this.lastTitle.set(e,i),this.lastIconColor.set(e,s),await n.setTitle(i);const t=this.generateChatSvg(s);await n.setImage(t)}}async onDidReceiveSettings(e){this.activeContexts.set(e.action.id,e.payload.settings),this.updateDisplay(e.action.id,e.payload.settings)}async onKeyDown(e){mt.logger.info("[DoChatMessage] Key down received");const t=e.payload.settings.message?.trim(),n=this.sdkController.getCurrentTelemetry();if(!n||!n.CamCameraState)return void mt.logger.error("[DoChatMessage] Couldn't get CamCameraState");var i=n.CamCameraState;if(bt(i,Rt.UIHidden)&&this.cameraCommand.showUI(i),!t)return void mt.logger.info("[DoChatMessage] No message to send");if(!this.sdkController.getConnectionStatus())return void mt.logger.info("[DoChatMessage] Not connected to iRacing");this.sdkController.sendChatMessage(t)?mt.logger.info("[DoChatMessage] Message sent succesfully"):mt.logger.warn("[DoChatMessage] Sending message failed"),this.cameraCommand.setState(i)}},t})();mt.logger.setLevel("trace"),mt.actions.registerAction(new rn),mt.actions.registerAction(new on),mt.actions.registerAction(new an),mt.actions.registerAction(new ln),mt.actions.registerAction(new cn),mt.actions.registerAction(new dn),mt.actions.registerAction(new hn),mt.actions.registerAction(new un),mt.actions.registerAction(new fn),mt.actions.registerAction(new pn),mt.connect();
+import require$$0$3 from 'events';
+import require$$1$1 from 'https';
+import require$$2 from 'http';
+import require$$3 from 'net';
+import require$$4 from 'tls';
+import require$$1 from 'crypto';
+import require$$0$2 from 'stream';
+import require$$7 from 'url';
+import require$$0 from 'zlib';
+import require$$0$1 from 'buffer';
+import fs, { existsSync, readFileSync } from 'node:fs';
+import path, { join } from 'node:path';
+import { cwd } from 'node:process';
+import { randomUUID } from 'node:crypto';
+import { registerWindowMessage, sendNotifyMessage, HWND_BROADCAST, sendChatString, sendKeyPress, VK_RETURN, readMemory, openMemoryMap, closeMemoryMap, findWindow } from '@iracedeck/iracing-native';
+import yaml from 'yaml';
+
+/**
+ * Default language supported by all i18n providers.
+ */
+const defaultLanguage = "en";
+
+/**
+ * Creates a {@link IDisposable} that defers the disposing to the {@link dispose} function; disposing is guarded so that it may only occur once.
+ * @param dispose Function responsible for disposing.
+ * @returns Disposable whereby the disposing is delegated to the {@link dispose}  function.
+ */
+function deferredDisposable(dispose) {
+    let isDisposed = false;
+    const guardedDispose = () => {
+        if (!isDisposed) {
+            dispose();
+            isDisposed = true;
+        }
+    };
+    return {
+        [Symbol.dispose]: guardedDispose,
+        dispose: guardedDispose,
+    };
+}
+
+/**
+ * An event emitter that enables the listening for, and emitting of, events.
+ */
+class EventEmitter {
+    /**
+     * Underlying collection of events and their listeners.
+     */
+    events = new Map();
+    /**
+     * Adds the event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the {@link listener} added.
+     */
+    addListener(eventName, listener) {
+        return this.add(eventName, listener, (listeners) => listeners.push({ listener }));
+    }
+    /**
+     * Adds the event {@link listener} for the event named {@link eventName}, and returns a disposable capable of removing the event listener.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns A disposable that removes the listener when disposed.
+     */
+    disposableOn(eventName, listener) {
+        this.add(eventName, listener, (listeners) => listeners.push({ listener }));
+        return deferredDisposable(() => this.removeListener(eventName, listener));
+    }
+    /**
+     * Emits the {@link eventName}, invoking all event listeners with the specified {@link args}.
+     * @param eventName Name of the event.
+     * @param args Arguments supplied to each event listener.
+     * @returns `true` when there was a listener associated with the event; otherwise `false`.
+     */
+    emit(eventName, ...args) {
+        const listeners = this.events.get(eventName);
+        if (listeners === undefined) {
+            return false;
+        }
+        for (let i = 0; i < listeners.length;) {
+            const { listener, once } = listeners[i];
+            if (once) {
+                this.remove(eventName, listeners, i);
+            }
+            else {
+                i++;
+            }
+            listener(...args);
+        }
+        return true;
+    }
+    /**
+     * Gets the event names with event listeners.
+     * @returns Event names.
+     */
+    eventNames() {
+        return Array.from(this.events.keys());
+    }
+    /**
+     * Gets the number of event listeners for the event named {@link eventName}. When a {@link listener} is defined, only matching event listeners are counted.
+     * @param eventName Name of the event.
+     * @param listener Optional event listener to count.
+     * @returns Number of event listeners.
+     */
+    listenerCount(eventName, listener) {
+        const listeners = this.events.get(eventName);
+        if (listeners === undefined || listener == undefined) {
+            return listeners?.length || 0;
+        }
+        let count = 0;
+        listeners.forEach((ev) => {
+            if (ev.listener === listener) {
+                count++;
+            }
+        });
+        return count;
+    }
+    /**
+     * Gets the event listeners for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @returns The event listeners.
+     */
+    listeners(eventName) {
+        return Array.from(this.events.get(eventName) || []).map(({ listener }) => listener);
+    }
+    /**
+     * Removes the event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} removed.
+     */
+    off(eventName, listener) {
+        const listeners = this.events.get(eventName) ?? [];
+        for (let i = listeners.length - 1; i >= 0; i--) {
+            if (listeners[i].listener === listener) {
+                this.remove(eventName, listeners, i);
+            }
+        }
+        return this;
+    }
+    /**
+     * Adds the event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} added.
+     */
+    on(eventName, listener) {
+        return this.add(eventName, listener, (listeners) => listeners.push({ listener }));
+    }
+    /**
+     * Adds the **one-time** event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} added.
+     */
+    once(eventName, listener) {
+        return this.add(eventName, listener, (listeners) => listeners.push({ listener, once: true }));
+    }
+    /**
+     * Adds the event {@link listener} to the beginning of the listeners for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} prepended.
+     */
+    prependListener(eventName, listener) {
+        return this.add(eventName, listener, (listeners) => listeners.splice(0, 0, { listener }));
+    }
+    /**
+     * Adds the **one-time** event {@link listener} to the beginning of the listeners for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} prepended.
+     */
+    prependOnceListener(eventName, listener) {
+        return this.add(eventName, listener, (listeners) => listeners.splice(0, 0, { listener, once: true }));
+    }
+    /**
+     * Removes all event listeners for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @returns This instance with the event listeners removed
+     */
+    removeAllListeners(eventName) {
+        const listeners = this.events.get(eventName) ?? [];
+        while (listeners.length > 0) {
+            this.remove(eventName, listeners, 0);
+        }
+        this.events.delete(eventName);
+        return this;
+    }
+    /**
+     * Removes the event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @returns This instance with the event {@link listener} removed.
+     */
+    removeListener(eventName, listener) {
+        return this.off(eventName, listener);
+    }
+    /**
+     * Adds the event {@link listener} for the event named {@link eventName}.
+     * @param eventName Name of the event.
+     * @param listener Event handler function.
+     * @param fn Function responsible for adding the new event handler function.
+     * @returns This instance with event {@link listener} added.
+     */
+    add(eventName, listener, fn) {
+        let listeners = this.events.get(eventName);
+        if (listeners === undefined) {
+            listeners = [];
+            this.events.set(eventName, listeners);
+        }
+        fn(listeners);
+        if (eventName !== "newListener") {
+            const args = [eventName, listener];
+            this.emit("newListener", ...args);
+        }
+        return this;
+    }
+    /**
+     * Removes the listener at the given index.
+     * @param eventName Name of the event.
+     * @param listeners Listeners registered with the event.
+     * @param index Index of the listener to remove.
+     */
+    remove(eventName, listeners, index) {
+        const [{ listener }] = listeners.splice(index, 1);
+        if (eventName !== "removeListener") {
+            const args = [eventName, listener];
+            this.emit("removeListener", ...args);
+        }
+    }
+}
+
+/**
+ * Prevents the modification of existing property attributes and values on the value, and all of its child properties, and prevents the addition of new properties.
+ * @param value Value to freeze.
+ */
+function freeze(value) {
+    if (value !== undefined && value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+        Object.freeze(value);
+        Object.values(value).forEach(freeze);
+    }
+}
+/**
+ * Gets the value at the specified {@link path}.
+ * @param source Source object that is being read from.
+ * @param path Path to the property to get.
+ * @returns Value of the property.
+ */
+function get(source, path) {
+    const props = path.split(".");
+    return props.reduce((obj, prop) => obj && obj[prop], source);
+}
+
+/**
+ * Internalization provider, responsible for managing localizations and translating resources.
+ */
+class I18nProvider {
+    /**
+     * Backing field for the default language.
+     */
+    #language;
+    /**
+     * Map of localized resources, indexed by their language.
+     */
+    #translations = new Map();
+    /**
+     * Function responsible for providing localized resources for a given language.
+     */
+    #readTranslations;
+    /**
+     * Internal events handler.
+     */
+    #events = new EventEmitter();
+    /**
+     * Initializes a new instance of the {@link I18nProvider} class.
+     * @param language The default language to be used when retrieving translations for a given key.
+     * @param readTranslations Function responsible for providing localized resources for a given language.
+     */
+    constructor(language, readTranslations) {
+        this.#language = language;
+        this.#readTranslations = readTranslations;
+    }
+    /**
+     * The default language of the provider.
+     * @returns The language.
+     */
+    get language() {
+        return this.#language;
+    }
+    /**
+     * The default language of the provider.
+     * @param value The language.
+     */
+    set language(value) {
+        if (this.#language !== value) {
+            this.#language = value;
+            this.#events.emit("languageChange", value);
+        }
+    }
+    /**
+     * Adds an event listener that is called when the language within the provider changes.
+     * @param listener Listener function to be called.
+     * @returns Resource manager that, when disposed, removes the event listener.
+     */
+    onLanguageChange(listener) {
+        return this.#events.disposableOn("languageChange", listener);
+    }
+    /**
+     * Translates the specified {@link key}, as defined within the resources for the {@link language}.
+     * When the key is not found, the default language is checked. Alias of {@link I18nProvider.translate}.
+     * @param key Key of the translation.
+     * @param language Optional language to get the translation for; otherwise the default language.
+     * @returns The translation; otherwise the key.
+     */
+    t(key, language = this.language) {
+        return this.translate(key, language);
+    }
+    /**
+     * Translates the specified {@link key}, as defined within the resources for the {@link language}.
+     * When the key is not found, the default language is checked.
+     * @param key Key of the translation.
+     * @param language Optional language to get the translation for; otherwise the default language.
+     * @returns The translation; otherwise the key.
+     */
+    translate(key, language = this.language) {
+        // Determine the languages to search for.
+        const languages = new Set([
+            language,
+            language.replaceAll("_", "-").split("-").at(0),
+            defaultLanguage,
+        ]);
+        // Attempt to find the resource for the languages.
+        for (const language of languages) {
+            const resource = get(this.getTranslations(language), key);
+            if (resource) {
+                return resource.toString();
+            }
+        }
+        // Otherwise fallback to the key.
+        return key;
+    }
+    /**
+     * Gets the translations for the specified language.
+     * @param language Language whose translations are being retrieved.
+     * @returns The translations; otherwise `null`.
+     */
+    getTranslations(language) {
+        let translations = this.#translations.get(language);
+        if (translations === undefined) {
+            translations = this.#readTranslations(language);
+            freeze(translations);
+            this.#translations.set(language, translations);
+        }
+        return translations;
+    }
+}
+
+/**
+ * Provides a read-only iterable collection of items that also acts as a partial polyfill for iterator helpers.
+ */
+class Enumerable {
+    /**
+     * Backing function responsible for providing the iterator of items.
+     */
+    #items;
+    /**
+     * Backing function for {@link Enumerable.length}.
+     */
+    #length;
+    /**
+     * Captured iterator from the underlying iterable; used to fulfil {@link IterableIterator} methods.
+     */
+    #iterator;
+    /**
+     * Initializes a new instance of the {@link Enumerable} class.
+     * @param source Source that contains the items.
+     * @returns The enumerable.
+     */
+    constructor(source) {
+        if (source instanceof Enumerable) {
+            // Enumerable
+            this.#items = source.#items;
+            this.#length = source.#length;
+        }
+        else if (Array.isArray(source)) {
+            // Array
+            this.#items = () => source.values();
+            this.#length = () => source.length;
+        }
+        else if (source instanceof Map || source instanceof Set) {
+            // Map or Set
+            this.#items = () => source.values();
+            this.#length = () => source.size;
+        }
+        else {
+            // IterableIterator delegate
+            this.#items = source;
+            this.#length = () => {
+                let i = 0;
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                for (const _ of this) {
+                    i++;
+                }
+                return i;
+            };
+        }
+    }
+    /**
+     * Gets the number of items in the enumerable.
+     * @returns The number of items.
+     */
+    get length() {
+        return this.#length();
+    }
+    /**
+     * Gets the iterator for the enumerable.
+     * @yields The items.
+     */
+    *[Symbol.iterator]() {
+        for (const item of this.#items()) {
+            yield item;
+        }
+    }
+    /**
+     * Transforms each item within this iterator to an indexed pair, with each pair represented as an array.
+     * @returns An iterator of indexed pairs.
+     */
+    asIndexedPairs() {
+        return new Enumerable(function* () {
+            let i = 0;
+            for (const item of this) {
+                yield [i++, item];
+            }
+        }.bind(this));
+    }
+    /**
+     * Returns an iterator with the first items dropped, up to the specified limit.
+     * @param limit The number of elements to drop from the start of the iteration.
+     * @returns An iterator of items after the limit.
+     */
+    drop(limit) {
+        if (isNaN(limit) || limit < 0) {
+            throw new RangeError("limit must be 0, or a positive number");
+        }
+        return new Enumerable(function* () {
+            let i = 0;
+            for (const item of this) {
+                if (i++ >= limit) {
+                    yield item;
+                }
+            }
+        }.bind(this));
+    }
+    /**
+     * Determines whether all items satisfy the specified predicate.
+     * @param predicate Function that determines whether each item fulfils the predicate.
+     * @returns `true` when all items satisfy the predicate; otherwise `false`.
+     */
+    every(predicate) {
+        for (const item of this) {
+            if (!predicate(item)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * Returns an iterator of items that meet the specified predicate..
+     * @param predicate Function that determines which items to filter.
+     * @returns An iterator of filtered items.
+     */
+    filter(predicate) {
+        return new Enumerable(function* () {
+            for (const item of this) {
+                if (predicate(item)) {
+                    yield item;
+                }
+            }
+        }.bind(this));
+    }
+    /**
+     * Finds the first item that satisfies the specified predicate.
+     * @param predicate Predicate to match items against.
+     * @returns The first item that satisfied the predicate; otherwise `undefined`.
+     */
+    find(predicate) {
+        for (const item of this) {
+            if (predicate(item)) {
+                return item;
+            }
+        }
+    }
+    /**
+     * Finds the last item that satisfies the specified predicate.
+     * @param predicate Predicate to match items against.
+     * @returns The first item that satisfied the predicate; otherwise `undefined`.
+     */
+    findLast(predicate) {
+        let result = undefined;
+        for (const item of this) {
+            if (predicate(item)) {
+                result = item;
+            }
+        }
+        return result;
+    }
+    /**
+     * Returns an iterator containing items transformed using the specified mapper function.
+     * @param mapper Function responsible for transforming each item.
+     * @returns An iterator of transformed items.
+     */
+    flatMap(mapper) {
+        return new Enumerable(function* () {
+            for (const item of this) {
+                for (const mapped of mapper(item)) {
+                    yield mapped;
+                }
+            }
+        }.bind(this));
+    }
+    /**
+     * Iterates over each item, and invokes the specified function.
+     * @param fn Function to invoke against each item.
+     */
+    forEach(fn) {
+        for (const item of this) {
+            fn(item);
+        }
+    }
+    /**
+     * Determines whether the search item exists in the collection exists.
+     * @param search Item to search for.
+     * @returns `true` when the item was found; otherwise `false`.
+     */
+    includes(search) {
+        return this.some((item) => item === search);
+    }
+    /**
+     * Returns an iterator of mapped items using the mapper function.
+     * @param mapper Function responsible for mapping the items.
+     * @returns An iterator of mapped items.
+     */
+    map(mapper) {
+        return new Enumerable(function* () {
+            for (const item of this) {
+                yield mapper(item);
+            }
+        }.bind(this));
+    }
+    /**
+     * Captures the underlying iterable, if it is not already captured, and gets the next item in the iterator.
+     * @param args Optional values to send to the generator.
+     * @returns An iterator result of the current iteration; when `done` is `false`, the current `value` is provided.
+     */
+    next(...args) {
+        this.#iterator ??= this.#items();
+        const result = this.#iterator.next(...args);
+        if (result.done) {
+            this.#iterator = undefined;
+        }
+        return result;
+    }
+    /**
+     * Applies the accumulator function to each item, and returns the result.
+     * @param accumulator Function responsible for accumulating all items within the collection.
+     * @param initial Initial value supplied to the accumulator.
+     * @returns Result of accumulating each value.
+     */
+    reduce(accumulator, initial) {
+        if (this.length === 0) {
+            if (initial === undefined) {
+                throw new TypeError("Reduce of empty enumerable with no initial value.");
+            }
+            return initial;
+        }
+        let result = initial;
+        for (const item of this) {
+            if (result === undefined) {
+                result = item;
+            }
+            else {
+                result = accumulator(result, item);
+            }
+        }
+        return result;
+    }
+    /**
+     * Acts as if a `return` statement is inserted in the generator's body at the current suspended position.
+     *
+     * Please note, in the context of an {@link Enumerable}, calling {@link Enumerable.return} will clear the captured iterator,
+     * if there is one. Subsequent calls to {@link Enumerable.next} will result in re-capturing the underlying iterable, and
+     * yielding items from the beginning.
+     * @param value Value to return.
+     * @returns The value as an iterator result.
+     */
+    return(value) {
+        this.#iterator = undefined;
+        return { done: true, value };
+    }
+    /**
+     * Determines whether an item in the collection exists that satisfies the specified predicate.
+     * @param predicate Function used to search for an item.
+     * @returns `true` when the item was found; otherwise `false`.
+     */
+    some(predicate) {
+        for (const item of this) {
+            if (predicate(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /**
+     * Returns an iterator with the items, from 0, up to the specified limit.
+     * @param limit Limit of items to take.
+     * @returns An iterator of items from 0 to the limit.
+     */
+    take(limit) {
+        if (isNaN(limit) || limit < 0) {
+            throw new RangeError("limit must be 0, or a positive number");
+        }
+        return new Enumerable(function* () {
+            let i = 0;
+            for (const item of this) {
+                if (i++ < limit) {
+                    yield item;
+                }
+            }
+        }.bind(this));
+    }
+    /**
+     * Acts as if a `throw` statement is inserted in the generator's body at the current suspended position.
+     * @param e Error to throw.
+     */
+    throw(e) {
+        throw e;
+    }
+    /**
+     * Converts this iterator to an array.
+     * @returns The array of items from this iterator.
+     */
+    toArray() {
+        return Array.from(this);
+    }
+    /**
+     * Converts this iterator to serializable collection.
+     * @returns The serializable collection of items.
+     */
+    toJSON() {
+        return this.toArray();
+    }
+    /**
+     * Converts this iterator to a string.
+     * @returns The string.
+     */
+    toString() {
+        return `${this.toArray()}`;
+    }
+}
+
+// Polyfill, explicit resource management https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+Symbol.dispose ??= Symbol("Symbol.dispose");
+
+/**
+ * Provides a wrapper around a value that is lazily instantiated.
+ */
+class Lazy {
+    /**
+     * Private backing field for {@link Lazy.value}.
+     */
+    #value = undefined;
+    /**
+     * Factory responsible for instantiating the value.
+     */
+    #valueFactory;
+    /**
+     * Initializes a new instance of the {@link Lazy} class.
+     * @param valueFactory The factory responsible for instantiating the value.
+     */
+    constructor(valueFactory) {
+        this.#valueFactory = valueFactory;
+    }
+    /**
+     * Gets the value.
+     * @returns The value.
+     */
+    get value() {
+        if (this.#value === undefined) {
+            this.#value = this.#valueFactory();
+        }
+        return this.#value;
+    }
+}
+
+/**
+ * Returns an object that contains a promise and two functions to resolve or reject it.
+ * @returns The promise, and the resolve and reject functions.
+ */
+function withResolvers() {
+    let resolve;
+    let reject;
+    const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
+function getDefaultExportFromCjs (x) {
+	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+}
+
+var bufferUtil = {exports: {}};
+
+var constants;
+var hasRequiredConstants;
+
+function requireConstants () {
+	if (hasRequiredConstants) return constants;
+	hasRequiredConstants = 1;
+
+	const BINARY_TYPES = ['nodebuffer', 'arraybuffer', 'fragments'];
+	const hasBlob = typeof Blob !== 'undefined';
+
+	if (hasBlob) BINARY_TYPES.push('blob');
+
+	constants = {
+	  BINARY_TYPES,
+	  EMPTY_BUFFER: Buffer.alloc(0),
+	  GUID: '258EAFA5-E914-47DA-95CA-C5AB0DC85B11',
+	  hasBlob,
+	  kForOnEventAttribute: Symbol('kIsForOnEventAttribute'),
+	  kListener: Symbol('kListener'),
+	  kStatusCode: Symbol('status-code'),
+	  kWebSocket: Symbol('websocket'),
+	  NOOP: () => {}
+	};
+	return constants;
+}
+
+var hasRequiredBufferUtil;
+
+function requireBufferUtil () {
+	if (hasRequiredBufferUtil) return bufferUtil.exports;
+	hasRequiredBufferUtil = 1;
+
+	const { EMPTY_BUFFER } = requireConstants();
+
+	const FastBuffer = Buffer[Symbol.species];
+
+	/**
+	 * Merges an array of buffers into a new buffer.
+	 *
+	 * @param {Buffer[]} list The array of buffers to concat
+	 * @param {Number} totalLength The total length of buffers in the list
+	 * @return {Buffer} The resulting buffer
+	 * @public
+	 */
+	function concat(list, totalLength) {
+	  if (list.length === 0) return EMPTY_BUFFER;
+	  if (list.length === 1) return list[0];
+
+	  const target = Buffer.allocUnsafe(totalLength);
+	  let offset = 0;
+
+	  for (let i = 0; i < list.length; i++) {
+	    const buf = list[i];
+	    target.set(buf, offset);
+	    offset += buf.length;
+	  }
+
+	  if (offset < totalLength) {
+	    return new FastBuffer(target.buffer, target.byteOffset, offset);
+	  }
+
+	  return target;
+	}
+
+	/**
+	 * Masks a buffer using the given mask.
+	 *
+	 * @param {Buffer} source The buffer to mask
+	 * @param {Buffer} mask The mask to use
+	 * @param {Buffer} output The buffer where to store the result
+	 * @param {Number} offset The offset at which to start writing
+	 * @param {Number} length The number of bytes to mask.
+	 * @public
+	 */
+	function _mask(source, mask, output, offset, length) {
+	  for (let i = 0; i < length; i++) {
+	    output[offset + i] = source[i] ^ mask[i & 3];
+	  }
+	}
+
+	/**
+	 * Unmasks a buffer using the given mask.
+	 *
+	 * @param {Buffer} buffer The buffer to unmask
+	 * @param {Buffer} mask The mask to use
+	 * @public
+	 */
+	function _unmask(buffer, mask) {
+	  for (let i = 0; i < buffer.length; i++) {
+	    buffer[i] ^= mask[i & 3];
+	  }
+	}
+
+	/**
+	 * Converts a buffer to an `ArrayBuffer`.
+	 *
+	 * @param {Buffer} buf The buffer to convert
+	 * @return {ArrayBuffer} Converted buffer
+	 * @public
+	 */
+	function toArrayBuffer(buf) {
+	  if (buf.length === buf.buffer.byteLength) {
+	    return buf.buffer;
+	  }
+
+	  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
+	}
+
+	/**
+	 * Converts `data` to a `Buffer`.
+	 *
+	 * @param {*} data The data to convert
+	 * @return {Buffer} The buffer
+	 * @throws {TypeError}
+	 * @public
+	 */
+	function toBuffer(data) {
+	  toBuffer.readOnly = true;
+
+	  if (Buffer.isBuffer(data)) return data;
+
+	  let buf;
+
+	  if (data instanceof ArrayBuffer) {
+	    buf = new FastBuffer(data);
+	  } else if (ArrayBuffer.isView(data)) {
+	    buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
+	  } else {
+	    buf = Buffer.from(data);
+	    toBuffer.readOnly = false;
+	  }
+
+	  return buf;
+	}
+
+	bufferUtil.exports = {
+	  concat,
+	  mask: _mask,
+	  toArrayBuffer,
+	  toBuffer,
+	  unmask: _unmask
+	};
+
+	/* istanbul ignore else  */
+	if (!process.env.WS_NO_BUFFER_UTIL) {
+	  try {
+	    const bufferUtil$1 = require('bufferutil');
+
+	    bufferUtil.exports.mask = function (source, mask, output, offset, length) {
+	      if (length < 48) _mask(source, mask, output, offset, length);
+	      else bufferUtil$1.mask(source, mask, output, offset, length);
+	    };
+
+	    bufferUtil.exports.unmask = function (buffer, mask) {
+	      if (buffer.length < 32) _unmask(buffer, mask);
+	      else bufferUtil$1.unmask(buffer, mask);
+	    };
+	  } catch (e) {
+	    // Continue regardless of the error.
+	  }
+	}
+	return bufferUtil.exports;
+}
+
+var limiter;
+var hasRequiredLimiter;
+
+function requireLimiter () {
+	if (hasRequiredLimiter) return limiter;
+	hasRequiredLimiter = 1;
+
+	const kDone = Symbol('kDone');
+	const kRun = Symbol('kRun');
+
+	/**
+	 * A very simple job queue with adjustable concurrency. Adapted from
+	 * https://github.com/STRML/async-limiter
+	 */
+	class Limiter {
+	  /**
+	   * Creates a new `Limiter`.
+	   *
+	   * @param {Number} [concurrency=Infinity] The maximum number of jobs allowed
+	   *     to run concurrently
+	   */
+	  constructor(concurrency) {
+	    this[kDone] = () => {
+	      this.pending--;
+	      this[kRun]();
+	    };
+	    this.concurrency = concurrency || Infinity;
+	    this.jobs = [];
+	    this.pending = 0;
+	  }
+
+	  /**
+	   * Adds a job to the queue.
+	   *
+	   * @param {Function} job The job to run
+	   * @public
+	   */
+	  add(job) {
+	    this.jobs.push(job);
+	    this[kRun]();
+	  }
+
+	  /**
+	   * Removes a job from the queue and runs it if possible.
+	   *
+	   * @private
+	   */
+	  [kRun]() {
+	    if (this.pending === this.concurrency) return;
+
+	    if (this.jobs.length) {
+	      const job = this.jobs.shift();
+
+	      this.pending++;
+	      job(this[kDone]);
+	    }
+	  }
+	}
+
+	limiter = Limiter;
+	return limiter;
+}
+
+var permessageDeflate;
+var hasRequiredPermessageDeflate;
+
+function requirePermessageDeflate () {
+	if (hasRequiredPermessageDeflate) return permessageDeflate;
+	hasRequiredPermessageDeflate = 1;
+
+	const zlib = require$$0;
+
+	const bufferUtil = requireBufferUtil();
+	const Limiter = requireLimiter();
+	const { kStatusCode } = requireConstants();
+
+	const FastBuffer = Buffer[Symbol.species];
+	const TRAILER = Buffer.from([0x00, 0x00, 0xff, 0xff]);
+	const kPerMessageDeflate = Symbol('permessage-deflate');
+	const kTotalLength = Symbol('total-length');
+	const kCallback = Symbol('callback');
+	const kBuffers = Symbol('buffers');
+	const kError = Symbol('error');
+
+	//
+	// We limit zlib concurrency, which prevents severe memory fragmentation
+	// as documented in https://github.com/nodejs/node/issues/8871#issuecomment-250915913
+	// and https://github.com/websockets/ws/issues/1202
+	//
+	// Intentionally global; it's the global thread pool that's an issue.
+	//
+	let zlibLimiter;
+
+	/**
+	 * permessage-deflate implementation.
+	 */
+	class PerMessageDeflate {
+	  /**
+	   * Creates a PerMessageDeflate instance.
+	   *
+	   * @param {Object} [options] Configuration options
+	   * @param {(Boolean|Number)} [options.clientMaxWindowBits] Advertise support
+	   *     for, or request, a custom client window size
+	   * @param {Boolean} [options.clientNoContextTakeover=false] Advertise/
+	   *     acknowledge disabling of client context takeover
+	   * @param {Number} [options.concurrencyLimit=10] The number of concurrent
+	   *     calls to zlib
+	   * @param {(Boolean|Number)} [options.serverMaxWindowBits] Request/confirm the
+	   *     use of a custom server window size
+	   * @param {Boolean} [options.serverNoContextTakeover=false] Request/accept
+	   *     disabling of server context takeover
+	   * @param {Number} [options.threshold=1024] Size (in bytes) below which
+	   *     messages should not be compressed if context takeover is disabled
+	   * @param {Object} [options.zlibDeflateOptions] Options to pass to zlib on
+	   *     deflate
+	   * @param {Object} [options.zlibInflateOptions] Options to pass to zlib on
+	   *     inflate
+	   * @param {Boolean} [isServer=false] Create the instance in either server or
+	   *     client mode
+	   * @param {Number} [maxPayload=0] The maximum allowed message length
+	   */
+	  constructor(options, isServer, maxPayload) {
+	    this._maxPayload = maxPayload | 0;
+	    this._options = options || {};
+	    this._threshold =
+	      this._options.threshold !== undefined ? this._options.threshold : 1024;
+	    this._isServer = !!isServer;
+	    this._deflate = null;
+	    this._inflate = null;
+
+	    this.params = null;
+
+	    if (!zlibLimiter) {
+	      const concurrency =
+	        this._options.concurrencyLimit !== undefined
+	          ? this._options.concurrencyLimit
+	          : 10;
+	      zlibLimiter = new Limiter(concurrency);
+	    }
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  static get extensionName() {
+	    return 'permessage-deflate';
+	  }
+
+	  /**
+	   * Create an extension negotiation offer.
+	   *
+	   * @return {Object} Extension parameters
+	   * @public
+	   */
+	  offer() {
+	    const params = {};
+
+	    if (this._options.serverNoContextTakeover) {
+	      params.server_no_context_takeover = true;
+	    }
+	    if (this._options.clientNoContextTakeover) {
+	      params.client_no_context_takeover = true;
+	    }
+	    if (this._options.serverMaxWindowBits) {
+	      params.server_max_window_bits = this._options.serverMaxWindowBits;
+	    }
+	    if (this._options.clientMaxWindowBits) {
+	      params.client_max_window_bits = this._options.clientMaxWindowBits;
+	    } else if (this._options.clientMaxWindowBits == null) {
+	      params.client_max_window_bits = true;
+	    }
+
+	    return params;
+	  }
+
+	  /**
+	   * Accept an extension negotiation offer/response.
+	   *
+	   * @param {Array} configurations The extension negotiation offers/reponse
+	   * @return {Object} Accepted configuration
+	   * @public
+	   */
+	  accept(configurations) {
+	    configurations = this.normalizeParams(configurations);
+
+	    this.params = this._isServer
+	      ? this.acceptAsServer(configurations)
+	      : this.acceptAsClient(configurations);
+
+	    return this.params;
+	  }
+
+	  /**
+	   * Releases all resources used by the extension.
+	   *
+	   * @public
+	   */
+	  cleanup() {
+	    if (this._inflate) {
+	      this._inflate.close();
+	      this._inflate = null;
+	    }
+
+	    if (this._deflate) {
+	      const callback = this._deflate[kCallback];
+
+	      this._deflate.close();
+	      this._deflate = null;
+
+	      if (callback) {
+	        callback(
+	          new Error(
+	            'The deflate stream was closed while data was being processed'
+	          )
+	        );
+	      }
+	    }
+	  }
+
+	  /**
+	   *  Accept an extension negotiation offer.
+	   *
+	   * @param {Array} offers The extension negotiation offers
+	   * @return {Object} Accepted configuration
+	   * @private
+	   */
+	  acceptAsServer(offers) {
+	    const opts = this._options;
+	    const accepted = offers.find((params) => {
+	      if (
+	        (opts.serverNoContextTakeover === false &&
+	          params.server_no_context_takeover) ||
+	        (params.server_max_window_bits &&
+	          (opts.serverMaxWindowBits === false ||
+	            (typeof opts.serverMaxWindowBits === 'number' &&
+	              opts.serverMaxWindowBits > params.server_max_window_bits))) ||
+	        (typeof opts.clientMaxWindowBits === 'number' &&
+	          !params.client_max_window_bits)
+	      ) {
+	        return false;
+	      }
+
+	      return true;
+	    });
+
+	    if (!accepted) {
+	      throw new Error('None of the extension offers can be accepted');
+	    }
+
+	    if (opts.serverNoContextTakeover) {
+	      accepted.server_no_context_takeover = true;
+	    }
+	    if (opts.clientNoContextTakeover) {
+	      accepted.client_no_context_takeover = true;
+	    }
+	    if (typeof opts.serverMaxWindowBits === 'number') {
+	      accepted.server_max_window_bits = opts.serverMaxWindowBits;
+	    }
+	    if (typeof opts.clientMaxWindowBits === 'number') {
+	      accepted.client_max_window_bits = opts.clientMaxWindowBits;
+	    } else if (
+	      accepted.client_max_window_bits === true ||
+	      opts.clientMaxWindowBits === false
+	    ) {
+	      delete accepted.client_max_window_bits;
+	    }
+
+	    return accepted;
+	  }
+
+	  /**
+	   * Accept the extension negotiation response.
+	   *
+	   * @param {Array} response The extension negotiation response
+	   * @return {Object} Accepted configuration
+	   * @private
+	   */
+	  acceptAsClient(response) {
+	    const params = response[0];
+
+	    if (
+	      this._options.clientNoContextTakeover === false &&
+	      params.client_no_context_takeover
+	    ) {
+	      throw new Error('Unexpected parameter "client_no_context_takeover"');
+	    }
+
+	    if (!params.client_max_window_bits) {
+	      if (typeof this._options.clientMaxWindowBits === 'number') {
+	        params.client_max_window_bits = this._options.clientMaxWindowBits;
+	      }
+	    } else if (
+	      this._options.clientMaxWindowBits === false ||
+	      (typeof this._options.clientMaxWindowBits === 'number' &&
+	        params.client_max_window_bits > this._options.clientMaxWindowBits)
+	    ) {
+	      throw new Error(
+	        'Unexpected or invalid parameter "client_max_window_bits"'
+	      );
+	    }
+
+	    return params;
+	  }
+
+	  /**
+	   * Normalize parameters.
+	   *
+	   * @param {Array} configurations The extension negotiation offers/reponse
+	   * @return {Array} The offers/response with normalized parameters
+	   * @private
+	   */
+	  normalizeParams(configurations) {
+	    configurations.forEach((params) => {
+	      Object.keys(params).forEach((key) => {
+	        let value = params[key];
+
+	        if (value.length > 1) {
+	          throw new Error(`Parameter "${key}" must have only a single value`);
+	        }
+
+	        value = value[0];
+
+	        if (key === 'client_max_window_bits') {
+	          if (value !== true) {
+	            const num = +value;
+	            if (!Number.isInteger(num) || num < 8 || num > 15) {
+	              throw new TypeError(
+	                `Invalid value for parameter "${key}": ${value}`
+	              );
+	            }
+	            value = num;
+	          } else if (!this._isServer) {
+	            throw new TypeError(
+	              `Invalid value for parameter "${key}": ${value}`
+	            );
+	          }
+	        } else if (key === 'server_max_window_bits') {
+	          const num = +value;
+	          if (!Number.isInteger(num) || num < 8 || num > 15) {
+	            throw new TypeError(
+	              `Invalid value for parameter "${key}": ${value}`
+	            );
+	          }
+	          value = num;
+	        } else if (
+	          key === 'client_no_context_takeover' ||
+	          key === 'server_no_context_takeover'
+	        ) {
+	          if (value !== true) {
+	            throw new TypeError(
+	              `Invalid value for parameter "${key}": ${value}`
+	            );
+	          }
+	        } else {
+	          throw new Error(`Unknown parameter "${key}"`);
+	        }
+
+	        params[key] = value;
+	      });
+	    });
+
+	    return configurations;
+	  }
+
+	  /**
+	   * Decompress data. Concurrency limited.
+	   *
+	   * @param {Buffer} data Compressed data
+	   * @param {Boolean} fin Specifies whether or not this is the last fragment
+	   * @param {Function} callback Callback
+	   * @public
+	   */
+	  decompress(data, fin, callback) {
+	    zlibLimiter.add((done) => {
+	      this._decompress(data, fin, (err, result) => {
+	        done();
+	        callback(err, result);
+	      });
+	    });
+	  }
+
+	  /**
+	   * Compress data. Concurrency limited.
+	   *
+	   * @param {(Buffer|String)} data Data to compress
+	   * @param {Boolean} fin Specifies whether or not this is the last fragment
+	   * @param {Function} callback Callback
+	   * @public
+	   */
+	  compress(data, fin, callback) {
+	    zlibLimiter.add((done) => {
+	      this._compress(data, fin, (err, result) => {
+	        done();
+	        callback(err, result);
+	      });
+	    });
+	  }
+
+	  /**
+	   * Decompress data.
+	   *
+	   * @param {Buffer} data Compressed data
+	   * @param {Boolean} fin Specifies whether or not this is the last fragment
+	   * @param {Function} callback Callback
+	   * @private
+	   */
+	  _decompress(data, fin, callback) {
+	    const endpoint = this._isServer ? 'client' : 'server';
+
+	    if (!this._inflate) {
+	      const key = `${endpoint}_max_window_bits`;
+	      const windowBits =
+	        typeof this.params[key] !== 'number'
+	          ? zlib.Z_DEFAULT_WINDOWBITS
+	          : this.params[key];
+
+	      this._inflate = zlib.createInflateRaw({
+	        ...this._options.zlibInflateOptions,
+	        windowBits
+	      });
+	      this._inflate[kPerMessageDeflate] = this;
+	      this._inflate[kTotalLength] = 0;
+	      this._inflate[kBuffers] = [];
+	      this._inflate.on('error', inflateOnError);
+	      this._inflate.on('data', inflateOnData);
+	    }
+
+	    this._inflate[kCallback] = callback;
+
+	    this._inflate.write(data);
+	    if (fin) this._inflate.write(TRAILER);
+
+	    this._inflate.flush(() => {
+	      const err = this._inflate[kError];
+
+	      if (err) {
+	        this._inflate.close();
+	        this._inflate = null;
+	        callback(err);
+	        return;
+	      }
+
+	      const data = bufferUtil.concat(
+	        this._inflate[kBuffers],
+	        this._inflate[kTotalLength]
+	      );
+
+	      if (this._inflate._readableState.endEmitted) {
+	        this._inflate.close();
+	        this._inflate = null;
+	      } else {
+	        this._inflate[kTotalLength] = 0;
+	        this._inflate[kBuffers] = [];
+
+	        if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+	          this._inflate.reset();
+	        }
+	      }
+
+	      callback(null, data);
+	    });
+	  }
+
+	  /**
+	   * Compress data.
+	   *
+	   * @param {(Buffer|String)} data Data to compress
+	   * @param {Boolean} fin Specifies whether or not this is the last fragment
+	   * @param {Function} callback Callback
+	   * @private
+	   */
+	  _compress(data, fin, callback) {
+	    const endpoint = this._isServer ? 'server' : 'client';
+
+	    if (!this._deflate) {
+	      const key = `${endpoint}_max_window_bits`;
+	      const windowBits =
+	        typeof this.params[key] !== 'number'
+	          ? zlib.Z_DEFAULT_WINDOWBITS
+	          : this.params[key];
+
+	      this._deflate = zlib.createDeflateRaw({
+	        ...this._options.zlibDeflateOptions,
+	        windowBits
+	      });
+
+	      this._deflate[kTotalLength] = 0;
+	      this._deflate[kBuffers] = [];
+
+	      this._deflate.on('data', deflateOnData);
+	    }
+
+	    this._deflate[kCallback] = callback;
+
+	    this._deflate.write(data);
+	    this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+	      if (!this._deflate) {
+	        //
+	        // The deflate stream was closed while data was being processed.
+	        //
+	        return;
+	      }
+
+	      let data = bufferUtil.concat(
+	        this._deflate[kBuffers],
+	        this._deflate[kTotalLength]
+	      );
+
+	      if (fin) {
+	        data = new FastBuffer(data.buffer, data.byteOffset, data.length - 4);
+	      }
+
+	      //
+	      // Ensure that the callback will not be called again in
+	      // `PerMessageDeflate#cleanup()`.
+	      //
+	      this._deflate[kCallback] = null;
+
+	      this._deflate[kTotalLength] = 0;
+	      this._deflate[kBuffers] = [];
+
+	      if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+	        this._deflate.reset();
+	      }
+
+	      callback(null, data);
+	    });
+	  }
+	}
+
+	permessageDeflate = PerMessageDeflate;
+
+	/**
+	 * The listener of the `zlib.DeflateRaw` stream `'data'` event.
+	 *
+	 * @param {Buffer} chunk A chunk of data
+	 * @private
+	 */
+	function deflateOnData(chunk) {
+	  this[kBuffers].push(chunk);
+	  this[kTotalLength] += chunk.length;
+	}
+
+	/**
+	 * The listener of the `zlib.InflateRaw` stream `'data'` event.
+	 *
+	 * @param {Buffer} chunk A chunk of data
+	 * @private
+	 */
+	function inflateOnData(chunk) {
+	  this[kTotalLength] += chunk.length;
+
+	  if (
+	    this[kPerMessageDeflate]._maxPayload < 1 ||
+	    this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload
+	  ) {
+	    this[kBuffers].push(chunk);
+	    return;
+	  }
+
+	  this[kError] = new RangeError('Max payload size exceeded');
+	  this[kError].code = 'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH';
+	  this[kError][kStatusCode] = 1009;
+	  this.removeListener('data', inflateOnData);
+
+	  //
+	  // The choice to employ `zlib.reset()` over `zlib.close()` is dictated by the
+	  // fact that in Node.js versions prior to 13.10.0, the callback for
+	  // `zlib.flush()` is not called if `zlib.close()` is used. Utilizing
+	  // `zlib.reset()` ensures that either the callback is invoked or an error is
+	  // emitted.
+	  //
+	  this.reset();
+	}
+
+	/**
+	 * The listener of the `zlib.InflateRaw` stream `'error'` event.
+	 *
+	 * @param {Error} err The emitted error
+	 * @private
+	 */
+	function inflateOnError(err) {
+	  //
+	  // There is no need to call `Zlib#close()` as the handle is automatically
+	  // closed when an error is emitted.
+	  //
+	  this[kPerMessageDeflate]._inflate = null;
+
+	  if (this[kError]) {
+	    this[kCallback](this[kError]);
+	    return;
+	  }
+
+	  err[kStatusCode] = 1007;
+	  this[kCallback](err);
+	}
+	return permessageDeflate;
+}
+
+var validation = {exports: {}};
+
+var hasRequiredValidation;
+
+function requireValidation () {
+	if (hasRequiredValidation) return validation.exports;
+	hasRequiredValidation = 1;
+
+	const { isUtf8 } = require$$0$1;
+
+	const { hasBlob } = requireConstants();
+
+	//
+	// Allowed token characters:
+	//
+	// '!', '#', '$', '%', '&', ''', '*', '+', '-',
+	// '.', 0-9, A-Z, '^', '_', '`', a-z, '|', '~'
+	//
+	// tokenChars[32] === 0 // ' '
+	// tokenChars[33] === 1 // '!'
+	// tokenChars[34] === 0 // '"'
+	// ...
+	//
+	// prettier-ignore
+	const tokenChars = [
+	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0 - 15
+	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16 - 31
+	  0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, // 32 - 47
+	  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, // 48 - 63
+	  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 64 - 79
+	  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, // 80 - 95
+	  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 96 - 111
+	  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0 // 112 - 127
+	];
+
+	/**
+	 * Checks if a status code is allowed in a close frame.
+	 *
+	 * @param {Number} code The status code
+	 * @return {Boolean} `true` if the status code is valid, else `false`
+	 * @public
+	 */
+	function isValidStatusCode(code) {
+	  return (
+	    (code >= 1000 &&
+	      code <= 1014 &&
+	      code !== 1004 &&
+	      code !== 1005 &&
+	      code !== 1006) ||
+	    (code >= 3000 && code <= 4999)
+	  );
+	}
+
+	/**
+	 * Checks if a given buffer contains only correct UTF-8.
+	 * Ported from https://www.cl.cam.ac.uk/%7Emgk25/ucs/utf8_check.c by
+	 * Markus Kuhn.
+	 *
+	 * @param {Buffer} buf The buffer to check
+	 * @return {Boolean} `true` if `buf` contains only correct UTF-8, else `false`
+	 * @public
+	 */
+	function _isValidUTF8(buf) {
+	  const len = buf.length;
+	  let i = 0;
+
+	  while (i < len) {
+	    if ((buf[i] & 0x80) === 0) {
+	      // 0xxxxxxx
+	      i++;
+	    } else if ((buf[i] & 0xe0) === 0xc0) {
+	      // 110xxxxx 10xxxxxx
+	      if (
+	        i + 1 === len ||
+	        (buf[i + 1] & 0xc0) !== 0x80 ||
+	        (buf[i] & 0xfe) === 0xc0 // Overlong
+	      ) {
+	        return false;
+	      }
+
+	      i += 2;
+	    } else if ((buf[i] & 0xf0) === 0xe0) {
+	      // 1110xxxx 10xxxxxx 10xxxxxx
+	      if (
+	        i + 2 >= len ||
+	        (buf[i + 1] & 0xc0) !== 0x80 ||
+	        (buf[i + 2] & 0xc0) !== 0x80 ||
+	        (buf[i] === 0xe0 && (buf[i + 1] & 0xe0) === 0x80) || // Overlong
+	        (buf[i] === 0xed && (buf[i + 1] & 0xe0) === 0xa0) // Surrogate (U+D800 - U+DFFF)
+	      ) {
+	        return false;
+	      }
+
+	      i += 3;
+	    } else if ((buf[i] & 0xf8) === 0xf0) {
+	      // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+	      if (
+	        i + 3 >= len ||
+	        (buf[i + 1] & 0xc0) !== 0x80 ||
+	        (buf[i + 2] & 0xc0) !== 0x80 ||
+	        (buf[i + 3] & 0xc0) !== 0x80 ||
+	        (buf[i] === 0xf0 && (buf[i + 1] & 0xf0) === 0x80) || // Overlong
+	        (buf[i] === 0xf4 && buf[i + 1] > 0x8f) ||
+	        buf[i] > 0xf4 // > U+10FFFF
+	      ) {
+	        return false;
+	      }
+
+	      i += 4;
+	    } else {
+	      return false;
+	    }
+	  }
+
+	  return true;
+	}
+
+	/**
+	 * Determines whether a value is a `Blob`.
+	 *
+	 * @param {*} value The value to be tested
+	 * @return {Boolean} `true` if `value` is a `Blob`, else `false`
+	 * @private
+	 */
+	function isBlob(value) {
+	  return (
+	    hasBlob &&
+	    typeof value === 'object' &&
+	    typeof value.arrayBuffer === 'function' &&
+	    typeof value.type === 'string' &&
+	    typeof value.stream === 'function' &&
+	    (value[Symbol.toStringTag] === 'Blob' ||
+	      value[Symbol.toStringTag] === 'File')
+	  );
+	}
+
+	validation.exports = {
+	  isBlob,
+	  isValidStatusCode,
+	  isValidUTF8: _isValidUTF8,
+	  tokenChars
+	};
+
+	if (isUtf8) {
+	  validation.exports.isValidUTF8 = function (buf) {
+	    return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
+	  };
+	} /* istanbul ignore else  */ else if (!process.env.WS_NO_UTF_8_VALIDATE) {
+	  try {
+	    const isValidUTF8 = require('utf-8-validate');
+
+	    validation.exports.isValidUTF8 = function (buf) {
+	      return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
+	    };
+	  } catch (e) {
+	    // Continue regardless of the error.
+	  }
+	}
+	return validation.exports;
+}
+
+var receiver;
+var hasRequiredReceiver;
+
+function requireReceiver () {
+	if (hasRequiredReceiver) return receiver;
+	hasRequiredReceiver = 1;
+
+	const { Writable } = require$$0$2;
+
+	const PerMessageDeflate = requirePermessageDeflate();
+	const {
+	  BINARY_TYPES,
+	  EMPTY_BUFFER,
+	  kStatusCode,
+	  kWebSocket
+	} = requireConstants();
+	const { concat, toArrayBuffer, unmask } = requireBufferUtil();
+	const { isValidStatusCode, isValidUTF8 } = requireValidation();
+
+	const FastBuffer = Buffer[Symbol.species];
+
+	const GET_INFO = 0;
+	const GET_PAYLOAD_LENGTH_16 = 1;
+	const GET_PAYLOAD_LENGTH_64 = 2;
+	const GET_MASK = 3;
+	const GET_DATA = 4;
+	const INFLATING = 5;
+	const DEFER_EVENT = 6;
+
+	/**
+	 * HyBi Receiver implementation.
+	 *
+	 * @extends Writable
+	 */
+	class Receiver extends Writable {
+	  /**
+	   * Creates a Receiver instance.
+	   *
+	   * @param {Object} [options] Options object
+	   * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+	   *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+	   *     multiple times in the same tick
+	   * @param {String} [options.binaryType=nodebuffer] The type for binary data
+	   * @param {Object} [options.extensions] An object containing the negotiated
+	   *     extensions
+	   * @param {Boolean} [options.isServer=false] Specifies whether to operate in
+	   *     client or server mode
+	   * @param {Number} [options.maxPayload=0] The maximum allowed message length
+	   * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+	   *     not to skip UTF-8 validation for text and close messages
+	   */
+	  constructor(options = {}) {
+	    super();
+
+	    this._allowSynchronousEvents =
+	      options.allowSynchronousEvents !== undefined
+	        ? options.allowSynchronousEvents
+	        : true;
+	    this._binaryType = options.binaryType || BINARY_TYPES[0];
+	    this._extensions = options.extensions || {};
+	    this._isServer = !!options.isServer;
+	    this._maxPayload = options.maxPayload | 0;
+	    this._skipUTF8Validation = !!options.skipUTF8Validation;
+	    this[kWebSocket] = undefined;
+
+	    this._bufferedBytes = 0;
+	    this._buffers = [];
+
+	    this._compressed = false;
+	    this._payloadLength = 0;
+	    this._mask = undefined;
+	    this._fragmented = 0;
+	    this._masked = false;
+	    this._fin = false;
+	    this._opcode = 0;
+
+	    this._totalPayloadLength = 0;
+	    this._messageLength = 0;
+	    this._fragments = [];
+
+	    this._errored = false;
+	    this._loop = false;
+	    this._state = GET_INFO;
+	  }
+
+	  /**
+	   * Implements `Writable.prototype._write()`.
+	   *
+	   * @param {Buffer} chunk The chunk of data to write
+	   * @param {String} encoding The character encoding of `chunk`
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  _write(chunk, encoding, cb) {
+	    if (this._opcode === 0x08 && this._state == GET_INFO) return cb();
+
+	    this._bufferedBytes += chunk.length;
+	    this._buffers.push(chunk);
+	    this.startLoop(cb);
+	  }
+
+	  /**
+	   * Consumes `n` bytes from the buffered data.
+	   *
+	   * @param {Number} n The number of bytes to consume
+	   * @return {Buffer} The consumed bytes
+	   * @private
+	   */
+	  consume(n) {
+	    this._bufferedBytes -= n;
+
+	    if (n === this._buffers[0].length) return this._buffers.shift();
+
+	    if (n < this._buffers[0].length) {
+	      const buf = this._buffers[0];
+	      this._buffers[0] = new FastBuffer(
+	        buf.buffer,
+	        buf.byteOffset + n,
+	        buf.length - n
+	      );
+
+	      return new FastBuffer(buf.buffer, buf.byteOffset, n);
+	    }
+
+	    const dst = Buffer.allocUnsafe(n);
+
+	    do {
+	      const buf = this._buffers[0];
+	      const offset = dst.length - n;
+
+	      if (n >= buf.length) {
+	        dst.set(this._buffers.shift(), offset);
+	      } else {
+	        dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
+	        this._buffers[0] = new FastBuffer(
+	          buf.buffer,
+	          buf.byteOffset + n,
+	          buf.length - n
+	        );
+	      }
+
+	      n -= buf.length;
+	    } while (n > 0);
+
+	    return dst;
+	  }
+
+	  /**
+	   * Starts the parsing loop.
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  startLoop(cb) {
+	    this._loop = true;
+
+	    do {
+	      switch (this._state) {
+	        case GET_INFO:
+	          this.getInfo(cb);
+	          break;
+	        case GET_PAYLOAD_LENGTH_16:
+	          this.getPayloadLength16(cb);
+	          break;
+	        case GET_PAYLOAD_LENGTH_64:
+	          this.getPayloadLength64(cb);
+	          break;
+	        case GET_MASK:
+	          this.getMask();
+	          break;
+	        case GET_DATA:
+	          this.getData(cb);
+	          break;
+	        case INFLATING:
+	        case DEFER_EVENT:
+	          this._loop = false;
+	          return;
+	      }
+	    } while (this._loop);
+
+	    if (!this._errored) cb();
+	  }
+
+	  /**
+	   * Reads the first two bytes of a frame.
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  getInfo(cb) {
+	    if (this._bufferedBytes < 2) {
+	      this._loop = false;
+	      return;
+	    }
+
+	    const buf = this.consume(2);
+
+	    if ((buf[0] & 0x30) !== 0x00) {
+	      const error = this.createError(
+	        RangeError,
+	        'RSV2 and RSV3 must be clear',
+	        true,
+	        1002,
+	        'WS_ERR_UNEXPECTED_RSV_2_3'
+	      );
+
+	      cb(error);
+	      return;
+	    }
+
+	    const compressed = (buf[0] & 0x40) === 0x40;
+
+	    if (compressed && !this._extensions[PerMessageDeflate.extensionName]) {
+	      const error = this.createError(
+	        RangeError,
+	        'RSV1 must be clear',
+	        true,
+	        1002,
+	        'WS_ERR_UNEXPECTED_RSV_1'
+	      );
+
+	      cb(error);
+	      return;
+	    }
+
+	    this._fin = (buf[0] & 0x80) === 0x80;
+	    this._opcode = buf[0] & 0x0f;
+	    this._payloadLength = buf[1] & 0x7f;
+
+	    if (this._opcode === 0x00) {
+	      if (compressed) {
+	        const error = this.createError(
+	          RangeError,
+	          'RSV1 must be clear',
+	          true,
+	          1002,
+	          'WS_ERR_UNEXPECTED_RSV_1'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      if (!this._fragmented) {
+	        const error = this.createError(
+	          RangeError,
+	          'invalid opcode 0',
+	          true,
+	          1002,
+	          'WS_ERR_INVALID_OPCODE'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      this._opcode = this._fragmented;
+	    } else if (this._opcode === 0x01 || this._opcode === 0x02) {
+	      if (this._fragmented) {
+	        const error = this.createError(
+	          RangeError,
+	          `invalid opcode ${this._opcode}`,
+	          true,
+	          1002,
+	          'WS_ERR_INVALID_OPCODE'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      this._compressed = compressed;
+	    } else if (this._opcode > 0x07 && this._opcode < 0x0b) {
+	      if (!this._fin) {
+	        const error = this.createError(
+	          RangeError,
+	          'FIN must be set',
+	          true,
+	          1002,
+	          'WS_ERR_EXPECTED_FIN'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      if (compressed) {
+	        const error = this.createError(
+	          RangeError,
+	          'RSV1 must be clear',
+	          true,
+	          1002,
+	          'WS_ERR_UNEXPECTED_RSV_1'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      if (
+	        this._payloadLength > 0x7d ||
+	        (this._opcode === 0x08 && this._payloadLength === 1)
+	      ) {
+	        const error = this.createError(
+	          RangeError,
+	          `invalid payload length ${this._payloadLength}`,
+	          true,
+	          1002,
+	          'WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+	    } else {
+	      const error = this.createError(
+	        RangeError,
+	        `invalid opcode ${this._opcode}`,
+	        true,
+	        1002,
+	        'WS_ERR_INVALID_OPCODE'
+	      );
+
+	      cb(error);
+	      return;
+	    }
+
+	    if (!this._fin && !this._fragmented) this._fragmented = this._opcode;
+	    this._masked = (buf[1] & 0x80) === 0x80;
+
+	    if (this._isServer) {
+	      if (!this._masked) {
+	        const error = this.createError(
+	          RangeError,
+	          'MASK must be set',
+	          true,
+	          1002,
+	          'WS_ERR_EXPECTED_MASK'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+	    } else if (this._masked) {
+	      const error = this.createError(
+	        RangeError,
+	        'MASK must be clear',
+	        true,
+	        1002,
+	        'WS_ERR_UNEXPECTED_MASK'
+	      );
+
+	      cb(error);
+	      return;
+	    }
+
+	    if (this._payloadLength === 126) this._state = GET_PAYLOAD_LENGTH_16;
+	    else if (this._payloadLength === 127) this._state = GET_PAYLOAD_LENGTH_64;
+	    else this.haveLength(cb);
+	  }
+
+	  /**
+	   * Gets extended payload length (7+16).
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  getPayloadLength16(cb) {
+	    if (this._bufferedBytes < 2) {
+	      this._loop = false;
+	      return;
+	    }
+
+	    this._payloadLength = this.consume(2).readUInt16BE(0);
+	    this.haveLength(cb);
+	  }
+
+	  /**
+	   * Gets extended payload length (7+64).
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  getPayloadLength64(cb) {
+	    if (this._bufferedBytes < 8) {
+	      this._loop = false;
+	      return;
+	    }
+
+	    const buf = this.consume(8);
+	    const num = buf.readUInt32BE(0);
+
+	    //
+	    // The maximum safe integer in JavaScript is 2^53 - 1. An error is returned
+	    // if payload length is greater than this number.
+	    //
+	    if (num > Math.pow(2, 53 - 32) - 1) {
+	      const error = this.createError(
+	        RangeError,
+	        'Unsupported WebSocket frame: payload length > 2^53 - 1',
+	        false,
+	        1009,
+	        'WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH'
+	      );
+
+	      cb(error);
+	      return;
+	    }
+
+	    this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
+	    this.haveLength(cb);
+	  }
+
+	  /**
+	   * Payload length has been read.
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  haveLength(cb) {
+	    if (this._payloadLength && this._opcode < 0x08) {
+	      this._totalPayloadLength += this._payloadLength;
+	      if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
+	        const error = this.createError(
+	          RangeError,
+	          'Max payload size exceeded',
+	          false,
+	          1009,
+	          'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+	    }
+
+	    if (this._masked) this._state = GET_MASK;
+	    else this._state = GET_DATA;
+	  }
+
+	  /**
+	   * Reads mask bytes.
+	   *
+	   * @private
+	   */
+	  getMask() {
+	    if (this._bufferedBytes < 4) {
+	      this._loop = false;
+	      return;
+	    }
+
+	    this._mask = this.consume(4);
+	    this._state = GET_DATA;
+	  }
+
+	  /**
+	   * Reads data bytes.
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  getData(cb) {
+	    let data = EMPTY_BUFFER;
+
+	    if (this._payloadLength) {
+	      if (this._bufferedBytes < this._payloadLength) {
+	        this._loop = false;
+	        return;
+	      }
+
+	      data = this.consume(this._payloadLength);
+
+	      if (
+	        this._masked &&
+	        (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0
+	      ) {
+	        unmask(data, this._mask);
+	      }
+	    }
+
+	    if (this._opcode > 0x07) {
+	      this.controlMessage(data, cb);
+	      return;
+	    }
+
+	    if (this._compressed) {
+	      this._state = INFLATING;
+	      this.decompress(data, cb);
+	      return;
+	    }
+
+	    if (data.length) {
+	      //
+	      // This message is not compressed so its length is the sum of the payload
+	      // length of all fragments.
+	      //
+	      this._messageLength = this._totalPayloadLength;
+	      this._fragments.push(data);
+	    }
+
+	    this.dataMessage(cb);
+	  }
+
+	  /**
+	   * Decompresses data.
+	   *
+	   * @param {Buffer} data Compressed data
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  decompress(data, cb) {
+	    const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+
+	    perMessageDeflate.decompress(data, this._fin, (err, buf) => {
+	      if (err) return cb(err);
+
+	      if (buf.length) {
+	        this._messageLength += buf.length;
+	        if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
+	          const error = this.createError(
+	            RangeError,
+	            'Max payload size exceeded',
+	            false,
+	            1009,
+	            'WS_ERR_UNSUPPORTED_MESSAGE_LENGTH'
+	          );
+
+	          cb(error);
+	          return;
+	        }
+
+	        this._fragments.push(buf);
+	      }
+
+	      this.dataMessage(cb);
+	      if (this._state === GET_INFO) this.startLoop(cb);
+	    });
+	  }
+
+	  /**
+	   * Handles a data message.
+	   *
+	   * @param {Function} cb Callback
+	   * @private
+	   */
+	  dataMessage(cb) {
+	    if (!this._fin) {
+	      this._state = GET_INFO;
+	      return;
+	    }
+
+	    const messageLength = this._messageLength;
+	    const fragments = this._fragments;
+
+	    this._totalPayloadLength = 0;
+	    this._messageLength = 0;
+	    this._fragmented = 0;
+	    this._fragments = [];
+
+	    if (this._opcode === 2) {
+	      let data;
+
+	      if (this._binaryType === 'nodebuffer') {
+	        data = concat(fragments, messageLength);
+	      } else if (this._binaryType === 'arraybuffer') {
+	        data = toArrayBuffer(concat(fragments, messageLength));
+	      } else if (this._binaryType === 'blob') {
+	        data = new Blob(fragments);
+	      } else {
+	        data = fragments;
+	      }
+
+	      if (this._allowSynchronousEvents) {
+	        this.emit('message', data, true);
+	        this._state = GET_INFO;
+	      } else {
+	        this._state = DEFER_EVENT;
+	        setImmediate(() => {
+	          this.emit('message', data, true);
+	          this._state = GET_INFO;
+	          this.startLoop(cb);
+	        });
+	      }
+	    } else {
+	      const buf = concat(fragments, messageLength);
+
+	      if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+	        const error = this.createError(
+	          Error,
+	          'invalid UTF-8 sequence',
+	          true,
+	          1007,
+	          'WS_ERR_INVALID_UTF8'
+	        );
+
+	        cb(error);
+	        return;
+	      }
+
+	      if (this._state === INFLATING || this._allowSynchronousEvents) {
+	        this.emit('message', buf, false);
+	        this._state = GET_INFO;
+	      } else {
+	        this._state = DEFER_EVENT;
+	        setImmediate(() => {
+	          this.emit('message', buf, false);
+	          this._state = GET_INFO;
+	          this.startLoop(cb);
+	        });
+	      }
+	    }
+	  }
+
+	  /**
+	   * Handles a control message.
+	   *
+	   * @param {Buffer} data Data to handle
+	   * @return {(Error|RangeError|undefined)} A possible error
+	   * @private
+	   */
+	  controlMessage(data, cb) {
+	    if (this._opcode === 0x08) {
+	      if (data.length === 0) {
+	        this._loop = false;
+	        this.emit('conclude', 1005, EMPTY_BUFFER);
+	        this.end();
+	      } else {
+	        const code = data.readUInt16BE(0);
+
+	        if (!isValidStatusCode(code)) {
+	          const error = this.createError(
+	            RangeError,
+	            `invalid status code ${code}`,
+	            true,
+	            1002,
+	            'WS_ERR_INVALID_CLOSE_CODE'
+	          );
+
+	          cb(error);
+	          return;
+	        }
+
+	        const buf = new FastBuffer(
+	          data.buffer,
+	          data.byteOffset + 2,
+	          data.length - 2
+	        );
+
+	        if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+	          const error = this.createError(
+	            Error,
+	            'invalid UTF-8 sequence',
+	            true,
+	            1007,
+	            'WS_ERR_INVALID_UTF8'
+	          );
+
+	          cb(error);
+	          return;
+	        }
+
+	        this._loop = false;
+	        this.emit('conclude', code, buf);
+	        this.end();
+	      }
+
+	      this._state = GET_INFO;
+	      return;
+	    }
+
+	    if (this._allowSynchronousEvents) {
+	      this.emit(this._opcode === 0x09 ? 'ping' : 'pong', data);
+	      this._state = GET_INFO;
+	    } else {
+	      this._state = DEFER_EVENT;
+	      setImmediate(() => {
+	        this.emit(this._opcode === 0x09 ? 'ping' : 'pong', data);
+	        this._state = GET_INFO;
+	        this.startLoop(cb);
+	      });
+	    }
+	  }
+
+	  /**
+	   * Builds an error object.
+	   *
+	   * @param {function(new:Error|RangeError)} ErrorCtor The error constructor
+	   * @param {String} message The error message
+	   * @param {Boolean} prefix Specifies whether or not to add a default prefix to
+	   *     `message`
+	   * @param {Number} statusCode The status code
+	   * @param {String} errorCode The exposed error code
+	   * @return {(Error|RangeError)} The error
+	   * @private
+	   */
+	  createError(ErrorCtor, message, prefix, statusCode, errorCode) {
+	    this._loop = false;
+	    this._errored = true;
+
+	    const err = new ErrorCtor(
+	      prefix ? `Invalid WebSocket frame: ${message}` : message
+	    );
+
+	    Error.captureStackTrace(err, this.createError);
+	    err.code = errorCode;
+	    err[kStatusCode] = statusCode;
+	    return err;
+	  }
+	}
+
+	receiver = Receiver;
+	return receiver;
+}
+
+/* eslint no-unused-vars: ["error", { "varsIgnorePattern": "^Duplex" }] */
+
+var sender;
+var hasRequiredSender;
+
+function requireSender () {
+	if (hasRequiredSender) return sender;
+	hasRequiredSender = 1;
+
+	const { Duplex } = require$$0$2;
+	const { randomFillSync } = require$$1;
+
+	const PerMessageDeflate = requirePermessageDeflate();
+	const { EMPTY_BUFFER, kWebSocket, NOOP } = requireConstants();
+	const { isBlob, isValidStatusCode } = requireValidation();
+	const { mask: applyMask, toBuffer } = requireBufferUtil();
+
+	const kByteLength = Symbol('kByteLength');
+	const maskBuffer = Buffer.alloc(4);
+	const RANDOM_POOL_SIZE = 8 * 1024;
+	let randomPool;
+	let randomPoolPointer = RANDOM_POOL_SIZE;
+
+	const DEFAULT = 0;
+	const DEFLATING = 1;
+	const GET_BLOB_DATA = 2;
+
+	/**
+	 * HyBi Sender implementation.
+	 */
+	class Sender {
+	  /**
+	   * Creates a Sender instance.
+	   *
+	   * @param {Duplex} socket The connection socket
+	   * @param {Object} [extensions] An object containing the negotiated extensions
+	   * @param {Function} [generateMask] The function used to generate the masking
+	   *     key
+	   */
+	  constructor(socket, extensions, generateMask) {
+	    this._extensions = extensions || {};
+
+	    if (generateMask) {
+	      this._generateMask = generateMask;
+	      this._maskBuffer = Buffer.alloc(4);
+	    }
+
+	    this._socket = socket;
+
+	    this._firstFragment = true;
+	    this._compress = false;
+
+	    this._bufferedBytes = 0;
+	    this._queue = [];
+	    this._state = DEFAULT;
+	    this.onerror = NOOP;
+	    this[kWebSocket] = undefined;
+	  }
+
+	  /**
+	   * Frames a piece of data according to the HyBi WebSocket protocol.
+	   *
+	   * @param {(Buffer|String)} data The data to frame
+	   * @param {Object} options Options object
+	   * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+	   *     FIN bit
+	   * @param {Function} [options.generateMask] The function used to generate the
+	   *     masking key
+	   * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+	   *     `data`
+	   * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+	   *     key
+	   * @param {Number} options.opcode The opcode
+	   * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+	   *     modified
+	   * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+	   *     RSV1 bit
+	   * @return {(Buffer|String)[]} The framed data
+	   * @public
+	   */
+	  static frame(data, options) {
+	    let mask;
+	    let merge = false;
+	    let offset = 2;
+	    let skipMasking = false;
+
+	    if (options.mask) {
+	      mask = options.maskBuffer || maskBuffer;
+
+	      if (options.generateMask) {
+	        options.generateMask(mask);
+	      } else {
+	        if (randomPoolPointer === RANDOM_POOL_SIZE) {
+	          /* istanbul ignore else  */
+	          if (randomPool === undefined) {
+	            //
+	            // This is lazily initialized because server-sent frames must not
+	            // be masked so it may never be used.
+	            //
+	            randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
+	          }
+
+	          randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
+	          randomPoolPointer = 0;
+	        }
+
+	        mask[0] = randomPool[randomPoolPointer++];
+	        mask[1] = randomPool[randomPoolPointer++];
+	        mask[2] = randomPool[randomPoolPointer++];
+	        mask[3] = randomPool[randomPoolPointer++];
+	      }
+
+	      skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
+	      offset = 6;
+	    }
+
+	    let dataLength;
+
+	    if (typeof data === 'string') {
+	      if (
+	        (!options.mask || skipMasking) &&
+	        options[kByteLength] !== undefined
+	      ) {
+	        dataLength = options[kByteLength];
+	      } else {
+	        data = Buffer.from(data);
+	        dataLength = data.length;
+	      }
+	    } else {
+	      dataLength = data.length;
+	      merge = options.mask && options.readOnly && !skipMasking;
+	    }
+
+	    let payloadLength = dataLength;
+
+	    if (dataLength >= 65536) {
+	      offset += 8;
+	      payloadLength = 127;
+	    } else if (dataLength > 125) {
+	      offset += 2;
+	      payloadLength = 126;
+	    }
+
+	    const target = Buffer.allocUnsafe(merge ? dataLength + offset : offset);
+
+	    target[0] = options.fin ? options.opcode | 0x80 : options.opcode;
+	    if (options.rsv1) target[0] |= 0x40;
+
+	    target[1] = payloadLength;
+
+	    if (payloadLength === 126) {
+	      target.writeUInt16BE(dataLength, 2);
+	    } else if (payloadLength === 127) {
+	      target[2] = target[3] = 0;
+	      target.writeUIntBE(dataLength, 4, 6);
+	    }
+
+	    if (!options.mask) return [target, data];
+
+	    target[1] |= 0x80;
+	    target[offset - 4] = mask[0];
+	    target[offset - 3] = mask[1];
+	    target[offset - 2] = mask[2];
+	    target[offset - 1] = mask[3];
+
+	    if (skipMasking) return [target, data];
+
+	    if (merge) {
+	      applyMask(data, mask, target, offset, dataLength);
+	      return [target];
+	    }
+
+	    applyMask(data, mask, data, 0, dataLength);
+	    return [target, data];
+	  }
+
+	  /**
+	   * Sends a close message to the other peer.
+	   *
+	   * @param {Number} [code] The status code component of the body
+	   * @param {(String|Buffer)} [data] The message component of the body
+	   * @param {Boolean} [mask=false] Specifies whether or not to mask the message
+	   * @param {Function} [cb] Callback
+	   * @public
+	   */
+	  close(code, data, mask, cb) {
+	    let buf;
+
+	    if (code === undefined) {
+	      buf = EMPTY_BUFFER;
+	    } else if (typeof code !== 'number' || !isValidStatusCode(code)) {
+	      throw new TypeError('First argument must be a valid error code number');
+	    } else if (data === undefined || !data.length) {
+	      buf = Buffer.allocUnsafe(2);
+	      buf.writeUInt16BE(code, 0);
+	    } else {
+	      const length = Buffer.byteLength(data);
+
+	      if (length > 123) {
+	        throw new RangeError('The message must not be greater than 123 bytes');
+	      }
+
+	      buf = Buffer.allocUnsafe(2 + length);
+	      buf.writeUInt16BE(code, 0);
+
+	      if (typeof data === 'string') {
+	        buf.write(data, 2);
+	      } else {
+	        buf.set(data, 2);
+	      }
+	    }
+
+	    const options = {
+	      [kByteLength]: buf.length,
+	      fin: true,
+	      generateMask: this._generateMask,
+	      mask,
+	      maskBuffer: this._maskBuffer,
+	      opcode: 0x08,
+	      readOnly: false,
+	      rsv1: false
+	    };
+
+	    if (this._state !== DEFAULT) {
+	      this.enqueue([this.dispatch, buf, false, options, cb]);
+	    } else {
+	      this.sendFrame(Sender.frame(buf, options), cb);
+	    }
+	  }
+
+	  /**
+	   * Sends a ping message to the other peer.
+	   *
+	   * @param {*} data The message to send
+	   * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+	   * @param {Function} [cb] Callback
+	   * @public
+	   */
+	  ping(data, mask, cb) {
+	    let byteLength;
+	    let readOnly;
+
+	    if (typeof data === 'string') {
+	      byteLength = Buffer.byteLength(data);
+	      readOnly = false;
+	    } else if (isBlob(data)) {
+	      byteLength = data.size;
+	      readOnly = false;
+	    } else {
+	      data = toBuffer(data);
+	      byteLength = data.length;
+	      readOnly = toBuffer.readOnly;
+	    }
+
+	    if (byteLength > 125) {
+	      throw new RangeError('The data size must not be greater than 125 bytes');
+	    }
+
+	    const options = {
+	      [kByteLength]: byteLength,
+	      fin: true,
+	      generateMask: this._generateMask,
+	      mask,
+	      maskBuffer: this._maskBuffer,
+	      opcode: 0x09,
+	      readOnly,
+	      rsv1: false
+	    };
+
+	    if (isBlob(data)) {
+	      if (this._state !== DEFAULT) {
+	        this.enqueue([this.getBlobData, data, false, options, cb]);
+	      } else {
+	        this.getBlobData(data, false, options, cb);
+	      }
+	    } else if (this._state !== DEFAULT) {
+	      this.enqueue([this.dispatch, data, false, options, cb]);
+	    } else {
+	      this.sendFrame(Sender.frame(data, options), cb);
+	    }
+	  }
+
+	  /**
+	   * Sends a pong message to the other peer.
+	   *
+	   * @param {*} data The message to send
+	   * @param {Boolean} [mask=false] Specifies whether or not to mask `data`
+	   * @param {Function} [cb] Callback
+	   * @public
+	   */
+	  pong(data, mask, cb) {
+	    let byteLength;
+	    let readOnly;
+
+	    if (typeof data === 'string') {
+	      byteLength = Buffer.byteLength(data);
+	      readOnly = false;
+	    } else if (isBlob(data)) {
+	      byteLength = data.size;
+	      readOnly = false;
+	    } else {
+	      data = toBuffer(data);
+	      byteLength = data.length;
+	      readOnly = toBuffer.readOnly;
+	    }
+
+	    if (byteLength > 125) {
+	      throw new RangeError('The data size must not be greater than 125 bytes');
+	    }
+
+	    const options = {
+	      [kByteLength]: byteLength,
+	      fin: true,
+	      generateMask: this._generateMask,
+	      mask,
+	      maskBuffer: this._maskBuffer,
+	      opcode: 0x0a,
+	      readOnly,
+	      rsv1: false
+	    };
+
+	    if (isBlob(data)) {
+	      if (this._state !== DEFAULT) {
+	        this.enqueue([this.getBlobData, data, false, options, cb]);
+	      } else {
+	        this.getBlobData(data, false, options, cb);
+	      }
+	    } else if (this._state !== DEFAULT) {
+	      this.enqueue([this.dispatch, data, false, options, cb]);
+	    } else {
+	      this.sendFrame(Sender.frame(data, options), cb);
+	    }
+	  }
+
+	  /**
+	   * Sends a data message to the other peer.
+	   *
+	   * @param {*} data The message to send
+	   * @param {Object} options Options object
+	   * @param {Boolean} [options.binary=false] Specifies whether `data` is binary
+	   *     or text
+	   * @param {Boolean} [options.compress=false] Specifies whether or not to
+	   *     compress `data`
+	   * @param {Boolean} [options.fin=false] Specifies whether the fragment is the
+	   *     last one
+	   * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+	   *     `data`
+	   * @param {Function} [cb] Callback
+	   * @public
+	   */
+	  send(data, options, cb) {
+	    const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+	    let opcode = options.binary ? 2 : 1;
+	    let rsv1 = options.compress;
+
+	    let byteLength;
+	    let readOnly;
+
+	    if (typeof data === 'string') {
+	      byteLength = Buffer.byteLength(data);
+	      readOnly = false;
+	    } else if (isBlob(data)) {
+	      byteLength = data.size;
+	      readOnly = false;
+	    } else {
+	      data = toBuffer(data);
+	      byteLength = data.length;
+	      readOnly = toBuffer.readOnly;
+	    }
+
+	    if (this._firstFragment) {
+	      this._firstFragment = false;
+	      if (
+	        rsv1 &&
+	        perMessageDeflate &&
+	        perMessageDeflate.params[
+	          perMessageDeflate._isServer
+	            ? 'server_no_context_takeover'
+	            : 'client_no_context_takeover'
+	        ]
+	      ) {
+	        rsv1 = byteLength >= perMessageDeflate._threshold;
+	      }
+	      this._compress = rsv1;
+	    } else {
+	      rsv1 = false;
+	      opcode = 0;
+	    }
+
+	    if (options.fin) this._firstFragment = true;
+
+	    const opts = {
+	      [kByteLength]: byteLength,
+	      fin: options.fin,
+	      generateMask: this._generateMask,
+	      mask: options.mask,
+	      maskBuffer: this._maskBuffer,
+	      opcode,
+	      readOnly,
+	      rsv1
+	    };
+
+	    if (isBlob(data)) {
+	      if (this._state !== DEFAULT) {
+	        this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
+	      } else {
+	        this.getBlobData(data, this._compress, opts, cb);
+	      }
+	    } else if (this._state !== DEFAULT) {
+	      this.enqueue([this.dispatch, data, this._compress, opts, cb]);
+	    } else {
+	      this.dispatch(data, this._compress, opts, cb);
+	    }
+	  }
+
+	  /**
+	   * Gets the contents of a blob as binary data.
+	   *
+	   * @param {Blob} blob The blob
+	   * @param {Boolean} [compress=false] Specifies whether or not to compress
+	   *     the data
+	   * @param {Object} options Options object
+	   * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+	   *     FIN bit
+	   * @param {Function} [options.generateMask] The function used to generate the
+	   *     masking key
+	   * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+	   *     `data`
+	   * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+	   *     key
+	   * @param {Number} options.opcode The opcode
+	   * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+	   *     modified
+	   * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+	   *     RSV1 bit
+	   * @param {Function} [cb] Callback
+	   * @private
+	   */
+	  getBlobData(blob, compress, options, cb) {
+	    this._bufferedBytes += options[kByteLength];
+	    this._state = GET_BLOB_DATA;
+
+	    blob
+	      .arrayBuffer()
+	      .then((arrayBuffer) => {
+	        if (this._socket.destroyed) {
+	          const err = new Error(
+	            'The socket was closed while the blob was being read'
+	          );
+
+	          //
+	          // `callCallbacks` is called in the next tick to ensure that errors
+	          // that might be thrown in the callbacks behave like errors thrown
+	          // outside the promise chain.
+	          //
+	          process.nextTick(callCallbacks, this, err, cb);
+	          return;
+	        }
+
+	        this._bufferedBytes -= options[kByteLength];
+	        const data = toBuffer(arrayBuffer);
+
+	        if (!compress) {
+	          this._state = DEFAULT;
+	          this.sendFrame(Sender.frame(data, options), cb);
+	          this.dequeue();
+	        } else {
+	          this.dispatch(data, compress, options, cb);
+	        }
+	      })
+	      .catch((err) => {
+	        //
+	        // `onError` is called in the next tick for the same reason that
+	        // `callCallbacks` above is.
+	        //
+	        process.nextTick(onError, this, err, cb);
+	      });
+	  }
+
+	  /**
+	   * Dispatches a message.
+	   *
+	   * @param {(Buffer|String)} data The message to send
+	   * @param {Boolean} [compress=false] Specifies whether or not to compress
+	   *     `data`
+	   * @param {Object} options Options object
+	   * @param {Boolean} [options.fin=false] Specifies whether or not to set the
+	   *     FIN bit
+	   * @param {Function} [options.generateMask] The function used to generate the
+	   *     masking key
+	   * @param {Boolean} [options.mask=false] Specifies whether or not to mask
+	   *     `data`
+	   * @param {Buffer} [options.maskBuffer] The buffer used to store the masking
+	   *     key
+	   * @param {Number} options.opcode The opcode
+	   * @param {Boolean} [options.readOnly=false] Specifies whether `data` can be
+	   *     modified
+	   * @param {Boolean} [options.rsv1=false] Specifies whether or not to set the
+	   *     RSV1 bit
+	   * @param {Function} [cb] Callback
+	   * @private
+	   */
+	  dispatch(data, compress, options, cb) {
+	    if (!compress) {
+	      this.sendFrame(Sender.frame(data, options), cb);
+	      return;
+	    }
+
+	    const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+
+	    this._bufferedBytes += options[kByteLength];
+	    this._state = DEFLATING;
+	    perMessageDeflate.compress(data, options.fin, (_, buf) => {
+	      if (this._socket.destroyed) {
+	        const err = new Error(
+	          'The socket was closed while data was being compressed'
+	        );
+
+	        callCallbacks(this, err, cb);
+	        return;
+	      }
+
+	      this._bufferedBytes -= options[kByteLength];
+	      this._state = DEFAULT;
+	      options.readOnly = false;
+	      this.sendFrame(Sender.frame(buf, options), cb);
+	      this.dequeue();
+	    });
+	  }
+
+	  /**
+	   * Executes queued send operations.
+	   *
+	   * @private
+	   */
+	  dequeue() {
+	    while (this._state === DEFAULT && this._queue.length) {
+	      const params = this._queue.shift();
+
+	      this._bufferedBytes -= params[3][kByteLength];
+	      Reflect.apply(params[0], this, params.slice(1));
+	    }
+	  }
+
+	  /**
+	   * Enqueues a send operation.
+	   *
+	   * @param {Array} params Send operation parameters.
+	   * @private
+	   */
+	  enqueue(params) {
+	    this._bufferedBytes += params[3][kByteLength];
+	    this._queue.push(params);
+	  }
+
+	  /**
+	   * Sends a frame.
+	   *
+	   * @param {(Buffer | String)[]} list The frame to send
+	   * @param {Function} [cb] Callback
+	   * @private
+	   */
+	  sendFrame(list, cb) {
+	    if (list.length === 2) {
+	      this._socket.cork();
+	      this._socket.write(list[0]);
+	      this._socket.write(list[1], cb);
+	      this._socket.uncork();
+	    } else {
+	      this._socket.write(list[0], cb);
+	    }
+	  }
+	}
+
+	sender = Sender;
+
+	/**
+	 * Calls queued callbacks with an error.
+	 *
+	 * @param {Sender} sender The `Sender` instance
+	 * @param {Error} err The error to call the callbacks with
+	 * @param {Function} [cb] The first callback
+	 * @private
+	 */
+	function callCallbacks(sender, err, cb) {
+	  if (typeof cb === 'function') cb(err);
+
+	  for (let i = 0; i < sender._queue.length; i++) {
+	    const params = sender._queue[i];
+	    const callback = params[params.length - 1];
+
+	    if (typeof callback === 'function') callback(err);
+	  }
+	}
+
+	/**
+	 * Handles a `Sender` error.
+	 *
+	 * @param {Sender} sender The `Sender` instance
+	 * @param {Error} err The error
+	 * @param {Function} [cb] The first pending callback
+	 * @private
+	 */
+	function onError(sender, err, cb) {
+	  callCallbacks(sender, err, cb);
+	  sender.onerror(err);
+	}
+	return sender;
+}
+
+var eventTarget;
+var hasRequiredEventTarget;
+
+function requireEventTarget () {
+	if (hasRequiredEventTarget) return eventTarget;
+	hasRequiredEventTarget = 1;
+
+	const { kForOnEventAttribute, kListener } = requireConstants();
+
+	const kCode = Symbol('kCode');
+	const kData = Symbol('kData');
+	const kError = Symbol('kError');
+	const kMessage = Symbol('kMessage');
+	const kReason = Symbol('kReason');
+	const kTarget = Symbol('kTarget');
+	const kType = Symbol('kType');
+	const kWasClean = Symbol('kWasClean');
+
+	/**
+	 * Class representing an event.
+	 */
+	class Event {
+	  /**
+	   * Create a new `Event`.
+	   *
+	   * @param {String} type The name of the event
+	   * @throws {TypeError} If the `type` argument is not specified
+	   */
+	  constructor(type) {
+	    this[kTarget] = null;
+	    this[kType] = type;
+	  }
+
+	  /**
+	   * @type {*}
+	   */
+	  get target() {
+	    return this[kTarget];
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get type() {
+	    return this[kType];
+	  }
+	}
+
+	Object.defineProperty(Event.prototype, 'target', { enumerable: true });
+	Object.defineProperty(Event.prototype, 'type', { enumerable: true });
+
+	/**
+	 * Class representing a close event.
+	 *
+	 * @extends Event
+	 */
+	class CloseEvent extends Event {
+	  /**
+	   * Create a new `CloseEvent`.
+	   *
+	   * @param {String} type The name of the event
+	   * @param {Object} [options] A dictionary object that allows for setting
+	   *     attributes via object members of the same name
+	   * @param {Number} [options.code=0] The status code explaining why the
+	   *     connection was closed
+	   * @param {String} [options.reason=''] A human-readable string explaining why
+	   *     the connection was closed
+	   * @param {Boolean} [options.wasClean=false] Indicates whether or not the
+	   *     connection was cleanly closed
+	   */
+	  constructor(type, options = {}) {
+	    super(type);
+
+	    this[kCode] = options.code === undefined ? 0 : options.code;
+	    this[kReason] = options.reason === undefined ? '' : options.reason;
+	    this[kWasClean] = options.wasClean === undefined ? false : options.wasClean;
+	  }
+
+	  /**
+	   * @type {Number}
+	   */
+	  get code() {
+	    return this[kCode];
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get reason() {
+	    return this[kReason];
+	  }
+
+	  /**
+	   * @type {Boolean}
+	   */
+	  get wasClean() {
+	    return this[kWasClean];
+	  }
+	}
+
+	Object.defineProperty(CloseEvent.prototype, 'code', { enumerable: true });
+	Object.defineProperty(CloseEvent.prototype, 'reason', { enumerable: true });
+	Object.defineProperty(CloseEvent.prototype, 'wasClean', { enumerable: true });
+
+	/**
+	 * Class representing an error event.
+	 *
+	 * @extends Event
+	 */
+	class ErrorEvent extends Event {
+	  /**
+	   * Create a new `ErrorEvent`.
+	   *
+	   * @param {String} type The name of the event
+	   * @param {Object} [options] A dictionary object that allows for setting
+	   *     attributes via object members of the same name
+	   * @param {*} [options.error=null] The error that generated this event
+	   * @param {String} [options.message=''] The error message
+	   */
+	  constructor(type, options = {}) {
+	    super(type);
+
+	    this[kError] = options.error === undefined ? null : options.error;
+	    this[kMessage] = options.message === undefined ? '' : options.message;
+	  }
+
+	  /**
+	   * @type {*}
+	   */
+	  get error() {
+	    return this[kError];
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get message() {
+	    return this[kMessage];
+	  }
+	}
+
+	Object.defineProperty(ErrorEvent.prototype, 'error', { enumerable: true });
+	Object.defineProperty(ErrorEvent.prototype, 'message', { enumerable: true });
+
+	/**
+	 * Class representing a message event.
+	 *
+	 * @extends Event
+	 */
+	class MessageEvent extends Event {
+	  /**
+	   * Create a new `MessageEvent`.
+	   *
+	   * @param {String} type The name of the event
+	   * @param {Object} [options] A dictionary object that allows for setting
+	   *     attributes via object members of the same name
+	   * @param {*} [options.data=null] The message content
+	   */
+	  constructor(type, options = {}) {
+	    super(type);
+
+	    this[kData] = options.data === undefined ? null : options.data;
+	  }
+
+	  /**
+	   * @type {*}
+	   */
+	  get data() {
+	    return this[kData];
+	  }
+	}
+
+	Object.defineProperty(MessageEvent.prototype, 'data', { enumerable: true });
+
+	/**
+	 * This provides methods for emulating the `EventTarget` interface. It's not
+	 * meant to be used directly.
+	 *
+	 * @mixin
+	 */
+	const EventTarget = {
+	  /**
+	   * Register an event listener.
+	   *
+	   * @param {String} type A string representing the event type to listen for
+	   * @param {(Function|Object)} handler The listener to add
+	   * @param {Object} [options] An options object specifies characteristics about
+	   *     the event listener
+	   * @param {Boolean} [options.once=false] A `Boolean` indicating that the
+	   *     listener should be invoked at most once after being added. If `true`,
+	   *     the listener would be automatically removed when invoked.
+	   * @public
+	   */
+	  addEventListener(type, handler, options = {}) {
+	    for (const listener of this.listeners(type)) {
+	      if (
+	        !options[kForOnEventAttribute] &&
+	        listener[kListener] === handler &&
+	        !listener[kForOnEventAttribute]
+	      ) {
+	        return;
+	      }
+	    }
+
+	    let wrapper;
+
+	    if (type === 'message') {
+	      wrapper = function onMessage(data, isBinary) {
+	        const event = new MessageEvent('message', {
+	          data: isBinary ? data : data.toString()
+	        });
+
+	        event[kTarget] = this;
+	        callListener(handler, this, event);
+	      };
+	    } else if (type === 'close') {
+	      wrapper = function onClose(code, message) {
+	        const event = new CloseEvent('close', {
+	          code,
+	          reason: message.toString(),
+	          wasClean: this._closeFrameReceived && this._closeFrameSent
+	        });
+
+	        event[kTarget] = this;
+	        callListener(handler, this, event);
+	      };
+	    } else if (type === 'error') {
+	      wrapper = function onError(error) {
+	        const event = new ErrorEvent('error', {
+	          error,
+	          message: error.message
+	        });
+
+	        event[kTarget] = this;
+	        callListener(handler, this, event);
+	      };
+	    } else if (type === 'open') {
+	      wrapper = function onOpen() {
+	        const event = new Event('open');
+
+	        event[kTarget] = this;
+	        callListener(handler, this, event);
+	      };
+	    } else {
+	      return;
+	    }
+
+	    wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
+	    wrapper[kListener] = handler;
+
+	    if (options.once) {
+	      this.once(type, wrapper);
+	    } else {
+	      this.on(type, wrapper);
+	    }
+	  },
+
+	  /**
+	   * Remove an event listener.
+	   *
+	   * @param {String} type A string representing the event type to remove
+	   * @param {(Function|Object)} handler The listener to remove
+	   * @public
+	   */
+	  removeEventListener(type, handler) {
+	    for (const listener of this.listeners(type)) {
+	      if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+	        this.removeListener(type, listener);
+	        break;
+	      }
+	    }
+	  }
+	};
+
+	eventTarget = {
+	  CloseEvent,
+	  ErrorEvent,
+	  Event,
+	  EventTarget,
+	  MessageEvent
+	};
+
+	/**
+	 * Call an event listener
+	 *
+	 * @param {(Function|Object)} listener The listener to call
+	 * @param {*} thisArg The value to use as `this`` when calling the listener
+	 * @param {Event} event The event to pass to the listener
+	 * @private
+	 */
+	function callListener(listener, thisArg, event) {
+	  if (typeof listener === 'object' && listener.handleEvent) {
+	    listener.handleEvent.call(listener, event);
+	  } else {
+	    listener.call(thisArg, event);
+	  }
+	}
+	return eventTarget;
+}
+
+var extension;
+var hasRequiredExtension;
+
+function requireExtension () {
+	if (hasRequiredExtension) return extension;
+	hasRequiredExtension = 1;
+
+	const { tokenChars } = requireValidation();
+
+	/**
+	 * Adds an offer to the map of extension offers or a parameter to the map of
+	 * parameters.
+	 *
+	 * @param {Object} dest The map of extension offers or parameters
+	 * @param {String} name The extension or parameter name
+	 * @param {(Object|Boolean|String)} elem The extension parameters or the
+	 *     parameter value
+	 * @private
+	 */
+	function push(dest, name, elem) {
+	  if (dest[name] === undefined) dest[name] = [elem];
+	  else dest[name].push(elem);
+	}
+
+	/**
+	 * Parses the `Sec-WebSocket-Extensions` header into an object.
+	 *
+	 * @param {String} header The field value of the header
+	 * @return {Object} The parsed object
+	 * @public
+	 */
+	function parse(header) {
+	  const offers = Object.create(null);
+	  let params = Object.create(null);
+	  let mustUnescape = false;
+	  let isEscaping = false;
+	  let inQuotes = false;
+	  let extensionName;
+	  let paramName;
+	  let start = -1;
+	  let code = -1;
+	  let end = -1;
+	  let i = 0;
+
+	  for (; i < header.length; i++) {
+	    code = header.charCodeAt(i);
+
+	    if (extensionName === undefined) {
+	      if (end === -1 && tokenChars[code] === 1) {
+	        if (start === -1) start = i;
+	      } else if (
+	        i !== 0 &&
+	        (code === 0x20 /* ' ' */ || code === 0x09) /* '\t' */
+	      ) {
+	        if (end === -1 && start !== -1) end = i;
+	      } else if (code === 0x3b /* ';' */ || code === 0x2c /* ',' */) {
+	        if (start === -1) {
+	          throw new SyntaxError(`Unexpected character at index ${i}`);
+	        }
+
+	        if (end === -1) end = i;
+	        const name = header.slice(start, end);
+	        if (code === 0x2c) {
+	          push(offers, name, params);
+	          params = Object.create(null);
+	        } else {
+	          extensionName = name;
+	        }
+
+	        start = end = -1;
+	      } else {
+	        throw new SyntaxError(`Unexpected character at index ${i}`);
+	      }
+	    } else if (paramName === undefined) {
+	      if (end === -1 && tokenChars[code] === 1) {
+	        if (start === -1) start = i;
+	      } else if (code === 0x20 || code === 0x09) {
+	        if (end === -1 && start !== -1) end = i;
+	      } else if (code === 0x3b || code === 0x2c) {
+	        if (start === -1) {
+	          throw new SyntaxError(`Unexpected character at index ${i}`);
+	        }
+
+	        if (end === -1) end = i;
+	        push(params, header.slice(start, end), true);
+	        if (code === 0x2c) {
+	          push(offers, extensionName, params);
+	          params = Object.create(null);
+	          extensionName = undefined;
+	        }
+
+	        start = end = -1;
+	      } else if (code === 0x3d /* '=' */ && start !== -1 && end === -1) {
+	        paramName = header.slice(start, i);
+	        start = end = -1;
+	      } else {
+	        throw new SyntaxError(`Unexpected character at index ${i}`);
+	      }
+	    } else {
+	      //
+	      // The value of a quoted-string after unescaping must conform to the
+	      // token ABNF, so only token characters are valid.
+	      // Ref: https://tools.ietf.org/html/rfc6455#section-9.1
+	      //
+	      if (isEscaping) {
+	        if (tokenChars[code] !== 1) {
+	          throw new SyntaxError(`Unexpected character at index ${i}`);
+	        }
+	        if (start === -1) start = i;
+	        else if (!mustUnescape) mustUnescape = true;
+	        isEscaping = false;
+	      } else if (inQuotes) {
+	        if (tokenChars[code] === 1) {
+	          if (start === -1) start = i;
+	        } else if (code === 0x22 /* '"' */ && start !== -1) {
+	          inQuotes = false;
+	          end = i;
+	        } else if (code === 0x5c /* '\' */) {
+	          isEscaping = true;
+	        } else {
+	          throw new SyntaxError(`Unexpected character at index ${i}`);
+	        }
+	      } else if (code === 0x22 && header.charCodeAt(i - 1) === 0x3d) {
+	        inQuotes = true;
+	      } else if (end === -1 && tokenChars[code] === 1) {
+	        if (start === -1) start = i;
+	      } else if (start !== -1 && (code === 0x20 || code === 0x09)) {
+	        if (end === -1) end = i;
+	      } else if (code === 0x3b || code === 0x2c) {
+	        if (start === -1) {
+	          throw new SyntaxError(`Unexpected character at index ${i}`);
+	        }
+
+	        if (end === -1) end = i;
+	        let value = header.slice(start, end);
+	        if (mustUnescape) {
+	          value = value.replace(/\\/g, '');
+	          mustUnescape = false;
+	        }
+	        push(params, paramName, value);
+	        if (code === 0x2c) {
+	          push(offers, extensionName, params);
+	          params = Object.create(null);
+	          extensionName = undefined;
+	        }
+
+	        paramName = undefined;
+	        start = end = -1;
+	      } else {
+	        throw new SyntaxError(`Unexpected character at index ${i}`);
+	      }
+	    }
+	  }
+
+	  if (start === -1 || inQuotes || code === 0x20 || code === 0x09) {
+	    throw new SyntaxError('Unexpected end of input');
+	  }
+
+	  if (end === -1) end = i;
+	  const token = header.slice(start, end);
+	  if (extensionName === undefined) {
+	    push(offers, token, params);
+	  } else {
+	    if (paramName === undefined) {
+	      push(params, token, true);
+	    } else if (mustUnescape) {
+	      push(params, paramName, token.replace(/\\/g, ''));
+	    } else {
+	      push(params, paramName, token);
+	    }
+	    push(offers, extensionName, params);
+	  }
+
+	  return offers;
+	}
+
+	/**
+	 * Builds the `Sec-WebSocket-Extensions` header field value.
+	 *
+	 * @param {Object} extensions The map of extensions and parameters to format
+	 * @return {String} A string representing the given object
+	 * @public
+	 */
+	function format(extensions) {
+	  return Object.keys(extensions)
+	    .map((extension) => {
+	      let configurations = extensions[extension];
+	      if (!Array.isArray(configurations)) configurations = [configurations];
+	      return configurations
+	        .map((params) => {
+	          return [extension]
+	            .concat(
+	              Object.keys(params).map((k) => {
+	                let values = params[k];
+	                if (!Array.isArray(values)) values = [values];
+	                return values
+	                  .map((v) => (v === true ? k : `${k}=${v}`))
+	                  .join('; ');
+	              })
+	            )
+	            .join('; ');
+	        })
+	        .join(', ');
+	    })
+	    .join(', ');
+	}
+
+	extension = { format, parse };
+	return extension;
+}
+
+/* eslint no-unused-vars: ["error", { "varsIgnorePattern": "^Duplex|Readable$", "caughtErrors": "none" }] */
+
+var websocket;
+var hasRequiredWebsocket;
+
+function requireWebsocket () {
+	if (hasRequiredWebsocket) return websocket;
+	hasRequiredWebsocket = 1;
+
+	const EventEmitter = require$$0$3;
+	const https = require$$1$1;
+	const http = require$$2;
+	const net = require$$3;
+	const tls = require$$4;
+	const { randomBytes, createHash } = require$$1;
+	const { Duplex, Readable } = require$$0$2;
+	const { URL } = require$$7;
+
+	const PerMessageDeflate = requirePermessageDeflate();
+	const Receiver = requireReceiver();
+	const Sender = requireSender();
+	const { isBlob } = requireValidation();
+
+	const {
+	  BINARY_TYPES,
+	  EMPTY_BUFFER,
+	  GUID,
+	  kForOnEventAttribute,
+	  kListener,
+	  kStatusCode,
+	  kWebSocket,
+	  NOOP
+	} = requireConstants();
+	const {
+	  EventTarget: { addEventListener, removeEventListener }
+	} = requireEventTarget();
+	const { format, parse } = requireExtension();
+	const { toBuffer } = requireBufferUtil();
+
+	const closeTimeout = 30 * 1000;
+	const kAborted = Symbol('kAborted');
+	const protocolVersions = [8, 13];
+	const readyStates = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+	const subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
+
+	/**
+	 * Class representing a WebSocket.
+	 *
+	 * @extends EventEmitter
+	 */
+	class WebSocket extends EventEmitter {
+	  /**
+	   * Create a new `WebSocket`.
+	   *
+	   * @param {(String|URL)} address The URL to which to connect
+	   * @param {(String|String[])} [protocols] The subprotocols
+	   * @param {Object} [options] Connection options
+	   */
+	  constructor(address, protocols, options) {
+	    super();
+
+	    this._binaryType = BINARY_TYPES[0];
+	    this._closeCode = 1006;
+	    this._closeFrameReceived = false;
+	    this._closeFrameSent = false;
+	    this._closeMessage = EMPTY_BUFFER;
+	    this._closeTimer = null;
+	    this._errorEmitted = false;
+	    this._extensions = {};
+	    this._paused = false;
+	    this._protocol = '';
+	    this._readyState = WebSocket.CONNECTING;
+	    this._receiver = null;
+	    this._sender = null;
+	    this._socket = null;
+
+	    if (address !== null) {
+	      this._bufferedAmount = 0;
+	      this._isServer = false;
+	      this._redirects = 0;
+
+	      if (protocols === undefined) {
+	        protocols = [];
+	      } else if (!Array.isArray(protocols)) {
+	        if (typeof protocols === 'object' && protocols !== null) {
+	          options = protocols;
+	          protocols = [];
+	        } else {
+	          protocols = [protocols];
+	        }
+	      }
+
+	      initAsClient(this, address, protocols, options);
+	    } else {
+	      this._autoPong = options.autoPong;
+	      this._isServer = true;
+	    }
+	  }
+
+	  /**
+	   * For historical reasons, the custom "nodebuffer" type is used by the default
+	   * instead of "blob".
+	   *
+	   * @type {String}
+	   */
+	  get binaryType() {
+	    return this._binaryType;
+	  }
+
+	  set binaryType(type) {
+	    if (!BINARY_TYPES.includes(type)) return;
+
+	    this._binaryType = type;
+
+	    //
+	    // Allow to change `binaryType` on the fly.
+	    //
+	    if (this._receiver) this._receiver._binaryType = type;
+	  }
+
+	  /**
+	   * @type {Number}
+	   */
+	  get bufferedAmount() {
+	    if (!this._socket) return this._bufferedAmount;
+
+	    return this._socket._writableState.length + this._sender._bufferedBytes;
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get extensions() {
+	    return Object.keys(this._extensions).join();
+	  }
+
+	  /**
+	   * @type {Boolean}
+	   */
+	  get isPaused() {
+	    return this._paused;
+	  }
+
+	  /**
+	   * @type {Function}
+	   */
+	  /* istanbul ignore next */
+	  get onclose() {
+	    return null;
+	  }
+
+	  /**
+	   * @type {Function}
+	   */
+	  /* istanbul ignore next */
+	  get onerror() {
+	    return null;
+	  }
+
+	  /**
+	   * @type {Function}
+	   */
+	  /* istanbul ignore next */
+	  get onopen() {
+	    return null;
+	  }
+
+	  /**
+	   * @type {Function}
+	   */
+	  /* istanbul ignore next */
+	  get onmessage() {
+	    return null;
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get protocol() {
+	    return this._protocol;
+	  }
+
+	  /**
+	   * @type {Number}
+	   */
+	  get readyState() {
+	    return this._readyState;
+	  }
+
+	  /**
+	   * @type {String}
+	   */
+	  get url() {
+	    return this._url;
+	  }
+
+	  /**
+	   * Set up the socket and the internal resources.
+	   *
+	   * @param {Duplex} socket The network socket between the server and client
+	   * @param {Buffer} head The first packet of the upgraded stream
+	   * @param {Object} options Options object
+	   * @param {Boolean} [options.allowSynchronousEvents=false] Specifies whether
+	   *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+	   *     multiple times in the same tick
+	   * @param {Function} [options.generateMask] The function used to generate the
+	   *     masking key
+	   * @param {Number} [options.maxPayload=0] The maximum allowed message size
+	   * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+	   *     not to skip UTF-8 validation for text and close messages
+	   * @private
+	   */
+	  setSocket(socket, head, options) {
+	    const receiver = new Receiver({
+	      allowSynchronousEvents: options.allowSynchronousEvents,
+	      binaryType: this.binaryType,
+	      extensions: this._extensions,
+	      isServer: this._isServer,
+	      maxPayload: options.maxPayload,
+	      skipUTF8Validation: options.skipUTF8Validation
+	    });
+
+	    const sender = new Sender(socket, this._extensions, options.generateMask);
+
+	    this._receiver = receiver;
+	    this._sender = sender;
+	    this._socket = socket;
+
+	    receiver[kWebSocket] = this;
+	    sender[kWebSocket] = this;
+	    socket[kWebSocket] = this;
+
+	    receiver.on('conclude', receiverOnConclude);
+	    receiver.on('drain', receiverOnDrain);
+	    receiver.on('error', receiverOnError);
+	    receiver.on('message', receiverOnMessage);
+	    receiver.on('ping', receiverOnPing);
+	    receiver.on('pong', receiverOnPong);
+
+	    sender.onerror = senderOnError;
+
+	    //
+	    // These methods may not be available if `socket` is just a `Duplex`.
+	    //
+	    if (socket.setTimeout) socket.setTimeout(0);
+	    if (socket.setNoDelay) socket.setNoDelay();
+
+	    if (head.length > 0) socket.unshift(head);
+
+	    socket.on('close', socketOnClose);
+	    socket.on('data', socketOnData);
+	    socket.on('end', socketOnEnd);
+	    socket.on('error', socketOnError);
+
+	    this._readyState = WebSocket.OPEN;
+	    this.emit('open');
+	  }
+
+	  /**
+	   * Emit the `'close'` event.
+	   *
+	   * @private
+	   */
+	  emitClose() {
+	    if (!this._socket) {
+	      this._readyState = WebSocket.CLOSED;
+	      this.emit('close', this._closeCode, this._closeMessage);
+	      return;
+	    }
+
+	    if (this._extensions[PerMessageDeflate.extensionName]) {
+	      this._extensions[PerMessageDeflate.extensionName].cleanup();
+	    }
+
+	    this._receiver.removeAllListeners();
+	    this._readyState = WebSocket.CLOSED;
+	    this.emit('close', this._closeCode, this._closeMessage);
+	  }
+
+	  /**
+	   * Start a closing handshake.
+	   *
+	   *          +----------+   +-----------+   +----------+
+	   *     - - -|ws.close()|-->|close frame|-->|ws.close()|- - -
+	   *    |     +----------+   +-----------+   +----------+     |
+	   *          +----------+   +-----------+         |
+	   * CLOSING  |ws.close()|<--|close frame|<--+-----+       CLOSING
+	   *          +----------+   +-----------+   |
+	   *    |           |                        |   +---+        |
+	   *                +------------------------+-->|fin| - - - -
+	   *    |         +---+                      |   +---+
+	   *     - - - - -|fin|<---------------------+
+	   *              +---+
+	   *
+	   * @param {Number} [code] Status code explaining why the connection is closing
+	   * @param {(String|Buffer)} [data] The reason why the connection is
+	   *     closing
+	   * @public
+	   */
+	  close(code, data) {
+	    if (this.readyState === WebSocket.CLOSED) return;
+	    if (this.readyState === WebSocket.CONNECTING) {
+	      const msg = 'WebSocket was closed before the connection was established';
+	      abortHandshake(this, this._req, msg);
+	      return;
+	    }
+
+	    if (this.readyState === WebSocket.CLOSING) {
+	      if (
+	        this._closeFrameSent &&
+	        (this._closeFrameReceived || this._receiver._writableState.errorEmitted)
+	      ) {
+	        this._socket.end();
+	      }
+
+	      return;
+	    }
+
+	    this._readyState = WebSocket.CLOSING;
+	    this._sender.close(code, data, !this._isServer, (err) => {
+	      //
+	      // This error is handled by the `'error'` listener on the socket. We only
+	      // want to know if the close frame has been sent here.
+	      //
+	      if (err) return;
+
+	      this._closeFrameSent = true;
+
+	      if (
+	        this._closeFrameReceived ||
+	        this._receiver._writableState.errorEmitted
+	      ) {
+	        this._socket.end();
+	      }
+	    });
+
+	    setCloseTimer(this);
+	  }
+
+	  /**
+	   * Pause the socket.
+	   *
+	   * @public
+	   */
+	  pause() {
+	    if (
+	      this.readyState === WebSocket.CONNECTING ||
+	      this.readyState === WebSocket.CLOSED
+	    ) {
+	      return;
+	    }
+
+	    this._paused = true;
+	    this._socket.pause();
+	  }
+
+	  /**
+	   * Send a ping.
+	   *
+	   * @param {*} [data] The data to send
+	   * @param {Boolean} [mask] Indicates whether or not to mask `data`
+	   * @param {Function} [cb] Callback which is executed when the ping is sent
+	   * @public
+	   */
+	  ping(data, mask, cb) {
+	    if (this.readyState === WebSocket.CONNECTING) {
+	      throw new Error('WebSocket is not open: readyState 0 (CONNECTING)');
+	    }
+
+	    if (typeof data === 'function') {
+	      cb = data;
+	      data = mask = undefined;
+	    } else if (typeof mask === 'function') {
+	      cb = mask;
+	      mask = undefined;
+	    }
+
+	    if (typeof data === 'number') data = data.toString();
+
+	    if (this.readyState !== WebSocket.OPEN) {
+	      sendAfterClose(this, data, cb);
+	      return;
+	    }
+
+	    if (mask === undefined) mask = !this._isServer;
+	    this._sender.ping(data || EMPTY_BUFFER, mask, cb);
+	  }
+
+	  /**
+	   * Send a pong.
+	   *
+	   * @param {*} [data] The data to send
+	   * @param {Boolean} [mask] Indicates whether or not to mask `data`
+	   * @param {Function} [cb] Callback which is executed when the pong is sent
+	   * @public
+	   */
+	  pong(data, mask, cb) {
+	    if (this.readyState === WebSocket.CONNECTING) {
+	      throw new Error('WebSocket is not open: readyState 0 (CONNECTING)');
+	    }
+
+	    if (typeof data === 'function') {
+	      cb = data;
+	      data = mask = undefined;
+	    } else if (typeof mask === 'function') {
+	      cb = mask;
+	      mask = undefined;
+	    }
+
+	    if (typeof data === 'number') data = data.toString();
+
+	    if (this.readyState !== WebSocket.OPEN) {
+	      sendAfterClose(this, data, cb);
+	      return;
+	    }
+
+	    if (mask === undefined) mask = !this._isServer;
+	    this._sender.pong(data || EMPTY_BUFFER, mask, cb);
+	  }
+
+	  /**
+	   * Resume the socket.
+	   *
+	   * @public
+	   */
+	  resume() {
+	    if (
+	      this.readyState === WebSocket.CONNECTING ||
+	      this.readyState === WebSocket.CLOSED
+	    ) {
+	      return;
+	    }
+
+	    this._paused = false;
+	    if (!this._receiver._writableState.needDrain) this._socket.resume();
+	  }
+
+	  /**
+	   * Send a data message.
+	   *
+	   * @param {*} data The message to send
+	   * @param {Object} [options] Options object
+	   * @param {Boolean} [options.binary] Specifies whether `data` is binary or
+	   *     text
+	   * @param {Boolean} [options.compress] Specifies whether or not to compress
+	   *     `data`
+	   * @param {Boolean} [options.fin=true] Specifies whether the fragment is the
+	   *     last one
+	   * @param {Boolean} [options.mask] Specifies whether or not to mask `data`
+	   * @param {Function} [cb] Callback which is executed when data is written out
+	   * @public
+	   */
+	  send(data, options, cb) {
+	    if (this.readyState === WebSocket.CONNECTING) {
+	      throw new Error('WebSocket is not open: readyState 0 (CONNECTING)');
+	    }
+
+	    if (typeof options === 'function') {
+	      cb = options;
+	      options = {};
+	    }
+
+	    if (typeof data === 'number') data = data.toString();
+
+	    if (this.readyState !== WebSocket.OPEN) {
+	      sendAfterClose(this, data, cb);
+	      return;
+	    }
+
+	    const opts = {
+	      binary: typeof data !== 'string',
+	      mask: !this._isServer,
+	      compress: true,
+	      fin: true,
+	      ...options
+	    };
+
+	    if (!this._extensions[PerMessageDeflate.extensionName]) {
+	      opts.compress = false;
+	    }
+
+	    this._sender.send(data || EMPTY_BUFFER, opts, cb);
+	  }
+
+	  /**
+	   * Forcibly close the connection.
+	   *
+	   * @public
+	   */
+	  terminate() {
+	    if (this.readyState === WebSocket.CLOSED) return;
+	    if (this.readyState === WebSocket.CONNECTING) {
+	      const msg = 'WebSocket was closed before the connection was established';
+	      abortHandshake(this, this._req, msg);
+	      return;
+	    }
+
+	    if (this._socket) {
+	      this._readyState = WebSocket.CLOSING;
+	      this._socket.destroy();
+	    }
+	  }
+	}
+
+	/**
+	 * @constant {Number} CONNECTING
+	 * @memberof WebSocket
+	 */
+	Object.defineProperty(WebSocket, 'CONNECTING', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CONNECTING')
+	});
+
+	/**
+	 * @constant {Number} CONNECTING
+	 * @memberof WebSocket.prototype
+	 */
+	Object.defineProperty(WebSocket.prototype, 'CONNECTING', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CONNECTING')
+	});
+
+	/**
+	 * @constant {Number} OPEN
+	 * @memberof WebSocket
+	 */
+	Object.defineProperty(WebSocket, 'OPEN', {
+	  enumerable: true,
+	  value: readyStates.indexOf('OPEN')
+	});
+
+	/**
+	 * @constant {Number} OPEN
+	 * @memberof WebSocket.prototype
+	 */
+	Object.defineProperty(WebSocket.prototype, 'OPEN', {
+	  enumerable: true,
+	  value: readyStates.indexOf('OPEN')
+	});
+
+	/**
+	 * @constant {Number} CLOSING
+	 * @memberof WebSocket
+	 */
+	Object.defineProperty(WebSocket, 'CLOSING', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CLOSING')
+	});
+
+	/**
+	 * @constant {Number} CLOSING
+	 * @memberof WebSocket.prototype
+	 */
+	Object.defineProperty(WebSocket.prototype, 'CLOSING', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CLOSING')
+	});
+
+	/**
+	 * @constant {Number} CLOSED
+	 * @memberof WebSocket
+	 */
+	Object.defineProperty(WebSocket, 'CLOSED', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CLOSED')
+	});
+
+	/**
+	 * @constant {Number} CLOSED
+	 * @memberof WebSocket.prototype
+	 */
+	Object.defineProperty(WebSocket.prototype, 'CLOSED', {
+	  enumerable: true,
+	  value: readyStates.indexOf('CLOSED')
+	});
+
+	[
+	  'binaryType',
+	  'bufferedAmount',
+	  'extensions',
+	  'isPaused',
+	  'protocol',
+	  'readyState',
+	  'url'
+	].forEach((property) => {
+	  Object.defineProperty(WebSocket.prototype, property, { enumerable: true });
+	});
+
+	//
+	// Add the `onopen`, `onerror`, `onclose`, and `onmessage` attributes.
+	// See https://html.spec.whatwg.org/multipage/comms.html#the-websocket-interface
+	//
+	['open', 'error', 'close', 'message'].forEach((method) => {
+	  Object.defineProperty(WebSocket.prototype, `on${method}`, {
+	    enumerable: true,
+	    get() {
+	      for (const listener of this.listeners(method)) {
+	        if (listener[kForOnEventAttribute]) return listener[kListener];
+	      }
+
+	      return null;
+	    },
+	    set(handler) {
+	      for (const listener of this.listeners(method)) {
+	        if (listener[kForOnEventAttribute]) {
+	          this.removeListener(method, listener);
+	          break;
+	        }
+	      }
+
+	      if (typeof handler !== 'function') return;
+
+	      this.addEventListener(method, handler, {
+	        [kForOnEventAttribute]: true
+	      });
+	    }
+	  });
+	});
+
+	WebSocket.prototype.addEventListener = addEventListener;
+	WebSocket.prototype.removeEventListener = removeEventListener;
+
+	websocket = WebSocket;
+
+	/**
+	 * Initialize a WebSocket client.
+	 *
+	 * @param {WebSocket} websocket The client to initialize
+	 * @param {(String|URL)} address The URL to which to connect
+	 * @param {Array} protocols The subprotocols
+	 * @param {Object} [options] Connection options
+	 * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether any
+	 *     of the `'message'`, `'ping'`, and `'pong'` events can be emitted multiple
+	 *     times in the same tick
+	 * @param {Boolean} [options.autoPong=true] Specifies whether or not to
+	 *     automatically send a pong in response to a ping
+	 * @param {Function} [options.finishRequest] A function which can be used to
+	 *     customize the headers of each http request before it is sent
+	 * @param {Boolean} [options.followRedirects=false] Whether or not to follow
+	 *     redirects
+	 * @param {Function} [options.generateMask] The function used to generate the
+	 *     masking key
+	 * @param {Number} [options.handshakeTimeout] Timeout in milliseconds for the
+	 *     handshake request
+	 * @param {Number} [options.maxPayload=104857600] The maximum allowed message
+	 *     size
+	 * @param {Number} [options.maxRedirects=10] The maximum number of redirects
+	 *     allowed
+	 * @param {String} [options.origin] Value of the `Origin` or
+	 *     `Sec-WebSocket-Origin` header
+	 * @param {(Boolean|Object)} [options.perMessageDeflate=true] Enable/disable
+	 *     permessage-deflate
+	 * @param {Number} [options.protocolVersion=13] Value of the
+	 *     `Sec-WebSocket-Version` header
+	 * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+	 *     not to skip UTF-8 validation for text and close messages
+	 * @private
+	 */
+	function initAsClient(websocket, address, protocols, options) {
+	  const opts = {
+	    allowSynchronousEvents: true,
+	    autoPong: true,
+	    protocolVersion: protocolVersions[1],
+	    maxPayload: 100 * 1024 * 1024,
+	    skipUTF8Validation: false,
+	    perMessageDeflate: true,
+	    followRedirects: false,
+	    maxRedirects: 10,
+	    ...options,
+	    socketPath: undefined,
+	    hostname: undefined,
+	    protocol: undefined,
+	    timeout: undefined,
+	    method: 'GET',
+	    host: undefined,
+	    path: undefined,
+	    port: undefined
+	  };
+
+	  websocket._autoPong = opts.autoPong;
+
+	  if (!protocolVersions.includes(opts.protocolVersion)) {
+	    throw new RangeError(
+	      `Unsupported protocol version: ${opts.protocolVersion} ` +
+	        `(supported versions: ${protocolVersions.join(', ')})`
+	    );
+	  }
+
+	  let parsedUrl;
+
+	  if (address instanceof URL) {
+	    parsedUrl = address;
+	  } else {
+	    try {
+	      parsedUrl = new URL(address);
+	    } catch (e) {
+	      throw new SyntaxError(`Invalid URL: ${address}`);
+	    }
+	  }
+
+	  if (parsedUrl.protocol === 'http:') {
+	    parsedUrl.protocol = 'ws:';
+	  } else if (parsedUrl.protocol === 'https:') {
+	    parsedUrl.protocol = 'wss:';
+	  }
+
+	  websocket._url = parsedUrl.href;
+
+	  const isSecure = parsedUrl.protocol === 'wss:';
+	  const isIpcUrl = parsedUrl.protocol === 'ws+unix:';
+	  let invalidUrlMessage;
+
+	  if (parsedUrl.protocol !== 'ws:' && !isSecure && !isIpcUrl) {
+	    invalidUrlMessage =
+	      'The URL\'s protocol must be one of "ws:", "wss:", ' +
+	      '"http:", "https:", or "ws+unix:"';
+	  } else if (isIpcUrl && !parsedUrl.pathname) {
+	    invalidUrlMessage = "The URL's pathname is empty";
+	  } else if (parsedUrl.hash) {
+	    invalidUrlMessage = 'The URL contains a fragment identifier';
+	  }
+
+	  if (invalidUrlMessage) {
+	    const err = new SyntaxError(invalidUrlMessage);
+
+	    if (websocket._redirects === 0) {
+	      throw err;
+	    } else {
+	      emitErrorAndClose(websocket, err);
+	      return;
+	    }
+	  }
+
+	  const defaultPort = isSecure ? 443 : 80;
+	  const key = randomBytes(16).toString('base64');
+	  const request = isSecure ? https.request : http.request;
+	  const protocolSet = new Set();
+	  let perMessageDeflate;
+
+	  opts.createConnection =
+	    opts.createConnection || (isSecure ? tlsConnect : netConnect);
+	  opts.defaultPort = opts.defaultPort || defaultPort;
+	  opts.port = parsedUrl.port || defaultPort;
+	  opts.host = parsedUrl.hostname.startsWith('[')
+	    ? parsedUrl.hostname.slice(1, -1)
+	    : parsedUrl.hostname;
+	  opts.headers = {
+	    ...opts.headers,
+	    'Sec-WebSocket-Version': opts.protocolVersion,
+	    'Sec-WebSocket-Key': key,
+	    Connection: 'Upgrade',
+	    Upgrade: 'websocket'
+	  };
+	  opts.path = parsedUrl.pathname + parsedUrl.search;
+	  opts.timeout = opts.handshakeTimeout;
+
+	  if (opts.perMessageDeflate) {
+	    perMessageDeflate = new PerMessageDeflate(
+	      opts.perMessageDeflate !== true ? opts.perMessageDeflate : {},
+	      false,
+	      opts.maxPayload
+	    );
+	    opts.headers['Sec-WebSocket-Extensions'] = format({
+	      [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
+	    });
+	  }
+	  if (protocols.length) {
+	    for (const protocol of protocols) {
+	      if (
+	        typeof protocol !== 'string' ||
+	        !subprotocolRegex.test(protocol) ||
+	        protocolSet.has(protocol)
+	      ) {
+	        throw new SyntaxError(
+	          'An invalid or duplicated subprotocol was specified'
+	        );
+	      }
+
+	      protocolSet.add(protocol);
+	    }
+
+	    opts.headers['Sec-WebSocket-Protocol'] = protocols.join(',');
+	  }
+	  if (opts.origin) {
+	    if (opts.protocolVersion < 13) {
+	      opts.headers['Sec-WebSocket-Origin'] = opts.origin;
+	    } else {
+	      opts.headers.Origin = opts.origin;
+	    }
+	  }
+	  if (parsedUrl.username || parsedUrl.password) {
+	    opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+	  }
+
+	  if (isIpcUrl) {
+	    const parts = opts.path.split(':');
+
+	    opts.socketPath = parts[0];
+	    opts.path = parts[1];
+	  }
+
+	  let req;
+
+	  if (opts.followRedirects) {
+	    if (websocket._redirects === 0) {
+	      websocket._originalIpc = isIpcUrl;
+	      websocket._originalSecure = isSecure;
+	      websocket._originalHostOrSocketPath = isIpcUrl
+	        ? opts.socketPath
+	        : parsedUrl.host;
+
+	      const headers = options && options.headers;
+
+	      //
+	      // Shallow copy the user provided options so that headers can be changed
+	      // without mutating the original object.
+	      //
+	      options = { ...options, headers: {} };
+
+	      if (headers) {
+	        for (const [key, value] of Object.entries(headers)) {
+	          options.headers[key.toLowerCase()] = value;
+	        }
+	      }
+	    } else if (websocket.listenerCount('redirect') === 0) {
+	      const isSameHost = isIpcUrl
+	        ? websocket._originalIpc
+	          ? opts.socketPath === websocket._originalHostOrSocketPath
+	          : false
+	        : websocket._originalIpc
+	          ? false
+	          : parsedUrl.host === websocket._originalHostOrSocketPath;
+
+	      if (!isSameHost || (websocket._originalSecure && !isSecure)) {
+	        //
+	        // Match curl 7.77.0 behavior and drop the following headers. These
+	        // headers are also dropped when following a redirect to a subdomain.
+	        //
+	        delete opts.headers.authorization;
+	        delete opts.headers.cookie;
+
+	        if (!isSameHost) delete opts.headers.host;
+
+	        opts.auth = undefined;
+	      }
+	    }
+
+	    //
+	    // Match curl 7.77.0 behavior and make the first `Authorization` header win.
+	    // If the `Authorization` header is set, then there is nothing to do as it
+	    // will take precedence.
+	    //
+	    if (opts.auth && !options.headers.authorization) {
+	      options.headers.authorization =
+	        'Basic ' + Buffer.from(opts.auth).toString('base64');
+	    }
+
+	    req = websocket._req = request(opts);
+
+	    if (websocket._redirects) {
+	      //
+	      // Unlike what is done for the `'upgrade'` event, no early exit is
+	      // triggered here if the user calls `websocket.close()` or
+	      // `websocket.terminate()` from a listener of the `'redirect'` event. This
+	      // is because the user can also call `request.destroy()` with an error
+	      // before calling `websocket.close()` or `websocket.terminate()` and this
+	      // would result in an error being emitted on the `request` object with no
+	      // `'error'` event listeners attached.
+	      //
+	      websocket.emit('redirect', websocket.url, req);
+	    }
+	  } else {
+	    req = websocket._req = request(opts);
+	  }
+
+	  if (opts.timeout) {
+	    req.on('timeout', () => {
+	      abortHandshake(websocket, req, 'Opening handshake has timed out');
+	    });
+	  }
+
+	  req.on('error', (err) => {
+	    if (req === null || req[kAborted]) return;
+
+	    req = websocket._req = null;
+	    emitErrorAndClose(websocket, err);
+	  });
+
+	  req.on('response', (res) => {
+	    const location = res.headers.location;
+	    const statusCode = res.statusCode;
+
+	    if (
+	      location &&
+	      opts.followRedirects &&
+	      statusCode >= 300 &&
+	      statusCode < 400
+	    ) {
+	      if (++websocket._redirects > opts.maxRedirects) {
+	        abortHandshake(websocket, req, 'Maximum redirects exceeded');
+	        return;
+	      }
+
+	      req.abort();
+
+	      let addr;
+
+	      try {
+	        addr = new URL(location, address);
+	      } catch (e) {
+	        const err = new SyntaxError(`Invalid URL: ${location}`);
+	        emitErrorAndClose(websocket, err);
+	        return;
+	      }
+
+	      initAsClient(websocket, addr, protocols, options);
+	    } else if (!websocket.emit('unexpected-response', req, res)) {
+	      abortHandshake(
+	        websocket,
+	        req,
+	        `Unexpected server response: ${res.statusCode}`
+	      );
+	    }
+	  });
+
+	  req.on('upgrade', (res, socket, head) => {
+	    websocket.emit('upgrade', res);
+
+	    //
+	    // The user may have closed the connection from a listener of the
+	    // `'upgrade'` event.
+	    //
+	    if (websocket.readyState !== WebSocket.CONNECTING) return;
+
+	    req = websocket._req = null;
+
+	    const upgrade = res.headers.upgrade;
+
+	    if (upgrade === undefined || upgrade.toLowerCase() !== 'websocket') {
+	      abortHandshake(websocket, socket, 'Invalid Upgrade header');
+	      return;
+	    }
+
+	    const digest = createHash('sha1')
+	      .update(key + GUID)
+	      .digest('base64');
+
+	    if (res.headers['sec-websocket-accept'] !== digest) {
+	      abortHandshake(websocket, socket, 'Invalid Sec-WebSocket-Accept header');
+	      return;
+	    }
+
+	    const serverProt = res.headers['sec-websocket-protocol'];
+	    let protError;
+
+	    if (serverProt !== undefined) {
+	      if (!protocolSet.size) {
+	        protError = 'Server sent a subprotocol but none was requested';
+	      } else if (!protocolSet.has(serverProt)) {
+	        protError = 'Server sent an invalid subprotocol';
+	      }
+	    } else if (protocolSet.size) {
+	      protError = 'Server sent no subprotocol';
+	    }
+
+	    if (protError) {
+	      abortHandshake(websocket, socket, protError);
+	      return;
+	    }
+
+	    if (serverProt) websocket._protocol = serverProt;
+
+	    const secWebSocketExtensions = res.headers['sec-websocket-extensions'];
+
+	    if (secWebSocketExtensions !== undefined) {
+	      if (!perMessageDeflate) {
+	        const message =
+	          'Server sent a Sec-WebSocket-Extensions header but no extension ' +
+	          'was requested';
+	        abortHandshake(websocket, socket, message);
+	        return;
+	      }
+
+	      let extensions;
+
+	      try {
+	        extensions = parse(secWebSocketExtensions);
+	      } catch (err) {
+	        const message = 'Invalid Sec-WebSocket-Extensions header';
+	        abortHandshake(websocket, socket, message);
+	        return;
+	      }
+
+	      const extensionNames = Object.keys(extensions);
+
+	      if (
+	        extensionNames.length !== 1 ||
+	        extensionNames[0] !== PerMessageDeflate.extensionName
+	      ) {
+	        const message = 'Server indicated an extension that was not requested';
+	        abortHandshake(websocket, socket, message);
+	        return;
+	      }
+
+	      try {
+	        perMessageDeflate.accept(extensions[PerMessageDeflate.extensionName]);
+	      } catch (err) {
+	        const message = 'Invalid Sec-WebSocket-Extensions header';
+	        abortHandshake(websocket, socket, message);
+	        return;
+	      }
+
+	      websocket._extensions[PerMessageDeflate.extensionName] =
+	        perMessageDeflate;
+	    }
+
+	    websocket.setSocket(socket, head, {
+	      allowSynchronousEvents: opts.allowSynchronousEvents,
+	      generateMask: opts.generateMask,
+	      maxPayload: opts.maxPayload,
+	      skipUTF8Validation: opts.skipUTF8Validation
+	    });
+	  });
+
+	  if (opts.finishRequest) {
+	    opts.finishRequest(req, websocket);
+	  } else {
+	    req.end();
+	  }
+	}
+
+	/**
+	 * Emit the `'error'` and `'close'` events.
+	 *
+	 * @param {WebSocket} websocket The WebSocket instance
+	 * @param {Error} The error to emit
+	 * @private
+	 */
+	function emitErrorAndClose(websocket, err) {
+	  websocket._readyState = WebSocket.CLOSING;
+	  //
+	  // The following assignment is practically useless and is done only for
+	  // consistency.
+	  //
+	  websocket._errorEmitted = true;
+	  websocket.emit('error', err);
+	  websocket.emitClose();
+	}
+
+	/**
+	 * Create a `net.Socket` and initiate a connection.
+	 *
+	 * @param {Object} options Connection options
+	 * @return {net.Socket} The newly created socket used to start the connection
+	 * @private
+	 */
+	function netConnect(options) {
+	  options.path = options.socketPath;
+	  return net.connect(options);
+	}
+
+	/**
+	 * Create a `tls.TLSSocket` and initiate a connection.
+	 *
+	 * @param {Object} options Connection options
+	 * @return {tls.TLSSocket} The newly created socket used to start the connection
+	 * @private
+	 */
+	function tlsConnect(options) {
+	  options.path = undefined;
+
+	  if (!options.servername && options.servername !== '') {
+	    options.servername = net.isIP(options.host) ? '' : options.host;
+	  }
+
+	  return tls.connect(options);
+	}
+
+	/**
+	 * Abort the handshake and emit an error.
+	 *
+	 * @param {WebSocket} websocket The WebSocket instance
+	 * @param {(http.ClientRequest|net.Socket|tls.Socket)} stream The request to
+	 *     abort or the socket to destroy
+	 * @param {String} message The error message
+	 * @private
+	 */
+	function abortHandshake(websocket, stream, message) {
+	  websocket._readyState = WebSocket.CLOSING;
+
+	  const err = new Error(message);
+	  Error.captureStackTrace(err, abortHandshake);
+
+	  if (stream.setHeader) {
+	    stream[kAborted] = true;
+	    stream.abort();
+
+	    if (stream.socket && !stream.socket.destroyed) {
+	      //
+	      // On Node.js >= 14.3.0 `request.abort()` does not destroy the socket if
+	      // called after the request completed. See
+	      // https://github.com/websockets/ws/issues/1869.
+	      //
+	      stream.socket.destroy();
+	    }
+
+	    process.nextTick(emitErrorAndClose, websocket, err);
+	  } else {
+	    stream.destroy(err);
+	    stream.once('error', websocket.emit.bind(websocket, 'error'));
+	    stream.once('close', websocket.emitClose.bind(websocket));
+	  }
+	}
+
+	/**
+	 * Handle cases where the `ping()`, `pong()`, or `send()` methods are called
+	 * when the `readyState` attribute is `CLOSING` or `CLOSED`.
+	 *
+	 * @param {WebSocket} websocket The WebSocket instance
+	 * @param {*} [data] The data to send
+	 * @param {Function} [cb] Callback
+	 * @private
+	 */
+	function sendAfterClose(websocket, data, cb) {
+	  if (data) {
+	    const length = isBlob(data) ? data.size : toBuffer(data).length;
+
+	    //
+	    // The `_bufferedAmount` property is used only when the peer is a client and
+	    // the opening handshake fails. Under these circumstances, in fact, the
+	    // `setSocket()` method is not called, so the `_socket` and `_sender`
+	    // properties are set to `null`.
+	    //
+	    if (websocket._socket) websocket._sender._bufferedBytes += length;
+	    else websocket._bufferedAmount += length;
+	  }
+
+	  if (cb) {
+	    const err = new Error(
+	      `WebSocket is not open: readyState ${websocket.readyState} ` +
+	        `(${readyStates[websocket.readyState]})`
+	    );
+	    process.nextTick(cb, err);
+	  }
+	}
+
+	/**
+	 * The listener of the `Receiver` `'conclude'` event.
+	 *
+	 * @param {Number} code The status code
+	 * @param {Buffer} reason The reason for closing
+	 * @private
+	 */
+	function receiverOnConclude(code, reason) {
+	  const websocket = this[kWebSocket];
+
+	  websocket._closeFrameReceived = true;
+	  websocket._closeMessage = reason;
+	  websocket._closeCode = code;
+
+	  if (websocket._socket[kWebSocket] === undefined) return;
+
+	  websocket._socket.removeListener('data', socketOnData);
+	  process.nextTick(resume, websocket._socket);
+
+	  if (code === 1005) websocket.close();
+	  else websocket.close(code, reason);
+	}
+
+	/**
+	 * The listener of the `Receiver` `'drain'` event.
+	 *
+	 * @private
+	 */
+	function receiverOnDrain() {
+	  const websocket = this[kWebSocket];
+
+	  if (!websocket.isPaused) websocket._socket.resume();
+	}
+
+	/**
+	 * The listener of the `Receiver` `'error'` event.
+	 *
+	 * @param {(RangeError|Error)} err The emitted error
+	 * @private
+	 */
+	function receiverOnError(err) {
+	  const websocket = this[kWebSocket];
+
+	  if (websocket._socket[kWebSocket] !== undefined) {
+	    websocket._socket.removeListener('data', socketOnData);
+
+	    //
+	    // On Node.js < 14.0.0 the `'error'` event is emitted synchronously. See
+	    // https://github.com/websockets/ws/issues/1940.
+	    //
+	    process.nextTick(resume, websocket._socket);
+
+	    websocket.close(err[kStatusCode]);
+	  }
+
+	  if (!websocket._errorEmitted) {
+	    websocket._errorEmitted = true;
+	    websocket.emit('error', err);
+	  }
+	}
+
+	/**
+	 * The listener of the `Receiver` `'finish'` event.
+	 *
+	 * @private
+	 */
+	function receiverOnFinish() {
+	  this[kWebSocket].emitClose();
+	}
+
+	/**
+	 * The listener of the `Receiver` `'message'` event.
+	 *
+	 * @param {Buffer|ArrayBuffer|Buffer[])} data The message
+	 * @param {Boolean} isBinary Specifies whether the message is binary or not
+	 * @private
+	 */
+	function receiverOnMessage(data, isBinary) {
+	  this[kWebSocket].emit('message', data, isBinary);
+	}
+
+	/**
+	 * The listener of the `Receiver` `'ping'` event.
+	 *
+	 * @param {Buffer} data The data included in the ping frame
+	 * @private
+	 */
+	function receiverOnPing(data) {
+	  const websocket = this[kWebSocket];
+
+	  if (websocket._autoPong) websocket.pong(data, !this._isServer, NOOP);
+	  websocket.emit('ping', data);
+	}
+
+	/**
+	 * The listener of the `Receiver` `'pong'` event.
+	 *
+	 * @param {Buffer} data The data included in the pong frame
+	 * @private
+	 */
+	function receiverOnPong(data) {
+	  this[kWebSocket].emit('pong', data);
+	}
+
+	/**
+	 * Resume a readable stream
+	 *
+	 * @param {Readable} stream The readable stream
+	 * @private
+	 */
+	function resume(stream) {
+	  stream.resume();
+	}
+
+	/**
+	 * The `Sender` error event handler.
+	 *
+	 * @param {Error} The error
+	 * @private
+	 */
+	function senderOnError(err) {
+	  const websocket = this[kWebSocket];
+
+	  if (websocket.readyState === WebSocket.CLOSED) return;
+	  if (websocket.readyState === WebSocket.OPEN) {
+	    websocket._readyState = WebSocket.CLOSING;
+	    setCloseTimer(websocket);
+	  }
+
+	  //
+	  // `socket.end()` is used instead of `socket.destroy()` to allow the other
+	  // peer to finish sending queued data. There is no need to set a timer here
+	  // because `CLOSING` means that it is already set or not needed.
+	  //
+	  this._socket.end();
+
+	  if (!websocket._errorEmitted) {
+	    websocket._errorEmitted = true;
+	    websocket.emit('error', err);
+	  }
+	}
+
+	/**
+	 * Set a timer to destroy the underlying raw socket of a WebSocket.
+	 *
+	 * @param {WebSocket} websocket The WebSocket instance
+	 * @private
+	 */
+	function setCloseTimer(websocket) {
+	  websocket._closeTimer = setTimeout(
+	    websocket._socket.destroy.bind(websocket._socket),
+	    closeTimeout
+	  );
+	}
+
+	/**
+	 * The listener of the socket `'close'` event.
+	 *
+	 * @private
+	 */
+	function socketOnClose() {
+	  const websocket = this[kWebSocket];
+
+	  this.removeListener('close', socketOnClose);
+	  this.removeListener('data', socketOnData);
+	  this.removeListener('end', socketOnEnd);
+
+	  websocket._readyState = WebSocket.CLOSING;
+
+	  let chunk;
+
+	  //
+	  // The close frame might not have been received or the `'end'` event emitted,
+	  // for example, if the socket was destroyed due to an error. Ensure that the
+	  // `receiver` stream is closed after writing any remaining buffered data to
+	  // it. If the readable side of the socket is in flowing mode then there is no
+	  // buffered data as everything has been already written and `readable.read()`
+	  // will return `null`. If instead, the socket is paused, any possible buffered
+	  // data will be read as a single chunk.
+	  //
+	  if (
+	    !this._readableState.endEmitted &&
+	    !websocket._closeFrameReceived &&
+	    !websocket._receiver._writableState.errorEmitted &&
+	    (chunk = websocket._socket.read()) !== null
+	  ) {
+	    websocket._receiver.write(chunk);
+	  }
+
+	  websocket._receiver.end();
+
+	  this[kWebSocket] = undefined;
+
+	  clearTimeout(websocket._closeTimer);
+
+	  if (
+	    websocket._receiver._writableState.finished ||
+	    websocket._receiver._writableState.errorEmitted
+	  ) {
+	    websocket.emitClose();
+	  } else {
+	    websocket._receiver.on('error', receiverOnFinish);
+	    websocket._receiver.on('finish', receiverOnFinish);
+	  }
+	}
+
+	/**
+	 * The listener of the socket `'data'` event.
+	 *
+	 * @param {Buffer} chunk A chunk of data
+	 * @private
+	 */
+	function socketOnData(chunk) {
+	  if (!this[kWebSocket]._receiver.write(chunk)) {
+	    this.pause();
+	  }
+	}
+
+	/**
+	 * The listener of the socket `'end'` event.
+	 *
+	 * @private
+	 */
+	function socketOnEnd() {
+	  const websocket = this[kWebSocket];
+
+	  websocket._readyState = WebSocket.CLOSING;
+	  websocket._receiver.end();
+	  this.end();
+	}
+
+	/**
+	 * The listener of the socket `'error'` event.
+	 *
+	 * @private
+	 */
+	function socketOnError() {
+	  const websocket = this[kWebSocket];
+
+	  this.removeListener('error', socketOnError);
+	  this.on('error', NOOP);
+
+	  if (websocket) {
+	    websocket._readyState = WebSocket.CLOSING;
+	    this.destroy();
+	  }
+	}
+	return websocket;
+}
+
+/* eslint no-unused-vars: ["error", { "varsIgnorePattern": "^WebSocket$" }] */
+
+var stream;
+var hasRequiredStream;
+
+function requireStream () {
+	if (hasRequiredStream) return stream;
+	hasRequiredStream = 1;
+
+	requireWebsocket();
+	const { Duplex } = require$$0$2;
+
+	/**
+	 * Emits the `'close'` event on a stream.
+	 *
+	 * @param {Duplex} stream The stream.
+	 * @private
+	 */
+	function emitClose(stream) {
+	  stream.emit('close');
+	}
+
+	/**
+	 * The listener of the `'end'` event.
+	 *
+	 * @private
+	 */
+	function duplexOnEnd() {
+	  if (!this.destroyed && this._writableState.finished) {
+	    this.destroy();
+	  }
+	}
+
+	/**
+	 * The listener of the `'error'` event.
+	 *
+	 * @param {Error} err The error
+	 * @private
+	 */
+	function duplexOnError(err) {
+	  this.removeListener('error', duplexOnError);
+	  this.destroy();
+	  if (this.listenerCount('error') === 0) {
+	    // Do not suppress the throwing behavior.
+	    this.emit('error', err);
+	  }
+	}
+
+	/**
+	 * Wraps a `WebSocket` in a duplex stream.
+	 *
+	 * @param {WebSocket} ws The `WebSocket` to wrap
+	 * @param {Object} [options] The options for the `Duplex` constructor
+	 * @return {Duplex} The duplex stream
+	 * @public
+	 */
+	function createWebSocketStream(ws, options) {
+	  let terminateOnDestroy = true;
+
+	  const duplex = new Duplex({
+	    ...options,
+	    autoDestroy: false,
+	    emitClose: false,
+	    objectMode: false,
+	    writableObjectMode: false
+	  });
+
+	  ws.on('message', function message(msg, isBinary) {
+	    const data =
+	      !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
+
+	    if (!duplex.push(data)) ws.pause();
+	  });
+
+	  ws.once('error', function error(err) {
+	    if (duplex.destroyed) return;
+
+	    // Prevent `ws.terminate()` from being called by `duplex._destroy()`.
+	    //
+	    // - If the `'error'` event is emitted before the `'open'` event, then
+	    //   `ws.terminate()` is a noop as no socket is assigned.
+	    // - Otherwise, the error is re-emitted by the listener of the `'error'`
+	    //   event of the `Receiver` object. The listener already closes the
+	    //   connection by calling `ws.close()`. This allows a close frame to be
+	    //   sent to the other peer. If `ws.terminate()` is called right after this,
+	    //   then the close frame might not be sent.
+	    terminateOnDestroy = false;
+	    duplex.destroy(err);
+	  });
+
+	  ws.once('close', function close() {
+	    if (duplex.destroyed) return;
+
+	    duplex.push(null);
+	  });
+
+	  duplex._destroy = function (err, callback) {
+	    if (ws.readyState === ws.CLOSED) {
+	      callback(err);
+	      process.nextTick(emitClose, duplex);
+	      return;
+	    }
+
+	    let called = false;
+
+	    ws.once('error', function error(err) {
+	      called = true;
+	      callback(err);
+	    });
+
+	    ws.once('close', function close() {
+	      if (!called) callback(err);
+	      process.nextTick(emitClose, duplex);
+	    });
+
+	    if (terminateOnDestroy) ws.terminate();
+	  };
+
+	  duplex._final = function (callback) {
+	    if (ws.readyState === ws.CONNECTING) {
+	      ws.once('open', function open() {
+	        duplex._final(callback);
+	      });
+	      return;
+	    }
+
+	    // If the value of the `_socket` property is `null` it means that `ws` is a
+	    // client websocket and the handshake failed. In fact, when this happens, a
+	    // socket is never assigned to the websocket. Wait for the `'error'` event
+	    // that will be emitted by the websocket.
+	    if (ws._socket === null) return;
+
+	    if (ws._socket._writableState.finished) {
+	      callback();
+	      if (duplex._readableState.endEmitted) duplex.destroy();
+	    } else {
+	      ws._socket.once('finish', function finish() {
+	        // `duplex` is not destroyed here because the `'end'` event will be
+	        // emitted on `duplex` after this `'finish'` event. The EOF signaling
+	        // `null` chunk is, in fact, pushed when the websocket emits `'close'`.
+	        callback();
+	      });
+	      ws.close();
+	    }
+	  };
+
+	  duplex._read = function () {
+	    if (ws.isPaused) ws.resume();
+	  };
+
+	  duplex._write = function (chunk, encoding, callback) {
+	    if (ws.readyState === ws.CONNECTING) {
+	      ws.once('open', function open() {
+	        duplex._write(chunk, encoding, callback);
+	      });
+	      return;
+	    }
+
+	    ws.send(chunk, callback);
+	  };
+
+	  duplex.on('end', duplexOnEnd);
+	  duplex.on('error', duplexOnError);
+	  return duplex;
+	}
+
+	stream = createWebSocketStream;
+	return stream;
+}
+
+requireStream();
+
+requireReceiver();
+
+requireSender();
+
+var websocketExports = requireWebsocket();
+var WebSocket = /*@__PURE__*/getDefaultExportFromCjs(websocketExports);
+
+var subprotocol;
+var hasRequiredSubprotocol;
+
+function requireSubprotocol () {
+	if (hasRequiredSubprotocol) return subprotocol;
+	hasRequiredSubprotocol = 1;
+
+	const { tokenChars } = requireValidation();
+
+	/**
+	 * Parses the `Sec-WebSocket-Protocol` header into a set of subprotocol names.
+	 *
+	 * @param {String} header The field value of the header
+	 * @return {Set} The subprotocol names
+	 * @public
+	 */
+	function parse(header) {
+	  const protocols = new Set();
+	  let start = -1;
+	  let end = -1;
+	  let i = 0;
+
+	  for (i; i < header.length; i++) {
+	    const code = header.charCodeAt(i);
+
+	    if (end === -1 && tokenChars[code] === 1) {
+	      if (start === -1) start = i;
+	    } else if (
+	      i !== 0 &&
+	      (code === 0x20 /* ' ' */ || code === 0x09) /* '\t' */
+	    ) {
+	      if (end === -1 && start !== -1) end = i;
+	    } else if (code === 0x2c /* ',' */) {
+	      if (start === -1) {
+	        throw new SyntaxError(`Unexpected character at index ${i}`);
+	      }
+
+	      if (end === -1) end = i;
+
+	      const protocol = header.slice(start, end);
+
+	      if (protocols.has(protocol)) {
+	        throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+	      }
+
+	      protocols.add(protocol);
+	      start = end = -1;
+	    } else {
+	      throw new SyntaxError(`Unexpected character at index ${i}`);
+	    }
+	  }
+
+	  if (start === -1 || end !== -1) {
+	    throw new SyntaxError('Unexpected end of input');
+	  }
+
+	  const protocol = header.slice(start, i);
+
+	  if (protocols.has(protocol)) {
+	    throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+	  }
+
+	  protocols.add(protocol);
+	  return protocols;
+	}
+
+	subprotocol = { parse };
+	return subprotocol;
+}
+
+/* eslint no-unused-vars: ["error", { "varsIgnorePattern": "^Duplex$", "caughtErrors": "none" }] */
+
+var websocketServer;
+var hasRequiredWebsocketServer;
+
+function requireWebsocketServer () {
+	if (hasRequiredWebsocketServer) return websocketServer;
+	hasRequiredWebsocketServer = 1;
+
+	const EventEmitter = require$$0$3;
+	const http = require$$2;
+	const { Duplex } = require$$0$2;
+	const { createHash } = require$$1;
+
+	const extension = requireExtension();
+	const PerMessageDeflate = requirePermessageDeflate();
+	const subprotocol = requireSubprotocol();
+	const WebSocket = requireWebsocket();
+	const { GUID, kWebSocket } = requireConstants();
+
+	const keyRegex = /^[+/0-9A-Za-z]{22}==$/;
+
+	const RUNNING = 0;
+	const CLOSING = 1;
+	const CLOSED = 2;
+
+	/**
+	 * Class representing a WebSocket server.
+	 *
+	 * @extends EventEmitter
+	 */
+	class WebSocketServer extends EventEmitter {
+	  /**
+	   * Create a `WebSocketServer` instance.
+	   *
+	   * @param {Object} options Configuration options
+	   * @param {Boolean} [options.allowSynchronousEvents=true] Specifies whether
+	   *     any of the `'message'`, `'ping'`, and `'pong'` events can be emitted
+	   *     multiple times in the same tick
+	   * @param {Boolean} [options.autoPong=true] Specifies whether or not to
+	   *     automatically send a pong in response to a ping
+	   * @param {Number} [options.backlog=511] The maximum length of the queue of
+	   *     pending connections
+	   * @param {Boolean} [options.clientTracking=true] Specifies whether or not to
+	   *     track clients
+	   * @param {Function} [options.handleProtocols] A hook to handle protocols
+	   * @param {String} [options.host] The hostname where to bind the server
+	   * @param {Number} [options.maxPayload=104857600] The maximum allowed message
+	   *     size
+	   * @param {Boolean} [options.noServer=false] Enable no server mode
+	   * @param {String} [options.path] Accept only connections matching this path
+	   * @param {(Boolean|Object)} [options.perMessageDeflate=false] Enable/disable
+	   *     permessage-deflate
+	   * @param {Number} [options.port] The port where to bind the server
+	   * @param {(http.Server|https.Server)} [options.server] A pre-created HTTP/S
+	   *     server to use
+	   * @param {Boolean} [options.skipUTF8Validation=false] Specifies whether or
+	   *     not to skip UTF-8 validation for text and close messages
+	   * @param {Function} [options.verifyClient] A hook to reject connections
+	   * @param {Function} [options.WebSocket=WebSocket] Specifies the `WebSocket`
+	   *     class to use. It must be the `WebSocket` class or class that extends it
+	   * @param {Function} [callback] A listener for the `listening` event
+	   */
+	  constructor(options, callback) {
+	    super();
+
+	    options = {
+	      allowSynchronousEvents: true,
+	      autoPong: true,
+	      maxPayload: 100 * 1024 * 1024,
+	      skipUTF8Validation: false,
+	      perMessageDeflate: false,
+	      handleProtocols: null,
+	      clientTracking: true,
+	      verifyClient: null,
+	      noServer: false,
+	      backlog: null, // use default (511 as implemented in net.js)
+	      server: null,
+	      host: null,
+	      path: null,
+	      port: null,
+	      WebSocket,
+	      ...options
+	    };
+
+	    if (
+	      (options.port == null && !options.server && !options.noServer) ||
+	      (options.port != null && (options.server || options.noServer)) ||
+	      (options.server && options.noServer)
+	    ) {
+	      throw new TypeError(
+	        'One and only one of the "port", "server", or "noServer" options ' +
+	          'must be specified'
+	      );
+	    }
+
+	    if (options.port != null) {
+	      this._server = http.createServer((req, res) => {
+	        const body = http.STATUS_CODES[426];
+
+	        res.writeHead(426, {
+	          'Content-Length': body.length,
+	          'Content-Type': 'text/plain'
+	        });
+	        res.end(body);
+	      });
+	      this._server.listen(
+	        options.port,
+	        options.host,
+	        options.backlog,
+	        callback
+	      );
+	    } else if (options.server) {
+	      this._server = options.server;
+	    }
+
+	    if (this._server) {
+	      const emitConnection = this.emit.bind(this, 'connection');
+
+	      this._removeListeners = addListeners(this._server, {
+	        listening: this.emit.bind(this, 'listening'),
+	        error: this.emit.bind(this, 'error'),
+	        upgrade: (req, socket, head) => {
+	          this.handleUpgrade(req, socket, head, emitConnection);
+	        }
+	      });
+	    }
+
+	    if (options.perMessageDeflate === true) options.perMessageDeflate = {};
+	    if (options.clientTracking) {
+	      this.clients = new Set();
+	      this._shouldEmitClose = false;
+	    }
+
+	    this.options = options;
+	    this._state = RUNNING;
+	  }
+
+	  /**
+	   * Returns the bound address, the address family name, and port of the server
+	   * as reported by the operating system if listening on an IP socket.
+	   * If the server is listening on a pipe or UNIX domain socket, the name is
+	   * returned as a string.
+	   *
+	   * @return {(Object|String|null)} The address of the server
+	   * @public
+	   */
+	  address() {
+	    if (this.options.noServer) {
+	      throw new Error('The server is operating in "noServer" mode');
+	    }
+
+	    if (!this._server) return null;
+	    return this._server.address();
+	  }
+
+	  /**
+	   * Stop the server from accepting new connections and emit the `'close'` event
+	   * when all existing connections are closed.
+	   *
+	   * @param {Function} [cb] A one-time listener for the `'close'` event
+	   * @public
+	   */
+	  close(cb) {
+	    if (this._state === CLOSED) {
+	      if (cb) {
+	        this.once('close', () => {
+	          cb(new Error('The server is not running'));
+	        });
+	      }
+
+	      process.nextTick(emitClose, this);
+	      return;
+	    }
+
+	    if (cb) this.once('close', cb);
+
+	    if (this._state === CLOSING) return;
+	    this._state = CLOSING;
+
+	    if (this.options.noServer || this.options.server) {
+	      if (this._server) {
+	        this._removeListeners();
+	        this._removeListeners = this._server = null;
+	      }
+
+	      if (this.clients) {
+	        if (!this.clients.size) {
+	          process.nextTick(emitClose, this);
+	        } else {
+	          this._shouldEmitClose = true;
+	        }
+	      } else {
+	        process.nextTick(emitClose, this);
+	      }
+	    } else {
+	      const server = this._server;
+
+	      this._removeListeners();
+	      this._removeListeners = this._server = null;
+
+	      //
+	      // The HTTP/S server was created internally. Close it, and rely on its
+	      // `'close'` event.
+	      //
+	      server.close(() => {
+	        emitClose(this);
+	      });
+	    }
+	  }
+
+	  /**
+	   * See if a given request should be handled by this server instance.
+	   *
+	   * @param {http.IncomingMessage} req Request object to inspect
+	   * @return {Boolean} `true` if the request is valid, else `false`
+	   * @public
+	   */
+	  shouldHandle(req) {
+	    if (this.options.path) {
+	      const index = req.url.indexOf('?');
+	      const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
+
+	      if (pathname !== this.options.path) return false;
+	    }
+
+	    return true;
+	  }
+
+	  /**
+	   * Handle a HTTP Upgrade request.
+	   *
+	   * @param {http.IncomingMessage} req The request object
+	   * @param {Duplex} socket The network socket between the server and client
+	   * @param {Buffer} head The first packet of the upgraded stream
+	   * @param {Function} cb Callback
+	   * @public
+	   */
+	  handleUpgrade(req, socket, head, cb) {
+	    socket.on('error', socketOnError);
+
+	    const key = req.headers['sec-websocket-key'];
+	    const upgrade = req.headers.upgrade;
+	    const version = +req.headers['sec-websocket-version'];
+
+	    if (req.method !== 'GET') {
+	      const message = 'Invalid HTTP method';
+	      abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
+	      return;
+	    }
+
+	    if (upgrade === undefined || upgrade.toLowerCase() !== 'websocket') {
+	      const message = 'Invalid Upgrade header';
+	      abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+	      return;
+	    }
+
+	    if (key === undefined || !keyRegex.test(key)) {
+	      const message = 'Missing or invalid Sec-WebSocket-Key header';
+	      abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+	      return;
+	    }
+
+	    if (version !== 13 && version !== 8) {
+	      const message = 'Missing or invalid Sec-WebSocket-Version header';
+	      abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, {
+	        'Sec-WebSocket-Version': '13, 8'
+	      });
+	      return;
+	    }
+
+	    if (!this.shouldHandle(req)) {
+	      abortHandshake(socket, 400);
+	      return;
+	    }
+
+	    const secWebSocketProtocol = req.headers['sec-websocket-protocol'];
+	    let protocols = new Set();
+
+	    if (secWebSocketProtocol !== undefined) {
+	      try {
+	        protocols = subprotocol.parse(secWebSocketProtocol);
+	      } catch (err) {
+	        const message = 'Invalid Sec-WebSocket-Protocol header';
+	        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+	        return;
+	      }
+	    }
+
+	    const secWebSocketExtensions = req.headers['sec-websocket-extensions'];
+	    const extensions = {};
+
+	    if (
+	      this.options.perMessageDeflate &&
+	      secWebSocketExtensions !== undefined
+	    ) {
+	      const perMessageDeflate = new PerMessageDeflate(
+	        this.options.perMessageDeflate,
+	        true,
+	        this.options.maxPayload
+	      );
+
+	      try {
+	        const offers = extension.parse(secWebSocketExtensions);
+
+	        if (offers[PerMessageDeflate.extensionName]) {
+	          perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
+	          extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+	        }
+	      } catch (err) {
+	        const message =
+	          'Invalid or unacceptable Sec-WebSocket-Extensions header';
+	        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+	        return;
+	      }
+	    }
+
+	    //
+	    // Optionally call external client verification handler.
+	    //
+	    if (this.options.verifyClient) {
+	      const info = {
+	        origin:
+	          req.headers[`${version === 8 ? 'sec-websocket-origin' : 'origin'}`],
+	        secure: !!(req.socket.authorized || req.socket.encrypted),
+	        req
+	      };
+
+	      if (this.options.verifyClient.length === 2) {
+	        this.options.verifyClient(info, (verified, code, message, headers) => {
+	          if (!verified) {
+	            return abortHandshake(socket, code || 401, message, headers);
+	          }
+
+	          this.completeUpgrade(
+	            extensions,
+	            key,
+	            protocols,
+	            req,
+	            socket,
+	            head,
+	            cb
+	          );
+	        });
+	        return;
+	      }
+
+	      if (!this.options.verifyClient(info)) return abortHandshake(socket, 401);
+	    }
+
+	    this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+	  }
+
+	  /**
+	   * Upgrade the connection to WebSocket.
+	   *
+	   * @param {Object} extensions The accepted extensions
+	   * @param {String} key The value of the `Sec-WebSocket-Key` header
+	   * @param {Set} protocols The subprotocols
+	   * @param {http.IncomingMessage} req The request object
+	   * @param {Duplex} socket The network socket between the server and client
+	   * @param {Buffer} head The first packet of the upgraded stream
+	   * @param {Function} cb Callback
+	   * @throws {Error} If called more than once with the same socket
+	   * @private
+	   */
+	  completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+	    //
+	    // Destroy the socket if the client has already sent a FIN packet.
+	    //
+	    if (!socket.readable || !socket.writable) return socket.destroy();
+
+	    if (socket[kWebSocket]) {
+	      throw new Error(
+	        'server.handleUpgrade() was called more than once with the same ' +
+	          'socket, possibly due to a misconfiguration'
+	      );
+	    }
+
+	    if (this._state > RUNNING) return abortHandshake(socket, 503);
+
+	    const digest = createHash('sha1')
+	      .update(key + GUID)
+	      .digest('base64');
+
+	    const headers = [
+	      'HTTP/1.1 101 Switching Protocols',
+	      'Upgrade: websocket',
+	      'Connection: Upgrade',
+	      `Sec-WebSocket-Accept: ${digest}`
+	    ];
+
+	    const ws = new this.options.WebSocket(null, undefined, this.options);
+
+	    if (protocols.size) {
+	      //
+	      // Optionally call external protocol selection handler.
+	      //
+	      const protocol = this.options.handleProtocols
+	        ? this.options.handleProtocols(protocols, req)
+	        : protocols.values().next().value;
+
+	      if (protocol) {
+	        headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
+	        ws._protocol = protocol;
+	      }
+	    }
+
+	    if (extensions[PerMessageDeflate.extensionName]) {
+	      const params = extensions[PerMessageDeflate.extensionName].params;
+	      const value = extension.format({
+	        [PerMessageDeflate.extensionName]: [params]
+	      });
+	      headers.push(`Sec-WebSocket-Extensions: ${value}`);
+	      ws._extensions = extensions;
+	    }
+
+	    //
+	    // Allow external modification/inspection of handshake headers.
+	    //
+	    this.emit('headers', headers, req);
+
+	    socket.write(headers.concat('\r\n').join('\r\n'));
+	    socket.removeListener('error', socketOnError);
+
+	    ws.setSocket(socket, head, {
+	      allowSynchronousEvents: this.options.allowSynchronousEvents,
+	      maxPayload: this.options.maxPayload,
+	      skipUTF8Validation: this.options.skipUTF8Validation
+	    });
+
+	    if (this.clients) {
+	      this.clients.add(ws);
+	      ws.on('close', () => {
+	        this.clients.delete(ws);
+
+	        if (this._shouldEmitClose && !this.clients.size) {
+	          process.nextTick(emitClose, this);
+	        }
+	      });
+	    }
+
+	    cb(ws, req);
+	  }
+	}
+
+	websocketServer = WebSocketServer;
+
+	/**
+	 * Add event listeners on an `EventEmitter` using a map of <event, listener>
+	 * pairs.
+	 *
+	 * @param {EventEmitter} server The event emitter
+	 * @param {Object.<String, Function>} map The listeners to add
+	 * @return {Function} A function that will remove the added listeners when
+	 *     called
+	 * @private
+	 */
+	function addListeners(server, map) {
+	  for (const event of Object.keys(map)) server.on(event, map[event]);
+
+	  return function removeListeners() {
+	    for (const event of Object.keys(map)) {
+	      server.removeListener(event, map[event]);
+	    }
+	  };
+	}
+
+	/**
+	 * Emit a `'close'` event on an `EventEmitter`.
+	 *
+	 * @param {EventEmitter} server The event emitter
+	 * @private
+	 */
+	function emitClose(server) {
+	  server._state = CLOSED;
+	  server.emit('close');
+	}
+
+	/**
+	 * Handle socket errors.
+	 *
+	 * @private
+	 */
+	function socketOnError() {
+	  this.destroy();
+	}
+
+	/**
+	 * Close the connection when preconditions are not fulfilled.
+	 *
+	 * @param {Duplex} socket The socket of the upgrade request
+	 * @param {Number} code The HTTP response status code
+	 * @param {String} [message] The HTTP response body
+	 * @param {Object} [headers] Additional HTTP response headers
+	 * @private
+	 */
+	function abortHandshake(socket, code, message, headers) {
+	  //
+	  // The socket is writable unless the user destroyed or ended it before calling
+	  // `server.handleUpgrade()` or in the `verifyClient` function, which is a user
+	  // error. Handling this does not make much sense as the worst that can happen
+	  // is that some of the data written by the user might be discarded due to the
+	  // call to `socket.end()` below, which triggers an `'error'` event that in
+	  // turn causes the socket to be destroyed.
+	  //
+	  message = message || http.STATUS_CODES[code];
+	  headers = {
+	    Connection: 'close',
+	    'Content-Type': 'text/html',
+	    'Content-Length': Buffer.byteLength(message),
+	    ...headers
+	  };
+
+	  socket.once('finish', socket.destroy);
+
+	  socket.end(
+	    `HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r\n` +
+	      Object.keys(headers)
+	        .map((h) => `${h}: ${headers[h]}`)
+	        .join('\r\n') +
+	      '\r\n\r\n' +
+	      message
+	  );
+	}
+
+	/**
+	 * Emit a `'wsClientError'` event on a `WebSocketServer` if there is at least
+	 * one listener for it, otherwise call `abortHandshake()`.
+	 *
+	 * @param {WebSocketServer} server The WebSocket server
+	 * @param {http.IncomingMessage} req The request object
+	 * @param {Duplex} socket The socket of the upgrade request
+	 * @param {Number} code The HTTP response status code
+	 * @param {String} message The HTTP response body
+	 * @param {Object} [headers] The HTTP response headers
+	 * @private
+	 */
+	function abortHandshakeOrEmitwsClientError(
+	  server,
+	  req,
+	  socket,
+	  code,
+	  message,
+	  headers
+	) {
+	  if (server.listenerCount('wsClientError')) {
+	    const err = new Error(message);
+	    Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
+
+	    server.emit('wsClientError', err, socket, req);
+	  } else {
+	    abortHandshake(socket, code, message, headers);
+	  }
+	}
+	return websocketServer;
+}
+
+requireWebsocketServer();
+
+/**!
+ * @author Elgato
+ * @module elgato/streamdeck
+ * @license MIT
+ * @copyright Copyright (c) Corsair Memory Inc.
+ */
+/**
+ * Stream Deck device types.
+ */
+var DeviceType;
+(function (DeviceType) {
+    /**
+     * Stream Deck, comprised of 15 customizable LCD keys in a 5 x 3 layout.
+     */
+    DeviceType[DeviceType["StreamDeck"] = 0] = "StreamDeck";
+    /**
+     * Stream Deck Mini, comprised of 6 customizable LCD keys in a 3 x 2 layout.
+     */
+    DeviceType[DeviceType["StreamDeckMini"] = 1] = "StreamDeckMini";
+    /**
+     * Stream Deck XL, comprised of 32 customizable LCD keys in an 8 x 4 layout.
+     */
+    DeviceType[DeviceType["StreamDeckXL"] = 2] = "StreamDeckXL";
+    /**
+     * Stream Deck Mobile, for iOS and Android.
+     */
+    DeviceType[DeviceType["StreamDeckMobile"] = 3] = "StreamDeckMobile";
+    /**
+     * Corsair G Keys, available on select Corsair keyboards.
+     */
+    DeviceType[DeviceType["CorsairGKeys"] = 4] = "CorsairGKeys";
+    /**
+     * Stream Deck Pedal, comprised of 3 customizable pedals.
+     */
+    DeviceType[DeviceType["StreamDeckPedal"] = 5] = "StreamDeckPedal";
+    /**
+     * Corsair Voyager laptop, comprising 10 buttons in a horizontal line above the keyboard.
+     */
+    DeviceType[DeviceType["CorsairVoyager"] = 6] = "CorsairVoyager";
+    /**
+     * Stream Deck +, comprised of 8 customizable LCD keys in a 4 x 2 layout, a touch strip, and 4 dials.
+     */
+    DeviceType[DeviceType["StreamDeckPlus"] = 7] = "StreamDeckPlus";
+    /**
+     * SCUF controller G keys, available on select SCUF controllers, for example SCUF Envision.
+     */
+    DeviceType[DeviceType["SCUFController"] = 8] = "SCUFController";
+    /**
+     * Stream Deck Neo, comprised of 8 customizable LCD keys in a 4 x 2 layout, an info bar, and 2 touch points for page navigation.
+     */
+    DeviceType[DeviceType["StreamDeckNeo"] = 9] = "StreamDeckNeo";
+    /**
+     * Stream Deck Studio, comprised of 32 customizable LCD keys in a 16 x 2 layout, and 2 dials (1 on either side).
+     */
+    DeviceType[DeviceType["StreamDeckStudio"] = 10] = "StreamDeckStudio";
+    /**
+     * Virtual Stream Deck, comprised of 1 to 64 action (on-screen) on a scalable canvas, with a maximum layout of 8 x 8.
+     */
+    DeviceType[DeviceType["VirtualStreamDeck"] = 11] = "VirtualStreamDeck";
+})(DeviceType || (DeviceType = {}));
+
+/**
+ * List of available types that can be applied to {@link Bar} and {@link GBar} to determine their style.
+ */
+var BarSubType;
+(function (BarSubType) {
+    /**
+     * Rectangle bar; the bar fills from left to right, determined by the {@link Bar.value}, similar to a standard progress bar.
+     */
+    BarSubType[BarSubType["Rectangle"] = 0] = "Rectangle";
+    /**
+     * Rectangle bar; the bar fills outwards from the centre of the bar, determined by the {@link Bar.value}.
+     * @example
+     * // Value is 2, range is 1-10.
+     * // [  ███     ]
+     * @example
+     * // Value is 10, range is 1-10.
+     * // [     █████]
+     */
+    BarSubType[BarSubType["DoubleRectangle"] = 1] = "DoubleRectangle";
+    /**
+     * Trapezoid bar, represented as a right-angle triangle; the bar fills from left to right, determined by the {@link Bar.value}, similar to a volume meter.
+     */
+    BarSubType[BarSubType["Trapezoid"] = 2] = "Trapezoid";
+    /**
+     * Trapezoid bar, represented by two right-angle triangles; the bar fills outwards from the centre of the bar, determined by the {@link Bar.value}. See {@link BarSubType.DoubleRectangle}.
+     */
+    BarSubType[BarSubType["DoubleTrapezoid"] = 3] = "DoubleTrapezoid";
+    /**
+     * Rounded rectangle bar; the bar fills from left to right, determined by the {@link Bar.value}, similar to a standard progress bar.
+     */
+    BarSubType[BarSubType["Groove"] = 4] = "Groove";
+})(BarSubType || (BarSubType = {}));
+
+/**
+ * Defines the type of argument supplied by Stream Deck.
+ */
+var RegistrationParameter;
+(function (RegistrationParameter) {
+    /**
+     * Identifies the argument that specifies the web socket port that Stream Deck is listening on.
+     */
+    RegistrationParameter["Port"] = "-port";
+    /**
+     * Identifies the argument that supplies information about the Stream Deck and the plugin.
+     */
+    RegistrationParameter["Info"] = "-info";
+    /**
+     * Identifies the argument that specifies the unique identifier that can be used when registering the plugin.
+     */
+    RegistrationParameter["PluginUUID"] = "-pluginUUID";
+    /**
+     * Identifies the argument that specifies the event to be sent to Stream Deck as part of the registration procedure.
+     */
+    RegistrationParameter["RegisterEvent"] = "-registerEvent";
+})(RegistrationParameter || (RegistrationParameter = {}));
+
+/**
+ * Defines the target of a request, i.e. whether the request should update the Stream Deck hardware, Stream Deck software (application), or both, when calling `setImage` and `setState`.
+ */
+var Target;
+(function (Target) {
+    /**
+     * Hardware and software should be updated as part of the request.
+     */
+    Target[Target["HardwareAndSoftware"] = 0] = "HardwareAndSoftware";
+    /**
+     * Hardware only should be updated as part of the request.
+     */
+    Target[Target["Hardware"] = 1] = "Hardware";
+    /**
+     * Software only should be updated as part of the request.
+     */
+    Target[Target["Software"] = 2] = "Software";
+})(Target || (Target = {}));
+
+/**
+ * Provides information for a version, as parsed from a string denoted as a collection of numbers separated by a period, for example `1.45.2`, `4.0.2.13098`. Parsing is opinionated
+ * and strings should strictly conform to the format `{major}[.{minor}[.{patch}[.{build}]]]`; version numbers that form the version are optional, and when `undefined` will default to
+ * 0, for example the `minor`, `patch`, or `build` number may be omitted.
+ *
+ * NB: This implementation should be considered fit-for-purpose, and should be used sparing.
+ */
+class Version {
+    /**
+     * Build version number.
+     */
+    build;
+    /**
+     * Major version number.
+     */
+    major;
+    /**
+     * Minor version number.
+     */
+    minor;
+    /**
+     * Patch version number.
+     */
+    patch;
+    /**
+     * Initializes a new instance of the {@link Version} class.
+     * @param value Value to parse the version from.
+     */
+    constructor(value) {
+        const result = value.match(/^(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?(?:\.(0|[1-9]\d*))?$/);
+        if (result === null) {
+            throw new Error(`Invalid format; expected "{major}[.{minor}[.{patch}[.{build}]]]" but was "${value}"`);
+        }
+        [, this.major, this.minor, this.patch, this.build] = [...result.map((value) => parseInt(value) || 0)];
+    }
+    /**
+     * Compares this instance to the {@link other} {@link Version}.
+     * @param other The {@link Version} to compare to.
+     * @returns `-1` when this instance is less than the {@link other}, `1` when this instance is greater than {@link other}, otherwise `0`.
+     */
+    compareTo(other) {
+        const segments = ({ major, minor, build, patch }) => [major, minor, build, patch];
+        const thisSegments = segments(this);
+        const otherSegments = segments(other);
+        for (let i = 0; i < 4; i++) {
+            if (thisSegments[i] < otherSegments[i]) {
+                return -1;
+            }
+            else if (thisSegments[i] > otherSegments[i]) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    /** @inheritdoc */
+    toString() {
+        return `${this.major}.${this.minor}`;
+    }
+}
+
+/**
+ * Provides a {@link LogTarget} that logs to the console.
+ */
+class ConsoleTarget {
+    /**
+     * @inheritdoc
+     */
+    write(entry) {
+        switch (entry.level) {
+            case "error":
+                console.error(...entry.data);
+                break;
+            case "warn":
+                console.warn(...entry.data);
+                break;
+            default:
+                console.log(...entry.data);
+        }
+    }
+}
+
+// Remove any dependencies on node.
+const EOL = "\n";
+/**
+ * Creates a new string log entry formatter.
+ * @param opts Options that defines the type for the formatter.
+ * @returns The string {@link LogEntryFormatter}.
+ */
+function stringFormatter(opts) {
+    {
+        return (entry) => {
+            const { data, level, scope } = entry;
+            let prefix = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} `;
+            if (scope) {
+                prefix += `${scope}: `;
+            }
+            return `${prefix}${reduce(data)}`;
+        };
+    }
+}
+/**
+ * Stringifies the provided data parameters that make up the log entry.
+ * @param data Data parameters.
+ * @returns The data represented as a single `string`.
+ */
+function reduce(data) {
+    let result = "";
+    let previousWasError = false;
+    for (const value of data) {
+        // When the value is an error, write the stack.
+        if (typeof value === "object" && value instanceof Error) {
+            result += `${EOL}${value.stack}`;
+            previousWasError = true;
+            continue;
+        }
+        // When the previous was an error, write a new line.
+        if (previousWasError) {
+            result += EOL;
+            previousWasError = false;
+        }
+        result += typeof value === "object" ? JSON.stringify(value) : value;
+        result += " ";
+    }
+    return result.trimEnd();
+}
+
+/* eslint-disable @typescript-eslint/sort-type-constituents */
+/**
+ * Gets the priority of the specified log level as a number; low numbers signify a higher priority.
+ * @param level Log level.
+ * @returns The priority as a number.
+ */
+function defcon(level) {
+    switch (level) {
+        case "error":
+            return 0;
+        case "warn":
+            return 1;
+        case "info":
+            return 2;
+        case "debug":
+            return 3;
+        case "trace":
+        default:
+            return 4;
+    }
+}
+
+/**
+ * Logger capable of forwarding messages to a {@link LogTarget}.
+ */
+class Logger {
+    /**
+     * Backing field for the {@link Logger.level}.
+     */
+    #level;
+    /**
+     * Options that define the loggers behavior.
+     */
+    #options;
+    /**
+     * Scope associated with this {@link Logger}.
+     */
+    #scope;
+    /**
+     * Initializes a new instance of the {@link Logger} class.
+     * @param opts Options that define the loggers behavior.
+     */
+    constructor(opts) {
+        this.#options = { minimumLevel: "trace", ...opts };
+        this.#scope = this.#options.scope === undefined || this.#options.scope.trim() === "" ? "" : this.#options.scope;
+        if (typeof this.#options.level !== "function") {
+            this.setLevel(this.#options.level);
+        }
+    }
+    /**
+     * Gets the {@link LogLevel}.
+     * @returns The {@link LogLevel}.
+     */
+    get level() {
+        if (this.#level !== undefined) {
+            return this.#level;
+        }
+        return typeof this.#options.level === "function" ? this.#options.level() : this.#options.level;
+    }
+    /**
+     * Creates a scoped logger with the given {@link scope}; logs created by scoped-loggers include their scope to enable their source to be easily identified.
+     * @param scope Value that represents the scope of the new logger.
+     * @returns The scoped logger, or this instance when {@link scope} is not defined.
+     */
+    createScope(scope) {
+        scope = scope.trim();
+        if (scope === "") {
+            return this;
+        }
+        return new Logger({
+            ...this.#options,
+            level: () => this.level,
+            scope: this.#options.scope ? `${this.#options.scope}->${scope}` : scope,
+        });
+    }
+    /**
+     * Writes the arguments as a debug log entry.
+     * @param data Message or data to log.
+     * @returns This instance for chaining.
+     */
+    debug(...data) {
+        return this.write({ level: "debug", data, scope: this.#scope });
+    }
+    /**
+     * Writes the arguments as error log entry.
+     * @param data Message or data to log.
+     * @returns This instance for chaining.
+     */
+    error(...data) {
+        return this.write({ level: "error", data, scope: this.#scope });
+    }
+    /**
+     * Writes the arguments as an info log entry.
+     * @param data Message or data to log.
+     * @returns This instance for chaining.
+     */
+    info(...data) {
+        return this.write({ level: "info", data, scope: this.#scope });
+    }
+    /**
+     * Sets the log-level that determines which logs should be written. The specified level will be inherited by all scoped loggers unless they have log-level explicitly defined.
+     * @param level The log-level that determines which logs should be written; when `undefined`, the level will be inherited from the parent logger, or default to the environment level.
+     * @returns This instance for chaining.
+     */
+    setLevel(level) {
+        if (level !== undefined && defcon(level) > defcon(this.#options.minimumLevel)) {
+            this.#level = "info";
+        }
+        else {
+            this.#level = level;
+        }
+        return this;
+    }
+    /**
+     * Writes the arguments as a trace log entry.
+     * @param data Message or data to log.
+     * @returns This instance for chaining.
+     */
+    trace(...data) {
+        return this.write({ level: "trace", data, scope: this.#scope });
+    }
+    /**
+     * Writes the arguments as a warning log entry.
+     * @param data Message or data to log.
+     * @returns This instance for chaining.
+     */
+    warn(...data) {
+        return this.write({ level: "warn", data, scope: this.#scope });
+    }
+    /**
+     * Writes the log entry.
+     * @param entry Log entry to write.
+     * @returns This instance for chaining.
+     */
+    write(entry) {
+        if (defcon(entry.level) <= defcon(this.level)) {
+            this.#options.targets.forEach((t) => t.write(entry));
+        }
+        return this;
+    }
+}
+
+/**
+ * Provides a {@link LogTarget} capable of logging to a local file system.
+ */
+class FileTarget {
+    /**
+     * File path where logs will be written.
+     */
+    #filePath;
+    /**
+     * Options that defines how logs should be written to the local file system.
+     */
+    #options;
+    /**
+     * Current size of the logs that have been written to the {@link FileTarget.#filePath}.
+     */
+    #size = 0;
+    /**
+     * Initializes a new instance of the {@link FileTarget} class.
+     * @param options Options that defines how logs should be written to the local file system.
+     */
+    constructor(options) {
+        this.#options = options;
+        this.#filePath = this.getLogFilePath();
+        this.reIndex();
+    }
+    /**
+     * @inheritdoc
+     */
+    write(entry) {
+        const fd = fs.openSync(this.#filePath, "a");
+        try {
+            const msg = this.#options.format(entry);
+            fs.writeSync(fd, msg + "\n");
+            this.#size += msg.length;
+        }
+        finally {
+            fs.closeSync(fd);
+        }
+        if (this.#size >= this.#options.maxSize) {
+            this.reIndex();
+            this.#size = 0;
+        }
+    }
+    /**
+     * Gets the file path to an indexed log file.
+     * @param index Optional index of the log file to be included as part of the file name.
+     * @returns File path that represents the indexed log file.
+     */
+    getLogFilePath(index = 0) {
+        return path.join(this.#options.dest, `${this.#options.fileName}.${index}.log`);
+    }
+    /**
+     * Gets the log files associated with this file target, including past and present.
+     * @returns Log file entries.
+     */
+    getLogFiles() {
+        const regex = /^\.(\d+)\.log$/;
+        return fs
+            .readdirSync(this.#options.dest, { withFileTypes: true })
+            .reduce((prev, entry) => {
+            if (entry.isDirectory() || entry.name.indexOf(this.#options.fileName) < 0) {
+                return prev;
+            }
+            const match = entry.name.substring(this.#options.fileName.length).match(regex);
+            if (match?.length !== 2) {
+                return prev;
+            }
+            prev.push({
+                path: path.join(this.#options.dest, entry.name),
+                index: parseInt(match[1]),
+            });
+            return prev;
+        }, [])
+            .sort(({ index: a }, { index: b }) => {
+            return a < b ? -1 : a > b ? 1 : 0;
+        });
+    }
+    /**
+     * Re-indexes the existing log files associated with this file target, removing old log files whose index exceeds the {@link FileTargetOptions.maxFileCount}, and renaming the
+     * remaining log files, leaving index "0" free for a new log file.
+     */
+    reIndex() {
+        // When the destination directory is new, create it, and return.
+        if (!fs.existsSync(this.#options.dest)) {
+            fs.mkdirSync(this.#options.dest);
+            return;
+        }
+        const logFiles = this.getLogFiles();
+        for (let i = logFiles.length - 1; i >= 0; i--) {
+            const log = logFiles[i];
+            if (i >= this.#options.maxFileCount - 1) {
+                fs.rmSync(log.path);
+            }
+            else {
+                fs.renameSync(log.path, this.getLogFilePath(i + 1));
+            }
+        }
+    }
+}
+
+let __isDebugMode = undefined;
+/**
+ * Determines whether the current plugin is running in a debug environment; this is determined by the command-line arguments supplied to the plugin by Stream. Specifically, the result
+ * is `true` when  either `--inspect`, `--inspect-brk` or `--inspect-port` are present as part of the processes' arguments.
+ * @returns `true` when the plugin is running in debug mode; otherwise `false`.
+ */
+function isDebugMode() {
+    if (__isDebugMode === undefined) {
+        __isDebugMode = process.execArgv.some((arg) => {
+            const name = arg.split("=")[0];
+            return name === "--inspect" || name === "--inspect-brk" || name === "--inspect-port";
+        });
+    }
+    return __isDebugMode;
+}
+/**
+ * Gets the plugin's unique-identifier from the current working directory.
+ * @returns The plugin's unique-identifier.
+ */
+function getPluginUUID() {
+    const name = path.basename(process.cwd());
+    const suffixIndex = name.lastIndexOf(".sdPlugin");
+    return suffixIndex < 0 ? name : name.substring(0, suffixIndex);
+}
+
+// Log all entires to a log file.
+const fileTarget = new FileTarget({
+    dest: path.join(cwd(), "logs"),
+    fileName: getPluginUUID(),
+    format: stringFormatter(),
+    maxFileCount: 10,
+    maxSize: 50 * 1024 * 1024,
+});
+// Construct the log targets.
+const targets = [fileTarget];
+if (isDebugMode()) {
+    targets.splice(0, 0, new ConsoleTarget());
+}
+/**
+ * Logger responsible for capturing log messages.
+ */
+const logger = new Logger({
+    level: isDebugMode() ? "debug" : "info",
+    minimumLevel: isDebugMode() ? "trace" : "debug",
+    targets,
+});
+process.once("uncaughtException", (err) => logger.error("Process encountered uncaught exception", err));
+
+/**
+ * Provides a connection between the plugin and the Stream Deck allowing for messages to be sent and received.
+ */
+class Connection extends EventEmitter {
+    /**
+     * Private backing field for {@link Connection.registrationParameters}.
+     */
+    _registrationParameters;
+    /**
+     * Private backing field for {@link Connection.version}.
+     */
+    _version;
+    /**
+     * Used to ensure {@link Connection.connect} is invoked as a singleton; `false` when a connection is occurring or established.
+     */
+    canConnect = true;
+    /**
+     * Underlying web socket connection.
+     */
+    connection = withResolvers();
+    /**
+     * Logger scoped to the connection.
+     */
+    logger = logger.createScope("Connection");
+    /**
+     * Underlying connection information provided to the plugin to establish a connection with Stream Deck.
+     * @returns The registration parameters.
+     */
+    get registrationParameters() {
+        return (this._registrationParameters ??= this.getRegistrationParameters());
+    }
+    /**
+     * Version of Stream Deck this instance is connected to.
+     * @returns The version.
+     */
+    get version() {
+        return (this._version ??= new Version(this.registrationParameters.info.application.version));
+    }
+    /**
+     * Establishes a connection with the Stream Deck, allowing for the plugin to send and receive messages.
+     * @returns A promise that is resolved when a connection has been established.
+     */
+    async connect() {
+        // Ensure we only establish a single connection.
+        if (this.canConnect) {
+            this.canConnect = false;
+            const webSocket = new WebSocket(`ws://127.0.0.1:${this.registrationParameters.port}`);
+            webSocket.onmessage = (ev) => this.tryEmit(ev);
+            webSocket.onopen = () => {
+                webSocket.send(JSON.stringify({
+                    event: this.registrationParameters.registerEvent,
+                    uuid: this.registrationParameters.pluginUUID,
+                }));
+                // Web socket established a connection with the Stream Deck and the plugin was registered.
+                this.connection.resolve(webSocket);
+                this.emit("connected", this.registrationParameters.info);
+            };
+        }
+        await this.connection.promise;
+    }
+    /**
+     * Sends the commands to the Stream Deck, once the connection has been established and registered.
+     * @param command Command being sent.
+     * @returns `Promise` resolved when the command is sent to Stream Deck.
+     */
+    async send(command) {
+        const connection = await this.connection.promise;
+        const message = JSON.stringify(command);
+        this.logger.trace(message);
+        connection.send(message);
+    }
+    /**
+     * Gets the registration parameters, provided by Stream Deck, that provide information to the plugin, including how to establish a connection.
+     * @returns Parsed registration parameters.
+     */
+    getRegistrationParameters() {
+        const params = {
+            port: undefined,
+            info: undefined,
+            pluginUUID: undefined,
+            registerEvent: undefined,
+        };
+        const scopedLogger = logger.createScope("RegistrationParameters");
+        for (let i = 0; i < process.argv.length - 1; i++) {
+            const param = process.argv[i];
+            const value = process.argv[++i];
+            switch (param) {
+                case RegistrationParameter.Port:
+                    scopedLogger.debug(`port=${value}`);
+                    params.port = value;
+                    break;
+                case RegistrationParameter.PluginUUID:
+                    scopedLogger.debug(`pluginUUID=${value}`);
+                    params.pluginUUID = value;
+                    break;
+                case RegistrationParameter.RegisterEvent:
+                    scopedLogger.debug(`registerEvent=${value}`);
+                    params.registerEvent = value;
+                    break;
+                case RegistrationParameter.Info:
+                    scopedLogger.debug(`info=${value}`);
+                    params.info = JSON.parse(value);
+                    break;
+                default:
+                    i--;
+                    break;
+            }
+        }
+        const invalidArgs = [];
+        const validate = (name, value) => {
+            if (value === undefined) {
+                invalidArgs.push(name);
+            }
+        };
+        validate(RegistrationParameter.Port, params.port);
+        validate(RegistrationParameter.PluginUUID, params.pluginUUID);
+        validate(RegistrationParameter.RegisterEvent, params.registerEvent);
+        validate(RegistrationParameter.Info, params.info);
+        if (invalidArgs.length > 0) {
+            throw new Error(`Unable to establish a connection with Stream Deck, missing command line arguments: ${invalidArgs.join(", ")}`);
+        }
+        return params;
+    }
+    /**
+     * Attempts to emit the {@link ev} that was received from the {@link Connection.connection}.
+     * @param ev Event message data received from Stream Deck.
+     */
+    tryEmit(ev) {
+        try {
+            const message = JSON.parse(ev.data.toString());
+            if (message.event) {
+                this.logger.trace(ev.data.toString());
+                this.emit(message.event, message);
+            }
+            else {
+                this.logger.warn(`Received unknown message: ${ev.data}`);
+            }
+        }
+        catch (err) {
+            this.logger.error(`Failed to parse message: ${ev.data}`, err);
+        }
+    }
+}
+const connection = new Connection();
+
+/**
+ * Provides information for events received from Stream Deck.
+ */
+class Event {
+    /**
+     * Event that occurred.
+     */
+    type;
+    /**
+     * Initializes a new instance of the {@link Event} class.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(source) {
+        this.type = source.event;
+    }
+}
+
+/**
+ * Provides information for an event relating to an action.
+ */
+class ActionWithoutPayloadEvent extends Event {
+    action;
+    /**
+     * Initializes a new instance of the {@link ActionWithoutPayloadEvent} class.
+     * @param action Action that raised the event.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(action, source) {
+        super(source);
+        this.action = action;
+    }
+}
+/**
+ * Provides information for an event relating to an action.
+ */
+class ActionEvent extends ActionWithoutPayloadEvent {
+    /**
+     * Provides additional information about the event that occurred, e.g. how many `ticks` the dial was rotated, the current `state` of the action, etc.
+     */
+    payload;
+    /**
+     * Initializes a new instance of the {@link ActionEvent} class.
+     * @param action Action that raised the event.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(action, source) {
+        super(action, source);
+        this.payload = source.payload;
+    }
+}
+
+const manifest$1 = new Lazy(() => {
+    const path = join(process.cwd(), "manifest.json");
+    if (!existsSync(path)) {
+        throw new Error("Failed to read manifest.json as the file does not exist.");
+    }
+    try {
+        return JSON.parse(readFileSync(path, {
+            encoding: "utf-8",
+            flag: "r",
+        }).toString());
+    }
+    catch (e) {
+        if (e instanceof SyntaxError) {
+            return null;
+        }
+        else {
+            throw e;
+        }
+    }
+});
+const softwareMinimumVersion = new Lazy(() => {
+    if (manifest$1.value === null) {
+        return null;
+    }
+    return new Version(manifest$1.value.Software.MinimumVersion);
+});
+/**
+ * Gets the SDK version that the plugin requires.
+ * @returns SDK version; otherwise `null` when the plugin is DRM protected.
+ */
+function getSDKVersion() {
+    return manifest$1.value?.SDKVersion ?? null;
+}
+/**
+ * Gets the minimum version that the plugin requires.
+ * @returns Minimum required version; otherwise `null` when the plugin is DRM protected.
+ */
+function getSoftwareMinimumVersion() {
+    return softwareMinimumVersion.value;
+}
+/**
+ * Gets the manifest associated with the plugin.
+ * @returns The manifest; otherwise `null` when the plugin is DRM protected.
+ */
+function getManifest() {
+    return manifest$1.value;
+}
+
+const __items$1 = new Map();
+/**
+ * Provides a read-only store of Stream Deck devices.
+ */
+class ReadOnlyActionStore extends Enumerable {
+    /**
+     * Initializes a new instance of the {@link ReadOnlyActionStore}.
+     */
+    constructor() {
+        super(__items$1);
+    }
+    /**
+     * Gets the action with the specified identifier.
+     * @param id Identifier of action to search for.
+     * @returns The action, when present; otherwise `undefined`.
+     */
+    getActionById(id) {
+        return __items$1.get(id);
+    }
+}
+/**
+ * Provides a store of Stream Deck actions.
+ */
+class ActionStore extends ReadOnlyActionStore {
+    /**
+     * Deletes the action from the store.
+     * @param id The action's identifier.
+     */
+    delete(id) {
+        __items$1.delete(id);
+    }
+    /**
+     * Adds the action to the store.
+     * @param action The action.
+     */
+    set(action) {
+        __items$1.set(action.id, action);
+    }
+}
+/**
+ * Singleton instance of the action store.
+ */
+const actionStore = new ActionStore();
+
+/**
+ * Provides information for events relating to an application.
+ */
+class ApplicationEvent extends Event {
+    /**
+     * Monitored application that was launched/terminated.
+     */
+    application;
+    /**
+     * Initializes a new instance of the {@link ApplicationEvent} class.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(source) {
+        super(source);
+        this.application = source.payload.application;
+    }
+}
+
+/**
+ * Provides information for events relating to a device.
+ */
+class DeviceEvent extends Event {
+    device;
+    /**
+     * Initializes a new instance of the {@link DeviceEvent} class.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     * @param device Device that event is associated with.
+     */
+    constructor(source, device) {
+        super(source);
+        this.device = device;
+    }
+}
+
+/**
+ * Event information received from Stream Deck as part of a deep-link message being routed to the plugin.
+ */
+class DidReceiveDeepLinkEvent extends Event {
+    /**
+     * Deep-link URL routed from Stream Deck.
+     */
+    url;
+    /**
+     * Initializes a new instance of the {@link DidReceiveDeepLinkEvent} class.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(source) {
+        super(source);
+        this.url = new DeepLinkURL(source.payload.url);
+    }
+}
+const PREFIX = "streamdeck://";
+/**
+ * Provides information associated with a URL received as part of a deep-link message, conforming to the URI syntax defined within RFC-3986 (https://datatracker.ietf.org/doc/html/rfc3986#section-3).
+ */
+class DeepLinkURL {
+    /**
+     * Fragment of the URL, with the number sign (#) omitted. For example, a URL of "/test#heading" would result in a {@link DeepLinkURL.fragment} of "heading".
+     */
+    fragment;
+    /**
+     * Original URL. For example, a URL of "/test?one=two#heading" would result in a {@link DeepLinkURL.href} of "/test?one=two#heading".
+     */
+    href;
+    /**
+     * Path of the URL; the full URL with the query and fragment omitted. For example, a URL of "/test?one=two#heading" would result in a {@link DeepLinkURL.path} of "/test".
+     */
+    path;
+    /**
+     * Query of the URL, with the question mark (?) omitted. For example, a URL of "/test?name=elgato&key=123" would result in a {@link DeepLinkURL.query} of "name=elgato&key=123".
+     * See also {@link DeepLinkURL.queryParameters}.
+     */
+    query;
+    /**
+     * Query string parameters parsed from the URL. See also {@link DeepLinkURL.query}.
+     */
+    queryParameters;
+    /**
+     * Initializes a new instance of the {@link DeepLinkURL} class.
+     * @param url URL of the deep-link, with the schema and authority omitted.
+     */
+    constructor(url) {
+        const refUrl = new URL(`${PREFIX}${url}`);
+        this.fragment = refUrl.hash.substring(1);
+        this.href = refUrl.href.substring(PREFIX.length);
+        this.path = DeepLinkURL.parsePath(this.href);
+        this.query = refUrl.search.substring(1);
+        this.queryParameters = refUrl.searchParams;
+    }
+    /**
+     * Parses the {@link DeepLinkURL.path} from the specified {@link href}.
+     * @param href Partial URL that contains the path to parse.
+     * @returns The path of the URL.
+     */
+    static parsePath(href) {
+        const indexOf = (char) => {
+            const index = href.indexOf(char);
+            return index >= 0 ? index : href.length;
+        };
+        return href.substring(0, Math.min(indexOf("?"), indexOf("#")));
+    }
+}
+
+/**
+ * Provides event information for when the plugin received the global settings.
+ */
+class DidReceiveGlobalSettingsEvent extends Event {
+    /**
+     * Settings associated with the event.
+     */
+    settings;
+    /**
+     * Initializes a new instance of the {@link DidReceiveGlobalSettingsEvent} class.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(source) {
+        super(source);
+        this.settings = source.payload.settings;
+    }
+}
+
+/**
+ * Provides information for an event triggered by a message being sent to the plugin, from the property inspector.
+ */
+class SendToPluginEvent extends Event {
+    action;
+    /**
+     * Payload sent from the property inspector.
+     */
+    payload;
+    /**
+     * Initializes a new instance of the {@link SendToPluginEvent} class.
+     * @param action Action that raised the event.
+     * @param source Source of the event, i.e. the original message from Stream Deck.
+     */
+    constructor(action, source) {
+        super(source);
+        this.action = action;
+        this.payload = source.payload;
+    }
+}
+
+/**
+ * Validates the `SDKVersion` within the manifest fulfils the minimum required version for the specified
+ * feature; when the version is not fulfilled, an error is thrown with the feature formatted into the message.
+ * @param minimumVersion Minimum required SDKVersion.
+ * @param feature Feature that requires the version.
+ */
+function requiresSDKVersion(minimumVersion, feature) {
+    const sdkVersion = getSDKVersion();
+    if (sdkVersion !== null && minimumVersion > sdkVersion) {
+        throw new Error(`[ERR_NOT_SUPPORTED]: ${feature} requires manifest SDK version ${minimumVersion} or higher, but found version ${sdkVersion}; please update the "SDKVersion" in the plugin's manifest to ${minimumVersion} or higher.`);
+    }
+}
+/**
+ * Validates the {@link streamDeckVersion} and manifest's `Software.MinimumVersion` are at least the {@link minimumVersion};
+ * when the version is not fulfilled, an error is thrown with the {@link feature} formatted into the message.
+ * @param minimumVersion Minimum required version.
+ * @param streamDeckVersion Actual application version.
+ * @param feature Feature that requires the version.
+ */
+function requiresVersion(minimumVersion, streamDeckVersion, feature) {
+    const required = {
+        major: Math.floor(minimumVersion),
+        minor: Number(minimumVersion.toString().split(".").at(1) ?? 0), // Account for JavaScript's floating point precision.
+        patch: 0,
+        build: 0,
+    };
+    if (streamDeckVersion.compareTo(required) === -1) {
+        throw new Error(`[ERR_NOT_SUPPORTED]: ${feature} requires Stream Deck version ${required.major}.${required.minor} or higher, but current version is ${streamDeckVersion.major}.${streamDeckVersion.minor}; please update Stream Deck and the "Software.MinimumVersion" in the plugin's manifest to "${required.major}.${required.minor}" or higher.`);
+    }
+    const softwareMinimumVersion = getSoftwareMinimumVersion();
+    if (softwareMinimumVersion !== null && softwareMinimumVersion.compareTo(required) === -1) {
+        throw new Error(`[ERR_NOT_SUPPORTED]: ${feature} requires Stream Deck version ${required.major}.${required.minor} or higher; please update the "Software.MinimumVersion" in the plugin's manifest to "${required.major}.${required.minor}" or higher.`);
+    }
+}
+
+let __useExperimentalMessageIdentifiers = false;
+const settings = {
+    /**
+     * Available from Stream Deck 7.1; determines whether message identifiers should be sent when getting
+     * action-instance or global settings.
+     *
+     * When `true`, the did-receive events associated with settings are only emitted when the action-instance
+     * or global settings are changed in the property inspector.
+     * @returns The value.
+     */
+    get useExperimentalMessageIdentifiers() {
+        return __useExperimentalMessageIdentifiers;
+    },
+    /**
+     * Available from Stream Deck 7.1; determines whether message identifiers should be sent when getting
+     * action-instance or global settings.
+     *
+     * When `true`, the did-receive events associated with settings are only emitted when the action-instance
+     * or global settings are changed in the property inspector.
+     */
+    set useExperimentalMessageIdentifiers(value) {
+        requiresVersion(7.1, connection.version, "Message identifiers");
+        __useExperimentalMessageIdentifiers = value;
+    },
+    /**
+     * Gets the global settings associated with the plugin.
+     * @template T The type of global settings associated with the plugin.
+     * @returns Promise containing the plugin's global settings.
+     */
+    getGlobalSettings: () => {
+        return new Promise((resolve) => {
+            connection.once("didReceiveGlobalSettings", (ev) => resolve(ev.payload.settings));
+            connection.send({
+                event: "getGlobalSettings",
+                context: connection.registrationParameters.pluginUUID,
+                id: randomUUID(),
+            });
+        });
+    },
+    /**
+     * Occurs when the global settings are requested, or when the the global settings were updated in
+     * the property inspector.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that removes the listener.
+     */
+    onDidReceiveGlobalSettings: (listener) => {
+        return connection.disposableOn("didReceiveGlobalSettings", (ev) => {
+            // Do nothing when the global settings were requested.
+            if (settings.useExperimentalMessageIdentifiers && ev.id) {
+                return;
+            }
+            listener(new DidReceiveGlobalSettingsEvent(ev));
+        });
+    },
+    /**
+     * Occurs when the settings associated with an action instance are requested, or when the the settings
+     * were updated in the property inspector.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that removes the listener.
+     */
+    onDidReceiveSettings: (listener) => {
+        return connection.disposableOn("didReceiveSettings", (ev) => {
+            // Do nothing when the action's settings were requested.
+            if (settings.useExperimentalMessageIdentifiers && ev.id) {
+                return;
+            }
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    },
+    /**
+     * Sets the global settings associated the plugin; these settings are only available to this plugin,
+     * and should be used to persist information securely.
+     * @param settings Settings to save.
+     * @example
+     * streamDeck.settings.setGlobalSettings({
+     *   apiKey,
+     *   connectedDate: new Date()
+     * })
+     */
+    setGlobalSettings: async (settings) => {
+        await connection.send({
+            event: "setGlobalSettings",
+            context: connection.registrationParameters.pluginUUID,
+            payload: settings,
+        });
+    },
+};
+
+/**
+ * Controller capable of sending/receiving payloads with the property inspector, and listening for events.
+ */
+class UIController {
+    /**
+     * Action associated with the current property inspector.
+     */
+    #action;
+    /**
+     * To overcome event races, the debounce counter keeps track of appear vs disappear events, ensuring
+     * we only clear the current ui when an equal number of matching disappear events occur.
+     */
+    #appearanceStackCount = 0;
+    /**
+     * Initializes a new instance of the {@link UIController} class.
+     */
+    constructor() {
+        // Track the action for the current property inspector.
+        this.onDidAppear((ev) => {
+            if (this.#isCurrent(ev.action)) {
+                this.#appearanceStackCount++;
+            }
+            else {
+                this.#appearanceStackCount = 1;
+                this.#action = ev.action;
+            }
+        });
+        this.onDidDisappear((ev) => {
+            if (this.#isCurrent(ev.action)) {
+                this.#appearanceStackCount--;
+                if (this.#appearanceStackCount <= 0) {
+                    this.#action = undefined;
+                }
+            }
+        });
+    }
+    /**
+     * Gets the action associated with the current property.
+     * @returns The action; otherwise `undefined` when a property inspector is not visible.
+     */
+    get action() {
+        return this.#action;
+    }
+    /**
+     * Occurs when the property inspector associated with the action becomes visible, i.e. the user
+     * selected an action in the Stream Deck application..
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDidAppear(listener) {
+        return connection.disposableOn("propertyInspectorDidAppear", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionWithoutPayloadEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the property inspector associated with the action disappears, i.e. the user unselected
+     * the action in the Stream Deck application.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDidDisappear(listener) {
+        return connection.disposableOn("propertyInspectorDidDisappear", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionWithoutPayloadEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when a message was sent to the plugin _from_ the property inspector.
+     * @template TPayload The type of the payload received from the property inspector.
+     * @template TSettings The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onSendToPlugin(listener) {
+        return connection.disposableOn("sendToPlugin", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new SendToPluginEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Sends the payload to the property inspector; the payload is only sent when the property inspector
+     * is visible for an action provided by this plugin.
+     * @param payload Payload to send.
+     */
+    async sendToPropertyInspector(payload) {
+        if (this.#action) {
+            await connection.send({
+                event: "sendToPropertyInspector",
+                context: this.#action.id,
+                payload,
+            });
+        }
+    }
+    /**
+     * Determines whether the specified action is the action for the current property inspector.
+     * @param action Action to check against.
+     * @returns `true` when the actions are the same.
+     */
+    #isCurrent(action) {
+        return (this.#action?.id === action.id &&
+            this.#action?.manifestId === action.manifestId &&
+            this.#action?.device?.id === action.device.id);
+    }
+}
+const ui = new UIController();
+
+const __items = new Map();
+/**
+ * Provides a read-only store of Stream Deck devices.
+ */
+class ReadOnlyDeviceStore extends Enumerable {
+    /**
+     * Initializes a new instance of the {@link ReadOnlyDeviceStore}.
+     */
+    constructor() {
+        super(__items);
+    }
+    /**
+     * Gets the Stream Deck {@link Device} associated with the specified {@link deviceId}.
+     * @param deviceId Identifier of the Stream Deck device.
+     * @returns The Stream Deck device information; otherwise `undefined` if a device with the {@link deviceId} does not exist.
+     */
+    getDeviceById(deviceId) {
+        return __items.get(deviceId);
+    }
+}
+/**
+ * Provides a store of Stream Deck devices.
+ */
+class DeviceStore extends ReadOnlyDeviceStore {
+    /**
+     * Adds the device to the store.
+     * @param device The device.
+     */
+    set(device) {
+        __items.set(device.id, device);
+    }
+}
+/**
+ * Singleton instance of the device store.
+ */
+const deviceStore = new DeviceStore();
+
+/**
+ * Provides information about an instance of a Stream Deck action.
+ */
+class ActionContext {
+    /**
+     * Device the action is associated with.
+     */
+    #device;
+    /**
+     * Source of the action.
+     */
+    #source;
+    /**
+     * Initializes a new instance of the {@link ActionContext} class.
+     * @param source Source of the action.
+     */
+    constructor(source) {
+        this.#source = source;
+        const device = deviceStore.getDeviceById(source.device);
+        if (!device) {
+            throw new Error(`Failed to initialize action; device ${source.device} not found`);
+        }
+        this.#device = device;
+    }
+    /**
+     * Type of the action.
+     * - `Keypad` is a key.
+     * - `Encoder` is a dial and portion of the touch strip.
+     * @returns Controller type.
+     */
+    get controllerType() {
+        return this.#source.payload.controller;
+    }
+    /**
+     * Stream Deck device the action is positioned on.
+     * @returns Stream Deck device.
+     */
+    get device() {
+        return this.#device;
+    }
+    /**
+     * Action instance identifier.
+     * @returns Identifier.
+     */
+    get id() {
+        return this.#source.context;
+    }
+    /**
+     * Manifest identifier (UUID) for this action type.
+     * @returns Manifest identifier.
+     */
+    get manifestId() {
+        return this.#source.action;
+    }
+    /**
+     * Converts this instance to a serializable object.
+     * @returns The serializable object.
+     */
+    toJSON() {
+        return {
+            controllerType: this.controllerType,
+            device: this.device,
+            id: this.id,
+            manifestId: this.manifestId,
+        };
+    }
+}
+
+const REQUEST_TIMEOUT = 15 * 1000; // 15s
+/**
+ * Provides a contextualized instance of an {@link Action}, allowing for direct communication with the Stream Deck.
+ * @template T The type of settings associated with the action.
+ */
+class Action extends ActionContext {
+    /**
+     * Gets the resources (files) associated with this action; these resources are embedded into the
+     * action when it is exported, either individually, or as part of a profile.
+     *
+     * Available from Stream Deck 7.1.
+     * @returns The resources.
+     */
+    async getResources() {
+        requiresVersion(7.1, connection.version, "getResources");
+        const res = await this.#fetch("getResources", "didReceiveResources");
+        return res.payload.resources;
+    }
+    /**
+     * Gets the settings associated this action instance.
+     * @template U The type of settings associated with the action.D
+     * @returns Promise containing the action instance's settings.
+     */
+    async getSettings() {
+        const res = await this.#fetch("getSettings", "didReceiveSettings");
+        return res.payload.settings;
+    }
+    /**
+     * Determines whether this instance is a dial.
+     * @returns `true` when this instance is a dial; otherwise `false`.
+     */
+    isDial() {
+        return this.controllerType === "Encoder";
+    }
+    /**
+     * Determines whether this instance is a key.
+     * @returns `true` when this instance is a key; otherwise `false`.
+     */
+    isKey() {
+        return this.controllerType === "Keypad";
+    }
+    /**
+     * Sets the resources (files) associated with this action; these resources are embedded into the
+     * action when it is exported, either individually, or as part of a profile.
+     *
+     * Available from Stream Deck 7.1.
+     * @example
+     * action.setResources({
+     *   fileOne: "c:\\hello-world.txt",
+     *   anotherFile: "c:\\icon.png"
+     * });
+     * @param resources The resources as a map of file paths.
+     * @returns `Promise` resolved when the resources are saved to Stream Deck.
+     */
+    setResources(resources) {
+        requiresVersion(7.1, connection.version, "setResources");
+        return connection.send({
+            event: "setResources",
+            context: this.id,
+            payload: resources,
+        });
+    }
+    /**
+     * Sets the {@link settings} associated with this action instance. Use in conjunction with {@link Action.getSettings}.
+     * @param settings Settings to persist.
+     * @returns `Promise` resolved when the {@link settings} are sent to Stream Deck.
+     */
+    setSettings(settings) {
+        return connection.send({
+            event: "setSettings",
+            context: this.id,
+            payload: settings,
+        });
+    }
+    /**
+     * Temporarily shows an alert (i.e. warning), in the form of an exclamation mark in a yellow triangle, on this action instance. Used to provide visual feedback when an action failed.
+     * @returns `Promise` resolved when the request to show an alert has been sent to Stream Deck.
+     */
+    showAlert() {
+        return connection.send({
+            event: "showAlert",
+            context: this.id,
+        });
+    }
+    /**
+     * Fetches information from Stream Deck by sending the command, and awaiting the event.
+     * @param command Name of the event (command) to send.
+     * @param event Name of the event to await.
+     * @returns The payload from the received event.
+     */
+    async #fetch(command, event) {
+        const { resolve, reject, promise } = withResolvers();
+        // Set a timeout to prevent endless awaiting.
+        const timeoutId = setTimeout(() => {
+            listener.dispose();
+            reject("The request timed out");
+        }, REQUEST_TIMEOUT);
+        // Listen for an event that can resolve the request.
+        const listener = connection.disposableOn(event, (ev) => {
+            // Make sure the received event is for this action.
+            if (ev.context == this.id) {
+                clearTimeout(timeoutId);
+                listener.dispose();
+                resolve(ev);
+            }
+        });
+        // Send the request; specifying an id signifies its a request.
+        await connection.send({
+            event: command,
+            context: this.id,
+            id: randomUUID(),
+        });
+        return promise;
+    }
+}
+
+/**
+ * Provides a contextualized instance of a dial action.
+ * @template T The type of settings associated with the action.
+ */
+class DialAction extends Action {
+    /**
+     * Private backing field for {@link DialAction.coordinates}.
+     */
+    #coordinates;
+    /**
+     * Initializes a new instance of the {@see DialAction} class.
+     * @param source Source of the action.
+     */
+    constructor(source) {
+        super(source);
+        if (source.payload.controller !== "Encoder") {
+            throw new Error("Unable to create DialAction; source event is not a Encoder");
+        }
+        this.#coordinates = Object.freeze(source.payload.coordinates);
+    }
+    /**
+     * Coordinates of the dial.
+     * @returns The coordinates.
+     */
+    get coordinates() {
+        return this.#coordinates;
+    }
+    /**
+     * Sets the feedback for the current layout associated with this action instance, allowing for the visual items to be updated. Layouts are a powerful way to provide dynamic information
+     * to users, and can be assigned in the manifest, or dynamically via {@link Action.setFeedbackLayout}.
+     *
+     * The {@link feedback} payload defines which items within the layout will be updated, and are identified by their property name (defined as the `key` in the layout's definition).
+     * The values can either by a complete new definition, a `string` for layout item types of `text` and `pixmap`, or a `number` for layout item types of `bar` and `gbar`.
+     * @param feedback Object containing information about the layout items to be updated.
+     * @returns `Promise` resolved when the request to set the {@link feedback} has been sent to Stream Deck.
+     */
+    setFeedback(feedback) {
+        return connection.send({
+            event: "setFeedback",
+            context: this.id,
+            payload: feedback,
+        });
+    }
+    /**
+     * Sets the layout associated with this action instance. The layout must be either a built-in layout identifier, or path to a local layout JSON file within the plugin's folder.
+     * Use in conjunction with {@link Action.setFeedback} to update the layout's current items' settings.
+     * @param layout Name of a pre-defined layout, or relative path to a custom one.
+     * @returns `Promise` resolved when the new layout has been sent to Stream Deck.
+     */
+    setFeedbackLayout(layout) {
+        return connection.send({
+            event: "setFeedbackLayout",
+            context: this.id,
+            payload: {
+                layout,
+            },
+        });
+    }
+    /**
+     * Sets the {@link image} to be display for this action instance within Stream Deck app.
+     *
+     * NB: The image can only be set by the plugin when the the user has not specified a custom image.
+     * @param image Image to display; this can be either a path to a local file within the plugin's folder, a base64 encoded `string` with the mime type declared (e.g. PNG, JPEG, etc.),
+     * or an SVG `string`. When `undefined`, the image from the manifest will be used.
+     * @returns `Promise` resolved when the request to set the {@link image} has been sent to Stream Deck.
+     */
+    setImage(image) {
+        return connection.send({
+            event: "setImage",
+            context: this.id,
+            payload: {
+                image,
+            },
+        });
+    }
+    /**
+     * Sets the {@link title} displayed for this action instance.
+     *
+     * NB: The title can only be set by the plugin when the the user has not specified a custom title.
+     * @param title Title to display.
+     * @returns `Promise` resolved when the request to set the {@link title} has been sent to Stream Deck.
+     */
+    setTitle(title) {
+        return this.setFeedback({ title });
+    }
+    /**
+     * Sets the trigger (interaction) {@link descriptions} associated with this action instance. Descriptions are shown within the Stream Deck application, and informs the user what
+     * will happen when they interact with the action, e.g. rotate, touch, etc. When {@link descriptions} is `undefined`, the descriptions will be reset to the values provided as part
+     * of the manifest.
+     *
+     * NB: Applies to encoders (dials / touchscreens) found on Stream Deck + devices.
+     * @param descriptions Descriptions that detail the action's interaction.
+     * @returns `Promise` resolved when the request to set the {@link descriptions} has been sent to Stream Deck.
+     */
+    setTriggerDescription(descriptions) {
+        return connection.send({
+            event: "setTriggerDescription",
+            context: this.id,
+            payload: descriptions || {},
+        });
+    }
+    /**
+     * @inheritdoc
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            coordinates: this.coordinates,
+        };
+    }
+}
+
+/**
+ * Provides a contextualized instance of a key action.
+ * @template T The type of settings associated with the action.
+ */
+class KeyAction extends Action {
+    /**
+     * Private backing field for {@link KeyAction.coordinates}.
+     */
+    #coordinates;
+    /**
+     * Source of the action.
+     */
+    #source;
+    /**
+     * Initializes a new instance of the {@see KeyAction} class.
+     * @param source Source of the action.
+     */
+    constructor(source) {
+        super(source);
+        if (source.payload.controller !== "Keypad") {
+            throw new Error("Unable to create KeyAction; source event is not a Keypad");
+        }
+        this.#coordinates = !source.payload.isInMultiAction ? Object.freeze(source.payload.coordinates) : undefined;
+        this.#source = source;
+    }
+    /**
+     * Coordinates of the key; otherwise `undefined` when the action is part of a multi-action.
+     * @returns The coordinates.
+     */
+    get coordinates() {
+        return this.#coordinates;
+    }
+    /**
+     * Determines whether the key is part of a multi-action.
+     * @returns `true` when in a multi-action; otherwise `false`.
+     */
+    isInMultiAction() {
+        return this.#source.payload.isInMultiAction;
+    }
+    /**
+     * Sets the {@link image} to be display for this action instance.
+     *
+     * NB: The image can only be set by the plugin when the the user has not specified a custom image.
+     * @param image Image to display; this can be either a path to a local file within the plugin's folder, a base64 encoded `string` with the mime type declared (e.g. PNG, JPEG, etc.),
+     * or an SVG `string`. When `undefined`, the image from the manifest will be used.
+     * @param options Additional options that define where and how the image should be rendered.
+     * @returns `Promise` resolved when the request to set the {@link image} has been sent to Stream Deck.
+     */
+    setImage(image, options) {
+        return connection.send({
+            event: "setImage",
+            context: this.id,
+            payload: {
+                image,
+                ...options,
+            },
+        });
+    }
+    /**
+     * Sets the current {@link state} of this action instance; only applies to actions that have multiple states defined within the manifest.
+     * @param state State to set; this be either 0, or 1.
+     * @returns `Promise` resolved when the request to set the state of an action instance has been sent to Stream Deck.
+     */
+    setState(state) {
+        return connection.send({
+            event: "setState",
+            context: this.id,
+            payload: {
+                state,
+            },
+        });
+    }
+    /**
+     * Sets the {@link title} displayed for this action instance.
+     *
+     * NB: The title can only be set by the plugin when the the user has not specified a custom title.
+     * @param title Title to display; when `undefined` the title within the manifest will be used.
+     * @param options Additional options that define where and how the title should be rendered.
+     * @returns `Promise` resolved when the request to set the {@link title} has been sent to Stream Deck.
+     */
+    setTitle(title, options) {
+        return connection.send({
+            event: "setTitle",
+            context: this.id,
+            payload: {
+                title,
+                ...options,
+            },
+        });
+    }
+    /**
+     * Temporarily shows an "OK" (i.e. success), in the form of a check-mark in a green circle, on this action instance. Used to provide visual feedback when an action successfully
+     * executed.
+     * @returns `Promise` resolved when the request to show an "OK" has been sent to Stream Deck.
+     */
+    showOk() {
+        return connection.send({
+            event: "showOk",
+            context: this.id,
+        });
+    }
+    /**
+     * @inheritdoc
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            coordinates: this.coordinates,
+            isInMultiAction: this.isInMultiAction(),
+        };
+    }
+}
+
+const manifest = new Lazy(() => getManifest());
+/**
+ * Provides functions, and information, for interacting with Stream Deck actions.
+ */
+class ActionService extends ReadOnlyActionStore {
+    /**
+     * Initializes a new instance of the {@link ActionService} class.
+     */
+    constructor() {
+        super();
+        // Adds the action to the store.
+        connection.prependListener("willAppear", (ev) => {
+            const action = ev.payload.controller === "Encoder" ? new DialAction(ev) : new KeyAction(ev);
+            actionStore.set(action);
+        });
+        // Remove the action from the store.
+        connection.prependListener("willDisappear", (ev) => actionStore.delete(ev.context));
+    }
+    /**
+     * Occurs when the user presses a dial (Stream Deck +).
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDialDown(listener) {
+        return connection.disposableOn("dialDown", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isDial()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user rotates a dial (Stream Deck +).
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDialRotate(listener) {
+        return connection.disposableOn("dialRotate", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isDial()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user releases a pressed dial (Stream Deck +).
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDialUp(listener) {
+        return connection.disposableOn("dialUp", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isDial()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the resources were updated within the property inspector.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDidReceiveResources(listener) {
+        return connection.disposableOn("didReceiveResources", (ev) => {
+            // When the id is defined, the resources were requested, so we don't propagate the event.
+            if (ev.id !== undefined) {
+                return;
+            }
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user presses a action down.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onKeyDown(listener) {
+        return connection.disposableOn("keyDown", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isKey()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user releases a pressed action.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onKeyUp(listener) {
+        return connection.disposableOn("keyUp", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isKey()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user updates an action's title settings in the Stream Deck application. See also {@link Action.setTitle}.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onTitleParametersDidChange(listener) {
+        return connection.disposableOn("titleParametersDidChange", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when the user taps the touchscreen (Stream Deck +).
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onTouchTap(listener) {
+        return connection.disposableOn("touchTap", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action?.isDial()) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when an action appears on the Stream Deck due to the user navigating to another page, profile, folder, etc. This also occurs during startup if the action is on the "front
+     * page". An action refers to _all_ types of actions, e.g. keys, dials,
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onWillAppear(listener) {
+        return connection.disposableOn("willAppear", (ev) => {
+            const action = actionStore.getActionById(ev.context);
+            if (action) {
+                listener(new ActionEvent(action, ev));
+            }
+        });
+    }
+    /**
+     * Occurs when an action disappears from the Stream Deck due to the user navigating to another page, profile, folder, etc. An action refers to _all_ types of actions, e.g. keys,
+     * dials, touchscreens, pedals, etc.
+     * @template T The type of settings associated with the action.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onWillDisappear(listener) {
+        return connection.disposableOn("willDisappear", (ev) => listener(new ActionEvent(new ActionContext(ev), ev)));
+    }
+    /**
+     * Registers the action with the Stream Deck, routing all events associated with the {@link SingletonAction.manifestId} to the specified {@link action}.
+     * @param action The action to register.
+     * @example
+     * ＠action({ UUID: "com.elgato.test.action" })
+     * class MyCustomAction extends SingletonAction {
+     *     export function onKeyDown(ev: KeyDownEvent) {
+     *         // Do some awesome thing.
+     *     }
+     * }
+     *
+     * streamDeck.actions.registerAction(new MyCustomAction());
+     */
+    registerAction(action) {
+        if (action.manifestId === undefined) {
+            throw new Error("The action's manifestId cannot be undefined.");
+        }
+        if (manifest.value !== null && !manifest.value.Actions.some((a) => a.UUID === action.manifestId)) {
+            throw new Error(`The action's manifestId was not found within the manifest: ${action.manifestId}`);
+        }
+        // Routes an event to the action, when the applicable listener is defined on the action.
+        const { manifestId } = action;
+        const route = (fn, listener) => {
+            const boundedListener = listener?.bind(action);
+            if (boundedListener === undefined) {
+                return;
+            }
+            fn.bind(action)(async (ev) => {
+                if (ev.action.manifestId == manifestId) {
+                    await boundedListener(ev);
+                }
+            });
+        };
+        // Route each of the action events.
+        route(this.onDialDown, action.onDialDown);
+        route(this.onDialUp, action.onDialUp);
+        route(this.onDialRotate, action.onDialRotate);
+        route(ui.onSendToPlugin, action.onSendToPlugin);
+        route(this.onDidReceiveResources, action.onDidReceiveResources);
+        route(settings.onDidReceiveSettings, action.onDidReceiveSettings);
+        route(this.onKeyDown, action.onKeyDown);
+        route(this.onKeyUp, action.onKeyUp);
+        route(ui.onDidAppear, action.onPropertyInspectorDidAppear);
+        route(ui.onDidDisappear, action.onPropertyInspectorDidDisappear);
+        route(this.onTitleParametersDidChange, action.onTitleParametersDidChange);
+        route(this.onTouchTap, action.onTouchTap);
+        route(this.onWillAppear, action.onWillAppear);
+        route(this.onWillDisappear, action.onWillDisappear);
+    }
+}
+/**
+ * Service for interacting with Stream Deck actions.
+ */
+const actionService = new ActionService();
+
+/**
+ * Provides information about a device.
+ */
+class Device {
+    /**
+     * Private backing field for {@link Device.isConnected}.
+     */
+    #isConnected = false;
+    /**
+     * Private backing field for the device's information.
+     */
+    #info;
+    /**
+     * Unique identifier of the device.
+     */
+    id;
+    /**
+     * Initializes a new instance of the {@link Device} class.
+     * @param id Device identifier.
+     * @param info Information about the device.
+     * @param isConnected Determines whether the device is connected.
+     */
+    constructor(id, info, isConnected) {
+        this.id = id;
+        this.#info = info;
+        this.#isConnected = isConnected;
+        // Set connected.
+        connection.prependListener("deviceDidConnect", (ev) => {
+            if (ev.device === this.id) {
+                this.#info = ev.deviceInfo;
+                this.#isConnected = true;
+            }
+        });
+        // Track changes.
+        connection.prependListener("deviceDidChange", (ev) => {
+            if (ev.device === this.id) {
+                this.#info = ev.deviceInfo;
+            }
+        });
+        // Set disconnected.
+        connection.prependListener("deviceDidDisconnect", (ev) => {
+            if (ev.device === this.id) {
+                this.#isConnected = false;
+            }
+        });
+    }
+    /**
+     * Actions currently visible on the device.
+     * @returns Collection of visible actions.
+     */
+    get actions() {
+        return actionStore.filter((a) => a.device.id === this.id);
+    }
+    /**
+     * Determines whether the device is currently connected.
+     * @returns `true` when the device is connected; otherwise `false`.
+     */
+    get isConnected() {
+        return this.#isConnected;
+    }
+    /**
+     * Name of the device, as specified by the user in the Stream Deck application.
+     * @returns Name of the device.
+     */
+    get name() {
+        return this.#info.name;
+    }
+    /**
+     * Number of action slots, excluding dials / touchscreens, available to the device.
+     * @returns Size of the device.
+     */
+    get size() {
+        return this.#info.size;
+    }
+    /**
+     * Type of the device that was connected, e.g. Stream Deck +, Stream Deck Pedal, etc. See {@link DeviceType}.
+     * @returns Type of the device.
+     */
+    get type() {
+        return this.#info.type;
+    }
+}
+
+/**
+ * Provides functions, and information, for interacting with Stream Deck actions.
+ */
+class DeviceService extends ReadOnlyDeviceStore {
+    /**
+     * Initializes a new instance of the {@link DeviceService}.
+     */
+    constructor() {
+        super();
+        // Add the devices from registration parameters.
+        connection.once("connected", (info) => {
+            info.devices.forEach((dev) => deviceStore.set(new Device(dev.id, dev, false)));
+        });
+        // Add new devices that were connected.
+        connection.on("deviceDidConnect", ({ device: id, deviceInfo }) => {
+            if (!deviceStore.getDeviceById(id)) {
+                deviceStore.set(new Device(id, deviceInfo, true));
+            }
+        });
+        // Add new devices that were changed (Virtual Stream Deck event race).
+        connection.on("deviceDidChange", ({ device: id, deviceInfo }) => {
+            if (!deviceStore.getDeviceById(id)) {
+                deviceStore.set(new Device(id, deviceInfo, false));
+            }
+        });
+    }
+    /**
+     * Occurs when a Stream Deck device changed, for example its name or size.
+     *
+     * Available from Stream Deck 7.0.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDeviceDidChange(listener) {
+        requiresVersion(7.0, connection.version, "onDeviceDidChange");
+        return connection.disposableOn("deviceDidChange", (ev) => listener(new DeviceEvent(ev, this.getDeviceById(ev.device))));
+    }
+    /**
+     * Occurs when a Stream Deck device is connected. See also {@link DeviceService.onDeviceDidConnect}.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDeviceDidConnect(listener) {
+        return connection.disposableOn("deviceDidConnect", (ev) => listener(new DeviceEvent(ev, this.getDeviceById(ev.device))));
+    }
+    /**
+     * Occurs when a Stream Deck device is disconnected. See also {@link DeviceService.onDeviceDidDisconnect}.
+     * @param listener Function to be invoked when the event occurs.
+     * @returns A disposable that, when disposed, removes the listener.
+     */
+    onDeviceDidDisconnect(listener) {
+        return connection.disposableOn("deviceDidDisconnect", (ev) => listener(new DeviceEvent(ev, this.getDeviceById(ev.device))));
+    }
+}
+/**
+ * Provides functions, and information, for interacting with Stream Deck actions.
+ */
+const deviceService = new DeviceService();
+
+/**
+ * Loads a locale from the file system.
+ * @param language Language to load.
+ * @returns Contents of the locale.
+ */
+function fileSystemLocaleProvider(language) {
+    const filePath = path.join(process.cwd(), `${language}.json`);
+    if (!fs.existsSync(filePath)) {
+        return null;
+    }
+    try {
+        // Parse the translations from the file.
+        const contents = fs.readFileSync(filePath, { flag: "r" })?.toString();
+        return parseLocalizations(contents);
+    }
+    catch (err) {
+        logger.error(`Failed to load translations from ${filePath}`, err);
+        return null;
+    }
+}
+/**
+ * Parses the localizations from the specified contents, or throws a `TypeError` when unsuccessful.
+ * @param contents Contents that represent the stringified JSON containing the localizations.
+ * @returns The localizations; otherwise a `TypeError`.
+ */
+function parseLocalizations(contents) {
+    const json = JSON.parse(contents);
+    if (json !== undefined && json !== null && typeof json === "object" && "Localization" in json) {
+        return json["Localization"];
+    }
+    throw new TypeError(`Translations must be a JSON object nested under a property named "Localization"`);
+}
+
+/**
+ * Requests the Stream Deck switches the current profile of the specified {@link deviceId} to the {@link profile}; when no {@link profile} is provided the previously active profile
+ * is activated.
+ *
+ * NB: Plugins may only switch to profiles distributed with the plugin, as defined within the manifest, and cannot access user-defined profiles.
+ * @param deviceId Unique identifier of the device where the profile should be set.
+ * @param profile Optional name of the profile to switch to; when `undefined` the previous profile will be activated. Name must be identical to the one provided in the manifest.
+ * @param page Optional page to show when switching to the {@link profile}, indexed from 0. When `undefined`, the page that was previously visible (when switching away from the
+ * profile) will be made visible.
+ * @returns `Promise` resolved when the request to switch the `profile` has been sent to Stream Deck.
+ */
+function switchToProfile(deviceId, profile, page) {
+    if (page !== undefined) {
+        requiresVersion(6.5, connection.version, "Switching to a profile page");
+    }
+    return connection.send({
+        event: "switchToProfile",
+        context: connection.registrationParameters.pluginUUID,
+        device: deviceId,
+        payload: {
+            page,
+            profile,
+        },
+    });
+}
+
+var profiles = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    switchToProfile: switchToProfile
+});
+
+/**
+ * Occurs when a monitored application is launched. Monitored applications can be defined in the manifest via the {@link Manifest.ApplicationsToMonitor} property.
+ * See also {@link onApplicationDidTerminate}.
+ * @param listener Function to be invoked when the event occurs.
+ * @returns A disposable that, when disposed, removes the listener.
+ */
+function onApplicationDidLaunch(listener) {
+    return connection.disposableOn("applicationDidLaunch", (ev) => listener(new ApplicationEvent(ev)));
+}
+/**
+ * Occurs when a monitored application terminates. Monitored applications can be defined in the manifest via the {@link Manifest.ApplicationsToMonitor} property.
+ * See also {@link onApplicationDidLaunch}.
+ * @param listener Function to be invoked when the event occurs.
+ * @returns A disposable that, when disposed, removes the listener.
+ */
+function onApplicationDidTerminate(listener) {
+    return connection.disposableOn("applicationDidTerminate", (ev) => listener(new ApplicationEvent(ev)));
+}
+/**
+ * Occurs when a deep-link message is routed to the plugin from Stream Deck. One-way deep-link messages can be sent to plugins from external applications using the URL format
+ * `streamdeck://plugins/message/<PLUGIN_UUID>/{MESSAGE}`.
+ * @param listener Function to be invoked when the event occurs.
+ * @returns A disposable that, when disposed, removes the listener.
+ */
+function onDidReceiveDeepLink(listener) {
+    requiresVersion(6.5, connection.version, "Receiving deep-link messages");
+    return connection.disposableOn("didReceiveDeepLink", (ev) => listener(new DidReceiveDeepLinkEvent(ev)));
+}
+/**
+ * Occurs when the computer wakes up.
+ * @param listener Function to be invoked when the event occurs.
+ * @returns A disposable that, when disposed, removes the listener.
+ */
+function onSystemDidWakeUp(listener) {
+    return connection.disposableOn("systemDidWakeUp", (ev) => listener(new Event(ev)));
+}
+/**
+ * Opens the specified `url` in the user's default browser.
+ * @param url URL to open.
+ * @returns `Promise` resolved when the request to open the `url` has been sent to Stream Deck.
+ */
+function openUrl(url) {
+    return connection.send({
+        event: "openUrl",
+        payload: {
+            url,
+        },
+    });
+}
+/**
+ * Gets the secrets associated with the plugin.
+ * @returns `Promise` resolved with the secrets associated with the plugin.
+ */
+function getSecrets() {
+    requiresVersion(6.9, connection.version, "Secrets");
+    requiresSDKVersion(3, "Secrets");
+    return new Promise((resolve) => {
+        connection.once("didReceiveSecrets", (ev) => resolve(ev.payload.secrets));
+        connection.send({
+            event: "getSecrets",
+            context: connection.registrationParameters.pluginUUID,
+        });
+    });
+}
+
+var system = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getSecrets: getSecrets,
+    onApplicationDidLaunch: onApplicationDidLaunch,
+    onApplicationDidTerminate: onApplicationDidTerminate,
+    onDidReceiveDeepLink: onDidReceiveDeepLink,
+    onSystemDidWakeUp: onSystemDidWakeUp,
+    openUrl: openUrl
+});
+
+/**
+ * Defines a Stream Deck action associated with the plugin.
+ * @param definition The definition of the action, e.g. it's identifier, name, etc.
+ * @returns The definition decorator.
+ */
+function action(definition) {
+    const manifestId = definition.UUID;
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/no-unused-vars
+    return function (target, context) {
+        return class extends target {
+            /**
+             * The universally-unique value that identifies the action within the manifest.
+             */
+            manifestId = manifestId;
+        };
+    };
+}
+
+/**
+ * Provides the main bridge between the plugin and the Stream Deck allowing the plugin to send requests and receive events, e.g. when the user presses an action.
+ * @template T The type of settings associated with the action.
+ */
+class SingletonAction {
+    /**
+     * The universally-unique value that identifies the action within the manifest.
+     */
+    manifestId;
+    /**
+     * Gets the visible actions with the `manifestId` that match this instance's.
+     * @returns The visible actions.
+     */
+    get actions() {
+        return actionStore.filter((a) => a.manifestId === this.manifestId);
+    }
+}
+
+let i18n;
+const streamDeck = {
+    /**
+     * Namespace for event listeners and functionality relating to Stream Deck actions.
+     * @returns Actions namespace.
+     */
+    get actions() {
+        return actionService;
+    },
+    /**
+     * Namespace for interacting with Stream Deck devices.
+     * @returns Devices namespace.
+     */
+    get devices() {
+        return deviceService;
+    },
+    /**
+     * Internalization provider, responsible for managing localizations and translating resources.
+     * @returns Internalization provider.
+     */
+    get i18n() {
+        return (i18n ??= new I18nProvider(this.info.application.language, fileSystemLocaleProvider));
+    },
+    /**
+     * Registration and application information provided by Stream Deck during initialization.
+     * @returns Registration information.
+     */
+    get info() {
+        return connection.registrationParameters.info;
+    },
+    /**
+     * Logger responsible for capturing log messages.
+     * @returns The logger.
+     */
+    get logger() {
+        return logger;
+    },
+    /**
+     * Namespace for Stream Deck profiles.
+     * @returns Profiles namespace.
+     */
+    get profiles() {
+        return profiles;
+    },
+    /**
+     * Namespace for persisting settings within Stream Deck.
+     * @returns Settings namespace.
+     */
+    get settings() {
+        return settings;
+    },
+    /**
+     * Namespace for interacting with, and receiving events from, the system the plugin is running on.
+     * @returns System namespace.
+     */
+    get system() {
+        return system;
+    },
+    /**
+     * Namespace for interacting with UI (property inspector) associated with the plugin.
+     * @returns UI namespace.
+     */
+    get ui() {
+        return ui;
+    },
+    /**
+     * Connects the plugin to the Stream Deck.
+     * @returns A promise resolved when a connection has been established.
+     */
+    connect() {
+        return connection.connect();
+    },
+};
+
+/******************************************************************************
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+***************************************************************************** */
+/* global Reflect, Promise, SuppressedError, Symbol, Iterator */
+
+
+function __esDecorate(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
+    function accept(f) { if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected"); return f; }
+    var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
+    var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
+    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
+    var _, done = false;
+    for (var i = decorators.length - 1; i >= 0; i--) {
+        var context = {};
+        for (var p in contextIn) context[p] = p === "access" ? {} : contextIn[p];
+        for (var p in contextIn.access) context.access[p] = contextIn.access[p];
+        context.addInitializer = function (f) { if (done) throw new TypeError("Cannot add initializers after decoration has completed"); extraInitializers.push(accept(f || null)); };
+        var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);
+        if (kind === "accessor") {
+            if (result === void 0) continue;
+            if (result === null || typeof result !== "object") throw new TypeError("Object expected");
+            if (_ = accept(result.get)) descriptor.get = _;
+            if (_ = accept(result.set)) descriptor.set = _;
+            if (_ = accept(result.init)) initializers.unshift(_);
+        }
+        else if (_ = accept(result)) {
+            if (kind === "field") initializers.unshift(_);
+            else descriptor[key] = _;
+        }
+    }
+    if (target) Object.defineProperty(target, contextIn.name, descriptor);
+    done = true;
+}
+function __runInitializers(thisArg, initializers, value) {
+    var useValue = arguments.length > 2;
+    for (var i = 0; i < initializers.length; i++) {
+        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
+    }
+    return useValue ? value : void 0;
+}
+typeof SuppressedError === "function" ? SuppressedError : function (error, suppressed, message) {
+    var e = new Error(message);
+    return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+};
+
+/**
+ * Logger interface for the iRacing SDK
+ *
+ * This allows the SDK to be used with any logging implementation.
+ * By default, logs to console. Can be replaced with a custom logger.
+ */
+/**
+ * Default console logger implementation
+ */
+const consoleLogger = {
+    debug: (message) => console.debug(message),
+    info: (message) => console.info(message),
+    warn: (message) => console.warn(message),
+    error: (message) => console.error(message),
+};
+/**
+ * Current logger instance - can be replaced via setLogger()
+ */
+let currentLogger = consoleLogger;
+/**
+ * Set the logger implementation for the SDK
+ * @param logger Logger implementation to use
+ */
+function setLogger(logger) {
+    currentLogger = logger;
+}
+/**
+ * Get the current logger instance
+ */
+function getLogger() {
+    return currentLogger;
+}
+
+/**
+ * iRacing SDK utility functions
+ */
+/**
+ * Check if a bitfield value has a specific flag set.
+ * Works with EngineWarnings, SessionFlags, PitSvFlags, CameraState, PaceFlags, etc.
+ *
+ * @param value - The bitfield value from telemetry (e.g., telemetry.EngineWarnings)
+ * @param flag - The flag to check (e.g., EngineWarnings.WaterTempWarning)
+ * @returns true if the flag is set, false otherwise
+ *
+ * @example
+ * // Check if water temperature warning is active
+ * if (hasFlag(telemetry.EngineWarnings, EngineWarnings.WaterTempWarning)) {
+ *     console.log('Water temp warning!');
+ * }
+ *
+ * @example
+ * // Check if yellow flag is out
+ * if (hasFlag(telemetry.SessionFlags, Flags.Yellow)) {
+ *     console.log('Yellow flag!');
+ * }
+ *
+ * @example
+ * // Check if tire change is requested in pit service
+ * if (hasFlag(telemetry.PitSvFlags, PitSvFlags.LFTireChange)) {
+ *     console.log('LF tire change requested');
+ * }
+ */
+function hasFlag(value, flag) {
+    if (value === undefined || value === null) {
+        return false;
+    }
+    return (value & flag) !== 0;
+}
+/**
+ * Add a flag to a bitfield value.
+ * Returns a new value with the flag set.
+ *
+ * @param value - The current bitfield value (defaults to 0 if undefined)
+ * @param flag - The flag to add
+ * @returns New value with the flag set
+ *
+ * @example
+ * // Add UIHidden flag to camera state
+ * const newState = addFlag(currentState, CameraState.UIHidden);
+ *
+ * @example
+ * // Build a new flag set from scratch
+ * let flags = 0;
+ * flags = addFlag(flags, CameraState.UIHidden);
+ * flags = addFlag(flags, CameraState.UseAutoShotSelection);
+ */
+function addFlag(value, flag) {
+    return (value ?? 0) | flag;
+}
+/**
+ * Remove a flag from a bitfield value.
+ * Returns a new value with the flag cleared.
+ *
+ * @param value - The current bitfield value (defaults to 0 if undefined)
+ * @param flag - The flag to remove
+ * @returns New value with the flag cleared
+ *
+ * @example
+ * // Remove UIHidden flag from camera state
+ * const newState = removeFlag(currentState, CameraState.UIHidden);
+ */
+function removeFlag(value, flag) {
+    return (value ?? 0) & ~flag;
+}
+
+/**
+ * iRacing SDK type definitions
+ * Based on irsdk_defines.h from the iRacing SDK
+ */
+// Re-export utility functions for easy access
+const IRSDK_MAX_BUFS = 4;
+const IRSDK_MAX_STRING = 32;
+const IRSDK_MAX_DESC = 64;
+/**
+ * Variable types in the telemetry data
+ */
+var VarType;
+(function (VarType) {
+    VarType[VarType["Char"] = 0] = "Char";
+    VarType[VarType["Bool"] = 1] = "Bool";
+    VarType[VarType["Int"] = 2] = "Int";
+    VarType[VarType["BitField"] = 3] = "BitField";
+    VarType[VarType["Float"] = 4] = "Float";
+    VarType[VarType["Double"] = 5] = "Double";
+})(VarType || (VarType = {}));
+/**
+ * Status flags from the header
+ */
+var StatusField;
+(function (StatusField) {
+    StatusField[StatusField["Connected"] = 1] = "Connected";
+})(StatusField || (StatusField = {}));
+/**
+ * Engine warning flags (bitfield)
+ * Used with: EngineWarnings telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var EngineWarnings;
+(function (EngineWarnings) {
+    EngineWarnings[EngineWarnings["WaterTempWarning"] = 1] = "WaterTempWarning";
+    EngineWarnings[EngineWarnings["FuelPressureWarning"] = 2] = "FuelPressureWarning";
+    EngineWarnings[EngineWarnings["OilPressureWarning"] = 4] = "OilPressureWarning";
+    EngineWarnings[EngineWarnings["EngineStalled"] = 8] = "EngineStalled";
+    EngineWarnings[EngineWarnings["PitSpeedLimiter"] = 16] = "PitSpeedLimiter";
+    EngineWarnings[EngineWarnings["RevLimiterActive"] = 32] = "RevLimiterActive";
+    EngineWarnings[EngineWarnings["OilTempWarning"] = 64] = "OilTempWarning";
+    EngineWarnings[EngineWarnings["MandRepNeeded"] = 128] = "MandRepNeeded";
+    EngineWarnings[EngineWarnings["OptRepNeeded"] = 256] = "OptRepNeeded"; // Car needs optional repairs
+})(EngineWarnings || (EngineWarnings = {}));
+/**
+ * Session flags (bitfield)
+ * Used with: SessionFlags, CarIdxSessionFlags telemetry variables
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var Flags;
+(function (Flags) {
+    // Global flags
+    Flags[Flags["Checkered"] = 1] = "Checkered";
+    Flags[Flags["White"] = 2] = "White";
+    Flags[Flags["Green"] = 4] = "Green";
+    Flags[Flags["Yellow"] = 8] = "Yellow";
+    Flags[Flags["Red"] = 16] = "Red";
+    Flags[Flags["Blue"] = 32] = "Blue";
+    Flags[Flags["Debris"] = 64] = "Debris";
+    Flags[Flags["Crossed"] = 128] = "Crossed";
+    Flags[Flags["YellowWaving"] = 256] = "YellowWaving";
+    Flags[Flags["OneLapToGreen"] = 512] = "OneLapToGreen";
+    Flags[Flags["GreenHeld"] = 1024] = "GreenHeld";
+    Flags[Flags["TenToGo"] = 2048] = "TenToGo";
+    Flags[Flags["FiveToGo"] = 4096] = "FiveToGo";
+    Flags[Flags["RandomWaving"] = 8192] = "RandomWaving";
+    Flags[Flags["Caution"] = 16384] = "Caution";
+    Flags[Flags["CautionWaving"] = 32768] = "CautionWaving";
+    // Driver black flags
+    Flags[Flags["Black"] = 65536] = "Black";
+    Flags[Flags["Disqualify"] = 131072] = "Disqualify";
+    Flags[Flags["Servicible"] = 262144] = "Servicible";
+    Flags[Flags["Furled"] = 524288] = "Furled";
+    Flags[Flags["Repair"] = 1048576] = "Repair";
+    Flags[Flags["DqScoringInvalid"] = 2097152] = "DqScoringInvalid";
+    // Start lights
+    Flags[Flags["StartHidden"] = 268435456] = "StartHidden";
+    Flags[Flags["StartReady"] = 536870912] = "StartReady";
+    Flags[Flags["StartSet"] = 1073741824] = "StartSet";
+    Flags[Flags["StartGo"] = 2147483648] = "StartGo";
+})(Flags || (Flags = {}));
+/**
+ * Track location
+ * Used with: CarIdxTrackSurface telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var TrkLoc;
+(function (TrkLoc) {
+    TrkLoc[TrkLoc["NotInWorld"] = -1] = "NotInWorld";
+    TrkLoc[TrkLoc["OffTrack"] = 0] = "OffTrack";
+    TrkLoc[TrkLoc["InPitStall"] = 1] = "InPitStall";
+    TrkLoc[TrkLoc["AproachingPits"] = 2] = "AproachingPits";
+    TrkLoc[TrkLoc["OnTrack"] = 3] = "OnTrack";
+})(TrkLoc || (TrkLoc = {}));
+/**
+ * Track surface material type
+ * Used with: CarIdxTrackSurfaceMaterial telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var TrkSurf;
+(function (TrkSurf) {
+    TrkSurf[TrkSurf["NotInWorld"] = -1] = "NotInWorld";
+    TrkSurf[TrkSurf["Undefined"] = 0] = "Undefined";
+    TrkSurf[TrkSurf["Asphalt1"] = 1] = "Asphalt1";
+    TrkSurf[TrkSurf["Asphalt2"] = 2] = "Asphalt2";
+    TrkSurf[TrkSurf["Asphalt3"] = 3] = "Asphalt3";
+    TrkSurf[TrkSurf["Asphalt4"] = 4] = "Asphalt4";
+    TrkSurf[TrkSurf["Concrete1"] = 5] = "Concrete1";
+    TrkSurf[TrkSurf["Concrete2"] = 6] = "Concrete2";
+    TrkSurf[TrkSurf["RacingDirt1"] = 7] = "RacingDirt1";
+    TrkSurf[TrkSurf["RacingDirt2"] = 8] = "RacingDirt2";
+    TrkSurf[TrkSurf["Paint1"] = 9] = "Paint1";
+    TrkSurf[TrkSurf["Paint2"] = 10] = "Paint2";
+    TrkSurf[TrkSurf["Rumble1"] = 11] = "Rumble1";
+    TrkSurf[TrkSurf["Rumble2"] = 12] = "Rumble2";
+    TrkSurf[TrkSurf["Rumble3"] = 13] = "Rumble3";
+    TrkSurf[TrkSurf["Rumble4"] = 14] = "Rumble4";
+    TrkSurf[TrkSurf["Grass1"] = 15] = "Grass1";
+    TrkSurf[TrkSurf["Grass2"] = 16] = "Grass2";
+    TrkSurf[TrkSurf["Grass3"] = 17] = "Grass3";
+    TrkSurf[TrkSurf["Grass4"] = 18] = "Grass4";
+    TrkSurf[TrkSurf["Dirt1"] = 19] = "Dirt1";
+    TrkSurf[TrkSurf["Dirt2"] = 20] = "Dirt2";
+    TrkSurf[TrkSurf["Dirt3"] = 21] = "Dirt3";
+    TrkSurf[TrkSurf["Dirt4"] = 22] = "Dirt4";
+    TrkSurf[TrkSurf["Sand"] = 23] = "Sand";
+    TrkSurf[TrkSurf["Gravel1"] = 24] = "Gravel1";
+    TrkSurf[TrkSurf["Gravel2"] = 25] = "Gravel2";
+    TrkSurf[TrkSurf["Grasscrete"] = 26] = "Grasscrete";
+    TrkSurf[TrkSurf["Astroturf"] = 27] = "Astroturf";
+})(TrkSurf || (TrkSurf = {}));
+/**
+ * Session state
+ * Used with: SessionState telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var SessionState;
+(function (SessionState) {
+    SessionState[SessionState["Invalid"] = 0] = "Invalid";
+    SessionState[SessionState["GetInCar"] = 1] = "GetInCar";
+    SessionState[SessionState["Warmup"] = 2] = "Warmup";
+    SessionState[SessionState["ParadeLaps"] = 3] = "ParadeLaps";
+    SessionState[SessionState["Racing"] = 4] = "Racing";
+    SessionState[SessionState["Checkered"] = 5] = "Checkered";
+    SessionState[SessionState["CoolDown"] = 6] = "CoolDown";
+})(SessionState || (SessionState = {}));
+/**
+ * Camera state flags (bitfield)
+ * Used with: CamCameraState telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var CameraState;
+(function (CameraState) {
+    CameraState[CameraState["IsSessionScreen"] = 1] = "IsSessionScreen";
+    CameraState[CameraState["IsScenicActive"] = 2] = "IsScenicActive";
+    CameraState[CameraState["CamToolActive"] = 4] = "CamToolActive";
+    CameraState[CameraState["UIHidden"] = 8] = "UIHidden";
+    CameraState[CameraState["UseAutoShotSelection"] = 16] = "UseAutoShotSelection";
+    CameraState[CameraState["UseTemporaryEdits"] = 32] = "UseTemporaryEdits";
+    CameraState[CameraState["UseKeyAcceleration"] = 64] = "UseKeyAcceleration";
+    CameraState[CameraState["UseKey10xAcceleration"] = 128] = "UseKey10xAcceleration";
+    CameraState[CameraState["UseMouseAimMode"] = 256] = "UseMouseAimMode";
+})(CameraState || (CameraState = {}));
+/**
+ * Pit service flags (bitfield)
+ * Used with: PitSvFlags telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var PitSvFlags;
+(function (PitSvFlags) {
+    PitSvFlags[PitSvFlags["LFTireChange"] = 1] = "LFTireChange";
+    PitSvFlags[PitSvFlags["RFTireChange"] = 2] = "RFTireChange";
+    PitSvFlags[PitSvFlags["LRTireChange"] = 4] = "LRTireChange";
+    PitSvFlags[PitSvFlags["RRTireChange"] = 8] = "RRTireChange";
+    PitSvFlags[PitSvFlags["FuelFill"] = 16] = "FuelFill";
+    PitSvFlags[PitSvFlags["WindshieldTearoff"] = 32] = "WindshieldTearoff";
+    PitSvFlags[PitSvFlags["FastRepair"] = 64] = "FastRepair";
+})(PitSvFlags || (PitSvFlags = {}));
+/**
+ * Pit service status
+ * Used with: PitSvStatus telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var PitSvStatus;
+(function (PitSvStatus) {
+    PitSvStatus[PitSvStatus["None"] = 0] = "None";
+    PitSvStatus[PitSvStatus["InProgress"] = 1] = "InProgress";
+    PitSvStatus[PitSvStatus["Complete"] = 2] = "Complete";
+    PitSvStatus[PitSvStatus["TooFarLeft"] = 100] = "TooFarLeft";
+    PitSvStatus[PitSvStatus["TooFarRight"] = 101] = "TooFarRight";
+    PitSvStatus[PitSvStatus["TooFarForward"] = 102] = "TooFarForward";
+    PitSvStatus[PitSvStatus["TooFarBack"] = 103] = "TooFarBack";
+    PitSvStatus[PitSvStatus["BadAngle"] = 104] = "BadAngle";
+    PitSvStatus[PitSvStatus["CantFixThat"] = 105] = "CantFixThat";
+})(PitSvStatus || (PitSvStatus = {}));
+/**
+ * Pace mode
+ * Used with: PaceMode telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var PaceMode;
+(function (PaceMode) {
+    PaceMode[PaceMode["SingleFileStart"] = 0] = "SingleFileStart";
+    PaceMode[PaceMode["DoubleFileStart"] = 1] = "DoubleFileStart";
+    PaceMode[PaceMode["SingleFileRestart"] = 2] = "SingleFileRestart";
+    PaceMode[PaceMode["DoubleFileRestart"] = 3] = "DoubleFileRestart";
+    PaceMode[PaceMode["NotPacing"] = 4] = "NotPacing";
+})(PaceMode || (PaceMode = {}));
+/**
+ * Pace flags (bitfield)
+ * Used with: CarIdxPaceFlags telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var PaceFlags;
+(function (PaceFlags) {
+    PaceFlags[PaceFlags["EndOfLine"] = 1] = "EndOfLine";
+    PaceFlags[PaceFlags["FreePass"] = 2] = "FreePass";
+    PaceFlags[PaceFlags["WavedAround"] = 4] = "WavedAround";
+})(PaceFlags || (PaceFlags = {}));
+/**
+ * Car left/right spotter info
+ * Used with: CarLeftRight telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var CarLeftRight;
+(function (CarLeftRight) {
+    CarLeftRight[CarLeftRight["Off"] = 0] = "Off";
+    CarLeftRight[CarLeftRight["Clear"] = 1] = "Clear";
+    CarLeftRight[CarLeftRight["CarLeft"] = 2] = "CarLeft";
+    CarLeftRight[CarLeftRight["CarRight"] = 3] = "CarRight";
+    CarLeftRight[CarLeftRight["CarLeftRight"] = 4] = "CarLeftRight";
+    CarLeftRight[CarLeftRight["TwoCarsLeft"] = 5] = "TwoCarsLeft";
+    CarLeftRight[CarLeftRight["TwoCarsRight"] = 6] = "TwoCarsRight";
+})(CarLeftRight || (CarLeftRight = {}));
+/**
+ * Track wetness level
+ * Used with: TrackWetness telemetry variable
+ * From official iRacing SDK (irsdk_defines.h)
+ */
+var TrackWetness;
+(function (TrackWetness) {
+    TrackWetness[TrackWetness["Unknown"] = 0] = "Unknown";
+    TrackWetness[TrackWetness["Dry"] = 1] = "Dry";
+    TrackWetness[TrackWetness["MostlyDry"] = 2] = "MostlyDry";
+    TrackWetness[TrackWetness["VeryLightlyWet"] = 3] = "VeryLightlyWet";
+    TrackWetness[TrackWetness["LightlyWet"] = 4] = "LightlyWet";
+    TrackWetness[TrackWetness["ModeratelyWet"] = 5] = "ModeratelyWet";
+    TrackWetness[TrackWetness["VeryWet"] = 6] = "VeryWet";
+    TrackWetness[TrackWetness["ExtremelyWet"] = 7] = "ExtremelyWet";
+})(TrackWetness || (TrackWetness = {}));
+/**
+ * Incident flags (bitfield)
+ * Used with: incident telemetry variables
+ * From official iRacing SDK (irsdk_defines.h)
+ *
+ * First byte is incident report flag (use INCIDENT_REP_MASK)
+ * Second byte is incident penalty (use INCIDENT_PEN_MASK)
+ */
+var IncidentFlags;
+(function (IncidentFlags) {
+    // Incident report flags (first byte)
+    IncidentFlags[IncidentFlags["RepNoReport"] = 0] = "RepNoReport";
+    IncidentFlags[IncidentFlags["RepOutOfControl"] = 1] = "RepOutOfControl";
+    IncidentFlags[IncidentFlags["RepOffTrack"] = 2] = "RepOffTrack";
+    IncidentFlags[IncidentFlags["RepOffTrackOngoing"] = 3] = "RepOffTrackOngoing";
+    IncidentFlags[IncidentFlags["RepContactWithWorld"] = 4] = "RepContactWithWorld";
+    IncidentFlags[IncidentFlags["RepCollisionWithWorld"] = 5] = "RepCollisionWithWorld";
+    IncidentFlags[IncidentFlags["RepCollisionWithWorldOngoing"] = 6] = "RepCollisionWithWorldOngoing";
+    IncidentFlags[IncidentFlags["RepContactWithCar"] = 7] = "RepContactWithCar";
+    IncidentFlags[IncidentFlags["RepCollisionWithCar"] = 8] = "RepCollisionWithCar";
+    // Incident penalty flags (second byte)
+    IncidentFlags[IncidentFlags["PenNoReport"] = 0] = "PenNoReport";
+    IncidentFlags[IncidentFlags["PenZeroX"] = 256] = "PenZeroX";
+    IncidentFlags[IncidentFlags["PenOneX"] = 512] = "PenOneX";
+    IncidentFlags[IncidentFlags["PenTwoX"] = 768] = "PenTwoX";
+    IncidentFlags[IncidentFlags["PenFourX"] = 1024] = "PenFourX"; // 4x
+})(IncidentFlags || (IncidentFlags = {}));
+/**
+ * Sky conditions
+ * Used with: Skies telemetry variable
+ */
+var Skies;
+(function (Skies) {
+    Skies[Skies["Clear"] = 0] = "Clear";
+    Skies[Skies["PartlyCloudy"] = 1] = "PartlyCloudy";
+    Skies[Skies["MostlyCloudy"] = 2] = "MostlyCloudy";
+    Skies[Skies["Overcast"] = 3] = "Overcast";
+})(Skies || (Skies = {}));
+/**
+ * Display units preference
+ * Used with: DisplayUnits telemetry variable
+ */
+var DisplayUnits;
+(function (DisplayUnits) {
+    DisplayUnits[DisplayUnits["English"] = 0] = "English";
+    DisplayUnits[DisplayUnits["Metric"] = 1] = "Metric";
+})(DisplayUnits || (DisplayUnits = {}));
+/**
+ * Enter/Exit/Reset state
+ * Used with: EnterExitReset telemetry variable
+ */
+var EnterExitReset;
+(function (EnterExitReset) {
+    EnterExitReset[EnterExitReset["Enter"] = 0] = "Enter";
+    EnterExitReset[EnterExitReset["Exit"] = 1] = "Exit";
+    EnterExitReset[EnterExitReset["Reset"] = 2] = "Reset";
+})(EnterExitReset || (EnterExitReset = {}));
+
+/**
+ * iRacing Broadcast API Constants
+ * These constants are used to send commands to iRacing via the broadcast message API
+ *
+ * Remote control the sim by sending these windows messages
+ * - Camera and replay commands only work when you are out of your car
+ * - Pit commands only work when in your car
+ */
+/**
+ * Broadcast message types (wParam values)
+ */
+var BroadcastMsg;
+(function (BroadcastMsg) {
+    BroadcastMsg[BroadcastMsg["CamSwitchPos"] = 0] = "CamSwitchPos";
+    BroadcastMsg[BroadcastMsg["CamSwitchNum"] = 1] = "CamSwitchNum";
+    BroadcastMsg[BroadcastMsg["CamSetState"] = 2] = "CamSetState";
+    BroadcastMsg[BroadcastMsg["ReplaySetPlaySpeed"] = 3] = "ReplaySetPlaySpeed";
+    BroadcastMsg[BroadcastMsg["ReplaySetPlayPosition"] = 4] = "ReplaySetPlayPosition";
+    BroadcastMsg[BroadcastMsg["ReplaySearch"] = 5] = "ReplaySearch";
+    BroadcastMsg[BroadcastMsg["ReplaySetState"] = 6] = "ReplaySetState";
+    BroadcastMsg[BroadcastMsg["ReloadTextures"] = 7] = "ReloadTextures";
+    BroadcastMsg[BroadcastMsg["ChatCommand"] = 8] = "ChatCommand";
+    BroadcastMsg[BroadcastMsg["PitCommand"] = 9] = "PitCommand";
+    BroadcastMsg[BroadcastMsg["TelemCommand"] = 10] = "TelemCommand";
+    BroadcastMsg[BroadcastMsg["FFBCommand"] = 11] = "FFBCommand";
+    BroadcastMsg[BroadcastMsg["ReplaySearchSessionTime"] = 12] = "ReplaySearchSessionTime";
+    BroadcastMsg[BroadcastMsg["VideoCapture"] = 13] = "VideoCapture";
+    BroadcastMsg[BroadcastMsg["Last"] = 14] = "Last"; // unused placeholder
+})(BroadcastMsg || (BroadcastMsg = {}));
+/**
+ * Chat command modes (for BroadcastMsg.ChatCommand)
+ */
+var ChatCommandMode;
+(function (ChatCommandMode) {
+    ChatCommandMode[ChatCommandMode["Macro"] = 0] = "Macro";
+    ChatCommandMode[ChatCommandMode["BeginChat"] = 1] = "BeginChat";
+    ChatCommandMode[ChatCommandMode["Reply"] = 2] = "Reply";
+    ChatCommandMode[ChatCommandMode["Cancel"] = 3] = "Cancel"; // Close chat window
+})(ChatCommandMode || (ChatCommandMode = {}));
+/**
+ * Pit command modes (for BroadcastMsg.PitCommand)
+ * This only works when the driver is in the car
+ */
+var PitCommandMode;
+(function (PitCommandMode) {
+    PitCommandMode[PitCommandMode["Clear"] = 0] = "Clear";
+    PitCommandMode[PitCommandMode["WS"] = 1] = "WS";
+    PitCommandMode[PitCommandMode["Fuel"] = 2] = "Fuel";
+    PitCommandMode[PitCommandMode["LF"] = 3] = "LF";
+    PitCommandMode[PitCommandMode["RF"] = 4] = "RF";
+    PitCommandMode[PitCommandMode["LR"] = 5] = "LR";
+    PitCommandMode[PitCommandMode["RR"] = 6] = "RR";
+    PitCommandMode[PitCommandMode["ClearTires"] = 7] = "ClearTires";
+    PitCommandMode[PitCommandMode["FR"] = 8] = "FR";
+    PitCommandMode[PitCommandMode["ClearWS"] = 9] = "ClearWS";
+    PitCommandMode[PitCommandMode["ClearFR"] = 10] = "ClearFR";
+    PitCommandMode[PitCommandMode["ClearFuel"] = 11] = "ClearFuel";
+    PitCommandMode[PitCommandMode["TC"] = 12] = "TC"; // Change tire compound
+})(PitCommandMode || (PitCommandMode = {}));
+/**
+ * Telemetry command modes (for BroadcastMsg.TelemCommand)
+ * You can call this any time, but telemetry only records when driver is in their car
+ */
+var TelemCommandMode;
+(function (TelemCommandMode) {
+    TelemCommandMode[TelemCommandMode["Stop"] = 0] = "Stop";
+    TelemCommandMode[TelemCommandMode["Start"] = 1] = "Start";
+    TelemCommandMode[TelemCommandMode["Restart"] = 2] = "Restart"; // Write current file to disk and start a new one
+})(TelemCommandMode || (TelemCommandMode = {}));
+/**
+ * Replay state modes (for BroadcastMsg.ReplaySetState)
+ */
+var ReplayStateMode;
+(function (ReplayStateMode) {
+    ReplayStateMode[ReplayStateMode["EraseTape"] = 0] = "EraseTape";
+    ReplayStateMode[ReplayStateMode["Last"] = 1] = "Last"; // Unused placeholder
+})(ReplayStateMode || (ReplayStateMode = {}));
+/**
+ * Reload textures modes (for BroadcastMsg.ReloadTextures)
+ */
+var ReloadTexturesMode;
+(function (ReloadTexturesMode) {
+    ReloadTexturesMode[ReloadTexturesMode["All"] = 0] = "All";
+    ReloadTexturesMode[ReloadTexturesMode["CarIdx"] = 1] = "CarIdx"; // Reload only textures for the specific carIdx
+})(ReloadTexturesMode || (ReloadTexturesMode = {}));
+/**
+ * Replay search modes (for BroadcastMsg.ReplaySearch)
+ * Search replay tape for events
+ */
+var ReplaySearchMode;
+(function (ReplaySearchMode) {
+    ReplaySearchMode[ReplaySearchMode["ToStart"] = 0] = "ToStart";
+    ReplaySearchMode[ReplaySearchMode["ToEnd"] = 1] = "ToEnd";
+    ReplaySearchMode[ReplaySearchMode["PrevSession"] = 2] = "PrevSession";
+    ReplaySearchMode[ReplaySearchMode["NextSession"] = 3] = "NextSession";
+    ReplaySearchMode[ReplaySearchMode["PrevLap"] = 4] = "PrevLap";
+    ReplaySearchMode[ReplaySearchMode["NextLap"] = 5] = "NextLap";
+    ReplaySearchMode[ReplaySearchMode["PrevFrame"] = 6] = "PrevFrame";
+    ReplaySearchMode[ReplaySearchMode["NextFrame"] = 7] = "NextFrame";
+    ReplaySearchMode[ReplaySearchMode["PrevIncident"] = 8] = "PrevIncident";
+    ReplaySearchMode[ReplaySearchMode["NextIncident"] = 9] = "NextIncident";
+    ReplaySearchMode[ReplaySearchMode["Last"] = 10] = "Last"; // Unused placeholder
+})(ReplaySearchMode || (ReplaySearchMode = {}));
+/**
+ * Replay position modes (for BroadcastMsg.ReplaySetPlayPosition)
+ */
+var ReplayPosMode;
+(function (ReplayPosMode) {
+    ReplayPosMode[ReplayPosMode["Begin"] = 0] = "Begin";
+    ReplayPosMode[ReplayPosMode["Current"] = 1] = "Current";
+    ReplayPosMode[ReplayPosMode["End"] = 2] = "End";
+    ReplayPosMode[ReplayPosMode["Last"] = 3] = "Last"; // Unused placeholder
+})(ReplayPosMode || (ReplayPosMode = {}));
+/**
+ * Force feedback command modes (for BroadcastMsg.FFBCommand)
+ * You can call this any time
+ */
+var FFBCommandMode;
+(function (FFBCommandMode) {
+    FFBCommandMode[FFBCommandMode["MaxForce"] = 0] = "MaxForce";
+    FFBCommandMode[FFBCommandMode["Last"] = 1] = "Last"; // Unused placeholder
+})(FFBCommandMode || (FFBCommandMode = {}));
+/**
+ * Camera focus modes
+ * For BroadcastMsg.CamSwitchPos or BroadcastMsg.CamSwitchNum
+ * Pass these in for the first parameter to select the 'focus at' types in the camera system
+ */
+var CameraFocusMode;
+(function (CameraFocusMode) {
+    CameraFocusMode[CameraFocusMode["FocusAtIncident"] = -3] = "FocusAtIncident";
+    CameraFocusMode[CameraFocusMode["FocusAtLeader"] = -2] = "FocusAtLeader";
+    CameraFocusMode[CameraFocusMode["FocusAtExiting"] = -1] = "FocusAtExiting";
+    // FocusAtDriver + car number...
+    CameraFocusMode[CameraFocusMode["FocusAtDriver"] = 0] = "FocusAtDriver";
+})(CameraFocusMode || (CameraFocusMode = {}));
+/**
+ * Video capture modes (for BroadcastMsg.VideoCapture)
+ */
+var VideoCaptureMode;
+(function (VideoCaptureMode) {
+    VideoCaptureMode[VideoCaptureMode["TriggerScreenShot"] = 0] = "TriggerScreenShot";
+    VideoCaptureMode[VideoCaptureMode["StartVideoCapture"] = 1] = "StartVideoCapture";
+    VideoCaptureMode[VideoCaptureMode["EndVideoCapture"] = 2] = "EndVideoCapture";
+    VideoCaptureMode[VideoCaptureMode["ToggleVideoCapture"] = 3] = "ToggleVideoCapture";
+    VideoCaptureMode[VideoCaptureMode["ShowVideoTimer"] = 4] = "ShowVideoTimer";
+    VideoCaptureMode[VideoCaptureMode["HideVideoTimer"] = 5] = "HideVideoTimer"; // Hide video timer
+})(VideoCaptureMode || (VideoCaptureMode = {}));
+/**
+ * iRacing SDK broadcast message name
+ */
+const IRSDK_BROADCAST_MSG_NAME = 'IRSDK_BROADCASTMSG';
+/**
+ * Create a MAKELONG value from low and high 16-bit values
+ */
+function MAKELONG(low, high) {
+    return ((high & 0xFFFF) << 16) | (low & 0xFFFF);
+}
+
+/**
+ * BroadcastCommand - Base class for all iRacing broadcast commands
+ *
+ * Provides the core messaging functionality that all command classes inherit.
+ */
+/**
+ * Base class for iRacing broadcast commands
+ */
+class BroadcastCommand {
+    broadcastMsgID;
+    constructor() {
+        this.broadcastMsgID = registerWindowMessage(IRSDK_BROADCAST_MSG_NAME);
+    }
+    /**
+     * Send a raw broadcast message to iRacing
+     * @param msg Broadcast message type
+     * @param var1 First parameter
+     * @param var2 Second parameter (for MAKELONG with var3)
+     * @param var3 Third parameter (for MAKELONG with var2)
+     */
+    sendBroadcast(msg, var1 = 0, var2 = 0, var3 = 0) {
+        const wParam = MAKELONG(msg, var1);
+        const lParam = MAKELONG(var2, var3);
+        getLogger().debug(`[BroadcastCommand] Sending: msg=${BroadcastMsg[msg]}, var1=${var1}, var2=${var2}, var3=${var3}`);
+        return sendNotifyMessage(HWND_BROADCAST, this.broadcastMsgID, wParam, lParam);
+    }
+}
+
+/**
+ * ChatCommand - Chat commands for iRacing
+ *
+ * Handles chat operations using the iRacing broadcast API and Windows messaging
+ */
+/**
+ * Chat commands
+ */
+class ChatCommand extends BroadcastCommand {
+    static _instance;
+    constructor() {
+        super();
+    }
+    /**
+     * Get singleton instance
+     */
+    static getInstance() {
+        if (!ChatCommand._instance) {
+            ChatCommand._instance = new ChatCommand();
+        }
+        return ChatCommand._instance;
+    }
+    /**
+     * Send a chat broadcast message
+     */
+    sendChatBroadcast(command, subCommand = 0) {
+        getLogger().debug(`[ChatCommand] sendBroadcast ${ChatCommandMode[command]}, ${subCommand}`);
+        return this.sendBroadcast(BroadcastMsg.ChatCommand, command, subCommand);
+    }
+    /**
+     * Trigger a chat macro (1-15)
+     * @param macroNum Macro number (1-15, as shown in app.ini)
+     * @returns Success
+     */
+    macro(macroNum) {
+        if (macroNum < 1 || macroNum > 15) {
+            getLogger().warn(`[ChatCommand] Invalid macro number: ${macroNum}. Must be 1-15.`);
+            return false;
+        }
+        getLogger().info(`[ChatCommand] Triggering chat macro ${macroNum}`);
+        // API uses 0-based indexing, but app.ini uses 1-based numbering
+        return this.sendChatBroadcast(ChatCommandMode.Macro, macroNum - 1);
+    }
+    /**
+     * Open the chat window
+     * @returns Success
+     */
+    beginChat() {
+        getLogger().debug('[ChatCommand] Opening chat window');
+        return this.sendChatBroadcast(ChatCommandMode.BeginChat);
+    }
+    /**
+     * Reply to last private message
+     * @returns Success
+     */
+    reply() {
+        getLogger().debug('[ChatCommand] Opening reply to last private message');
+        return this.sendChatBroadcast(ChatCommandMode.Reply);
+    }
+    /**
+     * Close the chat window
+     * @returns Success
+     */
+    cancel() {
+        getLogger().debug('[ChatCommand] Closing chat window');
+        return this.sendChatBroadcast(ChatCommandMode.Cancel);
+    }
+    /**
+     * Send a custom chat message to iRacing
+     * Opens chat, types the message, and sends it
+     * @param hwnd Window handle to send the message to
+     * @param message The message to send
+     * @returns Success
+     */
+    sendMessage(hwnd, message) {
+        if (!message || message.trim().length === 0) {
+            getLogger().warn('[ChatCommand] Cannot send empty message');
+            return false;
+        }
+        if (!hwnd) {
+            getLogger().error('[ChatCommand] Invalid window handle');
+            return false;
+        }
+        try {
+            getLogger().info(`[ChatCommand] Sending chat message: "${message}"`);
+            // Open chat window
+            this.beginChat();
+            getLogger().info('[ChatCommand] Chat window opened');
+            // Wait for chat window to open, then type message
+            setTimeout(() => {
+                // Send each character using WM_CHAR (optimized in native addon)
+                sendChatString(hwnd, message);
+                // Press Enter to send
+                sendKeyPress(hwnd, VK_RETURN);
+                // Close chat window
+                this.cancel();
+                getLogger().info('[ChatCommand] Chat message sent successfully');
+            }, 5);
+            return true;
+        }
+        catch (error) {
+            getLogger().error(`[ChatCommand] Error sending chat message: ${error}`);
+            return false;
+        }
+    }
+}
+
+/**
+ * iRacing SDK - Memory-mapped file reader
+ * Uses native addon to access Windows APIs for reading iRacing's shared memory
+ */
+// iRacing shared memory name
+const IRACING_MEMMAPFILENAME = 'Local\\IRSDKMemMapFileName';
+// iRacing window title
+const IRACING_WINDOW_TITLE = 'iRacing.com Simulator';
+/**
+ * iRacing SDK Client
+ * Manages connection to iRacing's shared memory and provides telemetry data
+ */
+class IRacingSDK {
+    memHandle = 0;
+    header = null;
+    varHeaders = [];
+    lastSessionInfoUpdate = -1;
+    sessionInfo = null;
+    /**
+     * Check if iRacing is running and memory-mapped file is accessible
+     */
+    isConnected() {
+        if (!this.memHandle) {
+            return false;
+        }
+        // Check status field in header - re-read it to get current status
+        if (!this.header) {
+            return false;
+        }
+        // Re-read the status field from shared memory to detect disconnection
+        try {
+            const statusBuffer = readMemory(this.memHandle, 4, 4); // status is at offset 4, 4 bytes
+            const currentStatus = statusBuffer.readInt32LE(0);
+            this.header.status = currentStatus; // Update cached header
+            return (currentStatus & StatusField.Connected) !== 0;
+        }
+        catch (error) {
+            getLogger().error(`[iRacing SDK] Failed to read status field: ${error}`);
+            return false;
+        }
+    }
+    /**
+     * Connect to iRacing's shared memory
+     */
+    connect() {
+        // Try to open the memory-mapped file
+        this.memHandle = openMemoryMap(IRACING_MEMMAPFILENAME);
+        if (!this.memHandle) {
+            return false;
+        }
+        // Parse the header
+        this.parseHeader();
+        const connected = this.isConnected();
+        if (connected) {
+            getLogger().info(`[iRacing SDK] Connected - ${this.varHeaders.length} variables available`);
+        }
+        return connected;
+    }
+    /**
+     * Disconnect from iRacing's shared memory
+     */
+    disconnect() {
+        if (this.memHandle) {
+            closeMemoryMap(this.memHandle);
+            this.memHandle = 0;
+        }
+        this.header = null;
+        this.varHeaders = [];
+        this.sessionInfo = null;
+        this.lastSessionInfoUpdate = -1;
+    }
+    /**
+     * Parse the main header from shared memory
+     */
+    parseHeader() {
+        if (!this.memHandle)
+            return;
+        // Read header structure (144 bytes base + variable buffers)
+        const headerView = readMemory(this.memHandle, 0, 144);
+        this.header = {
+            ver: headerView.readInt32LE(0),
+            status: headerView.readInt32LE(4),
+            tickRate: headerView.readInt32LE(8),
+            sessionInfoUpdate: headerView.readInt32LE(12),
+            sessionInfoLen: headerView.readInt32LE(16),
+            sessionInfoOffset: headerView.readInt32LE(20),
+            numVars: headerView.readInt32LE(24),
+            varHeaderOffset: headerView.readInt32LE(28),
+            numBuf: headerView.readInt32LE(32),
+            bufLen: headerView.readInt32LE(36),
+            padData: [],
+            varBuf: []
+        };
+        // Parse variable buffers (16 bytes each)
+        for (let i = 0; i < IRSDK_MAX_BUFS; i++) {
+            const offset = 48 + (i * 16);
+            this.header.varBuf.push({
+                tickCount: headerView.readInt32LE(offset),
+                bufOffset: headerView.readInt32LE(offset + 4),
+                padData: []
+            });
+        }
+        // Parse variable headers
+        this.parseVarHeaders();
+    }
+    /**
+     * Parse variable header definitions
+     */
+    parseVarHeaders() {
+        if (!this.memHandle || !this.header)
+            return;
+        this.varHeaders = [];
+        const varHeaderSize = 144; // Size of each VarHeader struct
+        for (let i = 0; i < this.header.numVars; i++) {
+            const offset = this.header.varHeaderOffset + (i * varHeaderSize);
+            const varHeaderBuf = readMemory(this.memHandle, offset, varHeaderSize);
+            const varHeader = {
+                type: varHeaderBuf.readInt32LE(0),
+                offset: varHeaderBuf.readInt32LE(4),
+                count: varHeaderBuf.readInt32LE(8),
+                countAsTime: varHeaderBuf.readInt8(12) !== 0,
+                name: this.readString(varHeaderBuf, 16, IRSDK_MAX_STRING),
+                desc: this.readString(varHeaderBuf, 48, IRSDK_MAX_DESC),
+                unit: this.readString(varHeaderBuf, 112, IRSDK_MAX_STRING)
+            };
+            this.varHeaders.push(varHeader);
+        }
+    }
+    /**
+     * Read null-terminated string from buffer
+     */
+    readString(buffer, offset, maxLen) {
+        const bytes = [];
+        for (let i = 0; i < maxLen; i++) {
+            const byte = buffer.readUInt8(offset + i);
+            if (byte === 0)
+                break;
+            bytes.push(byte);
+        }
+        return Buffer.from(bytes).toString('ascii');
+    }
+    /**
+     * Get the latest telemetry data
+     * Uses tick count verification to ensure consistent reads
+     */
+    getTelemetry() {
+        if (!this.isConnected() || !this.header || !this.memHandle) {
+            return null;
+        }
+        // Retry up to 3 times to get a consistent read
+        for (let attempt = 0; attempt < 3; attempt++) {
+            // Re-read the variable buffer tick counts from shared memory
+            const varBufs = this.readVarBufs();
+            if (!varBufs) {
+                return null;
+            }
+            // Find the latest buffer
+            let latestBufIndex = 0;
+            let latestTickCount = varBufs[0].tickCount;
+            for (let i = 1; i < varBufs.length; i++) {
+                if (varBufs[i].tickCount > latestTickCount) {
+                    latestTickCount = varBufs[i].tickCount;
+                    latestBufIndex = i;
+                }
+            }
+            const latestBuf = varBufs[latestBufIndex];
+            if (latestBuf.bufOffset === 0) {
+                return null;
+            }
+            // Read the ENTIRE telemetry buffer in one go for speed
+            const bufferData = readMemory(this.memHandle, latestBuf.bufOffset, this.header.bufLen);
+            // Parse telemetry from the buffer
+            const telemetry = {};
+            for (const varHeader of this.varHeaders) {
+                const value = this.parseVariableFromBuffer(bufferData, varHeader);
+                telemetry[varHeader.name] = value;
+            }
+            // Verify the tick count didn't change during our read
+            const verifyBufs = this.readVarBufs();
+            if (verifyBufs && verifyBufs[latestBufIndex].tickCount === latestTickCount) {
+                // Consistent read - return the data
+                return telemetry;
+            }
+            // Tick count changed during read, retry
+            getLogger().debug(`[iRacing SDK] Tick count changed during read, retrying (attempt ${attempt + 1})`);
+        }
+        // All retries failed, return null
+        getLogger().warn('[iRacing SDK] Failed to get consistent telemetry read after 3 attempts');
+        return null;
+    }
+    /**
+     * Read the variable buffer headers from shared memory
+     */
+    readVarBufs() {
+        if (!this.memHandle)
+            return null;
+        try {
+            const varBufs = [];
+            for (let i = 0; i < IRSDK_MAX_BUFS; i++) {
+                const offset = 48 + (i * 16); // varBuf starts at offset 48, each is 16 bytes
+                const bufData = readMemory(this.memHandle, offset, 16);
+                varBufs.push({
+                    tickCount: bufData.readInt32LE(0),
+                    bufOffset: bufData.readInt32LE(4),
+                    padData: []
+                });
+            }
+            return varBufs;
+        }
+        catch (error) {
+            getLogger().error(`[iRacing SDK] Failed to read varBufs: ${error}`);
+            return null;
+        }
+    }
+    /**
+     * Parse a variable value from a pre-loaded buffer
+     */
+    parseVariableFromBuffer(buffer, varHeader) {
+        const { type, count, offset } = varHeader;
+        // Handle arrays
+        if (count > 1) {
+            const values = [];
+            let elementSize = 4; // Default to 4 bytes
+            if (type === VarType.Char)
+                elementSize = 1;
+            else if (type === VarType.Double)
+                elementSize = 8;
+            for (let i = 0; i < count; i++) {
+                const elemOffset = offset + (i * elementSize);
+                values.push(this.parseSingleValueFromBuffer(buffer, elemOffset, type));
+            }
+            return values;
+        }
+        // Handle single values
+        return this.parseSingleValueFromBuffer(buffer, offset, type);
+    }
+    /**
+     * Parse a single value of a specific type from a buffer
+     */
+    parseSingleValueFromBuffer(buffer, offset, type) {
+        // Bounds check
+        if (offset < 0 || offset >= buffer.length) {
+            return null;
+        }
+        switch (type) {
+            case VarType.Char:
+                return buffer.readInt8(offset);
+            case VarType.Bool:
+                return buffer.readInt8(offset) !== 0;
+            case VarType.Int:
+            case VarType.BitField:
+                return buffer.readInt32LE(offset);
+            case VarType.Float:
+                return buffer.readFloatLE(offset);
+            case VarType.Double:
+                return buffer.readDoubleLE(offset);
+            default:
+                return null;
+        }
+    }
+    /**
+     * Get session info (YAML data)
+     */
+    getSessionInfo() {
+        if (!this.isConnected() || !this.header || !this.memHandle) {
+            return null;
+        }
+        // Check if session info has been updated
+        if (this.header.sessionInfoUpdate === this.lastSessionInfoUpdate && this.sessionInfo) {
+            return this.sessionInfo;
+        }
+        // Read session info YAML string
+        const sessionInfoBuf = readMemory(this.memHandle, this.header.sessionInfoOffset, this.header.sessionInfoLen);
+        const yamlString = this.readString(sessionInfoBuf, 0, this.header.sessionInfoLen);
+        // Parse YAML to object
+        try {
+            this.sessionInfo = yaml.parse(yamlString);
+            this.lastSessionInfoUpdate = this.header.sessionInfoUpdate;
+        }
+        catch (error) {
+            getLogger().error(`[iRacing SDK] Failed to parse session info YAML: ${error}`);
+            return null;
+        }
+        return this.sessionInfo;
+    }
+    /**
+     * Get a specific telemetry variable by name
+     */
+    getVar(name) {
+        const telemetry = this.getTelemetry();
+        if (!telemetry)
+            return null;
+        return telemetry[name];
+    }
+    /**
+     * Get list of all available variable names
+     */
+    getVarNames() {
+        return this.varHeaders.map(v => v.name);
+    }
+    /**
+     * Get variable header info by name
+     */
+    getVarHeader(name) {
+        return this.varHeaders.find(v => v.name === name) || null;
+    }
+    /**
+     * Find the iRacing window
+     * @returns Window handle as number, or 0 if not found
+     */
+    findIRacingWindow() {
+        getLogger().info('[iRacing SDK] Finding iRacing window');
+        const hwnd = findWindow(null, IRACING_WINDOW_TITLE);
+        if (!hwnd) {
+            getLogger().warn('[iRacing SDK] iRacing window not found');
+        }
+        else {
+            getLogger().info('[iRacing SDK] iRacing window found');
+        }
+        return hwnd;
+    }
+    /**
+     * Send a custom chat message to iRacing
+     * @param message The message to send
+     */
+    sendChatMessage(message) {
+        getLogger().info('[iRacing SDK] About to send a chat message');
+        if (!this.isConnected()) {
+            getLogger().warn('[iRacing SDK] Cannot send chat message - not connected');
+            return false;
+        }
+        try {
+            const hwnd = this.findIRacingWindow();
+            if (!hwnd) {
+                getLogger().error('[iRacing SDK] Could not find iRacing window');
+                return false;
+            }
+            getLogger().debug('[iRacing SDK] iRacing window found');
+            return ChatCommand.getInstance().sendMessage(hwnd, message);
+        }
+        catch (error) {
+            getLogger().error(`[iRacing SDK] Error sending chat message: ${error}`);
+            return false;
+        }
+    }
+}
+
+/**
+ * CameraCommand - Camera control commands for iRacing
+ *
+ * Note: Camera commands only work when you are out of your car (spectating/replay)
+ */
+/**
+ * Camera control commands
+ */
+class CameraCommand extends BroadcastCommand {
+    static _instance;
+    constructor() {
+        super();
+    }
+    /**
+     * Get singleton instance
+     */
+    static getInstance() {
+        if (!CameraCommand._instance) {
+            CameraCommand._instance = new CameraCommand();
+        }
+        return CameraCommand._instance;
+    }
+    /**
+     * Switch camera by car position
+     * @param position Car position (1-based) or CameraFocusMode for special focus
+     * @param group Camera group number
+     * @param camera Camera number within group
+     */
+    switchPos(position, group, camera) {
+        getLogger().info(`[CameraCommand] SwitchPos: position=${position}, group=${group}, camera=${camera}`);
+        return this.sendBroadcast(BroadcastMsg.CamSwitchPos, position, group, camera);
+    }
+    /**
+     * Switch camera by driver car number
+     * @param carNumber Driver's car number or CameraFocusMode for special focus
+     * @param group Camera group number
+     * @param camera Camera number within group
+     */
+    switchNum(carNumber, group, camera) {
+        getLogger().info(`[CameraCommand] SwitchNum: carNumber=${carNumber}, group=${group}, camera=${camera}`);
+        return this.sendBroadcast(BroadcastMsg.CamSwitchNum, carNumber, group, camera);
+    }
+    /**
+     * Set camera state flags
+     * Use the CameraState enum flags with addFlag/removeFlag helpers to build the state
+     * @param state Camera state bitfield (CameraState flags)
+     *
+     * @example
+     * // Hide UI
+     * camera.setState(addFlag(currentState, CameraState.UIHidden));
+     *
+     * @example
+     * // Show UI (remove UIHidden flag)
+     * camera.setState(removeFlag(currentState, CameraState.UIHidden));
+     */
+    setState(state) {
+        getLogger().info(`[CameraCommand] SetState: state=${state} (0x${state.toString(16)})`);
+        return this.sendBroadcast(BroadcastMsg.CamSetState, state);
+    }
+    /**
+     * Hide the iRacing UI
+     * @param currentState Current CamCameraState from telemetry
+     */
+    hideUI(currentState) {
+        const newState = addFlag(currentState, CameraState.UIHidden);
+        return this.setState(newState);
+    }
+    /**
+     * Show the iRacing UI (clear UIHidden flag)
+     * @param currentState Current CamCameraState from telemetry
+     */
+    showUI(currentState) {
+        const newState = removeFlag(currentState, CameraState.UIHidden);
+        return this.setState(newState);
+    }
+    /**
+     * Focus on the race leader
+     * @param group Camera group number
+     * @param camera Camera number within group
+     */
+    focusOnLeader(group, camera) {
+        return this.switchPos(CameraFocusMode.FocusAtLeader, group, camera);
+    }
+    /**
+     * Focus on the last incident
+     * @param group Camera group number
+     * @param camera Camera number within group
+     */
+    focusOnIncident(group, camera) {
+        return this.switchPos(CameraFocusMode.FocusAtIncident, group, camera);
+    }
+    /**
+     * Focus on cars exiting pits
+     * @param group Camera group number
+     * @param camera Camera number within group
+     */
+    focusOnExiting(group, camera) {
+        return this.switchPos(CameraFocusMode.FocusAtExiting, group, camera);
+    }
+}
+
+/**
+ * PitCommand - Pit service commands for iRacing
+ *
+ * Note: Pit commands only work when the driver is in the car
+ */
+/**
+ * Pit service commands
+ */
+class PitCommand extends BroadcastCommand {
+    static _instance;
+    constructor() {
+        super();
+    }
+    /**
+     * Get singleton instance
+     */
+    static getInstance() {
+        if (!PitCommand._instance) {
+            PitCommand._instance = new PitCommand();
+        }
+        return PitCommand._instance;
+    }
+    /**
+     * Clear all pit checkboxes
+     */
+    clear() {
+        getLogger().info('[PitCommand] Clear all');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.Clear);
+    }
+    /**
+     * Request windshield tearoff
+     */
+    windshield() {
+        getLogger().info('[PitCommand] Windshield tearoff');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.WS);
+    }
+    /**
+     * Clear windshield checkbox
+     */
+    clearWindshield() {
+        getLogger().info('[PitCommand] Clear windshield');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.ClearWS);
+    }
+    /**
+     * Request fuel
+     * @param liters Amount of fuel to add (0 = use existing amount)
+     */
+    fuel(liters = 0) {
+        getLogger().info(`[PitCommand] Fuel: ${liters}L`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.Fuel, liters);
+    }
+    /**
+     * Clear fuel checkbox
+     */
+    clearFuel() {
+        getLogger().info('[PitCommand] Clear fuel');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.ClearFuel);
+    }
+    /**
+     * Request left front tire change
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    leftFront(pressureKpa = 0) {
+        getLogger().info(`[PitCommand] Left front: ${pressureKpa}kPa`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.LF, pressureKpa);
+    }
+    /**
+     * Request right front tire change
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    rightFront(pressureKpa = 0) {
+        getLogger().info(`[PitCommand] Right front: ${pressureKpa}kPa`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.RF, pressureKpa);
+    }
+    /**
+     * Request left rear tire change
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    leftRear(pressureKpa = 0) {
+        getLogger().info(`[PitCommand] Left rear: ${pressureKpa}kPa`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.LR, pressureKpa);
+    }
+    /**
+     * Request right rear tire change
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    rightRear(pressureKpa = 0) {
+        getLogger().info(`[PitCommand] Right rear: ${pressureKpa}kPa`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.RR, pressureKpa);
+    }
+    /**
+     * Clear tire pit checkboxes
+     */
+    clearTires() {
+        getLogger().info('[PitCommand] Clear tires');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.ClearTires);
+    }
+    /**
+     * Request fast repair
+     */
+    fastRepair() {
+        getLogger().info('[PitCommand] Fast repair');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.FR);
+    }
+    /**
+     * Clear fast repair checkbox
+     */
+    clearFastRepair() {
+        getLogger().info('[PitCommand] Clear fast repair');
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.ClearFR);
+    }
+    /**
+     * Change tire compound
+     * @param compound Tire compound index
+     */
+    tireCompound(compound) {
+        getLogger().info(`[PitCommand] Tire compound: ${compound}`);
+        return this.sendBroadcast(BroadcastMsg.PitCommand, PitCommandMode.TC, compound);
+    }
+    // ========== Convenience methods ==========
+    /**
+     * Request all four tires
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    allTires(pressureKpa = 0) {
+        const lf = this.leftFront(pressureKpa);
+        const rf = this.rightFront(pressureKpa);
+        const lr = this.leftRear(pressureKpa);
+        const rr = this.rightRear(pressureKpa);
+        return lf && rf && lr && rr;
+    }
+    /**
+     * Request front tires only
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    frontTires(pressureKpa = 0) {
+        const lf = this.leftFront(pressureKpa);
+        const rf = this.rightFront(pressureKpa);
+        return lf && rf;
+    }
+    /**
+     * Request rear tires only
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    rearTires(pressureKpa = 0) {
+        const lr = this.leftRear(pressureKpa);
+        const rr = this.rightRear(pressureKpa);
+        return lr && rr;
+    }
+    /**
+     * Request left side tires only
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    leftTires(pressureKpa = 0) {
+        const lf = this.leftFront(pressureKpa);
+        const lr = this.leftRear(pressureKpa);
+        return lf && lr;
+    }
+    /**
+     * Request right side tires only
+     * @param pressureKpa Tire pressure in kPa (0 = use existing pressure)
+     */
+    rightTires(pressureKpa = 0) {
+        const rf = this.rightFront(pressureKpa);
+        const rr = this.rightRear(pressureKpa);
+        return rf && rr;
+    }
+}
+
+/**
+ * SDK Controller - Singleton that manages the iRacing SDK connection
+ * and notifies subscribers of telemetry updates
+ */
+// Configure SDK to use Stream Deck logger
+setLogger({
+    debug: (msg) => streamDeck.logger.debug(msg),
+    info: (msg) => streamDeck.logger.info(msg),
+    warn: (msg) => streamDeck.logger.warn(msg),
+    error: (msg) => streamDeck.logger.error(msg),
+});
+class SDKController {
+    static instance;
+    sdk;
+    subscribers = new Map();
+    updateInterval = null;
+    reconnectInterval = null;
+    isConnected = false;
+    lastValidTelemetry = null;
+    constructor() {
+        this.sdk = new IRacingSDK();
+    }
+    /**
+     * Get the singleton instance
+     */
+    static getInstance() {
+        if (!SDKController.instance) {
+            SDKController.instance = new SDKController();
+        }
+        return SDKController.instance;
+    }
+    /**
+     * Subscribe to telemetry updates
+     */
+    subscribe(id, callback) {
+        this.subscribers.set(id, callback);
+        // Start updates if this is the first subscriber
+        if (this.subscribers.size === 1) {
+            this.start();
+        }
+        // Immediately notify the new subscriber of current state
+        const telemetry = this.sdk.getTelemetry();
+        callback(telemetry, this.isConnected);
+    }
+    /**
+     * Unsubscribe from telemetry updates
+     */
+    unsubscribe(id) {
+        this.subscribers.delete(id);
+        // Stop updates if no more subscribers
+        if (this.subscribers.size === 0) {
+            this.stop();
+        }
+    }
+    /**
+     * Start the update and reconnect loops
+     */
+    start() {
+        // Try initial connection
+        this.tryConnect();
+        // Start reconnect polling (slower - every 1 second)
+        this.reconnectInterval = setInterval(() => {
+            if (!this.sdk.isConnected()) {
+                this.tryConnect();
+            }
+        }, 1000);
+        // Start telemetry update loop (faster - 4Hz when connected)
+        this.updateInterval = setInterval(() => {
+            if (this.sdk.isConnected()) {
+                this.update();
+            }
+        }, 250);
+    }
+    /**
+     * Stop the update and reconnect loops
+     */
+    stop() {
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
+        this.sdk.disconnect();
+        this.isConnected = false;
+    }
+    /**
+     * Try to connect to iRacing
+     */
+    tryConnect() {
+        const wasConnected = this.isConnected;
+        const connected = this.sdk.connect();
+        // Update connection state
+        this.isConnected = connected;
+        // Notify subscribers if connection state changed
+        if (connected !== wasConnected) {
+            if (connected) {
+                streamDeck.logger.info('[iRaceDeck] Connected to iRacing');
+            }
+            // Notify all subscribers of connection state change
+            this.notifySubscribers();
+        }
+    }
+    /**
+     * Update telemetry and notify subscribers
+     */
+    update() {
+        // Only update if SDK thinks it's connected
+        if (!this.sdk.isConnected()) {
+            // SDK not connected, but we might have thought we were
+            if (this.isConnected) {
+                streamDeck.logger.info('[iRaceDeck] Disconnected from iRacing');
+                this.sdk.disconnect();
+                this.isConnected = false;
+                this.lastValidTelemetry = null;
+                this.notifySubscribers(null);
+            }
+            return;
+        }
+        // SDK is connected, get telemetry
+        const telemetry = this.sdk.getTelemetry();
+        // Check if telemetry is null (could happen during buffer update)
+        if (!telemetry) {
+            // Use last valid telemetry if available to avoid blinking
+            if (this.lastValidTelemetry) {
+                this.notifySubscribers(this.lastValidTelemetry);
+            }
+            return;
+        }
+        // Cache the valid telemetry
+        this.lastValidTelemetry = telemetry;
+        this.notifySubscribers(telemetry);
+    }
+    /**
+     * Notify all subscribers of telemetry update
+     */
+    notifySubscribers(telemetry) {
+        const data = telemetry !== undefined ? telemetry : this.sdk.getTelemetry();
+        for (const callback of this.subscribers.values()) {
+            callback(data, this.isConnected);
+        }
+    }
+    /**
+     * Get current connection status
+     */
+    getConnectionStatus() {
+        return this.isConnected;
+    }
+    /**
+     * Get current telemetry (for synchronous access)
+     * Returns cached telemetry if fresh read fails
+     */
+    getCurrentTelemetry() {
+        const telemetry = this.sdk.getTelemetry();
+        if (telemetry) {
+            this.lastValidTelemetry = telemetry;
+            return telemetry;
+        }
+        // Return cached telemetry if available
+        return this.lastValidTelemetry;
+    }
+    /**
+     * Send a custom chat message to iRacing
+     * @param message The message to send
+     */
+    sendChatMessage(message) {
+        return this.sdk.sendChatMessage(message);
+    }
+}
+
+/**
+ * Display Speed Action
+ * Displays current speed from iRacing telemetry
+ */
+let DisplaySpeed = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-speed" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        activeContexts = new Map();
+        lastTitle = new Map();
+        async onWillAppear(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                const settings = this.activeContexts.get(ev.action.id);
+                if (settings) {
+                    this.updateDisplay(ev.action.id, settings, telemetry, isConnected);
+                }
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.activeContexts.delete(ev.action.id);
+            this.lastTitle.delete(ev.action.id);
+        }
+        async onDidReceiveSettings(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+        }
+        async onKeyDown(ev) {
+            const currentUnit = ev.payload.settings.unit || "mph";
+            const newUnit = currentUnit === "mph" ? "kph" : "mph";
+            const newSettings = {
+                ...ev.payload.settings,
+                unit: newUnit
+            };
+            await ev.action.setSettings(newSettings);
+            this.activeContexts.set(ev.action.id, newSettings);
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            const isConnected = this.sdkController.getConnectionStatus();
+            this.updateDisplay(ev.action.id, newSettings, telemetry, isConnected);
+        }
+        async updateDisplay(contextId, settings, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            if (isConnected && telemetry) {
+                const speed = telemetry.Speed;
+                if (speed !== null && speed !== undefined && typeof speed === 'number') {
+                    const unit = settings.unit || "mph";
+                    let displaySpeed;
+                    if (unit === "kph") {
+                        displaySpeed = speed * 3.6;
+                    }
+                    else {
+                        displaySpeed = speed * 2.23694;
+                    }
+                    title = Math.round(displaySpeed).toString();
+                }
+                else {
+                    title = "N/A";
+                }
+            }
+            const lastTitle = this.lastTitle.get(contextId);
+            if (lastTitle !== title) {
+                this.lastTitle.set(contextId, title);
+                await action.setTitle(title);
+                await action.setImage("imgs/actions/vehicle/display-speed/key");
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Display Gear Action
+ * Displays current gear from iRacing telemetry
+ */
+let DisplayGear = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-gear" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        lastTitle = new Map();
+        async onWillAppear(ev) {
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.lastTitle.delete(ev.action.id);
+        }
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            if (isConnected && telemetry) {
+                const gear = telemetry.Gear;
+                if (gear !== null && gear !== undefined && typeof gear === 'number') {
+                    if (gear === -1) {
+                        title = "R";
+                    }
+                    else if (gear === 0) {
+                        title = "N";
+                    }
+                    else {
+                        title = gear.toString();
+                    }
+                }
+                else {
+                    title = "N/A";
+                }
+            }
+            const lastTitle = this.lastTitle.get(contextId);
+            if (lastTitle !== title) {
+                this.lastTitle.set(contextId, title);
+                await action.setTitle(title);
+                await action.setImage("imgs/actions/vehicle/display-gear/key");
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Display Sky Action
+ * Displays current sky conditions from iRacing telemetry
+ */
+let DisplaySky = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.environment.display-sky" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        lastState = new Map();
+        async onWillAppear(ev) {
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.lastState.delete(ev.action.id);
+        }
+        getSkyName(skies) {
+            switch (skies) {
+                case Skies.Clear:
+                    return "Clear";
+                case Skies.PartlyCloudy:
+                    return "Partly\nCloudy";
+                case Skies.MostlyCloudy:
+                    return "Mostly\nCloudy";
+                case Skies.Overcast:
+                    return "Overcast";
+                default:
+                    return "N/A";
+            }
+        }
+        getSkyImage(skies) {
+            switch (skies) {
+                case Skies.Clear:
+                    return "imgs/actions/environment/display-sky/key-clear";
+                case Skies.PartlyCloudy:
+                    return "imgs/actions/environment/display-sky/key-partly";
+                case Skies.MostlyCloudy:
+                    return "imgs/actions/environment/display-sky/key-mostly";
+                case Skies.Overcast:
+                    return "imgs/actions/environment/display-sky/key-overcast";
+                default:
+                    return "imgs/actions/environment/display-sky/key";
+            }
+        }
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            let image = "imgs/actions/environment/display-sky/key";
+            if (isConnected && telemetry) {
+                const skies = telemetry.Skies;
+                if (skies !== null && skies !== undefined && typeof skies === 'number') {
+                    title = this.getSkyName(skies);
+                    image = this.getSkyImage(skies);
+                }
+                else {
+                    title = "N/A";
+                }
+            }
+            const stateKey = `${title}|${image}`;
+            const lastState = this.lastState.get(contextId);
+            if (lastState !== stateKey) {
+                this.lastState.set(contextId, stateKey);
+                await action.setTitle(title);
+                await action.setImage(image);
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Display Fuel to Add Action
+ * Displays the amount of fuel to be added at next pit stop (PitSvFuel)
+ * Press to toggle fuel fill on/off
+ */
+let DisplayFuelToAdd = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.display-fuel-to-add" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        lastState = new Map();
+        async onWillAppear(ev) {
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.lastState.delete(ev.action.id);
+        }
+        /**
+         * When the key is pressed - toggle fuel fill
+         */
+        async onKeyDown(_ev) {
+            streamDeck.logger.info('[DisplayFuelToAdd] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DisplayFuelToAdd] Not connected to iRacing');
+                return;
+            }
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry) {
+                streamDeck.logger.warn('[DisplayFuelToAdd] No telemetry data available');
+                return;
+            }
+            const pitSvFlags = telemetry.PitSvFlags;
+            if (pitSvFlags === null || pitSvFlags === undefined || typeof pitSvFlags !== 'number') {
+                streamDeck.logger.warn('[DisplayFuelToAdd] PitSvFlags not available');
+                return;
+            }
+            // Check if FuelFill is currently enabled
+            if (hasFlag(pitSvFlags, PitSvFlags.FuelFill)) {
+                // Fuel fill is on - clear it
+                const success = this.pitCommand.clearFuel();
+                if (success) {
+                    streamDeck.logger.info('[DisplayFuelToAdd] Cleared fuel fill');
+                }
+                else {
+                    streamDeck.logger.warn('[DisplayFuelToAdd] Failed to clear fuel fill');
+                }
+            }
+            else {
+                // Fuel fill is off - enable it with current PitSvFuel amount (0 = use existing)
+                const success = this.pitCommand.fuel(0);
+                if (success) {
+                    streamDeck.logger.info('[DisplayFuelToAdd] Enabled fuel fill');
+                }
+                else {
+                    streamDeck.logger.warn('[DisplayFuelToAdd] Failed to enable fuel fill');
+                }
+            }
+        }
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            let image = "imgs/actions/pit/display-fuel-to-add/key";
+            if (isConnected && telemetry) {
+                const fuelToAdd = telemetry.PitSvFuel;
+                const pitSvFlags = telemetry.PitSvFlags;
+                // Check if fuel fill is enabled
+                const isFuelFillEnabled = pitSvFlags !== null &&
+                    pitSvFlags !== undefined &&
+                    typeof pitSvFlags === 'number' &&
+                    hasFlag(pitSvFlags, PitSvFlags.FuelFill);
+                // Use active image when fuel fill is enabled
+                image = isFuelFillEnabled
+                    ? "imgs/actions/pit/display-fuel-to-add/key-active"
+                    : "imgs/actions/pit/display-fuel-to-add/key";
+                if (isFuelFillEnabled) {
+                    if (fuelToAdd !== null && fuelToAdd !== undefined && typeof fuelToAdd === 'number') {
+                        title = Math.round(fuelToAdd) + " L";
+                    }
+                    else {
+                        title = "-";
+                    }
+                }
+                else {
+                    title = "No\nRefuel";
+                }
+            }
+            const stateKey = `${title}|${image}`;
+            const lastState = this.lastState.get(contextId);
+            if (lastState !== stateKey) {
+                this.lastState.set(contextId, stateKey);
+                await action.setTitle(title);
+                await action.setImage(image);
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Do Fuel Add Action
+ * Adds fuel to the pit service fuel amount when pressed
+ */
+let DoFuelAdd = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fuel-add" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        updateInterval = null;
+        activeContexts = new Map();
+        lastTitle = new Map();
+        /**
+         * When the action appears on the Stream Deck
+         */
+        async onWillAppear(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            // Set default amount if not configured
+            if (!ev.payload.settings.amount) {
+                await ev.action.setSettings({
+                    amount: 1
+                });
+            }
+            // Start updating display
+            if (!this.updateInterval) {
+                this.startUpdates();
+            }
+            // Update immediately
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the action disappears from the Stream Deck
+         */
+        async onWillDisappear(ev) {
+            this.activeContexts.delete(ev.action.id);
+            this.lastTitle.delete(ev.action.id);
+            // Stop updates if no more instances
+            if (this.activeContexts.size === 0) {
+                this.stopUpdates();
+            }
+        }
+        /**
+         * Start periodic updates
+         */
+        startUpdates() {
+            this.updateInterval = setInterval(() => {
+                for (const [contextId, settings] of this.activeContexts) {
+                    this.updateDisplay(contextId, settings);
+                }
+            }, 1000);
+        }
+        /**
+         * Stop periodic updates
+         */
+        stopUpdates() {
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
+                this.updateInterval = null;
+            }
+        }
+        /**
+         * Update the display for a specific context
+         */
+        async updateDisplay(contextId, settings) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            if (this.sdkController.getConnectionStatus()) {
+                const amount = settings.amount || 1;
+                title = `+${amount} L`;
+            }
+            const lastTitle = this.lastTitle.get(contextId);
+            if (lastTitle !== title) {
+                this.lastTitle.set(contextId, title);
+                await action.setTitle(title);
+                await action.setImage("imgs/actions/pit/do-fuel-add/key");
+            }
+        }
+        /**
+         * When settings are received or updated
+         */
+        async onDidReceiveSettings(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the key is pressed
+         */
+        async onKeyDown(ev) {
+            streamDeck.logger.info('[DoFuelAdd] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoFuelAdd] Not connected to iRacing');
+                return;
+            }
+            // Get current fuel to add from telemetry
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry) {
+                streamDeck.logger.warn('[DoFuelAdd] No telemetry data available');
+                return;
+            }
+            const currentFuel = telemetry.PitSvFuel;
+            if (currentFuel === null || currentFuel === undefined || typeof currentFuel !== 'number') {
+                streamDeck.logger.warn('[DoFuelAdd] PitSvFuel not available');
+                return;
+            }
+            const amount = ev.payload.settings.amount || 1;
+            const newFuelAmount = currentFuel + amount;
+            // Send the pit command with the new total fuel amount
+            const success = this.pitCommand.fuel(newFuelAmount);
+            if (success) {
+                streamDeck.logger.info(`[DoFuelAdd] Set fuel to ${newFuelAmount}L (was ${currentFuel}L, added ${amount}L)`);
+            }
+            else {
+                streamDeck.logger.warn('[DoFuelAdd] Failed to set fuel');
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Do Fuel Reduce Action
+ * Reduces fuel from the pit service fuel amount when pressed
+ */
+let DoFuelReduce = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fuel-reduce" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        updateInterval = null;
+        activeContexts = new Map();
+        lastTitle = new Map();
+        /**
+         * When the action appears on the Stream Deck
+         */
+        async onWillAppear(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            // Set default amount if not configured
+            if (!ev.payload.settings.amount) {
+                await ev.action.setSettings({
+                    amount: 1
+                });
+            }
+            // Start updating display
+            if (!this.updateInterval) {
+                this.startUpdates();
+            }
+            // Update immediately
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the action disappears from the Stream Deck
+         */
+        async onWillDisappear(ev) {
+            this.activeContexts.delete(ev.action.id);
+            this.lastTitle.delete(ev.action.id);
+            // Stop updates if no more instances
+            if (this.activeContexts.size === 0) {
+                this.stopUpdates();
+            }
+        }
+        /**
+         * Start periodic updates
+         */
+        startUpdates() {
+            this.updateInterval = setInterval(() => {
+                for (const [contextId, settings] of this.activeContexts) {
+                    this.updateDisplay(contextId, settings);
+                }
+            }, 1000);
+        }
+        /**
+         * Stop periodic updates
+         */
+        stopUpdates() {
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
+                this.updateInterval = null;
+            }
+        }
+        /**
+         * Update the display for a specific context
+         */
+        async updateDisplay(contextId, settings) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            if (this.sdkController.getConnectionStatus()) {
+                const amount = settings.amount || 1;
+                title = `-${amount} L`;
+            }
+            const lastTitle = this.lastTitle.get(contextId);
+            if (lastTitle !== title) {
+                this.lastTitle.set(contextId, title);
+                await action.setTitle(title);
+                await action.setImage("imgs/actions/pit/do-fuel-reduce/key");
+            }
+        }
+        /**
+         * When settings are received or updated
+         */
+        async onDidReceiveSettings(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the key is pressed
+         */
+        async onKeyDown(ev) {
+            streamDeck.logger.info('[DoFuelReduce] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoFuelReduce] Not connected to iRacing');
+                return;
+            }
+            // Get current fuel to add from telemetry
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry) {
+                streamDeck.logger.warn('[DoFuelReduce] No telemetry data available');
+                return;
+            }
+            const currentFuel = telemetry.PitSvFuel;
+            if (currentFuel === null || currentFuel === undefined || typeof currentFuel !== 'number') {
+                streamDeck.logger.warn('[DoFuelReduce] PitSvFuel not available');
+                return;
+            }
+            const amount = ev.payload.settings.amount || 1;
+            const newFuelAmount = Math.max(0, currentFuel - amount);
+            let success;
+            if (newFuelAmount === 0) {
+                // Can't send 0 to fuel() as it means "use existing amount"
+                // Use clearFuel() to set fuel to 0
+                success = this.pitCommand.clearFuel();
+                if (success) {
+                    streamDeck.logger.info(`[DoFuelReduce] Cleared fuel (was ${currentFuel}L)`);
+                }
+            }
+            else {
+                // Send the pit command with the new total fuel amount
+                success = this.pitCommand.fuel(newFuelAmount);
+                if (success) {
+                    streamDeck.logger.info(`[DoFuelReduce] Set fuel to ${newFuelAmount}L (was ${currentFuel}L, reduced ${amount}L)`);
+                }
+            }
+            if (!success) {
+                streamDeck.logger.warn('[DoFuelReduce] Failed to set fuel');
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Tire Compound Action
+ * Displays the tire compound to be used at next pit stop (PitSvTireCompound)
+ * Press to toggle between dry and wet compounds
+ */
+let DoTireCompound = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-tire-compound" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        lastState = new Map();
+        async onWillAppear(ev) {
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.lastState.delete(ev.action.id);
+        }
+        /**
+         * When the key is pressed - toggle tire compound
+         */
+        async onKeyDown(_ev) {
+            streamDeck.logger.info('[DoTireCompound] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoTireCompound] Not connected to iRacing');
+                return;
+            }
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry) {
+                streamDeck.logger.warn('[DoTireCompound] No telemetry data available');
+                return;
+            }
+            const currentCompound = telemetry.PitSvTireCompound;
+            if (currentCompound === null || currentCompound === undefined || typeof currentCompound !== 'number') {
+                streamDeck.logger.warn('[DoTireCompound] PitSvTireCompound not available');
+                return;
+            }
+            // Toggle between compounds: 0 = Dry, 1 = Wet
+            const newCompound = currentCompound === 0 ? 1 : 0;
+            streamDeck.logger.info(`[DoTireCompound] Switching from ${currentCompound === 0 ? 'Dry' : 'Wet'} to ${newCompound === 0 ? 'Dry' : 'Wet'}`);
+            const success = this.pitCommand.tireCompound(newCompound);
+            if (success) {
+                streamDeck.logger.info(`[DoTireCompound] Set tire compound to ${newCompound === 0 ? 'Dry' : 'Wet'}`);
+            }
+            else {
+                streamDeck.logger.warn('[DoTireCompound] Failed to set tire compound');
+            }
+        }
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            let image = "imgs/actions/pit/do-tire-compound/key";
+            if (isConnected && telemetry) {
+                const tireCompound = telemetry.PitSvTireCompound;
+                if (tireCompound !== null && tireCompound !== undefined && typeof tireCompound === 'number') {
+                    // 0 = Dry, 1 = Wet
+                    switch (tireCompound) {
+                        case 0:
+                            title = "Dry";
+                            image = "imgs/actions/pit/do-tire-compound/key-dry";
+                            break;
+                        case 1:
+                            title = "Wet";
+                            image = "imgs/actions/pit/do-tire-compound/key-wet";
+                            break;
+                        default:
+                            title = `TC: ${tireCompound}`;
+                            image = "imgs/actions/pit/do-tire-compound/key";
+                            break;
+                    }
+                }
+                else {
+                    title = "N/A";
+                }
+            }
+            const stateKey = `${title}|${image}`;
+            const lastState = this.lastState.get(contextId);
+            if (lastState !== stateKey) {
+                this.lastState.set(contextId, stateKey);
+                await action.setTitle(title);
+                await action.setImage(image);
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Toggle Tires Action
+ * Toggles tire change selections in pit service based on configured checkboxes.
+ * Dynamic icon shows car from above with tire outlines based on CURRENT iRacing state.
+ * White outline = will be changed, Gray outline = will NOT be changed.
+ * On press: toggles the configured tires (if currently on, turns off; if off, turns on).
+ */
+let DoChangeTires = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-change-tires" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        activeContexts = new Map();
+        lastState = new Map();
+        async onWillAppear(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            // Subscribe to telemetry updates
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.activeContexts.delete(ev.action.id);
+            this.lastState.delete(ev.action.id);
+        }
+        /**
+         * Get tire fill color based on settings and current state
+         * Light gray: not configured (nothing happens)
+         * Red: configured and currently OFF (will turn ON)
+         * Green: configured and currently ON (will turn OFF)
+         */
+        getTireColor(isConfigured, isCurrentlyOn) {
+            if (!isConfigured)
+                return "#000000ff"; // Light gray - nothing happens
+            if (isCurrentlyOn)
+                return "#44FF44"; // Green - currently ON, will turn OFF
+            return "#FF4444"; // Red - currently OFF, will turn ON
+        }
+        /**
+         * Generate car SVG with tires colored based on settings and current state
+         * Icon in top half, title text in bottom
+         */
+        generateCarSvg(settings, currentState, isConnected) {
+            const lfColor = this.getTireColor(settings.lf ?? false, currentState.lf);
+            const rfColor = this.getTireColor(settings.rf ?? false, currentState.rf);
+            const lrColor = this.getTireColor(settings.lr ?? false, currentState.lr);
+            const rrColor = this.getTireColor(settings.rr ?? false, currentState.rr);
+            // Check if any configured tire is currently ON (will be changed)
+            const anyTireOn = (settings.lf && currentState.lf) ||
+                (settings.rf && currentState.rf) ||
+                (settings.lr && currentState.lr) ||
+                (settings.rr && currentState.rr);
+            // Title text and color
+            let titleText;
+            let titleColor;
+            if (!isConnected) {
+                titleText = "Not Connected";
+                titleColor = "#888888";
+            }
+            else if (anyTireOn) {
+                titleText = "Change";
+                titleColor = "#FFFFFF";
+            }
+            else {
+                titleText = "No Change";
+                titleColor = "#FF4444";
+            }
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Car body (top half) -->
+  <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="#888888" stroke-width="2"/>
+  <!-- Left Front tire -->
+  <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${lfColor}" stroke="#888888" stroke-width="1"/>
+  <!-- Right Front tire -->
+  <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${rfColor}" stroke="#888888" stroke-width="1"/>
+  <!-- Left Rear tire -->
+  <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${lrColor}" stroke="#888888" stroke-width="1"/>
+  <!-- Right Rear tire -->
+  <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${rrColor}" stroke="#888888" stroke-width="1"/>
+  <!-- Title text -->
+  <text x="36" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="${titleColor}">${titleText}</text>
+</svg>`;
+            return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+        }
+        /**
+         * Get current tire change state from telemetry
+         */
+        getTireState(telemetry) {
+            if (!telemetry || telemetry.PitSvFlags === undefined) {
+                return { lf: false, rf: false, lr: false, rr: false };
+            }
+            const flags = telemetry.PitSvFlags;
+            return {
+                lf: hasFlag(flags, PitSvFlags.LFTireChange),
+                rf: hasFlag(flags, PitSvFlags.RFTireChange),
+                lr: hasFlag(flags, PitSvFlags.LRTireChange),
+                rr: hasFlag(flags, PitSvFlags.RRTireChange)
+            };
+        }
+        /**
+         * Update the display for a specific context
+         */
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            const settings = this.activeContexts.get(contextId) || {};
+            // Get current tire state from telemetry (for icon display)
+            const tireState = this.getTireState(telemetry);
+            // Generate SVG based on settings and current iRacing state
+            const svgDataUri = this.generateCarSvg(settings, tireState, isConnected);
+            // Create state key for caching (include settings)
+            const stateKey = `${isConnected}|${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
+            const lastState = this.lastState.get(contextId);
+            if (lastState !== stateKey) {
+                this.lastState.set(contextId, stateKey);
+                await action.setTitle(""); // Title is now in the SVG
+                await action.setImage(svgDataUri);
+            }
+        }
+        /**
+         * When settings are received or updated from Property Inspector
+         */
+        async onDidReceiveSettings(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the key is pressed - toggle tire change selections
+         */
+        async onKeyDown(ev) {
+            streamDeck.logger.info('[DoChangeTires] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoChangeTires] Not connected to iRacing');
+                return;
+            }
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry) {
+                streamDeck.logger.warn('[DoChangeTires] No telemetry data available');
+                return;
+            }
+            // Get current state and settings
+            const currentState = this.getTireState(telemetry);
+            const settings = ev.payload.settings;
+            // Toggle each configured tire
+            if (settings.lf) {
+                if (currentState.lf) {
+                    // Currently on, turn off by clearing and re-enabling others
+                    streamDeck.logger.info('[DoChangeTires] Toggling LF off');
+                }
+                else {
+                    this.pitCommand.leftFront(0);
+                    streamDeck.logger.info('[DoChangeTires] Toggling LF on');
+                }
+            }
+            if (settings.rf) {
+                if (currentState.rf) {
+                    streamDeck.logger.info('[DoChangeTires] Toggling RF off');
+                }
+                else {
+                    this.pitCommand.rightFront(0);
+                    streamDeck.logger.info('[DoChangeTires] Toggling RF on');
+                }
+            }
+            if (settings.lr) {
+                if (currentState.lr) {
+                    streamDeck.logger.info('[DoChangeTires] Toggling LR off');
+                }
+                else {
+                    this.pitCommand.leftRear(0);
+                    streamDeck.logger.info('[DoChangeTires] Toggling LR on');
+                }
+            }
+            if (settings.rr) {
+                if (currentState.rr) {
+                    streamDeck.logger.info('[DoChangeTires] Toggling RR off');
+                }
+                else {
+                    this.pitCommand.rightRear(0);
+                    streamDeck.logger.info('[DoChangeTires] Toggling RR on');
+                }
+            }
+            // If we need to turn any tires OFF, we have to clear all and re-enable the ones we want
+            const turningOff = (settings.lf && currentState.lf) ||
+                (settings.rf && currentState.rf) ||
+                (settings.lr && currentState.lr) ||
+                (settings.rr && currentState.rr);
+            if (turningOff) {
+                // Clear all tires first
+                this.pitCommand.clearTires();
+                // Re-enable tires that should stay on (were on and not being toggled off)
+                if (currentState.lf && !settings.lf)
+                    this.pitCommand.leftFront(0);
+                if (currentState.rf && !settings.rf)
+                    this.pitCommand.rightFront(0);
+                if (currentState.lr && !settings.lr)
+                    this.pitCommand.leftRear(0);
+                if (currentState.rr && !settings.rr)
+                    this.pitCommand.rightRear(0);
+                // Enable tires that are being toggled on (were off and configured)
+                if (!currentState.lf && settings.lf)
+                    this.pitCommand.leftFront(0);
+                if (!currentState.rf && settings.rf)
+                    this.pitCommand.rightFront(0);
+                if (!currentState.lr && settings.lr)
+                    this.pitCommand.leftRear(0);
+                if (!currentState.rr && settings.rr)
+                    this.pitCommand.rightRear(0);
+            }
+            streamDeck.logger.info('[DoChangeTires] Tire toggle complete');
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Fast Repair Action
+ * Toggles fast repair selection in pit service.
+ * Dynamic icon shows wrench with color based on current state.
+ * Green = currently ON (will turn OFF), Red = currently OFF (will turn ON)
+ */
+let DoFastRepair = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fast-repair" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        pitCommand = PitCommand.getInstance();
+        activeContexts = new Set();
+        lastState = new Map();
+        async onWillAppear(ev) {
+            this.activeContexts.add(ev.action.id);
+            // Subscribe to telemetry updates
+            this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+                this.updateDisplay(ev.action.id, telemetry, isConnected);
+            });
+        }
+        async onWillDisappear(ev) {
+            this.sdkController.unsubscribe(ev.action.id);
+            this.activeContexts.delete(ev.action.id);
+            this.lastState.delete(ev.action.id);
+        }
+        /**
+         * Get fast repair state from telemetry
+         */
+        getFastRepairState(telemetry) {
+            if (!telemetry || telemetry.PitSvFlags === undefined) {
+                return false;
+            }
+            return hasFlag(telemetry.PitSvFlags, PitSvFlags.FastRepair);
+        }
+        /**
+         * Check if fast repairs are available
+         */
+        getFastRepairsAvailable(telemetry) {
+            if (!telemetry || telemetry.FastRepairAvailable === undefined) {
+                return 0;
+            }
+            return telemetry.FastRepairAvailable;
+        }
+        /**
+         * Generate magic wand SVG with color based on current state
+         */
+        generateSvg(iconColor, showRedX) {
+            const redX = showRedX ? `
+  <!-- Red X (same size as fuel icon X) -->
+  <line x1="21" y1="6" x2="51" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
+  <line x1="51" y1="6" x2="21" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>` : '';
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Magic wand (diagonal) -->
+  <rect x="10" y="25" width="40" height="5" rx="2" transform="rotate(-45 28 22)" fill="${iconColor}"/>
+  <!-- 4-pointed stars (large) -->
+  <path d="M48,8 L50,14 L52,8 L50,2 Z M44,8 L50,10 L56,8 L50,6 Z" fill="${iconColor}"/>
+  <path d="M56,24 L57.5,28 L59,24 L57.5,20 Z M53.5,24 L57.5,25.5 L61.5,24 L57.5,22.5 Z" fill="${iconColor}"/>
+  <!-- 4-pointed star (small) -->
+  <path d="M38,18 L39,21 L40,18 L39,15 Z M36,18 L39,19 L42,18 L39,17 Z" fill="${iconColor}"/>
+  <!-- Small dots -->
+  <circle cx="28" cy="6" r="2" fill="${iconColor}"/>
+  <circle cx="60" cy="34" r="1.5" fill="${iconColor}"/>${redX}
+</svg>`;
+            return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+        }
+        /**
+         * Update the display for a specific context
+         */
+        async updateDisplay(contextId, telemetry, isConnected) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title;
+            let iconColor;
+            let showRedX = false;
+            if (!isConnected) {
+                title = "iRacing\nnot\nconnected";
+                iconColor = "#888888";
+            }
+            else {
+                const isOn = this.getFastRepairState(telemetry);
+                const fastRepairsAvailable = this.getFastRepairsAvailable(telemetry);
+                if (fastRepairsAvailable === 0) {
+                    title = "Not Avail";
+                    iconColor = "#888888";
+                    showRedX = true;
+                }
+                else if (isOn) {
+                    title = "Fast Repair";
+                    iconColor = "#44FF44";
+                }
+                else {
+                    title = "No fast\nRepair";
+                    iconColor = "#FF4444";
+                }
+            }
+            const svgDataUri = this.generateSvg(iconColor, showRedX);
+            // Create state key for caching
+            const stateKey = `${title}|${iconColor}|${showRedX}`;
+            const lastState = this.lastState.get(contextId);
+            if (lastState !== stateKey) {
+                this.lastState.set(contextId, stateKey);
+                await action.setTitle(title);
+                await action.setImage(svgDataUri);
+            }
+        }
+        /**
+         * When the key is pressed - toggle fast repair
+         */
+        async onKeyDown(_ev) {
+            streamDeck.logger.info('[DoFastRepair] Key down received');
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoFastRepair] Not connected to iRacing');
+                return;
+            }
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            // Check if fast repairs are available
+            const fastRepairsAvailable = this.getFastRepairsAvailable(telemetry);
+            if (fastRepairsAvailable === 0) {
+                streamDeck.logger.info('[DoFastRepair] No fast repairs available');
+                return;
+            }
+            const isCurrentlyOn = this.getFastRepairState(telemetry);
+            if (isCurrentlyOn) {
+                // Currently on, turn off
+                this.pitCommand.clearFastRepair();
+                streamDeck.logger.info('[DoFastRepair] Toggling fast repair OFF');
+            }
+            else {
+                // Currently off, turn on
+                this.pitCommand.fastRepair();
+                streamDeck.logger.info('[DoFastRepair] Toggling fast repair ON');
+            }
+        }
+    });
+    return _classThis;
+})();
+
+/**
+ * Do Chat Message Action
+ * Sends a custom chat message to iRacing when pressed
+ */
+let DoChatMessage = (() => {
+    let _classDecorators = [action({ UUID: "fi.lampen.niklas.iracedeck.comms.do-chat-message" })];
+    let _classDescriptor;
+    let _classExtraInitializers = [];
+    let _classThis;
+    let _classSuper = SingletonAction;
+    (class extends _classSuper {
+        static { _classThis = this; }
+        static {
+            const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+            __esDecorate(null, _classDescriptor = { value: _classThis }, _classDecorators, { kind: "class", name: _classThis.name, metadata: _metadata }, null, _classExtraInitializers);
+            _classThis = _classDescriptor.value;
+            if (_metadata) Object.defineProperty(_classThis, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+            __runInitializers(_classThis, _classExtraInitializers);
+        }
+        sdkController = SDKController.getInstance();
+        cameraCommand = CameraCommand.getInstance();
+        updateInterval = null;
+        activeContexts = new Map();
+        lastTitle = new Map();
+        lastIconColor = new Map();
+        /**
+         * When the action appears on the Stream Deck
+         */
+        async onWillAppear(ev) {
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            // Set default message if not configured
+            if (!ev.payload.settings.message) {
+                await ev.action.setSettings({
+                    message: ""
+                });
+            }
+            // Start updating display
+            if (!this.updateInterval) {
+                this.startUpdates();
+            }
+            // Update immediately
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the action disappears from the Stream Deck
+         */
+        async onWillDisappear(ev) {
+            this.activeContexts.delete(ev.action.id);
+            this.lastTitle.delete(ev.action.id);
+            this.lastIconColor.delete(ev.action.id);
+            // Stop updates if no more instances
+            if (this.activeContexts.size === 0) {
+                this.stopUpdates();
+            }
+        }
+        /**
+         * Start periodic updates
+         */
+        startUpdates() {
+            this.updateInterval = setInterval(() => {
+                for (const [contextId, settings] of this.activeContexts) {
+                    this.updateDisplay(contextId, settings);
+                }
+            }, 1000); // Update every second
+        }
+        /**
+         * Stop periodic updates
+         */
+        stopUpdates() {
+            if (this.updateInterval) {
+                clearInterval(this.updateInterval);
+                this.updateInterval = null;
+            }
+        }
+        /**
+         * Generate chat bubble SVG with configurable color
+         */
+        generateChatSvg(color) {
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <path d="M14 18
+           h44
+           a6 6 0 0 1 6 6
+           v24
+           a6 6 0 0 1-6 6
+           H26
+           l-4 8
+           l-4 -8
+           H14
+           a6 6 0 0 1-6-6
+           V24
+           a6 6 0 0 1 6-6
+           z"
+        fill="none"
+        stroke="${color}"
+        stroke-width="2.5"
+        stroke-linejoin="round"/>
+</svg>`;
+            return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+        }
+        /**
+         * Update the display for a specific context
+         */
+        async updateDisplay(contextId, settings) {
+            const action = streamDeck.actions.getActionById(contextId);
+            if (!action)
+                return;
+            let title = "iRacing\nnot\nconnected";
+            if (this.sdkController.getConnectionStatus()) {
+                // Connected - show the message preview
+                const message = settings.message?.trim();
+                if (message) {
+                    // Show first few words of the message
+                    title = message.length > 20 ? message.substring(0, 17) + "..." : message;
+                }
+                else {
+                    title = "";
+                }
+            }
+            // Get configured color (default to #4a90d9)
+            const iconColor = settings.iconColor || "#4a90d9";
+            // Only update if the title or color has changed
+            const lastTitle = this.lastTitle.get(contextId);
+            const lastColor = this.lastIconColor.get(contextId);
+            if (lastTitle !== title || lastColor !== iconColor) {
+                this.lastTitle.set(contextId, title);
+                this.lastIconColor.set(contextId, iconColor);
+                await action.setTitle(title);
+                // Generate SVG with configured color
+                const svgDataUri = this.generateChatSvg(iconColor);
+                await action.setImage(svgDataUri);
+            }
+        }
+        /**
+         * When settings are received or updated
+         */
+        async onDidReceiveSettings(ev) {
+            // Update stored settings
+            this.activeContexts.set(ev.action.id, ev.payload.settings);
+            // Update display when settings change
+            this.updateDisplay(ev.action.id, ev.payload.settings);
+        }
+        /**
+         * When the key is pressed
+         */
+        async onKeyDown(ev) {
+            streamDeck.logger.info('[DoChatMessage] Key down received');
+            const message = ev.payload.settings.message?.trim();
+            const telemetry = this.sdkController.getCurrentTelemetry();
+            if (!telemetry || !telemetry.CamCameraState) {
+                streamDeck.logger.error("[DoChatMessage] Couldn't get CamCameraState");
+                return;
+            }
+            var origCamCameraState = telemetry.CamCameraState;
+            // Then use hasFlag on the telemetry data
+            if (hasFlag(origCamCameraState, CameraState.UIHidden)) {
+                this.cameraCommand.showUI(origCamCameraState);
+            }
+            if (!message) {
+                streamDeck.logger.info('[DoChatMessage] No message to send');
+                return;
+            }
+            // Check if connected to iRacing
+            if (!this.sdkController.getConnectionStatus()) {
+                streamDeck.logger.info('[DoChatMessage] Not connected to iRacing');
+                return;
+            }
+            // Send the chat message
+            const success = this.sdkController.sendChatMessage(message);
+            if (success) {
+                streamDeck.logger.info('[DoChatMessage] Message sent succesfully');
+            }
+            else {
+                streamDeck.logger.warn('[DoChatMessage] Sending message failed');
+            }
+            this.cameraCommand.setState(origCamCameraState);
+        }
+    });
+    return _classThis;
+})();
+
+// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
+streamDeck.logger.setLevel("trace");
+// Register iRacing actions
+streamDeck.actions.registerAction(new DisplaySpeed());
+streamDeck.actions.registerAction(new DisplayGear());
+streamDeck.actions.registerAction(new DisplaySky());
+streamDeck.actions.registerAction(new DisplayFuelToAdd());
+streamDeck.actions.registerAction(new DoFuelAdd());
+streamDeck.actions.registerAction(new DoFuelReduce());
+streamDeck.actions.registerAction(new DoTireCompound());
+streamDeck.actions.registerAction(new DoChangeTires());
+streamDeck.actions.registerAction(new DoFastRepair());
+streamDeck.actions.registerAction(new DoChatMessage());
+// Finally, connect to the Stream Deck.
+streamDeck.connect();
 //# sourceMappingURL=plugin.js.map

@@ -4,8 +4,8 @@
   "description": "Stream Deck plugin for iRacing - displays telemetry and controls pit service",
   "type": "module",
   "scripts": {
-    "build": "rollup -c && pnpm postbuild",
-    "postbuild": "cd fi.lampen.niklas.iracedeck.sdPlugin/bin && pnpm install",
+    "build": "rollup -c && npm run postbuild",
+    "postbuild": "cd fi.lampen.niklas.iracedeck.sdPlugin/bin && npm install",
     "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart fi.lampen.niklas.iracedeck\"",
     "clean": "rimraf fi.lampen.niklas.iracedeck.sdPlugin/bin/plugin.js fi.lampen.niklas.iracedeck.sdPlugin/bin/plugin.js.map"
     

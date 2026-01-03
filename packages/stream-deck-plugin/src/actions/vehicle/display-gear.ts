@@ -1,5 +1,5 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../../sdk-controller";
+import { SDKController } from "../../sdk-controller.js";
 import { TelemetryData } from "@iracedeck/iracing-sdk";
 
 /**

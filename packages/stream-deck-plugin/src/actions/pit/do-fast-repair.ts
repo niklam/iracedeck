@@ -1,5 +1,5 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../../sdk-controller";
+import { SDKController } from "../../sdk-controller.js";
 import { PitCommand, PitSvFlags, TelemetryData, hasFlag } from "@iracedeck/iracing-sdk";
 
 /**
@@ -125,7 +125,7 @@ export class DoFastRepair extends SingletonAction {
 	/**
 	 * When the key is pressed - toggle fast repair
 	 */
-	override async onKeyDown(ev: KeyDownEvent): Promise<void> {
+	override async onKeyDown(_ev: KeyDownEvent): Promise<void> {
 		streamDeck.logger.info('[DoFastRepair] Key down received');
 
 		// Check if connected to iRacing

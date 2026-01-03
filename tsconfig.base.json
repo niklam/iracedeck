@@ -1,17 +1,15 @@
 {
-  "extends": "@tsconfig/node20/tsconfig.json",
-  "compilerOptions": {
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "strict": true,
-    "noImplicitOverride": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "module": "nodenext",
-    "moduleResolution": "nodenext"
-  }
+	"extends": "@tsconfig/node20/tsconfig.json",
+	"compilerOptions": {
+		"customConditions": [
+			"node"
+		],
+		"module": "ES2022",
+		"moduleResolution": "Bundler",
+		"noImplicitOverride": true
+	},
+	"exclude": [
+		"node_modules",
+    ".turbo"
+	]
 }

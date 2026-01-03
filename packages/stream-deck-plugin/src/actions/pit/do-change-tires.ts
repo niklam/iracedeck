@@ -1,5 +1,5 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../../sdk-controller";
+import { SDKController } from "../../sdk-controller.js";
 import { PitCommand, PitSvFlags, TelemetryData, hasFlag } from "@iracedeck/iracing-sdk";
 
 /**

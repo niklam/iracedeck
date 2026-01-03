@@ -12,13 +12,6 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-import { existsSync } from 'node:fs';
-
-const addonPath = join(__dirname, '..', 'build', 'Release', 'iracing_native.node');
-console.log('Looking for addon at:', addonPath);
-console.log('Exists:', existsSync(addonPath));
-console.log('__dirname:', __dirname);
-
 // Load the native addon
 const addon = require(join(__dirname, '..', 'build', 'Release', 'iracing_native.node'));
 

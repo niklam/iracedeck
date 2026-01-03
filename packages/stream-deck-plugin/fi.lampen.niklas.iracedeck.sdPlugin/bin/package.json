@@ -1,7 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "@iracedeck/iracing-native": "file:../../iracing-native",
+    "@iracedeck/iracing-native": "file:../../../iracing-native",
     "yaml": "^2.8.2"
   }
 }

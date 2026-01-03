@@ -1,5 +1,5 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../../sdk-controller";
+import { SDKController } from "../../sdk-controller.js";
 import { TelemetryData, PitSvFlags, hasFlag, PitCommand } from "@iracedeck/iracing-sdk";
 
 /**
@@ -27,7 +27,7 @@ export class DisplayFuelToAdd extends SingletonAction {
 	/**
 	 * When the key is pressed - toggle fuel fill
 	 */
-	override async onKeyDown(ev: KeyDownEvent): Promise<void> {
+	override async onKeyDown(_ev: KeyDownEvent): Promise<void> {
 		streamDeck.logger.info('[DisplayFuelToAdd] Key down received');
 
 		// Check if connected to iRacing

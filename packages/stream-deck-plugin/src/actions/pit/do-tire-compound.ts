@@ -1,5 +1,5 @@
 import streamDeck, { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController } from "../../sdk-controller";
+import { SDKController } from "../../sdk-controller.js";
 import { TelemetryData, PitCommand } from "@iracedeck/iracing-sdk";
 
 /**
@@ -27,7 +27,7 @@ export class DoTireCompound extends SingletonAction {
 	/**
 	 * When the key is pressed - toggle tire compound
 	 */
-	override async onKeyDown(ev: KeyDownEvent): Promise<void> {
+	override async onKeyDown(_ev: KeyDownEvent): Promise<void> {
 		streamDeck.logger.info('[DoTireCompound] Key down received');
 
 		// Check if connected to iRacing

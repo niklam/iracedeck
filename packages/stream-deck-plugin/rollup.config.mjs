@@ -15,20 +15,12 @@ const config = {
 	input: "src/plugin.ts",
 	output: {
 		file: `${sdPlugin}/bin/plugin.js`,
-		sourcemap: true,
+		sourcemap: isWatching,
 		sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {
 			return url.pathToFileURL(path.resolve(path.dirname(sourcemapPath), relativeSourcePath)).href;
 		}
 	},
 	external: ['@iracedeck/iracing-native', 'yaml'],
-	// Suppress TS1238 warnings - caused by @elgato/streamdeck using TC39 decorator types
-	// while we use experimentalDecorators. The runtime behavior is correct.
-	onwarn(warning, warn) {
-		if (warning.code === 'PLUGIN_WARNING' && warning.message?.includes('TS1238')) {
-			return;
-		}
-		warn(warning);
-	},
 	plugins: [
 		{
 			name: "watch-externals",
@@ -57,7 +49,7 @@ const config = {
 				const pkg = {
 					type: "module",
 					dependencies: {
-						"@iracedeck/iracing-native": "file:../../iracing-native",
+						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						"yaml": "^2.8.2"
 					}
 				};
