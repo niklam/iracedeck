@@ -128,8 +128,8 @@ export function getLastError(): number {
 }
 
 // Constants for convenience
-export const HWND_BROADCAST = 0xFFFF;
+export const HWND_BROADCAST = 0xffff;
 export const WM_KEYDOWN = 0x0100;
 export const WM_KEYUP = 0x0101;
 export const WM_CHAR = 0x0102;
-export const VK_RETURN = 0x0D;
+export const VK_RETURN = 0x0d;
