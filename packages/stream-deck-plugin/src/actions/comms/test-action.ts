@@ -18,7 +18,7 @@ export class TestAction extends SingletonAction<TestSettings> {
   private activeContexts = new Map<string, TestSettings>();
   private lastTitle = new Map<string, string>();
   private lastIconColor = new Map<string, string>();
-  private logger = streamDeck.logger.createScope('TestConnection');
+  private logger = streamDeck.logger.createScope("TestConnection");
 
   /**
    * When the action appears on the Stream Deck
@@ -103,8 +103,8 @@ export class TestAction extends SingletonAction<TestSettings> {
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
-    const iconColor = this.sdkController.getConnectionStatus() ? '#00dd00' : '#dd0000';
-    title = this.sdkController.getConnectionStatus() ? 'Connected' : 'Offline';
+    const iconColor = this.sdkController.getConnectionStatus() ? "#00dd00" : "#dd0000";
+    title = this.sdkController.getConnectionStatus() ? "Connected" : "Offline";
 
     // Only update if the title or color has changed
     const lastTitle = this.lastTitle.get(contextId);

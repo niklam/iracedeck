@@ -151,9 +151,7 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
       // Send the pit command with the new total fuel amount
       success = this.pitCommand.fuel(newFuelAmount);
       if (success) {
-        this.logger.info(
-          `Set fuel to ${newFuelAmount}L (was ${currentFuel}L, reduced ${amount}L)`,
-        );
+        this.logger.info(`Set fuel to ${newFuelAmount}L (was ${currentFuel}L, reduced ${amount}L)`);
       }
     }
 

@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 
 // Comms actions
 import { DoChatMessage } from "./actions/comms/do-chat-message.js";
+import { TestAction } from "./actions/comms/test-action.js";
 // Environment actions
 import { DisplaySky } from "./actions/environment/display-sky.js";
 // Pit actions
@@ -14,7 +15,6 @@ import { DoTireCompound } from "./actions/pit/do-tire-compound.js";
 import { DisplayGear } from "./actions/vehicle/display-gear.js";
 // Vehicle actions
 import { DisplaySpeed } from "./actions/vehicle/display-speed.js";
-import { TestAction } from "./actions/comms/test-action.js";
 
 // We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
 streamDeck.logger.setLevel("trace");

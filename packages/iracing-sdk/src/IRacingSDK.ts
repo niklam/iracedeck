@@ -1,162 +1,104 @@
 /**
- * iRacing SDK - Memory-mapped file reader
- * Uses native addon to access Windows APIs for reading iRacing's shared memory
+ * iRacing SDK - Telemetry and Session Data Client
+ * Uses native addon to access the official iRacing SDK
  */
-import { closeMemoryMap, openMemoryMap, readMemory } from "@iracedeck/iracing-native";
+import {
+  broadcastMsg,
+  getHeader,
+  getSessionInfoStr,
+  getVarHeaderEntry,
+  isConnected,
+  sendChatMessage as nativeSendChatMessage,
+  shutdown,
+  startup,
+  waitForData,
+} from "@iracedeck/iracing-native";
 import yaml from "yaml";
 
-import { ChatCommand } from "./commands/ChatCommand.js";
 import { getLogger } from "./logger.js";
-import {
-  IRSDK_MAX_BUFS,
-  IRSDK_MAX_DESC,
-  IRSDK_MAX_STRING,
-  IRSDKHeader,
-  SessionInfo,
-  StatusField,
-  TelemetryData,
-  VarBuf,
-  VarHeader,
-  VarType,
-} from "./types.js";
-
-// iRacing shared memory name
-const IRACING_MEMMAPFILENAME = "Local\\IRSDKMemMapFileName";
+import { SessionInfo, TelemetryData, VarHeader, VarType } from "./types.js";
 
 /**
  * iRacing SDK Client
  * Manages connection to iRacing's shared memory and provides telemetry data
  */
 export class IRacingSDK {
-  private memHandle: number = 0;
-  private header: IRSDKHeader | null = null;
   private varHeaders: VarHeader[] = [];
   private lastSessionInfoUpdate = -1;
   private sessionInfo: SessionInfo | null = null;
+  private connected = false;
 
   /**
-   * Check if iRacing is running and memory-mapped file is accessible
+   * Check if iRacing is running and SDK is connected
    */
   isConnected(): boolean {
-    if (!this.memHandle) {
+    if (!this.connected) {
       return false;
     }
 
-    // Check status field in header - re-read it to get current status
-    if (!this.header) {
-      return false;
-    }
-
-    // Re-read the status field from shared memory to detect disconnection
-    try {
-      const statusBuffer = readMemory(this.memHandle, 4, 4); // status is at offset 4, 4 bytes
-      const currentStatus = statusBuffer.readInt32LE(0);
-      this.header.status = currentStatus; // Update cached header
-
-      return (currentStatus & StatusField.Connected) !== 0;
-    } catch (error) {
-      getLogger().error(`[iRacing SDK] Failed to read status field: ${error}`);
-
-      return false;
-    }
+    return isConnected();
   }
 
   /**
    * Connect to iRacing's shared memory
    */
   connect(): boolean {
-    // Try to open the memory-mapped file
-    this.memHandle = openMemoryMap(IRACING_MEMMAPFILENAME);
-
-    if (!this.memHandle) {
+    if (!startup()) {
       return false;
     }
 
-    // Parse the header
-    this.parseHeader();
+    // Get header to verify connection
+    const header = getHeader();
+    if (!header) {
+      shutdown();
 
-    const connected = this.isConnected();
-    if (connected) {
+      return false;
+    }
+
+    this.connected = true;
+
+    // Parse variable headers
+    this.parseVarHeaders(header.numVars);
+
+    if (this.isConnected()) {
       getLogger().info(`[iRacing SDK] Connected - ${this.varHeaders.length} variables available`);
     }
 
-    return connected;
+    return this.isConnected();
   }
 
   /**
    * Disconnect from iRacing's shared memory
    */
   disconnect(): void {
-    if (this.memHandle) {
-      closeMemoryMap(this.memHandle);
-      this.memHandle = 0;
+    if (this.connected) {
+      shutdown();
+      this.connected = false;
     }
 
-    this.header = null;
     this.varHeaders = [];
     this.sessionInfo = null;
     this.lastSessionInfoUpdate = -1;
   }
 
   /**
-   * Parse the main header from shared memory
+   * Parse variable header definitions from the SDK
    */
-  private parseHeader(): void {
-    if (!this.memHandle) return;
-
-    // Read header structure (144 bytes base + variable buffers)
-    const headerView = readMemory(this.memHandle, 0, 144);
-
-    this.header = {
-      ver: headerView.readInt32LE(0),
-      status: headerView.readInt32LE(4),
-      tickRate: headerView.readInt32LE(8),
-      sessionInfoUpdate: headerView.readInt32LE(12),
-      sessionInfoLen: headerView.readInt32LE(16),
-      sessionInfoOffset: headerView.readInt32LE(20),
-      numVars: headerView.readInt32LE(24),
-      varHeaderOffset: headerView.readInt32LE(28),
-      numBuf: headerView.readInt32LE(32),
-      bufLen: headerView.readInt32LE(36),
-      padData: [],
-      varBuf: [],
-    };
-
-    // Parse variable buffers (16 bytes each)
-    for (let i = 0; i < IRSDK_MAX_BUFS; i++) {
-      const offset = 48 + i * 16;
-      this.header.varBuf.push({
-        tickCount: headerView.readInt32LE(offset),
-        bufOffset: headerView.readInt32LE(offset + 4),
-        padData: [],
-      });
-    }
-
-    // Parse variable headers
-    this.parseVarHeaders();
-  }
-
-  /**
-   * Parse variable header definitions
-   */
-  private parseVarHeaders(): void {
-    if (!this.memHandle || !this.header) return;
-
+  private parseVarHeaders(numVars: number): void {
     this.varHeaders = [];
-    const varHeaderSize = 144; // Size of each VarHeader struct
 
-    for (let i = 0; i < this.header.numVars; i++) {
-      const offset = this.header.varHeaderOffset + i * varHeaderSize;
-      const varHeaderBuf = readMemory(this.memHandle, offset, varHeaderSize);
+    for (let i = 0; i < numVars; i++) {
+      const nativeHeader = getVarHeaderEntry(i);
+      if (!nativeHeader) continue;
 
       const varHeader: VarHeader = {
-        type: varHeaderBuf.readInt32LE(0),
-        offset: varHeaderBuf.readInt32LE(4),
-        count: varHeaderBuf.readInt32LE(8),
-        countAsTime: varHeaderBuf.readInt8(12) !== 0,
-        name: this.readString(varHeaderBuf, 16, IRSDK_MAX_STRING),
-        desc: this.readString(varHeaderBuf, 48, IRSDK_MAX_DESC),
-        unit: this.readString(varHeaderBuf, 112, IRSDK_MAX_STRING),
+        type: nativeHeader.type as VarType,
+        offset: nativeHeader.offset,
+        count: nativeHeader.count,
+        countAsTime: nativeHeader.countAsTime,
+        name: nativeHeader.name,
+        desc: nativeHeader.desc,
+        unit: nativeHeader.unit,
       };
 
       this.varHeaders.push(varHeader);
@@ -164,114 +106,40 @@ export class IRacingSDK {
   }
 
   /**
-   * Read null-terminated string from buffer
-   */
-  private readString(buffer: Buffer, offset: number, maxLen: number): string {
-    const bytes: number[] = [];
-    for (let i = 0; i < maxLen; i++) {
-      const byte = buffer.readUInt8(offset + i);
-      if (byte === 0) break;
-      bytes.push(byte);
-    }
-
-    return Buffer.from(bytes).toString("ascii");
-  }
-
-  /**
    * Get the latest telemetry data
-   * Uses tick count verification to ensure consistent reads
+   * Uses the SDK's waitForData to get consistent reads
    */
   getTelemetry(): TelemetryData | null {
-    if (!this.isConnected() || !this.header || !this.memHandle) {
+    if (!this.isConnected()) {
       return null;
     }
 
-    // Retry up to 3 times to get a consistent read
-    for (let attempt = 0; attempt < 3; attempt++) {
-      // Re-read the variable buffer tick counts from shared memory
-      const varBufs = this.readVarBufs();
-      if (!varBufs) {
-        return null;
-      }
-
-      // Find the latest buffer
-      let latestBufIndex = 0;
-      let latestTickCount = varBufs[0].tickCount;
-      for (let i = 1; i < varBufs.length; i++) {
-        if (varBufs[i].tickCount > latestTickCount) {
-          latestTickCount = varBufs[i].tickCount;
-          latestBufIndex = i;
-        }
-      }
-
-      const latestBuf = varBufs[latestBufIndex];
-      if (latestBuf.bufOffset === 0) {
-        return null;
-      }
-
-      // Read the ENTIRE telemetry buffer in one go for speed
-      const bufferData = readMemory(this.memHandle, latestBuf.bufOffset, this.header.bufLen);
-
-      // Parse telemetry from the buffer
-      const telemetry: TelemetryData = {};
-
-      for (const varHeader of this.varHeaders) {
-        const value = this.parseVariableFromBuffer(bufferData, varHeader);
-        telemetry[varHeader.name] = value;
-      }
-
-      // Verify the tick count didn't change during our read
-      const verifyBufs = this.readVarBufs();
-      if (verifyBufs && verifyBufs[latestBufIndex].tickCount === latestTickCount) {
-        // Consistent read - return the data
-        return telemetry;
-      }
-
-      // Tick count changed during read, retry
-      getLogger().debug(`[iRacing SDK] Tick count changed during read, retrying (attempt ${attempt + 1})`);
-    }
-
-    // All retries failed, return null
-    getLogger().warn("[iRacing SDK] Failed to get consistent telemetry read after 3 attempts");
-
-    return null;
-  }
-
-  /**
-   * Read the variable buffer headers from shared memory
-   */
-  private readVarBufs(): VarBuf[] | null {
-    if (!this.memHandle) return null;
-
-    try {
-      const varBufs: VarBuf[] = [];
-      for (let i = 0; i < IRSDK_MAX_BUFS; i++) {
-        const offset = 48 + i * 16; // varBuf starts at offset 48, each is 16 bytes
-        const bufData = readMemory(this.memHandle, offset, 16);
-        varBufs.push({
-          tickCount: bufData.readInt32LE(0),
-          bufOffset: bufData.readInt32LE(4),
-          padData: [],
-        });
-      }
-
-      return varBufs;
-    } catch (error) {
-      getLogger().error(`[iRacing SDK] Failed to read varBufs: ${error}`);
-
+    // Wait for new data (with short timeout for polling)
+    const data = waitForData(0);
+    if (!data) {
       return null;
     }
+
+    // Parse telemetry from the buffer
+    const telemetry: TelemetryData = {};
+
+    for (const varHeader of this.varHeaders) {
+      const value = this.parseVariable(data, varHeader);
+      telemetry[varHeader.name] = value as TelemetryData[string];
+    }
+
+    return telemetry;
   }
 
   /**
-   * Parse a variable value from a pre-loaded buffer
+   * Parse a variable value from a data buffer
    */
-  private parseVariableFromBuffer(buffer: Buffer, varHeader: VarHeader): any {
+  private parseVariable(buffer: Buffer, varHeader: VarHeader): unknown {
     const { type, count, offset } = varHeader;
 
     // Handle arrays
     if (count > 1) {
-      const values: any[] = [];
+      const values: unknown[] = [];
       let elementSize = 4; // Default to 4 bytes
 
       if (type === VarType.Char) elementSize = 1;
@@ -279,20 +147,20 @@ export class IRacingSDK {
 
       for (let i = 0; i < count; i++) {
         const elemOffset = offset + i * elementSize;
-        values.push(this.parseSingleValueFromBuffer(buffer, elemOffset, type));
+        values.push(this.parseSingleValue(buffer, elemOffset, type));
       }
 
       return values;
     }
 
     // Handle single values
-    return this.parseSingleValueFromBuffer(buffer, offset, type);
+    return this.parseSingleValue(buffer, offset, type);
   }
 
   /**
    * Parse a single value of a specific type from a buffer
    */
-  private parseSingleValueFromBuffer(buffer: Buffer, offset: number, type: VarType): any {
+  private parseSingleValue(buffer: Buffer, offset: number, type: VarType): unknown {
     // Bounds check
     if (offset < 0 || offset >= buffer.length) {
       return null;
@@ -319,23 +187,30 @@ export class IRacingSDK {
    * Get session info (YAML data)
    */
   getSessionInfo(): SessionInfo | null {
-    if (!this.isConnected() || !this.header || !this.memHandle) {
+    if (!this.isConnected()) {
+      return null;
+    }
+
+    const header = getHeader();
+    if (!header) {
       return null;
     }
 
     // Check if session info has been updated
-    if (this.header.sessionInfoUpdate === this.lastSessionInfoUpdate && this.sessionInfo) {
+    if (header.sessionInfoUpdate === this.lastSessionInfoUpdate && this.sessionInfo) {
       return this.sessionInfo;
     }
 
-    // Read session info YAML string
-    const sessionInfoBuf = readMemory(this.memHandle, this.header.sessionInfoOffset, this.header.sessionInfoLen);
-    const yamlString = this.readString(sessionInfoBuf, 0, this.header.sessionInfoLen);
+    // Get session info YAML string from native SDK
+    const yamlString = getSessionInfoStr();
+    if (!yamlString) {
+      return null;
+    }
 
     // Parse YAML to object
     try {
       this.sessionInfo = yaml.parse(yamlString);
-      this.lastSessionInfoUpdate = this.header.sessionInfoUpdate;
+      this.lastSessionInfoUpdate = header.sessionInfoUpdate;
     } catch (error) {
       getLogger().error(`[iRacing SDK] Failed to parse session info YAML: ${error}`);
 
@@ -348,7 +223,7 @@ export class IRacingSDK {
   /**
    * Get a specific telemetry variable by name
    */
-  getVar(name: string): any {
+  getVar(name: string): unknown {
     const telemetry = this.getTelemetry();
     if (!telemetry) return null;
 
@@ -370,6 +245,17 @@ export class IRacingSDK {
   }
 
   /**
+   * Send a broadcast message to iRacing
+   * @param msg Message type
+   * @param var1 First parameter
+   * @param var2 Second parameter
+   * @param var3 Third parameter
+   */
+  broadcast(msg: number, var1: number, var2: number = 0, var3: number = 0): void {
+    broadcastMsg(msg, var1, var2, var3);
+  }
+
+  /**
    * Send a custom chat message to iRacing
    * @param message The message to send
    */
@@ -380,6 +266,6 @@ export class IRacingSDK {
       return false;
     }
 
-    return ChatCommand.getInstance().sendMessage(message);
+    return nativeSendChatMessage(message);
   }
 }

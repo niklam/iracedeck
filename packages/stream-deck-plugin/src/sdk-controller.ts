@@ -14,7 +14,7 @@ setLogger({
   error: (msg) => sdkLogger.error(msg),
   createScope: (scope) => {
     const scopedLogger = sdkLogger.createScope(scope);
-    
+
     return {
       debug: (msg) => scopedLogger.debug(msg),
       info: (msg) => scopedLogger.info(msg),

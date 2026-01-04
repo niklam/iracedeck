@@ -19,7 +19,9 @@
       "Bash(pnpm --filter @iracedeck/stream-deck-plugin run build)",
       "Bash(pnpm --filter @iracedeck/iracing-native run build:*)",
       "Bash(dir:*)",
-      "Bash(npx tsc)"
+      "Bash(npx tsc)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

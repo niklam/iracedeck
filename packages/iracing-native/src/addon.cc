@@ -2,318 +2,273 @@
  * @iracedeck/iracing-native
  *
  * Native Node.js addon for iRacing SDK integration.
- * Provides Win32 memory-mapped file access and window messaging.
+ * Uses the official iRacing SDK for memory-mapped file access and broadcast messaging.
  */
 
 #include <napi.h>
 #include <windows.h>
 #include <string>
-#include "irsdk_defines.h"
+#include <irsdk_defines.h>
+
+// ============================================================================
+// SDK Connection Functions
+// ============================================================================
 
 /**
- * Open a memory-mapped file by name
- * @param name - Name of the memory-mapped file (e.g., "Local\\IRSDKMemMapFileName")
- * @returns Handle as number, or 0 on failure
+ * Initialize connection to iRacing
+ * @returns true if connected
  */
-Napi::Value OpenMemoryMap(const Napi::CallbackInfo &info)
+Napi::Value Startup(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
-
-    if (info.Length() < 1 || !info[0].IsString())
-    {
-        Napi::TypeError::New(env, "String argument expected for memory map name").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    std::string name = info[0].As<Napi::String>().Utf8Value();
-
-    HANDLE hMapFile = OpenFileMappingA(FILE_MAP_READ, FALSE, name.c_str());
-
-    if (hMapFile == NULL || hMapFile == INVALID_HANDLE_VALUE)
-    {
-        return Napi::Number::New(env, 0);
-    }
-
-    // Map the file into memory
-    LPVOID pMem = MapViewOfFile(hMapFile, FILE_MAP_READ, 0, 0, 0);
-
-    if (pMem == NULL)
-    {
-        CloseHandle(hMapFile);
-        return Napi::Number::New(env, 0);
-    }
-
-    // Store both handles - we'll use the mapped pointer as the "handle" for reading
-    // In practice, we return the pointer cast to a number
-    return Napi::Number::New(env, reinterpret_cast<uintptr_t>(pMem));
+    return Napi::Boolean::New(env, irsdk_startup());
 }
 
 /**
- * Close a memory-mapped file
- * @param handle - Handle returned from OpenMemoryMap
+ * Close connection to iRacing
  */
-Napi::Value CloseMemoryMap(const Napi::CallbackInfo &info)
+Napi::Value Shutdown(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+    irsdk_shutdown();
+    return env.Undefined();
+}
+
+/**
+ * Check if connected to iRacing
+ * Note: We don't use irsdk_isConnected() because it requires recent data reads
+ * to update lastValidTime. Instead, we directly check the header status.
+ * @returns true if connected
+ */
+Napi::Value IsConnected(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    const irsdk_header *header = irsdk_getHeader();
+    if (!header)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    return Napi::Boolean::New(env, (header->status & irsdk_stConnected) > 0);
+}
+
+// ============================================================================
+// Header and Data Functions
+// ============================================================================
+
+/**
+ * Get the iRacing SDK header
+ * @returns Object with header properties or null if not connected
+ */
+Napi::Value GetHeader(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    const irsdk_header *header = irsdk_getHeader();
+    if (!header)
+    {
+        return env.Null();
+    }
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("ver", Napi::Number::New(env, header->ver));
+    result.Set("status", Napi::Number::New(env, header->status));
+    result.Set("tickRate", Napi::Number::New(env, header->tickRate));
+    result.Set("sessionInfoUpdate", Napi::Number::New(env, header->sessionInfoUpdate));
+    result.Set("sessionInfoLen", Napi::Number::New(env, header->sessionInfoLen));
+    result.Set("sessionInfoOffset", Napi::Number::New(env, header->sessionInfoOffset));
+    result.Set("numVars", Napi::Number::New(env, header->numVars));
+    result.Set("varHeaderOffset", Napi::Number::New(env, header->varHeaderOffset));
+    result.Set("numBuf", Napi::Number::New(env, header->numBuf));
+    result.Set("bufLen", Napi::Number::New(env, header->bufLen));
+
+    return result;
+}
+
+/**
+ * Get telemetry data from a specific buffer
+ * @param index - Buffer index (0-3)
+ * @returns Buffer with telemetry data or null
+ */
+Napi::Value GetData(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsNumber())
     {
-        Napi::TypeError::New(env, "Number argument expected for handle").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    uintptr_t ptr = static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value());
-
-    if (ptr != 0)
-    {
-        UnmapViewOfFile(reinterpret_cast<LPVOID>(ptr));
-        // Note: We don't have the original file handle here, so we can't close it
-        // In a production implementation, we'd want to track both handles
-    }
-
-    return env.Undefined();
-}
-
-/**
- * Read bytes from a memory-mapped file
- * @param handle - Handle returned from OpenMemoryMap
- * @param offset - Byte offset to start reading from
- * @param length - Number of bytes to read
- * @returns Buffer containing the bytes
- */
-Napi::Value ReadMemory(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 3 || !info[0].IsNumber() || !info[1].IsNumber() || !info[2].IsNumber())
-    {
-        Napi::TypeError::New(env, "Expected (handle: number, offset: number, length: number)").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Expected (index: number)").ThrowAsJavaScriptException();
         return env.Null();
     }
 
-    uintptr_t ptr = static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value());
-    uint32_t offset = info[1].As<Napi::Number>().Uint32Value();
-    uint32_t length = info[2].As<Napi::Number>().Uint32Value();
+    int index = info[0].As<Napi::Number>().Int32Value();
 
-    if (ptr == 0)
+    const char *data = irsdk_getData(index);
+    const irsdk_header *header = irsdk_getHeader();
+
+    if (!data || !header)
     {
-        Napi::Error::New(env, "Invalid handle").ThrowAsJavaScriptException();
         return env.Null();
     }
 
-    // Create a buffer and copy the data
-    Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::New(env, length);
-    uint8_t *basePtr = reinterpret_cast<uint8_t *>(ptr);
-    memcpy(buffer.Data(), basePtr + offset, length);
-
+    // Copy the data to a new buffer
+    Napi::Buffer<char> buffer = Napi::Buffer<char>::Copy(env, data, header->bufLen);
     return buffer;
 }
 
 /**
- * Find a window by class name and/or window title
- * @param className - Window class name (or null)
- * @param windowName - Window title (or null)
- * @returns Window handle as number, or 0 if not found
+ * Wait for new data to be available
+ * @param timeoutMs - Timeout in milliseconds
+ * @returns Buffer with new data or null if timeout
  */
-Napi::Value FindWindowByName(const Napi::CallbackInfo &info)
+Napi::Value WaitForData(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
-    const char *className = nullptr;
-    const char *windowName = nullptr;
-    std::string classNameStr, windowNameStr;
-
-    if (info.Length() >= 1 && info[0].IsString())
+    int timeoutMs = 16; // Default ~60fps
+    if (info.Length() >= 1 && info[0].IsNumber())
     {
-        classNameStr = info[0].As<Napi::String>().Utf8Value();
-        className = classNameStr.c_str();
+        timeoutMs = info[0].As<Napi::Number>().Int32Value();
     }
 
-    if (info.Length() >= 2 && info[1].IsString())
+    const irsdk_header *header = irsdk_getHeader();
+    if (!header)
     {
-        windowNameStr = info[1].As<Napi::String>().Utf8Value();
-        windowName = windowNameStr.c_str();
+        // Try to initialize first
+        if (!irsdk_startup())
+        {
+            return env.Null();
+        }
+        header = irsdk_getHeader();
+        if (!header)
+        {
+            return env.Null();
+        }
     }
 
-    HWND hwnd = FindWindowA(className, windowName);
+    // Allocate buffer for data
+    char *data = new char[header->bufLen];
 
-    return Napi::Number::New(env, reinterpret_cast<uintptr_t>(hwnd));
+    bool hasData = irsdk_waitForDataReady(timeoutMs, data);
+
+    if (hasData)
+    {
+        Napi::Buffer<char> buffer = Napi::Buffer<char>::Copy(env, data, header->bufLen);
+        delete[] data;
+        return buffer;
+    }
+
+    delete[] data;
+    return env.Null();
 }
 
 /**
- * Register a window message by name
- * @param messageName - Name of the message to register
- * @returns Message ID
+ * Get session info YAML string
+ * @returns Session info string or null
  */
-Napi::Value RegisterWindowMessageWrapper(const Napi::CallbackInfo &info)
+Napi::Value GetSessionInfoStr(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    const char *sessionInfo = irsdk_getSessionInfoStr();
+    if (!sessionInfo)
+    {
+        return env.Null();
+    }
+
+    return Napi::String::New(env, sessionInfo);
+}
+
+/**
+ * Get variable header by index
+ * @param index - Variable index
+ * @returns Object with variable header properties or null
+ */
+Napi::Value GetVarHeaderEntry(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsNumber())
+    {
+        Napi::TypeError::New(env, "Expected (index: number)").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    int index = info[0].As<Napi::Number>().Int32Value();
+    const irsdk_varHeader *varHeader = irsdk_getVarHeaderEntry(index);
+
+    if (!varHeader)
+    {
+        return env.Null();
+    }
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("type", Napi::Number::New(env, varHeader->type));
+    result.Set("offset", Napi::Number::New(env, varHeader->offset));
+    result.Set("count", Napi::Number::New(env, varHeader->count));
+    result.Set("countAsTime", Napi::Boolean::New(env, varHeader->countAsTime != 0));
+    result.Set("name", Napi::String::New(env, varHeader->name));
+    result.Set("desc", Napi::String::New(env, varHeader->desc));
+    result.Set("unit", Napi::String::New(env, varHeader->unit));
+
+    return result;
+}
+
+/**
+ * Get variable index by name
+ * @param name - Variable name
+ * @returns Index or -1 if not found
+ */
+Napi::Value VarNameToIndex(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1 || !info[0].IsString())
     {
-        Napi::TypeError::New(env, "String argument expected for message name").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Expected (name: string)").ThrowAsJavaScriptException();
         return env.Null();
     }
 
     std::string name = info[0].As<Napi::String>().Utf8Value();
-    UINT msgId = RegisterWindowMessageA(name.c_str());
+    int index = irsdk_varNameToIndex(name.c_str());
 
-    return Napi::Number::New(env, msgId);
+    return Napi::Number::New(env, index);
 }
 
-/**
- * Send a message to a window (blocking)
- * @param hwnd - Window handle
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Result of SendMessage
- */
-Napi::Value SendMessageToWindow(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 4)
-    {
-        Napi::TypeError::New(env, "Expected (hwnd, msg, wParam, lParam)").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
-    UINT msg = info[1].As<Napi::Number>().Uint32Value();
-    WPARAM wParam = static_cast<WPARAM>(info[2].As<Napi::Number>().Int64Value());
-    LPARAM lParam = static_cast<LPARAM>(info[3].As<Napi::Number>().Int64Value());
-
-    LRESULT result = SendMessageW(hwnd, msg, wParam, lParam);
-
-    return Napi::Number::New(env, static_cast<double>(result));
-}
+// ============================================================================
+// Broadcast Message Functions
+// ============================================================================
 
 /**
- * Post a message to a window (non-blocking)
- * @param hwnd - Window handle
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Success boolean
+ * Send a broadcast message to iRacing
+ * @param msg - Broadcast message type (irsdk_BroadcastMsg enum value)
+ * @param var1 - First parameter
+ * @param var2 - Second parameter (optional, default 0)
+ * @param var3 - Third parameter (optional, default 0)
  */
-Napi::Value PostMessageToWindow(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 4)
-    {
-        Napi::TypeError::New(env, "Expected (hwnd, msg, wParam, lParam)").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
-    UINT msg = info[1].As<Napi::Number>().Uint32Value();
-    WPARAM wParam = static_cast<WPARAM>(info[2].As<Napi::Number>().Int64Value());
-    LPARAM lParam = static_cast<LPARAM>(info[3].As<Napi::Number>().Int64Value());
-
-    BOOL result = PostMessageW(hwnd, msg, wParam, lParam);
-
-    return Napi::Boolean::New(env, result != 0);
-}
-
-/**
- * Send a notify message (non-blocking broadcast)
- * @param hwnd - Window handle (use 0xFFFF for HWND_BROADCAST)
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Success boolean
- */
-Napi::Value SendNotifyMessageToWindow(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 4)
-    {
-        Napi::TypeError::New(env, "Expected (hwnd, msg, wParam, lParam)").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    uintptr_t hwndVal = static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value());
-    HWND hwnd;
-
-    // Handle HWND_BROADCAST (0xFFFF)
-    if (hwndVal == 0xFFFF)
-    {
-        hwnd = HWND_BROADCAST;
-    }
-    else
-    {
-        hwnd = reinterpret_cast<HWND>(hwndVal);
-    }
-
-    UINT msg = info[1].As<Napi::Number>().Uint32Value();
-    WPARAM wParam = static_cast<WPARAM>(info[2].As<Napi::Number>().Int64Value());
-    LPARAM lParam = static_cast<LPARAM>(info[3].As<Napi::Number>().Int64Value());
-
-    BOOL result = SendNotifyMessageW(hwnd, msg, wParam, lParam);
-
-    return Napi::Boolean::New(env, result != 0);
-}
-
-/**
- * Send a string to a window using WM_CHAR messages (optimized C++ loop)
- * This is more efficient than calling SendMessage for each character from JS
- * @param hwnd - Window handle
- * @param text - String to send
- * @returns Success boolean
- */
-Napi::Value SendChatString(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsString())
-    {
-        Napi::TypeError::New(env, "Expected (hwnd: number, text: string)").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
-    std::u16string text = info[1].As<Napi::String>().Utf16Value();
-
-    if (hwnd == NULL)
-    {
-        return Napi::Boolean::New(env, false);
-    }
-
-    // Send each character using WM_CHAR
-    for (char16_t ch : text)
-    {
-        SendMessageW(hwnd, WM_CHAR, static_cast<WPARAM>(ch), 0);
-    }
-
-    return Napi::Boolean::New(env, true);
-}
-
-/**
- * Send a key press to a window (WM_KEYDOWN + WM_KEYUP)
- * @param hwnd - Window handle
- * @param vkCode - Virtual key code
- */
-Napi::Value SendKeyPress(const Napi::CallbackInfo &info)
+Napi::Value BroadcastMsg(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
     if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsNumber())
     {
-        Napi::TypeError::New(env, "Expected (hwnd: number, vkCode: number)").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Expected (msg: number, var1: number, var2?: number, var3?: number)").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    HWND hwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(info[0].As<Napi::Number>().Int64Value()));
-    UINT vkCode = info[1].As<Napi::Number>().Uint32Value();
+    int msg = info[0].As<Napi::Number>().Int32Value();
+    int var1 = info[1].As<Napi::Number>().Int32Value();
+    int var2 = info.Length() >= 3 && info[2].IsNumber() ? info[2].As<Napi::Number>().Int32Value() : 0;
+    int var3 = info.Length() >= 4 && info[3].IsNumber() ? info[3].As<Napi::Number>().Int32Value() : 0;
 
-    SendMessageW(hwnd, WM_KEYDOWN, vkCode, 0);
-    SendMessageW(hwnd, WM_KEYUP, vkCode, 0);
+    irsdk_broadcastMsg(static_cast<irsdk_BroadcastMsg>(msg), var1, var2, var3);
 
     return env.Undefined();
 }
+
+// ============================================================================
+// Chat Functions
+// ============================================================================
 
 /**
  * Send a complete chat message to iRacing
@@ -344,22 +299,8 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, false);
     }
 
-    // Register the iRacing broadcast message
-    UINT broadcastMsgId = RegisterWindowMessageA("IRSDK_BROADCASTMSG");
-    if (broadcastMsgId == 0)
-    {
-        return Napi::Boolean::New(env, false);
-    }
-
-    // Helper to create wParam (from iRacing SDK CYCLEVARIABLE_CYCLEVARIABLE macro)
-    auto makeWParam = [](int msgType, int var1) -> WPARAM
-    {
-        return (msgType & 0xFFFF) | ((var1 & 0xFFFF) << 16);
-    };
-
     // 1. Open chat window via broadcast
-    WPARAM openChatWParam = makeWParam(irsdk_BroadcastChatComand, irsdk_ChatCommand_BeginChat);
-    SendNotifyMessageW(HWND_BROADCAST, broadcastMsgId, openChatWParam, 0);
+    irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_BeginChat, 0);
 
     // 2. Wait for chat window to open
     Sleep(1);
@@ -375,8 +316,7 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
     if (hwnd == NULL)
     {
         // Cancel the chat if we can't find the window
-        WPARAM cancelWParam = makeWParam(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel);
-        SendNotifyMessageW(HWND_BROADCAST, broadcastMsgId, cancelWParam, 0);
+        irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
         return Napi::Boolean::New(env, false);
     }
 
@@ -391,48 +331,35 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
     SendMessageW(hwnd, WM_KEYUP, VK_RETURN, 0);
 
     // 6. Close chat window
-    WPARAM cancelWParam = makeWParam(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel);
-    SendNotifyMessageW(HWND_BROADCAST, broadcastMsgId, cancelWParam, 0);
+    irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
 
     return Napi::Boolean::New(env, true);
 }
 
-/**
- * Get the last Win32 error code
- * @returns Error code
- */
-Napi::Value GetLastWin32Error(const Napi::CallbackInfo &info)
-{
-    Napi::Env env = info.Env();
-    return Napi::Number::New(env, GetLastError());
-}
+// ============================================================================
+// Module Initialization
+// ============================================================================
 
-/**
- * Module initialization
- */
 Napi::Object Init(Napi::Env env, Napi::Object exports)
 {
-    // Memory-mapped file operations
-    exports.Set("openMemoryMap", Napi::Function::New(env, OpenMemoryMap));
-    exports.Set("closeMemoryMap", Napi::Function::New(env, CloseMemoryMap));
-    exports.Set("readMemory", Napi::Function::New(env, ReadMemory));
+    // SDK Connection
+    exports.Set("startup", Napi::Function::New(env, Startup));
+    exports.Set("shutdown", Napi::Function::New(env, Shutdown));
+    exports.Set("isConnected", Napi::Function::New(env, IsConnected));
 
-    // Window operations
-    exports.Set("findWindow", Napi::Function::New(env, FindWindowByName));
-    exports.Set("registerWindowMessage", Napi::Function::New(env, RegisterWindowMessageWrapper));
+    // Data Access
+    exports.Set("getHeader", Napi::Function::New(env, GetHeader));
+    exports.Set("getData", Napi::Function::New(env, GetData));
+    exports.Set("waitForData", Napi::Function::New(env, WaitForData));
+    exports.Set("getSessionInfoStr", Napi::Function::New(env, GetSessionInfoStr));
+    exports.Set("getVarHeaderEntry", Napi::Function::New(env, GetVarHeaderEntry));
+    exports.Set("varNameToIndex", Napi::Function::New(env, VarNameToIndex));
 
-    // Messaging
-    exports.Set("sendMessage", Napi::Function::New(env, SendMessageToWindow));
-    exports.Set("postMessage", Napi::Function::New(env, PostMessageToWindow));
-    exports.Set("sendNotifyMessage", Napi::Function::New(env, SendNotifyMessageToWindow));
+    // Broadcast Messages
+    exports.Set("broadcastMsg", Napi::Function::New(env, BroadcastMsg));
 
-    // Optimized chat
-    exports.Set("sendChatString", Napi::Function::New(env, SendChatString));
-    exports.Set("sendKeyPress", Napi::Function::New(env, SendKeyPress));
+    // Chat
     exports.Set("sendChatMessage", Napi::Function::New(env, SendChatMessage));
-
-    // Utilities
-    exports.Set("getLastError", Napi::Function::New(env, GetLastWin32Error));
 
     return exports;
 }

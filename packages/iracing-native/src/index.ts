@@ -2,7 +2,7 @@
  * @iracedeck/iracing-native
  *
  * Native Node.js addon for iRacing SDK integration.
- * Provides Win32 memory-mapped file access and window messaging.
+ * Uses the official iRacing SDK for telemetry access and broadcast messaging.
  */
 import { createRequire } from "module";
 import { dirname, join } from "path";
@@ -14,110 +14,170 @@ const require = createRequire(import.meta.url);
 // Load the native addon
 const addon = require(join(__dirname, "..", "build", "Release", "iracing_native.node"));
 
-// Re-export with TypeScript types
+// ============================================================================
+// Types
+// ============================================================================
 
 /**
- * Open a memory-mapped file by name
- * @param name - Name of the memory-mapped file (e.g., "Local\\IRSDKMemMapFileName")
- * @returns Handle as number, or 0 on failure
+ * iRacing SDK header structure
  */
-export function openMemoryMap(name: string): number {
-  return addon.openMemoryMap(name);
+export interface IRSDKHeader {
+  ver: number;
+  status: number;
+  tickRate: number;
+  sessionInfoUpdate: number;
+  sessionInfoLen: number;
+  sessionInfoOffset: number;
+  numVars: number;
+  varHeaderOffset: number;
+  numBuf: number;
+  bufLen: number;
 }
 
 /**
- * Close a memory-mapped file
- * @param handle - Handle returned from openMemoryMap
+ * Variable header structure
  */
-export function closeMemoryMap(handle: number): void {
-  addon.closeMemoryMap(handle);
+export interface VarHeader {
+  type: number;
+  offset: number;
+  count: number;
+  countAsTime: boolean;
+  name: string;
+  desc: string;
+  unit: string;
 }
 
 /**
- * Read bytes from a memory-mapped file
- * @param handle - Handle returned from openMemoryMap
- * @param offset - Byte offset to start reading from
- * @param length - Number of bytes to read
- * @returns Buffer containing the bytes
+ * Broadcast message types (matches irsdk_BroadcastMsg enum)
  */
-export function readMemory(handle: number, offset: number, length: number): Buffer {
-  return addon.readMemory(handle, offset, length);
+export enum BroadcastMsg {
+  CamSwitchPos = 0,
+  CamSwitchNum = 1,
+  CamSetState = 2,
+  ReplaySetPlaySpeed = 3,
+  ReplaySetPlayPosition = 4,
+  ReplaySearch = 5,
+  ReplaySetState = 6,
+  ReloadTextures = 7,
+  ChatCommand = 8,
+  PitCommand = 9,
+  TelemCommand = 10,
+  FFBCommand = 11,
+  ReplaySearchSessionTime = 12,
+  VideoCapture = 13,
 }
 
 /**
- * Find a window by class name and/or window title
- * @param className - Window class name (or null)
- * @param windowName - Window title (or null)
- * @returns Window handle as number, or 0 if not found
+ * Chat command modes
  */
-export function findWindow(className: string | null, windowName: string | null): number {
-  return addon.findWindow(className, windowName);
+export enum ChatCommandMode {
+  Macro = 0,
+  BeginChat = 1,
+  Reply = 2,
+  Cancel = 3,
+}
+
+// ============================================================================
+// SDK Connection Functions
+// ============================================================================
+
+/**
+ * Initialize connection to iRacing
+ * @returns true if connected
+ */
+export function startup(): boolean {
+  return addon.startup();
 }
 
 /**
- * Register a window message by name
- * @param messageName - Name of the message to register
- * @returns Message ID
+ * Close connection to iRacing
  */
-export function registerWindowMessage(messageName: string): number {
-  return addon.registerWindowMessage(messageName);
+export function shutdown(): void {
+  addon.shutdown();
 }
 
 /**
- * Send a message to a window (blocking)
- * @param hwnd - Window handle
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Result of SendMessage
+ * Check if connected to iRacing
+ * @returns true if connected
  */
-export function sendMessage(hwnd: number, msg: number, wParam: number, lParam: number): number {
-  return addon.sendMessage(hwnd, msg, wParam, lParam);
+export function isConnected(): boolean {
+  return addon.isConnected();
+}
+
+// ============================================================================
+// Data Access Functions
+// ============================================================================
+
+/**
+ * Get the iRacing SDK header
+ * @returns Header object or null if not connected
+ */
+export function getHeader(): IRSDKHeader | null {
+  return addon.getHeader();
 }
 
 /**
- * Post a message to a window (non-blocking)
- * @param hwnd - Window handle
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Success boolean
+ * Get telemetry data from a specific buffer
+ * @param index - Buffer index (0-3)
+ * @returns Buffer with telemetry data or null
  */
-export function postMessage(hwnd: number, msg: number, wParam: number, lParam: number): boolean {
-  return addon.postMessage(hwnd, msg, wParam, lParam);
+export function getData(index: number): Buffer | null {
+  return addon.getData(index);
 }
 
 /**
- * Send a notify message (non-blocking broadcast)
- * @param hwnd - Window handle (use HWND_BROADCAST for all windows)
- * @param msg - Message ID
- * @param wParam - First parameter
- * @param lParam - Second parameter
- * @returns Success boolean
+ * Wait for new data to be available
+ * @param timeoutMs - Timeout in milliseconds (default 16 for ~60fps)
+ * @returns Buffer with new data or null if timeout
  */
-export function sendNotifyMessage(hwnd: number, msg: number, wParam: number, lParam: number): boolean {
-  return addon.sendNotifyMessage(hwnd, msg, wParam, lParam);
+export function waitForData(timeoutMs?: number): Buffer | null {
+  return addon.waitForData(timeoutMs);
 }
 
 /**
- * Send a string to a window using WM_CHAR messages (optimized C++ loop)
- * This is more efficient than calling sendMessage for each character from JS
- * @param hwnd - Window handle
- * @param text - String to send
- * @returns Success boolean
+ * Get session info YAML string
+ * @returns Session info string or null
  */
-export function sendChatString(hwnd: number, text: string): boolean {
-  return addon.sendChatString(hwnd, text);
+export function getSessionInfoStr(): string | null {
+  return addon.getSessionInfoStr();
 }
 
 /**
- * Send a key press to a window (WM_KEYDOWN + WM_KEYUP)
- * @param hwnd - Window handle
- * @param vkCode - Virtual key code
+ * Get variable header by index
+ * @param index - Variable index
+ * @returns Variable header object or null
  */
-export function sendKeyPress(hwnd: number, vkCode: number): void {
-  addon.sendKeyPress(hwnd, vkCode);
+export function getVarHeaderEntry(index: number): VarHeader | null {
+  return addon.getVarHeaderEntry(index);
 }
+
+/**
+ * Get variable index by name
+ * @param name - Variable name
+ * @returns Index or -1 if not found
+ */
+export function varNameToIndex(name: string): number {
+  return addon.varNameToIndex(name);
+}
+
+// ============================================================================
+// Broadcast Message Functions
+// ============================================================================
+
+/**
+ * Send a broadcast message to iRacing
+ * @param msg - Broadcast message type
+ * @param var1 - First parameter
+ * @param var2 - Second parameter (optional)
+ * @param var3 - Third parameter (optional)
+ */
+export function broadcastMsg(msg: BroadcastMsg | number, var1: number, var2?: number, var3?: number): void {
+  addon.broadcastMsg(msg, var1, var2 ?? 0, var3 ?? 0);
+}
+
+// ============================================================================
+// Chat Functions
+// ============================================================================
 
 /**
  * Send a complete chat message to iRacing
@@ -135,17 +195,21 @@ export function sendChatMessage(message: string): boolean {
   return addon.sendChatMessage(message);
 }
 
-/**
- * Get the last Win32 error code
- * @returns Error code
- */
-export function getLastError(): number {
-  return addon.getLastError();
-}
+// ============================================================================
+// Constants
+// ============================================================================
 
-// Constants for convenience
-export const HWND_BROADCAST = 0xffff;
-export const WM_KEYDOWN = 0x0100;
-export const WM_KEYUP = 0x0101;
-export const WM_CHAR = 0x0102;
-export const VK_RETURN = 0x0d;
+/** iRacing SDK status flags */
+export const StatusFlags = {
+  Connected: 1,
+} as const;
+
+/** Variable types (matches irsdk_VarType enum) */
+export enum VarType {
+  Char = 0,
+  Bool = 1,
+  Int = 2,
+  BitField = 3,
+  Float = 4,
+  Double = 5,
+}

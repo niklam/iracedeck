@@ -62,9 +62,7 @@ export class DoTireCompound extends SingletonAction {
 
     // Toggle between compounds: 0 = Dry, 1 = Wet
     const newCompound = currentCompound === 0 ? 1 : 0;
-    this.logger.info(
-      `Switching from ${currentCompound === 0 ? "Dry" : "Wet"} to ${newCompound === 0 ? "Dry" : "Wet"}`,
-    );
+    this.logger.info(`Switching from ${currentCompound === 0 ? "Dry" : "Wet"} to ${newCompound === 0 ? "Dry" : "Wet"}`);
 
     const success = this.pitCommand.tireCompound(newCompound);
     if (success) {
