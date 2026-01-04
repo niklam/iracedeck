@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { IRacingSDK, Logger } from "@iracedeck/iracing-sdk";
+import { IRacingSDK, Logger, LogLevel } from "@iracedeck/iracing-sdk";
 
 // Comms actions
 import { DoChatMessage } from "./actions/comms/do-chat-message.js";
@@ -20,6 +20,16 @@ import { DisplaySpeed } from "./actions/vehicle/display-speed.js";
 // Enable trace logging
 streamDeck.logger.setLevel("trace");
 
+// Map LogLevel enum to Stream Deck logger level strings
+const logLevelToString: Record<LogLevel, "trace" | "debug" | "info" | "warn" | "error"> = {
+  [LogLevel.Trace]: "trace",
+  [LogLevel.Debug]: "debug",
+  [LogLevel.Info]: "info",
+  [LogLevel.Warn]: "warn",
+  [LogLevel.Error]: "error",
+  [LogLevel.Silent]: "error",
+};
+
 // Create a wrapper to adapt Stream Deck logger to our Logger interface
 function createSDLogger(sdLogger: ReturnType<typeof streamDeck.logger.createScope>): Logger {
   const logger: Logger = {
@@ -28,8 +38,8 @@ function createSDLogger(sdLogger: ReturnType<typeof streamDeck.logger.createScop
     info: (msg) => sdLogger.info(msg),
     warn: (msg) => sdLogger.warn(msg),
     error: (msg) => sdLogger.error(msg),
-    setLevel: () => {
-      // Stream Deck logger level is controlled via streamDeck.logger.setLevel()
+    setLevel: (level) => {
+      sdLogger.setLevel(logLevelToString[level]);
     },
     createScope: (scope) => createSDLogger(sdLogger.createScope(scope)),
   };
