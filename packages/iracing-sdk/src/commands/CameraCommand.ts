@@ -14,11 +14,11 @@ export class CameraCommand extends BroadcastCommand {
   private static _instance: CameraCommand;
 
   private constructor() {
-    super("CameraCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): CameraCommand {
     if (!CameraCommand._instance) {

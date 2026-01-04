@@ -13,11 +13,11 @@ export class PitCommand extends BroadcastCommand {
   private static _instance: PitCommand;
 
   private constructor() {
-    super("PitCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): PitCommand {
     if (!PitCommand._instance) {

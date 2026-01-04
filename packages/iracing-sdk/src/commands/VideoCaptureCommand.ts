@@ -11,11 +11,11 @@ export class VideoCaptureCommand extends BroadcastCommand {
   private static _instance: VideoCaptureCommand;
 
   private constructor() {
-    super("VideoCaptureCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): VideoCaptureCommand {
     if (!VideoCaptureCommand._instance) {

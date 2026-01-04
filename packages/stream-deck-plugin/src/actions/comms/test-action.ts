@@ -5,8 +5,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-
-import { SDKController } from "../../sdk-controller.js";
+import { SDKController } from "@iracedeck/iracing-sdk";
 
 /**
  * Test Action

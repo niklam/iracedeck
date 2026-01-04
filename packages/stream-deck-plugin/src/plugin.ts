@@ -1,4 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
+import { IRacingSDK, Logger } from "@iracedeck/iracing-sdk";
 
 // Comms actions
 import { DoChatMessage } from "./actions/comms/do-chat-message.js";
@@ -16,8 +17,28 @@ import { DisplayGear } from "./actions/vehicle/display-gear.js";
 // Vehicle actions
 import { DisplaySpeed } from "./actions/vehicle/display-speed.js";
 
-// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
+// Enable trace logging
 streamDeck.logger.setLevel("trace");
+
+// Create a wrapper to adapt Stream Deck logger to our Logger interface
+function createSDLogger(sdLogger: ReturnType<typeof streamDeck.logger.createScope>): Logger {
+  const logger: Logger = {
+    trace: (msg) => sdLogger.trace(msg),
+    debug: (msg) => sdLogger.debug(msg),
+    info: (msg) => sdLogger.info(msg),
+    warn: (msg) => sdLogger.warn(msg),
+    error: (msg) => sdLogger.error(msg),
+    setLevel: () => {
+      // Stream Deck logger level is controlled via streamDeck.logger.setLevel()
+    },
+    createScope: (scope) => createSDLogger(sdLogger.createScope(scope)),
+  };
+
+  return logger;
+}
+
+// Set up loggers for all SDK singletons
+IRacingSDK.setLoggers(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
 
 // Register iRacing actions
 streamDeck.actions.registerAction(new TestAction());
@@ -32,5 +53,5 @@ streamDeck.actions.registerAction(new DoChangeTires());
 streamDeck.actions.registerAction(new DoFastRepair());
 streamDeck.actions.registerAction(new DoChatMessage());
 
-// Finally, connect to the Stream Deck.
+// Connect to the Stream Deck
 streamDeck.connect();

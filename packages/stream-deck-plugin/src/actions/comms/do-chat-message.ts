@@ -5,9 +5,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { CameraCommand, CameraState, hasFlag } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../../sdk-controller.js";
+import { CameraCommand, CameraState, hasFlag, SDKController } from "@iracedeck/iracing-sdk";
 
 /**
  * Do Chat Message Action

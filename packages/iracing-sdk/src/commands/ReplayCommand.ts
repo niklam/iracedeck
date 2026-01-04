@@ -13,11 +13,11 @@ export class ReplayCommand extends BroadcastCommand {
   private static _instance: ReplayCommand;
 
   private constructor() {
-    super("ReplayCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): ReplayCommand {
     if (!ReplayCommand._instance) {

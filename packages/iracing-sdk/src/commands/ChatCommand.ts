@@ -3,8 +3,6 @@
  *
  * Handles chat operations using the iRacing broadcast API and Windows messaging
  */
-import { sendChatMessage as nativeSendChatMessage } from "@iracedeck/iracing-native";
-
 import { BroadcastCommand } from "./BroadcastCommand.js";
 import { BroadcastMsg, ChatCommandMode } from "./constants.js";
 
@@ -15,11 +13,11 @@ export class ChatCommand extends BroadcastCommand {
   private static _instance: ChatCommand;
 
   private constructor() {
-    super("ChatCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): ChatCommand {
     if (!ChatCommand._instance) {
@@ -102,7 +100,7 @@ export class ChatCommand extends BroadcastCommand {
     try {
       this.logger.info(`Sending chat message: "${message}"`);
 
-      const result = nativeSendChatMessage(message);
+      const result = this.native.sendChatMessage(message);
 
       if (result) {
         this.logger.info("Chat message sent successfully");

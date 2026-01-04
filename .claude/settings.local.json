@@ -21,7 +21,9 @@
       "Bash(dir:*)",
       "Bash(npx tsc)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git mv:*)",
+      "Bash(pnpm --filter @iracedeck/logger run build:*)"
     ]
   }
 }

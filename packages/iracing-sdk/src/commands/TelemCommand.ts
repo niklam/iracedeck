@@ -13,11 +13,11 @@ export class TelemCommand extends BroadcastCommand {
   private static _instance: TelemCommand;
 
   private constructor() {
-    super("TelemCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): TelemCommand {
     if (!TelemCommand._instance) {

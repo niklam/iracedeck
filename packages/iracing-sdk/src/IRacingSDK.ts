@@ -2,20 +2,20 @@
  * iRacing SDK - Telemetry and Session Data Client
  * Uses native addon to access the official iRacing SDK
  */
-import {
-  broadcastMsg,
-  getHeader,
-  getSessionInfoStr,
-  getVarHeaderEntry,
-  isConnected,
-  sendChatMessage as nativeSendChatMessage,
-  shutdown,
-  startup,
-  waitForData,
-} from "@iracedeck/iracing-native";
+import { IRacingNative } from "@iracedeck/iracing-native";
+import { Logger, silentLogger } from "@iracedeck/logger";
 import yaml from "yaml";
 
-import { getLogger } from "./logger.js";
+import {
+  CameraCommand,
+  ChatCommand,
+  FFBCommand,
+  PitCommand,
+  ReplayCommand,
+  TelemCommand,
+  TextureCommand,
+  VideoCaptureCommand,
+} from "./commands/index.js";
 import { SessionInfo, TelemetryData, VarHeader, VarType } from "./types.js";
 
 /**
@@ -23,10 +23,52 @@ import { SessionInfo, TelemetryData, VarHeader, VarType } from "./types.js";
  * Manages connection to iRacing's shared memory and provides telemetry data
  */
 export class IRacingSDK {
+  private static _instance: IRacingSDK;
+
+  private native: IRacingNative;
+  private logger: Logger = silentLogger;
   private varHeaders: VarHeader[] = [];
   private lastSessionInfoUpdate = -1;
   private sessionInfo: SessionInfo | null = null;
   private connected = false;
+
+  private constructor() {
+    this.native = new IRacingNative();
+  }
+
+  /**
+   * Get the singleton instance
+   */
+  static getInstance(): IRacingSDK {
+    if (!IRacingSDK._instance) {
+      IRacingSDK._instance = new IRacingSDK();
+    }
+
+    return IRacingSDK._instance;
+  }
+
+  /**
+   * Set the logger for this instance
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
+  }
+
+  /**
+   * Set loggers on all SDK singletons using scoped loggers from the base logger
+   * @param logger Base logger to create scopes from
+   */
+  static setLoggers(logger: Logger): void {
+    IRacingSDK.getInstance().setLogger(logger.createScope("IRacingSDK"));
+    CameraCommand.getInstance().setLogger(logger.createScope("CameraCommand"));
+    ChatCommand.getInstance().setLogger(logger.createScope("ChatCommand"));
+    FFBCommand.getInstance().setLogger(logger.createScope("FFBCommand"));
+    PitCommand.getInstance().setLogger(logger.createScope("PitCommand"));
+    ReplayCommand.getInstance().setLogger(logger.createScope("ReplayCommand"));
+    TelemCommand.getInstance().setLogger(logger.createScope("TelemCommand"));
+    TextureCommand.getInstance().setLogger(logger.createScope("TextureCommand"));
+    VideoCaptureCommand.getInstance().setLogger(logger.createScope("VideoCaptureCommand"));
+  }
 
   /**
    * Check if iRacing is running and SDK is connected
@@ -36,22 +78,22 @@ export class IRacingSDK {
       return false;
     }
 
-    return isConnected();
+    return this.native.isConnected();
   }
 
   /**
    * Connect to iRacing's shared memory
    */
   connect(): boolean {
-    if (!startup()) {
+    if (!this.native.startup()) {
       return false;
     }
 
     // Get header to verify connection
-    const header = getHeader();
+    const header = this.native.getHeader();
 
     if (!header) {
-      shutdown();
+      this.native.shutdown();
 
       return false;
     }
@@ -62,7 +104,7 @@ export class IRacingSDK {
     this.parseVarHeaders(header.numVars);
 
     if (this.isConnected()) {
-      getLogger().info(`[iRacing SDK] Connected - ${this.varHeaders.length} variables available`);
+      this.logger.info(`[IRacingSDK] Connected - ${this.varHeaders.length} variables available`);
     }
 
     return this.isConnected();
@@ -73,7 +115,7 @@ export class IRacingSDK {
    */
   disconnect(): void {
     if (this.connected) {
-      shutdown();
+      this.native.shutdown();
       this.connected = false;
     }
 
@@ -89,7 +131,7 @@ export class IRacingSDK {
     this.varHeaders = [];
 
     for (let i = 0; i < numVars; i++) {
-      const nativeHeader = getVarHeaderEntry(i);
+      const nativeHeader = this.native.getVarHeaderEntry(i);
 
       if (!nativeHeader) continue;
 
@@ -117,7 +159,7 @@ export class IRacingSDK {
     }
 
     // Wait for new data (with short timeout for polling)
-    const data = waitForData(0);
+    const data = this.native.waitForData(0);
 
     if (!data) {
       return null;
@@ -194,7 +236,7 @@ export class IRacingSDK {
       return null;
     }
 
-    const header = getHeader();
+    const header = this.native.getHeader();
 
     if (!header) {
       return null;
@@ -206,7 +248,7 @@ export class IRacingSDK {
     }
 
     // Get session info YAML string from native SDK
-    const yamlString = getSessionInfoStr();
+    const yamlString = this.native.getSessionInfoStr();
 
     if (!yamlString) {
       return null;
@@ -217,7 +259,7 @@ export class IRacingSDK {
       this.sessionInfo = yaml.parse(yamlString);
       this.lastSessionInfoUpdate = header.sessionInfoUpdate;
     } catch (error) {
-      getLogger().error(`[iRacing SDK] Failed to parse session info YAML: ${error}`);
+      this.logger.error(`[IRacingSDK] Failed to parse session info YAML: ${error}`);
 
       return null;
     }
@@ -258,7 +300,7 @@ export class IRacingSDK {
    * @param var3 Third parameter
    */
   broadcast(msg: number, var1: number, var2: number = 0, var3: number = 0): void {
-    broadcastMsg(msg, var1, var2, var3);
+    this.native.broadcastMsg(msg, var1, var2, var3);
   }
 
   /**
@@ -267,11 +309,11 @@ export class IRacingSDK {
    */
   sendChatMessage(message: string): boolean {
     if (!this.isConnected()) {
-      getLogger().warn("[iRacing SDK] Cannot send chat message - not connected");
+      this.logger.warn("[IRacingSDK] Cannot send chat message - not connected");
 
       return false;
     }
 
-    return nativeSendChatMessage(message);
+    return this.native.sendChatMessage(message);
   }
 }

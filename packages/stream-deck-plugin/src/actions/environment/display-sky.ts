@@ -1,7 +1,5 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { Skies, TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../../sdk-controller.js";
+import { SDKController, Skies, TelemetryData } from "@iracedeck/iracing-sdk";
 
 /**
  * Display Sky Action

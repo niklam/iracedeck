@@ -3,19 +3,27 @@
  *
  * Provides the core messaging functionality that all command classes inherit.
  */
-import { broadcastMsg } from "@iracedeck/iracing-native";
+import { IRacingNative } from "@iracedeck/iracing-native";
+import { Logger, silentLogger } from "@iracedeck/logger";
 
-import { getLogger, Logger } from "../logger.js";
 import { BroadcastMsg } from "./constants.js";
 
 /**
  * Base class for iRacing broadcast commands
  */
 export abstract class BroadcastCommand {
-  protected logger: Logger;
+  protected logger: Logger = silentLogger;
+  protected native: IRacingNative;
 
-  protected constructor(loggerScope: string) {
-    this.logger = getLogger().createScope(loggerScope);
+  protected constructor() {
+    this.native = new IRacingNative();
+  }
+
+  /**
+   * Set the logger for this command instance
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
   }
 
   /**
@@ -27,7 +35,7 @@ export abstract class BroadcastCommand {
    */
   protected sendBroadcast(msg: BroadcastMsg, var1: number = 0, var2: number = 0, var3: number = 0): boolean {
     this.logger.debug(`Sending: msg=${BroadcastMsg[msg]}, var1=${var1}, var2=${var2}, var3=${var3}`);
-    broadcastMsg(msg, var1, var2, var3);
+    this.native.broadcastMsg(msg, var1, var2, var3);
 
     return true; // broadcastMsg doesn't return status, assume success
   }

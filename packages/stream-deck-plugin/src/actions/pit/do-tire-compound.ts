@@ -5,9 +5,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { PitCommand, TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../../sdk-controller.js";
+import { PitCommand, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 
 /**
  * Tire Compound Action

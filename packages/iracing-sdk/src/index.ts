@@ -7,8 +7,11 @@
 // Main SDK class
 export { IRacingSDK } from "./IRacingSDK.js";
 
-// Logger
-export { Logger, setLogger, getLogger, consoleLogger, silentLogger } from "./logger.js";
+// SDK Controller (manages connections and subscribers)
+export { SDKController, TelemetryCallback } from "./SDKController.js";
+
+// Re-export logger types for convenience
+export { Logger, consoleLogger, silentLogger, LogLevel } from "@iracedeck/logger";
 
 // Types and enums
 export {
@@ -88,5 +91,4 @@ export {
   CameraFocusMode,
   VideoCaptureMode,
   IRSDK_BROADCAST_MSG_NAME,
-  MAKELONG,
 } from "./commands/index.js";

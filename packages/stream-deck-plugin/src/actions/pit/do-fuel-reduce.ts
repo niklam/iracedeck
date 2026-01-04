@@ -5,9 +5,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { PitCommand } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../../sdk-controller.js";
+import { PitCommand, SDKController } from "@iracedeck/iracing-sdk";
 
 /**
  * Do Fuel Reduce Action

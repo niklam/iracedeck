@@ -11,11 +11,11 @@ export class TextureCommand extends BroadcastCommand {
   private static _instance: TextureCommand;
 
   private constructor() {
-    super("TextureCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): TextureCommand {
     if (!TextureCommand._instance) {

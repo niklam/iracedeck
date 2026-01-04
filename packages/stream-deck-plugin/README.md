@@ -58,7 +58,7 @@ pnpm --filter @iracedeck/stream-deck-plugin run build
 Singleton managing SDK connection and telemetry subscriptions:
 
 ```typescript
-import { SDKController } from "./sdk-controller";
+import { SDKController } from "@iracedeck/iracing-sdk";
 
 const controller = SDKController.getInstance();
 
@@ -81,9 +81,7 @@ Actions extend `SingletonAction` from the Stream Deck SDK:
 
 ```typescript
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../sdk-controller";
+import { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 
 @action({ UUID: "fi.lampen.niklas.iracedeck.my-action" })
 export class MyAction extends SingletonAction {

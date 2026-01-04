@@ -5,9 +5,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { hasFlag, PitCommand, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../../sdk-controller.js";
+import { hasFlag, PitCommand, PitSvFlags, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 
 /**
  * Settings for the change tires action

@@ -13,11 +13,11 @@ export class FFBCommand extends BroadcastCommand {
   private static _instance: FFBCommand;
 
   private constructor() {
-    super("FFBCommand");
+    super();
   }
 
   /**
-   * Get singleton instance
+   * Get the singleton instance
    */
   static getInstance(): FFBCommand {
     if (!FFBCommand._instance) {

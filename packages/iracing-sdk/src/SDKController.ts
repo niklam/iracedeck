@@ -1,35 +1,19 @@
 /**
- * SDK Controller - Singleton that manages the iRacing SDK connection
+ * SDK Controller - Manages the iRacing SDK connection
  * and notifies subscribers of telemetry updates
  */
-import streamDeck from "@elgato/streamdeck";
-import { IRacingSDK, setLogger, TelemetryData } from "@iracedeck/iracing-sdk";
+import { Logger, silentLogger } from "@iracedeck/logger";
 
-// Configure SDK to use Stream Deck logger
-const sdkLogger = streamDeck.logger.createScope("iRacingSDK");
-setLogger({
-  debug: (msg) => sdkLogger.debug(msg),
-  info: (msg) => sdkLogger.info(msg),
-  warn: (msg) => sdkLogger.warn(msg),
-  error: (msg) => sdkLogger.error(msg),
-  createScope: (scope) => {
-    const scopedLogger = sdkLogger.createScope(scope);
+import { IRacingSDK } from "./IRacingSDK.js";
+import { TelemetryData } from "./types.js";
 
-    return {
-      debug: (msg) => scopedLogger.debug(msg),
-      info: (msg) => scopedLogger.info(msg),
-      warn: (msg) => scopedLogger.warn(msg),
-      error: (msg) => scopedLogger.error(msg),
-      createScope: () => scopedLogger, // Nested scopes just return the same scoped logger
-    };
-  },
-});
-
-type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: boolean) => void;
+export type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: boolean) => void;
 
 export class SDKController {
-  private static instance: SDKController;
+  private static _instance: SDKController;
+
   private sdk: IRacingSDK;
+  private logger: Logger = silentLogger;
   private subscribers = new Map<string, TelemetryCallback>();
   private updateInterval: NodeJS.Timeout | null = null;
   private reconnectInterval: NodeJS.Timeout | null = null;
@@ -37,18 +21,25 @@ export class SDKController {
   private lastValidTelemetry: TelemetryData | null = null;
 
   private constructor() {
-    this.sdk = new IRacingSDK();
+    this.sdk = IRacingSDK.getInstance();
   }
 
   /**
    * Get the singleton instance
    */
   static getInstance(): SDKController {
-    if (!SDKController.instance) {
-      SDKController.instance = new SDKController();
+    if (!SDKController._instance) {
+      SDKController._instance = new SDKController();
     }
 
-    return SDKController.instance;
+    return SDKController._instance;
+  }
+
+  /**
+   * Set the logger for this instance
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
   }
 
   /**
@@ -132,7 +123,7 @@ export class SDKController {
     // Notify subscribers if connection state changed
     if (connected !== wasConnected) {
       if (connected) {
-        streamDeck.logger.info("[iRaceDeck] Connected to iRacing");
+        this.logger.info("[SDKController] Connected to iRacing");
       }
 
       // Notify all subscribers of connection state change
@@ -148,7 +139,7 @@ export class SDKController {
     if (!this.sdk.isConnected()) {
       // SDK not connected, but we might have thought we were
       if (this.isConnected) {
-        streamDeck.logger.info("[iRaceDeck] Disconnected from iRacing");
+        this.logger.info("[SDKController] Disconnected from iRacing");
         this.sdk.disconnect();
         this.isConnected = false;
         this.lastValidTelemetry = null;

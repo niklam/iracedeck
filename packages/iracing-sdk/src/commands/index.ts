@@ -31,5 +31,4 @@ export {
   CameraFocusMode,
   VideoCaptureMode,
   IRSDK_BROADCAST_MSG_NAME,
-  MAKELONG,
 } from "./constants.js";
