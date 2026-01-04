@@ -83,6 +83,7 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
    */
   private async updateDisplay(contextId: string, settings: FuelSettings): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -93,6 +94,7 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
     }
 
     const lastTitle = this.lastTitle.get(contextId);
+
     if (lastTitle !== title) {
       this.lastTitle.set(contextId, title);
       await action.setTitle(title);
@@ -123,6 +125,7 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
 
     // Get current fuel to add from telemetry
     const telemetry = this.sdkController.getCurrentTelemetry();
+
     if (!telemetry) {
       this.logger.warn("No telemetry data available");
 
@@ -130,6 +133,7 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
     }
 
     const currentFuel = telemetry.PitSvFuel;
+
     if (currentFuel === null || currentFuel === undefined || typeof currentFuel !== "number") {
       this.logger.warn("PitSvFuel not available");
 
@@ -140,16 +144,19 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
     const newFuelAmount = Math.max(0, currentFuel - amount);
 
     let success: boolean;
+
     if (newFuelAmount === 0) {
       // Can't send 0 to fuel() as it means "use existing amount"
       // Use clearFuel() to set fuel to 0
       success = this.pitCommand.clearFuel();
+
       if (success) {
         this.logger.info(`Cleared fuel (was ${currentFuel}L)`);
       }
     } else {
       // Send the pit command with the new total fuel amount
       success = this.pitCommand.fuel(newFuelAmount);
+
       if (success) {
         this.logger.info(`Set fuel to ${newFuelAmount}L (was ${currentFuel}L, reduced ${amount}L)`);
       }

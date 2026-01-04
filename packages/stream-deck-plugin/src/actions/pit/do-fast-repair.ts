@@ -92,6 +92,7 @@ export class DoFastRepair extends SingletonAction {
    */
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title: string;
@@ -148,6 +149,7 @@ export class DoFastRepair extends SingletonAction {
 
     // Check if fast repairs are available
     const fastRepairsAvailable = this.getFastRepairsAvailable(telemetry);
+
     if (fastRepairsAvailable === 0) {
       this.logger.info("No fast repairs available");
 

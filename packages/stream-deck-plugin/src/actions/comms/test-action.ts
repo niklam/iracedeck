@@ -100,6 +100,7 @@ export class TestAction extends SingletonAction<TestSettings> {
    */
   private async updateDisplay(contextId: string, _settings: TestSettings): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";

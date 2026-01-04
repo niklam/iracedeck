@@ -32,7 +32,9 @@ export default [
       ],
       '@stylistic/padding-line-between-statements': [
           "error",
-          { blankLine: "always", prev: "*", next: "return" }
+          { blankLine: "always", prev: "*", next: "return" },
+          { blankLine: "always", prev: "*", next: ["if", "switch", "for", "while", "do", "try", "with"] },
+          { blankLine: "always", prev: ["if", "switch", "for", "while", "do", "try", "with"], next: "*" },
       ]
     },
   },

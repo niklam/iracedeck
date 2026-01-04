@@ -200,6 +200,7 @@ export class SDKController {
    */
   getCurrentTelemetry(): TelemetryData | null {
     const telemetry = this.sdk.getTelemetry();
+
     if (telemetry) {
       this.lastValidTelemetry = telemetry;
 

@@ -25,6 +25,7 @@ export class DisplayGear extends SingletonAction {
 
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -46,6 +47,7 @@ export class DisplayGear extends SingletonAction {
     }
 
     const lastTitle = this.lastTitle.get(contextId);
+
     if (lastTitle !== title) {
       this.lastTitle.set(contextId, title);
       await action.setTitle(title);

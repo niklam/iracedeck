@@ -46,6 +46,7 @@ export class DisplayFuelToAdd extends SingletonAction {
     }
 
     const telemetry = this.sdkController.getCurrentTelemetry();
+
     if (!telemetry) {
       this.logger.warn("No telemetry data available");
 
@@ -53,6 +54,7 @@ export class DisplayFuelToAdd extends SingletonAction {
     }
 
     const pitSvFlags = telemetry.PitSvFlags;
+
     if (pitSvFlags === null || pitSvFlags === undefined || typeof pitSvFlags !== "number") {
       this.logger.warn("PitSvFlags not available");
 
@@ -63,6 +65,7 @@ export class DisplayFuelToAdd extends SingletonAction {
     if (hasFlag(pitSvFlags, PitSvFlags.FuelFill)) {
       // Fuel fill is on - clear it
       const success = this.pitCommand.clearFuel();
+
       if (success) {
         this.logger.info("Cleared fuel fill");
       } else {
@@ -71,6 +74,7 @@ export class DisplayFuelToAdd extends SingletonAction {
     } else {
       // Fuel fill is off - enable it with current PitSvFuel amount (0 = use existing)
       const success = this.pitCommand.fuel(0);
+
       if (success) {
         this.logger.info("Enabled fuel fill");
       } else {
@@ -81,6 +85,7 @@ export class DisplayFuelToAdd extends SingletonAction {
 
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -115,6 +120,7 @@ export class DisplayFuelToAdd extends SingletonAction {
 
     const stateKey = `${title}|${image}`;
     const lastState = this.lastState.get(contextId);
+
     if (lastState !== stateKey) {
       this.lastState.set(contextId, stateKey);
       await action.setTitle(title);

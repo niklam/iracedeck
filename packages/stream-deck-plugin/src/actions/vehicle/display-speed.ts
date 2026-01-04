@@ -24,6 +24,7 @@ export class DisplaySpeed extends SingletonAction<SpeedSettings> {
 
     this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
       const settings = this.activeContexts.get(ev.action.id);
+
       if (settings) {
         this.updateDisplay(ev.action.id, settings, telemetry, isConnected);
       }
@@ -64,6 +65,7 @@ export class DisplaySpeed extends SingletonAction<SpeedSettings> {
     isConnected: boolean,
   ): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -88,6 +90,7 @@ export class DisplaySpeed extends SingletonAction<SpeedSettings> {
     }
 
     const lastTitle = this.lastTitle.get(contextId);
+
     if (lastTitle !== title) {
       this.lastTitle.set(contextId, title);
       await action.setTitle(title);

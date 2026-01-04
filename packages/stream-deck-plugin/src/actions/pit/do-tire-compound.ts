@@ -46,6 +46,7 @@ export class DoTireCompound extends SingletonAction {
     }
 
     const telemetry = this.sdkController.getCurrentTelemetry();
+
     if (!telemetry) {
       this.logger.warn("No telemetry data available");
 
@@ -65,6 +66,7 @@ export class DoTireCompound extends SingletonAction {
     this.logger.info(`Switching from ${currentCompound === 0 ? "Dry" : "Wet"} to ${newCompound === 0 ? "Dry" : "Wet"}`);
 
     const success = this.pitCommand.tireCompound(newCompound);
+
     if (success) {
       this.logger.info(`Set tire compound to ${newCompound === 0 ? "Dry" : "Wet"}`);
     } else {
@@ -74,6 +76,7 @@ export class DoTireCompound extends SingletonAction {
 
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -105,6 +108,7 @@ export class DoTireCompound extends SingletonAction {
 
     const stateKey = `${title}|${image}`;
     const lastState = this.lastState.get(contextId);
+
     if (lastState !== stateKey) {
       this.lastState.set(contextId, stateKey);
       await action.setTitle(title);

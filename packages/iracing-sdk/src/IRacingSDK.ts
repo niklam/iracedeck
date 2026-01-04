@@ -49,6 +49,7 @@ export class IRacingSDK {
 
     // Get header to verify connection
     const header = getHeader();
+
     if (!header) {
       shutdown();
 
@@ -89,6 +90,7 @@ export class IRacingSDK {
 
     for (let i = 0; i < numVars; i++) {
       const nativeHeader = getVarHeaderEntry(i);
+
       if (!nativeHeader) continue;
 
       const varHeader: VarHeader = {
@@ -116,6 +118,7 @@ export class IRacingSDK {
 
     // Wait for new data (with short timeout for polling)
     const data = waitForData(0);
+
     if (!data) {
       return null;
     }
@@ -192,6 +195,7 @@ export class IRacingSDK {
     }
 
     const header = getHeader();
+
     if (!header) {
       return null;
     }
@@ -203,6 +207,7 @@ export class IRacingSDK {
 
     // Get session info YAML string from native SDK
     const yamlString = getSessionInfoStr();
+
     if (!yamlString) {
       return null;
     }
@@ -225,6 +230,7 @@ export class IRacingSDK {
    */
   getVar(name: string): unknown {
     const telemetry = this.getTelemetry();
+
     if (!telemetry) return null;
 
     return telemetry[name];

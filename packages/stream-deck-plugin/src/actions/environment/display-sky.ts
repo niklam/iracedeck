@@ -55,6 +55,7 @@ export class DisplaySky extends SingletonAction {
 
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
@@ -73,6 +74,7 @@ export class DisplaySky extends SingletonAction {
 
     const stateKey = `${title}|${image}`;
     const lastState = this.lastState.get(contextId);
+
     if (lastState !== stateKey) {
       this.lastState.set(contextId, stateKey);
       await action.setTitle(title);

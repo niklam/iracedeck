@@ -57,6 +57,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
    */
   private getTireColor(isConfigured: boolean, isCurrentlyOn: boolean): string {
     if (!isConfigured) return "#000000ff"; // Light gray - nothing happens
+
     if (isCurrentlyOn) return "#44FF44"; // Green - currently ON, will turn OFF
 
     return "#FF4444"; // Red - currently OFF, will turn ON
@@ -144,6 +145,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
    */
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     const settings = this.activeContexts.get(contextId) || {};
@@ -186,6 +188,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
     }
 
     const telemetry = this.sdkController.getCurrentTelemetry();
+
     if (!telemetry) {
       this.logger.warn("No telemetry data available");
 
@@ -206,6 +209,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
         this.logger.info("Toggling LF on");
       }
     }
+
     if (settings.rf) {
       if (currentState.rf) {
         this.logger.info("Toggling RF off");
@@ -214,6 +218,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
         this.logger.info("Toggling RF on");
       }
     }
+
     if (settings.lr) {
       if (currentState.lr) {
         this.logger.info("Toggling LR off");
@@ -222,6 +227,7 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
         this.logger.info("Toggling LR on");
       }
     }
+
     if (settings.rr) {
       if (currentState.rr) {
         this.logger.info("Toggling RR off");
@@ -244,14 +250,20 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
 
       // Re-enable tires that should stay on (were on and not being toggled off)
       if (currentState.lf && !settings.lf) this.pitCommand.leftFront(0);
+
       if (currentState.rf && !settings.rf) this.pitCommand.rightFront(0);
+
       if (currentState.lr && !settings.lr) this.pitCommand.leftRear(0);
+
       if (currentState.rr && !settings.rr) this.pitCommand.rightRear(0);
 
       // Enable tires that are being toggled on (were off and configured)
       if (!currentState.lf && settings.lf) this.pitCommand.leftFront(0);
+
       if (!currentState.rf && settings.rf) this.pitCommand.rightFront(0);
+
       if (!currentState.lr && settings.lr) this.pitCommand.leftRear(0);
+
       if (!currentState.rr && settings.rr) this.pitCommand.rightRear(0);
     }
 

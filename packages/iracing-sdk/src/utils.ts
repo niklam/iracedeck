@@ -53,6 +53,7 @@ export function hasAllFlags(value: number | undefined, flags: number[]): boolean
   if (value === undefined || value === null) {
     return false;
   }
+
   for (const flag of flags) {
     if ((value & flag) === 0) {
       return false;
@@ -82,6 +83,7 @@ export function hasAnyFlag(value: number | undefined, flags: number[]): boolean 
   if (value === undefined || value === null) {
     return false;
   }
+
   for (const flag of flags) {
     if ((value & flag) !== 0) {
       return true;
@@ -110,8 +112,10 @@ export function getActiveFlags<T extends Record<string, number>>(value: number |
   }
 
   const activeFlags: number[] = [];
+
   for (const key of Object.keys(flagEnum)) {
     const flagValue = flagEnum[key];
+
     // Skip non-numeric values (TypeScript enum reverse mappings)
     if (typeof flagValue === "number" && (value & flagValue) !== 0) {
       activeFlags.push(flagValue);
@@ -143,8 +147,10 @@ export function getActiveFlagNames<T extends Record<string, number | string>>(
   }
 
   const activeNames: string[] = [];
+
   for (const key of Object.keys(flagEnum)) {
     const flagValue = flagEnum[key];
+
     // Only process numeric values (skip TypeScript enum reverse mappings)
     if (typeof flagValue === "number" && (value & flagValue) !== 0) {
       activeNames.push(key);
@@ -193,6 +199,7 @@ export function addFlag(value: number | undefined, flag: number): number {
  */
 export function addFlags(value: number | undefined, flags: number[]): number {
   let result = value ?? 0;
+
   for (const flag of flags) {
     result |= flag;
   }
@@ -233,6 +240,7 @@ export function removeFlag(value: number | undefined, flag: number): number {
  */
 export function removeFlags(value: number | undefined, flags: number[]): number {
   let result = value ?? 0;
+
   for (const flag of flags) {
     result &= ~flag;
   }

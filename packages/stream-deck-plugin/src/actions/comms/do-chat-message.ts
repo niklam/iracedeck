@@ -112,6 +112,7 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
    */
   private async updateDisplay(contextId: string, settings: ChatSettings): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
+
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
