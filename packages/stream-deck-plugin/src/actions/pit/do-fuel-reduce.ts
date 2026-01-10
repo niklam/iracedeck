@@ -17,7 +17,6 @@ import { commands, controller } from "../../plugin.js";
 export class DoFuelReduce extends SingletonAction<FuelSettings> {
   private sdkController = controller;
   private pitCommand = commands.pit;
-  private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, FuelSettings>();
   private lastTitle = new Map<string, string>();
   private logger = streamDeck.logger.createScope("DoFuelReduce");
@@ -35,60 +34,36 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
       });
     }
 
-    // Start updating display
-    if (!this.updateInterval) {
-      this.startUpdates();
-    }
+    // Subscribe to telemetry updates
+    this.sdkController.subscribe(ev.action.id, (_telemetry, isConnected) => {
+      const settings = this.activeContexts.get(ev.action.id);
 
-    // Update immediately
-    this.updateDisplay(ev.action.id, ev.payload.settings);
+      if (settings) {
+        this.updateDisplay(ev.action.id, settings, isConnected);
+      }
+    });
   }
 
   /**
    * When the action disappears from the Stream Deck
    */
   override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastTitle.delete(ev.action.id);
-
-    // Stop updates if no more instances
-    if (this.activeContexts.size === 0) {
-      this.stopUpdates();
-    }
-  }
-
-  /**
-   * Start periodic updates
-   */
-  private startUpdates(): void {
-    this.updateInterval = setInterval(() => {
-      for (const [contextId, settings] of this.activeContexts) {
-        this.updateDisplay(contextId, settings);
-      }
-    }, 1000);
-  }
-
-  /**
-   * Stop periodic updates
-   */
-  private stopUpdates(): void {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
   }
 
   /**
    * Update the display for a specific context
    */
-  private async updateDisplay(contextId: string, settings: FuelSettings): Promise<void> {
+  private async updateDisplay(contextId: string, settings: FuelSettings, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
 
     if (!action) return;
 
     let title = "iRacing\nnot\nconnected";
 
-    if (this.sdkController.getConnectionStatus()) {
+    if (isConnected) {
       const amount = settings.amount || 1;
       title = `-${amount} L`;
     }
@@ -107,7 +82,8 @@ export class DoFuelReduce extends SingletonAction<FuelSettings> {
    */
   override async onDidReceiveSettings(ev: any): Promise<void> {
     this.activeContexts.set(ev.action.id, ev.payload.settings);
-    this.updateDisplay(ev.action.id, ev.payload.settings);
+    const isConnected = this.sdkController.getConnectionStatus();
+    this.updateDisplay(ev.action.id, ev.payload.settings, isConnected);
   }
 
   /**
