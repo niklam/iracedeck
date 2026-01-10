@@ -5,8 +5,10 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { hasFlag, PitCommand, PitSvFlags, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
+
+import { commands, controller } from "../../plugin.js";
 
 const ChangeTiresSettings = z.object({
   lf: z.coerce.boolean().default(true),
@@ -29,8 +31,8 @@ type ChangeTiresSettings = z.infer<typeof ChangeTiresSettings>;
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-change-tires" })
 export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
-  private sdkController = SDKController.getInstance();
-  private pitCommand = PitCommand.getInstance();
+  private sdkController = controller;
+  private pitCommand = commands.pit;
   private activeContexts = new Map<string, ChangeTiresSettings>();
   private lastState = new Map<string, string>();
   private logger = streamDeck.logger.createScope("DoChangeTires");

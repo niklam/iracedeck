@@ -5,7 +5,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { PitCommand, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import { TelemetryData } from "@iracedeck/iracing-sdk";
+
+import { commands, controller } from "../../plugin.js";
 
 /**
  * Tire Compound Action
@@ -14,8 +16,8 @@ import { PitCommand, SDKController, TelemetryData } from "@iracedeck/iracing-sdk
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-tire-compound" })
 export class DoTireCompound extends SingletonAction {
-  private sdkController = SDKController.getInstance();
-  private pitCommand = PitCommand.getInstance();
+  private sdkController = controller;
+  private pitCommand = commands.pit;
   private lastState = new Map<string, string>();
   private logger = streamDeck.logger.createScope("DoTireCompound");
 

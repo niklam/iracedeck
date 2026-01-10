@@ -5,8 +5,10 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { CameraCommand, CameraState, hasFlag, SDKController } from "@iracedeck/iracing-sdk";
+import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
 import z from "zod";
+
+import { commands, controller } from "../../plugin.js";
 
 /**
  * Do Chat Message Action
@@ -14,8 +16,8 @@ import z from "zod";
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.comms.do-chat-message" })
 export class DoChatMessage extends SingletonAction<ChatSettings> {
-  private sdkController = SDKController.getInstance();
-  private cameraCommand = CameraCommand.getInstance();
+  private sdkController = controller;
+  private cameraCommand = commands.camera;
   private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, ChatSettings>();
   private lastTitle = new Map<string, string>();

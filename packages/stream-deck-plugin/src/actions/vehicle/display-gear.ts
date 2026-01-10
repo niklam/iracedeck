@@ -1,5 +1,7 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import { TelemetryData } from "@iracedeck/iracing-sdk";
+
+import { controller } from "../../plugin.js";
 
 /**
  * Display Gear Action
@@ -7,7 +9,7 @@ import { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-gear" })
 export class DisplayGear extends SingletonAction {
-  private sdkController = SDKController.getInstance();
+  private sdkController = controller;
   private lastTitle = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent): Promise<void> {

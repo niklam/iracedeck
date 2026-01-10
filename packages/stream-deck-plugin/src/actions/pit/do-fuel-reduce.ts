@@ -5,8 +5,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { PitCommand, SDKController } from "@iracedeck/iracing-sdk";
 import z from "zod";
+
+import { commands, controller } from "../../plugin.js";
 
 /**
  * Do Fuel Reduce Action
@@ -14,8 +15,8 @@ import z from "zod";
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fuel-reduce" })
 export class DoFuelReduce extends SingletonAction<FuelSettings> {
-  private sdkController = SDKController.getInstance();
-  private pitCommand = PitCommand.getInstance();
+  private sdkController = controller;
+  private pitCommand = commands.pit;
   private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, FuelSettings>();
   private lastTitle = new Map<string, string>();

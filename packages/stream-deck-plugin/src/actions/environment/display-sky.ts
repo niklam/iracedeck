@@ -1,5 +1,7 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { SDKController, Skies, TelemetryData } from "@iracedeck/iracing-sdk";
+import { Skies, TelemetryData } from "@iracedeck/iracing-sdk";
+
+import { controller } from "../../plugin.js";
 
 /**
  * Display Sky Action
@@ -7,7 +9,7 @@ import { SDKController, Skies, TelemetryData } from "@iracedeck/iracing-sdk";
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.environment.display-sky" })
 export class DisplaySky extends SingletonAction {
-  private sdkController = SDKController.getInstance();
+  private sdkController = controller;
   private lastState = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent): Promise<void> {

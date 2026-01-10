@@ -5,7 +5,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import { TelemetryData } from "@iracedeck/iracing-sdk";
+
+import { controller } from "../../plugin.js";
 
 /**
  * Display Speed Action
@@ -13,7 +15,7 @@ import { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-speed" })
 export class DisplaySpeed extends SingletonAction<SpeedSettings> {
-  private sdkController = SDKController.getInstance();
+  private sdkController = controller;
   private activeContexts = new Map<string, SpeedSettings>();
   private lastTitle = new Map<string, string>();
 
