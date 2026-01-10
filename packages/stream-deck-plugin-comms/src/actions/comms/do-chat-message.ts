@@ -9,6 +9,7 @@ import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import { commands, controller } from "../../plugin.js";
+import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-utils.js";
 
 /**
  * Do Chat Message Action
@@ -82,33 +83,6 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
   }
 
   /**
-   * Generate chat bubble SVG with configurable color
-   */
-  private generateChatSvg(color: string): string {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <path d="M14 18
-           h44
-           a6 6 0 0 1 6 6
-           v24
-           a6 6 0 0 1-6 6
-           H26
-           l-4 8
-           l-4 -8
-           H14
-           a6 6 0 0 1-6-6
-           V24
-           a6 6 0 0 1 6-6
-           z"
-        fill="none"
-        stroke="${color}"
-        stroke-width="2.5"
-        stroke-linejoin="round"/>
-</svg>`;
-
-    return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-  }
-
-  /**
    * Update the display for a specific context
    */
   private async updateDisplay(contextId: string, settings: ChatSettings): Promise<void> {
@@ -116,22 +90,9 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
 
     if (!action) return;
 
-    let title = "iRacing\nnot\nconnected";
-
-    if (this.sdkController.getConnectionStatus()) {
-      // Connected - show the message preview
-      const message = settings.message?.trim();
-
-      if (message) {
-        // Show first few words of the message
-        title = message.length > 20 ? message.substring(0, 17) + "..." : message;
-      } else {
-        title = "";
-      }
-    }
-
-    // Get configured color (default to #4a90d9)
-    const iconColor = settings.iconColor || "#4a90d9";
+    const isConnected = this.sdkController.getConnectionStatus();
+    const title = formatChatTitle(settings.message, isConnected);
+    const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
 
     // Only update if the title or color has changed
     const lastTitle = this.lastTitle.get(contextId);
@@ -143,7 +104,7 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
       await action.setTitle(title);
 
       // Generate SVG with configured color
-      const svgDataUri = this.generateChatSvg(iconColor);
+      const svgDataUri = generateChatSvg(iconColor);
       await action.setImage(svgDataUri);
     }
   }
@@ -210,7 +171,7 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
 
 const ChatSettings = z.object({
   message: z.string().default(""),
-  iconColor: z.string().default("#4a90d9"),
+  iconColor: z.string().default(DEFAULT_ICON_COLOR),
 });
 
 /**

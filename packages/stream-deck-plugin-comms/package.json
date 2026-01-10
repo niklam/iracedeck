@@ -8,7 +8,9 @@
         "build": "rollup -c && npm run postbuild",
         "postbuild": "cd fi.lampen.niklas.iracedeck.comms.sdPlugin/bin && npm install",
         "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart fi.lampen.niklas.iracedeck.comms\"",
-        "clean": "rimraf fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js.map"
+        "clean": "rimraf fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js.map",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "dependencies": {
         "@elgato/streamdeck": "^2.0.0",
@@ -26,7 +28,8 @@
         "rimraf": "^5.0.0",
         "rollup": "^4.0.2",
         "tslib": "^2.6.2",
-        "typescript": "^5.2.2"
+        "typescript": "^5.2.2",
+        "vitest": "^4.0.16"
     },
     "os": [
         "win32"
