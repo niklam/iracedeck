@@ -1,4 +1,4 @@
-import { LogLevel } from "@iracedeck/iracing-sdk";
+import { LogLevel } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSDLogger, SDLoggerLike } from "./sd-logger.js";

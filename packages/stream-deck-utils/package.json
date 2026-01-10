@@ -1,0 +1,30 @@
+{
+    "name": "@iracedeck/stream-deck-utils",
+    "version": "1.0.0",
+    "description": "Shared utilities for Stream Deck plugins",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsc",
+        "clean": "rimraf dist",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "@iracedeck/logger": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "~20.15.0",
+        "rimraf": "^5.0.0",
+        "typescript": "^5.2.2",
+        "vitest": "^4.0.16"
+    },
+    "license": "MIT"
+}

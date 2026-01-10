@@ -115,6 +115,9 @@ importers:
       '@iracedeck/iracing-sdk':
         specifier: workspace:*
         version: link:../iracing-sdk
+      '@iracedeck/stream-deck-utils':
+        specifier: workspace:*
+        version: link:../stream-deck-utils
       zod:
         specifier: ^4.3.5
         version: 4.3.5
@@ -158,6 +161,9 @@ importers:
       '@iracedeck/iracing-sdk':
         specifier: workspace:*
         version: link:../iracing-sdk
+      '@iracedeck/stream-deck-utils':
+        specifier: workspace:*
+        version: link:../stream-deck-utils
       zod:
         specifier: ^4.3.5
         version: 4.3.5
@@ -192,6 +198,25 @@ importers:
       tslib:
         specifier: ^2.6.2
         version: 2.8.1
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@20.15.0)(terser@5.44.1)(yaml@2.8.2)
+
+  packages/stream-deck-utils:
+    dependencies:
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@types/node':
+        specifier: ~20.15.0
+        version: 20.15.0
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
       typescript:
         specifier: ^5.2.2
         version: 5.9.3

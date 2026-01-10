@@ -7,6 +7,7 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - `@iracedeck/logger` - Logger interface with LogLevel enum
 - `@iracedeck/iracing-native` - Native C++ addon (node-addon-api) for iRacing SDK
 - `@iracedeck/iracing-sdk` - High-level wrapper: IRacingSDK, SDKController, commands, types
+- `@iracedeck/stream-deck-utils` - Shared utilities for Stream Deck plugins (logger adapter)
 - `@iracedeck/stream-deck-plugin` - Main plugin (`.sdPlugin` folder: `fi.lampen.niklas.iracedeck.sdPlugin`)
 - `@iracedeck/stream-deck-plugin-comms` - Communication plugin (`.sdPlugin` folder: `fi.lampen.niklas.iracedeck.comms.sdPlugin`)
 

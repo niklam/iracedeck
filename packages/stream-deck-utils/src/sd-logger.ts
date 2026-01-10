@@ -3,7 +3,7 @@
  *
  * Creates an ILogger-compatible wrapper around Stream Deck's logger.
  */
-import { ILogger, LogLevel } from "@iracedeck/iracing-sdk";
+import { ILogger, LogLevel } from "@iracedeck/logger";
 
 /**
  * Minimal interface for Stream Deck logger methods we use.
