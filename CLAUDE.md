@@ -50,7 +50,7 @@ pnpm test:watch               # Run tests in watch mode
 ## Commiting code
 
 - Use conventional commits
-- Do not add Claude as contributor
+- Do not add any references to Claude to commit messages
 
 ## References
 

@@ -26,7 +26,11 @@
       "Bash(pnpm --filter @iracedeck/logger run build:*)",
       "Bash(pnpm add:*)",
       "Bash(pnpm test:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nrefactor\\(logger\\): make ILogger immutable with withLevel\\(\\)\n\n- Rename Logger interface to ILogger \\(follows naming convention\\)\n- Replace mutable setLevel\\(\\) with immutable withLevel\\(\\) returning new instance\n- Export createConsoleLogger\\(\\) for creating loggers with custom level/scope\n- Add comprehensive unit tests \\(14 tests\\)\n- Update all usages across iracing-sdk and stream-deck plugins\nEOF\n\\)\")"
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nrefactor\\(logger\\): make ILogger immutable with withLevel\\(\\)\n\n- Rename Logger interface to ILogger \\(follows naming convention\\)\n- Replace mutable setLevel\\(\\) with immutable withLevel\\(\\) returning new instance\n- Export createConsoleLogger\\(\\) for creating loggers with custom level/scope\n- Add comprehensive unit tests \\(14 tests\\)\n- Update all usages across iracing-sdk and stream-deck plugins\nEOF\n\\)\")",
+      "Bash(pnpm run format:*)",
+      "Bash(pnpm run lint:fix:*)",
+      "Bash(pnpm run format:fix:*)",
+      "Bash(pnpm --filter @iracedeck/iracing-sdk run test)"
     ]
   }
 }
