@@ -3,7 +3,7 @@
  * Uses native addon to access the official iRacing SDK
  */
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { Logger, silentLogger } from "@iracedeck/logger";
+import { ILogger, silentLogger } from "@iracedeck/logger";
 import yaml from "yaml";
 
 import {
@@ -26,7 +26,7 @@ export class IRacingSDK {
   private static _instance: IRacingSDK;
 
   private native: IRacingNative;
-  private logger: Logger = silentLogger;
+  private logger: ILogger = silentLogger;
   private varHeaders: VarHeader[] = [];
   private lastSessionInfoUpdate = -1;
   private sessionInfo: SessionInfo | null = null;
@@ -50,7 +50,7 @@ export class IRacingSDK {
   /**
    * Set the logger for this instance
    */
-  setLogger(logger: Logger): void {
+  setLogger(logger: ILogger): void {
     this.logger = logger;
   }
 
@@ -58,7 +58,7 @@ export class IRacingSDK {
    * Set loggers on all SDK singletons using scoped loggers from the base logger
    * @param logger Base logger to create scopes from
    */
-  static setLoggers(logger: Logger): void {
+  static setLoggers(logger: ILogger): void {
     IRacingSDK.getInstance().setLogger(logger.createScope("IRacingSDK"));
     CameraCommand.getInstance().setLogger(logger.createScope("CameraCommand"));
     ChatCommand.getInstance().setLogger(logger.createScope("ChatCommand"));

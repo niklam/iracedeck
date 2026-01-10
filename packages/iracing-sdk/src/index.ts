@@ -11,7 +11,7 @@ export { IRacingSDK } from "./IRacingSDK.js";
 export { SDKController, TelemetryCallback } from "./SDKController.js";
 
 // Re-export logger types for convenience
-export { Logger, consoleLogger, silentLogger, LogLevel } from "@iracedeck/logger";
+export { ILogger, consoleLogger, silentLogger, LogLevel } from "@iracedeck/logger";
 
 // Types and enums
 export {

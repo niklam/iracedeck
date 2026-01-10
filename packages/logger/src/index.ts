@@ -17,69 +17,64 @@ export enum LogLevel {
   Silent = 5,
 }
 
-export interface Logger {
+/**
+ * Logger interface - inject implementations for testability
+ */
+export interface ILogger {
   trace(message: string): void;
   debug(message: string): void;
   info(message: string): void;
   warn(message: string): void;
   error(message: string): void;
-  setLevel(level: LogLevel): void;
-  createScope(scope: string): Logger;
+  withLevel(level: LogLevel): ILogger;
+  createScope(scope: string): ILogger;
 }
 
 /**
- * Create a console logger with configurable level
+ * Create an immutable console logger
  */
-function createConsoleLogger(scope?: string): Logger {
-  let currentLevel: LogLevel = LogLevel.Info;
-
+export function createConsoleLogger(scope?: string, level: LogLevel = LogLevel.Info): ILogger {
   const formatMessage = (message: string) => (scope ? `[${scope}] ${message}` : message);
 
-  const logger: Logger = {
+  return {
     trace: (message: string) => {
-      if (currentLevel <= LogLevel.Trace) console.debug(formatMessage(message));
+      if (level <= LogLevel.Trace) console.debug(formatMessage(message));
     },
     debug: (message: string) => {
-      if (currentLevel <= LogLevel.Debug) console.debug(formatMessage(message));
+      if (level <= LogLevel.Debug) console.debug(formatMessage(message));
     },
     info: (message: string) => {
-      if (currentLevel <= LogLevel.Info) console.info(formatMessage(message));
+      if (level <= LogLevel.Info) console.info(formatMessage(message));
     },
     warn: (message: string) => {
-      if (currentLevel <= LogLevel.Warn) console.warn(formatMessage(message));
+      if (level <= LogLevel.Warn) console.warn(formatMessage(message));
     },
     error: (message: string) => {
-      if (currentLevel <= LogLevel.Error) console.error(formatMessage(message));
+      if (level <= LogLevel.Error) console.error(formatMessage(message));
     },
-    setLevel: (level: LogLevel) => {
-      currentLevel = level;
-    },
+    withLevel: (newLevel: LogLevel) => createConsoleLogger(scope, newLevel),
     createScope: (newScope: string) => {
       const childScope = scope ? `${scope}:${newScope}` : newScope;
-      const child = createConsoleLogger(childScope);
-      child.setLevel(currentLevel);
 
-      return child;
+      return createConsoleLogger(childScope, level);
     },
   };
-
-  return logger;
 }
 
 /**
- * Console logger implementation
+ * Default console logger instance
  */
-export const consoleLogger: Logger = createConsoleLogger();
+export const consoleLogger: ILogger = createConsoleLogger();
 
 /**
  * Silent logger that discards all messages
  */
-export const silentLogger: Logger = {
+export const silentLogger: ILogger = {
   trace: () => {},
   debug: () => {},
   info: () => {},
   warn: () => {},
   error: () => {},
-  setLevel: () => {},
+  withLevel: () => silentLogger,
   createScope: () => silentLogger,
 };

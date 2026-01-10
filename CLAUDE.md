@@ -13,10 +13,12 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 ## Architecture
 
 ### Legacy (being refactored)
+
 - SDK classes use singletons with `getInstance()` - moving to dependency injection
 - `IRacingSDK.setLoggers(logger)` configures logging for all SDK singletons
 
 ### Design Principles
+
 - Follow SOLID principles
 - Inject dependencies, no hardcoded singletons in business logic
 - Use interfaces for external dependencies (prefix with `I`: `IConnectionManager`)
@@ -44,6 +46,11 @@ pnpm format:fix               # Fix formatting issues
 pnpm test                     # Run tests once
 pnpm test:watch               # Run tests in watch mode
 ```
+
+## Commiting code
+
+- Use conventional commits
+- Do not add Claude as contributor
 
 ## References
 

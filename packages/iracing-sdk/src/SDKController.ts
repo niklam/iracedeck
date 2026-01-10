@@ -2,7 +2,7 @@
  * SDK Controller - Manages the iRacing SDK connection
  * and notifies subscribers of telemetry updates
  */
-import { Logger, silentLogger } from "@iracedeck/logger";
+import { ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
 import { TelemetryData } from "./types.js";
@@ -13,7 +13,7 @@ export class SDKController {
   private static _instance: SDKController;
 
   private sdk: IRacingSDK;
-  private logger: Logger = silentLogger;
+  private logger: ILogger = silentLogger;
   private subscribers = new Map<string, TelemetryCallback>();
   private updateInterval: NodeJS.Timeout | null = null;
   private reconnectInterval: NodeJS.Timeout | null = null;
@@ -38,7 +38,7 @@ export class SDKController {
   /**
    * Set the logger for this instance
    */
-  setLogger(logger: Logger): void {
+  setLogger(logger: ILogger): void {
     this.logger = logger;
   }
 

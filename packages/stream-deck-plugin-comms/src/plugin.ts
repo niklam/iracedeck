@@ -1,37 +1,36 @@
 import streamDeck from "@elgato/streamdeck";
-import { IRacingSDK, Logger, LogLevel } from "@iracedeck/iracing-sdk";
+import { IRacingSDK, ILogger, LogLevel } from "@iracedeck/iracing-sdk";
 
 // Comms actions
 import { DoChatMessage } from "./actions/comms/do-chat-message.js";
 
-// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
+// Enable trace logging
 streamDeck.logger.setLevel("trace");
 
-// Map LogLevel enum to Stream Deck logger level strings
-const logLevelToString: Record<LogLevel, "trace" | "debug" | "info" | "warn" | "error"> = {
-  [LogLevel.Trace]: "trace",
-  [LogLevel.Debug]: "debug",
-  [LogLevel.Info]: "info",
-  [LogLevel.Warn]: "warn",
-  [LogLevel.Error]: "error",
-  [LogLevel.Silent]: "error",
-};
-
-// Create a wrapper to adapt Stream Deck logger to our Logger interface
-function createSDLogger(sdLogger: ReturnType<typeof streamDeck.logger.createScope>): Logger {
-  const logger: Logger = {
-    trace: (msg) => sdLogger.trace(msg),
-    debug: (msg) => sdLogger.debug(msg),
-    info: (msg) => sdLogger.info(msg),
-    warn: (msg) => sdLogger.warn(msg),
-    error: (msg) => sdLogger.error(msg),
-    setLevel: (level) => {
-      sdLogger.setLevel(logLevelToString[level]);
+// Create a wrapper to adapt Stream Deck logger to our ILogger interface
+function createSDLogger(
+  sdLogger: ReturnType<typeof streamDeck.logger.createScope>,
+  level: LogLevel = LogLevel.Info,
+): ILogger {
+  return {
+    trace: (msg: string) => {
+      if (level <= LogLevel.Trace) sdLogger.trace(msg);
     },
-    createScope: (scope) => createSDLogger(sdLogger.createScope(scope)),
+    debug: (msg: string) => {
+      if (level <= LogLevel.Debug) sdLogger.debug(msg);
+    },
+    info: (msg: string) => {
+      if (level <= LogLevel.Info) sdLogger.info(msg);
+    },
+    warn: (msg: string) => {
+      if (level <= LogLevel.Warn) sdLogger.warn(msg);
+    },
+    error: (msg: string) => {
+      if (level <= LogLevel.Error) sdLogger.error(msg);
+    },
+    withLevel: (newLevel: LogLevel) => createSDLogger(sdLogger, newLevel),
+    createScope: (scope: string) => createSDLogger(sdLogger.createScope(scope), level),
   };
-
-  return logger;
 }
 
 // Set up loggers for all SDK singletons
