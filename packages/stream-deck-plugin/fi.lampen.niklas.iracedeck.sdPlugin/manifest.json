@@ -1,178 +1,178 @@
 {
-    "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-    "Name": "iRaceDeck",
-    "Version": "0.1.0.0",
-    "Author": "Niklas Lampén",
-    "Actions": [
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "iRaceDeck",
+  "Version": "0.1.0.0",
+  "Author": "Niklas Lampén",
+  "Actions": [
+    {
+      "Name": "Display Speed",
+      "UUID": "fi.lampen.niklas.iracedeck.vehicle.display-speed",
+      "Icon": "imgs/actions/vehicle/display-speed/icon",
+      "Tooltip": "Displays current speed from iRacing. Press to toggle between MPH and KPH.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
         {
-            "Name": "Display Speed",
-            "UUID": "fi.lampen.niklas.iracedeck.vehicle.display-speed",
-            "Icon": "imgs/actions/vehicle/display-speed/icon",
-            "Tooltip": "Displays current speed from iRacing. Press to toggle between MPH and KPH.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/vehicle/display-speed/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 18
-                }
-            ]
-        },
-        {
-            "Name": "Display Gear",
-            "UUID": "fi.lampen.niklas.iracedeck.vehicle.display-gear",
-            "Icon": "imgs/actions/vehicle/display-gear/icon",
-            "Tooltip": "Displays current gear from iRacing.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/vehicle/display-gear/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 18
-                }
-            ],
-            "UserTitleEnabled": false
-        },
-        {
-            "Name": "Display Sky",
-            "UUID": "fi.lampen.niklas.iracedeck.environment.display-sky",
-            "Icon": "imgs/actions/environment/display-sky/icon",
-            "Tooltip": "Displays current sky conditions from iRacing.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/environment/display-sky/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 9
-                }
-            ],
-            "UserTitleEnabled": false
-        },
-        {
-            "Name": "Display Fuel to Add",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.display-fuel-to-add",
-            "Icon": "imgs/actions/pit/display-fuel-to-add/icon",
-            "Tooltip": "Displays amount of fuel to be added at next pit stop.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/display-fuel-to-add/key",
-                    "TitleAlignment": "middle"
-                }
-            ]
-        },
-        {
-            "Name": "Add Fuel",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.do-fuel-add",
-            "Icon": "imgs/actions/pit/do-fuel-add/icon",
-            "Tooltip": "Add fuel to pit service amount.",
-            "PropertyInspectorPath": "ui/fuel.html",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/do-fuel-add/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 14
-                }
-            ]
-        },
-        {
-            "Name": "Reduce Fuel",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.do-fuel-reduce",
-            "Icon": "imgs/actions/pit/do-fuel-reduce/icon",
-            "Tooltip": "Reduce fuel from pit service amount.",
-            "PropertyInspectorPath": "ui/fuel.html",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/do-fuel-reduce/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 14
-                }
-            ]
-        },
-        {
-            "Name": "Tire Compound",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.do-tire-compound",
-            "Icon": "imgs/actions/pit/do-tire-compound/icon",
-            "Tooltip": "Toggle tire compound between dry and wet.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/do-tire-compound/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 14
-                }
-            ]
-        },
-        {
-            "Name": "Change Tires",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.do-change-tires",
-            "Icon": "imgs/actions/pit/do-change-tires/icon",
-            "Tooltip": "Select which tires to change at next pit stop.",
-            "PropertyInspectorPath": "ui/change-tires.html",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/do-change-tires/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 14
-                }
-            ],
-            "UserTitleEnabled": false
-        },
-        {
-            "Name": "Fast Repair",
-            "UUID": "fi.lampen.niklas.iracedeck.pit.do-fast-repair",
-            "Icon": "imgs/actions/pit/do-fast-repair/icon",
-            "Tooltip": "Toggle fast repair at next pit stop.",
-            "Controllers": [
-                "Keypad"
-            ],
-            "States": [
-                {
-                    "Image": "imgs/actions/pit/do-fast-repair/key",
-                    "TitleAlignment": "bottom",
-                    "FontSize": 10
-                }
-            ],
-            "UserTitleEnabled": false
+          "Image": "imgs/actions/vehicle/display-speed/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 18
         }
-    ],
-    "Category": "iRaceDeck",
-    "CategoryIcon": "imgs/plugin/category-icon",
-    "CodePath": "bin/plugin.js",
-    "Description": "Open source iRacing Stream Deck support",
-    "Icon": "imgs/plugin/marketplace",
-    "SDKVersion": 3,
-    "Software": {
-        "MinimumVersion": "6.9"
+      ]
     },
-    "OS": [
+    {
+      "Name": "Display Gear",
+      "UUID": "fi.lampen.niklas.iracedeck.vehicle.display-gear",
+      "Icon": "imgs/actions/vehicle/display-gear/icon",
+      "Tooltip": "Displays current gear from iRacing.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
         {
-            "Platform": "windows",
-            "MinimumVersion": "10"
+          "Image": "imgs/actions/vehicle/display-gear/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 18
         }
-    ],
-    "Nodejs": {
-        "Version": "20",
-        "Debug": "enabled"
+      ],
+      "UserTitleEnabled": false
     },
-    "UUID": "fi.lampen.niklas.iracedeck"
+    {
+      "Name": "Display Sky",
+      "UUID": "fi.lampen.niklas.iracedeck.environment.display-sky",
+      "Icon": "imgs/actions/environment/display-sky/icon",
+      "Tooltip": "Displays current sky conditions from iRacing.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/environment/display-sky/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 9
+        }
+      ],
+      "UserTitleEnabled": false
+    },
+    {
+      "Name": "Display Fuel to Add",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.display-fuel-to-add",
+      "Icon": "imgs/actions/pit/display-fuel-to-add/icon",
+      "Tooltip": "Displays amount of fuel to be added at next pit stop.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/display-fuel-to-add/key",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Add Fuel",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.do-fuel-add",
+      "Icon": "imgs/actions/pit/do-fuel-add/icon",
+      "Tooltip": "Add fuel to pit service amount.",
+      "PropertyInspectorPath": "ui/fuel.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/do-fuel-add/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Reduce Fuel",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.do-fuel-reduce",
+      "Icon": "imgs/actions/pit/do-fuel-reduce/icon",
+      "Tooltip": "Reduce fuel from pit service amount.",
+      "PropertyInspectorPath": "ui/fuel.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/do-fuel-reduce/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Tire Compound",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.do-tire-compound",
+      "Icon": "imgs/actions/pit/do-tire-compound/icon",
+      "Tooltip": "Toggle tire compound between dry and wet.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/do-tire-compound/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Change Tires",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.do-change-tires",
+      "Icon": "imgs/actions/pit/do-change-tires/icon",
+      "Tooltip": "Select which tires to change at next pit stop.",
+      "PropertyInspectorPath": "ui/change-tires.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/do-change-tires/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ],
+      "UserTitleEnabled": false
+    },
+    {
+      "Name": "Fast Repair",
+      "UUID": "fi.lampen.niklas.iracedeck.pit.do-fast-repair",
+      "Icon": "imgs/actions/pit/do-fast-repair/icon",
+      "Tooltip": "Toggle fast repair at next pit stop.",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit/do-fast-repair/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 10
+        }
+      ],
+      "UserTitleEnabled": false
+    }
+  ],
+  "Category": "iRaceDeck",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "Open source iRacing Stream Deck support",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "6.9"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "UUID": "fi.lampen.niklas.iracedeck"
 }

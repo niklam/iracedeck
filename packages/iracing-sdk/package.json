@@ -1,44 +1,44 @@
 {
-    "name": "@iracedeck/iracing-sdk",
-    "version": "0.1.0",
-    "description": "iRacing SDK for Node.js - telemetry reading and broadcast commands",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "type": "module",
-    "packageManager": "pnpm@10.0.0",
-    "scripts": {
-        "build": "tsc",
-        "clean": "rimraf dist",
-        "test": "vitest run",
-        "test:watch": "vitest",
-        "test-native": "node -e \"import('@iracedeck/iracing-native').then(console.log).catch(console.error)\""
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@iracedeck/iracing-native": "workspace:*",
-        "@iracedeck/logger": "workspace:*",
-        "yaml": "^2.8.2"
-    },
-    "devDependencies": {
-        "@types/node": "~20.15.0",
-        "rimraf": "^5.0.0",
-        "typescript": "^5.2.2",
-        "vitest": "^4.0.16"
-    },
-    "os": [
-        "win32"
-    ],
-    "engines": {
-        "node": ">=20.0.0"
-    },
-    "keywords": [
-        "iracing",
-        "sdk",
-        "telemetry",
-        "racing",
-        "simulation"
-    ],
-    "license": "MIT"
+  "name": "@iracedeck/iracing-sdk",
+  "version": "0.1.0",
+  "description": "iRacing SDK for Node.js - telemetry reading and broadcast commands",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test-native": "node -e \"import('@iracedeck/iracing-native').then(console.log).catch(console.error)\""
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@iracedeck/iracing-native": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "~20.15.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.2.2",
+    "vitest": "^4.0.16"
+  },
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "iracing",
+    "sdk",
+    "telemetry",
+    "racing",
+    "simulation"
+  ],
+  "license": "MIT"
 }

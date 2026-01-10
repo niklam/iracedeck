@@ -1,23 +1,23 @@
 {
-    "$schema": "https://turbo.build/schema.json",
-    "tasks": {
-        "build": {
-            "dependsOn": ["^build"],
-            "outputs": [
-                "dist/**", 
-                "build/**", 
-                "bin/**", 
-                "fi.lampen.niklas.iracedeck.sdPlugin/**",
-                "fi.lampen.niklas.iracedeck.*.sdPlugin/**"
-            ]
-        },
-        "dev": {
-            "dependsOn": ["^build"],
-            "cache": false,
-            "persistent": true
-        },
-        "clean": {
-            "cache": false
-        }
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [
+        "dist/**",
+        "build/**",
+        "bin/**",
+        "fi.lampen.niklas.iracedeck.sdPlugin/**",
+        "fi.lampen.niklas.iracedeck.*.sdPlugin/**"
+      ]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false
     }
+  }
 }

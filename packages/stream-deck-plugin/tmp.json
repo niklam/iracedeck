@@ -1,18 +1,18 @@
 {
-    "extends": "../../tsconfig.base.json",
-    "compilerOptions": {
-        "outDir": "./fi.lampen.niklas.iracedeck.sdPlugin/bin",
-        "rootDir": "./src",
-        "customConditions": ["node"],
-        "experimentalDecorators": true,
-        "emitDecoratorMetadata": true,
-        "declaration": false,
-        "declarationMap": false,
-        "sourceMap": true,
-        "noUnusedLocals": false,
-        "noUnusedParameters": false,
-        "skipLibCheck": true
-    },
-    "include": ["src/**/*.ts"],
-    "exclude": ["node_modules", "dist", "fi.lampen.niklas.iracedeck.sdPlugin"]
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./fi.lampen.niklas.iracedeck.sdPlugin/bin",
+    "rootDir": "./src",
+    "customConditions": ["node"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "fi.lampen.niklas.iracedeck.sdPlugin"]
 }

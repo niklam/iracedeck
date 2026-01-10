@@ -1,42 +1,42 @@
 {
-    "name": "@iracedeck/stream-deck-plugin-comms",
-    "version": "1.0.0",
-    "description": "Stream Deck plugin for iRacing - Communication related functionality",
-    "type": "module",
-    "packageManager": "pnpm@10.0.0",
-    "scripts": {
-        "build": "rollup -c && npm run postbuild",
-        "postbuild": "cd fi.lampen.niklas.iracedeck.comms.sdPlugin/bin && npm install",
-        "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart fi.lampen.niklas.iracedeck.comms\"",
-        "clean": "rimraf fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js.map",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "dependencies": {
-        "@elgato/streamdeck": "^2.0.0",
-        "@iracedeck/iracing-sdk": "workspace:*",
-        "@iracedeck/stream-deck-utils": "workspace:*",
-        "zod": "^4.3.5"
-    },
-    "devDependencies": {
-        "@elgato/cli": "^1.6.0",
-        "@rollup/plugin-commonjs": "^28.0.0",
-        "@rollup/plugin-node-resolve": "^15.2.2",
-        "@rollup/plugin-terser": "^0.4.4",
-        "@rollup/plugin-typescript": "^12.1.0",
-        "@tsconfig/node20": "^20.1.2",
-        "@types/node": "~20.15.0",
-        "rimraf": "^5.0.0",
-        "rollup": "^4.0.2",
-        "tslib": "^2.6.2",
-        "typescript": "^5.2.2",
-        "vitest": "^4.0.16"
-    },
-    "os": [
-        "win32"
-    ],
-    "engines": {
-        "node": ">=20.0.0"
-    },
-    "license": "MIT"
+  "name": "@iracedeck/stream-deck-plugin-comms",
+  "version": "1.0.0",
+  "description": "Stream Deck plugin for iRacing - Communication related functionality",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "rollup -c && npm run postbuild",
+    "postbuild": "cd fi.lampen.niklas.iracedeck.comms.sdPlugin/bin && npm install",
+    "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart fi.lampen.niklas.iracedeck.comms\"",
+    "clean": "rimraf fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js fi.lampen.niklas.iracedeck.comms.sdPlugin/bin/plugin.js.map",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^2.0.0",
+    "@iracedeck/iracing-sdk": "workspace:*",
+    "@iracedeck/stream-deck-utils": "workspace:*",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@elgato/cli": "^1.6.0",
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-node-resolve": "^15.2.2",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.0",
+    "@tsconfig/node20": "^20.1.2",
+    "@types/node": "~20.15.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.2",
+    "tslib": "^2.6.2",
+    "typescript": "^5.2.2",
+    "vitest": "^4.0.16"
+  },
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
 }

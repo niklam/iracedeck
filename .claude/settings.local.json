@@ -30,7 +30,10 @@
       "Bash(pnpm run format:*)",
       "Bash(pnpm run lint:fix:*)",
       "Bash(pnpm run format:fix:*)",
-      "Bash(pnpm --filter @iracedeck/iracing-sdk run test)"
+      "Bash(pnpm --filter @iracedeck/iracing-sdk run test)",
+      "Bash(pnpm build:stream-deck:*)",
+      "Bash(npx prettier:*)",
+      "Bash(pnpm exec prettier:*)"
     ]
   }
 }

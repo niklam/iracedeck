@@ -1,44 +1,44 @@
 {
-    "name": "@iracedeck/iracing-native",
-    "version": "0.1.0",
-    "description": "Native Node.js addon for iRacing SDK - Win32 memory-mapped file and window messaging",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "type": "module",
-    "scripts": {
-        "install": "echo Run build manually in iracing-native to avoid extra builds",
-        "build": "node-gyp rebuild && tsc",
-        "clean": "node-gyp clean && rimraf dist"
-    },
-    "files": [
-        "dist",
-        "build/Release/*.node",
-        "src/*.cc"
-    ],
-    "dependencies": {
-        "node-addon-api": "^8.0.0"
-    },
-    "devDependencies": {
-        "@types/node": "~20.15.0",
-        "node-gyp": "^12.1.0",
-        "rimraf": "^5.0.0",
-        "typescript": "^5.2.2"
-    },
-    "os": [
-        "win32"
-    ],
-    "cpu": [
-        "x64"
-    ],
-    "engines": {
-        "node": ">=20.0.0"
-    },
-    "keywords": [
-        "iracing",
-        "native",
-        "node-addon",
-        "win32",
-        "memory-mapped-file"
-    ],
-    "license": "MIT"
+  "name": "@iracedeck/iracing-native",
+  "version": "0.1.0",
+  "description": "Native Node.js addon for iRacing SDK - Win32 memory-mapped file and window messaging",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "install": "echo Run build manually in iracing-native to avoid extra builds",
+    "build": "node-gyp rebuild && tsc",
+    "clean": "node-gyp clean && rimraf dist"
+  },
+  "files": [
+    "dist",
+    "build/Release/*.node",
+    "src/*.cc"
+  ],
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "~20.15.0",
+    "node-gyp": "^12.1.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.2.2"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "iracing",
+    "native",
+    "node-addon",
+    "win32",
+    "memory-mapped-file"
+  ],
+  "license": "MIT"
 }

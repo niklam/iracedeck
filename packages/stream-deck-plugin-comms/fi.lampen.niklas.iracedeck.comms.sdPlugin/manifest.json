@@ -1,48 +1,48 @@
 {
-	"Name": "iRaceDeck: Communication",
-	"Version": "0.1.0.0",
-	"Author": "Niklas Lampén",
-	"Actions": [
-		{
-				"Name": "Chat",
-				"UUID": "fi.lampen.niklas.iracedeck.comms.do-chat-message",
-				"Icon": "imgs/actions/comms/do-chat-message/icon",
-				"Tooltip": "Send a custom chat message to iRacing.",
-				"PropertyInspectorPath": "ui/chat.html",
-				"Controllers": [
-						"Keypad"
-				],
-				"States": [
-						{
-								"Image": "imgs/actions/comms/do-chat-message/key",
-								"TitleAlignment": "middle",
-								"FontSize": 8
-						}
-				]
-		}
-	],
-	"Category": "iRaceDeck: Communication",
-	"CategoryIcon": "imgs/plugin/category-icon",
-	"CodePath": "bin/plugin.js",
-	"Description": "iRacing communication functionality.",
-	"Icon": "imgs/plugin/marketplace",
-	"SDKVersion": 3,
-	"Software": {
-		"MinimumVersion": "6.9"
-	},
-	"OS": [
-		{
-			"Platform": "mac",
-			"MinimumVersion": "12"
-		},
-		{
-			"Platform": "windows",
-			"MinimumVersion": "10"
-		}
-	],
-	"Nodejs": {
-		"Version": "20",
-		"Debug": "enabled"
-	},
-	"UUID": "fi.lampen.niklas.iracedeck.comms"
+  "Name": "iRaceDeck: Communication",
+  "Version": "0.1.0.0",
+  "Author": "Niklas Lampén",
+  "Actions": [
+    {
+      "Name": "Chat",
+      "UUID": "fi.lampen.niklas.iracedeck.comms.do-chat-message",
+      "Icon": "imgs/actions/comms/do-chat-message/icon",
+      "Tooltip": "Send a custom chat message to iRacing.",
+      "PropertyInspectorPath": "ui/chat.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/comms/do-chat-message/key",
+          "TitleAlignment": "middle",
+          "FontSize": 8
+        }
+      ]
+    }
+  ],
+  "Category": "iRaceDeck: Communication",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "iRacing communication functionality.",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "6.9"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "UUID": "fi.lampen.niklas.iracedeck.comms"
 }
