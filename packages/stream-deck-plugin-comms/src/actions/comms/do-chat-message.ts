@@ -5,7 +5,7 @@ import z from "zod";
 
 import { ConnectionStateAwareAction } from "../../base/connection-state-aware-action.js";
 import { commands } from "../../sdk.js";
-import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-utils.js";
+import { debugKeyText, DEFAULT_ICON_COLOR, generateChatSvg } from "./chat-utils.js";
 
 /**
  * Do Chat Message Action
@@ -16,8 +16,8 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("DoChatMessage"), LogLevel.Info);
   private cameraCommand = commands.camera;
   private activeContexts = new Map<string, ChatSettings>();
-  private lastTitle = new Map<string, string>();
   private lastIconColor = new Map<string, string>();
+  private lastKeyText = new Map<string, string>();
 
   /**
    * When the action appears on the Stream Deck
@@ -55,8 +55,8 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
-    this.lastTitle.delete(ev.action.id);
     this.lastIconColor.delete(ev.action.id);
+    this.lastKeyText.delete(ev.action.id);
   }
 
   /**
@@ -64,45 +64,37 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
    */
   private async updateDisplayWithEvent(ev: WillAppearEvent<ChatSettings>): Promise<void> {
     const settings = ev.payload.settings;
-    const isConnected = this.sdkController.getConnectionStatus();
-    const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+    const keyText = settings.keyText || "";
 
     // Update connection state for initial overlay
     this.updateConnectionState();
 
-    this.lastTitle.set(ev.action.id, title);
     this.lastIconColor.set(ev.action.id, iconColor);
-
-    await ev.action.setTitle(title);
+    this.lastKeyText.set(ev.action.id, keyText);
 
     // Generate SVG and set via BaseAction (stores for overlay refresh)
-    const svgDataUri = generateChatSvg(iconColor);
+    const svgDataUri = generateChatSvg(iconColor, keyText);
     await this.setKeyImage(ev, svgDataUri);
   }
 
   /**
    * Update the display for a specific context (called from subscription callback)
    */
-  private async updateDisplay(contextId: string, settings: ChatSettings, isConnected: boolean): Promise<void> {
-    const action = streamDeck.actions.getActionById(contextId);
-
-    if (!action) return;
-
-    const title = formatChatTitle(settings.message, isConnected);
+  private async updateDisplay(contextId: string, settings: ChatSettings, _isConnected: boolean): Promise<void> {
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+    const keyText = settings.keyText || "";
 
-    // Only update if the title or color has changed
-    const lastTitle = this.lastTitle.get(contextId);
+    // Only update if the color or keyText has changed
     const lastColor = this.lastIconColor.get(contextId);
+    const lastText = this.lastKeyText.get(contextId);
 
-    if (lastTitle !== title || lastColor !== iconColor) {
-      this.lastTitle.set(contextId, title);
+    if (lastColor !== iconColor || lastText !== keyText) {
       this.lastIconColor.set(contextId, iconColor);
-      await action.setTitle(title);
+      this.lastKeyText.set(contextId, keyText);
 
       // Generate SVG and update via BaseAction (uses stored action ref)
-      const svgDataUri = generateChatSvg(iconColor);
+      const svgDataUri = generateChatSvg(iconColor, keyText);
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }
@@ -114,20 +106,21 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     // Update stored settings
     this.activeContexts.set(ev.action.id, ev.payload.settings);
 
-    // Update display when settings change - use event-based update
+    // Update display when settings change
     const settings = ev.payload.settings;
-    const isConnected = this.sdkController.getConnectionStatus();
-    const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+    const keyText = settings.keyText || "";
+
+    // Debug logging to see what characters are in keyText
+    this.logger.info(debugKeyText(keyText));
 
     // Update connection state for overlay
     this.updateConnectionState();
 
-    this.lastTitle.set(ev.action.id, title);
     this.lastIconColor.set(ev.action.id, iconColor);
+    this.lastKeyText.set(ev.action.id, keyText);
 
-    await ev.action.setTitle(title);
-    const svgDataUri = generateChatSvg(iconColor);
+    const svgDataUri = generateChatSvg(iconColor, keyText);
     await this.setKeyImage(ev, svgDataUri);
   }
 
@@ -183,6 +176,7 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
 const ChatSettings = z.object({
   message: z.string().default(""),
   iconColor: z.string().default(DEFAULT_ICON_COLOR),
+  keyText: z.string().default(""),
 });
 
 /**

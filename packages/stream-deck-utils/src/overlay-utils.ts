@@ -114,11 +114,18 @@ export function applyInactiveOverlay(svg: string): string {
     return svg;
   }
 
-  // Replace all hex colors with their grayscale equivalents
-  // Matches #RGB and #RRGGBB formats
-  const modifiedSvg = rawSvg.replace(/#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/g, (match) => {
-    return hexToGrayscale(match);
-  });
+  const filters = `<defs>
+    <filter id="grayscale-darken-on-inactive">
+      <feColorMatrix type="saturate" values="0" />
+      <feColorMatrix type="matrix"
+        values="0.5 0 0 0 0
+                0 0.5 0 0 0
+                0 0 0.5 0 0
+                0 0 0 1 0" />
+    </filter>
+  </defs>`;
+
+  const modifiedSvg = rawSvg.replace(/<svg(.*?)>/, `<svg$1>\n${filters}\n`);
 
   // Return in same format as input
   return wasDataUri ? svgToDataUri(modifiedSvg) : modifiedSvg;

@@ -5,33 +5,78 @@
  */
 
 /**
- * Generates an SVG chat bubble icon with configurable color.
+ * Generates an SVG chat bubble icon with configurable color and optional text.
  *
  * @param color - The stroke color for the chat bubble (e.g., "#4a90d9")
+ * @param keyText - Optional text to display centered in the bubble
  * @returns A base64-encoded data URI for the SVG
  */
-export function generateChatSvg(color: string): string {
+export function generateChatSvg(color: string, keyText?: string): string {
+  const trimmedText = keyText?.trim();
+  const textElement = trimmedText ? generateTextElement(trimmedText) : "";
+
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <path d="M14 18
-           h44
+  <g opacity="1" filter="url(#grayscale-darken-on-inactive)">
+  <path d="M14 14
+           h45
            a6 6 0 0 1 6 6
-           v24
+           v34
            a6 6 0 0 1-6 6
-           H26
+           H29
            l-4 8
            l-4 -8
-           H14
+           H13
            a6 6 0 0 1-6-6
-           V24
+           V20
            a6 6 0 0 1 6-6
            z"
         fill="none"
         stroke="${color}"
         stroke-width="2.5"
         stroke-linejoin="round"/>
+    ${textElement}
+  </g>
 </svg>`;
 
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
+/**
+ * Escapes special XML characters in a string.
+ */
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Generates SVG text element with support for multiple lines.
+ * Uses tspan elements for each line, centered vertically.
+ */
+function generateTextElement(text: string): string {
+  // Handle both Windows (\r\n) and Unix (\n) line endings
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  const firstLineEm = 40 - (lines.length - 1) * 6;
+
+  return lines
+    .map((line, i) => {
+      let y = i === 0 ? firstLineEm : firstLineEm + 12 * i;
+
+      return `<text x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="10" font-weight="bold">${escapeXml(line)}</text>\n`;
+    })
+    .join("");
 }
 
 /**
@@ -61,3 +106,16 @@ export function formatChatTitle(message: string | undefined, isConnected: boolea
  * Default icon color for chat messages.
  */
 export const DEFAULT_ICON_COLOR = "#4a90d9";
+
+/**
+ * Debug helper to inspect keyText value and its character codes.
+ * Useful for debugging newline handling issues.
+ *
+ * @param keyText - The text to inspect
+ * @returns Debug info string
+ */
+export function debugKeyText(keyText: string): string {
+  const chars = [...keyText].map((c) => c.charCodeAt(0));
+
+  return `keyText: ${JSON.stringify(keyText)}, chars: [${chars.join(", ")}]`;
+}

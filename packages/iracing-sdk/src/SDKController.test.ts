@@ -199,8 +199,8 @@ describe("SDKController", () => {
 
       controller.subscribe("test", vi.fn());
 
-      // Advance to trigger reconnect
-      vi.advanceTimersByTime(1000);
+      // Advance to trigger reconnect (2 second interval)
+      vi.advanceTimersByTime(2000);
 
       expect(mockSdk.connect).toHaveBeenCalledTimes(2); // Initial + reconnect
     });
@@ -217,10 +217,10 @@ describe("SDKController", () => {
       vi.mocked(mockSdk.isConnected).mockReturnValue(false);
       vi.mocked(mockSdk.connect).mockReturnValue(false);
 
-      // The reconnect interval (1000ms) will call tryConnect
+      // The reconnect interval (2000ms) will call tryConnect
       // connect() returns false, so isConnected changes from true to false
       // This triggers notification to subscribers
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(2000);
 
       expect(callback).toHaveBeenCalledWith(expect.anything(), false);
     });

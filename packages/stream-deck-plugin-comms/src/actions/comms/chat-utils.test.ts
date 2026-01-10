@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-utils.js";
+import { DEFAULT_ICON_COLOR, generateChatSvg } from "./chat-utils.js";
 
 describe("generateChatSvg", () => {
   it("should return a data URI with base64 encoded SVG", () => {
@@ -42,81 +42,66 @@ describe("generateChatSvg", () => {
     // RGB color
     expect(() => generateChatSvg("rgb(255, 0, 0)")).not.toThrow();
   });
-});
 
-describe("formatChatTitle", () => {
-  describe("when disconnected", () => {
-    it("should return disconnected message", () => {
-      const result = formatChatTitle("Hello", false);
+  it("should include keyText when provided", () => {
+    const result = generateChatSvg("#ff0000", "Hello");
 
-      expect(result).toBe("iRacing\nnot\nconnected");
-    });
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-    it("should return disconnected message even with empty message", () => {
-      const result = formatChatTitle("", false);
-
-      expect(result).toBe("iRacing\nnot\nconnected");
-    });
-
-    it("should return disconnected message even with undefined message", () => {
-      const result = formatChatTitle(undefined, false);
-
-      expect(result).toBe("iRacing\nnot\nconnected");
-    });
+    expect(svg).toContain("<text");
+    expect(svg).toContain("Hello");
+    expect(svg).toContain('fill="#ffffff"');
   });
 
-  describe("when connected", () => {
-    it("should return empty string for empty message", () => {
-      const result = formatChatTitle("", true);
+  it("should handle multi-line text with Unix newlines", () => {
+    const result = generateChatSvg("#ff0000", "Line1\nLine2");
 
-      expect(result).toBe("");
-    });
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-    it("should return empty string for undefined message", () => {
-      const result = formatChatTitle(undefined, true);
+    // Multiple lines create separate text elements
+    expect(svg).toContain("Line1</text>");
+    expect(svg).toContain("Line2</text>");
+  });
 
-      expect(result).toBe("");
-    });
+  it("should handle multi-line text with Windows newlines", () => {
+    const result = generateChatSvg("#ff0000", "Line1\r\nLine2");
 
-    it("should return empty string for whitespace-only message", () => {
-      const result = formatChatTitle("   ", true);
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-      expect(result).toBe("");
-    });
+    // Multiple lines create separate text elements
+    expect(svg).toContain("Line1</text>");
+    expect(svg).toContain("Line2</text>");
+  });
 
-    it("should return short message as-is", () => {
-      const result = formatChatTitle("Hello!", true);
+  it("should escape XML special characters in keyText", () => {
+    const result = generateChatSvg("#ff0000", "<script>&test</script>");
 
-      expect(result).toBe("Hello!");
-    });
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-    it("should return message at exactly 20 chars as-is", () => {
-      const message = "12345678901234567890"; // 20 chars
-      const result = formatChatTitle(message, true);
+    expect(svg).toContain("&lt;script&gt;");
+    expect(svg).toContain("&amp;test");
+  });
 
-      expect(result).toBe(message);
-    });
+  it("should not include text element when keyText is empty", () => {
+    const result = generateChatSvg("#ff0000", "");
 
-    it("should truncate message longer than 20 chars", () => {
-      const message = "This is a very long chat message";
-      const result = formatChatTitle(message, true);
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-      expect(result).toBe("This is a very lo...");
-      expect(result.length).toBe(20);
-    });
+    expect(svg).not.toContain("<text");
+  });
 
-    it("should truncate to first 17 chars plus ellipsis", () => {
-      const message = "123456789012345678901"; // 21 chars
-      const result = formatChatTitle(message, true);
+  it("should not include text element when keyText is whitespace only", () => {
+    const result = generateChatSvg("#ff0000", "   ");
 
-      expect(result).toBe("12345678901234567...");
-    });
+    const base64 = result.replace("data:image/svg+xml;base64,", "");
+    const svg = Buffer.from(base64, "base64").toString("utf-8");
 
-    it("should trim whitespace before processing", () => {
-      const result = formatChatTitle("  Hello  ", true);
-
-      expect(result).toBe("Hello");
-    });
+    expect(svg).not.toContain("<text");
   });
 });
 
