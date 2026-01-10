@@ -1,14 +1,9 @@
-import streamDeck, {
-  action,
-  KeyDownEvent,
-  SingletonAction,
-  WillAppearEvent,
-  WillDisappearEvent,
-} from "@elgato/streamdeck";
+import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import { commands, controller } from "../../plugin.js";
+import { ConnectionStateAwareAction } from "../../base/connection-state-aware-action.js";
+import { commands } from "../../plugin.js";
 import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-utils.js";
 
 /**
@@ -16,8 +11,7 @@ import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-uti
  * Sends a custom chat message to iRacing when pressed
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.comms.do-chat-message" })
-export class DoChatMessage extends SingletonAction<ChatSettings> {
-  private sdkController = controller;
+export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
   private cameraCommand = commands.camera;
   private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, ChatSettings>();
@@ -43,14 +37,15 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
       this.startUpdates();
     }
 
-    // Update immediately
-    this.updateDisplay(ev.action.id, ev.payload.settings);
+    // Update immediately with event (stores action ref for later updates)
+    await this.updateDisplayWithEvent(ev);
   }
 
   /**
    * When the action disappears from the Stream Deck
    */
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+  override async onWillDisappear(ev: WillDisappearEvent<ChatSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.activeContexts.delete(ev.action.id);
     this.lastTitle.delete(ev.action.id);
     this.lastIconColor.delete(ev.action.id);
@@ -83,14 +78,36 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
   }
 
   /**
-   * Update the display for a specific context
+   * Update display using an event (for initial setup, stores action ref)
+   */
+  private async updateDisplayWithEvent(ev: WillAppearEvent<ChatSettings>): Promise<void> {
+    const settings = ev.payload.settings;
+    const isConnected = this.sdkController.getConnectionStatus();
+    const title = formatChatTitle(settings.message, isConnected);
+    const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+
+    this.lastTitle.set(ev.action.id, title);
+    this.lastIconColor.set(ev.action.id, iconColor);
+
+    await ev.action.setTitle(title);
+
+    // Generate SVG and set via BaseAction (stores for overlay refresh)
+    const svgDataUri = generateChatSvg(iconColor);
+    await this.setKeyImage(ev, svgDataUri);
+  }
+
+  /**
+   * Update the display for a specific context (periodic updates)
    */
   private async updateDisplay(contextId: string, settings: ChatSettings): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
 
     if (!action) return;
 
-    const isConnected = this.sdkController.getConnectionStatus();
+    // Update active state when connection status changes
+    this.updateConnectionState();
+
+    const isConnected = this.getConnectionStatus();
     const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
 
@@ -103,9 +120,9 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
       this.lastIconColor.set(contextId, iconColor);
       await action.setTitle(title);
 
-      // Generate SVG with configured color
+      // Generate SVG and update via BaseAction (uses stored action ref)
       const svgDataUri = generateChatSvg(iconColor);
-      await action.setImage(svgDataUri);
+      await this.updateKeyImage(contextId, svgDataUri);
     }
   }
 
@@ -116,8 +133,18 @@ export class DoChatMessage extends SingletonAction<ChatSettings> {
     // Update stored settings
     this.activeContexts.set(ev.action.id, ev.payload.settings);
 
-    // Update display when settings change
-    this.updateDisplay(ev.action.id, ev.payload.settings);
+    // Update display when settings change - use event-based update
+    const settings = ev.payload.settings;
+    const isConnected = this.sdkController.getConnectionStatus();
+    const title = formatChatTitle(settings.message, isConnected);
+    const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+
+    this.lastTitle.set(ev.action.id, title);
+    this.lastIconColor.set(ev.action.id, iconColor);
+
+    await ev.action.setTitle(title);
+    const svgDataUri = generateChatSvg(iconColor);
+    await this.setKeyImage(ev, svgDataUri);
   }
 
   /**

@@ -171,6 +171,9 @@ importers:
       '@elgato/cli':
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.15.0)
+      '@elgato/utils':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@rollup/plugin-commonjs':
         specifier: ^28.0.0
         version: 28.0.9(rollup@4.54.0)
@@ -211,6 +214,12 @@ importers:
         specifier: workspace:*
         version: link:../logger
     devDependencies:
+      '@elgato/streamdeck':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@elgato/utils':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@types/node':
         specifier: ~20.15.0
         version: 20.15.0
