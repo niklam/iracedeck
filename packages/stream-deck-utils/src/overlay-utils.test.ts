@@ -156,8 +156,7 @@ describe("overlay-utils", () => {
     });
 
     it("should convert multiple colors", () => {
-      const multiColorSvg =
-        '<svg><rect fill="#ff0000"/><circle stroke="#00ff00"/><path fill="#0000ff"/></svg>';
+      const multiColorSvg = '<svg><rect fill="#ff0000"/><circle stroke="#00ff00"/><path fill="#0000ff"/></svg>';
       const result = applyInactiveOverlay(multiColorSvg);
 
       expect(result).toContain('fill="#4c4c4c"'); // red -> gray

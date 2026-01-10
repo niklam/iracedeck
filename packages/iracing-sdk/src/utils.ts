@@ -106,7 +106,10 @@ export function hasAnyFlag(value: number | undefined, flags: number[]): boolean 
  * const activeWarnings = getActiveFlags(telemetry.EngineWarnings, EngineWarnings);
  * // Returns e.g. [1, 4] for WaterTempWarning and OilPressureWarning
  */
-export function getActiveFlags<T extends Record<string, number | string>>(value: number | undefined, flagEnum: T): number[] {
+export function getActiveFlags<T extends Record<string, number | string>>(
+  value: number | undefined,
+  flagEnum: T,
+): number[] {
   if (value === undefined || value === null) {
     return [];
   }

@@ -36,9 +36,7 @@ import { controller } from "../sdk.js";
  * }
  * ```
  */
-export abstract class ConnectionStateAwareAction<
-  T extends JsonObject = JsonObject,
-> extends BaseAction<T> {
+export abstract class ConnectionStateAwareAction<T extends JsonObject = JsonObject> extends BaseAction<T> {
   /**
    * SDKController instance for iRacing communication
    */
@@ -57,7 +55,7 @@ export abstract class ConnectionStateAwareAction<
     const isConnected = this.sdkController.getConnectionStatus();
 
     if (this.lastConnectionStatus !== isConnected) {
-      this.logger.debug(`updateConnectionState: ${this.lastConnectionStatus} -> ${isConnected}`);
+      this.logger.info(`updateConnectionState: ${this.lastConnectionStatus} -> ${isConnected}`);
       this.lastConnectionStatus = isConnected;
       this.setActive(isConnected);
     }

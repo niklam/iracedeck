@@ -58,12 +58,16 @@ export class SDKController {
     // Try initial connection
     this.tryConnect();
 
-    // Start reconnect polling (slower - every 1 second)
+    // Start reconnect polling (every 2 seconds when offline)
     this.reconnectInterval = setInterval(() => {
-      if (!this.sdk.isConnected()) {
+      const sdkConnected = this.sdk.isConnected();
+
+      // Reconnect if SDK disconnected, or if SDK reconnected but we haven't updated our state
+      if (!sdkConnected || (sdkConnected && !this.isConnected)) {
+        this.logger.info("[SDKController] Attempting reconnect...");
         this.tryConnect();
       }
-    }, 1000);
+    }, 2000);
 
     // Start telemetry update loop (faster - 4Hz when connected)
     this.updateInterval = setInterval(() => {
@@ -105,6 +109,8 @@ export class SDKController {
     if (connected !== wasConnected) {
       if (connected) {
         this.logger.info("[SDKController] Connected to iRacing");
+      } else {
+        this.logger.info("[SDKController] Disconnected from iRacing");
       }
 
       // Notify all subscribers of connection state change

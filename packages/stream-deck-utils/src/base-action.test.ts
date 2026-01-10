@@ -63,15 +63,26 @@ describe("BaseAction", () => {
       expect(ev.action.setImage).toHaveBeenCalledWith(svg);
     });
 
-    it("should call action.setImage with the original SVG even when inactive", async () => {
+    it("should apply grayscale overlay when inactive", async () => {
       const ev = createMockEvent("context-1");
-      const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" fill="#ff0000"></svg>';
 
       testAction.setActive(false);
       await testAction.setImage(ev, svg);
 
-      // setKeyImage always passes through original SVG - overlay is applied on setActive state change
-      expect(ev.action.setImage).toHaveBeenCalledWith(svg);
+      // setKeyImage applies overlay when inactive
+      expect(ev.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(svg));
+    });
+
+    it("should store original SVG even when inactive", async () => {
+      const ev = createMockEvent("context-1");
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" fill="#ff0000"></svg>';
+
+      testAction.setActive(false);
+      await testAction.setImage(ev, svg);
+
+      // Original SVG is stored, not the grayscale version
+      expect(testAction.getStoredImage("context-1")).toBe(svg);
     });
 
     it("should not call setImage for non-key actions", async () => {
@@ -235,17 +246,31 @@ describe("BaseAction", () => {
       expect(ev.action.setImage).toHaveBeenCalledWith("<svg>updated</svg>");
     });
 
-    it("should call action.setImage with original SVG when inactive (no automatic overlay on update)", async () => {
+    it("should apply grayscale overlay when inactive", async () => {
       const ev = createMockEvent("context-1");
+      const updatedSvg = '<svg fill="#ff0000">updated</svg>';
 
       await testAction.setImage(ev, "<svg>original</svg>");
       testAction.setActive(false);
       ev.action.setImage.mockClear();
 
-      await testAction.updateImage("context-1", "<svg>updated</svg>");
+      await testAction.updateImage("context-1", updatedSvg);
 
-      // updateKeyImage always passes through original SVG - overlay is only applied on setActive state change
-      expect(ev.action.setImage).toHaveBeenCalledWith("<svg>updated</svg>");
+      // updateKeyImage applies overlay when inactive
+      expect(ev.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(updatedSvg));
+    });
+
+    it("should store original SVG even when inactive", async () => {
+      const ev = createMockEvent("context-1");
+      const updatedSvg = '<svg fill="#ff0000">updated</svg>';
+
+      await testAction.setImage(ev, "<svg>original</svg>");
+      testAction.setActive(false);
+
+      await testAction.updateImage("context-1", updatedSvg);
+
+      // Original SVG is stored, not the grayscale version
+      expect(testAction.getStoredImage("context-1")).toBe(updatedSvg);
     });
 
     it("should return false for unknown context", async () => {

@@ -89,11 +89,11 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   setActive(isActive: boolean): void {
     if (this._isActive === isActive) return;
 
-    this.logger.debug(`setActive: ${this._isActive} -> ${isActive}`);
+    this.logger.info(`setActive: ${this._isActive} -> ${isActive}`);
     this._isActive = isActive;
 
     // Refresh all contexts with new active state
-    this.logger.debug(`Refreshing ${this.contexts.size} contexts with overlay=${!isActive}`);
+    this.logger.info(`Refreshing ${this.contexts.size} contexts with overlay=${!isActive}`);
 
     for (const [contextId, { action, svg }] of this.contexts) {
       const finalImage = isActive ? svg : applyInactiveOverlay(svg);
@@ -114,6 +114,7 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
 
   /**
    * Set the key image for an action. The image is stored for later reference.
+   * If inactive, the grayscale overlay is applied automatically.
    *
    * @param ev - The event containing the action reference
    * @param svg - Raw SVG string or base64 data URI
@@ -127,11 +128,13 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
 
     const keyAction = ev.action as KeyAction<T>;
 
-    // Store for later refresh
+    // Store original SVG for later refresh
     this.contexts.set(ev.action.id, { action: keyAction, svg });
     this.logger.debug(`setKeyImage: stored context ${ev.action.id}, isActive=${this._isActive}`);
 
-    await keyAction.setImage(svg);
+    // Apply overlay if inactive
+    const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
+    await keyAction.setImage(finalImage);
     this.logger.trace(`setKeyImage: image set for ${ev.action.id}`);
   }
 
@@ -145,6 +148,7 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   /**
    * Update the key image for a context using a new SVG.
    * Uses the stored action reference from a previous setKeyImage call.
+   * If inactive, the grayscale overlay is applied automatically.
    *
    * @param contextId - The context ID to update
    * @param svg - Raw SVG string or base64 data URI
@@ -159,8 +163,12 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
       return false;
     }
 
+    // Store original SVG for later refresh
     entry.svg = svg;
-    await entry.action.setImage(svg);
+
+    // Apply overlay if inactive
+    const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
+    await entry.action.setImage(finalImage);
     this.logger.trace(`updateKeyImage: updated ${contextId}, isActive=${this._isActive}`);
 
     return true;

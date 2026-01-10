@@ -15,7 +15,6 @@ import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-uti
 export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("DoChatMessage"), LogLevel.Info);
   private cameraCommand = commands.camera;
-  private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, ChatSettings>();
   private lastTitle = new Map<string, string>();
   private lastIconColor = new Map<string, string>();
@@ -33,19 +32,20 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
       });
     }
 
-    // Subscribe to SDK to start the connection loop
-    // Connection state is tracked via updateConnectionState() in the update loop
-    this.sdkController.subscribe(ev.action.id, () => {
-      // Callback required but state tracking happens in updateConnectionState()
-    });
-
-    // Start updating display
-    if (!this.updateInterval) {
-      this.startUpdates();
-    }
-
     // Update immediately with event (stores action ref for later updates)
     await this.updateDisplayWithEvent(ev);
+
+    // Subscribe to telemetry updates - callback handles connection state changes
+    this.sdkController.subscribe(ev.action.id, (_telemetry, isConnected) => {
+      // Update connection state (triggers grayscale overlay via BaseAction.setActive)
+      this.updateConnectionState();
+
+      const settings = this.activeContexts.get(ev.action.id);
+
+      if (settings) {
+        this.updateDisplay(ev.action.id, settings, isConnected);
+      }
+    });
   }
 
   /**
@@ -53,38 +53,10 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
    */
   override async onWillDisappear(ev: WillDisappearEvent<ChatSettings>): Promise<void> {
     await super.onWillDisappear(ev);
+    this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastTitle.delete(ev.action.id);
     this.lastIconColor.delete(ev.action.id);
-
-    // Unsubscribe from SDK
-    this.sdkController.unsubscribe(ev.action.id);
-
-    // Stop updates if no more instances
-    if (this.activeContexts.size === 0) {
-      this.stopUpdates();
-    }
-  }
-
-  /**
-   * Start periodic updates
-   */
-  private startUpdates(): void {
-    this.updateInterval = setInterval(() => {
-      for (const [contextId, settings] of this.activeContexts) {
-        this.updateDisplay(contextId, settings);
-      }
-    }, 1000); // Update every second
-  }
-
-  /**
-   * Stop periodic updates
-   */
-  private stopUpdates(): void {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-      this.updateInterval = null;
-    }
   }
 
   /**
@@ -95,6 +67,9 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     const isConnected = this.sdkController.getConnectionStatus();
     const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+
+    // Update connection state for initial overlay
+    this.updateConnectionState();
 
     this.lastTitle.set(ev.action.id, title);
     this.lastIconColor.set(ev.action.id, iconColor);
@@ -107,17 +82,13 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
   }
 
   /**
-   * Update the display for a specific context (periodic updates)
+   * Update the display for a specific context (called from subscription callback)
    */
-  private async updateDisplay(contextId: string, settings: ChatSettings): Promise<void> {
+  private async updateDisplay(contextId: string, settings: ChatSettings, isConnected: boolean): Promise<void> {
     const action = streamDeck.actions.getActionById(contextId);
 
     if (!action) return;
 
-    // Update active state when connection status changes
-    this.updateConnectionState();
-
-    const isConnected = this.getConnectionStatus();
     const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
 
@@ -148,6 +119,9 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     const isConnected = this.sdkController.getConnectionStatus();
     const title = formatChatTitle(settings.message, isConnected);
     const iconColor = settings.iconColor || DEFAULT_ICON_COLOR;
+
+    // Update connection state for overlay
+    this.updateConnectionState();
 
     this.lastTitle.set(ev.action.id, title);
     this.lastIconColor.set(ev.action.id, iconColor);

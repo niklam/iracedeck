@@ -21,7 +21,7 @@ function createMockNative(): INativeSDK {
       varHeaderOffset: 244,
       numBuf: 4,
       bufLen: 1000,
-          }),
+    }),
     getData: vi.fn(),
     waitForData: vi.fn(),
     getSessionInfoStr: vi.fn().mockReturnValue("WeekendInfo:\n  TrackName: Spa"),
@@ -134,7 +134,7 @@ describe("IRacingSDK", () => {
         varHeaderOffset: 244,
         numBuf: 4,
         bufLen: 1000,
-              });
+      });
       vi.mocked(mockNative.getVarHeaderEntry)
         .mockReturnValueOnce({
           type: VarType.Float,
@@ -218,7 +218,7 @@ describe("IRacingSDK", () => {
         varHeaderOffset: 244,
         numBuf: 4,
         bufLen: 1000,
-              });
+      });
       sdk.connect();
 
       expect(sdk.getVarNames()).toEqual([]);
@@ -236,7 +236,7 @@ describe("IRacingSDK", () => {
         varHeaderOffset: 244,
         numBuf: 4,
         bufLen: 1000,
-              });
+      });
       vi.mocked(mockNative.getVarHeaderEntry)
         .mockReturnValueOnce({
           type: VarType.Float,

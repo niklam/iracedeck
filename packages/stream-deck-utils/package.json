@@ -18,7 +18,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@iracedeck/logger": "workspace:*"
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/iracing-sdk": "workspace:*"
   },
   "peerDependencies": {
     "@elgato/streamdeck": "^2.0.0"
