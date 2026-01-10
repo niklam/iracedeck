@@ -8,7 +8,7 @@ import type { JsonObject } from "@elgato/utils";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { BaseAction } from "@iracedeck/stream-deck-utils";
 
-import { controller } from "../plugin.js";
+import { controller } from "../sdk.js";
 
 /**
  * Abstract base class for actions that need iRacing connection state awareness.
@@ -57,6 +57,7 @@ export abstract class ConnectionStateAwareAction<
     const isConnected = this.sdkController.getConnectionStatus();
 
     if (this.lastConnectionStatus !== isConnected) {
+      this.logger.debug(`updateConnectionState: ${this.lastConnectionStatus} -> ${isConnected}`);
       this.lastConnectionStatus = isConnected;
       this.setActive(isConnected);
     }

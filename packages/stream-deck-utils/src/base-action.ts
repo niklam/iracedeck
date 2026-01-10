@@ -15,6 +15,7 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
+import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { applyInactiveOverlay } from "./overlay-utils.js";
 
@@ -63,6 +64,11 @@ interface ContextEntry<T extends JsonObject> {
  */
 export abstract class BaseAction<T extends JsonObject = JsonObject> extends SingletonAction<T> {
   /**
+   * Logger instance - subclasses can override with a scoped logger
+   */
+  protected logger: ILogger = silentLogger;
+
+  /**
    * Per-instance active state - when false, images get the inactive overlay
    */
   private _isActive = true;
@@ -82,14 +88,18 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   setActive(isActive: boolean): void {
     if (this._isActive === isActive) return;
 
+    this.logger.debug(`setActive: ${this._isActive} -> ${isActive}`);
     this._isActive = isActive;
 
     // Refresh all contexts with new active state
-    for (const [, { action, svg }] of this.contexts) {
+    this.logger.debug(`Refreshing ${this.contexts.size} contexts with overlay=${!isActive}`);
+
+    for (const [contextId, { action, svg }] of this.contexts) {
       const finalImage = isActive ? svg : applyInactiveOverlay(svg);
+      this.logger.trace(`Updating context ${contextId} image`);
       // Fire and forget - we don't want to block
-      action.setImage(finalImage).catch(() => {
-        // Ignore errors (action may have disappeared)
+      action.setImage(finalImage).catch((err) => {
+        this.logger.warn(`Failed to update image for context ${contextId}: ${err}`);
       });
     }
   }
@@ -109,15 +119,21 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
    * @param svg - Raw SVG string or base64 data URI
    */
   protected async setKeyImage(ev: KeyCompatibleEvent<T>, svg: string): Promise<void> {
-    if (!ev.action.isKey()) return;
+    if (!ev.action.isKey()) {
+      this.logger.debug(`setKeyImage: skipping non-key action ${ev.action.id}`);
+
+      return;
+    }
 
     const keyAction = ev.action as KeyAction<T>;
 
     // Store for later refresh
     this.contexts.set(ev.action.id, { action: keyAction, svg });
+    this.logger.debug(`setKeyImage: stored context ${ev.action.id}, isActive=${this._isActive}`);
 
     const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
     await keyAction.setImage(finalImage);
+    this.logger.trace(`setKeyImage: image set for ${ev.action.id}`);
   }
 
   /**
@@ -138,11 +154,16 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   protected async updateKeyImage(contextId: string, svg: string): Promise<boolean> {
     const entry = this.contexts.get(contextId);
 
-    if (!entry) return false;
+    if (!entry) {
+      this.logger.debug(`updateKeyImage: context ${contextId} not found`);
+
+      return false;
+    }
 
     entry.svg = svg;
     const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
     await entry.action.setImage(finalImage);
+    this.logger.trace(`updateKeyImage: updated ${contextId}, isActive=${this._isActive}`);
 
     return true;
   }
@@ -155,5 +176,6 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
    */
   override async onWillDisappear(ev: WillDisappearEvent<T>): Promise<void> {
     this.contexts.delete(ev.action.id);
+    this.logger.debug(`onWillDisappear: removed context ${ev.action.id}, remaining=${this.contexts.size}`);
   }
 }

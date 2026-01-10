@@ -1,9 +1,10 @@
 import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
+import { createSDLogger, LogLevel } from "@iracedeck/stream-deck-utils";
 import z from "zod";
 
 import { ConnectionStateAwareAction } from "../../base/connection-state-aware-action.js";
-import { commands } from "../../plugin.js";
+import { commands } from "../../sdk.js";
 import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-utils.js";
 
 /**
@@ -12,12 +13,12 @@ import { DEFAULT_ICON_COLOR, formatChatTitle, generateChatSvg } from "./chat-uti
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.comms.do-chat-message" })
 export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DoChatMessage"), LogLevel.Info);
   private cameraCommand = commands.camera;
   private updateInterval: NodeJS.Timeout | null = null;
   private activeContexts = new Map<string, ChatSettings>();
   private lastTitle = new Map<string, string>();
   private lastIconColor = new Map<string, string>();
-  private logger = streamDeck.logger.createScope("DoChatMessage");
 
   /**
    * When the action appears on the Stream Deck
@@ -31,6 +32,12 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
         message: "",
       });
     }
+
+    // Subscribe to SDK to start the connection loop
+    // Connection state is tracked via updateConnectionState() in the update loop
+    this.sdkController.subscribe(ev.action.id, () => {
+      // Callback required but state tracking happens in updateConnectionState()
+    });
 
     // Start updating display
     if (!this.updateInterval) {
@@ -49,6 +56,9 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     this.activeContexts.delete(ev.action.id);
     this.lastTitle.delete(ev.action.id);
     this.lastIconColor.delete(ev.action.id);
+
+    // Unsubscribe from SDK
+    this.sdkController.unsubscribe(ev.action.id);
 
     // Stop updates if no more instances
     if (this.activeContexts.size === 0) {
