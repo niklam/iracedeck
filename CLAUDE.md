@@ -76,6 +76,7 @@ pnpm test:watch               # Run tests in watch mode
 - Use conventional commits
 - The scope in conventional commit should usually be the package
 - Do not add any references to Claude or any other AI tool to commit messages
+- Do not add co-authors such as "Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>" to commit messages
 
 ## References
 
