@@ -9,7 +9,7 @@ import { ConnectionStateAwareAction } from "../../base/connection-state-aware-ac
  */
 function generateSpeedSvg(speedText: string): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g opacity="1" filter="url(#grayscale-darken-on-inactive)">
+  <g filter="url(#activity-state)">
     <path d="M16 32 A20 20 0 1 1 56 32" fill="none" stroke="#333" stroke-width="5" stroke-linecap="round"/>
     <path d="M16 32 A20 20 0 1 1 56 32" fill="none" stroke="#00d4ff" stroke-width="3.5" stroke-linecap="round" opacity="0.8"/>
     <line x1="36" y1="12" x2="36" y2="17" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>

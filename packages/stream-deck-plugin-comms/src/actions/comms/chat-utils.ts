@@ -16,7 +16,7 @@ export function generateChatSvg(color: string, keyText?: string): string {
   const textElement = trimmedText ? generateTextElement(trimmedText) : "";
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g opacity="1" filter="url(#grayscale-darken-on-inactive)">
+  <g filter="url(#activity-state)">
   <path d="M14 14
            h45
            a6 6 0 0 1 6 6

@@ -132,7 +132,7 @@ describe("overlay-utils", () => {
       const result = applyInactiveOverlay(simpleSvg);
 
       // Should add filter definition
-      expect(result).toContain('<filter id="grayscale-darken-on-inactive">');
+      expect(result).toContain('<filter id="activity-state">');
       expect(result).toContain("feColorMatrix");
     });
 
@@ -153,7 +153,7 @@ describe("overlay-utils", () => {
       // Decode and verify filter was added
       const decoded = dataUriToSvg(result);
 
-      expect(decoded).toContain('<filter id="grayscale-darken-on-inactive">');
+      expect(decoded).toContain('<filter id="activity-state">');
     });
 
     it("should preserve all colors (filter applied at render)", () => {
@@ -164,7 +164,7 @@ describe("overlay-utils", () => {
       expect(result).toContain('fill="#ff0000"');
       expect(result).toContain('stroke="#00ff00"');
       expect(result).toContain('fill="#0000ff"');
-      expect(result).toContain("grayscale-darken-on-inactive");
+      expect(result).toContain("activity-state");
     });
 
     it("should return input unchanged for non-SVG strings", () => {
@@ -176,14 +176,14 @@ describe("overlay-utils", () => {
       const noColorSvg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
       const result = applyInactiveOverlay(noColorSvg);
 
-      expect(result).toContain("grayscale-darken-on-inactive");
+      expect(result).toContain("activity-state");
     });
 
     it("should add filter regardless of color format", () => {
       const shortHexSvg = '<svg><rect fill="#f00"/></svg>';
       const result = applyInactiveOverlay(shortHexSvg);
 
-      expect(result).toContain("grayscale-darken-on-inactive");
+      expect(result).toContain("activity-state");
       // Original color preserved
       expect(result).toContain('fill="#f00"');
     });

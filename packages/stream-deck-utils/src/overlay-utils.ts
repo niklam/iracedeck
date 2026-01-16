@@ -115,7 +115,7 @@ export function applyInactiveOverlay(svg: string): string {
   }
 
   const filters = `<defs>
-    <filter id="grayscale-darken-on-inactive">
+    <filter id="activity-state">
       <feColorMatrix type="saturate" values="0" />
       <feColorMatrix type="matrix"
         values="0.5 0 0 0 0

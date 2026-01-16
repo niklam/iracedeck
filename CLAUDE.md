@@ -28,11 +28,26 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - All new code must have unit tests (test file: `foo.ts` → `foo.test.ts`)
 - Test framework: Vitest (ESM-native, `describe`/`it`/`expect` API)
 
+## Icons
+
+- Key Icon is an icon that is displayed in Stream Deck
+- These icons must always be of type SVG
+- The SVG must follow this format:
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <g filter="url(#activity-state)">
+    {The actual content here}
+  </g>
+</svg>
+```
+
+The <g> tag with the filter is very important as that controls the activity state.
+
 ## Conventions
 
 - Run `pnpm lint:fix` and `pnpm format:fix` before committing
 - Use Zod with `z.coerce` for action settings (Stream Deck sends strings)
-- Actions MUST show `"iRacing\nnot\nconnected"` when disconnected
 - Flag utilities: `hasFlag()`, `addFlag()`, `removeFlag()` from types.ts
 
 ## Build
@@ -51,7 +66,8 @@ pnpm test:watch               # Run tests in watch mode
 ## Commiting code
 
 - Use conventional commits
-- Do not add any references to Claude to commit messages
+- The scope in conventional commit should usually be the package
+- Do not add any references to Claude or any other AI tool to commit messages
 
 ## References
 
