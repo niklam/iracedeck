@@ -1,7 +1,8 @@
 import { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { TelemetryData } from "@iracedeck/iracing-sdk";
+import { ConnectionStateAwareAction } from "@iracedeck/stream-deck-shared";
 
-import { ConnectionStateAwareAction } from "../../base/connection-state-aware-action.js";
+import { controller } from "../../plugin.js";
 
 /**
  * Generate the speed display SVG with the given speed text.
@@ -33,6 +34,10 @@ function generateSpeedSvg(speedText: string): string {
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-speed" })
 export class DisplaySpeed extends ConnectionStateAwareAction<SpeedSettings> {
+  constructor() {
+    super(controller);
+  }
+
   private activeContexts = new Map<string, SpeedSettings>();
   private lastTitle = new Map<string, string>();
 

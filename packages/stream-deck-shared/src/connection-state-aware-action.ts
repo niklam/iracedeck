@@ -6,9 +6,8 @@
  */
 import type { JsonObject } from "@elgato/utils";
 import type { SDKController } from "@iracedeck/iracing-sdk";
-import { BaseAction } from "@iracedeck/stream-deck-shared";
 
-import { controller } from "../sdk.js";
+import { BaseAction } from "./base-action.js";
 
 /**
  * Abstract base class for actions that need iRacing connection state awareness.
@@ -24,6 +23,10 @@ import { controller } from "../sdk.js";
  * ```typescript
  * @action({ UUID: "com.example.my-action" })
  * export class MyAction extends ConnectionStateAwareAction<MySettings> {
+ *   constructor() {
+ *     super(controller);
+ *   }
+ *
  *   override async onWillAppear(ev: WillAppearEvent<MySettings>): Promise<void> {
  *     await super.onWillAppear(ev);
  *     await this.setKeyImage(ev, generateMySvg());
@@ -40,12 +43,22 @@ export abstract class ConnectionStateAwareAction<T extends JsonObject = JsonObje
   /**
    * SDKController instance for iRacing communication
    */
-  protected readonly sdkController: SDKController = controller;
+  protected readonly sdkController: SDKController;
 
   /**
    * Last known connection status for change detection
    */
   private lastConnectionStatus: boolean | null = null;
+
+  /**
+   * Creates a new ConnectionStateAwareAction.
+   *
+   * @param sdkController - The SDKController instance to use for iRacing communication
+   */
+  constructor(sdkController: SDKController) {
+    super();
+    this.sdkController = sdkController;
+  }
 
   /**
    * Check connection status and update active state if changed.
