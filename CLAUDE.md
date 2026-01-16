@@ -28,6 +28,11 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - All new code must have unit tests (test file: `foo.ts` → `foo.test.ts`)
 - Test framework: Vitest (ESM-native, `describe`/`it`/`expect` API)
 
+## Stream Deck Plugins
+
+- All actions must extend class ConnectionStateAwareAction from packages\stream-deck-shared\src\connection-state-aware-action.ts
+- All action settings must be using Zod
+
 ## Icons
 
 - Key Icon is an icon that is displayed in Stream Deck
