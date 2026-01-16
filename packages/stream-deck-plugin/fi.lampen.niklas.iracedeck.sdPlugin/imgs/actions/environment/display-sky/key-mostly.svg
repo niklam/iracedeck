@@ -1,10 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Mostly cloudy - large cloud with hint of sun -->
-  <!-- Sun barely visible (upper left corner) -->
-  <circle cx="18" cy="10" r="6" fill="#B8860B" opacity="0.6"/>
-  <!-- Large cloud covering most of the area -->
-  <ellipse cx="40" cy="20" rx="18" ry="10" fill="#C0C0C0"/>
-  <ellipse cx="26" cy="24" rx="12" ry="8" fill="#D3D3D3"/>
-  <ellipse cx="52" cy="24" rx="10" ry="7" fill="#D3D3D3"/>
-  <ellipse cx="38" cy="14" rx="10" ry="6" fill="#E8E8E8"/>
+  <g filter="url(#activity-state)">
+    <!-- Mostly cloudy - large cloud with hint of sun -->
+    <!-- Sun barely visible (upper left corner) -->
+    <circle cx="18" cy="10" r="6" fill="#B8860B" opacity="0.6"/>
+    <!-- Large cloud covering most of the area -->
+    <ellipse cx="40" cy="20" rx="18" ry="10" fill="#C0C0C0"/>
+    <ellipse cx="26" cy="24" rx="12" ry="8" fill="#D3D3D3"/>
+    <ellipse cx="52" cy="24" rx="10" ry="7" fill="#D3D3D3"/>
+    <ellipse cx="38" cy="14" rx="10" ry="6" fill="#E8E8E8"/>
+  </g>
 </svg>

@@ -47,6 +47,9 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 </svg>
 ```
 
+- The text size should be between 12 and 25 pixels
+- The text y-position below the graphic must be y="65"
+
 The <g> tag with the filter is very important as that controls the activity state.
 
 ## Conventions

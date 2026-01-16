@@ -1,6 +1,7 @@
-import { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
+import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { TelemetryData } from "@iracedeck/iracing-sdk";
-import { ConnectionStateAwareAction } from "@iracedeck/stream-deck-shared";
+import { ConnectionStateAwareAction, createSDLogger, LogLevel } from "@iracedeck/stream-deck-shared";
+import z from "zod";
 
 /**
  * Generate the speed display SVG with the given speed text.
@@ -32,6 +33,8 @@ function generateSpeedSvg(speedText: string): string {
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.vehicle.display-speed" })
 export class DisplaySpeed extends ConnectionStateAwareAction<SpeedSettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DisplaySpeed"), LogLevel.Info);
+
   private activeContexts = new Map<string, SpeedSettings>();
   private lastTitle = new Map<string, string>();
 
@@ -116,6 +119,8 @@ export class DisplaySpeed extends ConnectionStateAwareAction<SpeedSettings> {
   }
 }
 
-type SpeedSettings = {
-  unit?: "mph" | "kph";
-};
+const SpeedSettings = z.object({
+  unit: z.enum(["mph", "kph"]).default("mph"),
+});
+
+type SpeedSettings = z.infer<typeof SpeedSettings>;

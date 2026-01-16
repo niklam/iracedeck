@@ -1,11 +1,5 @@
-import streamDeck, {
-  action,
-  KeyDownEvent,
-  SingletonAction,
-  WillAppearEvent,
-  WillDisappearEvent,
-} from "@elgato/streamdeck";
-import { getCommands, getController } from "@iracedeck/stream-deck-shared";
+import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
+import { ConnectionStateAwareAction, createSDLogger, getCommands, LogLevel } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
 /**
@@ -13,17 +7,45 @@ import z from "zod";
  * Adds fuel to the pit service fuel amount when pressed
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fuel-add" })
-export class DoFuelAdd extends SingletonAction<FuelSettings> {
-  private get sdkController() {
-    return getController();
-  }
+export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DoFuelAdd"), LogLevel.Info);
 
   private get pitCommand() {
     return getCommands().pit;
   }
+
   private activeContexts = new Map<string, FuelSettings>();
-  private lastTitle = new Map<string, string>();
-  private logger = streamDeck.logger.createScope("DoFuelAdd");
+  private lastSvgState = new Map<string, string>();
+
+  /**
+   * Generate SVG for the fuel add button
+   */
+  private generateSvg(amount: number): string {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <g filter="url(#activity-state)">
+    <!-- Fuel pump body -->
+    <rect x="18" y="6" width="20" height="30" rx="2" fill="none" stroke="#2ecc71" stroke-width="2.5"/>
+
+    <!-- Fuel gauge inside pump -->
+    <rect x="22" y="10" width="12" height="8" rx="1" fill="none" stroke="#2ecc71" stroke-width="1.5"/>
+
+    <!-- Hose -->
+    <path d="M38 14 h6 a4 4 0 0 1 4 4 v14" fill="none" stroke="#2ecc71" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Nozzle -->
+    <path d="M48 32 l6 -2 v8 l-6 -2 z" fill="#2ecc71"/>
+
+    <!-- Plus sign -->
+    <rect x="12" y="42" width="12" height="3" rx="1" fill="#2ecc71"/>
+    <rect x="16.5" y="37.5" width="3" height="12" rx="1" fill="#2ecc71"/>
+
+    <!-- Amount text -->
+    <text x="36" y="65" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="20" font-weight="bold">+${amount} L</text>
+  </g>
+</svg>`;
+
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  }
 
   /**
    * When the action appears on the Stream Deck
@@ -38,8 +60,18 @@ export class DoFuelAdd extends SingletonAction<FuelSettings> {
       });
     }
 
+    // Update connection state for initial overlay
+    this.updateConnectionState();
+
+    // Set initial display
+    const amount = ev.payload.settings.amount || 1;
+    const svgDataUri = this.generateSvg(amount);
+    await this.setKeyImage(ev, svgDataUri);
+
     // Subscribe to telemetry updates
     this.sdkController.subscribe(ev.action.id, (_telemetry, isConnected) => {
+      this.updateConnectionState();
+
       const settings = this.activeContexts.get(ev.action.id);
 
       if (settings) {
@@ -51,33 +83,26 @@ export class DoFuelAdd extends SingletonAction<FuelSettings> {
   /**
    * When the action disappears from the Stream Deck
    */
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+  override async onWillDisappear(ev: WillDisappearEvent<FuelSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
-    this.lastTitle.delete(ev.action.id);
+    this.lastSvgState.delete(ev.action.id);
   }
 
   /**
    * Update the display for a specific context
    */
-  private async updateDisplay(contextId: string, settings: FuelSettings, isConnected: boolean): Promise<void> {
-    const action = streamDeck.actions.getActionById(contextId);
+  private async updateDisplay(contextId: string, settings: FuelSettings, _isConnected: boolean): Promise<void> {
+    const amount = settings.amount || 1;
+    const stateKey = `${amount}`;
 
-    if (!action) return;
+    const lastState = this.lastSvgState.get(contextId);
 
-    let title = "iRacing\nnot\nconnected";
-
-    if (isConnected) {
-      const amount = settings.amount || 2;
-      title = `+${amount} L`;
-    }
-
-    const lastTitle = this.lastTitle.get(contextId);
-
-    if (lastTitle !== title) {
-      this.lastTitle.set(contextId, title);
-      await action.setTitle(title);
-      await action.setImage("imgs/actions/pit/do-fuel-add/key");
+    if (lastState !== stateKey) {
+      this.lastSvgState.set(contextId, stateKey);
+      const svgDataUri = this.generateSvg(amount);
+      await this.updateKeyImage(contextId, svgDataUri);
     }
   }
 
@@ -86,8 +111,14 @@ export class DoFuelAdd extends SingletonAction<FuelSettings> {
    */
   override async onDidReceiveSettings(ev: any): Promise<void> {
     this.activeContexts.set(ev.action.id, ev.payload.settings);
-    const isConnected = this.sdkController.getConnectionStatus();
-    this.updateDisplay(ev.action.id, ev.payload.settings, isConnected);
+    this.updateConnectionState();
+
+    const amount = ev.payload.settings.amount || 1;
+    const stateKey = `${amount}`;
+
+    this.lastSvgState.set(ev.action.id, stateKey);
+    const svgDataUri = this.generateSvg(amount);
+    await this.setKeyImage(ev, svgDataUri);
   }
 
   /**
@@ -135,7 +166,7 @@ export class DoFuelAdd extends SingletonAction<FuelSettings> {
 }
 
 const FuelSettings = z.object({
-  amount: z.coerce.number().default(2),
+  amount: z.coerce.number().default(1),
 });
 
 /**

@@ -1,12 +1,7 @@
-import streamDeck, {
-  action,
-  KeyDownEvent,
-  SingletonAction,
-  WillAppearEvent,
-  WillDisappearEvent,
-} from "@elgato/streamdeck";
+import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
-import { getCommands, getController } from "@iracedeck/stream-deck-shared";
+import { ConnectionStateAwareAction, createSDLogger, getCommands, LogLevel } from "@iracedeck/stream-deck-shared";
+import z from "zod";
 
 /**
  * Fast Repair Action
@@ -15,28 +10,31 @@ import { getCommands, getController } from "@iracedeck/stream-deck-shared";
  * Green = currently ON (will turn OFF), Red = currently OFF (will turn ON)
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-fast-repair" })
-export class DoFastRepair extends SingletonAction {
-  private get sdkController() {
-    return getController();
-  }
+export class DoFastRepair extends ConnectionStateAwareAction<FastRepairSettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DoFastRepair"), LogLevel.Info);
 
   private get pitCommand() {
     return getCommands().pit;
   }
+
   private activeContexts = new Set<string>();
   private lastState = new Map<string, string>();
-  private logger = streamDeck.logger.createScope("DoFastRepair");
 
-  override async onWillAppear(ev: WillAppearEvent): Promise<void> {
+  override async onWillAppear(ev: WillAppearEvent<FastRepairSettings>): Promise<void> {
     this.activeContexts.add(ev.action.id);
+
+    // Update display immediately
+    await this.updateDisplayWithEvent(ev, null, this.sdkController.getConnectionStatus());
 
     // Subscribe to telemetry updates
     this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+      this.updateConnectionState();
       this.updateDisplay(ev.action.id, telemetry, isConnected);
     });
   }
 
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+  override async onWillDisappear(ev: WillDisappearEvent<FastRepairSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
@@ -70,35 +68,36 @@ export class DoFastRepair extends SingletonAction {
   private generateSvg(iconColor: string, showRedX: boolean): string {
     const redX = showRedX
       ? `
-  <!-- Red X (same size as fuel icon X) -->
-  <line x1="21" y1="6" x2="51" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
-  <line x1="51" y1="6" x2="21" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>`
+      <!-- Red X (same size as fuel icon X) -->
+      <line x1="21" y1="6" x2="51" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
+      <line x1="51" y1="6" x2="21" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>`
       : "";
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Magic wand (diagonal) -->
-  <rect x="10" y="25" width="40" height="5" rx="2" transform="rotate(-45 28 22)" fill="${iconColor}"/>
-  <!-- 4-pointed stars (large) -->
-  <path d="M48,8 L50,14 L52,8 L50,2 Z M44,8 L50,10 L56,8 L50,6 Z" fill="${iconColor}"/>
-  <path d="M56,24 L57.5,28 L59,24 L57.5,20 Z M53.5,24 L57.5,25.5 L61.5,24 L57.5,22.5 Z" fill="${iconColor}"/>
-  <!-- 4-pointed star (small) -->
-  <path d="M38,18 L39,21 L40,18 L39,15 Z M36,18 L39,19 L42,18 L39,17 Z" fill="${iconColor}"/>
-  <!-- Small dots -->
-  <circle cx="28" cy="6" r="2" fill="${iconColor}"/>
-  <circle cx="60" cy="34" r="1.5" fill="${iconColor}"/>${redX}
+  <g filter="url(#activity-state)">
+    <!-- Magic wand (diagonal) -->
+    <rect x="10" y="25" width="40" height="5" rx="2" transform="rotate(-45 28 22)" fill="${iconColor}"/>
+    <!-- 4-pointed stars (large) -->
+    <path d="M48,8 L50,14 L52,8 L50,2 Z M44,8 L50,10 L56,8 L50,6 Z" fill="${iconColor}"/>
+    <path d="M56,24 L57.5,28 L59,24 L57.5,20 Z M53.5,24 L57.5,25.5 L61.5,24 L57.5,22.5 Z" fill="${iconColor}"/>
+    <!-- 4-pointed star (small) -->
+    <path d="M38,18 L39,21 L40,18 L39,15 Z M36,18 L39,19 L42,18 L39,17 Z" fill="${iconColor}"/>
+    <!-- Small dots -->
+    <circle cx="28" cy="6" r="2" fill="${iconColor}"/>
+    <circle cx="60" cy="34" r="1.5" fill="${iconColor}"/>${redX}
+  </g>
 </svg>`;
 
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
   }
 
   /**
-   * Update the display for a specific context
+   * Calculate display state from telemetry and connection status
    */
-  private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
-    const action = streamDeck.actions.getActionById(contextId);
-
-    if (!action) return;
-
+  private getDisplayState(
+    telemetry: TelemetryData | null,
+    isConnected: boolean,
+  ): { title: string; iconColor: string; showRedX: boolean } {
     let title: string;
     let iconColor: string;
     let showRedX = false;
@@ -123,6 +122,41 @@ export class DoFastRepair extends SingletonAction {
       }
     }
 
+    return { title, iconColor, showRedX };
+  }
+
+  /**
+   * Update display using an event (for initial setup, stores action ref)
+   */
+  private async updateDisplayWithEvent(
+    ev: WillAppearEvent<FastRepairSettings>,
+    telemetry: TelemetryData | null,
+    isConnected: boolean,
+  ): Promise<void> {
+    const { title, iconColor, showRedX } = this.getDisplayState(telemetry, isConnected);
+    const svgDataUri = this.generateSvg(iconColor, showRedX);
+
+    // Update connection state for initial overlay
+    this.updateConnectionState();
+
+    // Store state for caching
+    const stateKey = `${title}|${iconColor}|${showRedX}`;
+    this.lastState.set(ev.action.id, stateKey);
+
+    // Set via BaseAction (stores for overlay refresh)
+    await this.setKeyImage(ev, svgDataUri);
+    await ev.action.setTitle(title);
+  }
+
+  /**
+   * Update the display for a specific context (called from subscription callback)
+   */
+  private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
+    const action = streamDeck.actions.getActionById(contextId);
+
+    if (!action) return;
+
+    const { title, iconColor, showRedX } = this.getDisplayState(telemetry, isConnected);
     const svgDataUri = this.generateSvg(iconColor, showRedX);
 
     // Create state key for caching
@@ -132,14 +166,14 @@ export class DoFastRepair extends SingletonAction {
     if (lastState !== stateKey) {
       this.lastState.set(contextId, stateKey);
       await action.setTitle(title);
-      await action.setImage(svgDataUri);
+      await this.updateKeyImage(contextId, svgDataUri);
     }
   }
 
   /**
    * When the key is pressed - toggle fast repair
    */
-  override async onKeyDown(_ev: KeyDownEvent): Promise<void> {
+  override async onKeyDown(_ev: KeyDownEvent<FastRepairSettings>): Promise<void> {
     this.logger.info("Key down received");
 
     // Check if connected to iRacing
@@ -173,3 +207,10 @@ export class DoFastRepair extends SingletonAction {
     }
   }
 }
+
+const FastRepairSettings = z.object({});
+
+/**
+ * Settings for the fast repair action
+ */
+type FastRepairSettings = z.infer<typeof FastRepairSettings>;

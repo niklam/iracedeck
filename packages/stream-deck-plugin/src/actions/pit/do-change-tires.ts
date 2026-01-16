@@ -1,12 +1,6 @@
-import streamDeck, {
-  action,
-  KeyDownEvent,
-  SingletonAction,
-  WillAppearEvent,
-  WillDisappearEvent,
-} from "@elgato/streamdeck";
+import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
-import { getCommands, getController } from "@iracedeck/stream-deck-shared";
+import { ConnectionStateAwareAction, createSDLogger, getCommands, LogLevel } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
 const ChangeTiresSettings = z.object({
@@ -29,28 +23,58 @@ type ChangeTiresSettings = z.infer<typeof ChangeTiresSettings>;
  * On press: toggles the configured tires (if currently on, turns off; if off, turns on).
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.pit.do-change-tires" })
-export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
-  private get sdkController() {
-    return getController();
-  }
+export class DoChangeTires extends ConnectionStateAwareAction<ChangeTiresSettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DoChangeTires"), LogLevel.Info);
 
   private get pitCommand() {
     return getCommands().pit;
   }
   private activeContexts = new Map<string, ChangeTiresSettings>();
   private lastState = new Map<string, string>();
-  private logger = streamDeck.logger.createScope("DoChangeTires");
 
   override async onWillAppear(ev: WillAppearEvent<ChangeTiresSettings>): Promise<void> {
     this.activeContexts.set(ev.action.id, ev.payload.settings);
 
-    // Subscribe to telemetry updates
+    // Update immediately with event (stores action ref for later updates)
+    await this.updateDisplayWithEvent(ev);
+
+    // Subscribe to telemetry updates - callback handles connection state changes
     this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
-      this.updateDisplay(ev.action.id, telemetry, isConnected);
+      // Update connection state (triggers grayscale overlay via BaseAction.setActive)
+      this.updateConnectionState();
+
+      const settings = this.activeContexts.get(ev.action.id);
+
+      if (settings) {
+        this.updateDisplay(ev.action.id, telemetry, isConnected);
+      }
     });
   }
 
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+  /**
+   * Update display using an event (for initial setup, stores action ref)
+   */
+  private async updateDisplayWithEvent(ev: WillAppearEvent<ChangeTiresSettings>): Promise<void> {
+    const settings = ChangeTiresSettings.parse(ev.payload.settings);
+    const isConnected = this.sdkController.getConnectionStatus();
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const tireState = this.getTireState(telemetry);
+
+    // Update connection state for initial overlay
+    this.updateConnectionState();
+
+    // Generate SVG and set via BaseAction (stores for overlay refresh)
+    const svgDataUri = this.generateCarSvg(settings, tireState, isConnected);
+    await ev.action.setTitle(""); // Title is in the SVG
+    await this.setKeyImage(ev, svgDataUri);
+
+    // Store state for change detection
+    const stateKey = `${isConnected}|${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
+    this.lastState.set(ev.action.id, stateKey);
+  }
+
+  override async onWillDisappear(ev: WillDisappearEvent<ChangeTiresSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
@@ -107,18 +131,20 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
     }
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <!-- Car body (top half) -->
-  <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="#888888" stroke-width="2"/>
-  <!-- Left Front tire -->
-  <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${lfColor}" stroke="#888888" stroke-width="1"/>
-  <!-- Right Front tire -->
-  <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${rfColor}" stroke="#888888" stroke-width="1"/>
-  <!-- Left Rear tire -->
-  <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${lrColor}" stroke="#888888" stroke-width="1"/>
-  <!-- Right Rear tire -->
-  <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${rrColor}" stroke="#888888" stroke-width="1"/>
-  <!-- Title text -->
-  <text x="36" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="${titleColor}">${titleText}</text>
+  <g filter="url(#activity-state)">
+    <!-- Car body (top half) -->
+    <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="#888888" stroke-width="2"/>
+    <!-- Left Front tire -->
+    <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${lfColor}" stroke="#888888" stroke-width="1"/>
+    <!-- Right Front tire -->
+    <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${rfColor}" stroke="#888888" stroke-width="1"/>
+    <!-- Left Rear tire -->
+    <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${lrColor}" stroke="#888888" stroke-width="1"/>
+    <!-- Right Rear tire -->
+    <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${rrColor}" stroke="#888888" stroke-width="1"/>
+    <!-- Title text -->
+    <text x="36" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="${titleColor}">${titleText}</text>
+  </g>
 </svg>`;
 
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
@@ -148,29 +174,25 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
   }
 
   /**
-   * Update the display for a specific context
+   * Update the display for a specific context (called from subscription callback)
    */
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
-    const action = streamDeck.actions.getActionById(contextId);
-
-    if (!action) return;
-
     const settings = ChangeTiresSettings.parse(this.activeContexts.get(contextId) || {});
 
     // Get current tire state from telemetry (for icon display)
     const tireState = this.getTireState(telemetry);
 
-    // Generate SVG based on settings and current iRacing state
-    const svgDataUri = this.generateCarSvg(settings, tireState, isConnected);
-
     // Create state key for caching (include settings)
     const stateKey = `${isConnected}|${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
     const lastState = this.lastState.get(contextId);
 
+    // Only update if the state has changed
     if (lastState !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      await action.setTitle(""); // Title is now in the SVG
-      await action.setImage(svgDataUri);
+
+      // Generate SVG and update via BaseAction (uses stored action ref)
+      const svgDataUri = this.generateCarSvg(settings, tireState, isConnected);
+      await this.updateKeyImage(contextId, svgDataUri);
     }
   }
 
@@ -178,7 +200,25 @@ export class DoChangeTires extends SingletonAction<ChangeTiresSettings> {
    * When settings are received or updated from Property Inspector
    */
   override async onDidReceiveSettings(ev: any): Promise<void> {
+    // Update stored settings
     this.activeContexts.set(ev.action.id, ev.payload.settings);
+
+    // Update display when settings change
+    const settings = ChangeTiresSettings.parse(ev.payload.settings);
+    const isConnected = this.sdkController.getConnectionStatus();
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const tireState = this.getTireState(telemetry);
+
+    // Update connection state for overlay
+    this.updateConnectionState();
+
+    // Generate SVG and set via BaseAction
+    const svgDataUri = this.generateCarSvg(settings, tireState, isConnected);
+    await this.setKeyImage(ev, svgDataUri);
+
+    // Update state cache
+    const stateKey = `${isConnected}|${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
+    this.lastState.set(ev.action.id, stateKey);
   }
 
   /**

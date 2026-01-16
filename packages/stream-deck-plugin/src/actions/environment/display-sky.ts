@@ -1,85 +1,62 @@
-import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { Skies, TelemetryData } from "@iracedeck/iracing-sdk";
-import { getController } from "@iracedeck/stream-deck-shared";
+import streamDeck, { action, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
+import { TelemetryData } from "@iracedeck/iracing-sdk";
+import { ConnectionStateAwareAction, createSDLogger, LogLevel } from "@iracedeck/stream-deck-shared";
+import z from "zod";
+import { generateDefaultSkyIcon, generateSkyIcon, getSkyText } from "./sky-display-utils";
 
 /**
  * Display Sky Action
  * Displays current sky conditions from iRacing telemetry
  */
 @action({ UUID: "fi.lampen.niklas.iracedeck.environment.display-sky" })
-export class DisplaySky extends SingletonAction {
-  private get sdkController() {
-    return getController();
-  }
-  private lastState = new Map<string, string>();
+export class DisplaySky extends ConnectionStateAwareAction<SkySettings> {
+  protected override logger = createSDLogger(streamDeck.logger.createScope("DisplaySky"), LogLevel.Info);
 
-  override async onWillAppear(ev: WillAppearEvent): Promise<void> {
+  private lastSkyState = new Map<string, string>();
+
+  override async onWillAppear(ev: WillAppearEvent<SkySettings>): Promise<void> {
+    // Update connection state for initial overlay
+    this.updateConnectionState();
+
+    // Set initial display with default icon
+    await this.setKeyImage(ev, generateDefaultSkyIcon());
+
+    // Subscribe to telemetry updates
     this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
+      this.updateConnectionState();
       this.updateDisplay(ev.action.id, telemetry, isConnected);
     });
   }
 
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
+  override async onWillDisappear(ev: WillDisappearEvent<SkySettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
-    this.lastState.delete(ev.action.id);
-  }
-
-  private getSkyName(skies: number): string {
-    switch (skies) {
-      case Skies.Clear:
-        return "Clear";
-      case Skies.PartlyCloudy:
-        return "Partly\nCloudy";
-      case Skies.MostlyCloudy:
-        return "Mostly\nCloudy";
-      case Skies.Overcast:
-        return "Overcast";
-      default:
-        return "N/A";
-    }
-  }
-
-  private getSkyImage(skies: number): string {
-    switch (skies) {
-      case Skies.Clear:
-        return "imgs/actions/environment/display-sky/key-clear";
-      case Skies.PartlyCloudy:
-        return "imgs/actions/environment/display-sky/key-partly";
-      case Skies.MostlyCloudy:
-        return "imgs/actions/environment/display-sky/key-mostly";
-      case Skies.Overcast:
-        return "imgs/actions/environment/display-sky/key-overcast";
-      default:
-        return "imgs/actions/environment/display-sky/key";
-    }
+    this.lastSkyState.delete(ev.action.id);
   }
 
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean): Promise<void> {
-    const action = streamDeck.actions.getActionById(contextId);
-
-    if (!action) return;
-
-    let title = "iRacing\nnot\nconnected";
-    let image = "imgs/actions/environment/display-sky/key";
+    let skies: number | undefined;
+    let skyText = "N/A";
 
     if (isConnected && telemetry) {
-      const skies = telemetry.Skies;
-
-      if (skies !== null && skies !== undefined && typeof skies === "number") {
-        title = this.getSkyName(skies);
-        image = this.getSkyImage(skies);
-      } else {
-        title = "N/A";
-      }
+      skies = telemetry.Skies;
+      skyText = getSkyText(skies);
     }
 
-    const stateKey = `${title}|${image}`;
-    const lastState = this.lastState.get(contextId);
+    const stateKey = `${skies ?? "null"}|${skyText}`;
+    const lastState = this.lastSkyState.get(contextId);
 
     if (lastState !== stateKey) {
-      this.lastState.set(contextId, stateKey);
-      await action.setTitle(title);
-      await action.setImage(image);
+      this.lastSkyState.set(contextId, stateKey);
+      const svgDataUri = generateSkyIcon(skies, skyText);
+      await this.updateKeyImage(contextId, svgDataUri);
     }
   }
 }
+
+const SkySettings = z.object({});
+
+/**
+ * Settings for the sky display action
+ */
+type SkySettings = z.infer<typeof SkySettings>;
