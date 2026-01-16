@@ -32,6 +32,7 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 
 - All actions must extend class ConnectionStateAwareAction from packages\stream-deck-shared\src\connection-state-aware-action.ts
 - All action settings must be using Zod
+- Actions must not handle offline state (no data available) themselves. This is handled globally.
 
 ## Icons
 
@@ -49,6 +50,8 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 
 - The text size should be between 12 and 25 pixels
 - The text y-position below the graphic must be y="65"
+- Any <text class="title"> will be removed from SVG when no data is available. This is used for example with do-reduce-fuel.ts, do-add-fuel.ts, and display-fuelt-to-add.ts.
+- If property data-no-na="true" is added to <svg>, "N/A" will not be displayed when data is not active.
 
 The <g> tag with the filter is very important as that controls the activity state.
 
