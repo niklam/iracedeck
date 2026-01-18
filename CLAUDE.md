@@ -11,6 +11,7 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - `@iracedeck/stream-deck-plugin` - Main plugin (`.sdPlugin` folder: `com.iracedeck.sd.sdPlugin`)
 - `@iracedeck/stream-deck-plugin-comms` - Communication plugin (`.sdPlugin` folder: `com.iracedeck.sd.comms.sdPlugin`)
 - `@iracedeck/stream-deck-plugin-pit` - Pit service plugin (`.sdPlugin` folder: `com.iracedeck.sd.pit.sdPlugin`)
+- `@iracedeck/website` - Promotional website hosted on Firebase
 
 ## Architecture
 
