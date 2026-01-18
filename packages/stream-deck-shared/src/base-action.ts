@@ -17,6 +17,7 @@ import {
 import type { JsonObject } from "@elgato/utils";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
+import { getGlobalSettings, onGlobalSettingsChange } from "./global-settings.js";
 import { applyInactiveOverlay } from "./overlay-utils.js";
 
 /**
@@ -80,9 +81,52 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
    */
   private contexts = new Map<string, ContextEntry<T>>();
 
+  constructor() {
+    super();
+
+    // Subscribe to global settings changes to refresh overlays
+    onGlobalSettingsChange(() => {
+      this.refreshAllImages();
+    });
+  }
+
+  /**
+   * Refresh all context images with current overlay state.
+   * Called when global settings change.
+   */
+  private refreshAllImages(): void {
+    for (const [contextId, { action, svg }] of this.contexts) {
+      const finalImage = this.applyOverlayIfNeeded(svg);
+      action.setImage(finalImage).catch((err) => {
+        this.logger.warn(`Failed to refresh image for context ${contextId}: ${err}`);
+      });
+    }
+  }
+
+  /**
+   * Check if overlay should be applied based on active state and global settings.
+   * @returns true if overlay should be applied (inactive AND disableWhenDisconnected is true)
+   */
+  private shouldApplyOverlay(): boolean {
+    if (this._isActive) return false;
+
+    const globalSettings = getGlobalSettings();
+
+    return globalSettings.disableWhenDisconnected;
+  }
+
+  /**
+   * Apply the appropriate image based on active state and global settings.
+   * @param svg - The original SVG
+   * @returns The final image (with or without overlay)
+   */
+  private applyOverlayIfNeeded(svg: string): string {
+    return this.shouldApplyOverlay() ? applyInactiveOverlay(svg) : svg;
+  }
+
   /**
    * Toggle active state for this action instance.
-   * When inactive, all stored images will have an overlay applied.
+   * When inactive and disableWhenDisconnected is enabled, all stored images will have an overlay applied.
    *
    * @param isActive - Whether this action should appear active
    */
@@ -92,11 +136,11 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     this.logger.info(`setActive: ${this._isActive} -> ${isActive}`);
     this._isActive = isActive;
 
-    // Refresh all contexts with new active state
-    this.logger.info(`Refreshing ${this.contexts.size} contexts with overlay=${!isActive}`);
+    const applyOverlay = this.shouldApplyOverlay();
+    this.logger.info(`Refreshing ${this.contexts.size} contexts with overlay=${applyOverlay}`);
 
     for (const [contextId, { action, svg }] of this.contexts) {
-      const finalImage = isActive ? svg : applyInactiveOverlay(svg);
+      const finalImage = this.applyOverlayIfNeeded(svg);
       this.logger.trace(`Updating context ${contextId} image`);
       // Fire and forget - we don't want to block
       action.setImage(finalImage).catch((err) => {
@@ -132,8 +176,8 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     this.contexts.set(ev.action.id, { action: keyAction, svg });
     this.logger.debug(`setKeyImage: stored context ${ev.action.id}, isActive=${this._isActive}`);
 
-    // Apply overlay if inactive
-    const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
+    // Apply overlay if inactive and global setting is enabled
+    const finalImage = this.applyOverlayIfNeeded(svg);
     await keyAction.setImage(finalImage);
     this.logger.trace(`setKeyImage: image set for ${ev.action.id}`);
   }
@@ -166,8 +210,8 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     // Store original SVG for later refresh
     entry.svg = svg;
 
-    // Apply overlay if inactive
-    const finalImage = this._isActive ? svg : applyInactiveOverlay(svg);
+    // Apply overlay if inactive and global setting is enabled
+    const finalImage = this.applyOverlayIfNeeded(svg);
     await entry.action.setImage(finalImage);
     this.logger.trace(`updateKeyImage: updated ${contextId}, isActive=${this._isActive}`);
 

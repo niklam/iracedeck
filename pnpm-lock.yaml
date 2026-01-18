@@ -277,6 +277,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@elgato/streamdeck':
         specifier: ^2.0.0

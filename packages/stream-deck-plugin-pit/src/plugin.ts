@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { createSDLogger, initializeSDK } from "@iracedeck/stream-deck-shared";
+import { createSDLogger, initGlobalSettings, initializeSDK } from "@iracedeck/stream-deck-shared";
 
 // Pit actions
 import { DisplayFuelToAdd } from "./actions/display-fuel-to-add.js";
@@ -23,5 +23,7 @@ streamDeck.actions.registerAction(new DoTireCompound());
 streamDeck.actions.registerAction(new DoChangeTires());
 streamDeck.actions.registerAction(new DoFastRepair());
 
-// Connect to the Stream Deck
-streamDeck.connect();
+// Connect to the Stream Deck and initialize global settings
+streamDeck.connect().then(() => {
+  initGlobalSettings();
+});

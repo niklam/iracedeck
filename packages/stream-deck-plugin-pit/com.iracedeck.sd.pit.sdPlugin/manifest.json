@@ -107,6 +107,7 @@
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
   "Description": "iRacing pit service functionality.",
+  "PropertyInspectorPath": "ui/settings.html",
   "Icon": "imgs/plugin/marketplace",
   "SDKVersion": 3,
   "Software": {

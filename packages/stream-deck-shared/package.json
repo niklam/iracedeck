@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@iracedeck/logger": "workspace:*",
-    "@iracedeck/iracing-sdk": "workspace:*"
+    "@iracedeck/iracing-sdk": "workspace:*",
+    "zod": "^3.24.0"
   },
   "peerDependencies": {
     "@elgato/streamdeck": "^2.0.0"

@@ -38,3 +38,14 @@ export { LogLevel } from "@iracedeck/logger";
 
 // SDK singleton for lazy initialization
 export { initializeSDK, getSDK, getController, getCommands, isSDKInitialized, _resetSDK } from "./sdk-singleton.js";
+
+// Global settings
+export {
+  GlobalSettingsSchema,
+  type GlobalSettings,
+  initGlobalSettings,
+  getGlobalSettings,
+  onGlobalSettingsChange,
+  isGlobalSettingsInitialized,
+  _resetGlobalSettings,
+} from "./global-settings.js";
