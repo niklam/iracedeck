@@ -1,6 +1,6 @@
 {
-  "Name": "iRaceDeck: Communication",
-  "Version": "0.1.0.0",
+  "Name": "iRaceDeck Comms",
+  "Version": "1.0.0.0",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -21,14 +21,14 @@
       ]
     }
   ],
-  "Category": "iRaceDeck: Communication",
+  "Category": "iRaceDeck Comms",
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
   "Description": "iRacing communication functionality.",
   "Icon": "imgs/plugin/marketplace",
   "SDKVersion": 3,
   "Software": {
-    "MinimumVersion": "6.9"
+    "MinimumVersion": "7.1"
   },
   "OS": [
     {
@@ -41,7 +41,7 @@
     }
   ],
   "Nodejs": {
-    "Version": "20",
+    "Version": "24",
     "Debug": "enabled"
   },
   "UUID": "com.iracedeck.sd.comms"

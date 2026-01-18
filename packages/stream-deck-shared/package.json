@@ -27,7 +27,7 @@
   "devDependencies": {
     "@elgato/streamdeck": "^2.0.0",
     "@elgato/utils": "^0.4.1",
-    "@types/node": "~20.15.0",
+    "@types/node": "~24.0.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.2.2",
     "vitest": "^4.0.16"

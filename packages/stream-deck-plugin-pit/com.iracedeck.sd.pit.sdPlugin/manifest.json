@@ -1,6 +1,6 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-  "Name": "iRaceDeck: Pit",
+  "Name": "iRaceDeck Pit",
   "Version": "0.1.0.0",
   "Author": "Niklas Lampén",
   "Actions": [
@@ -103,14 +103,14 @@
       ]
     }
   ],
-  "Category": "iRaceDeck: Pit",
+  "Category": "iRaceDeck Pit",
   "CategoryIcon": "imgs/plugin/category-icon",
   "CodePath": "bin/plugin.js",
   "Description": "iRacing pit service functionality.",
   "Icon": "imgs/plugin/marketplace",
   "SDKVersion": 3,
   "Software": {
-    "MinimumVersion": "6.9"
+    "MinimumVersion": "7.1"
   },
   "OS": [
     {
@@ -119,7 +119,7 @@
     }
   ],
   "Nodejs": {
-    "Version": "20",
+    "Version": "24",
     "Debug": "enabled"
   },
   "UUID": "com.iracedeck.sd.pit"
