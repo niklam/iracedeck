@@ -884,6 +884,84 @@ footer {
   color: #ff4757;
 }
 
+/* Contributing Section */
+.contributing {
+  position: relative;
+  z-index: 2;
+  padding: 6rem 3rem;
+  text-align: center;
+}
+
+.contributing-content {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.contributing-intro {
+  color: var(--text-secondary);
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 2.5rem;
+}
+
+.contributing-cta {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Responsive for contributing */
+@media (max-width: 768px) {
+  .contributing {
+    padding: 4rem 1.5rem;
+  }
+
+  .contributing-cta {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+/* Support Section */
+.support {
+  position: relative;
+  z-index: 2;
+  padding: 6rem 3rem;
+  text-align: center;
+}
+
+.support-content {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.support-intro {
+  color: var(--text-secondary);
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 2.5rem;
+}
+
+.support-cta {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Responsive for support */
+@media (max-width: 768px) {
+  .support {
+    padding: 4rem 1.5rem;
+  }
+
+  .support-cta {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
 /* Responsive for plugins */
 @media (max-width: 768px) {
   .plugins {
