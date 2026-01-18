@@ -5,6 +5,10 @@
   "description": "Promotional website for iRaceDeck Stream Deck plugins",
   "type": "module",
   "scripts": {
+    "deploy": "firebase deploy --only hosting",
     "serve": "npx serve public_html"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0"
   }
 }
