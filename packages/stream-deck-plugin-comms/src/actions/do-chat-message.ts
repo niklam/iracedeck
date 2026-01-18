@@ -175,9 +175,9 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
 }
 
 const ChatSettings = z.object({
-  message: z.string().default(""),
+  keyText: z.string().default("Thanks"),
+  message: z.string().default("Thank you!"),
   iconColor: z.string().default(DEFAULT_ICON_COLOR),
-  keyText: z.string().default(""),
 });
 
 /**
