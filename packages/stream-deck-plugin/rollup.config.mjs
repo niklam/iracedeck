@@ -13,6 +13,11 @@ import { readFileSync } from "node:fs";
 function svgPlugin() {
 	return {
 		name: "svg",
+		resolveId(source, importer) {
+			if (source.endsWith(".svg") && importer) {
+				return path.resolve(path.dirname(importer), source);
+			}
+		},
 		load(id) {
 			if (id.endsWith(".svg")) {
 				const content = readFileSync(id, "utf-8");

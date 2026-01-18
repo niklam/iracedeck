@@ -9,7 +9,7 @@ import {
 } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
-import displaySpeedTemplate from "../../../icons/display-speed.svg";
+import displaySpeedTemplate from "../../icons/display-speed.svg";
 
 /**
  * Generate the speed display SVG with the given speed text.

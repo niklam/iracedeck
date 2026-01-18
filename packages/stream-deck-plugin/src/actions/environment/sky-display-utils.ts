@@ -1,7 +1,7 @@
 import { Skies } from "@iracedeck/iracing-sdk";
 import { renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
-import displaySkyTemplate from "../../../icons/display-sky.svg";
+import displaySkyTemplate from "../../icons/display-sky.svg";
 
 /**
  * SVG graphics for each sky condition (without the outer svg wrapper)

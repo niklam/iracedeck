@@ -9,7 +9,7 @@ import {
 } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
-import displayGearTemplate from "../../../icons/display-gear.svg";
+import displayGearTemplate from "../../icons/display-gear.svg";
 
 /**
  * Display Gear Action

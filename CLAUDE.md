@@ -66,12 +66,12 @@ The `<g>` tag with the filter is very important as that controls the activity st
 
 Icon templates are SVG files with Mustache-style `{{placeholder}}` syntax for dynamic values. Templates are:
 
-- Located in `{package}/icons/` folder (e.g., `packages/stream-deck-plugin-pit/icons/do-fuel-add.svg`)
+- Located in `{package}/src/icons/` folder (e.g., `packages/stream-deck-plugin-pit/src/icons/do-fuel-add.svg`)
 - Imported as strings at build time via rollup svgPlugin
 - Rendered using `renderIconTemplate(template, { placeholder: "value" })`
 - Converted to data URIs with `svgToDataUri(svg)`
 
-Example template (`icons/do-fuel-add.svg`):
+Example template (`src/icons/do-fuel-add.svg`):
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" data-no-na="true">
   <g filter="url(#activity-state)">
@@ -84,7 +84,7 @@ Example template (`icons/do-fuel-add.svg`):
 Example usage in action:
 ```typescript
 import { renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
-import doFuelAddTemplate from "../../icons/do-fuel-add.svg";
+import doFuelAddTemplate from "../icons/do-fuel-add.svg";
 
 const svg = renderIconTemplate(doFuelAddTemplate, { amount: "+5 L" });
 const dataUri = svgToDataUri(svg);

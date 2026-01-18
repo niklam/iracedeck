@@ -5,7 +5,7 @@
  */
 import { escapeXml, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
-import doChatMessageTemplate from "../../icons/do-chat-message.svg";
+import doChatMessageTemplate from "../icons/do-chat-message.svg";
 
 /**
  * Generates an SVG chat bubble icon with configurable color and optional text.

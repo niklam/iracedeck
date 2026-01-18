@@ -10,8 +10,8 @@ import {
 } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
-import doChangeTiresNaTemplate from "../../icons/do-change-tires-na.svg";
-import doChangeTiresTemplate from "../../icons/do-change-tires.svg";
+import doChangeTiresNaTemplate from "../icons/do-change-tires-na.svg";
+import doChangeTiresTemplate from "../icons/do-change-tires.svg";
 
 const ChangeTiresSettings = z.object({
   lf: z.coerce.boolean().default(true),
