@@ -5,7 +5,7 @@ import typescript from "@rollup/plugin-typescript";
 import path from "node:path";
 import url from "node:url";
 import process from "node:process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 /**
  * Rollup plugin to import SVG files as strings
@@ -49,6 +49,15 @@ const config = {
 			name: "watch-externals",
 			buildStart: function () {
 				this.addWatchFile(`${sdPlugin}/manifest.json`);
+				// Watch icons directory for SVG changes
+				try {
+					const iconsDir = path.resolve("icons");
+					readdirSync(iconsDir)
+						.filter(f => f.endsWith(".svg"))
+						.forEach(f => this.addWatchFile(path.join(iconsDir, f)));
+				} catch {
+					// icons directory may not exist
+				}
 			},
 		},
 		typescript({
