@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iRaceDeck — Stream Deck Plugin for iRacing</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+
+<body>
+  <div class="grid-bg"></div>
+
+  <nav>
+    <a href="#" class="logo">
+      <div class="logo-icon">▶</div>
+      iRaceDeck
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="https://github.com/niklasR/iRaceDeck" target="_blank">GitHub</a></li>
+    </ul>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-content">
+      <div class="hero-text">
+        <span class="hero-badge">Stream Deck Plugin</span>
+        <h1>Control <span>iRacing</span><br>From Your Deck</h1>
+        <p class="hero-description">
+          Put essential race controls at your fingertips. Pit commands, telemetry,
+          chat macros — one tap away without leaving the cockpit.
+        </p>
+        <div class="hero-buttons">
+          <a href="#download" class="btn btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+            </svg>
+            Download
+          </a>
+          <a href="https://github.com/niklasR/iRaceDeck" class="btn btn-secondary" target="_blank">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+            </svg>
+            View Source
+          </a>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="deck-glow"></div>
+        <div class="deck-container">
+          <div class="deck-frame">
+            <div class="deck-buttons">
+              <div class="deck-btn green">
+                <span class="deck-btn-icon">🏁</span>
+                <span class="deck-btn-label">Grid</span>
+              </div>
+              <div class="deck-btn active">
+                <span class="deck-btn-icon">⛽</span>
+                <span class="deck-btn-label">Fuel</span>
+              </div>
+              <div class="deck-btn active">
+                <span class="deck-btn-icon">🔧</span>
+                <span class="deck-btn-label">Tires</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">📊</span>
+                <span class="deck-btn-label">Delta</span>
+              </div>
+              <div class="deck-btn red">
+                <span class="deck-btn-icon">🚨</span>
+                <span class="deck-btn-label">Tow</span>
+              </div>
+
+              <div class="deck-btn">
+                <span class="deck-btn-icon">⬆️</span>
+                <span class="deck-btn-label">BB+</span>
+              </div>
+              <div class="deck-btn blue">
+                <span class="deck-btn-icon">📹</span>
+                <span class="deck-btn-label">Cam</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">💬</span>
+                <span class="deck-btn-label">Chat</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">🎧</span>
+                <span class="deck-btn-label">Radio</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">⬇️</span>
+                <span class="deck-btn-label">BB-</span>
+              </div>
+
+              <div class="deck-btn active">
+                <span class="deck-btn-icon">P</span>
+                <span class="deck-btn-label">Pit In</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">🔄</span>
+                <span class="deck-btn-label">Reset</span>
+              </div>
+              <div class="deck-btn green">
+                <span class="deck-btn-icon">✅</span>
+                <span class="deck-btn-label">Clear</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">⚙️</span>
+                <span class="deck-btn-label">Setup</span>
+              </div>
+              <div class="deck-btn">
+                <span class="deck-btn-icon">📈</span>
+                <span class="deck-btn-label">Temps</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="features-header">
+      <p class="section-label">What's Inside</p>
+      <h2 class="section-title">Built for Racers</h2>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">⛽</div>
+        <h3 class="feature-title">Pit Commands</h3>
+        <p class="feature-description">
+          Request fuel, tires, fast repair, or tow with a single tap.
+          No fumbling with black boxes mid-race.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">Live Telemetry</h3>
+        <p class="feature-description">
+          Display fuel remaining, lap delta, tire temps, and more
+          directly on your Stream Deck buttons.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3 class="feature-title">Chat Macros</h3>
+        <p class="feature-description">
+          Pre-programmed messages for quick communication.
+          Apologize for punts faster than ever.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">📹</div>
+        <h3 class="feature-title">Camera Control</h3>
+        <p class="feature-description">
+          Switch cameras, toggle UI elements, and control replays
+          without keyboard shortcuts.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🔧</div>
+        <h3 class="feature-title">Adjustments</h3>
+        <p class="feature-description">
+          Brake bias, traction control, ABS — tweak on the fly
+          without diving into menus.
+        </p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3 class="feature-title">Zero Latency</h3>
+        <p class="feature-description">
+          Direct iRacing SDK integration. No middleware, no delay.
+          Commands execute instantly.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-value">15+</div>
+        <div class="stat-label">Actions</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">0ms</div>
+        <div class="stat-label">Latency</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">100 %</div>
+        <div class="stat-label">Free</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">∞</div>
+        <div class="stat-label">iRating Gain*</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta" id="download">
+    <div class="cta-box">
+      <h2 class="cta-title">Ready to Upgrade Your Cockpit?</h2>
+      <p class="cta-description">
+        Free, open-source, and ready to install. Works with Stream Deck, Stream Deck Mini,
+        Stream Deck XL, and Stream Deck Mobile.
+      </p>
+      <div class="hero-buttons" style="justify-content: center;">
+        <a href="#" class="btn btn-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+          </svg>
+          Download for Windows
+        </a>
+        <a href="https://github.com/niklasR/iRaceDeck" class="btn btn-secondary" target="_blank">
+          Documentation
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-content">
+      <div class="footer-links">
+        <a href="https://github.com/niklasR/iRaceDeck" target="_blank">GitHub</a>
+        <a href="https://github.com/niklasR/iRaceDeck/issues" target="_blank">Report Issue</a>
+        <a href="https://github.com/niklasR/iRaceDeck/releases" target="_blank">Releases</a>
+      </div>
+      <p class="footer-copy">
+        * iRating gains not guaranteed. Built by <a href="#" style="color: var(--orange-primary);">Niklas</a>
+      </p>
+    </div>
+  </footer>
+</body>
+
+</html>

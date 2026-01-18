@@ -1,0 +1,10 @@
+{
+  "name": "@iracedeck/website",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Promotional website for iRaceDeck Stream Deck plugins",
+  "type": "module",
+  "scripts": {
+    "serve": "npx serve public_html"
+  }
+}
