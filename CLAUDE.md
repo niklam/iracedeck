@@ -30,6 +30,10 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - All new code must have unit tests (test file: `foo.ts` → `foo.test.ts`)
 - Test framework: Vitest (ESM-native, `describe`/`it`/`expect` API)
 
+## Making changes
+
+- All changes must be tracked in git. For example moving files must be trackable, not just delete old file & create new file.
+
 ## Stream Deck Plugins
 
 - Stream Deck Actions are located in {package}/src/actions/\*\*
