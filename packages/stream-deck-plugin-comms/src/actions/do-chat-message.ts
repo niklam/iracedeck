@@ -29,7 +29,9 @@ export class DoChatMessage extends ConnectionStateAwareAction<ChatSettings> {
     // Set default message if not configured
     if (!ev.payload.settings.message) {
       await ev.action.setSettings({
-        message: "",
+        keyText: "Thanks",
+        message: "Thank you",
+        iconColor: DEFAULT_ICON_COLOR,
       });
     }
 

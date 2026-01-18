@@ -9,7 +9,7 @@ import {
 } from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
-import doFuelReduceTemplate from "../icons/do-fuel-reduce.svg";
+import doFuelReduceTemplate from "../../icons/do-fuel-reduce.svg";
 
 /**
  * Do Fuel Reduce Action

@@ -5,7 +5,7 @@
  */
 import { escapeXml, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
-import displayFuelToAddTemplate from "../icons/display-fuel-to-add.svg";
+import displayFuelToAddTemplate from "../../icons/display-fuel-to-add.svg";
 
 /**
  * Default icon color for fuel pump (green when active).
