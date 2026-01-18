@@ -4,7 +4,7 @@
   "packageManager": "pnpm@10.0.0",
   "type": "module",
   "scripts": {
-    "build": "turbo run build",
+    "build": "pnpm run stop:stream-deck-app && turbo run build && pnpm run start:stream-deck-app",
     "install:stream-deck": "pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/stream-deck-*\" install",
     "build:stream-deck": "pnpm install:stream-deck && pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/stream-deck-*\" build",
     "dev": "turbo run dev",
@@ -16,6 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
+    "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
+    "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-*\" run watch"
   },
   "devDependencies": {

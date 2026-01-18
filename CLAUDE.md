@@ -10,6 +10,7 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - `@iracedeck/stream-deck-shared` - Shared utilities for Stream Deck plugins (logger adapter)
 - `@iracedeck/stream-deck-plugin` - Main plugin (`.sdPlugin` folder: `fi.lampen.niklas.iracedeck.sdPlugin`)
 - `@iracedeck/stream-deck-plugin-comms` - Communication plugin (`.sdPlugin` folder: `fi.lampen.niklas.iracedeck.comms.sdPlugin`)
+- `@iracedeck/stream-deck-plugin-pit` - Pit service plugin (`.sdPlugin` folder: `fi.lampen.niklas.iracedeck.pit.sdPlugin`)
 
 ## Architecture
 
