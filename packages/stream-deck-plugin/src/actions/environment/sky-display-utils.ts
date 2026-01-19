@@ -1,5 +1,5 @@
 import { Skies } from "@iracedeck/iracing-sdk";
-import { renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
+import { generateIconText, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
 import displaySkyTemplate from "../../icons/display-sky.svg";
 
@@ -100,9 +100,7 @@ function getSkyGraphics(skies: number | null | undefined): string {
 export function generateSkyIcon(skies: number | null | undefined, text?: string): string {
   const skyGraphics = getSkyGraphics(skies);
 
-  const textElement = text
-    ? `<text x="36" y="65" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" class="title">${text}</text>`
-    : "";
+  const textElement = text ? generateIconText({ text, fontSize: 12 }) : "";
 
   const svg = renderIconTemplate(displaySkyTemplate, { skyGraphics, textElement });
 

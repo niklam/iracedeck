@@ -3,6 +3,7 @@ import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
+  generateIconText,
   getCommands,
   LogLevel,
   renderIconTemplate,
@@ -143,13 +144,13 @@ export class DoChangeTires extends ConnectionStateAwareAction<ChangeTiresSetting
       titleColor = "#FF4444";
     }
 
+    const textElement = generateIconText({ text: titleText, fontSize: 12, fill: titleColor });
     const svg = renderIconTemplate(doChangeTiresTemplate, {
       lfColor,
       rfColor,
       lrColor,
       rrColor,
-      titleText,
-      titleColor,
+      textElement,
     });
 
     return svgToDataUri(svg);

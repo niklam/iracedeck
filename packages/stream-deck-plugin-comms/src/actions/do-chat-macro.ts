@@ -1,36 +1,18 @@
 import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { ConnectionStateAwareAction, createSDLogger, getCommands, LogLevel } from "@iracedeck/stream-deck-shared";
-import { escapeXml, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
+import {
+  ConnectionStateAwareAction,
+  createSDLogger,
+  generateIconText,
+  getCommands,
+  LogLevel,
+  renderIconTemplate,
+  svgToDataUri,
+} from "@iracedeck/stream-deck-shared";
 import z from "zod";
 
 import doChatMacroTemplate from "../icons/do-chat-macro.svg";
 
 const DEFAULT_ICON_COLOR = "#4a90d9";
-
-/**
- * Generates SVG text element with support for multiple lines.
- * Uses tspan elements for each line, centered vertically.
- */
-function generateTextElement(text: string): string {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) {
-    return "";
-  }
-
-  const firstLineEm = 40 - (lines.length - 1) * 6;
-
-  return lines
-    .map((line, i) => {
-      const y = i === 0 ? firstLineEm : firstLineEm + 12 * i;
-
-      return `<text x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="10" font-weight="bold">${escapeXml(line)}</text>\n`;
-    })
-    .join("");
-}
 
 /**
  * Generates an SVG icon for the chat macro action.
@@ -42,12 +24,23 @@ function generateTextElement(text: string): string {
  */
 function generateMacroSvg(color: string, macroNum: number, keyText?: string): string {
   const trimmedText = keyText?.trim();
+  let displayText: string;
   let textElement: string;
 
   if (trimmedText) {
-    textElement = generateTextElement(trimmedText);
+    // Normalize line endings and filter empty lines
+    displayText = trimmedText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join("\n");
+
+    textElement = generateIconText({ text: displayText, fontSize: 10, baseY: 40, lineHeightMultiplier: 1.2 });
   } else {
-    textElement = `<text x="36" y="40" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="10" font-weight="bold">Macro ${macroNum}</text>`;
+    displayText = `Macro ${macroNum}`;
+    textElement = generateIconText({ text: "Macro", fontSize: 10, baseY: 30, lineHeightMultiplier: 1.2 });
+    textElement =
+      textElement + generateIconText({ text: "" + macroNum, fontSize: 25, baseY: 52, lineHeightMultiplier: 1.2 });
   }
 
   const svg = renderIconTemplate(doChatMacroTemplate, {

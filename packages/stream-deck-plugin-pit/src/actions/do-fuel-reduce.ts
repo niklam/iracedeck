@@ -5,6 +5,7 @@ import {
   createSDLogger,
   formatFuelSettingWithUnit,
   fuelFromDisplayUnits,
+  generateIconText,
   getCommands,
   getFuelUnitSuffix,
   LogLevel,
@@ -39,7 +40,8 @@ export class DoFuelReduce extends ConnectionStateAwareAction<FuelSettings> {
   private generateSvg(amount: number, displayUnits?: DisplayUnits | number): string {
     // Amount is already in display units, just add the suffix
     const amountText = formatFuelSettingWithUnit(amount, displayUnits, "-");
-    const svg = renderIconTemplate(doFuelReduceTemplate, { amount: amountText });
+    const textElement = generateIconText({ text: amountText, fontSize: 14 });
+    const svg = renderIconTemplate(doFuelReduceTemplate, { textElement });
 
     return svgToDataUri(svg);
   }

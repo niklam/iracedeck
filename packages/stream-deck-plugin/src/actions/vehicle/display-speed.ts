@@ -3,6 +3,7 @@ import { TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
+  generateIconText,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
@@ -16,7 +17,8 @@ import displaySpeedTemplate from "../../icons/display-speed.svg";
  * Text is centered below the speedometer arc.
  */
 function generateSpeedSvg(speedText: string): string {
-  const svg = renderIconTemplate(displaySpeedTemplate, { speedText });
+  const textElement = generateIconText({ text: speedText, fontSize: 25 });
+  const svg = renderIconTemplate(displaySpeedTemplate, { textElement });
 
   return svgToDataUri(svg);
 }

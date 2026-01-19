@@ -310,5 +310,21 @@ describe("icon-template", () => {
       expect(result).toContain('font-family="sans-serif"');
       expect(result).toContain('font-weight="bold"');
     });
+
+    it("should use custom fill color", () => {
+      const result = generateIconText({ text: "Test", fill: "#FF4444" });
+
+      expect(result).toContain('fill="#FF4444"');
+      expect(result).not.toContain('fill="#ffffff"');
+    });
+
+    it("should apply custom fill color to multi-line text", () => {
+      const result = generateIconText({ text: "Line 1\nLine 2", fill: "#00FF00" });
+
+      // Both lines should have the custom fill color
+      const fillMatches = result.match(/fill="#00FF00"/g);
+
+      expect(fillMatches?.length).toBe(2);
+    });
   });
 });

@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+bin/
 
 # Stream Deck generated files
 *.sdPlugin/bin/

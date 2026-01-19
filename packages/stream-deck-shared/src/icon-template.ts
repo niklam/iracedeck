@@ -116,13 +116,17 @@ export interface GenerateIconTextOptions {
    */
   fontSize?: number;
   /**
-   * Base Y position for single line or bottom line of multi-line text. Default: 65
+   * Base Y position for single line or bottom line of multi-line text. Default: 62
    */
   baseY?: number;
   /**
-   * Line height multiplier relative to font size. Default: 1.2
+   * Line height multiplier relative to font size. Default: 1
    */
   lineHeightMultiplier?: number;
+  /**
+   * Fill color for the text. Default: "#ffffff"
+   */
+  fill?: string;
 }
 
 /**
@@ -147,13 +151,13 @@ export interface GenerateIconTextOptions {
  * // Returns two <text> elements centered around baseY
  */
 export function generateIconText(options: GenerateIconTextOptions): string {
-  const { text, fontSize = 14, baseY = 62, lineHeightMultiplier = 1 } = options;
+  const { text, fontSize = 14, baseY = 62, lineHeightMultiplier = 1, fill = "#ffffff" } = options;
 
   const lines = text.split("\n");
   const lineHeight = fontSize * lineHeightMultiplier;
 
   if (lines.length === 1) {
-    return `<text class="title" x="36" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text class="title" x="36" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   // For multiple lines, center the text block around baseY
@@ -167,7 +171,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   for (let i = 0; i < lines.length; i++) {
     const y = startY + i * lineHeight;
     textElements.push(
-      `<text class="title" x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
+      `<text class="title" x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
     );
   }
 

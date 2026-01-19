@@ -3,7 +3,7 @@
  *
  * Pure functions for chat message display logic.
  */
-import { escapeXml, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
+import { generateIconText, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
 import doChatMessageTemplate from "../icons/do-chat-message.svg";
 
@@ -16,37 +16,20 @@ import doChatMessageTemplate from "../icons/do-chat-message.svg";
  */
 export function generateChatSvg(color: string, keyText?: string): string {
   const trimmedText = keyText?.trim();
-  const textElement = trimmedText ? generateTextElement(trimmedText) : "";
+  // Normalize line endings and filter empty lines
+  const normalizedText = trimmedText
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
+
+  const textElement = normalizedText
+    ? generateIconText({ text: normalizedText, fontSize: 11, baseY: 40, lineHeightMultiplier: 1.2 })
+    : "";
 
   const svg = renderIconTemplate(doChatMessageTemplate, { color, textElement });
 
   return svgToDataUri(svg);
-}
-
-/**
- * Generates SVG text element with support for multiple lines.
- * Uses tspan elements for each line, centered vertically.
- */
-function generateTextElement(text: string): string {
-  // Handle both Windows (\r\n) and Unix (\n) line endings
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) {
-    return "";
-  }
-
-  const firstLineEm = 40 - (lines.length - 1) * 6;
-
-  return lines
-    .map((line, i) => {
-      let y = i === 0 ? firstLineEm : firstLineEm + 12 * i;
-
-      return `<text x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="10" font-weight="bold">${escapeXml(line)}</text>\n`;
-    })
-    .join("");
 }
 
 /**

@@ -3,6 +3,7 @@ import { TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
+  generateIconText,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
@@ -25,7 +26,8 @@ export class DisplayGear extends ConnectionStateAwareAction<GearSettings> {
    * Generate SVG for the gear display
    */
   private generateSvg(gearText: string): string {
-    const svg = renderIconTemplate(displayGearTemplate, { gearText });
+    const textElement = generateIconText({ text: gearText, fontSize: 25 });
+    const svg = renderIconTemplate(displayGearTemplate, { textElement });
 
     return svgToDataUri(svg);
   }
