@@ -1,8 +1,12 @@
 import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
+import { DisplayUnits } from "@iracedeck/iracing-sdk";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
+  formatFuelSettingWithUnit,
+  fuelFromDisplayUnits,
   getCommands,
+  getFuelUnitSuffix,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
@@ -25,12 +29,17 @@ export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
 
   private activeContexts = new Map<string, FuelSettings>();
   private lastSvgState = new Map<string, string>();
+  private lastDisplayUnits: DisplayUnits | number | undefined = undefined;
 
   /**
    * Generate SVG for the fuel add button
+   * @param amount - The amount in display units (no conversion needed)
+   * @param displayUnits - The display units to determine the suffix
    */
-  private generateSvg(amount: number): string {
-    const svg = renderIconTemplate(doFuelAddTemplate, { amount: `+${amount} L` });
+  private generateSvg(amount: number, displayUnits?: DisplayUnits | number): string {
+    // Amount is already in display units, just add the suffix
+    const amountText = formatFuelSettingWithUnit(amount, displayUnits, "+");
+    const svg = renderIconTemplate(doFuelAddTemplate, { amount: amountText });
 
     return svgToDataUri(svg);
   }
@@ -51,14 +60,27 @@ export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
     // Update connection state for initial overlay
     this.updateConnectionState();
 
-    // Set initial display
-    const amount = ev.payload.settings.amount || 1;
-    const svgDataUri = this.generateSvg(amount);
+    // Get current display units from telemetry
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    this.lastDisplayUnits = telemetry?.DisplayUnits;
+
+    // Set initial display - parse settings to ensure amount is a number
+    const { amount } = FuelSettings.parse(ev.payload.settings);
+    const svgDataUri = this.generateSvg(amount, this.lastDisplayUnits);
     await this.setKeyImage(ev, svgDataUri);
 
     // Subscribe to telemetry updates
-    this.sdkController.subscribe(ev.action.id, (_telemetry, isConnected) => {
+    this.sdkController.subscribe(ev.action.id, (newTelemetry, isConnected) => {
       this.updateConnectionState();
+
+      // Track display units changes
+      const newDisplayUnits = newTelemetry?.DisplayUnits;
+
+      if (newDisplayUnits !== this.lastDisplayUnits) {
+        this.lastDisplayUnits = newDisplayUnits;
+        // Clear cached state to force redraw with new units
+        this.lastSvgState.delete(ev.action.id);
+      }
 
       const settings = this.activeContexts.get(ev.action.id);
 
@@ -81,15 +103,16 @@ export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
   /**
    * Update the display for a specific context
    */
-  private async updateDisplay(contextId: string, settings: FuelSettings, _isConnected: boolean): Promise<void> {
-    const amount = settings.amount || 1;
-    const stateKey = `${amount}`;
+  private async updateDisplay(contextId: string, rawSettings: FuelSettings, _isConnected: boolean): Promise<void> {
+    // Parse to ensure amount is a number
+    const { amount } = FuelSettings.parse(rawSettings);
+    const stateKey = `${amount}-${this.lastDisplayUnits}`;
 
     const lastState = this.lastSvgState.get(contextId);
 
     if (lastState !== stateKey) {
       this.lastSvgState.set(contextId, stateKey);
-      const svgDataUri = this.generateSvg(amount);
+      const svgDataUri = this.generateSvg(amount, this.lastDisplayUnits);
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }
@@ -101,11 +124,12 @@ export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
     this.activeContexts.set(ev.action.id, ev.payload.settings);
     this.updateConnectionState();
 
-    const amount = ev.payload.settings.amount || 1;
-    const stateKey = `${amount}`;
+    // Parse to ensure amount is a number
+    const { amount } = FuelSettings.parse(ev.payload.settings);
+    const stateKey = `${amount}-${this.lastDisplayUnits}`;
 
     this.lastSvgState.set(ev.action.id, stateKey);
-    const svgDataUri = this.generateSvg(amount);
+    const svgDataUri = this.generateSvg(amount, this.lastDisplayUnits);
     await this.setKeyImage(ev, svgDataUri);
   }
 
@@ -140,15 +164,22 @@ export class DoFuelAdd extends ConnectionStateAwareAction<FuelSettings> {
     }
 
     const { amount } = FuelSettings.parse(ev.payload.settings);
+    const displayUnits = telemetry.DisplayUnits;
+
+    // Convert the amount from display units to liters (internal unit)
+    // The amount setting is in the user's display units (L or gal)
+    const amountInLiters = fuelFromDisplayUnits(amount, displayUnits);
+    const unit = getFuelUnitSuffix(displayUnits);
+
     // Round to 1 decimal place to avoid floating point precision issues
     const roundedCurrentFuel = Math.round(currentFuel * 10) / 10;
-    const newFuelAmount = Math.round((roundedCurrentFuel + amount) * 10) / 10;
+    const newFuelAmount = Math.round((roundedCurrentFuel + amountInLiters) * 10) / 10;
 
-    // Send the pit command with the new total fuel amount
+    // Send the pit command with the new total fuel amount (always in liters)
     const success = this.pitCommand.fuel(newFuelAmount);
 
     if (success) {
-      this.logger.info(`Set fuel to ${newFuelAmount}L (was ${roundedCurrentFuel}L, added ${amount}L)`);
+      this.logger.info(`Set fuel to ${newFuelAmount}L (was ${roundedCurrentFuel}L, added ${amount} ${unit})`);
     } else {
       this.logger.warn("Failed to set fuel");
     }

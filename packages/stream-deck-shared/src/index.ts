@@ -49,3 +49,20 @@ export {
   isGlobalSettingsInitialized,
   _resetGlobalSettings,
 } from "./global-settings.js";
+
+// Unit conversion utilities
+export {
+  LITERS_TO_GALLONS,
+  GALLONS_TO_LITERS,
+  FUEL_UNIT_METRIC,
+  FUEL_UNIT_IMPERIAL,
+  litersToGallons,
+  gallonsToLiters,
+  getFuelUnitSuffix,
+  isMetricUnits,
+  fuelToDisplayUnits,
+  fuelFromDisplayUnits,
+  formatFuelAmount,
+  formatFuelAmountWithPrefix,
+  formatFuelSettingWithUnit,
+} from "./unit-conversion.js";

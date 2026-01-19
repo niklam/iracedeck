@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const iconsDir = join(import.meta.dirname, "icons");
+const iconsDir = join(import.meta.dirname, "..", "icons");
 
 describe("icon templates", () => {
   const svgFiles = readdirSync(iconsDir).filter((file) => file.endsWith(".svg"));

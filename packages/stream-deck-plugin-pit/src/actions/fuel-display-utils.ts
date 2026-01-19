@@ -3,7 +3,8 @@
  *
  * Pure functions for fuel display logic.
  */
-import { escapeXml, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
+import { DisplayUnits } from "@iracedeck/iracing-sdk";
+import { escapeXml, formatFuelAmount, renderIconTemplate, svgToDataUri } from "@iracedeck/stream-deck-shared";
 
 import displayFuelToAddTemplate from "../../icons/display-fuel-to-add.svg";
 
@@ -27,12 +28,17 @@ export const FUEL_DISABLED_X_COLOR = "#e74c3c";
  *
  * @param isFuelFillEnabled - Whether fuel fill is enabled in pit service
  * @param fuelAmount - The amount of fuel to display (in liters), or null if unavailable
+ * @param displayUnits - The iRacing DisplayUnits value (0=English, 1=Metric)
  * @returns A base64-encoded data URI for the SVG
  */
-export function generateFuelDisplaySvg(isFuelFillEnabled: boolean, fuelAmount: number | null): string {
+export function generateFuelDisplaySvg(
+  isFuelFillEnabled: boolean,
+  fuelAmount: number | null,
+  displayUnits?: DisplayUnits | number,
+): string {
   const color = isFuelFillEnabled ? FUEL_ACTIVE_COLOR : FUEL_INACTIVE_COLOR;
   const disabledOverlay = isFuelFillEnabled ? "" : generateDisabledOverlay();
-  const textElement = generateFuelText(isFuelFillEnabled, fuelAmount);
+  const textElement = generateFuelText(isFuelFillEnabled, fuelAmount, displayUnits);
 
   const svg = renderIconTemplate(displayFuelToAddTemplate, { color, disabledOverlay, textElement });
 
@@ -52,12 +58,16 @@ function generateDisabledOverlay(): string {
 /**
  * Generates the fuel amount text element.
  */
-function generateFuelText(isFuelFillEnabled: boolean, fuelAmount: number | null): string {
+function generateFuelText(
+  isFuelFillEnabled: boolean,
+  fuelAmount: number | null,
+  displayUnits?: DisplayUnits | number,
+): string {
   let displayText: string;
 
   if (isFuelFillEnabled) {
     if (fuelAmount !== null) {
-      displayText = `${fuelAmount.toFixed(1)} L`;
+      displayText = formatFuelAmount(fuelAmount, displayUnits, 1);
     } else {
       displayText = "-";
     }
@@ -67,5 +77,5 @@ function generateFuelText(isFuelFillEnabled: boolean, fuelAmount: number | null)
 
   // Position text in the bottom portion of the icon (below the pump graphic)
   return `
-    <text class="title" x="36" y="65" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="20" font-weight="bold">${escapeXml(displayText)}</text>`;
+    <text class="title" x="36" y="65" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="sans-serif" font-size="14" font-weight="bold">${escapeXml(displayText)}</text>`;
 }

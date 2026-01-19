@@ -1,5 +1,5 @@
 import streamDeck, { action, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
+import { DisplayUnits, hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import { ConnectionStateAwareAction, createSDLogger, getCommands, LogLevel } from "@iracedeck/stream-deck-shared";
 
 import { generateFuelDisplaySvg } from "./fuel-display-utils.js";
@@ -19,17 +19,19 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
 
   private lastFuelAmount = new Map<string, number | null>();
   private lastFuelFillEnabled = new Map<string, boolean>();
+  private lastDisplayUnits = new Map<string, DisplayUnits | number | undefined>();
 
   override async onWillAppear(ev: WillAppearEvent): Promise<void> {
     // Update immediately with event (stores action ref for later updates)
-    await this.updateDisplayWithEvent(ev, null);
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    await this.updateDisplayWithEvent(ev, telemetry);
 
     // Subscribe to telemetry updates
-    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+    this.sdkController.subscribe(ev.action.id, (newTelemetry) => {
       // Update connection state (triggers grayscale overlay via BaseAction.setActive)
       this.updateConnectionState();
 
-      this.updateDisplay(ev.action.id, telemetry);
+      this.updateDisplay(ev.action.id, newTelemetry);
     });
   }
 
@@ -38,6 +40,7 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
     this.sdkController.unsubscribe(ev.action.id);
     this.lastFuelAmount.delete(ev.action.id);
     this.lastFuelFillEnabled.delete(ev.action.id);
+    this.lastDisplayUnits.delete(ev.action.id);
   }
 
   /**
@@ -98,13 +101,14 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
     // Update connection state for initial overlay
     this.updateConnectionState();
 
-    const { fuelAmount, isFuelFillEnabled } = this.extractFuelData(telemetry);
+    const { fuelAmount, isFuelFillEnabled, displayUnits } = this.extractFuelData(telemetry);
 
     this.lastFuelAmount.set(ev.action.id, fuelAmount);
     this.lastFuelFillEnabled.set(ev.action.id, isFuelFillEnabled);
+    this.lastDisplayUnits.set(ev.action.id, displayUnits);
 
     // Generate SVG and set via BaseAction (stores for overlay refresh)
-    const svgDataUri = generateFuelDisplaySvg(isFuelFillEnabled, fuelAmount);
+    const svgDataUri = generateFuelDisplaySvg(isFuelFillEnabled, fuelAmount, displayUnits);
     await this.setKeyImage(ev, svgDataUri);
   }
 
@@ -112,18 +116,20 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
    * Update the display for a specific context (called from subscription callback)
    */
   private async updateDisplay(contextId: string, telemetry: TelemetryData | null): Promise<void> {
-    const { fuelAmount, isFuelFillEnabled } = this.extractFuelData(telemetry);
+    const { fuelAmount, isFuelFillEnabled, displayUnits } = this.extractFuelData(telemetry);
 
     // Only update if values have changed
     const lastAmount = this.lastFuelAmount.get(contextId);
     const lastEnabled = this.lastFuelFillEnabled.get(contextId);
+    const lastUnits = this.lastDisplayUnits.get(contextId);
 
-    if (lastAmount !== fuelAmount || lastEnabled !== isFuelFillEnabled) {
+    if (lastAmount !== fuelAmount || lastEnabled !== isFuelFillEnabled || lastUnits !== displayUnits) {
       this.lastFuelAmount.set(contextId, fuelAmount);
       this.lastFuelFillEnabled.set(contextId, isFuelFillEnabled);
+      this.lastDisplayUnits.set(contextId, displayUnits);
 
       // Generate SVG and update via BaseAction (uses stored action ref)
-      const svgDataUri = generateFuelDisplaySvg(isFuelFillEnabled, fuelAmount);
+      const svgDataUri = generateFuelDisplaySvg(isFuelFillEnabled, fuelAmount, displayUnits);
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }
@@ -131,9 +137,13 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
   /**
    * Extract fuel data from telemetry
    */
-  private extractFuelData(telemetry: TelemetryData | null): { fuelAmount: number | null; isFuelFillEnabled: boolean } {
+  private extractFuelData(telemetry: TelemetryData | null): {
+    fuelAmount: number | null;
+    isFuelFillEnabled: boolean;
+    displayUnits: DisplayUnits | number | undefined;
+  } {
     if (!telemetry) {
-      return { fuelAmount: null, isFuelFillEnabled: false };
+      return { fuelAmount: null, isFuelFillEnabled: false, displayUnits: undefined };
     }
 
     const pitSvFlags = telemetry.PitSvFlags;
@@ -153,6 +163,6 @@ export class DisplayFuelToAdd extends ConnectionStateAwareAction {
       }
     }
 
-    return { fuelAmount, isFuelFillEnabled };
+    return { fuelAmount, isFuelFillEnabled, displayUnits: telemetry.DisplayUnits };
   }
 }
