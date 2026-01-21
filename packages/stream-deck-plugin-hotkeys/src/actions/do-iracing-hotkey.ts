@@ -4,7 +4,6 @@ import {
   createSDLogger,
   escapeXml,
   generateIconText,
-  getHotkeyPreset,
   getKeyboard,
   type KeyboardKey,
   type KeyboardModifier,
@@ -39,41 +38,11 @@ function formatKeyCombination(combination: KeyCombination): string {
 }
 
 /**
- * Build a KeyCombination from override settings or preset defaults
- */
-function buildKeyCombination(
-  presetCombination: KeyCombination,
-  overrideKey?: string,
-  overrideCtrl?: boolean,
-  overrideShift?: boolean,
-  overrideAlt?: boolean,
-): KeyCombination {
-  // If override key is set, use override settings
-  if (overrideKey && overrideKey.trim() !== "") {
-    const modifiers: KeyboardModifier[] = [];
-
-    if (overrideCtrl) modifiers.push("ctrl");
-
-    if (overrideShift) modifiers.push("shift");
-
-    if (overrideAlt) modifiers.push("alt");
-
-    return {
-      key: overrideKey as KeyboardKey,
-      modifiers: modifiers.length > 0 ? modifiers : undefined,
-    };
-  }
-
-  // Otherwise use preset defaults
-  return presetCombination;
-}
-
-/**
  * Generates an SVG icon for the iRacing hotkey action.
  */
-function generateIRacingHotkeySvg(color: string, presetName: string): string {
+function generateIRacingHotkeySvg(color: string, hotkeyLabel: string): string {
   const textElement = generateIconText({
-    text: escapeXml(presetName),
+    text: escapeXml(hotkeyLabel),
     fontSize: 12,
     baseY: 58,
     lineHeightMultiplier: 1.2,
@@ -88,8 +57,65 @@ function generateIRacingHotkeySvg(color: string, presetName: string): string {
 }
 
 /**
+ * Schema for the key binding value from ird-key-binding component
+ */
+const KeyBindingSchema = z.object({
+  key: z.string(),
+  modifiers: z.array(z.string()).default([]),
+});
+
+const IRacingHotkeySettings = z.object({
+  /** Key binding from ird-key-binding component (JSON string or parsed object) */
+  myHotkey: z
+    .union([z.string(), KeyBindingSchema])
+    .optional()
+    .transform((val): z.infer<typeof KeyBindingSchema> | undefined => {
+      if (typeof val === "string" && val) {
+        try {
+          return KeyBindingSchema.parse(JSON.parse(val));
+        } catch {
+          return undefined;
+        }
+      }
+
+      if (typeof val === "object" && val !== null) {
+        return val as z.infer<typeof KeyBindingSchema>;
+      }
+
+      return undefined;
+    }),
+  iconColor: z.string().default(DEFAULT_ICON_COLOR),
+});
+
+/**
+ * Settings for the iRacing hotkey action
+ */
+type IRacingHotkeySettings = z.infer<typeof IRacingHotkeySettings>;
+
+/**
+ * Format a KeyBindingSchema value for display
+ */
+function formatKeyBinding(binding: z.infer<typeof KeyBindingSchema> | undefined): string {
+  if (!binding || !binding.key) {
+    return "Not Set";
+  }
+
+  const parts: string[] = [];
+
+  if (binding.modifiers.includes("ctrl")) parts.push("Ctrl");
+
+  if (binding.modifiers.includes("shift")) parts.push("Shift");
+
+  if (binding.modifiers.includes("alt")) parts.push("Alt");
+
+  parts.push(binding.key.toUpperCase());
+
+  return parts.join("+");
+}
+
+/**
  * iRacing Hotkey Action
- * Sends a preconfigured iRacing keyboard shortcut when pressed
+ * Sends a keyboard shortcut when pressed
  */
 @action({ UUID: "com.iracedeck.sd.hotkeys.do-iracing-hotkey" })
 export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySettings> {
@@ -105,21 +131,8 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
     const parsed = IRacingHotkeySettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : IRacingHotkeySettings.parse({});
 
-    const original = ev.payload.settings;
-    const settingsChanged =
-      settings.presetId !== original.presetId ||
-      settings.overrideKey !== original.overrideKey ||
-      settings.overrideCtrl !== original.overrideCtrl ||
-      settings.overrideShift !== original.overrideShift ||
-      settings.overrideAlt !== original.overrideAlt ||
-      settings.iconColor !== original.iconColor;
-
     ev.payload.settings = settings;
     this.activeContexts.set(ev.action.id, settings);
-
-    if (settingsChanged) {
-      await ev.action.setSettings(settings);
-    }
 
     await this.updateDisplayWithEvent(ev);
 
@@ -149,10 +162,8 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
     const settingsKey = JSON.stringify(settings);
     this.lastSettings.set(ev.action.id, settingsKey);
 
-    const preset = getHotkeyPreset(settings.presetId);
-    const presetName = preset?.name ?? "Unknown";
-
-    const svgDataUri = generateIRacingHotkeySvg(settings.iconColor, presetName);
+    const hotkeyLabel = formatKeyBinding(settings.myHotkey);
+    const svgDataUri = generateIRacingHotkeySvg(settings.iconColor, hotkeyLabel);
     await this.setKeyImage(ev, svgDataUri);
   }
 
@@ -170,10 +181,8 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
     const settingsKey = JSON.stringify(settings);
     this.lastSettings.set(ev.action.id, settingsKey);
 
-    const preset = getHotkeyPreset(settings.presetId);
-    const presetName = preset?.name ?? "Unknown";
-
-    const svgDataUri = generateIRacingHotkeySvg(settings.iconColor, presetName);
+    const hotkeyLabel = formatKeyBinding(settings.myHotkey);
+    const svgDataUri = generateIRacingHotkeySvg(settings.iconColor, hotkeyLabel);
     await this.setKeyImage(ev, svgDataUri);
   }
 
@@ -183,22 +192,20 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
   override async onKeyDown(ev: KeyDownEvent<IRacingHotkeySettings>): Promise<void> {
     this.logger.info("Key down received");
 
-    const settings = ev.payload.settings;
-    const preset = getHotkeyPreset(settings.presetId);
+    const parsed = IRacingHotkeySettings.safeParse(ev.payload.settings);
+    const settings = parsed.success ? parsed.data : IRacingHotkeySettings.parse({});
 
-    if (!preset) {
-      this.logger.warn(`Unknown preset: ${settings.presetId}`);
+    if (!settings.myHotkey || !settings.myHotkey.key) {
+      this.logger.warn("No hotkey configured");
 
       return;
     }
 
-    const combination = buildKeyCombination(
-      preset.defaultKey,
-      settings.overrideKey,
-      settings.overrideCtrl,
-      settings.overrideShift,
-      settings.overrideAlt,
-    );
+    const combination: KeyCombination = {
+      key: settings.myHotkey.key as KeyboardKey,
+      modifiers:
+        settings.myHotkey.modifiers.length > 0 ? (settings.myHotkey.modifiers as KeyboardModifier[]) : undefined,
+    };
 
     this.logger.debug(`Sending key combination: ${JSON.stringify(combination)}`);
 
@@ -206,23 +213,9 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
     const success = await keyboard.sendKeyCombination(combination);
 
     if (success) {
-      this.logger.info(`iRacing hotkey "${preset.name}" (${formatKeyCombination(combination)}) sent successfully`);
+      this.logger.info(`Hotkey (${formatKeyCombination(combination)}) sent successfully`);
     } else {
-      this.logger.warn(`Failed to send iRacing hotkey "${preset.name}" (${formatKeyCombination(combination)})`);
+      this.logger.warn(`Failed to send hotkey (${formatKeyCombination(combination)})`);
     }
   }
 }
-
-const IRacingHotkeySettings = z.object({
-  presetId: z.string().default("blackbox-relative"),
-  overrideKey: z.string().optional(),
-  overrideCtrl: z.coerce.boolean().optional(),
-  overrideShift: z.coerce.boolean().optional(),
-  overrideAlt: z.coerce.boolean().optional(),
-  iconColor: z.string().default(DEFAULT_ICON_COLOR),
-});
-
-/**
- * Settings for the iRacing hotkey action
- */
-type IRacingHotkeySettings = z.infer<typeof IRacingHotkeySettings>;
