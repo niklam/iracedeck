@@ -14,51 +14,77 @@ Cycles through or directly selects iRacing black box screens.
 ## Behavior
 
 ### Button Press
-- **Short press**: Opens selected black box (from settings) or cycles to next
-- **Long press**: Cycles to previous black box
+Opens the specific black box (Direct mode) or cycles to next/previous (Next/Previous mode).
 
 ### Encoder
 - **Rotate clockwise**: Next black box
 - **Rotate counter-clockwise**: Previous black box
 - **Press**: Open currently displayed black box
 
-## Settings
+## Property Inspector
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Mode | Dropdown | Cycle | `Cycle` or `Direct` selection |
+| Mode | Dropdown | Direct | `Direct`, `Next`, or `Previous` |
 | Black Box | Dropdown | Lap Timing | Target black box (Direct mode only) |
 
 ### Black Box Options
 
-| Option | Key | iRacing Setting |
-|--------|-----|-----------------|
-| Lap Timing | F1 | Lap Timing Black Box |
-| Standings | F2 | Standings Black Box |
-| Relative | F3 | Relative Black Box |
-| Fuel | F4 | Fuel Black Box |
-| Tires | F5 | Tires Black Box |
-| Tire Info | F6 | Tire Info Black Box |
-| Pit-stop Adjustments | F7 | Pit-stop Adjustments Black Box |
-| In-car Adjustments | F8 | In-car Adjustments Black Box |
-| Mirror Adjustments | F9 | Mirror Adjustments Black Box |
-| Radio Adjustments | F10 | Radio Adjustments Black Box |
-| Weather | F11 | Weather Black Box |
+| Option | iRacing Setting |
+|--------|-----------------|
+| Lap Timing | Lap Timing Black Box |
+| Standings | Standings Black Box |
+| Relative | Relative Black Box |
+| Fuel | Fuel Black Box |
+| Tires | Tires Black Box |
+| Tire Info | Tire Info Black Box |
+| Pit-stop Adjustments | Pit-stop Adjustments Black Box |
+| In-car Adjustments | In-car Adjustments Black Box |
+| Mirror Adjustments | Mirror Adjustments Black Box |
+| Radio Adjustments | Radio Adjustments Black Box |
+| Weather | Weather Black Box |
 
-## Icon States
+## Icon
 
-| State | Description |
-|-------|-------------|
-| Default | Shows black box icon with current selection label |
-| Cycle mode | Shows "BB" with cycle arrows |
+### Next/Previous Mode
+Shows "BB" with arrow indicating direction (up for next, down for previous).
 
-## Keyboard Simulation
+### Direct Mode
+Each black box selection has a unique icon:
 
-- Direct selection: `F1`–`F11` based on selection
-- Cycle next: Simulates "Next Black Box" binding
-- Cycle previous: Simulates "Previous Black Box" binding
+| Black Box | Icon Description |
+|-----------|------------------|
+| Lap Timing | Stopwatch/timer icon |
+| Standings | Podium/ranking icon |
+| Relative | Cars with gap indicator |
+| Fuel | Fuel pump icon |
+| Tires | Tire icon |
+| Tire Info | Tire with temperature/wear indicator |
+| Pit-stop Adjustments | Pit crew/wrench icon |
+| In-car Adjustments | Steering wheel/cockpit icon |
+| Mirror Adjustments | Mirror icon |
+| Radio Adjustments | Microphone/headset icon |
+| Weather | Cloud/weather icon |
+
+## Global Key Bindings Used
+
+| Binding ID | iRacing Setting | Default Key |
+|------------|-----------------|-------------|
+| `blackBoxLapTiming` | Lap Timing Black Box | F1 |
+| `blackBoxStandings` | Standings Black Box | F2 |
+| `blackBoxRelative` | Relative Black Box | F3 |
+| `blackBoxFuel` | Fuel Black Box | F4 |
+| `blackBoxTires` | Tires Black Box | F5 |
+| `blackBoxTireInfo` | Tire Info Black Box | F6 |
+| `blackBoxPitstop` | Pit-stop Adjustments Black Box | F7 |
+| `blackBoxIncar` | In-car Adjustments Black Box | F8 |
+| `blackBoxMirror` | Mirror Adjustments Black Box | F9 |
+| `blackBoxRadio` | Radio Adjustments Black Box | F10 |
+| `blackBoxWeather` | Weather Black Box | F11 |
+| `nextBlackBox` | Next Black Box | (no default) |
+| `prevBlackBox` | Prev Black Box | (no default) |
 
 ## Notes
 
-- Cycle mode requires user to bind "Next Black Box" and "Previous Black Box" in iRacing
-- Direct mode uses F1–F11 keys which are default iRacing bindings
+- Next/Previous mode requires user to configure `nextBlackBox` and `prevBlackBox` bindings (iRacing has no defaults)
+- Direct mode uses individual black box bindings (F1–F11 by default in iRacing)

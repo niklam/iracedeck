@@ -14,16 +14,17 @@ Cycles through split-time delta display modes.
 ## Behavior
 
 ### Button Press
-- **Short press**: Cycle to next splits delta display
-- **Long press**: Cycle to previous splits delta display
+Triggers the direction configured in Property Inspector (next or previous).
 
 ### Encoder
 - **Rotate clockwise**: Next splits delta display
 - **Rotate counter-clockwise**: Previous splits delta display
 
-## Settings
+## Property Inspector
 
-None.
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| Direction | Dropdown | Next | `Next` or `Previous` |
 
 ## Keyboard Simulation
 

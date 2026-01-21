@@ -41,6 +41,75 @@ Stream Deck plugins for iRacing. Monorepo with pnpm workspaces + Turbo.
 - All action settings must be using Zod if action has settings
 - Actions must not handle offline state (no data available) themselves. This is handled globally.
 
+### Action Settings for Directional Actions
+
+Stream Deck does not support long press. Actions that can operate in multiple directions must use Property Inspector settings:
+
+- **+/- Actions** (increase/decrease a value):
+  - Setting key: `direction`
+  - Values: `Increase`/`Decrease`, `Up`/`Down`, `Louder`/`Quieter`, etc. (context-appropriate)
+  - Button press triggers the configured direction
+  - Encoders support both directions (clockwise = increase, counter-clockwise = decrease)
+
+- **Cycle Actions** (cycle through options):
+  - Setting key: `direction`
+  - Values: `Next`/`Previous`
+  - Button press triggers the configured direction
+  - Encoders support both directions (clockwise = next, counter-clockwise = previous)
+
+### Global Key Bindings
+
+Each plugin has a global key bindings configuration in an expandable/collapsible accordion section in the Property Inspector. This section is identical across all actions within the same plugin.
+
+- Bindings are stored at the plugin level (global settings), not per-action
+- Each plugin only includes bindings needed by its actions
+- Actions reference these global bindings by identifier (e.g., `nextBlackBox`, `prevBlackBox`)
+- Default values match iRacing's default key bindings
+- Users configure bindings once per plugin, not per action
+
+### Property Inspector Components
+
+Custom PI components are built from `@iracedeck/stream-deck-shared/src/pi/` and output to `dist/pi-components.js`.
+
+**Setup in PI HTML:**
+```html
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+```
+
+**Available Components:**
+
+#### `<ird-key-binding>` - Key Binding Input
+A click-to-record keyboard shortcut input. Click to start recording, press a key combination, and it saves automatically.
+
+```html
+<sdpi-item label="Hotkey">
+  <ird-key-binding setting="myHotkey" default="Ctrl+Shift+A"></ird-key-binding>
+</sdpi-item>
+```
+
+Attributes:
+- `setting` - The setting key name for storing the value
+- `default` - Default key combination (e.g., "F1", "Ctrl+A", "Shift+Alt+X")
+
+Stored value format (JSON):
+```json
+{ "key": "a", "modifiers": ["ctrl", "shift"] }
+```
+
+**Building PI Components:**
+
+Source: `packages/stream-deck-shared/src/pi/` (TypeScript)
+Output: `packages/stream-deck-shared/dist/pi-components.js`
+
+```bash
+cd packages/stream-deck-shared
+pnpm build:pi          # Build pi-components.js only
+pnpm build             # Build everything (includes PI components)
+```
+
+After building, copy `dist/pi-components.js` to each plugin's `{sdPlugin}/ui/` folder.
+
 ## Icons
 
 Key Icons are SVG icons displayed on Stream Deck buttons.
