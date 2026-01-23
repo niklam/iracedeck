@@ -1,0 +1,17 @@
+{
+  "blackBox": [
+    { "id": "lapTiming", "label": "Lap Timing", "default": "F1", "setting": "blackBoxLapTiming" },
+    { "id": "standings", "label": "Standings", "default": "F2", "setting": "blackBoxStandings" },
+    { "id": "relative", "label": "Relative", "default": "F3", "setting": "blackBoxRelative" },
+    { "id": "fuel", "label": "Fuel", "default": "F4", "setting": "blackBoxFuel" },
+    { "id": "tires", "label": "Tires", "default": "F5", "setting": "blackBoxTires" },
+    { "id": "tireInfo", "label": "Tire Info", "default": "F6", "setting": "blackBoxTireInfo" },
+    { "id": "pitStop", "label": "Pit-stop Adjustments", "default": "F7", "setting": "blackBoxPitStop" },
+    { "id": "inCar", "label": "In-car Adjustments", "default": "F8", "setting": "blackBoxInCar" },
+    { "id": "mirror", "label": "Mirror Adjustments", "default": "F9", "setting": "blackBoxMirror" },
+    { "id": "radio", "label": "Radio Adjustments", "default": "F10", "setting": "blackBoxRadio" },
+    { "id": "weather", "label": "Weather", "default": "F11", "setting": "blackBoxWeather" },
+    { "id": "cycleNext", "label": "Cycle Next", "default": "", "setting": "blackBoxCycleNext" },
+    { "id": "cyclePrevious", "label": "Cycle Previous", "default": "", "setting": "blackBoxCyclePrevious" }
+  ]
+}

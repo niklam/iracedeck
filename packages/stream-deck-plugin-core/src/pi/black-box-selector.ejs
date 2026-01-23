@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="direct">
+				<option value="direct">Direct</option>
+				<option value="next">Next</option>
+				<option value="previous">Previous</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Direct mode: black box selector -->
+		<sdpi-item label="Black Box" id="blackbox-item">
+			<sdpi-select id="blackbox-select" setting="blackBox" default="lap-timing">
+				<option value="lap-timing">Lap Timing</option>
+				<option value="standings">Standings</option>
+				<option value="relative">Relative</option>
+				<option value="fuel">Fuel</option>
+				<option value="tires">Tires</option>
+				<option value="tire-info">Tire Info</option>
+				<option value="pit-stop">Pit-stop Adjustments</option>
+				<option value="in-car">In-car Adjustments</option>
+				<option value="mirror">Mirror Adjustments</option>
+				<option value="radio">Radio Adjustments</option>
+				<option value="weather">Weather</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'Black Box Key Bindings',
+			keyBindings: require('./data/key-bindings.json').blackBox
+		}) %>
+
+		<script>
+			function updateVisibility(mode) {
+				const blackboxItem = document.getElementById("blackbox-item");
+				if (!blackboxItem) return;
+
+				// Show black box selector only in Direct mode
+				blackboxItem.classList.toggle("hidden", mode !== "direct");
+			}
+
+			// Wait for web components to be defined
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+
+				if (modeSelect) {
+					// Get initial value and update visibility
+					const initialMode = modeSelect.value || "direct";
+					updateVisibility(initialMode);
+
+					// Listen for changes
+					modeSelect.addEventListener("change", (ev) => {
+						const mode = ev.target.value || "direct";
+						updateVisibility(mode);
+					});
+				}
+			}
+
+			// Initialize when DOM is ready
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+	</body>
+</html>

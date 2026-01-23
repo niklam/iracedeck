@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "iRaceDeck Core",
+  "Version": "0.1.0.0",
+  "Author": "Niklas Lampén",
+  "Actions": [
+    {
+      "Name": "Black Box Selector",
+      "UUID": "com.iracedeck.sd.core.black-box-selector",
+      "Icon": "imgs/actions/black-box-selector/icon",
+      "Tooltip": "Cycle through or select iRacing black boxes",
+      "PropertyInspectorPath": "ui/black-box-selector.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous black box"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/black-box-selector/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    }
+  ],
+  "Category": "iRaceDeck Core",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "iRacing core driving and interface controls.",
+  "PropertyInspectorPath": "ui/settings.html",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "UUID": "com.iracedeck.sd.core"
+}
