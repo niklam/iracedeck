@@ -45,9 +45,7 @@ export function generateFpsNetworkDisplaySvg(): string {
 
   const textElement = generateIconText({
     text: "FPS/Net",
-    fontSize: 11,
-    baseY: 58,
-    lineHeightMultiplier: 1.2,
+    fontSize: 12,
   });
 
   const svg = renderIconTemplate(fpsNetworkDisplayTemplate, {

@@ -44,8 +44,6 @@ function generateIRacingHotkeySvg(color: string, hotkeyLabel: string): string {
   const textElement = generateIconText({
     text: escapeXml(hotkeyLabel),
     fontSize: 12,
-    baseY: 58,
-    lineHeightMultiplier: 1.2,
   });
 
   const svg = renderIconTemplate(doIRacingHotkeyTemplate, {

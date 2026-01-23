@@ -100,7 +100,7 @@ export function clearTemplateCache(): void {
  * Required format:
  * - viewBox="0 0 72 72"
  * - Contains <g filter="url(#activity-state)">
- * - Text elements at y="65" for bottom positioning
+ * - Text elements at y="62" for bottom positioning
  * - Dynamic text elements have class="title"
  */
 /**
@@ -133,7 +133,7 @@ export interface GenerateIconTextOptions {
  * Generates SVG text element(s) for icon display.
  * Supports multi-line text by splitting on "\n".
  *
- * For single line: places text at baseY (default 65)
+ * For single line: places text at baseY (default 62)
  * For multiple lines: centers the text block vertically around baseY
  * (each additional line shifts the block up by half the line height)
  *
@@ -143,7 +143,7 @@ export interface GenerateIconTextOptions {
  * @example
  * // Single line
  * generateIconText({ text: "+5 L" })
- * // Returns: <text class="title" x="36" y="65" ...>+5 L</text>
+ * // Returns: <text class="title" x="36" y="62" ...>+5 L</text>
  *
  * @example
  * // Multi-line

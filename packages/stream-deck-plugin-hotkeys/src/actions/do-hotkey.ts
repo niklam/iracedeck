@@ -60,13 +60,11 @@ function generateHotkeySvg(
     textElement = generateIconText({
       text: escapeXml(displayText),
       fontSize: 12,
-      baseY: 58,
-      lineHeightMultiplier: 1.2,
     });
   } else {
     // Show key combination
     const keyDisplay = formatKeyCombination(key, ctrl, shift, alt);
-    textElement = generateIconText({ text: escapeXml(keyDisplay), fontSize: 12, baseY: 58, lineHeightMultiplier: 1.2 });
+    textElement = generateIconText({ text: escapeXml(keyDisplay), fontSize: 12 });
   }
 
   const svg = renderIconTemplate(doHotkeyTemplate, {

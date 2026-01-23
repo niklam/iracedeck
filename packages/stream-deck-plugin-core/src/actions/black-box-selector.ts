@@ -127,9 +127,7 @@ function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings): string
 
   const textElement = generateIconText({
     text: labelText,
-    fontSize: 11,
-    baseY: 58,
-    lineHeightMultiplier: 1.2,
+    fontSize: 12,
   });
 
   const modeContent = getModeContent(mode, color);
