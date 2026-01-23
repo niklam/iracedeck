@@ -97,8 +97,52 @@ initializeKeyboard();
 // Then register actions...
 ```
 
+## Global Key Bindings (Shared Across Actions)
+
+When key bindings should be shared across all instances of an action type (e.g., black box hotkeys), use global settings instead of per-action settings:
+
+### Property Inspector Setup
+```html
+<!-- Add 'global' attribute to store in global settings -->
+<ird-key-binding setting="blackBoxLapTiming" default="F1" global></ird-key-binding>
+```
+
+### Plugin Setup
+```typescript
+// plugin.ts - MUST pass SDK instance and call BEFORE connect()
+import streamDeck from "@elgato/streamdeck";
+import { initGlobalSettings } from "@iracedeck/stream-deck-shared";
+
+initGlobalSettings(streamDeck);
+streamDeck.connect();
+```
+
+### Reading Global Key Bindings
+```typescript
+import { getGlobalSettings, KeyBindingValueSchema } from "@iracedeck/stream-deck-shared";
+
+const globalSettings = getGlobalSettings() as Record<string, unknown>;
+const rawValue = globalSettings["blackBoxLapTiming"];
+
+// Parse JSON string from global settings
+if (typeof rawValue === "string" && rawValue) {
+  try {
+    const parsed = KeyBindingValueSchema.safeParse(JSON.parse(rawValue));
+    if (parsed.success) {
+      await getKeyboard().sendKeyCombination({
+        key: parsed.data.key as KeyboardKey,
+        modifiers: parsed.data.modifiers.length > 0
+          ? parsed.data.modifiers as KeyboardModifier[]
+          : undefined,
+      });
+    }
+  } catch { /* handle error */ }
+}
+```
+
 ## Reference Implementation
-See `packages/stream-deck-plugin-hotkeys/src/actions/do-iracing-hotkey.ts` for complete example.
+- Per-action key bindings: `packages/stream-deck-plugin-hotkeys/src/actions/do-iracing-hotkey.ts`
+- Global key bindings: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
 
 ## Do NOT Use
 - `iracing-hotkeys.ts` presets (test plugin only)

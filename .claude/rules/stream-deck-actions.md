@@ -165,6 +165,64 @@ pnpm build:pi
 pnpm build
 ```
 
+### Global Settings with `ird-key-binding`
+
+Use the `global` attribute to store key bindings in plugin-level global settings (shared across all action instances):
+
+```html
+<ird-key-binding setting="blackBoxLapTiming" default="F1" global></ird-key-binding>
+```
+
+Global settings use flat key names (e.g., `blackBoxLapTiming`), not nested paths.
+
+## Global Settings
+
+Global settings are plugin-level settings shared across all action instances. Use them for:
+- Key bindings that should be consistent across all instances of an action type
+- Plugin-wide preferences
+
+### Plugin Setup (CRITICAL)
+
+**IMPORTANT**: Due to module bundling, you MUST pass the SDK instance to `initGlobalSettings()`:
+
+```typescript
+// plugin.ts
+import streamDeck from "@elgato/streamdeck";
+import { initGlobalSettings } from "@iracedeck/stream-deck-shared";
+
+// MUST call BEFORE streamDeck.connect() - handlers must be registered first
+// MUST pass the SDK instance - bundling creates separate instances otherwise
+initGlobalSettings(streamDeck);
+
+streamDeck.connect();
+```
+
+**Why pass the SDK instance?** The shared library's import of `@elgato/streamdeck` creates a different instance than the plugin's due to bundling. Passing the instance ensures event handlers are registered on the correct SDK.
+
+### Accessing Global Settings in Actions
+
+```typescript
+import { getGlobalSettings, type KeyBindingValue, KeyBindingValueSchema } from "@iracedeck/stream-deck-shared";
+
+// Global settings stores key bindings as JSON strings
+const globalSettings = getGlobalSettings() as Record<string, unknown>;
+const rawValue = globalSettings["blackBoxLapTiming"];
+
+// Parse the JSON string
+if (typeof rawValue === "string" && rawValue) {
+  const parsed = KeyBindingValueSchema.safeParse(JSON.parse(rawValue));
+  if (parsed.success) {
+    // Use parsed.data.key and parsed.data.modifiers
+  }
+}
+```
+
+### Common Pitfalls
+
+1. **Settings cache empty on startup**: `initGlobalSettings()` must call `sd.settings.getGlobalSettings()` after registering the listener to fetch initial values
+2. **Callback never fires**: Handlers must be registered BEFORE `connect()`
+3. **Wrong SDK instance**: Always pass `streamDeck` to `initGlobalSettings(streamDeck)`
+
 ## Encoder Support
 
 For Stream Deck+ encoder (dial) support:

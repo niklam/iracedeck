@@ -94,3 +94,52 @@ const pkg = {
 **Why this matters**: Bundling `keysender` (a native CommonJS module) into an ES module output causes runtime errors like "require is not defined". The module must be loaded at runtime from `node_modules`.
 
 Reference `stream-deck-plugin-hotkeys/rollup.config.mjs` for the correct configuration.
+
+### Application Monitoring
+
+To enable app monitoring (for features like conditional reconnection that pauses when iRacing isn't running), add to manifest.json:
+
+```json
+{
+  "ApplicationsToMonitor": {
+    "windows": ["iRacingSim64DX11.exe"]
+  }
+}
+```
+
+This allows the plugin to receive `applicationDidLaunch` and `applicationDidTerminate` events when iRacing starts/stops.
+
+### Plugin Initialization Order (plugin.ts)
+
+The initialization order in `plugin.ts` is critical:
+
+```typescript
+import streamDeck from "@elgato/streamdeck";
+import { initializeSDK, initializeKeyboard, initGlobalSettings, initAppMonitor } from "@iracedeck/stream-deck-shared";
+
+// 1. Enable logging
+streamDeck.logger.setLevel("trace");
+
+// 2. Initialize SDK singleton
+initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
+
+// 3. Initialize keyboard (if using keyboard shortcuts)
+initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")));
+
+// 4. Register actions
+streamDeck.actions.registerAction(new MyAction());
+
+// 5. Initialize global settings BEFORE connect() - pass SDK instance!
+initGlobalSettings(streamDeck);
+
+// 6. Initialize app monitor BEFORE connect() - pass SDK instance!
+initAppMonitor(streamDeck);
+
+// 7. Connect LAST
+streamDeck.connect();
+```
+
+**CRITICAL**: Both `initGlobalSettings(streamDeck)` and `initAppMonitor(streamDeck)` MUST:
+- Be called BEFORE `streamDeck.connect()` (handlers must register first)
+- Receive the SDK instance as parameter (bundling creates separate instances otherwise)
+- `initAppMonitor` requires `initializeSDK()` to be called first
