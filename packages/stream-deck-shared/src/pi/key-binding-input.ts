@@ -7,10 +7,21 @@
  *
  * Usage in HTML:
  * ```html
+ * <!-- Action-specific setting (different per action instance) -->
  * <sdpi-item label="Hotkey">
  *   <ird-key-binding setting="myHotkey" default="F1"></ird-key-binding>
  * </sdpi-item>
+ *
+ * <!-- Global setting (shared across all actions in the plugin) -->
+ * <sdpi-item label="Lap Timing Key">
+ *   <ird-key-binding setting="keys.blackBox.lapTiming" default="F1" global></ird-key-binding>
+ * </sdpi-item>
  * ```
+ *
+ * Attributes:
+ * - setting: The settings key name
+ * - default: Default key (e.g., "F1", "Ctrl+Shift+A")
+ * - global: When present, uses plugin-level global settings (shared across all actions)
  *
  * The stored value is a JSON string with format:
  * { "key": "f1", "modifiers": ["ctrl", "shift"] }
@@ -29,13 +40,25 @@ import { KEY_CODE_MAP, type Modifier } from "./key-maps.js";
 export { formatKeyBinding, parseKeyBinding, parseSimpleDefault, type KeyBindingValue };
 
 /**
+ * Settings hook return type.
+ * First element is a getter function, second is a setter function.
+ */
+type SettingsHook = [() => Promise<string>, (value: string) => void];
+
+/**
  * SDPIComponents global type declaration.
  *
  * This component integrates with Elgato's sdpi-components library (sdpi-components.js)
- * which exposes window.SDPIComponents as its public API. The useSettings hook provides:
+ * which exposes window.SDPIComponents as its public API.
+ *
+ * Settings hooks provide:
  * - Automatic settings loading when PI connects to Stream Deck
  * - Settings persistence via Stream Deck's setSettings API
  * - Change notifications when settings update externally
+ *
+ * Two types of settings:
+ * - useSettings: Action-specific settings (different per action instance)
+ * - useGlobalSettings: Plugin-level settings (shared across all actions in the plugin)
  *
  * This global dependency is intentional - it's the standard integration pattern
  * for custom PI components that need to persist settings to Stream Deck.
@@ -43,11 +66,8 @@ export { formatKeyBinding, parseKeyBinding, parseSimpleDefault, type KeyBindingV
 declare global {
   interface Window {
     SDPIComponents?: {
-      useSettings: (
-        key: string,
-        callback: (value: string) => void,
-        debounceMs?: number | null,
-      ) => [() => Promise<string>, (value: string) => void];
+      useSettings: (key: string, callback: (value: string) => void, debounceMs?: number | null) => SettingsHook;
+      useGlobalSettings: (key: string, callback: (value: string) => void, debounceMs?: number | null) => SettingsHook;
     };
   }
 }
@@ -117,25 +137,36 @@ class KeyBindingInput extends HTMLElement {
 
     // Get setting name and integrate with SDPIComponents
     const settingName = this.getAttribute("setting");
+    const defaultValue = this.getAttribute("default");
+    const useGlobal = this.hasAttribute("global");
 
     if (settingName && window.SDPIComponents) {
-      // Use SDPIComponents.useSettings to get/save settings
-      const [, save] = window.SDPIComponents.useSettings(
+      // Choose settings hook based on 'global' attribute
+      // Global settings are shared across all action instances in the plugin
+      // Regular settings are specific to each action instance
+      const useSettingsHook = useGlobal ? window.SDPIComponents.useGlobalSettings : window.SDPIComponents.useSettings;
+
+      const [, save] = useSettingsHook(
         settingName,
         (value: string) => {
           // Called when settings are loaded or changed externally
-          this.value = value;
+          if (value) {
+            this.value = value;
+          } else if (defaultValue) {
+            // No saved value - apply default and save it
+            this.currentValue = parseSimpleDefault(defaultValue);
+            this.updateDisplay();
+            // Save the default to settings so it persists
+            save(this.value);
+          }
         },
         null, // No debounce
       );
       this.saveToStreamDeck = save;
     }
 
-    // Get default value if specified and no value is set yet
-    const defaultValue = this.getAttribute("default");
-
-    if (defaultValue && !this.currentValue) {
-      // Parse simple default like "F1" or "Ctrl+Shift+A"
+    // Apply default if no SDPIComponents integration (standalone usage)
+    if (!window.SDPIComponents && defaultValue && !this.currentValue) {
       this.currentValue = parseSimpleDefault(defaultValue);
     }
 
@@ -155,12 +186,18 @@ class KeyBindingInput extends HTMLElement {
   }
 
   /**
-   * Programmatically set the key binding value.
+   * Programmatically set the key binding value and optionally save to settings.
    * Part of the custom element public API for external/programmatic access.
+   * @param value - The key binding value to set
+   * @param saveToSettings - Whether to save the value to Stream Deck settings (default: true)
    */
-  setValue(value: KeyBindingValue | null): void {
+  setValue(value: KeyBindingValue | null, saveToSettings = true): void {
     this.currentValue = value;
     this.updateDisplay();
+
+    if (saveToSettings) {
+      this.notifyChange();
+    }
   }
 
   /**
@@ -265,7 +302,7 @@ class KeyBindingInput extends HTMLElement {
   }
 
   private notifyChange(): void {
-    // Save to Stream Deck via SDPIComponents.useSettings
+    // Save to Stream Deck via SDPIComponents settings hook
     if (this.saveToStreamDeck) {
       this.saveToStreamDeck(this.value);
     }
@@ -276,15 +313,21 @@ class KeyBindingInput extends HTMLElement {
    * - "value": Allows setting the key binding via HTML attribute (JSON string format).
    *   Part of the standard custom element API contract.
    * - "default": Initial default value if no setting exists.
+   * - "global": When present, uses global settings (shared across all actions in the plugin).
    */
   static get observedAttributes(): string[] {
-    return ["value", "default"];
+    return ["value", "default", "global"];
   }
 
-  attributeChangedCallback(name: string, _oldValue: string, newValue: string): void {
+  attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
     if (name === "value" && newValue) {
       this.currentValue = parseKeyBinding(newValue);
       this.updateDisplay();
+    } else if (name === "default" && newValue && newValue !== oldValue) {
+      // When default changes (e.g., black box selection changed), apply the new default and save it
+      this.currentValue = parseSimpleDefault(newValue);
+      this.updateDisplay();
+      this.notifyChange();
     }
   }
 }

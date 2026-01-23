@@ -10,20 +10,26 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./build": {
+      "import": "./dist/build/index.js",
+      "types": "./dist/build/index.d.ts"
+    },
     "./pi-components": {
       "import": "./dist/pi-components.js"
     }
   },
   "scripts": {
-    "build": "tsc && rollup -c",
+    "build": "tsc && rollup -c && npm run copy:partials",
     "build:pi": "rollup -c",
+    "copy:partials": "node -e \"const fs=require('fs');const path=require('path');fs.cpSync('src/pi-templates',path.join('dist','pi-templates'),{recursive:true})\"",
     "clean": "rimraf dist",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@iracedeck/logger": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "ejs": "^4.0.1",
     "keysender": "^2.3.1",
     "zod": "^3.24.0"
   },
@@ -35,6 +41,7 @@
     "@elgato/utils": "^0.4.1",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.1.0",
+    "@types/ejs": "^3.1.5",
     "@types/node": "~24.0.0",
     "rimraf": "^5.0.0",
     "rollup": "^4.0.2",

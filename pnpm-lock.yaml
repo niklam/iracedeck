@@ -217,6 +217,61 @@ importers:
         specifier: ^4.0.16
         version: 4.0.16(@opentelemetry/api@1.9.0)(@types/node@24.0.15)(terser@5.44.1)(yaml@2.8.2)
 
+  packages/stream-deck-plugin-core:
+    dependencies:
+      '@elgato/streamdeck':
+        specifier: ^2.0.0
+        version: 2.0.0
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
+      '@iracedeck/stream-deck-shared':
+        specifier: workspace:*
+        version: link:../stream-deck-shared
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
+    devDependencies:
+      '@elgato/cli':
+        specifier: ^1.6.0
+        version: 1.6.0(@types/node@24.0.15)
+      '@elgato/utils':
+        specifier: ^0.4.1
+        version: 0.4.1
+      '@rollup/plugin-commonjs':
+        specifier: ^28.0.0
+        version: 28.0.9(rollup@4.54.0)
+      '@rollup/plugin-node-resolve':
+        specifier: ^15.2.2
+        version: 15.3.1(rollup@4.54.0)
+      '@rollup/plugin-terser':
+        specifier: ^0.4.4
+        version: 0.4.4(rollup@4.54.0)
+      '@rollup/plugin-typescript':
+        specifier: ^12.1.0
+        version: 12.3.0(rollup@4.54.0)(tslib@2.8.1)(typescript@5.9.3)
+      '@tsconfig/node22':
+        specifier: ^22.0.0
+        version: 22.0.5
+      '@types/node':
+        specifier: ~24.0.0
+        version: 24.0.15
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      rollup:
+        specifier: ^4.0.2
+        version: 4.54.0
+      tslib:
+        specifier: ^2.6.2
+        version: 2.8.1
+      typescript:
+        specifier: ^5.2.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@opentelemetry/api@1.9.0)(@types/node@24.0.15)(terser@5.44.1)(yaml@2.8.2)
+
   packages/stream-deck-plugin-hotkeys:
     dependencies:
       '@elgato/streamdeck':
@@ -341,6 +396,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      ejs:
+        specifier: ^4.0.1
+        version: 4.0.1
       keysender:
         specifier: ^2.3.1
         version: 2.4.0
@@ -360,6 +418,9 @@ importers:
       '@rollup/plugin-typescript':
         specifier: ^12.1.0
         version: 12.3.0(rollup@4.54.0)(tslib@2.8.1)(typescript@5.9.3)
+      '@types/ejs':
+        specifier: ^3.1.5
+        version: 3.1.5
       '@types/node':
         specifier: ~24.0.0
         version: 24.0.15
@@ -1281,6 +1342,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
+  '@types/ejs@3.1.5':
+    resolution: {integrity: sha512-nv+GSx77ZtXiJzwKdsASqi+YQ5Z7vwHsTP0JY2SiQgjGckkBRKZnk8nIM+7oUZ1VCtuTz0+By4qVR7fqzp/Dfg==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -1987,6 +2051,11 @@ packages:
   ejs@3.1.10:
     resolution: {integrity: sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA==}
     engines: {node: '>=0.10.0'}
+    hasBin: true
+
+  ejs@4.0.1:
+    resolution: {integrity: sha512-krvQtxc0btwSm/nvnt1UpnaFDFVJpJ0fdckmALpCgShsr/iGYHTnJiUliZTgmzq/UxTX33TtOQVKaNigMQp/6Q==}
+    engines: {node: '>=0.12.18'}
     hasBin: true
 
   emoji-regex@8.0.0:
@@ -5165,6 +5234,8 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/ejs@3.1.5': {}
+
   '@types/estree@1.0.8': {}
 
   '@types/json-schema@7.0.15': {}
@@ -5884,6 +5955,10 @@ snapshots:
   ee-first@1.1.1: {}
 
   ejs@3.1.10:
+    dependencies:
+      jake: 10.9.4
+
+  ejs@4.0.1:
     dependencies:
       jake: 10.9.4
 

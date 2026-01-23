@@ -1,0 +1,29 @@
+<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a collapsible "Global Settings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - subtitle: String (optional) - Section subtitle (e.g., "Black Box Key Bindings")
+    - keyBindings: Array with objects containing id, label, default, setting
+    - open: Boolean (optional) - Whether to start expanded (default: false)
+-->
+<% const isOpen = (typeof open !== 'undefined' ? open : false); %>
+<% const sectionSubtitle = (typeof subtitle !== 'undefined' ? subtitle : null); %>
+<%
+  let contentHtml = '';
+  if (sectionSubtitle) {
+    contentHtml += '<div class="ird-section-subtitle">' + sectionSubtitle + '</div>';
+  }
+  contentHtml += keyBindings.map(function(binding) {
+    return '<sdpi-item label="' + binding.label + '">' +
+      '<ird-key-binding setting="' + binding.setting + '" default="' + binding.default + '" global></ird-key-binding>' +
+      '</sdpi-item>';
+  }).join('');
+%>
+<%- include('accordion', {
+  title: 'Global Settings',
+  open: isOpen,
+  content: contentHtml
+}) %>

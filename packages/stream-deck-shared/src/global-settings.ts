@@ -5,34 +5,49 @@
  * Uses the Stream Deck SDK's global settings API for persistence.
  *
  * Usage:
- * 1. Call initGlobalSettings() once at plugin startup
+ * 1. Call initGlobalSettings(streamDeck) once at plugin startup, passing the SDK instance
  * 2. Use getGlobalSettings() to access current settings
  * 3. Settings are automatically updated when changed in Property Inspector
  *
  * @example
  * // In plugin.ts
+ * import streamDeck from "@elgato/streamdeck";
  * import { initGlobalSettings } from "@iracedeck/stream-deck-shared";
- * await initGlobalSettings();
+ * initGlobalSettings(streamDeck);
  *
  * // In actions
  * import { getGlobalSettings } from "@iracedeck/stream-deck-shared";
  * const settings = getGlobalSettings();
  * if (settings.disableWhenDisconnected) { ... }
  */
-import streamDeck from "@elgato/streamdeck";
+import type StreamDeck from "@elgato/streamdeck";
 import { z } from "zod";
 
 /**
- * Schema for global plugin settings.
- * All settings should have sensible defaults.
+ * Schema for key binding values stored in global settings.
+ * Matches the format used by the ird-key-binding component.
+ * Exported for use by plugins defining their own key binding schemas.
  */
-export const GlobalSettingsSchema = z.object({
-  /**
-   * When true, buttons show inactive/disabled state when iRacing is not connected.
-   * Default: true
-   */
-  disableWhenDisconnected: z.boolean().default(true),
+export const KeyBindingValueSchema = z.object({
+  key: z.string(),
+  modifiers: z.array(z.string()).default([]),
 });
+
+export type KeyBindingValue = z.infer<typeof KeyBindingValueSchema>;
+
+/**
+ * Schema for global plugin settings.
+ * Uses passthrough to allow dynamic key binding properties (e.g., blackBoxLapTiming, blackBoxFuel).
+ */
+export const GlobalSettingsSchema = z
+  .object({
+    /**
+     * When true, buttons show inactive/disabled state when iRacing is not connected.
+     * Default: true
+     */
+    disableWhenDisconnected: z.boolean().default(true),
+  })
+  .passthrough();
 
 export type GlobalSettings = z.infer<typeof GlobalSettingsSchema>;
 
@@ -54,24 +69,28 @@ let initialized = false;
 
 /**
  * Initialize global settings manager.
- * Fetches current settings and subscribes to changes.
- * Should be called once at plugin startup, after streamDeck.connect().
+ * Sets up the listener for global settings changes.
+ * The SDK will send current settings via the onDidReceiveGlobalSettings event.
+ * Should be called once at plugin startup, before streamDeck.connect().
  *
- * @returns Promise resolving to current global settings
+ * @param sd - The Stream Deck SDK instance from the plugin
+ * @returns Current global settings (may be defaults until SDK sends actual values)
  */
-export async function initGlobalSettings(): Promise<GlobalSettings> {
+export function initGlobalSettings(sd: typeof StreamDeck): GlobalSettings {
+  sd.logger.info("[GlobalSettings] initGlobalSettings called");
+
   if (initialized) {
+    sd.logger.info("[GlobalSettings] Already initialized, returning cached");
+
     return currentSettings;
   }
 
-  // Fetch current settings from Stream Deck
-  const raw = await streamDeck.settings.getGlobalSettings();
-  currentSettings = GlobalSettingsSchema.parse(raw);
-
   // Listen for changes from Property Inspector
-  streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
+  sd.settings.onDidReceiveGlobalSettings((ev: { settings: unknown }) => {
+    sd.logger.info(`[GlobalSettings] onDidReceiveGlobalSettings: ${JSON.stringify(ev.settings)}`);
     const newSettings = GlobalSettingsSchema.parse(ev.settings);
     currentSettings = newSettings;
+    sd.logger.info(`[GlobalSettings] Updated cache: ${JSON.stringify(currentSettings)}`);
 
     // Notify all listeners
     for (const listener of listeners) {
@@ -80,6 +99,10 @@ export async function initGlobalSettings(): Promise<GlobalSettings> {
   });
 
   initialized = true;
+
+  // Request current global settings - this triggers the onDidReceiveGlobalSettings callback
+  sd.settings.getGlobalSettings();
+  sd.logger.info("[GlobalSettings] Requested current global settings");
 
   return currentSettings;
 }

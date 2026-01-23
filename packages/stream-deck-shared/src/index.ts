@@ -45,6 +45,8 @@ export { initializeSDK, getSDK, getController, getCommands, isSDKInitialized, _r
 export {
   GlobalSettingsSchema,
   type GlobalSettings,
+  KeyBindingValueSchema,
+  type KeyBindingValue,
   initGlobalSettings,
   getGlobalSettings,
   onGlobalSettingsChange,

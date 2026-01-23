@@ -1,0 +1,13 @@
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" <%= (typeof open !== 'undefined' && open) ? 'open' : '' %>>
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title"><%= title %></span>
+  </summary>
+  <div class="ird-collapsible-content">
+    <%- content %>
+  </div>
+</details>

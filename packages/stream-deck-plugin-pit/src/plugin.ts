@@ -23,7 +23,9 @@ streamDeck.actions.registerAction(new DoTireCompound());
 streamDeck.actions.registerAction(new DoChangeTires());
 streamDeck.actions.registerAction(new DoFastRepair());
 
-// Connect to the Stream Deck and initialize global settings
-streamDeck.connect().then(() => {
-  initGlobalSettings();
-});
+// Initialize global settings listener BEFORE connect - handlers must be registered first
+// Pass the SDK instance to ensure we use the same instance as the plugin
+initGlobalSettings(streamDeck);
+
+// Connect to the Stream Deck
+streamDeck.connect();
