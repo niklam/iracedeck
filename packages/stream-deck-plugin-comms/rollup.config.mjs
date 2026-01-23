@@ -40,9 +40,10 @@ const config = {
 		sourcemap: isWatching,
 		sourcemapPathTransform: (relativeSourcePath, sourcemapPath) => {
 			return url.pathToFileURL(path.resolve(path.dirname(sourcemapPath), relativeSourcePath)).href;
-		}
+		},
+		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/iracing-native", "yaml"],
+	external: ["@iracedeck/iracing-native", "@iracedeck/stream-deck-shared", "yaml"],
 	plugins: [
 		svgPlugin(),
 		{
@@ -82,6 +83,7 @@ const config = {
 							type: "module",
 							dependencies: {
 								"@iracedeck/iracing-native": "file:../../../iracing-native",
+								"@iracedeck/stream-deck-shared": "file:../../../stream-deck-shared",
 								yaml: "^2.8.2",
 							}
 						};
