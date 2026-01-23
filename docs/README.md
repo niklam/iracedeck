@@ -8,4 +8,4 @@
 
 ## Plugins
 
-- [Core Plugin](plugins/core/index.md) - Core driving, cockpit, and interface controls
+- [Core Plugin](plugins/core/README.md) - Core driving, cockpit, and interface controls

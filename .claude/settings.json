@@ -1,0 +1,29 @@
+{
+    "companyAnnouncements": [
+        "Let's build something amazing for the racers!",
+        "Ooh, you're so handsome!",
+        "I want to be like you!"
+    ],
+    "cleanupPeriodDays": 5,
+    "attribution": {
+        "commit": "",
+        "pr": ""
+    },
+    "permissions": {
+        "deny": [],
+        "ask": [
+            "Bash(git commit:*)",
+            "Bash(git push:*)"
+        ],
+        "allow": [
+            "Bash(cd:*)",
+            "Bash(dir:*)",
+            "Bash(git diff:*)",
+            "Bash(git status:*)",
+            "Bash(git log:*)",
+            "Bash(pnpm build:*)",
+            "Bash(wc:*)",
+            "Bash(* --version)"
+        ]
+    }
+}
