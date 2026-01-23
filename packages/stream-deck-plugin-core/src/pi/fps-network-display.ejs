@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'Display Key Bindings',
+			keyBindings: require('./data/key-bindings.json').display
+		}) %>
+	</body>
+</html>

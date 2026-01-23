@@ -13,5 +13,13 @@
     { "id": "weather", "label": "Weather", "default": "F11", "setting": "blackBoxWeather" },
     { "id": "cycleNext", "label": "Cycle Next", "default": "", "setting": "blackBoxCycleNext" },
     { "id": "cyclePrevious", "label": "Cycle Previous", "default": "", "setting": "blackBoxCyclePrevious" }
+  ],
+  "display": [
+    {
+      "id": "fpsNetworkDisplay",
+      "label": "FPS / Network Display",
+      "default": "F",
+      "setting": "fpsNetworkDisplay"
+    }
   ]
 }

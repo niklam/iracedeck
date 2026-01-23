@@ -24,6 +24,21 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "FPS/Network Display",
+      "UUID": "com.iracedeck.sd.core.fps-network-display",
+      "Icon": "imgs/actions/fps-network-display/icon",
+      "Tooltip": "Toggle FPS and network statistics overlay",
+      "PropertyInspectorPath": "ui/fps-network-display.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/fps-network-display/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",
