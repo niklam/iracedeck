@@ -69,6 +69,8 @@ export function initAppMonitor(sd: typeof StreamDeck, log: ILogger): void {
 
   // Listen for iRacing launch
   sd.system.onApplicationDidLaunch((ev) => {
+    logger?.debug(`Application launched: ${ev.application}`);
+
     if (ev.application.toLowerCase() === IRACING_EXE.toLowerCase()) {
       logger?.info("iRacing launched");
       iRacingRunning = true;
@@ -78,6 +80,8 @@ export function initAppMonitor(sd: typeof StreamDeck, log: ILogger): void {
 
   // Listen for iRacing termination
   sd.system.onApplicationDidTerminate((ev) => {
+    logger?.debug(`Application terminated: ${ev.application}`);
+
     if (ev.application.toLowerCase() === IRACING_EXE.toLowerCase()) {
       logger?.info("iRacing terminated");
       iRacingRunning = false;

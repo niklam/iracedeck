@@ -181,13 +181,23 @@ export class SDKController {
   /**
    * Enable or disable reconnection attempts.
    * Used by app monitor to pause reconnection when iRacing is not running.
+   *
+   * When disabled, actively disconnects if currently connected (since iRacing
+   * has terminated and the connection is no longer valid).
    */
   setReconnectEnabled(enabled: boolean): void {
     this.reconnectEnabled = enabled;
     this.logger.info(`[SDKController] Reconnect ${enabled ? "enabled" : "disabled"}`);
 
-    // If re-enabling and we have subscribers, try to connect immediately
-    if (enabled && this.subscribers.size > 0 && !this.isConnected) {
+    if (!enabled && this.isConnected) {
+      // iRacing terminated - disconnect immediately and notify subscribers
+      this.logger.info("[SDKController] Disconnecting (app terminated)");
+      this.sdk.disconnect();
+      this.isConnected = false;
+      this.lastValidTelemetry = null;
+      this.notifySubscribers(null);
+    } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
+      // Re-enabling and we have subscribers - try to connect immediately
       try {
         this.tryConnect();
       } catch (error) {
