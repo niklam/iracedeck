@@ -18,6 +18,7 @@
         "allow": [
             "Bash(cd:*)",
             "Bash(dir:*)",
+            "Bash(git check-ignore:*)",
             "Bash(git diff:*)",
             "Bash(git status:*)",
             "Bash(git log:*)",
