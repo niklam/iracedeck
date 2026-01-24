@@ -1,27 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <g filter="url(#activity-state)">
-    <!-- Black box display frame -->
-    <rect x="10" y="8" width="52" height="36" rx="3" ry="3"
-          fill="none"
-          stroke="{{color}}"
-          stroke-width="2.5"
-          stroke-linejoin="round"/>
+    <!-- Main background -->
+    <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a2a2a"/>
 
-    <!-- Inner screen area -->
-    <rect x="14" y="12" width="44" height="28" rx="2" ry="2"
-          fill="none"
-          stroke="{{color}}"
-          stroke-width="1.5"
-          stroke-linejoin="round"/>
+    <!-- Icon content area: y=9 to y=43 -->
+{{iconContent}}
 
-    <!-- BB label badge in top-right corner -->
-    <rect x="46" y="4" width="20" height="14" rx="3" fill="{{color}}"/>
-    <text x="56" y="14" text-anchor="middle" dominant-baseline="central"
-          fill="#000000" font-family="sans-serif" font-size="9" font-weight="bold">BB</text>
-
-    <!-- Mode-specific content -->
-{{modeContent}}
-
-{{textElement}}
+    <!-- Two-line label -->
+    <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
+    <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
   </g>
 </svg>
