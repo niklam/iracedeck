@@ -4,7 +4,7 @@
 ## Icon Types
 
 - **Category icons** (`icon.svg`, 20x20): Must be monochrome white (`#ffffff`) on transparent background. No colors. Keep designs simple—text is often too small to read at this size.
-- **Key icons** (`key.svg`, 72x72): Can use full color palette. These appear on Stream Deck buttons.
+- **Key icons** (`key.svg`, 72x72): Can use full color palette. These appear on Stream Deck buttons. See [key-icon-types.md](key-icon-types.md) for standardized layouts.
 - **Template icons** (`{package}/icons/*.svg`): Mustache templates compiled into data URIs at build time.
 
 SVG structure

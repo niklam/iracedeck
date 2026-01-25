@@ -6,6 +6,8 @@ paths:
 ---
 # Black Box Icon Design Guidelines
 
+> **Extends**: [Default Key Icon Type](key-icon-types.md) with an inner black box frame.
+
 Reference icons: `C:\Users\nikla\OneDrive\Tiedostot\Stream_Deck_Icons_THK_v2.1.5\Stream_Deck_Icons_v2.1.5\Function icons\color no-border flat\effects management\iracing blackbox\BB_*_Overlay.png`
 
 ## Canvas Layout (72x72)
