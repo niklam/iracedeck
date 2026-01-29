@@ -159,9 +159,9 @@ if (binding?.key) {
 ```
 
 ## Reference Implementation
-- Per-action key bindings: `packages/stream-deck-plugin-hotkeys/src/actions/do-iracing-hotkey.ts`
 - Global key bindings: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
-- FPS/Network display: `packages/stream-deck-plugin-core/src/actions/fps-network-display.ts`
+- Cycle action with global key bindings: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`
+- Per-action key bindings: `packages/stream-deck-plugin-hotkeys/src/actions/do-iracing-hotkey.ts`
 
 ## Do NOT Use
 - `iracing-hotkeys.ts` presets (test plugin only)

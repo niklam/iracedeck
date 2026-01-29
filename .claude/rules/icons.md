@@ -23,7 +23,7 @@ Design specs
 
 - Canvas size: 72x72; safe area: 56x56 centered (8px margin).
 - Stroke width: 2–2.5px main, 1–1.5px details.
-- Colors: white `#ffffff`, green `#2ecc71`, red `#e74c3c`, yellow `#f1c40f`, gray `#888888`.
+- Colors: white `#ffffff`, green `#2ecc71`, red `#e74c3c`, yellow `#f1c40f`, purple `#9b59b6`, gray `#888888`.
 
 Templates
 

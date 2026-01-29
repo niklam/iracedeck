@@ -14,7 +14,7 @@
 
 ## Creating New Plugins
 
-Use `stream-deck-plugin-pit` as the reference implementation. Create the following structure:
+Use `stream-deck-plugin-core` as the reference implementation for plugin structure, action patterns, icon templates, PI templates, and tests. Create the following structure:
 
 ```
 packages/stream-deck-plugin-{name}/
@@ -93,7 +93,7 @@ const pkg = {
 
 **Why this matters**: Bundling `keysender` (a native CommonJS module) into an ES module output causes runtime errors like "require is not defined". The module must be loaded at runtime from `node_modules`.
 
-Reference `stream-deck-plugin-hotkeys/rollup.config.mjs` for the correct configuration.
+Reference `stream-deck-plugin-core/rollup.config.mjs` for the correct configuration.
 
 ### Application Monitoring
 

@@ -78,6 +78,10 @@ Individual action docs go in `docs/plugins/{plugin}/actions/{action-name}.md`.
 
 **IMPORTANT**: Follow the standard in `.claude/rules/action-documentation.md` and use `docs/plugins/core/actions/black-box-selector.md` as the canonical template.
 
+### Reference Implementation
+
+Use `packages/stream-deck-plugin-core` as the canonical reference for all patterns: plugin structure, action implementation, icon templates (Standard and Inverted label layouts), PI templates, tests, and keyboard shortcut actions.
+
 Key requirements:
 - **Section order**: Properties → Behavior → Settings → Keyboard Simulation → Icon States → Notes
 - **Settings options**: Use bullet point lists (not inline backtick lists like `` `A` or `B` ``)

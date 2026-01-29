@@ -36,25 +36,37 @@ The standard layout for most action icons.
 
 ### Two-Line Label System
 
-Labels use flexible positioning—the **primary** (important) word can be on line 1 OR line 2 based on readability:
+Labels use two lines with primary (bold, prominent) and secondary (subdued) styling:
 
-| Label Type | Font Size | Weight | Color | Y Position |
-|------------|-----------|--------|-------|------------|
-| Primary | 10px | bold | #ffffff | 52 or 63 |
-| Secondary | 8px | normal | #aaaaaa | 52 or 63 |
-
-**Examples:**
-- "STANDINGS" (primary) / "toggle" (secondary) → primary on line 1
-- "Seat" (secondary) / "FORWARD" (primary) → primary on line 2 (action word emphasized)
+| Label Type | Font Size | Weight | Color |
+|------------|-----------|--------|-------|
+| Primary | 10px | bold | #ffffff |
+| Secondary | 8px | normal | #aaaaaa |
 
 Both lines are centered horizontally (text-anchor="middle", x=36).
 
+There are two label layouts:
+
+**Standard** (line1 = primary on top, line2 = secondary on bottom):
+- Used when the category/name is the most important info (e.g., "STANDINGS" / "toggle")
+- Template: `{{labelLine1}}` at y=52 (primary), `{{labelLine2}}` at y=63 (secondary)
+- Reference: `packages/stream-deck-plugin-core/icons/black-box-selector.svg`
+
+**Inverted** (line2 = secondary on top, line1 = primary on bottom):
+- Used when the action/direction word is more important than the category (e.g., "splits delta" / "NEXT")
+- Template: `{{labelLine2}}` at y=52 (secondary), `{{labelLine1}}` at y=63 (primary)
+- Reference: `packages/stream-deck-plugin-core/icons/splits-delta-cycle.svg`
+
 ### Background Colors
+
+Different actions can use different background colors to help distinguish them visually on the Stream Deck.
 
 | Category | Color | Usage |
 |----------|-------|-------|
-| Default | #2a2a2a | General actions |
-| *(more to be added)* | | |
+| Default | #2a2a2a | General actions (e.g., black box selector) |
+| Dark Purple | #412244 | Splits/delta timing actions |
+
+Choose a background color that fits the action's theme. New colors can be added as needed — they should be dark enough for white text readability.
 
 ### Standard Color Palette
 
@@ -70,22 +82,44 @@ const BLUE   = "#3498db";           // Cold temperatures
 const RED    = "#e74c3c";           // Hot temperatures, errors
 ```
 
-### Template Structure
+### Standard Template
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a2a2a"/>
+    <rect x="0" y="0" width="72" height="72" rx="8" fill="{background-color}"/>
 
     <!-- Icon content area: y=8 to y=40 -->
     {{iconContent}}
 
-    <!-- Two-line label -->
+    <!-- Two-line label: line1 primary on top, line2 secondary on bottom -->
     <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
     <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
           fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
+  </g>
+</svg>
+```
+
+### Inverted Template
+
+Used when the action word (e.g., NEXT/PREVIOUS) should be more prominent than the category name.
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="72" height="72" rx="8" fill="{background-color}"/>
+
+    <!-- Icon content area: y=9 to y=43 -->
+    {{iconContent}}
+
+    <!-- Inverted label: line2 secondary on top, line1 primary on bottom -->
+    <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
+    <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
   </g>
 </svg>
 ```
@@ -122,9 +156,17 @@ export const MY_ACTION_LABELS: Record<string, { primary: string; secondary: stri
 
 ### Black Box Type
 
-Extends Default Key Icon Type with an inner frame. See [black-box-icons.md](black-box-icons.md) for details.
+Extends Default Key Icon Type (Standard label layout) with an inner frame. See [black-box-icons.md](black-box-icons.md) for details.
 
 - Adds inner black box frame (dark olive #2d2510, brown stroke #4a3728)
-- Used for iRacing black box screen actions
+- Uses Standard label layout (primary name on top, secondary action on bottom)
+- Background: #2a2a2a
+- Reference: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
 
-*(More types will be added as needed)*
+### Inverted Type
+
+Uses the Inverted label layout where the action word is prominent (bottom, bold) and the category is subdued (top, small).
+
+- Category/context label on top (secondary), action word on bottom (primary)
+- Background color varies per action
+- Reference: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`

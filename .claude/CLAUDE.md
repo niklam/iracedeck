@@ -32,7 +32,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `code-style.md`: Formatting, linting, type conventions, Zod usage, and general code quality rules.
 - `global-settings.md`: Plugin-level global settings architecture: Property Inspector usage, `ird-key-binding` with `global` attribute, Zod schema, and settings path conventions.
 - `icons.md`: General icon guidelines: icon types (category, key, template), SVG structure, design specs, color palette, Mustache templates, and distinctiveness rules.
-- `key-icon-types.md`: Standardized key icon type definitions (Default, Black Box): canvas layout, two-line label system, background colors, and icon content separation patterns. Scoped to icon SVG/TS files.
+- `key-icon-types.md`: Standardized key icon type definitions (Default, Black Box, Inverted): canvas layout, two-line label system, Standard vs Inverted label layouts, per-action background colors, and icon content separation patterns. Scoped to icon SVG/TS files.
 - `keyboard-shortcuts.md`: SDK-first principle, key binding architecture, Property Inspector setup for `ird-key-binding`, Zod schemas for key bindings, sending key combinations, and global vs per-action bindings.
 - `logging.md`: Log levels, info vs debug separation, `createScope()` usage, and dependency-injected logger patterns.
 - `pi-templates.md`: EJS templates for Property Inspector HTML: directory structure, available partials, Rollup plugin config, key bindings JSON format.
