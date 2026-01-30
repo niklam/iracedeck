@@ -64,3 +64,10 @@ Committing
 - Use Conventional Commits. Scope should usually be the package name.
 - Do not reference Claude or other AI tools in commit messages.
 - Do not add AI co-authors such as `Co-Authored-By: Claude Opus`.
+
+Merging
+
+- PRs are squash-merged into `master` via `gh pr merge --squash`.
+- The squash commit subject is the PR title, which must follow conventional commit format (`<type>(<scope>): <description>`).
+- Ensure the PR title is a valid conventional commit message before merging.
+- Merging is performed manually or by automation — never by a Claude review step.
