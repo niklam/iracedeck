@@ -5,6 +5,27 @@
   "Author": "Niklas Lampén",
   "Actions": [
     {
+      "Name": "Car Control",
+      "UUID": "com.iracedeck.sd.core.car-control",
+      "Icon": "imgs/actions/car-control/icon",
+      "Tooltip": "Activate car controls like starter, ignition, and pit limiter",
+      "PropertyInspectorPath": "ui/car-control.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate car control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/car-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Black Box Selector",
       "UUID": "com.iracedeck.sd.core.black-box-selector",
       "Icon": "imgs/actions/black-box-selector/icon",

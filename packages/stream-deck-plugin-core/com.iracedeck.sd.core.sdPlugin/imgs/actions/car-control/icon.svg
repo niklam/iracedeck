@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Steering wheel symbol -->
+  <circle cx="10" cy="10" r="7" stroke-width="1" fill="none"/>
+  <circle cx="10" cy="10" r="2" stroke-width="1" fill="none"/>
+  <line x1="3" y1="10" x2="8" y2="10" stroke-width="1"/>
+  <line x1="12" y1="10" x2="17" y2="10" stroke-width="1"/>
+  <line x1="10" y1="12" x2="10" y2="17" stroke-width="1"/>
+</svg>

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select setting="control" default="starter">
+				<option value="starter">Starter</option>
+				<option value="ignition">Ignition</option>
+				<option value="pit-speed-limiter">Pit Speed Limiter</option>
+				<option value="enter-exit-tow">Enter/Exit/Tow Car</option>
+				<option value="pause-sim">Pause Sim</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'Car Control Key Bindings',
+			keyBindings: require('./data/key-bindings.json').carControl
+		}) %>
+	</body>
+</html>

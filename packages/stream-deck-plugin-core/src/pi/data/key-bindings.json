@@ -18,6 +18,13 @@
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },
     { "id": "previous", "label": "Previous", "default": "Shift+Tab", "setting": "splitsDeltaPrevious" }
   ],
+  "carControl": [
+    { "id": "starter", "label": "Starter", "default": "S", "setting": "carControlStarter" },
+    { "id": "ignition", "label": "Ignition", "default": "I", "setting": "carControlIgnition" },
+    { "id": "pitSpeedLimiter", "label": "Pit Speed Limiter", "default": "A", "setting": "carControlPitSpeedLimiter" },
+    { "id": "enterExitTow", "label": "Enter/Exit/Tow Car", "default": "Shift+R", "setting": "carControlEnterExitTow" },
+    { "id": "pauseSim", "label": "Pause Sim", "default": "Shift+P", "setting": "carControlPauseSim" }
+  ],
   "toggleUi": [
     { "id": "dashBox", "label": "Dash Box", "default": "D", "setting": "toggleUiDashBox" },
     { "id": "speedGearPedals", "label": "Inputs Toggle", "default": "P", "setting": "toggleUiSpeedGearPedals" },
