@@ -32,5 +32,11 @@
     { "id": "virtualMirror", "label": "Virtual Mirror", "default": "Alt+M", "setting": "toggleUiVirtualMirror" },
     { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" },
     { "id": "displayRefCar", "label": "Display Reference Car", "default": "Ctrl+C", "setting": "toggleUiDisplayRefCar" }
+  ],
+  "lookDirection": [
+    { "id": "left", "label": "Look Left", "default": "Z", "setting": "lookDirectionLeft" },
+    { "id": "right", "label": "Look Right", "default": "X", "setting": "lookDirectionRight" },
+    { "id": "up", "label": "Look Up", "default": "ArrowUp", "setting": "lookDirectionUp" },
+    { "id": "down", "label": "Look Down", "default": "ArrowDown", "setting": "lookDirectionDown" }
   ]
 }

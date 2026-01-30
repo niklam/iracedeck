@@ -66,6 +66,27 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Look Direction",
+      "UUID": "com.iracedeck.sd.core.look-direction",
+      "Icon": "imgs/actions/look-direction/icon",
+      "Tooltip": "Change the driver's view direction",
+      "PropertyInspectorPath": "ui/look-direction.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate look direction"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/look-direction/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Eye symbol with directional arrows -->
+  <path d="M2 10 Q10 3 18 10 Q10 17 2 10 Z" stroke-width="1" fill="none"/>
+  <!-- Iris -->
+  <circle cx="10" cy="10" r="2.5" stroke-width="1" fill="none"/>
+  <!-- Directional indicator arrows -->
+  <path d="M4 16 L2 16 L3 14.5" stroke-width="0.8" fill="none"/>
+  <path d="M16 16 L18 16 L17 14.5" stroke-width="0.8" fill="none"/>
+</svg>

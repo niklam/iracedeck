@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Direction">
+			<sdpi-select setting="direction" default="look-left">
+				<option value="look-left">Look Left</option>
+				<option value="look-right">Look Right</option>
+				<option value="look-up">Look Up</option>
+				<option value="look-down">Look Down</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'Look Direction Key Bindings',
+			keyBindings: require('./data/key-bindings.json').lookDirection
+		}) %>
+	</body>
+</html>

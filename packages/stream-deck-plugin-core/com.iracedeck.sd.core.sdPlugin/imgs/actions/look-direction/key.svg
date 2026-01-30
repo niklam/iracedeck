@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
+
+  <!-- Eye with directional arrows -->
+  <path d="M18 24 Q36 12 54 24 Q36 36 18 24 Z" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="36" cy="24" r="5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="36" cy="24" r="2" fill="#ffffff"/>
+  <!-- Left arrow -->
+  <path d="M14 38 L10 38 L13 35" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Right arrow -->
+  <path d="M58 38 L62 38 L59 35" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">LOOK</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">DIRECTION</text>
+</svg>
