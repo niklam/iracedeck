@@ -36,7 +36,7 @@
   "lookDirection": [
     { "id": "left", "label": "Look Left", "default": "Z", "setting": "lookDirectionLeft" },
     { "id": "right", "label": "Look Right", "default": "X", "setting": "lookDirectionRight" },
-    { "id": "up", "label": "Look Up", "default": "ArrowUp", "setting": "lookDirectionUp" },
-    { "id": "down", "label": "Look Down", "default": "ArrowDown", "setting": "lookDirectionDown" }
+    { "id": "up", "label": "Look Up", "default": "", "setting": "lookDirectionUp" },
+    { "id": "down", "label": "Look Down", "default": "", "setting": "lookDirectionDown" }
   ]
 }
