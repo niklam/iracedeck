@@ -17,5 +17,20 @@
   "splitsDelta": [
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },
     { "id": "previous", "label": "Previous", "default": "Shift+Tab", "setting": "splitsDeltaPrevious" }
+  ],
+  "toggleUi": [
+    { "id": "dashBox", "label": "Dash Box", "default": "D", "setting": "toggleUiDashBox" },
+    { "id": "speedGearPedals", "label": "Speed/Gear/Pedals", "default": "P", "setting": "toggleUiSpeedGearPedals" },
+    { "id": "radioDisplay", "label": "Radio Display", "default": "O", "setting": "toggleUiRadioDisplay" },
+    {
+      "id": "fpsNetworkDisplay",
+      "label": "FPS/Network Display",
+      "default": "F",
+      "setting": "toggleUiFpsNetworkDisplay"
+    },
+    { "id": "weatherRadar", "label": "Weather Radar", "default": "Shift+Alt+R", "setting": "toggleUiWeatherRadar" },
+    { "id": "virtualMirror", "label": "Virtual Mirror", "default": "Alt+M", "setting": "toggleUiVirtualMirror" },
+    { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" },
+    { "id": "displayRefCar", "label": "Display Reference Car", "default": "Ctrl+C", "setting": "toggleUiDisplayRefCar" }
   ]
 }

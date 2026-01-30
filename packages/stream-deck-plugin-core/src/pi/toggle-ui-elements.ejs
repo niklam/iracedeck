@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Element">
+			<sdpi-select setting="element" default="dash-box">
+				<option value="dash-box">Dash Box</option>
+				<option value="speed-gear-pedals">Speed/Gear/Pedals</option>
+				<option value="radio-display">Radio Display</option>
+				<option value="fps-network-display">FPS/Network Display</option>
+				<option value="weather-radar">Weather Radar</option>
+				<option value="virtual-mirror">Virtual Mirror</option>
+				<option value="ui-edit-mode">UI Edit Mode</option>
+				<option value="display-ref-car">Display Reference Car</option>
+				<option value="replay-ui">Replay UI</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'Toggle UI Key Bindings',
+			keyBindings: require('./data/key-bindings.json').toggleUi
+		}) %>
+	</body>
+</html>

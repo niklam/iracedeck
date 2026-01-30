@@ -45,6 +45,27 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Toggle UI Elements",
+      "UUID": "com.iracedeck.sd.core.toggle-ui-elements",
+      "Icon": "imgs/actions/toggle-ui-elements/icon",
+      "Tooltip": "Toggle iRacing UI elements on or off",
+      "PropertyInspectorPath": "ui/toggle-ui-elements.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Toggle UI element"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/toggle-ui-elements/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

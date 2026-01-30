@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Element">
+			<sdpi-select setting="element" default="dash-box">
+				<option value="dash-box">Dash Box</option>
+				<option value="speed-gear-pedals">Speed/Gear/Pedals</option>
+				<option value="radio-display">Radio Display</option>
+				<option value="fps-network-display">FPS/Network Display</option>
+				<option value="weather-radar">Weather Radar</option>
+				<option value="virtual-mirror">Virtual Mirror</option>
+				<option value="ui-edit-mode">UI Edit Mode</option>
+				<option value="display-ref-car">Display Reference Car</option>
+				<option value="replay-ui">Replay UI</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a collapsible "Global Settings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - subtitle: String (optional) - Section subtitle (e.g., "Black Box Key Bindings")
+    - keyBindings: Array with objects containing id, label, default, setting
+    - open: Boolean (optional) - Whether to start expanded (default: false)
+-->
+
+
+
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    <div class="ird-section-subtitle">Toggle UI Key Bindings</div><sdpi-item label="Dash Box"><ird-key-binding setting="toggleUiDashBox" default="D" global></ird-key-binding></sdpi-item><sdpi-item label="Speed/Gear/Pedals"><ird-key-binding setting="toggleUiSpeedGearPedals" default="P" global></ird-key-binding></sdpi-item><sdpi-item label="Radio Display"><ird-key-binding setting="toggleUiRadioDisplay" default="O" global></ird-key-binding></sdpi-item><sdpi-item label="FPS/Network Display"><ird-key-binding setting="toggleUiFpsNetworkDisplay" default="F" global></ird-key-binding></sdpi-item><sdpi-item label="Weather Radar"><ird-key-binding setting="toggleUiWeatherRadar" default="Shift+Alt+R" global></ird-key-binding></sdpi-item><sdpi-item label="Virtual Mirror"><ird-key-binding setting="toggleUiVirtualMirror" default="Alt+M" global></ird-key-binding></sdpi-item><sdpi-item label="UI Edit Mode"><ird-key-binding setting="toggleUiEditMode" default="Alt+K" global></ird-key-binding></sdpi-item><sdpi-item label="Display Reference Car"><ird-key-binding setting="toggleUiDisplayRefCar" default="Ctrl+C" global></ird-key-binding></sdpi-item>
+  </div>
+</details>
+
+
+	</body>
+</html>

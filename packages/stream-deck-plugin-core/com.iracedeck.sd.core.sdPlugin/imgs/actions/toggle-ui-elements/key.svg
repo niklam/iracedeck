@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a3a"/>
+
+  <!-- Eye symbol -->
+  <path d="M14 24 Q36 10 58 24 Q36 38 14 24 Z" fill="none" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="36" cy="24" r="6" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="36" cy="24" r="2.5" fill="#ffffff"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">TOGGLE UI</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">ELEMENTS</text>
+</svg>

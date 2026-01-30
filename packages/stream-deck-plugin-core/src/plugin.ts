@@ -9,6 +9,7 @@ import {
 
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { SplitsDeltaCycle } from "./actions/splits-delta-cycle.js";
+import { ToggleUiElements } from "./actions/toggle-ui-elements.js";
 
 // Enable trace logging
 streamDeck.logger.setLevel("trace");
@@ -22,6 +23,7 @@ initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")));
 // Register core actions
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new SplitsDeltaCycle());
+streamDeck.actions.registerAction(new ToggleUiElements());
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
 // Pass the SDK instance to ensure we use the same instance as the plugin
