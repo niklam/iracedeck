@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Adjustment">
+			<sdpi-select id="adjustment-select" setting="adjustment" default="fov">
+				<option value="fov">FOV</option>
+				<option value="horizon">Horizon</option>
+				<option value="driver-height">Driver Height</option>
+				<option value="recenter-vr">Recenter VR</option>
+				<option value="ui-size">UI Size</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Global Key Bindings section -->
+		<%- include('global-key-bindings', {
+			subtitle: 'View Adjustment Key Bindings',
+			keyBindings: require('./data/key-bindings.json').viewAdjustment
+		}) %>
+
+		<script>
+			function updateVisibility(adjustment) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+
+				// Hide direction dropdown when Recenter VR is selected
+				directionItem.classList.toggle("hidden", adjustment === "recenter-vr");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const adjustmentSelect = document.getElementById("adjustment-select");
+
+				if (adjustmentSelect) {
+					const initialValue = adjustmentSelect.value || "fov";
+					updateVisibility(initialValue);
+
+					adjustmentSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "fov");
+					});
+					adjustmentSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "fov");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = adjustmentSelect.value || "fov";
+					setInterval(() => {
+						const currentValue = adjustmentSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
