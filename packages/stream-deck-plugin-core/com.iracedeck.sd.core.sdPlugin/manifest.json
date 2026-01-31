@@ -87,6 +87,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "View Adjustment",
+      "UUID": "com.iracedeck.sd.core.view-adjustment",
+      "Icon": "imgs/actions/view-adjustment/icon",
+      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
+      "PropertyInspectorPath": "ui/view-adjustment.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Press": "Activate adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/view-adjustment/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

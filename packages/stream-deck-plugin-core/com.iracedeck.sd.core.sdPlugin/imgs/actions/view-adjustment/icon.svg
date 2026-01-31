@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Camera lens -->
+  <circle cx="10" cy="9" r="5" stroke-width="1" fill="none"/>
+  <circle cx="10" cy="9" r="2" stroke-width="0.8" fill="none"/>
+  <circle cx="10" cy="9" r="0.8" fill="#ffffff" stroke="none"/>
+  <!-- Adjustment arrows (up/down) -->
+  <path d="M16 6 L16 3 L14.5 4.5" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 12 L16 15 L17.5 13.5" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -48,5 +48,8 @@ Python/
 # Turbo
 .turbo/
 
+# Local scripts
+scripts/local/
+
 # Claude Code
 .claude/settings.local.json

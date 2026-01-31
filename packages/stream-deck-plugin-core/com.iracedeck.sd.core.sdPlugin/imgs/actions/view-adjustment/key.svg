@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a2a3a"/>
+
+  <!-- Camera lens -->
+  <circle cx="36" cy="22" r="12" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="36" cy="22" r="6" fill="none" stroke="#888888" stroke-width="1"/>
+  <circle cx="36" cy="22" r="2" fill="#ffffff"/>
+
+  <!-- Adjustment arrows -->
+  <path d="M56 16 L56 10 L52 14" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M56 10 L60 14" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M56 28 L56 34 L52 30" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M56 34 L60 30" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">VIEW</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">ADJUST</text>
+</svg>

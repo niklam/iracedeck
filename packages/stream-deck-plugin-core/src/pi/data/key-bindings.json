@@ -38,5 +38,36 @@
     { "id": "right", "label": "Look Right", "default": "X", "setting": "lookDirectionRight" },
     { "id": "up", "label": "Look Up", "default": "", "setting": "lookDirectionUp" },
     { "id": "down", "label": "Look Down", "default": "", "setting": "lookDirectionDown" }
+  ],
+  "viewAdjustment": [
+    { "id": "fovIncrease", "label": "FOV Increase", "default": "]", "setting": "viewAdjustFovIncrease" },
+    { "id": "fovDecrease", "label": "FOV Decrease", "default": "[", "setting": "viewAdjustFovDecrease" },
+    { "id": "horizonUp", "label": "Horizon Up", "default": "Shift+]", "setting": "viewAdjustHorizonUp" },
+    { "id": "horizonDown", "label": "Horizon Down", "default": "Shift+[", "setting": "viewAdjustHorizonDown" },
+    {
+      "id": "driverHeightUp",
+      "label": "Driver Height Up",
+      "default": "Ctrl+]",
+      "setting": "viewAdjustDriverHeightUp"
+    },
+    {
+      "id": "driverHeightDown",
+      "label": "Driver Height Down",
+      "default": "Ctrl+[",
+      "setting": "viewAdjustDriverHeightDown"
+    },
+    { "id": "recenterVr", "label": "Recenter VR", "default": ";", "setting": "viewAdjustRecenterVr" },
+    {
+      "id": "uiSizeIncrease",
+      "label": "UI Size Increase",
+      "default": "Ctrl+PageUp",
+      "setting": "viewAdjustUiSizeIncrease"
+    },
+    {
+      "id": "uiSizeDecrease",
+      "label": "UI Size Decrease",
+      "default": "Ctrl+PageDown",
+      "setting": "viewAdjustUiSizeDecrease"
+    }
   ]
 }
