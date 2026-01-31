@@ -143,4 +143,22 @@ export class IRacingNative {
   sendChatMessage(message: string): boolean {
     return addon.sendChatMessage(message);
   }
+
+  // ============================================================================
+  // Keyboard Input
+  // ============================================================================
+
+  /**
+   * Send a key combination using PS/2 scan codes.
+   * Presses each scan code in order (modifiers first, then main key),
+   * then releases all in reverse order.
+   *
+   * Uses SendInput with KEYEVENTF_SCANCODE for layout-independent key sending.
+   * Extended keys (arrows, delete, etc.) use bit 0x100 to signal KEYEVENTF_EXTENDEDKEY.
+   *
+   * @param scanCodes - Array of PS/2 scan codes
+   */
+  sendScanKeys(scanCodes: number[]): void {
+    addon.sendScanKeys(scanCodes);
+  }
 }

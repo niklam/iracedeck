@@ -274,6 +274,8 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
   }
 
   private async executeAdjustment(adjustment: AdjustmentType, direction: DirectionType): Promise<void> {
+    this.logger.info(`Executing ${adjustment} ${direction}`);
+
     const settingKey = VIEW_ADJUSTMENT_GLOBAL_KEYS[adjustment]?.[direction];
 
     if (!settingKey) {
@@ -291,6 +293,8 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
       return;
     }
 
+    this.logger.debug(`Key binding for ${settingKey}: ${formatKeyBinding(binding)} (code=${binding.code ?? "none"})`);
+
     await this.sendKeyBinding(binding);
   }
 
@@ -298,6 +302,7 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
     const combination: KeyCombination = {
       key: binding.key as KeyboardKey,
       modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
     };
 
     const success = await getKeyboard().sendKeyCombination(combination);

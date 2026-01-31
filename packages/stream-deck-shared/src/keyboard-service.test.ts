@@ -37,25 +37,25 @@ describe("Keyboard Service", () => {
       expect(isKeyboardInitialized()).toBe(false);
     });
 
-    it("should return true after initialization", async () => {
-      await initializeKeyboard();
+    it("should return true after initialization", () => {
+      initializeKeyboard();
 
       expect(isKeyboardInitialized()).toBe(true);
     });
   });
 
   describe("initializeKeyboard", () => {
-    it("should return the keyboard service", async () => {
-      const service = await initializeKeyboard();
+    it("should return the keyboard service", () => {
+      const service = initializeKeyboard();
 
       expect(service).toHaveProperty("sendKey");
       expect(service).toHaveProperty("sendKeyCombination");
     });
 
-    it("should throw if called twice", async () => {
-      await initializeKeyboard();
+    it("should throw if called twice", () => {
+      initializeKeyboard();
 
-      await expect(initializeKeyboard()).rejects.toThrow("Keyboard service already initialized");
+      expect(() => initializeKeyboard()).toThrow("Keyboard service already initialized");
     });
   });
 
@@ -64,8 +64,8 @@ describe("Keyboard Service", () => {
       expect(() => getKeyboard()).toThrow("Keyboard service not initialized");
     });
 
-    it("should return the keyboard service after initialization", async () => {
-      await initializeKeyboard();
+    it("should return the keyboard service after initialization", () => {
+      initializeKeyboard();
       const service = getKeyboard();
 
       expect(service).toHaveProperty("sendKey");
@@ -74,8 +74,8 @@ describe("Keyboard Service", () => {
   });
 
   describe("sendKey", () => {
-    it("should send a key press", async () => {
-      await initializeKeyboard();
+    it("should send a key press via keysender", async () => {
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKey("f3");
@@ -85,7 +85,7 @@ describe("Keyboard Service", () => {
     });
 
     it("should map special keys correctly", async () => {
-      await initializeKeyboard();
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       await keyboard.sendKey("pageup");
@@ -97,7 +97,7 @@ describe("Keyboard Service", () => {
 
     it("should return false on error", async () => {
       mockSendKey.mockRejectedValueOnce(new Error("Test error"));
-      await initializeKeyboard();
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKey("a");
@@ -106,9 +106,9 @@ describe("Keyboard Service", () => {
     });
   });
 
-  describe("sendKeyCombination", () => {
-    it("should send a key combination without modifiers", async () => {
-      await initializeKeyboard();
+  describe("sendKeyCombination - keysender fallback", () => {
+    it("should send via keysender when no code is present", async () => {
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKeyCombination({ key: "f1" });
@@ -117,8 +117,21 @@ describe("Keyboard Service", () => {
       expect(mockSendKey).toHaveBeenCalledWith("f1");
     });
 
-    it("should send a key combination with single modifier", async () => {
-      await initializeKeyboard();
+    it("should send via keysender when no scanKeySender is configured", async () => {
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "f1",
+        code: "F1",
+      });
+
+      expect(result).toBe(true);
+      expect(mockSendKey).toHaveBeenCalledWith("f1");
+    });
+
+    it("should send a key combination with single modifier via keysender", async () => {
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKeyCombination({
@@ -130,8 +143,8 @@ describe("Keyboard Service", () => {
       expect(mockSendKey).toHaveBeenCalledWith(["shift", "r"]);
     });
 
-    it("should send a key combination with multiple modifiers", async () => {
-      await initializeKeyboard();
+    it("should send a key combination with multiple modifiers via keysender", async () => {
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKeyCombination({
@@ -143,9 +156,9 @@ describe("Keyboard Service", () => {
       expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "shift", "s"]);
     });
 
-    it("should return false on error", async () => {
+    it("should return false on keysender error", async () => {
       mockSendKey.mockRejectedValueOnce(new Error("Test error"));
-      await initializeKeyboard();
+      initializeKeyboard();
       const keyboard = getKeyboard();
 
       const result = await keyboard.sendKeyCombination({ key: "a" });
@@ -154,9 +167,99 @@ describe("Keyboard Service", () => {
     });
   });
 
+  describe("sendKeyCombination - scan code path", () => {
+    it("should send via scan codes when code is present and scanKeySender is configured", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "-",
+        code: "Minus",
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledWith([0x0c]); // Minus scan code
+      expect(mockSendKey).not.toHaveBeenCalled(); // keysender NOT used
+    });
+
+    it("should include modifier scan codes before the main key", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "-",
+        code: "Minus",
+        modifiers: ["shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledWith([0x2a, 0x0c]); // Shift + Minus
+    });
+
+    it("should handle Ctrl+Shift+key correctly", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "'",
+        code: "Quote",
+        modifiers: ["ctrl", "shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledWith([0x1d, 0x2a, 0x28]); // Ctrl + Shift + Quote
+    });
+
+    it("should send letter keys via scan codes when code is present", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "a",
+        code: "KeyA",
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledWith([0x1e]); // KeyA scan code
+    });
+
+    it("should send extended keys with 0x100 flag", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "up",
+        code: "ArrowUp",
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledWith([0x148]); // ArrowUp extended scan code
+    });
+
+    it("should fall back to keysender for unmapped code values", async () => {
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({
+        key: "a",
+        code: "UnknownCode",
+      });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).not.toHaveBeenCalled();
+      // keysender fallback is called asynchronously
+    });
+  });
+
   describe("_resetKeyboard", () => {
-    it("should reset the keyboard service state", async () => {
-      await initializeKeyboard();
+    it("should reset the keyboard service state", () => {
+      initializeKeyboard();
 
       expect(isKeyboardInitialized()).toBe(true);
 
@@ -165,11 +268,11 @@ describe("Keyboard Service", () => {
       expect(isKeyboardInitialized()).toBe(false);
     });
 
-    it("should allow re-initialization after reset", async () => {
-      await initializeKeyboard();
+    it("should allow re-initialization after reset", () => {
+      initializeKeyboard();
       _resetKeyboard();
 
-      await expect(initializeKeyboard()).resolves.not.toThrow();
+      expect(() => initializeKeyboard()).not.toThrow();
     });
   });
 });

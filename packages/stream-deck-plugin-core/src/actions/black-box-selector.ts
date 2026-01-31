@@ -390,6 +390,7 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     const combination: KeyCombination = {
       key: binding.key as KeyboardKey,
       modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
     };
 
     this.logger.debug(`Sending key combination: ${JSON.stringify(combination)}`);

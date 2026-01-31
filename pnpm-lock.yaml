@@ -222,6 +222,9 @@ importers:
       '@elgato/streamdeck':
         specifier: ^2.0.0
         version: 2.0.0
+      '@iracedeck/iracing-native':
+        specifier: workspace:*
+        version: link:../iracing-native
       '@iracedeck/iracing-sdk':
         specifier: workspace:*
         version: link:../iracing-sdk
@@ -277,6 +280,9 @@ importers:
       '@elgato/streamdeck':
         specifier: ^2.0.0
         version: 2.0.0
+      '@iracedeck/iracing-native':
+        specifier: workspace:*
+        version: link:../iracing-native
       '@iracedeck/iracing-sdk':
         specifier: workspace:*
         version: link:../iracing-sdk

@@ -5,7 +5,7 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { isValidKey, KEY_DISPLAY_NAMES, type Modifier, MODIFIER_ALIASES, MODIFIERS } from "./key-maps.js";
+import { isValidKey, KEY_DISPLAY_NAMES, keyToCode, type Modifier, MODIFIER_ALIASES, MODIFIERS } from "./key-maps.js";
 
 /** UI text constants */
 export const UI_TEXT = {
@@ -29,6 +29,10 @@ export const SDPI_THEME = {
 export interface KeyBindingValue {
   key: string;
   modifiers: Modifier[];
+  /** KeyboardEvent.code (e.g., "Quote") - identifies the physical key position */
+  code?: string;
+  /** KeyboardEvent.key (e.g., "ä") - locale-correct character for display */
+  displayKey?: string;
 }
 
 /**
@@ -48,8 +52,12 @@ export function formatKeyBinding(value: KeyBindingValue | null): string {
     }
   }
 
-  // Format the key for display
-  const keyDisplay = KEY_DISPLAY_NAMES[value.key] || value.key.toUpperCase();
+  // Format the key for display, preferring locale-correct displayKey
+  const keyDisplay = value.displayKey
+    ? value.displayKey.length === 1
+      ? value.displayKey.toUpperCase()
+      : value.displayKey
+    : KEY_DISPLAY_NAMES[value.key] || value.key.toUpperCase();
   parts.push(keyDisplay);
 
   return parts.join(" + ");
@@ -70,6 +78,15 @@ export function parseKeyBinding(json: string | null): KeyBindingValue | null {
       console.warn("[ird-key-binding] Invalid key binding structure:", json);
 
       return null;
+    }
+
+    // Sanitize optional extended fields
+    if (parsed.code !== undefined && typeof parsed.code !== "string") {
+      parsed.code = undefined;
+    }
+
+    if (parsed.displayKey !== undefined && typeof parsed.displayKey !== "string") {
+      parsed.displayKey = undefined;
     }
 
     return parsed;
@@ -107,5 +124,7 @@ export function parseSimpleDefault(value: string): KeyBindingValue | null {
     return null;
   }
 
-  return { key, modifiers };
+  const code = keyToCode(key);
+
+  return code ? { key, modifiers, code } : { key, modifiers };
 }

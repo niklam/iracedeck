@@ -1,4 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
+import { IRacingNative } from "@iracedeck/iracing-native";
 import {
   createSDLogger,
   initAppMonitor,
@@ -18,8 +19,11 @@ streamDeck.logger.setLevel("trace");
 // Initialize the SDK singleton
 initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
 
-// Initialize keyboard for hotkey actions
-initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")));
+// Initialize keyboard for hotkey actions with scan code support for non-US layouts
+const native = new IRacingNative();
+initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")), (scanCodes) =>
+  native.sendScanKeys(scanCodes),
+);
 
 // Register core actions
 streamDeck.actions.registerAction(new BlackBoxSelector());

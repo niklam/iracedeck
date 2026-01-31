@@ -22,10 +22,10 @@ export interface SDLoggerLike {
  * Creates an ILogger-compatible wrapper around a Stream Deck logger.
  *
  * @param sdLogger - The Stream Deck logger instance
- * @param level - The minimum log level to output (defaults to Info)
+ * @param level - The minimum log level to output (defaults to Debug)
  * @returns An ILogger instance that delegates to the Stream Deck logger
  */
-export function createSDLogger(sdLogger: SDLoggerLike, level: LogLevel = LogLevel.Info): ILogger {
+export function createSDLogger(sdLogger: SDLoggerLike, level: LogLevel = LogLevel.Debug): ILogger {
   return {
     trace: (msg: string) => {
       if (level <= LogLevel.Trace) sdLogger.trace(msg);

@@ -31,6 +31,22 @@ describe("Key Binding Utils", () => {
     it("should capitalize modifiers correctly", () => {
       expect(formatKeyBinding({ key: "x", modifiers: ["alt"] })).toBe("Alt+X");
     });
+
+    it("should prefer displayKey over key for single character", () => {
+      expect(formatKeyBinding({ key: "'", modifiers: [], displayKey: "ä" })).toBe("Ä");
+    });
+
+    it("should format displayKey with modifiers", () => {
+      expect(formatKeyBinding({ key: "[", modifiers: ["ctrl"], displayKey: "å" })).toBe("Ctrl+Å");
+    });
+
+    it("should not capitalize multi-character displayKey", () => {
+      expect(formatKeyBinding({ key: "enter", modifiers: [], displayKey: "Enter" })).toBe("Enter");
+    });
+
+    it("should fall back to key when displayKey is absent", () => {
+      expect(formatKeyBinding({ key: "'", modifiers: [] })).toBe("'");
+    });
   });
 
   describe("parseKeyBinding", () => {
@@ -96,6 +112,30 @@ describe("Key Binding Utils", () => {
 
     it("should return undefined for boolean value", () => {
       expect(parseKeyBinding(true)).toBeUndefined();
+    });
+
+    it("should pass through code and displayKey from JSON string", () => {
+      const json = JSON.stringify({ key: "'", modifiers: [], code: "Quote", displayKey: "ä" });
+      const result = parseKeyBinding(json);
+
+      expect(result?.code).toBe("Quote");
+      expect(result?.displayKey).toBe("ä");
+    });
+
+    it("should pass through code and displayKey from object", () => {
+      const obj = { key: "'", modifiers: [], code: "Quote", displayKey: "ä" };
+      const result = parseKeyBinding(obj);
+
+      expect(result?.code).toBe("Quote");
+      expect(result?.displayKey).toBe("ä");
+    });
+
+    it("should parse old format without code/displayKey", () => {
+      const json = JSON.stringify({ key: "f1", modifiers: [] });
+      const result = parseKeyBinding(json);
+
+      expect(result?.code).toBeUndefined();
+      expect(result?.displayKey).toBeUndefined();
     });
   });
 });
