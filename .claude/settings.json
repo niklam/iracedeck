@@ -14,8 +14,8 @@
     "ask": [
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "gh pr review:*",
-      "gh pr merge:*"
+      "Bash(gh pr review:*)",
+      "Bash(gh pr merge:*)"
     ],
     "allow": [
       "Bash(cd:*)",

@@ -70,7 +70,7 @@ Each plugin's `ui/` folder MUST contain these files:
 - `sdpi-components.js` - Stream Deck Property Inspector components
 - `pi-components.js` - iRaceDeck custom components (for `ird-key-binding`)
 
-**IMPORTANT**: These files must be copied from an existing plugin (e.g., `stream-deck-plugin-hotkeys`) when creating a new plugin. The Property Inspector will fail silently if these files are missing.
+**IMPORTANT**: These files must be copied from an existing plugin (e.g., `stream-deck-plugin-core`) when creating a new plugin. The Property Inspector will fail silently if these files are missing.
 
 ### Required Scripts in HTML
 Always include both scripts in PI HTML files:

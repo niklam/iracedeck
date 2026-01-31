@@ -77,7 +77,7 @@ pnpm run build
 ```bash
 # Build specific packages
 pnpm --filter @iracedeck/iracing-sdk run build
-pnpm --filter @iracedeck/stream-deck-plugin run build
+pnpm build:stream-deck
 
 # Watch mode (if configured)
 pnpm run dev
@@ -105,12 +105,14 @@ iRaceDeck/
 │   │   │   └── index.ts
 │   │   └── package.json
 │   │
-│   └── stream-deck-plugin/       # @iracedeck/stream-deck-plugin
+│   ├── stream-deck-shared/        # @iracedeck/stream-deck-shared
+│   │   └── ...                    # Shared utilities, PI components, types
+│   │
+│   └── stream-deck-plugin-core/   # @iracedeck/stream-deck-plugin-core
 │       ├── src/
 │       │   ├── plugin.ts         # Plugin entry point
-│       │   ├── sdk-controller.ts # SDK connection manager
 │       │   └── actions/          # Stream Deck actions
-│       ├── com.iracedeck.sd.sdPlugin/
+│       ├── com.iracedeck.sd.core.sdPlugin/
 │       │   ├── manifest.json     # Plugin metadata
 │       │   ├── bin/              # Compiled output
 │       │   └── imgs/             # Plugin icons
@@ -124,11 +126,12 @@ iRaceDeck/
 
 ### Package Overview
 
-| Package                         | Description                                                              |
-| ------------------------------- | ------------------------------------------------------------------------ |
-| `@iracedeck/iracing-native`     | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging) |
-| `@iracedeck/iracing-sdk`        | TypeScript SDK for iRacing telemetry and broadcast commands              |
-| `@iracedeck/stream-deck-plugin` | Stream Deck plugin using the SDK                                         |
+| Package                              | Description                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `@iracedeck/iracing-native`          | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging) |
+| `@iracedeck/iracing-sdk`             | TypeScript SDK for iRacing telemetry and broadcast commands              |
+| `@iracedeck/stream-deck-shared`      | Shared utilities, PI components, and types for Stream Deck plugins       |
+| `@iracedeck/stream-deck-plugin-core` | Core Stream Deck plugin with driving/interface actions                    |
 
 ## Technical Architecture
 
@@ -148,12 +151,12 @@ The SDK provides a clean TypeScript API:
 - **Commands**: PitCommand, ChatCommand, CameraCommand, etc.
 - **Types**: Full TypeScript definitions for iRacing data structures
 
-### Plugin (`@iracedeck/stream-deck-plugin`)
+### Plugin (`@iracedeck/stream-deck-plugin-core`)
 
-The Stream Deck plugin:
+The core Stream Deck plugin:
 
-- **SDKController**: Singleton managing SDK connection and subscriptions
 - **Actions**: Individual Stream Deck button implementations
+- **ConnectionStateAwareAction**: Base class handling iRacing connection state
 - Uses Rollup to bundle for the Stream Deck runtime
 
 ## Available Telemetry Variables
@@ -173,9 +176,9 @@ The iRacing SDK provides access to hundreds of telemetry variables. Some useful 
 
 ## Adding New Actions
 
-1. Create a new action file in `packages/stream-deck-plugin/src/actions/`
-2. Use the SDKController for telemetry subscriptions
-3. Register the action in `packages/stream-deck-plugin/src/plugin.ts`
+1. Create a new action file in `packages/stream-deck-plugin-core/src/actions/`
+2. Extend `ConnectionStateAwareAction` from `@iracedeck/stream-deck-shared`
+3. Register the action in `packages/stream-deck-plugin-core/src/plugin.ts`
 4. Add action metadata to `manifest.json`
 5. Add icons to the `imgs/actions/` folder
 

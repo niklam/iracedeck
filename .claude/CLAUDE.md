@@ -8,10 +8,9 @@ Packages
 - `@iracedeck/iracing-native`
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/stream-deck-shared`
-- `@iracedeck/stream-deck-plugin`
-- `@iracedeck/stream-deck-plugin-comms`
 - `@iracedeck/stream-deck-plugin-core`
-- `@iracedeck/stream-deck-plugin-pit`
+- `@iracedeck/stream-deck-plugin-comms` *(deprecated)*
+- `@iracedeck/stream-deck-plugin-pit` *(deprecated)*
 - `@iracedeck/website`
 
 High-level guidance

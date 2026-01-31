@@ -161,8 +161,6 @@ if (binding?.key) {
 ## Reference Implementation
 - Global key bindings: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
 - Cycle action with global key bindings: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`
-- Per-action key bindings: `packages/stream-deck-plugin-hotkeys/src/actions/do-iracing-hotkey.ts`
 
 ## Do NOT Use
-- `iracing-hotkeys.ts` presets (test plugin only)
 - Hardcoded key mappings in action code

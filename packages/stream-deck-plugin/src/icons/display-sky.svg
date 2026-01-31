@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g filter="url(#activity-state)">
-    {{skyGraphics}}
-    {{textElement}}
-  </g>
-</svg>
