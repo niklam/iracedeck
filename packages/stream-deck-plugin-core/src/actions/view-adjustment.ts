@@ -33,79 +33,91 @@ type AdjustmentType = "fov" | "horizon" | "driver-height" | "recenter-vr" | "ui-
 type DirectionType = "increase" | "decrease";
 
 /**
- * Label configuration for each adjustment + direction combination (line1 bold, line2 subdued)
+ * Label configuration for each adjustment + direction combination.
+ * Inverted layout: line1 = primary (bold, bottom), line2 = secondary (subdued, top).
  */
 const VIEW_ADJUSTMENT_LABELS: Record<AdjustmentType, Record<DirectionType, { line1: string; line2: string }>> = {
   fov: {
-    increase: { line1: "FOV", line2: "INCREASE" },
-    decrease: { line1: "FOV", line2: "DECREASE" },
+    increase: { line1: "INCREASE", line2: "FOV" },
+    decrease: { line1: "DECREASE", line2: "FOV" },
   },
   horizon: {
-    increase: { line1: "HORIZON", line2: "UP" },
-    decrease: { line1: "HORIZON", line2: "DOWN" },
+    increase: { line1: "UP", line2: "HORIZON" },
+    decrease: { line1: "DOWN", line2: "HORIZON" },
   },
   "driver-height": {
-    increase: { line1: "DRIVER", line2: "HEIGHT UP" },
-    decrease: { line1: "DRIVER", line2: "HEIGHT DN" },
+    increase: { line1: "UP", line2: "DRIVER HEIGHT" },
+    decrease: { line1: "DOWN", line2: "DRIVER HEIGHT" },
   },
   "recenter-vr": {
-    increase: { line1: "RECENTER", line2: "VR" },
-    decrease: { line1: "RECENTER", line2: "VR" },
+    increase: { line1: "RECENTER", line2: "VR VIEW" },
+    decrease: { line1: "RECENTER", line2: "VR VIEW" },
   },
   "ui-size": {
-    increase: { line1: "UI SIZE", line2: "INCREASE" },
-    decrease: { line1: "UI SIZE", line2: "DECREASE" },
+    increase: { line1: "INCREASE", line2: "UI SIZE" },
+    decrease: { line1: "DECREASE", line2: "UI SIZE" },
   },
 };
 
 /**
  * SVG icon content for each adjustment type.
- * FOV, Horizon, and Driver Height show directional arrows; Recenter VR and UI Size are non-directional.
+ * FOV, Horizon, and Driver Height show directional variants; Recenter VR and UI Size are non-directional.
  */
 const VIEW_ADJUSTMENT_ICONS: Record<AdjustmentType, Record<DirectionType, string>> = {
-  // FOV: Camera lens with zoom in/out arrows
+  // FOV: Upward-opening viewing angle — wide for increase, narrow for decrease
   fov: {
     increase: `
-    <circle cx="36" cy="22" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <path d="M52 30 L58 36" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="54" y1="38" x2="60" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="57" y1="35" x2="57" y2="41" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
+    <circle cx="36" cy="34" r="3" fill="${WHITE}"/>
+    <line x1="36" y1="31" x2="14" y2="12" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="36" y1="31" x2="58" y2="12" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="14" y1="12" x2="58" y2="12" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>`,
     decrease: `
-    <circle cx="36" cy="22" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <path d="M52 30 L58 36" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="54" y1="38" x2="60" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
+    <circle cx="36" cy="34" r="3" fill="${WHITE}"/>
+    <line x1="36" y1="31" x2="24" y2="12" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="36" y1="31" x2="48" y2="12" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="24" y1="12" x2="48" y2="12" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>`,
   },
-  // Horizon: Horizon line with up/down arrow
+  // Horizon: Viewport frame with horizon line positioned high (up) or low (down)
   horizon: {
     increase: `
-    <line x1="10" y1="24" x2="62" y2="24" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="14" y1="30" x2="58" y2="30" stroke="${GRAY}" stroke-width="1" opacity="0.5"/>
-    <path d="M36 20 L32 16 M36 20 L40 16" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="36" y1="20" x2="36" y2="36" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
+    <rect x="14" y="10" width="44" height="30" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
+    <line x1="16" y1="18" x2="56" y2="18" stroke="${WHITE}" stroke-width="2"/>
+    <line x1="52" y1="30" x2="52" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <polyline points="49,25 52,22 55,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
     decrease: `
-    <line x1="10" y1="24" x2="62" y2="24" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="14" y1="18" x2="58" y2="18" stroke="${GRAY}" stroke-width="1" opacity="0.5"/>
-    <path d="M36 32 L32 36 M36 32 L40 36" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="36" y1="16" x2="36" y2="32" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
+    <rect x="14" y="10" width="44" height="30" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
+    <line x1="16" y1="32" x2="56" y2="32" stroke="${WHITE}" stroke-width="2"/>
+    <line x1="52" y1="16" x2="52" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <polyline points="49,21 52,24 55,21" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
   },
-  // Driver Height: Seat silhouette with up/down arrow
+  // Driver Height: Short→tall figures for up, tall→short for down
   "driver-height": {
     increase: `
-    <rect x="26" y="18" width="20" height="20" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <circle cx="36" cy="14" r="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="36" y1="18" x2="36" y2="30" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M14 20 L10 16 M14 20 L18 16" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="14" y1="20" x2="14" y2="36" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
+    <circle cx="18" cy="20" r="2.5" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
+    <line x1="18" y1="23" x2="18" y2="29" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="14" y1="25" x2="22" y2="25" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="18" y1="29" x2="15" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="18" y1="29" x2="21" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="32" y1="24" x2="40" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <polyline points="37,21 40,24 37,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="54" cy="14" r="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
+    <line x1="54" y1="17" x2="54" y2="28" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="49" y1="22" x2="59" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="54" y1="28" x2="50" y2="34" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="54" y1="28" x2="58" y2="34" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
     decrease: `
-    <rect x="26" y="18" width="20" height="20" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <circle cx="36" cy="14" r="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="36" y1="18" x2="36" y2="30" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M14 32 L10 36 M14 32 L18 36" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="14" y1="16" x2="14" y2="32" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
+    <circle cx="18" cy="14" r="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
+    <line x1="18" y1="17" x2="18" y2="28" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="13" y1="22" x2="23" y2="22" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="18" y1="28" x2="14" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="18" y1="28" x2="22" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="32" y1="24" x2="40" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <polyline points="37,21 40,24 37,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="54" cy="20" r="2.5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
+    <line x1="54" y1="23" x2="54" y2="29" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="50" y1="25" x2="58" y2="25" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="54" y1="29" x2="51" y2="34" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="54" y1="29" x2="57" y2="34" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
   },
   // Recenter VR: VR headset with crosshair (same for both directions)
   "recenter-vr": {
@@ -128,20 +140,20 @@ const VIEW_ADJUSTMENT_ICONS: Record<AdjustmentType, Record<DirectionType, string
     <line x1="10" y1="24" x2="14" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
     <line x1="58" y1="24" x2="62" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
   },
-  // UI Size: Window frame with scale arrows
+  // UI Size: Window frame with scale arrows inside bottom-right corner
   "ui-size": {
     increase: `
     <rect x="16" y="12" width="40" height="26" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
     <line x1="16" y1="18" x2="56" y2="18" stroke="${GRAY}" stroke-width="1"/>
     <circle cx="20" cy="15" r="1" fill="${GRAY}"/>
     <circle cx="24" cy="15" r="1" fill="${GRAY}"/>
-    <path d="M54 36 L60 42 M60 36 L60 42 L54 42" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    <path d="M45 27 L53 35 M53 30 L53 35 L48 35" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
     decrease: `
     <rect x="16" y="12" width="40" height="26" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
     <line x1="16" y1="18" x2="56" y2="18" stroke="${GRAY}" stroke-width="1"/>
     <circle cx="20" cy="15" r="1" fill="${GRAY}"/>
     <circle cx="24" cy="15" r="1" fill="${GRAY}"/>
-    <path d="M60 42 L54 36 M54 42 L54 36 L60 36" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    <path d="M53 35 L45 27 M45 32 L45 27 L50 27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
   },
 };
 
