@@ -185,6 +185,7 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     const combination: KeyCombination = {
       key: binding.key as KeyboardKey,
       modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
     };
 
     const success = await getKeyboard().sendKeyCombination(combination);

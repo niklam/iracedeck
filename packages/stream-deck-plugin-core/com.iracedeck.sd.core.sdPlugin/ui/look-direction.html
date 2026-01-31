@@ -61,6 +61,22 @@
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 </style>
 
 	</head>
@@ -78,31 +94,32 @@
 		<!--
   Global Key Bindings Component
 
-  Displays key binding inputs in a collapsible "Global Settings" section.
+  Displays key binding inputs in a "Related Key Bindings" section.
   Key bindings are stored in global settings (shared across all action instances).
 
   Parameters:
-    - subtitle: String (optional) - Section subtitle (e.g., "Black Box Key Bindings")
     - keyBindings: Array with objects containing id, label, default, setting
-    - open: Boolean (optional) - Whether to start expanded (default: false)
 -->
-
-
-
-<!--
-  Collapsible Component - A collapsible section with divider and arrow.
-  Parameters: title (String), content (HTML String), open (Boolean, optional)
--->
-<details class="ird-collapsible" >
-  <summary class="ird-collapsible-header">
-    <span class="ird-collapsible-icon">&#9654;</span>
-    <span class="ird-collapsible-title">Global Settings</span>
-  </summary>
-  <div class="ird-collapsible-content">
-    <div class="ird-section-subtitle">Look Direction Key Bindings</div><sdpi-item label="Look Left"><ird-key-binding setting="lookDirectionLeft" default="Z" global></ird-key-binding></sdpi-item><sdpi-item label="Look Right"><ird-key-binding setting="lookDirectionRight" default="X" global></ird-key-binding></sdpi-item><sdpi-item label="Look Up"><ird-key-binding setting="lookDirectionUp" default="" global></ird-key-binding></sdpi-item><sdpi-item label="Look Down"><ird-key-binding setting="lookDirectionDown" default="" global></ird-key-binding></sdpi-item>
-  </div>
-</details>
-
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="Look Left">
+    <ird-key-binding setting="lookDirectionLeft" default="Z" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Look Right">
+    <ird-key-binding setting="lookDirectionRight" default="X" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Look Up">
+    <ird-key-binding setting="lookDirectionUp" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Look Down">
+    <ird-key-binding setting="lookDirectionDown" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
 
 	</body>
 </html>
