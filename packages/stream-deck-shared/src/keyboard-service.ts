@@ -37,11 +37,25 @@ import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-t
 import { getModifierScanCode, getScanCode } from "./scan-code-map.js";
 
 /**
- * Function type for sending scan codes via native SendInput.
+ * Function type for sending scan codes via native SendInput (tap: press + release).
  * Takes an array of PS/2 scan codes (modifiers first, then main key).
  * The implementation presses each in order, then releases in reverse.
  */
 export type ScanKeySender = (scanCodes: number[]) => void;
+
+/**
+ * Function type for pressing scan codes without releasing (key hold).
+ * Takes an array of PS/2 scan codes (modifiers first, then main key).
+ * Caller must call the corresponding releaser to release keys.
+ */
+export type ScanKeyPresser = (scanCodes: number[]) => void;
+
+/**
+ * Function type for releasing scan codes without pressing (key release).
+ * Takes an array of PS/2 scan codes (modifiers first, then main key).
+ * Releases in reverse order. Should follow a prior press call.
+ */
+export type ScanKeyReleaser = (scanCodes: number[]) => void;
 
 /**
  * Interface for the keyboard service.
@@ -55,11 +69,27 @@ export interface IKeyboardService {
   sendKey(key: KeyboardKey): Promise<boolean>;
 
   /**
-   * Send a key combination (key with optional modifiers).
+   * Send a key combination (key with optional modifiers). Tap behavior: press then release.
    * @param combination - The key combination to send
    * @returns true if successful, false if an error occurred
    */
   sendKeyCombination(combination: KeyCombination): Promise<boolean>;
+
+  /**
+   * Press a key combination and hold it down (no release).
+   * Caller must call {@link releaseKeyCombination} to release the keys.
+   * @param combination - The key combination to press
+   * @returns true if successful, false if an error occurred
+   */
+  pressKeyCombination(combination: KeyCombination): Promise<boolean>;
+
+  /**
+   * Release a previously held key combination.
+   * Should be called after {@link pressKeyCombination} to release held keys.
+   * @param combination - The key combination to release
+   * @returns true if successful, false if an error occurred
+   */
+  releaseKeyCombination(combination: KeyCombination): Promise<boolean>;
 }
 
 /**
@@ -103,10 +133,19 @@ class KeyboardService implements IKeyboardService {
   private logger: ILogger;
   private initPromise: Promise<void> | null = null;
   private scanKeySender: ScanKeySender | null;
+  private scanKeyPresser: ScanKeyPresser | null;
+  private scanKeyReleaser: ScanKeyReleaser | null;
 
-  constructor(logger: ILogger, scanKeySender: ScanKeySender | null) {
+  constructor(
+    logger: ILogger,
+    scanKeySender: ScanKeySender | null,
+    scanKeyPresser: ScanKeyPresser | null,
+    scanKeyReleaser: ScanKeyReleaser | null,
+  ) {
     this.logger = logger;
     this.scanKeySender = scanKeySender;
+    this.scanKeyPresser = scanKeyPresser;
+    this.scanKeyReleaser = scanKeyReleaser;
   }
 
   /**
@@ -173,37 +212,13 @@ class KeyboardService implements IKeyboardService {
    */
   private sendViaScanCodes(combination: KeyCombination): boolean {
     try {
-      const scanCodes: number[] = [];
+      const scanCodes = this.buildScanCodes(combination);
 
-      // Add modifier scan codes
-      if (combination.modifiers) {
-        for (const modifier of combination.modifiers) {
-          const sc = getModifierScanCode(modifier);
-
-          if (sc === undefined) {
-            this.logger.warn(`Unknown modifier "${modifier}", falling back to keysender`);
-
-            return false;
-          }
-
-          scanCodes.push(sc);
-        }
-      }
-
-      // Add main key scan code
-      const mainSc = getScanCode(combination.code!);
-
-      if (mainSc === undefined) {
-        this.logger.debug(`No scan code for event.code="${combination.code}", falling back to keysender`);
-
-        // Fall back to keysender for unmapped codes
-        // (this is async but we return sync - call it directly)
+      if (!scanCodes) {
         void this.sendViaKeysender(combination);
 
         return true;
       }
-
-      scanCodes.push(mainSc);
 
       this.logger.debug(
         `Sending scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
@@ -253,6 +268,151 @@ class KeyboardService implements IKeyboardService {
       return false;
     }
   }
+
+  async pressKeyCombination(combination: KeyCombination): Promise<boolean> {
+    // Try scan code path first (layout-independent, preferred)
+    if (combination.code && this.scanKeyPresser) {
+      return this.pressViaScanCodes(combination);
+    }
+
+    // Fall back to keysender toggleKey
+    return this.toggleViaKeysender(combination, true);
+  }
+
+  async releaseKeyCombination(combination: KeyCombination): Promise<boolean> {
+    // Try scan code path first (layout-independent, preferred)
+    if (combination.code && this.scanKeyReleaser) {
+      return this.releaseViaScanCodes(combination);
+    }
+
+    // Fall back to keysender toggleKey
+    return this.toggleViaKeysender(combination, false);
+  }
+
+  /**
+   * Press scan codes without releasing (for key hold).
+   */
+  private pressViaScanCodes(combination: KeyCombination): boolean {
+    try {
+      const scanCodes = this.buildScanCodes(combination);
+
+      if (!scanCodes) {
+        void this.toggleViaKeysender(combination, true);
+
+        return true;
+      }
+
+      this.logger.debug(
+        `Pressing scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
+      );
+
+      this.scanKeyPresser!(scanCodes);
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Failed to press scan codes: ${JSON.stringify(combination)}: ${error}`);
+
+      return false;
+    }
+  }
+
+  /**
+   * Release scan codes without pressing (for key release).
+   */
+  private releaseViaScanCodes(combination: KeyCombination): boolean {
+    try {
+      const scanCodes = this.buildScanCodes(combination);
+
+      if (!scanCodes) {
+        void this.toggleViaKeysender(combination, false);
+
+        return true;
+      }
+
+      this.logger.debug(
+        `Releasing scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,
+      );
+
+      this.scanKeyReleaser!(scanCodes);
+
+      return true;
+    } catch (error) {
+      this.logger.error(`Failed to release scan codes: ${JSON.stringify(combination)}: ${error}`);
+
+      return false;
+    }
+  }
+
+  /**
+   * Build scan code array from a key combination.
+   * Returns null if any key cannot be mapped (caller should fall back to keysender).
+   */
+  private buildScanCodes(combination: KeyCombination): number[] | null {
+    const scanCodes: number[] = [];
+
+    if (combination.modifiers) {
+      for (const modifier of combination.modifiers) {
+        const sc = getModifierScanCode(modifier);
+
+        if (sc === undefined) {
+          this.logger.warn(`Unknown modifier "${modifier}", falling back to keysender`);
+
+          return null;
+        }
+
+        scanCodes.push(sc);
+      }
+    }
+
+    const mainSc = getScanCode(combination.code!);
+
+    if (mainSc === undefined) {
+      this.logger.debug(`No scan code for event.code="${combination.code}", falling back to keysender`);
+
+      return null;
+    }
+
+    scanCodes.push(mainSc);
+
+    return scanCodes;
+  }
+
+  /**
+   * Toggle key state via keysender (fallback for press/release without scan codes).
+   * @param combination - The key combination
+   * @param state - true to press, false to release
+   */
+  private async toggleViaKeysender(combination: KeyCombination, state: boolean): Promise<boolean> {
+    try {
+      const hw = await this.ensureInitialized();
+      const keys: KeyboardButton[] = [];
+
+      if (combination.modifiers) {
+        for (const modifier of combination.modifiers) {
+          keys.push(toKeysenderModifier(modifier));
+        }
+      }
+
+      const mainKey = toKeysenderKey(combination.key);
+      keys.push(mainKey);
+
+      const action = state ? "Pressing" : "Releasing";
+      this.logger.debug(`${action} via keysender toggleKey: ${keys.join("+")} (key="${combination.key}")`);
+
+      if (keys.length === 1) {
+        await hw.keyboard.toggleKey(keys[0], state);
+      } else {
+        await hw.keyboard.toggleKey(keys, state);
+      }
+
+      return true;
+    } catch (error) {
+      const action = state ? "press" : "release";
+      this.logger.error(`Failed to ${action} key combination: ${JSON.stringify(combination)}: ${error}`);
+
+      return false;
+    }
+  }
 }
 
 // Singleton instance
@@ -263,18 +423,25 @@ let keyboardService: KeyboardService | null = null;
  * Should be called once at plugin startup.
  *
  * @param logger - Optional logger instance for keyboard service logging
- * @param scanKeySender - Optional function for sending PS/2 scan codes via native SendInput.
- *   When provided, key combinations with event.code will use this path for layout-independent sending.
+ * @param scanKeySender - Optional function for tap-sending PS/2 scan codes (press + release).
+ * @param scanKeyPresser - Optional function for pressing PS/2 scan codes without releasing (for key hold).
+ * @param scanKeyReleaser - Optional function for releasing PS/2 scan codes without pressing (for key release).
+ *   When scan code functions are provided, key combinations with event.code will use them for layout-independent sending.
  *   When omitted, all keys are sent via keysender (may have issues on non-US layouts).
  * @returns The initialized keyboard service
  * @throws Error if called more than once
  */
-export function initializeKeyboard(logger: ILogger = silentLogger, scanKeySender?: ScanKeySender): IKeyboardService {
+export function initializeKeyboard(
+  logger: ILogger = silentLogger,
+  scanKeySender?: ScanKeySender,
+  scanKeyPresser?: ScanKeyPresser,
+  scanKeyReleaser?: ScanKeyReleaser,
+): IKeyboardService {
   if (keyboardService) {
     throw new Error("Keyboard service already initialized. initializeKeyboard() should only be called once.");
   }
 
-  keyboardService = new KeyboardService(logger, scanKeySender ?? null);
+  keyboardService = new KeyboardService(logger, scanKeySender ?? null, scanKeyPresser ?? null, scanKeyReleaser ?? null);
 
   return keyboardService;
 }

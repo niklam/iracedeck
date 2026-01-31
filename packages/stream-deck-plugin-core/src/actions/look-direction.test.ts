@@ -1,6 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateLookDirectionSvg, LOOK_DIRECTION_GLOBAL_KEYS } from "./look-direction.js";
+import { generateLookDirectionSvg, LOOK_DIRECTION_GLOBAL_KEYS, LookDirection } from "./look-direction.js";
+
+const {
+  mockPressKeyCombination,
+  mockReleaseKeyCombination,
+  mockSendKeyCombination,
+  mockParseKeyBinding,
+  mockGetGlobalSettings,
+} = vi.hoisted(() => ({
+  mockPressKeyCombination: vi.fn().mockResolvedValue(true),
+  mockReleaseKeyCombination: vi.fn().mockResolvedValue(true),
+  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
+  mockParseKeyBinding: vi.fn(),
+  mockGetGlobalSettings: vi.fn(() => ({})),
+}));
 
 vi.mock("@elgato/streamdeck", () => ({
   default: {
@@ -22,6 +36,7 @@ vi.mock("@iracedeck/stream-deck-shared", () => ({
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
     debug: vi.fn(),
@@ -37,17 +52,27 @@ vi.mock("@iracedeck/stream-deck-shared", () => ({
 
     return b.key;
   }),
-  getGlobalSettings: vi.fn(() => ({})),
+  getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: vi.fn().mockResolvedValue(true),
+    sendKeyCombination: mockSendKeyCombination,
+    pressKeyCombination: mockPressKeyCombination,
+    releaseKeyCombination: mockReleaseKeyCombination,
   })),
   LogLevel: { Info: 2 },
-  parseKeyBinding: vi.fn(),
+  parseKeyBinding: mockParseKeyBinding,
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
     return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
+
+/** Create a minimal fake event with the given action ID and settings. */
+function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
+  return {
+    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    payload: { settings },
+  };
+}
 
 describe("LookDirection", () => {
   beforeEach(() => {
@@ -129,6 +154,132 @@ describe("LookDirection", () => {
         expect(decoded).toContain(labels.line1);
         expect(decoded).toContain(labels.line2);
       }
+    });
+  });
+
+  describe("press/release behavior", () => {
+    let action: LookDirection;
+
+    function setupKeyBinding(key: string, modifiers: string[] = [], code?: string) {
+      mockGetGlobalSettings.mockReturnValue({ lookDirectionLeft: "bound", lookDirectionRight: "bound" });
+      mockParseKeyBinding.mockReturnValue({ key, modifiers, code });
+    }
+
+    beforeEach(() => {
+      action = new LookDirection();
+    });
+
+    it("should press key on keyDown and release on keyUp", async () => {
+      setupKeyBinding("numpad4", [], "Numpad4");
+
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledWith({
+        key: "numpad4",
+        modifiers: undefined,
+        code: "Numpad4",
+      });
+
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({
+        key: "numpad4",
+        modifiers: undefined,
+        code: "Numpad4",
+      });
+    });
+
+    it("should press key on dialDown and release on dialUp", async () => {
+      setupKeyBinding("numpad4", [], "Numpad4");
+
+      await action.onDialDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledOnce();
+
+      await action.onDialUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledOnce();
+    });
+
+    it("should track concurrent presses on different action contexts independently", async () => {
+      mockGetGlobalSettings.mockReturnValue({
+        lookDirectionLeft: "bound",
+        lookDirectionRight: "bound",
+      });
+      mockParseKeyBinding.mockImplementation((val: unknown) => {
+        if (val === "bound") {
+          return { key: "numpad4", modifiers: [], code: "Numpad4" };
+        }
+
+        return undefined;
+      });
+
+      // Press left on action-1
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+      // Press right on action-2
+      await action.onKeyDown(fakeEvent("action-2", { direction: "look-right" }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledTimes(2);
+
+      // Release action-1 — should release action-1's combination only
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(1);
+
+      // Release action-2
+      await action.onKeyUp(fakeEvent("action-2") as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(2);
+    });
+
+    it("should release held key on onWillDisappear", async () => {
+      setupKeyBinding("numpad4", [], "Numpad4");
+
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledOnce();
+    });
+
+    it("should not call release if no key is held", async () => {
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should not press key when no binding is configured", async () => {
+      mockGetGlobalSettings.mockReturnValue({});
+      mockParseKeyBinding.mockReturnValue(undefined);
+
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+
+      expect(mockPressKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should not store combination when press fails", async () => {
+      setupKeyBinding("numpad4", [], "Numpad4");
+      mockPressKeyCombination.mockResolvedValueOnce(false);
+
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledOnce();
+
+      // Release should be a no-op since press failed
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should include modifiers in the combination when present", async () => {
+      setupKeyBinding("a", ["ctrl", "shift"], "KeyA");
+
+      await action.onKeyDown(fakeEvent("action-1", { direction: "look-left" }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledWith({
+        key: "a",
+        modifiers: ["ctrl", "shift"],
+        code: "KeyA",
+      });
     });
   });
 });

@@ -22,8 +22,11 @@ initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
 
 // Initialize keyboard for hotkey actions with scan code support for non-US layouts
 const native = new IRacingNative();
-initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")), (scanCodes) =>
-  native.sendScanKeys(scanCodes),
+initializeKeyboard(
+  createSDLogger(streamDeck.logger.createScope("Keyboard")),
+  (scanCodes) => native.sendScanKeys(scanCodes),
+  (scanCodes) => native.sendScanKeyDown(scanCodes),
+  (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
 // Register core actions

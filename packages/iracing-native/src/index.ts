@@ -161,4 +161,26 @@ export class IRacingNative {
   sendScanKeys(scanCodes: number[]): void {
     addon.sendScanKeys(scanCodes);
   }
+
+  /**
+   * Press scan codes without releasing (for key hold/long-press).
+   * Presses each scan code in order (modifiers first, then main key).
+   * Caller must call {@link sendScanKeyUp} to release the keys.
+   *
+   * @param scanCodes - Array of PS/2 scan codes
+   */
+  sendScanKeyDown(scanCodes: number[]): void {
+    addon.sendScanKeyDown(scanCodes);
+  }
+
+  /**
+   * Release scan codes without pressing (for key hold/long-press).
+   * Releases each scan code in reverse order (main key first, then modifiers).
+   * Should be called after {@link sendScanKeyDown} to release held keys.
+   *
+   * @param scanCodes - Array of PS/2 scan codes
+   */
+  sendScanKeyUp(scanCodes: number[]): void {
+    addon.sendScanKeyUp(scanCodes);
+  }
 }
