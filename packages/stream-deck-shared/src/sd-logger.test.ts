@@ -56,7 +56,7 @@ describe("createSDLogger", () => {
       expect(mockSDLogger.error).toHaveBeenCalledWith("error msg");
     });
 
-    it("should filter trace and debug when level is Info (default)", () => {
+    it("should filter trace when level is Debug (default)", () => {
       const logger = createSDLogger(mockSDLogger);
 
       logger.trace("trace msg");
@@ -66,7 +66,7 @@ describe("createSDLogger", () => {
       logger.error("error msg");
 
       expect(mockSDLogger.trace).not.toHaveBeenCalled();
-      expect(mockSDLogger.debug).not.toHaveBeenCalled();
+      expect(mockSDLogger.debug).toHaveBeenCalledWith("debug msg");
       expect(mockSDLogger.info).toHaveBeenCalledWith("info msg");
       expect(mockSDLogger.warn).toHaveBeenCalledWith("warn msg");
       expect(mockSDLogger.error).toHaveBeenCalledWith("error msg");

@@ -32,6 +32,10 @@ import { z } from "zod";
 export const KeyBindingValueSchema = z.object({
   key: z.string(),
   modifiers: z.array(z.string()).default([]),
+  /** KeyboardEvent.code (e.g., "Quote") - identifies the physical key position */
+  code: z.string().optional(),
+  /** KeyboardEvent.key (e.g., "ä") - locale-correct character for display */
+  displayKey: z.string().optional(),
 });
 
 export type KeyBindingValue = z.infer<typeof KeyBindingValueSchema>;

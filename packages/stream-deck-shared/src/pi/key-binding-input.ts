@@ -34,7 +34,15 @@ import {
   SDPI_THEME,
   UI_TEXT,
 } from "./key-binding-utils.js";
-import { KEY_CODE_MAP, type Modifier } from "./key-maps.js";
+import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
+
+/**
+ * Minimal type for the Keyboard Layout Map API.
+ * Provides locale-aware key mappings without modifier influence.
+ */
+interface KeyboardLayoutMapLike {
+  get(code: string): string | undefined;
+}
 
 // Re-export for backwards compatibility and public API
 export { formatKeyBinding, parseKeyBinding, parseSimpleDefault, type KeyBindingValue };
@@ -81,6 +89,8 @@ class KeyBindingInput extends HTMLElement {
   private isRecording = false;
   private currentValue: KeyBindingValue | null = null;
   private saveToStreamDeck: ((value: string) => void) | null = null;
+  /** Cached keyboard layout map for resolving base (unshifted) characters */
+  private layoutMap: KeyboardLayoutMapLike | null = null;
 
   constructor() {
     super();
@@ -171,10 +181,29 @@ class KeyBindingInput extends HTMLElement {
     }
 
     this.updateDisplay();
+    this.initLayoutMap();
 
     this.displayInput.addEventListener("click", this.handleClick);
     this.displayInput.addEventListener("keydown", this.handleKeyDown);
     this.displayInput.addEventListener("blur", this.handleBlur);
+  }
+
+  /**
+   * Try to load the keyboard layout map for locale-correct base characters.
+   * Falls back gracefully if the API is unavailable (e.g., insecure context).
+   */
+  private async initLayoutMap(): Promise<void> {
+    try {
+      const kbd = (navigator as unknown as Record<string, unknown>).keyboard as
+        | { getLayoutMap?: () => Promise<KeyboardLayoutMapLike> }
+        | undefined;
+
+      if (kbd?.getLayoutMap) {
+        this.layoutMap = await kbd.getLayoutMap();
+      }
+    } catch {
+      // Keyboard Layout Map API not available - will fall back to event.key
+    }
   }
 
   disconnectedCallback(): void {
@@ -262,8 +291,11 @@ class KeyBindingInput extends HTMLElement {
       return;
     }
 
+    // Resolve numpad-to-navigation mismatches (e.g., Ctrl+Numpad9 → Ctrl+PageUp)
+    const code = resolveEventCode(e.code, e.key);
+
     // Get the key from our map
-    const key = KEY_CODE_MAP[e.code];
+    const key = KEY_CODE_MAP[code];
 
     if (!key) {
       // Unknown key, ignore
@@ -279,8 +311,15 @@ class KeyBindingInput extends HTMLElement {
 
     if (e.altKey) modifiers.push("alt");
 
-    // Set the new value
-    this.currentValue = { key, modifiers };
+    // Get the locale-correct base character for display.
+    // Modifiers (Shift, Ctrl, Alt) can alter e.key (e.g., Shift turns "+" into "?",
+    // Ctrl can change "-" into "_" on some layouts). Use layoutMap when any modifier
+    // is held to get the unmodified base character. Fall back to e.key otherwise.
+    const hasModifiers = e.ctrlKey || e.shiftKey || e.altKey;
+    const displayKey = hasModifiers ? (this.layoutMap?.get(code) ?? e.key) : e.key;
+
+    // Set the new value with physical key code and locale-aware display key
+    this.currentValue = { key, modifiers, code, displayKey };
 
     // Stop recording and update display
     this.stopRecording();

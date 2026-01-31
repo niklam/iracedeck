@@ -183,30 +183,30 @@ describe("ViewAdjustment", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("RECENTER");
-      expect(decoded).toContain("VR");
+      expect(decoded).toContain("VR VIEW");
     });
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
         fov: {
-          increase: { line1: "FOV", line2: "INCREASE" },
-          decrease: { line1: "FOV", line2: "DECREASE" },
+          increase: { line1: "INCREASE", line2: "FOV" },
+          decrease: { line1: "DECREASE", line2: "FOV" },
         },
         horizon: {
-          increase: { line1: "HORIZON", line2: "UP" },
-          decrease: { line1: "HORIZON", line2: "DOWN" },
+          increase: { line1: "UP", line2: "HORIZON" },
+          decrease: { line1: "DOWN", line2: "HORIZON" },
         },
         "driver-height": {
-          increase: { line1: "DRIVER", line2: "HEIGHT UP" },
-          decrease: { line1: "DRIVER", line2: "HEIGHT DN" },
+          increase: { line1: "UP", line2: "DRIVER HEIGHT" },
+          decrease: { line1: "DOWN", line2: "DRIVER HEIGHT" },
         },
         "recenter-vr": {
-          increase: { line1: "RECENTER", line2: "VR" },
-          decrease: { line1: "RECENTER", line2: "VR" },
+          increase: { line1: "RECENTER", line2: "VR VIEW" },
+          decrease: { line1: "RECENTER", line2: "VR VIEW" },
         },
         "ui-size": {
-          increase: { line1: "UI SIZE", line2: "INCREASE" },
-          decrease: { line1: "UI SIZE", line2: "DECREASE" },
+          increase: { line1: "INCREASE", line2: "UI SIZE" },
+          decrease: { line1: "DECREASE", line2: "UI SIZE" },
         },
       };
 

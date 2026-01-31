@@ -82,6 +82,8 @@ export type KeyboardKey =
 export interface KeyCombination {
   key: KeyboardKey;
   modifiers?: KeyboardModifier[];
+  /** KeyboardEvent.code (e.g., "Quote") - identifies the physical key position */
+  code?: string;
 }
 
 export interface IRacingHotkeyPreset {

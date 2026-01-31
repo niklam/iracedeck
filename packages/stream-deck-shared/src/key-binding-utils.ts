@@ -20,7 +20,14 @@ export function formatKeyBinding(binding: KeyBindingValue | undefined): string {
     .filter((m) => ["ctrl", "shift", "alt"].includes(m))
     .map((m) => m.charAt(0).toUpperCase() + m.slice(1));
 
-  return [...modifiers, binding.key.toUpperCase()].join("+");
+  // Prefer locale-correct displayKey over US-layout key
+  const keyDisplay = binding.displayKey
+    ? binding.displayKey.length === 1
+      ? binding.displayKey.toUpperCase()
+      : binding.displayKey
+    : binding.key.toUpperCase();
+
+  return [...modifiers, keyDisplay].join("+");
 }
 
 /**

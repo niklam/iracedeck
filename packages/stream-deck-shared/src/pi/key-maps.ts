@@ -140,6 +140,16 @@ export const KEY_DISPLAY_NAMES: Record<string, string> = {
   numpad_enter: "Num Enter",
 };
 
+/** Reverse mapping: internal key identifier → KeyboardEvent.code */
+const KEY_TO_CODE_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(KEY_CODE_MAP).map(([code, key]) => [key, code]),
+);
+
+/** Get the KeyboardEvent.code for an internal key identifier, or undefined if not mapped */
+export function keyToCode(key: string): string | undefined {
+  return KEY_TO_CODE_MAP[key];
+}
+
 /** Set of valid key identifiers for validation */
 export const VALID_KEYS = new Set(Object.values(KEY_CODE_MAP));
 
@@ -158,3 +168,45 @@ export type Modifier = (typeof MODIFIERS)[number];
 export const MODIFIER_ALIASES: Record<string, Modifier> = {
   control: "ctrl",
 };
+
+/**
+ * Navigation key names as reported in KeyboardEvent.key.
+ * These match the corresponding KeyboardEvent.code values for navigation keys.
+ */
+const NAVIGATION_KEYS = new Set([
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Insert",
+  "Delete",
+]);
+
+/**
+ * Resolve the correct event code for a key press.
+ *
+ * On Windows, holding Ctrl overrides NumLock for numpad keys, making them
+ * act as navigation keys (e.g., Ctrl+Numpad9 behaves as Ctrl+PageUp).
+ * The browser reports e.code = "Numpad9" but e.key = "PageUp".
+ * Some embedded webviews may also misreport dedicated navigation keys
+ * as numpad codes.
+ *
+ * This function detects these mismatches and returns the navigation code
+ * (e.g., "PageUp") instead of the numpad code (e.g., "Numpad9").
+ * Navigation key names in e.key match their e.code counterparts exactly.
+ *
+ * @param code - The KeyboardEvent.code value
+ * @param key - The KeyboardEvent.key value
+ * @returns The corrected code value
+ */
+export function resolveEventCode(code: string, key: string): string {
+  if (code.startsWith("Numpad") && NAVIGATION_KEYS.has(key)) {
+    return key;
+  }
+
+  return code;
+}

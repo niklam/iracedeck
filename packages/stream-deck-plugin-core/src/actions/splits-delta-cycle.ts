@@ -167,6 +167,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const combination: KeyCombination = {
       key: binding.key as KeyboardKey,
       modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
     };
 
     this.logger.debug(`Sending key combination: ${JSON.stringify(combination)}`);

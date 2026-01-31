@@ -60,6 +60,9 @@ function generateIRacingHotkeySvg(color: string, hotkeyLabel: string): string {
 const KeyBindingSchema = z.object({
   key: z.string(),
   modifiers: z.array(z.string()).default([]),
+  code: z.string().optional(),
+  displayKey: z.string().optional(),
+  vk: z.number().optional(),
 });
 
 const IRacingHotkeySettings = z.object({
@@ -106,7 +109,12 @@ function formatKeyBinding(binding: z.infer<typeof KeyBindingSchema> | undefined)
 
   if (binding.modifiers.includes("alt")) parts.push("Alt");
 
-  parts.push(binding.key.toUpperCase());
+  const keyDisplay = binding.displayKey
+    ? binding.displayKey.length === 1
+      ? binding.displayKey.toUpperCase()
+      : binding.displayKey
+    : binding.key.toUpperCase();
+  parts.push(keyDisplay);
 
   return parts.join("+");
 }
@@ -203,6 +211,7 @@ export class DoIRacingHotkey extends ConnectionStateAwareAction<IRacingHotkeySet
       key: settings.myHotkey.key as KeyboardKey,
       modifiers:
         settings.myHotkey.modifiers.length > 0 ? (settings.myHotkey.modifiers as KeyboardModifier[]) : undefined,
+      code: settings.myHotkey.code,
     };
 
     this.logger.debug(`Sending key combination: ${JSON.stringify(combination)}`);

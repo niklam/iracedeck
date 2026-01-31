@@ -337,6 +337,92 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 }
 
 // ============================================================================
+// Keyboard Input Functions
+// ============================================================================
+
+/**
+ * Send a single scan code key event via SendInput.
+ * Uses KEYEVENTF_SCANCODE for layout-independent physical key sending.
+ *
+ * @param scanCode - PS/2 scan code. Bit 0x100 signals an extended key (KEYEVENTF_EXTENDEDKEY).
+ * @param isDown - true for key press, false for key release
+ */
+static void sendScanKey(UINT scanCode, bool isDown)
+{
+    INPUT ip = {};
+    ip.type = INPUT_KEYBOARD;
+    ip.ki.dwFlags = KEYEVENTF_SCANCODE;
+
+    if (!isDown)
+    {
+        ip.ki.dwFlags |= KEYEVENTF_KEYUP;
+    }
+
+    WORD sc = static_cast<WORD>(scanCode & 0xFF);
+
+    if (scanCode & 0x100)
+    {
+        ip.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+    }
+
+    ip.ki.wScan = sc;
+    // Derive VK from scan code for compatibility with apps that read wVk.
+    // Use MAPVK_VSC_TO_VK_EX to distinguish extended keys (e.g. PageUp vs Numpad9).
+    UINT mapType = (scanCode & 0x100) ? MAPVK_VSC_TO_VK_EX : MAPVK_VSC_TO_VK;
+    ip.ki.wVk = static_cast<WORD>(MapVirtualKeyW(sc, mapType));
+
+    SendInput(1, &ip, sizeof(INPUT));
+}
+
+/**
+ * Send a key combination using scan codes.
+ * Presses each scan code in order (modifiers first, then main key),
+ * then releases all in reverse order.
+ *
+ * This bypasses VK code resolution entirely, making it layout-independent.
+ * The caller maps KeyboardEvent.code values to PS/2 scan codes.
+ *
+ * @param scanCodes - Array of PS/2 scan codes (bit 0x100 = extended key)
+ */
+Napi::Value SendScanKeys(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray())
+    {
+        Napi::TypeError::New(env, "Expected (scanCodes: number[])").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array scanCodes = info[0].As<Napi::Array>();
+    uint32_t len = scanCodes.Length();
+
+    if (len == 0)
+    {
+        return env.Undefined();
+    }
+
+    // Key down for each scan code in order
+    for (uint32_t i = 0; i < len; i++)
+    {
+        UINT sc = scanCodes.Get(i).As<Napi::Number>().Uint32Value();
+        sendScanKey(sc, true);
+    }
+
+    // Hold keys long enough for the target application's input loop to register them
+    Sleep(100);
+
+    // Key up in reverse order
+    for (int32_t i = static_cast<int32_t>(len) - 1; i >= 0; i--)
+    {
+        UINT sc = scanCodes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Uint32Value();
+        sendScanKey(sc, false);
+    }
+
+    return env.Undefined();
+}
+
+// ============================================================================
 // Module Initialization
 // ============================================================================
 
@@ -360,6 +446,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Chat
     exports.Set("sendChatMessage", Napi::Function::New(env, SendChatMessage));
+
+    // Keyboard Input
+    exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));
 
     return exports;
 }

@@ -13,17 +13,22 @@
     "deny": [],
     "ask": [
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "gh pr review:*",
+      "gh pr merge:*"
     ],
     "allow": [
       "Bash(cd:*)",
       "Bash(dir:*)",
       "Bash(find:*)",
       "Bash(head:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr edit:*)",
       "Bash(git check-ignore:*)",
       "Bash(git diff:*)",
       "Bash(git status:*)",
       "Bash(git log:*)",
+      "Bash(git pull:*)",
       "Bash(grep:*)",
       "Bash(pnpm build:*)",
       "Bash(tree:*)",
