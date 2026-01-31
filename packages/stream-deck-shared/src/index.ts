@@ -91,6 +91,8 @@ export {
   _resetKeyboard,
   type IKeyboardService,
   type ScanKeySender,
+  type ScanKeyPresser,
+  type ScanKeyReleaser,
 } from "./keyboard-service.js";
 
 // App monitor for iRacing process detection

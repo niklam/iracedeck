@@ -120,7 +120,13 @@ streamDeck.logger.setLevel("trace");
 initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
 
 // 3. Initialize keyboard (if using keyboard shortcuts)
-initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")));
+const native = new IRacingNative();
+initializeKeyboard(
+  createSDLogger(streamDeck.logger.createScope("Keyboard")),
+  (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
+  (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
+  (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+);
 
 // 4. Register actions
 streamDeck.actions.registerAction(new MyAction());

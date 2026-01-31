@@ -81,18 +81,74 @@ if (settings.keyBinding?.key) {
 }
 ```
 
+## Long-Press / Key Hold
+
+For actions that need to hold a key while the button is pressed (e.g., look direction), use `pressKeyCombination()` and `releaseKeyCombination()` instead of `sendKeyCombination()`:
+
+```typescript
+// onKeyDown — press and hold
+await getKeyboard().pressKeyCombination(combination);
+
+// onKeyUp — release
+await getKeyboard().releaseKeyCombination(combination);
+```
+
+### When to use hold vs tap
+- **Tap** (`sendKeyCombination`): one-shot actions (toggle, cycle, select)
+- **Hold** (`pressKeyCombination` + `releaseKeyCombination`): continuous actions (look direction, push-to-talk)
+
+### Long-press action pattern
+
+```typescript
+private heldCombination: KeyCombination | null = null;
+
+override async onKeyDown(ev: KeyDownEvent<Settings>): Promise<void> {
+  const combination = this.resolveCombination(ev.payload.settings);
+  if (!combination) return;
+
+  const success = await getKeyboard().pressKeyCombination(combination);
+  if (success) this.heldCombination = combination;
+}
+
+override async onKeyUp(_ev: KeyUpEvent<Settings>): Promise<void> {
+  if (!this.heldCombination) return;
+  const combination = this.heldCombination;
+  this.heldCombination = null;
+  await getKeyboard().releaseKeyCombination(combination);
+}
+
+// SAFETY: always release held keys when action disappears
+override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> {
+  if (this.heldCombination) {
+    await getKeyboard().releaseKeyCombination(this.heldCombination);
+    this.heldCombination = null;
+  }
+  await super.onWillDisappear(ev);
+}
+```
+
+### Reference implementation
+- Long-press action: `packages/stream-deck-plugin-core/src/actions/look-direction.ts`
+
 ## Plugin Setup for Keyboard Support
 
 When using `getKeyboard()` in a plugin, you MUST:
 1. Import `initializeKeyboard` in your plugin.ts
 2. Call `initializeKeyboard()` before registering actions
+3. Pass all four scan code callbacks for full functionality (tap, press, release)
 
 ```typescript
 // plugin.ts
 import { initializeKeyboard } from "@iracedeck/stream-deck-shared";
+import { IRacingNative } from "@iracedeck/iracing-native";
 
-// Initialize keyboard for hotkey actions
-initializeKeyboard();
+const native = new IRacingNative();
+initializeKeyboard(
+  logger,
+  (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
+  (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
+  (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+);
 
 // Then register actions...
 ```
@@ -161,6 +217,19 @@ if (binding?.key) {
 ## Reference Implementation
 - Global key bindings: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
 - Cycle action with global key bindings: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`
+- Long-press (key hold): `packages/stream-deck-plugin-core/src/actions/look-direction.ts`
 
 ## Do NOT Use
 - Hardcoded key mappings in action code
+
+## Cross-Package Sync
+
+When modifying keyboard functionality, changes must be synchronized across all layers:
+
+1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
+2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
+3. **Keyboard service** (`stream-deck-shared/src/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
+4. **Plugin init** (`stream-deck-plugin-*/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
+5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
+6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API
+7. **Package CLAUDE.md** (`iracing-native/CLAUDE.md`) — must document all native keyboard functions

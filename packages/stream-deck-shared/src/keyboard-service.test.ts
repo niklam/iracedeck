@@ -4,11 +4,13 @@ import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized 
 
 // Mock the keysender module
 const mockSendKey = vi.fn().mockResolvedValue(undefined);
+const mockToggleKey = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("keysender", () => ({
   Hardware: class MockHardware {
     keyboard = {
       sendKey: mockSendKey,
+      toggleKey: mockToggleKey,
     };
   },
 }));
@@ -50,6 +52,8 @@ describe("Keyboard Service", () => {
 
       expect(service).toHaveProperty("sendKey");
       expect(service).toHaveProperty("sendKeyCombination");
+      expect(service).toHaveProperty("pressKeyCombination");
+      expect(service).toHaveProperty("releaseKeyCombination");
     });
 
     it("should throw if called twice", () => {
@@ -254,6 +258,170 @@ describe("Keyboard Service", () => {
       expect(result).toBe(true);
       expect(mockScanSender).not.toHaveBeenCalled();
       // keysender fallback is called asynchronously
+    });
+  });
+
+  describe("pressKeyCombination - scan code path", () => {
+    it("should press via scan codes when code and presser are configured", async () => {
+      const mockPresser = vi.fn();
+      initializeKeyboard(undefined, undefined, mockPresser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({
+        key: "-",
+        code: "Minus",
+      });
+
+      expect(result).toBe(true);
+      expect(mockPresser).toHaveBeenCalledWith([0x0c]);
+      expect(mockToggleKey).not.toHaveBeenCalled();
+    });
+
+    it("should include modifier scan codes when pressing", async () => {
+      const mockPresser = vi.fn();
+      initializeKeyboard(undefined, undefined, mockPresser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({
+        key: "a",
+        code: "KeyA",
+        modifiers: ["ctrl", "shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockPresser).toHaveBeenCalledWith([0x1d, 0x2a, 0x1e]);
+    });
+
+    it("should return false on presser error", async () => {
+      const mockPresser = vi.fn(() => {
+        throw new Error("Test error");
+      });
+      initializeKeyboard(undefined, undefined, mockPresser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({
+        key: "a",
+        code: "KeyA",
+      });
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("pressKeyCombination - keysender fallback", () => {
+    it("should press via keysender toggleKey when no presser is configured", async () => {
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({ key: "f1" });
+
+      expect(result).toBe(true);
+      expect(mockToggleKey).toHaveBeenCalledWith("f1", true);
+    });
+
+    it("should press combination with modifiers via keysender toggleKey", async () => {
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({
+        key: "r",
+        modifiers: ["shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockToggleKey).toHaveBeenCalledWith(["shift", "r"], true);
+    });
+
+    it("should return false on keysender toggleKey error", async () => {
+      mockToggleKey.mockRejectedValueOnce(new Error("Test error"));
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.pressKeyCombination({ key: "a" });
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("releaseKeyCombination - scan code path", () => {
+    it("should release via scan codes when code and releaser are configured", async () => {
+      const mockReleaser = vi.fn();
+      initializeKeyboard(undefined, undefined, undefined, mockReleaser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({
+        key: "-",
+        code: "Minus",
+      });
+
+      expect(result).toBe(true);
+      expect(mockReleaser).toHaveBeenCalledWith([0x0c]);
+      expect(mockToggleKey).not.toHaveBeenCalled();
+    });
+
+    it("should include modifier scan codes when releasing", async () => {
+      const mockReleaser = vi.fn();
+      initializeKeyboard(undefined, undefined, undefined, mockReleaser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({
+        key: "a",
+        code: "KeyA",
+        modifiers: ["shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockReleaser).toHaveBeenCalledWith([0x2a, 0x1e]);
+    });
+
+    it("should return false on releaser error", async () => {
+      const mockReleaser = vi.fn(() => {
+        throw new Error("Test error");
+      });
+      initializeKeyboard(undefined, undefined, undefined, mockReleaser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({
+        key: "a",
+        code: "KeyA",
+      });
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("releaseKeyCombination - keysender fallback", () => {
+    it("should release via keysender toggleKey when no releaser is configured", async () => {
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({ key: "f1" });
+
+      expect(result).toBe(true);
+      expect(mockToggleKey).toHaveBeenCalledWith("f1", false);
+    });
+
+    it("should release combination with modifiers via keysender toggleKey", async () => {
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({
+        key: "s",
+        modifiers: ["ctrl", "shift"],
+      });
+
+      expect(result).toBe(true);
+      expect(mockToggleKey).toHaveBeenCalledWith(["ctrl", "shift", "s"], false);
+    });
+
+    it("should return false on keysender toggleKey error", async () => {
+      mockToggleKey.mockRejectedValueOnce(new Error("Test error"));
+      initializeKeyboard();
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.releaseKeyCombination({ key: "a" });
+
+      expect(result).toBe(false);
     });
   });
 

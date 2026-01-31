@@ -5,7 +5,7 @@ Project-wide instructions and overview for iRaceDeck. See the `.claude/rules/` d
 Packages
 
 - `@iracedeck/logger`
-- `@iracedeck/iracing-native`
+- `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/stream-deck-shared`
 - `@iracedeck/stream-deck-plugin-core`
@@ -32,7 +32,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `global-settings.md`: Plugin-level global settings architecture: Property Inspector usage, `ird-key-binding` with `global` attribute, Zod schema, and settings path conventions.
 - `icons.md`: General icon guidelines: icon types (category, key, template), SVG structure, design specs, color palette, Mustache templates, and distinctiveness rules.
 - `key-icon-types.md`: Standardized key icon type definitions (Default, Black Box, Inverted): canvas layout, two-line label system, Standard vs Inverted label layouts, per-action background colors, and icon content separation patterns. Scoped to icon SVG/TS files.
-- `keyboard-shortcuts.md`: SDK-first principle, key binding architecture, Property Inspector setup for `ird-key-binding`, Zod schemas for key bindings, sending key combinations, and global vs per-action bindings.
+- `keyboard-shortcuts.md`: SDK-first principle, key binding architecture, Property Inspector setup for `ird-key-binding`, Zod schemas for key bindings, sending key combinations (tap and long-press/hold), global vs per-action bindings, and cross-package sync rules.
 - `logging.md`: Log levels, info vs debug separation, `createScope()` usage, and dependency-injected logger patterns.
 - `pi-templates.md`: EJS templates for Property Inspector HTML: directory structure, available partials, Rollup plugin config, key bindings JSON format.
 - `plugin-structure.md`: Plugin package naming conventions, Rollup config, native module handling (`keysender`), app monitoring, and critical initialization order in `plugin.ts`.

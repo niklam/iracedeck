@@ -1,8 +1,10 @@
 import streamDeck, {
   action,
   DialDownEvent,
+  DialUpEvent,
   DidReceiveSettingsEvent,
   KeyDownEvent,
+  KeyUpEvent,
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
@@ -12,7 +14,6 @@ import {
   formatKeyBinding,
   getGlobalSettings,
   getKeyboard,
-  type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
@@ -117,11 +118,15 @@ export function generateLookDirectionSvg(settings: LookDirectionSettings): strin
 
 /**
  * Look Direction Action
- * Changes the driver's view direction via keyboard shortcuts.
+ * Holds the driver's view in a direction while the button/dial is pressed.
+ * Uses long-press: key is held on press, released on release.
  */
 @action({ UUID: "com.iracedeck.sd.core.look-direction" })
 export class LookDirection extends ConnectionStateAwareAction<LookDirectionSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("LookDirection"), LogLevel.Info);
+
+  /** Currently held key combination, tracked for cleanup on release/disappear */
+  private heldCombination: KeyCombination | null = null;
 
   override async onWillAppear(ev: WillAppearEvent<LookDirectionSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
@@ -133,6 +138,7 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   }
 
   override async onWillDisappear(ev: WillDisappearEvent<LookDirectionSettings>): Promise<void> {
+    await this.releaseHeldKey();
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
   }
@@ -145,13 +151,23 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   override async onKeyDown(ev: KeyDownEvent<LookDirectionSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeLook(settings.direction);
+    await this.pressLook(settings.direction);
+  }
+
+  override async onKeyUp(_ev: KeyUpEvent<LookDirectionSettings>): Promise<void> {
+    this.logger.info("Key up received");
+    await this.releaseHeldKey();
   }
 
   override async onDialDown(ev: DialDownEvent<LookDirectionSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeLook(settings.direction);
+    await this.pressLook(settings.direction);
+  }
+
+  override async onDialUp(_ev: DialUpEvent<LookDirectionSettings>): Promise<void> {
+    this.logger.info("Dial up received");
+    await this.releaseHeldKey();
   }
 
   private parseSettings(settings: unknown): LookDirectionSettings {
@@ -160,13 +176,50 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     return parsed.success ? parsed.data : LookDirectionSettings.parse({});
   }
 
-  private async executeLook(direction: LookDirectionType): Promise<void> {
+  private async pressLook(direction: LookDirectionType): Promise<void> {
+    const combination = this.resolveCombination(direction);
+
+    if (!combination) {
+      return;
+    }
+
+    const success = await getKeyboard().pressKeyCombination(combination);
+
+    if (success) {
+      this.heldCombination = combination;
+      this.logger.info("Key pressed (holding)");
+      this.logger.debug(
+        `Key combination: ${formatKeyBinding({ key: combination.key, modifiers: (combination.modifiers as string[]) ?? [], code: combination.code })}`,
+      );
+    } else {
+      this.logger.warn("Failed to press key");
+    }
+  }
+
+  private async releaseHeldKey(): Promise<void> {
+    if (!this.heldCombination) {
+      return;
+    }
+
+    const combination = this.heldCombination;
+    this.heldCombination = null;
+
+    const success = await getKeyboard().releaseKeyCombination(combination);
+
+    if (success) {
+      this.logger.info("Key released");
+    } else {
+      this.logger.warn("Failed to release key");
+    }
+  }
+
+  private resolveCombination(direction: LookDirectionType): KeyCombination | null {
     const settingKey = LOOK_DIRECTION_GLOBAL_KEYS[direction];
 
     if (!settingKey) {
       this.logger.warn(`No global key mapping for direction: ${direction}`);
 
-      return;
+      return null;
     }
 
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
@@ -175,28 +228,14 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     if (!binding?.key) {
       this.logger.warn(`No key binding configured for ${settingKey}`);
 
-      return;
+      return null;
     }
 
-    await this.sendKeyBinding(binding);
-  }
-
-  private async sendKeyBinding(binding: KeyBindingValue): Promise<void> {
-    const combination: KeyCombination = {
+    return {
       key: binding.key as KeyboardKey,
       modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
       code: binding.code,
     };
-
-    const success = await getKeyboard().sendKeyCombination(combination);
-
-    if (success) {
-      this.logger.info("Key sent successfully");
-      this.logger.debug(`Key combination: ${formatKeyBinding(binding)}`);
-    } else {
-      this.logger.warn("Failed to send key");
-      this.logger.debug(`Failed key combination: ${formatKeyBinding(binding)}`);
-    }
   }
 
   private async updateDisplay(

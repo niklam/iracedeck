@@ -422,6 +422,76 @@ Napi::Value SendScanKeys(const Napi::CallbackInfo &info)
     return env.Undefined();
 }
 
+/**
+ * Press scan codes without releasing (for key hold/long-press).
+ * Presses each scan code in order (modifiers first, then main key).
+ * No Sleep(), no key up — caller is responsible for releasing via SendScanKeyUp.
+ *
+ * @param scanCodes - Array of PS/2 scan codes (bit 0x100 = extended key)
+ */
+Napi::Value SendScanKeyDown(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray())
+    {
+        Napi::TypeError::New(env, "Expected (scanCodes: number[])").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array scanCodes = info[0].As<Napi::Array>();
+    uint32_t len = scanCodes.Length();
+
+    if (len == 0)
+    {
+        return env.Undefined();
+    }
+
+    // Key down for each scan code in order
+    for (uint32_t i = 0; i < len; i++)
+    {
+        UINT sc = scanCodes.Get(i).As<Napi::Number>().Uint32Value();
+        sendScanKey(sc, true);
+    }
+
+    return env.Undefined();
+}
+
+/**
+ * Release scan codes without pressing (for key hold/long-press).
+ * Releases each scan code in reverse order (main key first, then modifiers).
+ * No Sleep(), no key down — caller is responsible for pressing via SendScanKeyDown.
+ *
+ * @param scanCodes - Array of PS/2 scan codes (bit 0x100 = extended key)
+ */
+Napi::Value SendScanKeyUp(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray())
+    {
+        Napi::TypeError::New(env, "Expected (scanCodes: number[])").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array scanCodes = info[0].As<Napi::Array>();
+    uint32_t len = scanCodes.Length();
+
+    if (len == 0)
+    {
+        return env.Undefined();
+    }
+
+    // Key up in reverse order
+    for (int32_t i = static_cast<int32_t>(len) - 1; i >= 0; i--)
+    {
+        UINT sc = scanCodes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Uint32Value();
+        sendScanKey(sc, false);
+    }
+
+    return env.Undefined();
+}
+
 // ============================================================================
 // Module Initialization
 // ============================================================================
@@ -449,6 +519,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Keyboard Input
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));
+    exports.Set("sendScanKeyDown", Napi::Function::New(env, SendScanKeyDown));
+    exports.Set("sendScanKeyUp", Napi::Function::New(env, SendScanKeyUp));
 
     return exports;
 }
