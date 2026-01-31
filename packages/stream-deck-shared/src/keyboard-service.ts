@@ -212,37 +212,13 @@ class KeyboardService implements IKeyboardService {
    */
   private sendViaScanCodes(combination: KeyCombination): boolean {
     try {
-      const scanCodes: number[] = [];
+      const scanCodes = this.buildScanCodes(combination);
 
-      // Add modifier scan codes
-      if (combination.modifiers) {
-        for (const modifier of combination.modifiers) {
-          const sc = getModifierScanCode(modifier);
-
-          if (sc === undefined) {
-            this.logger.warn(`Unknown modifier "${modifier}", falling back to keysender`);
-
-            return false;
-          }
-
-          scanCodes.push(sc);
-        }
-      }
-
-      // Add main key scan code
-      const mainSc = getScanCode(combination.code!);
-
-      if (mainSc === undefined) {
-        this.logger.debug(`No scan code for event.code="${combination.code}", falling back to keysender`);
-
-        // Fall back to keysender for unmapped codes
-        // (this is async but we return sync - call it directly)
+      if (!scanCodes) {
         void this.sendViaKeysender(combination);
 
         return true;
       }
-
-      scanCodes.push(mainSc);
 
       this.logger.debug(
         `Sending scan codes: [${scanCodes.map((sc) => `0x${sc.toString(16)}`).join(", ")}] (code="${combination.code}", key="${combination.key}")`,

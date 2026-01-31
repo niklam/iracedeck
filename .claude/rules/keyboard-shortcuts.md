@@ -99,29 +99,32 @@ await getKeyboard().releaseKeyCombination(combination);
 
 ### Long-press action pattern
 
+**IMPORTANT**: Track held keys per action context (`ev.action.id`), not as a single field. A single action class handles all instances of that action type — using a single field causes stuck keys when multiple buttons are pressed concurrently.
+
 ```typescript
-private heldCombination: KeyCombination | null = null;
+private heldCombinations = new Map<string, KeyCombination>();
 
 override async onKeyDown(ev: KeyDownEvent<Settings>): Promise<void> {
   const combination = this.resolveCombination(ev.payload.settings);
   if (!combination) return;
 
   const success = await getKeyboard().pressKeyCombination(combination);
-  if (success) this.heldCombination = combination;
+  if (success) this.heldCombinations.set(ev.action.id, combination);
 }
 
-override async onKeyUp(_ev: KeyUpEvent<Settings>): Promise<void> {
-  if (!this.heldCombination) return;
-  const combination = this.heldCombination;
-  this.heldCombination = null;
+override async onKeyUp(ev: KeyUpEvent<Settings>): Promise<void> {
+  const combination = this.heldCombinations.get(ev.action.id);
+  if (!combination) return;
+  this.heldCombinations.delete(ev.action.id);
   await getKeyboard().releaseKeyCombination(combination);
 }
 
 // SAFETY: always release held keys when action disappears
 override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> {
-  if (this.heldCombination) {
-    await getKeyboard().releaseKeyCombination(this.heldCombination);
-    this.heldCombination = null;
+  const combination = this.heldCombinations.get(ev.action.id);
+  if (combination) {
+    this.heldCombinations.delete(ev.action.id);
+    await getKeyboard().releaseKeyCombination(combination);
   }
   await super.onWillDisappear(ev);
 }
