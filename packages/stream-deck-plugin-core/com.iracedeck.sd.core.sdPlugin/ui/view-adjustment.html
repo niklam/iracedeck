@@ -61,6 +61,22 @@
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 </style>
 
 	</head>
@@ -82,35 +98,55 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<!-- Global Key Bindings section -->
 		<!--
   Global Key Bindings Component
 
-  Displays key binding inputs in a collapsible "Global Settings" section.
+  Displays key binding inputs in a "Related Key Bindings" section.
   Key bindings are stored in global settings (shared across all action instances).
 
   Parameters:
-    - subtitle: String (optional) - Section subtitle (e.g., "Black Box Key Bindings")
     - keyBindings: Array with objects containing id, label, default, setting
-    - open: Boolean (optional) - Whether to start expanded (default: false)
 -->
-
-
-
-<!--
-  Collapsible Component - A collapsible section with divider and arrow.
-  Parameters: title (String), content (HTML String), open (Boolean, optional)
--->
-<details class="ird-collapsible" >
-  <summary class="ird-collapsible-header">
-    <span class="ird-collapsible-icon">&#9654;</span>
-    <span class="ird-collapsible-title">Global Settings</span>
-  </summary>
-  <div class="ird-collapsible-content">
-    <div class="ird-section-subtitle">View Adjustment Key Bindings</div><sdpi-item label="FOV Increase"><ird-key-binding setting="viewAdjustFovIncrease" default="]" global></ird-key-binding></sdpi-item><sdpi-item label="FOV Decrease"><ird-key-binding setting="viewAdjustFovDecrease" default="[" global></ird-key-binding></sdpi-item><sdpi-item label="Horizon Up"><ird-key-binding setting="viewAdjustHorizonUp" default="Shift+]" global></ird-key-binding></sdpi-item><sdpi-item label="Horizon Down"><ird-key-binding setting="viewAdjustHorizonDown" default="Shift+[" global></ird-key-binding></sdpi-item><sdpi-item label="Driver Height Up"><ird-key-binding setting="viewAdjustDriverHeightUp" default="Ctrl+]" global></ird-key-binding></sdpi-item><sdpi-item label="Driver Height Down"><ird-key-binding setting="viewAdjustDriverHeightDown" default="Ctrl+[" global></ird-key-binding></sdpi-item><sdpi-item label="Recenter VR"><ird-key-binding setting="viewAdjustRecenterVr" default=";" global></ird-key-binding></sdpi-item><sdpi-item label="UI Size Increase"><ird-key-binding setting="viewAdjustUiSizeIncrease" default="Ctrl+PageUp" global></ird-key-binding></sdpi-item><sdpi-item label="UI Size Decrease"><ird-key-binding setting="viewAdjustUiSizeDecrease" default="Ctrl+PageDown" global></ird-key-binding></sdpi-item>
-  </div>
-</details>
-
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="FOV Increase">
+    <ird-key-binding setting="viewAdjustFovIncrease" default="]" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="FOV Decrease">
+    <ird-key-binding setting="viewAdjustFovDecrease" default="[" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Horizon Up">
+    <ird-key-binding setting="viewAdjustHorizonUp" default="Shift+]" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Horizon Down">
+    <ird-key-binding setting="viewAdjustHorizonDown" default="Shift+[" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Driver Height Up">
+    <ird-key-binding setting="viewAdjustDriverHeightUp" default="Ctrl+]" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Driver Height Down">
+    <ird-key-binding setting="viewAdjustDriverHeightDown" default="Ctrl+[" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Recenter VR">
+    <ird-key-binding setting="viewAdjustRecenterVr" default=";" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="UI Size Increase">
+    <ird-key-binding setting="viewAdjustUiSizeIncrease" default="Ctrl+PageUp" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="UI Size Decrease">
+    <ird-key-binding setting="viewAdjustUiSizeDecrease" default="Ctrl+PageDown" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
 
 
 		<script>

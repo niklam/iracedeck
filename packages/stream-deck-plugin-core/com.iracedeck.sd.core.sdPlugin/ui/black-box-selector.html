@@ -61,6 +61,22 @@
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 </style>
 
 	</head>
@@ -90,35 +106,71 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<!-- Global Key Bindings section -->
 		<!--
   Global Key Bindings Component
 
-  Displays key binding inputs in a collapsible "Global Settings" section.
+  Displays key binding inputs in a "Related Key Bindings" section.
   Key bindings are stored in global settings (shared across all action instances).
 
   Parameters:
-    - subtitle: String (optional) - Section subtitle (e.g., "Black Box Key Bindings")
     - keyBindings: Array with objects containing id, label, default, setting
-    - open: Boolean (optional) - Whether to start expanded (default: false)
 -->
-
-
-
-<!--
-  Collapsible Component - A collapsible section with divider and arrow.
-  Parameters: title (String), content (HTML String), open (Boolean, optional)
--->
-<details class="ird-collapsible" >
-  <summary class="ird-collapsible-header">
-    <span class="ird-collapsible-icon">&#9654;</span>
-    <span class="ird-collapsible-title">Global Settings</span>
-  </summary>
-  <div class="ird-collapsible-content">
-    <div class="ird-section-subtitle">Black Box Key Bindings</div><sdpi-item label="Lap Timing"><ird-key-binding setting="blackBoxLapTiming" default="F1" global></ird-key-binding></sdpi-item><sdpi-item label="Standings"><ird-key-binding setting="blackBoxStandings" default="F2" global></ird-key-binding></sdpi-item><sdpi-item label="Relative"><ird-key-binding setting="blackBoxRelative" default="F3" global></ird-key-binding></sdpi-item><sdpi-item label="Fuel"><ird-key-binding setting="blackBoxFuel" default="F4" global></ird-key-binding></sdpi-item><sdpi-item label="Tires"><ird-key-binding setting="blackBoxTires" default="F5" global></ird-key-binding></sdpi-item><sdpi-item label="Tire Info"><ird-key-binding setting="blackBoxTireInfo" default="F6" global></ird-key-binding></sdpi-item><sdpi-item label="Pit-stop Adjustments"><ird-key-binding setting="blackBoxPitStop" default="F7" global></ird-key-binding></sdpi-item><sdpi-item label="In-car Adjustments"><ird-key-binding setting="blackBoxInCar" default="F8" global></ird-key-binding></sdpi-item><sdpi-item label="Mirror Adjustments"><ird-key-binding setting="blackBoxMirror" default="F9" global></ird-key-binding></sdpi-item><sdpi-item label="Radio Adjustments"><ird-key-binding setting="blackBoxRadio" default="F10" global></ird-key-binding></sdpi-item><sdpi-item label="Weather"><ird-key-binding setting="blackBoxWeather" default="F11" global></ird-key-binding></sdpi-item><sdpi-item label="Cycle Next"><ird-key-binding setting="blackBoxCycleNext" default="" global></ird-key-binding></sdpi-item><sdpi-item label="Cycle Previous"><ird-key-binding setting="blackBoxCyclePrevious" default="" global></ird-key-binding></sdpi-item>
-  </div>
-</details>
-
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="Lap Timing">
+    <ird-key-binding setting="blackBoxLapTiming" default="F1" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Standings">
+    <ird-key-binding setting="blackBoxStandings" default="F2" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Relative">
+    <ird-key-binding setting="blackBoxRelative" default="F3" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Fuel">
+    <ird-key-binding setting="blackBoxFuel" default="F4" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Tires">
+    <ird-key-binding setting="blackBoxTires" default="F5" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Tire Info">
+    <ird-key-binding setting="blackBoxTireInfo" default="F6" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Pit-stop Adjustments">
+    <ird-key-binding setting="blackBoxPitStop" default="F7" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="In-car Adjustments">
+    <ird-key-binding setting="blackBoxInCar" default="F8" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Mirror Adjustments">
+    <ird-key-binding setting="blackBoxMirror" default="F9" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Radio Adjustments">
+    <ird-key-binding setting="blackBoxRadio" default="F10" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Weather">
+    <ird-key-binding setting="blackBoxWeather" default="F11" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Cycle Next">
+    <ird-key-binding setting="blackBoxCycleNext" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Cycle Previous">
+    <ird-key-binding setting="blackBoxCyclePrevious" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
 
 
 		<script>
