@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select id="control-select" setting="control" default="trigger-wipers">
+				<option value="trigger-wipers">Trigger Wipers</option>
+				<option value="ffb-max-force">FFB Max Force</option>
+				<option value="report-latency">Report Latency</option>
+				<option value="dash-page-1">Dash Page 1</option>
+				<option value="dash-page-2">Dash Page 2</option>
+				<option value="in-lap-mode">In Lap Mode</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a "Related Key Bindings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - keyBindings: Array with objects containing id, label, default, setting
+-->
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="Trigger Wipers">
+    <ird-key-binding setting="cockpitMiscTriggerWipers" default="Ctrl+Alt+W" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="FFB Force Increase">
+    <ird-key-binding setting="cockpitMiscFfbForceIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="FFB Force Decrease">
+    <ird-key-binding setting="cockpitMiscFfbForceDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Report Latency">
+    <ird-key-binding setting="cockpitMiscReportLatency" default="L" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Dash Page 1 +">
+    <ird-key-binding setting="cockpitMiscDashPage1Increase" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Dash Page 1 -">
+    <ird-key-binding setting="cockpitMiscDashPage1Decrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Dash Page 2 +">
+    <ird-key-binding setting="cockpitMiscDashPage2Increase" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Dash Page 2 -">
+    <ird-key-binding setting="cockpitMiscDashPage2Decrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="In Lap Mode">
+    <ird-key-binding setting="cockpitMiscInLapMode" default="Shift+Alt+L" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
+
+
+		<script>
+			const DIRECTIONAL_CONTROLS = new Set(["ffb-max-force", "dash-page-1", "dash-page-2"]);
+
+			function updateVisibility(control) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+
+				// Hide direction dropdown for non-directional controls
+				directionItem.classList.toggle("hidden", !DIRECTIONAL_CONTROLS.has(control));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const controlSelect = document.getElementById("control-select");
+
+				if (controlSelect) {
+					const initialValue = controlSelect.value || "trigger-wipers";
+					updateVisibility(initialValue);
+
+					controlSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "trigger-wipers");
+					});
+					controlSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "trigger-wipers");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = controlSelect.value || "trigger-wipers";
+					setInterval(() => {
+						const currentValue = controlSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

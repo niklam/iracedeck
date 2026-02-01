@@ -86,5 +86,56 @@
       "default": "Ctrl+PageDown",
       "setting": "viewAdjustUiSizeDecrease"
     }
+  ],
+  "cockpitMisc": [
+    {
+      "id": "triggerWipers",
+      "label": "Trigger Wipers",
+      "default": "Ctrl+Alt+W",
+      "setting": "cockpitMiscTriggerWipers"
+    },
+    {
+      "id": "ffbForceIncrease",
+      "label": "FFB Force Increase",
+      "default": "",
+      "setting": "cockpitMiscFfbForceIncrease"
+    },
+    {
+      "id": "ffbForceDecrease",
+      "label": "FFB Force Decrease",
+      "default": "",
+      "setting": "cockpitMiscFfbForceDecrease"
+    },
+    { "id": "reportLatency", "label": "Report Latency", "default": "L", "setting": "cockpitMiscReportLatency" },
+    {
+      "id": "dashPage1Increase",
+      "label": "Dash Page 1 +",
+      "default": "",
+      "setting": "cockpitMiscDashPage1Increase"
+    },
+    {
+      "id": "dashPage1Decrease",
+      "label": "Dash Page 1 -",
+      "default": "",
+      "setting": "cockpitMiscDashPage1Decrease"
+    },
+    {
+      "id": "dashPage2Increase",
+      "label": "Dash Page 2 +",
+      "default": "",
+      "setting": "cockpitMiscDashPage2Increase"
+    },
+    {
+      "id": "dashPage2Decrease",
+      "label": "Dash Page 2 -",
+      "default": "",
+      "setting": "cockpitMiscDashPage2Decrease"
+    },
+    {
+      "id": "inLapMode",
+      "label": "In Lap Mode",
+      "default": "Shift+Alt+L",
+      "setting": "cockpitMiscInLapMode"
+    }
   ]
 }
