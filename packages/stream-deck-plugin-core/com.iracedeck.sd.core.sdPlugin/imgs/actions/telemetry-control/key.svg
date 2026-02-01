@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a3a"/>
+  <!-- Toggle logging icon content (static version) -->
+  <polyline points="14,28 22,18 30,24 38,12 46,20 54,10" fill="none"
+            stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="54" cy="10" r="3" fill="#2ecc71"/>
+  <line x1="14" y1="34" x2="58" y2="34" stroke="#888888" stroke-width="0.8"/>
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">LOGGING</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">TOGGLE</text>
+</svg>

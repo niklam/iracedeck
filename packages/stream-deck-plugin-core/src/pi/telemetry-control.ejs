@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Action">
+			<sdpi-select setting="action" default="toggle-logging">
+				<option value="toggle-logging">Toggle Logging</option>
+				<option value="mark-event">Mark Event</option>
+				<option value="toggle-recording">Toggle Recording</option>
+				<option value="restart-recording">Restart Recording</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Telemetry Control Key Bindings',
+			keyBindings: require('./data/key-bindings.json').telemetryControl
+		}) %>
+	</body>
+</html>

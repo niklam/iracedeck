@@ -69,6 +69,27 @@
       ]
     },
     {
+      "Name": "Telemetry Control",
+      "UUID": "com.iracedeck.sd.core.telemetry-control",
+      "Icon": "imgs/actions/telemetry-control/icon",
+      "Tooltip": "Telemetry logging and recording controls",
+      "PropertyInspectorPath": "ui/telemetry-control.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate telemetry action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/telemetry-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Toggle UI Elements",
       "UUID": "com.iracedeck.sd.core.toggle-ui-elements",
       "Icon": "imgs/actions/toggle-ui-elements/icon",

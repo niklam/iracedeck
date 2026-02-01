@@ -166,6 +166,20 @@
       "setting": "mediaCaptureGiantScreenshot"
     }
   ],
+  "telemetryControl": [
+    {
+      "id": "toggleLogging",
+      "label": "Toggle Logging",
+      "default": "Alt+L",
+      "setting": "telemetryControlToggleLogging"
+    },
+    {
+      "id": "markEvent",
+      "label": "Mark Event",
+      "default": "M",
+      "setting": "telemetryControlMarkEvent"
+    }
+  ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "cameraEditorAdjustments": [
