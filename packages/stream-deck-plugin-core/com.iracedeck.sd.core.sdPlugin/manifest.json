@@ -110,6 +110,28 @@
       ]
     },
     {
+      "Name": "Cockpit Misc",
+      "UUID": "com.iracedeck.sd.core.cockpit-misc",
+      "Icon": "imgs/actions/cockpit-misc/icon",
+      "Tooltip": "Miscellaneous cockpit controls (wipers, FFB, latency, dash pages, in-lap mode)",
+      "PropertyInspectorPath": "ui/cockpit-misc.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Press": "Activate control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/cockpit-misc/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

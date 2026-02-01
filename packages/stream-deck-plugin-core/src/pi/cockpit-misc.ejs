@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select id="control-select" setting="control" default="trigger-wipers">
+				<option value="trigger-wipers">Trigger Wipers</option>
+				<option value="ffb-max-force">FFB Max Force</option>
+				<option value="report-latency">Report Latency</option>
+				<option value="dash-page-1">Dash Page 1</option>
+				<option value="dash-page-2">Dash Page 2</option>
+				<option value="in-lap-mode">In Lap Mode</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Cockpit Misc Key Bindings',
+			keyBindings: require('./data/key-bindings.json').cockpitMisc
+		}) %>
+
+		<script>
+			const DIRECTIONAL_CONTROLS = new Set(["ffb-max-force", "dash-page-1", "dash-page-2"]);
+
+			function updateVisibility(control) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+
+				// Hide direction dropdown for non-directional controls
+				directionItem.classList.toggle("hidden", !DIRECTIONAL_CONTROLS.has(control));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const controlSelect = document.getElementById("control-select");
+
+				if (controlSelect) {
+					const initialValue = controlSelect.value || "trigger-wipers";
+					updateVisibility(initialValue);
+
+					controlSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "trigger-wipers");
+					});
+					controlSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "trigger-wipers");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = controlSelect.value || "trigger-wipers";
+					setInterval(() => {
+						const currentValue = controlSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
