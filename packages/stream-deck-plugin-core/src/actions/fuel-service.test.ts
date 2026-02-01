@@ -284,7 +284,7 @@ describe("FuelService", () => {
       expect(mockPitFuel).toHaveBeenCalledWith(0);
     });
 
-    it("should call pit.clearFuel() is not called on counter-clockwise rotation for add-fuel", async () => {
+    it("should call pit.fuel(0) on counter-clockwise rotation for add-fuel", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { mode: "add-fuel" }, -1) as any);
 
       // Counter-clockwise on add-fuel triggers reduce-fuel, which calls pit.fuel(0)
