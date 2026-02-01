@@ -157,5 +157,10 @@
       "default": "Shift+Alt+S",
       "setting": "fuelServiceLapMarginDecrease"
     }
+  ],
+  "chat": [
+    { "id": "openChat", "label": "Open Chat", "default": "T", "setting": "chatOpenChat" },
+    { "id": "replyToChat", "label": "Reply to Chat", "default": "R", "setting": "chatReplyToChat" },
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }
   ]
 }

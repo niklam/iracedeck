@@ -10,6 +10,7 @@ import {
 
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { CarControl } from "./actions/car-control.js";
+import { Chat } from "./actions/chat.js";
 import { CockpitMisc } from "./actions/cockpit-misc.js";
 import { FuelService } from "./actions/fuel-service.js";
 import { LookDirection } from "./actions/look-direction.js";
@@ -37,6 +38,7 @@ initializeKeyboard(
 // Register core actions
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new CarControl());
+streamDeck.actions.registerAction(new Chat());
 streamDeck.actions.registerAction(new CockpitMisc());
 streamDeck.actions.registerAction(new FuelService());
 streamDeck.actions.registerAction(new LookDirection());

@@ -196,6 +196,27 @@
       ]
     },
     {
+      "Name": "Chat",
+      "UUID": "com.iracedeck.sd.core.chat",
+      "Icon": "imgs/actions/chat/icon",
+      "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
+      "PropertyInspectorPath": "ui/chat.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate chat action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/chat/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

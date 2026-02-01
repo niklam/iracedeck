@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
+  <!-- Chat bubble -->
+  <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
+        fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Pencil icon inside bubble -->
+  <line x1="28" y1="28" x2="40" y2="18" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="28" y1="28" x2="30" y2="26" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">OPEN</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">CHAT</text>
+</svg>

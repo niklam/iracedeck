@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="open-chat">
+				<option value="open-chat">Open Chat</option>
+				<option value="reply">Reply to Chat</option>
+				<option value="whisper">Whisper</option>
+				<option value="respond-pm">Respond to Last PM</option>
+				<option value="cancel">Cancel Chat</option>
+				<option value="send-message">Send Message</option>
+				<option value="macro">Macro (1-15)</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Message Text" id="message-item" class="hidden">
+			<sdpi-textfield setting="message" placeholder="Enter message to send"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Macro Number" id="macro-item" class="hidden">
+			<sdpi-select setting="macroNumber" default="1">
+				<% for (let i = 1; i <= 15; i++) { %>
+				<option value="<%= i %>">Macro <%= i %></option>
+				<% } %>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Chat Key Bindings',
+			keyBindings: require('./data/key-bindings.json').chat
+		}) %>
+
+		<script>
+			function updateVisibility(mode) {
+				const messageItem = document.getElementById("message-item");
+				const macroItem = document.getElementById("macro-item");
+
+				if (messageItem) {
+					messageItem.classList.toggle("hidden", mode !== "send-message");
+				}
+				if (macroItem) {
+					macroItem.classList.toggle("hidden", mode !== "macro");
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					const initialValue = modeSelect.value || "open-chat";
+					updateVisibility(initialValue);
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "open-chat");
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "open-chat");
+					});
+
+					// Polling fallback for reliable detection
+					let lastMode = modeSelect.value || "open-chat";
+					setInterval(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
