@@ -11,6 +11,7 @@ import {
 import { AudioControls } from "./actions/audio-controls.js";
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { CameraCycle } from "./actions/camera-cycle.js";
+import { CameraFocus } from "./actions/camera-focus.js";
 import { CarControl } from "./actions/car-control.js";
 import { Chat } from "./actions/chat.js";
 import { CockpitMisc } from "./actions/cockpit-misc.js";
@@ -44,6 +45,7 @@ initializeKeyboard(
 streamDeck.actions.registerAction(new AudioControls());
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new CameraCycle());
+streamDeck.actions.registerAction(new CameraFocus());
 streamDeck.actions.registerAction(new CarControl());
 streamDeck.actions.registerAction(new Chat());
 streamDeck.actions.registerAction(new CockpitMisc());

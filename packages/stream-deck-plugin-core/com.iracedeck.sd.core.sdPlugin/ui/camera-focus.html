@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Target">
+			<sdpi-select id="target-select" setting="target" default="focus-your-car">
+				<option value="focus-your-car">Focus Your Car</option>
+				<option value="focus-on-leader">Focus on Leader</option>
+				<option value="focus-on-incident">Focus on Incident</option>
+				<option value="focus-on-exiting">Focus on Exiting Cars</option>
+				<option value="switch-by-position">Switch by Position</option>
+				<option value="switch-by-car-number">Switch by Car Number</option>
+				<option value="set-camera-state">Set Camera State</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Position" id="position-item" class="hidden">
+			<sdpi-textfield setting="position" placeholder="1" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Car Number" id="car-number-item" class="hidden">
+			<sdpi-textfield setting="carNumber" placeholder="0" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Camera State" id="camera-state-item" class="hidden">
+			<sdpi-textfield setting="cameraState" placeholder="0" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<script>
+			function updateVisibility(target) {
+				const positionItem = document.getElementById("position-item");
+				const carNumberItem = document.getElementById("car-number-item");
+				const cameraStateItem = document.getElementById("camera-state-item");
+
+				if (positionItem) {
+					positionItem.classList.toggle("hidden", target !== "switch-by-position");
+				}
+				if (carNumberItem) {
+					carNumberItem.classList.toggle("hidden", target !== "switch-by-car-number");
+				}
+				if (cameraStateItem) {
+					cameraStateItem.classList.toggle("hidden", target !== "set-camera-state");
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const targetSelect = document.getElementById("target-select");
+				if (targetSelect) {
+					const initialValue = targetSelect.value || "focus-your-car";
+					updateVisibility(initialValue);
+
+					targetSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "focus-your-car");
+					});
+					targetSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "focus-your-car");
+					});
+
+					// Polling fallback for reliable detection
+					let lastTarget = targetSelect.value || "focus-your-car";
+					setInterval(() => {
+						const currentTarget = targetSelect.value;
+						if (currentTarget && currentTarget !== lastTarget) {
+							lastTarget = currentTarget;
+							updateVisibility(currentTarget);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+	</body>
+</html>

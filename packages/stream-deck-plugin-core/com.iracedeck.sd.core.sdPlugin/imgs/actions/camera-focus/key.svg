@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
+  <!-- Crosshair focus icon -->
+  <circle cx="36" cy="24" r="12" fill="none" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="36" cy="24" r="3" fill="#ffffff"/>
+  <line x1="36" y1="8" x2="36" y2="14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <line x1="36" y1="34" x2="36" y2="40" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <line x1="20" y1="24" x2="26" y2="24" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <line x1="46" y1="24" x2="52" y2="24" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">FOCUS</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">YOUR CAR</text>
+</svg>

@@ -327,6 +327,27 @@
       ]
     },
     {
+      "Name": "Camera Focus",
+      "UUID": "com.iracedeck.sd.core.camera-focus",
+      "Icon": "imgs/actions/camera-focus/icon",
+      "Tooltip": "Focus the camera on specific targets (your car, leader, incidents, positions)",
+      "PropertyInspectorPath": "ui/camera-focus.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Focus on selected target"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-focus/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",

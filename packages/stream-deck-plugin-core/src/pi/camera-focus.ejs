@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Target">
+			<sdpi-select id="target-select" setting="target" default="focus-your-car">
+				<option value="focus-your-car">Focus Your Car</option>
+				<option value="focus-on-leader">Focus on Leader</option>
+				<option value="focus-on-incident">Focus on Incident</option>
+				<option value="focus-on-exiting">Focus on Exiting Cars</option>
+				<option value="switch-by-position">Switch by Position</option>
+				<option value="switch-by-car-number">Switch by Car Number</option>
+				<option value="set-camera-state">Set Camera State</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Position" id="position-item" class="hidden">
+			<sdpi-textfield setting="position" placeholder="1" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Car Number" id="car-number-item" class="hidden">
+			<sdpi-textfield setting="carNumber" placeholder="0" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Camera State" id="camera-state-item" class="hidden">
+			<sdpi-textfield setting="cameraState" placeholder="0" type="number"></sdpi-textfield>
+		</sdpi-item>
+
+		<script>
+			function updateVisibility(target) {
+				const positionItem = document.getElementById("position-item");
+				const carNumberItem = document.getElementById("car-number-item");
+				const cameraStateItem = document.getElementById("camera-state-item");
+
+				if (positionItem) {
+					positionItem.classList.toggle("hidden", target !== "switch-by-position");
+				}
+				if (carNumberItem) {
+					carNumberItem.classList.toggle("hidden", target !== "switch-by-car-number");
+				}
+				if (cameraStateItem) {
+					cameraStateItem.classList.toggle("hidden", target !== "set-camera-state");
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const targetSelect = document.getElementById("target-select");
+				if (targetSelect) {
+					const initialValue = targetSelect.value || "focus-your-car";
+					updateVisibility(initialValue);
+
+					targetSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "focus-your-car");
+					});
+					targetSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "focus-your-car");
+					});
+
+					// Polling fallback for reliable detection
+					let lastTarget = targetSelect.value || "focus-your-car";
+					setInterval(() => {
+						const currentTarget = targetSelect.value;
+						if (currentTarget && currentTarget !== lastTarget) {
+							lastTarget = currentTarget;
+							updateVisibility(currentTarget);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+	</body>
+</html>
