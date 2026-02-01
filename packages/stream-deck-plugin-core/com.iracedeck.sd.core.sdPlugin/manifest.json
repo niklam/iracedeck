@@ -563,6 +563,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Setup Hybrid",
+      "UUID": "com.iracedeck.sd.core.setup-hybrid",
+      "Icon": "imgs/actions/setup-hybrid/icon",
+      "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
+      "PropertyInspectorPath": "ui/setup-hybrid.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease hybrid setting",
+          "Press": "Activate hybrid adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-hybrid/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

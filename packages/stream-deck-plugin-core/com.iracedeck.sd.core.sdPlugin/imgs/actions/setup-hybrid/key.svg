@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a1a"/>
+
+  <!-- MGU-K Re-Gen Gain increase icon: Battery with regen lightning bolt + increase arrow -->
+  <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <rect x="42" y="19" width="3" height="6" rx="1" fill="#ffffff"/>
+  <polyline points="27,17 30,22 27,22 30,27" fill="none" stroke="#2ecc71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="53,28 58,22 53,16" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">REGEN GAIN</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">INCREASE</text>
+</svg>

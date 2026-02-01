@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
+				<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
+				<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
+				<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
+				<option value="hys-boost">HYS Boost</option>
+				<option value="hys-regen">HYS Regen</option>
+				<option value="hys-no-boost">HYS No Boost</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a "Related Key Bindings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - keyBindings: Array with objects containing id, label, default, setting
+-->
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="MGU-K Re-Gen Gain +">
+    <ird-key-binding setting="setupHybridMgukRegenGainIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="MGU-K Re-Gen Gain -">
+    <ird-key-binding setting="setupHybridMgukRegenGainDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="MGU-K Deploy Mode +">
+    <ird-key-binding setting="setupHybridMgukDeployModeIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="MGU-K Deploy Mode -">
+    <ird-key-binding setting="setupHybridMgukDeployModeDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="MGU-K Fixed Deploy +">
+    <ird-key-binding setting="setupHybridMgukFixedDeployIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="MGU-K Fixed Deploy -">
+    <ird-key-binding setting="setupHybridMgukFixedDeployDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="HYS Boost">
+    <ird-key-binding setting="setupHybridHysBoost" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="HYS Regen">
+    <ird-key-binding setting="setupHybridHysRegen" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="HYS No Boost">
+    <ird-key-binding setting="setupHybridHysNoBoost" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
+
+
+		<script>
+			const NON_DIRECTIONAL = new Set(["hys-boost", "hys-regen", "hys-no-boost"]);
+
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", NON_DIRECTIONAL.has(setting));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "mguk-regen-gain";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "mguk-regen-gain");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "mguk-regen-gain");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "mguk-regen-gain";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

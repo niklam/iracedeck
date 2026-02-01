@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
+				<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
+				<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
+				<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
+				<option value="hys-boost">HYS Boost</option>
+				<option value="hys-regen">HYS Regen</option>
+				<option value="hys-no-boost">HYS No Boost</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Hybrid Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupHybrid
+		}) %>
+
+		<script>
+			const NON_DIRECTIONAL = new Set(["hys-boost", "hys-regen", "hys-no-boost"]);
+
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", NON_DIRECTIONAL.has(setting));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "mguk-regen-gain";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "mguk-regen-gain");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "mguk-regen-gain");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "mguk-regen-gain";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

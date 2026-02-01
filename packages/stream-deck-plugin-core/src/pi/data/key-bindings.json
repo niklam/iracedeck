@@ -427,6 +427,47 @@
     },
     { "id": "rfBrakeAttached", "label": "RF Brake Attached", "default": "", "setting": "setupAeroRfBrakeAttached" }
   ],
+  "setupHybrid": [
+    {
+      "id": "mgukRegenGainIncrease",
+      "label": "MGU-K Re-Gen Gain +",
+      "default": "",
+      "setting": "setupHybridMgukRegenGainIncrease"
+    },
+    {
+      "id": "mgukRegenGainDecrease",
+      "label": "MGU-K Re-Gen Gain -",
+      "default": "",
+      "setting": "setupHybridMgukRegenGainDecrease"
+    },
+    {
+      "id": "mgukDeployModeIncrease",
+      "label": "MGU-K Deploy Mode +",
+      "default": "",
+      "setting": "setupHybridMgukDeployModeIncrease"
+    },
+    {
+      "id": "mgukDeployModeDecrease",
+      "label": "MGU-K Deploy Mode -",
+      "default": "",
+      "setting": "setupHybridMgukDeployModeDecrease"
+    },
+    {
+      "id": "mgukFixedDeployIncrease",
+      "label": "MGU-K Fixed Deploy +",
+      "default": "",
+      "setting": "setupHybridMgukFixedDeployIncrease"
+    },
+    {
+      "id": "mgukFixedDeployDecrease",
+      "label": "MGU-K Fixed Deploy -",
+      "default": "",
+      "setting": "setupHybridMgukFixedDeployDecrease"
+    },
+    { "id": "hysBoost", "label": "HYS Boost", "default": "", "setting": "setupHybridHysBoost" },
+    { "id": "hysRegen", "label": "HYS Regen", "default": "", "setting": "setupHybridHysRegen" },
+    { "id": "hysNoBoost", "label": "HYS No Boost", "default": "", "setting": "setupHybridHysNoBoost" }
+  ],
   "setupEngine": [
     {
       "id": "enginePowerIncrease",
