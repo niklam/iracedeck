@@ -160,8 +160,6 @@
   ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
-  "testGamma": [
-    { "id": "activate", "label": "Activate", "default": "Ctrl+Shift+3", "setting": "testGammaActivate" }],
   "cameraEditorAdjustments": [
     { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },
     { "id": "latitudeDecrease", "label": "Latitude -", "default": "A", "setting": "camEditLatitudeDecrease" },
@@ -278,14 +276,6 @@
       "setting": "camEditFocusDepthDecrease"
     }
   ],
-  "testBeta": [
-    {
-      "id": "activate",
-      "label": "Activate",
-      "default": "Ctrl+Shift+2",
-      "setting": "testBetaActivate"
-    }
-  ],
   "audioControls": [
     {
       "id": "spotterVolumeUp",
@@ -335,7 +325,5 @@
       "default": "Shift+Alt+numpad_subtract",
       "setting": "audioMasterVolumeDown"
     }
-  ],
-  "testAlpha": [
-    { "id": "activate", "label": "Activate", "default": "Ctrl+Shift+1", "setting": "testAlphaActivate" }]
+  ]
 }
