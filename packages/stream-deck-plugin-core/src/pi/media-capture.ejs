@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Action">
+			<sdpi-select setting="action" default="start-stop-video">
+				<option value="start-stop-video">Start/Stop Video</option>
+				<option value="video-timer">Video Timer</option>
+				<option value="toggle-video-capture">Toggle Video Capture</option>
+				<option value="take-screenshot">Take Screenshot</option>
+				<option value="take-giant-screenshot">Take Giant Screenshot</option>
+				<option value="reload-all-textures">Reload All Textures</option>
+				<option value="reload-car-textures">Reload Car Textures</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Media Capture Key Bindings',
+			keyBindings: require('./data/key-bindings.json').mediaCapture
+		}) %>
+	</body>
+</html>

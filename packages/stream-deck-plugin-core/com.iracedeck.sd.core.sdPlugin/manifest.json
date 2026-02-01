@@ -391,6 +391,27 @@
       ]
     },
     {
+      "Name": "Media Capture",
+      "UUID": "com.iracedeck.sd.core.media-capture",
+      "Icon": "imgs/actions/media-capture/icon",
+      "Tooltip": "Video recording, screenshots, and texture management",
+      "PropertyInspectorPath": "ui/media-capture.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate selected capture action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/media-capture/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",
