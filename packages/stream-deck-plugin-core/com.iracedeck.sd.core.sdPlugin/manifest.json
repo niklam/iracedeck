@@ -281,6 +281,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Replay Speed",
+      "UUID": "com.iracedeck.sd.core.replay-speed",
+      "Icon": "imgs/actions/replay-speed/icon",
+      "Tooltip": "Increase or decrease replay playback speed",
+      "PropertyInspectorPath": "ui/replay-speed.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease speed",
+          "Press": "Reset to normal speed"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-speed/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",
