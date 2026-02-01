@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a3a1a"/>
+
+  <!-- Fuel mixture icon: fuel droplet with fill level indicator + increase arrow -->
+  <path d="M30 10 C30 10 20 22 20 28 C20 34 24 38 30 38 C36 38 40 34 40 28 C40 22 30 10 30 10Z"
+        fill="none" stroke="#ffffff" stroke-width="2"/>
+  <path d="M23 30 Q30 26 37 30" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <polyline points="53,28 58,22 53,16" fill="none" stroke="#f1c40f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">FUEL MIX</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">INCREASE</text>
+</svg>

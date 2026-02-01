@@ -300,6 +300,50 @@
       "setting": "setupEngineLaunchRpmDecrease"
     }
   ],
+  "setupFuel": [
+    {
+      "id": "fuelMixtureIncrease",
+      "label": "Fuel Mixture +",
+      "default": "",
+      "setting": "setupFuelFuelMixtureIncrease"
+    },
+    {
+      "id": "fuelMixtureDecrease",
+      "label": "Fuel Mixture -",
+      "default": "",
+      "setting": "setupFuelFuelMixtureDecrease"
+    },
+    {
+      "id": "fuelCutPositionIncrease",
+      "label": "Fuel Cut Position +",
+      "default": "",
+      "setting": "setupFuelFuelCutPositionIncrease"
+    },
+    {
+      "id": "fuelCutPositionDecrease",
+      "label": "Fuel Cut Position -",
+      "default": "",
+      "setting": "setupFuelFuelCutPositionDecrease"
+    },
+    {
+      "id": "disableFuelCut",
+      "label": "Disable Fuel Cut",
+      "default": "",
+      "setting": "setupFuelDisableFuelCut"
+    },
+    {
+      "id": "lowFuelAccept",
+      "label": "Low Fuel Accept",
+      "default": "",
+      "setting": "setupFuelLowFuelAccept"
+    },
+    {
+      "id": "fcyModeToggle",
+      "label": "FCY Mode Toggle",
+      "default": "",
+      "setting": "setupFuelFcyModeToggle"
+    }
+  ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "cameraEditorAdjustments": [

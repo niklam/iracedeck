@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Fuel droplet -->
+  <path d="M10 3 C10 3 5 9 5 12.5 C5 15.5 7.2 18 10 18 C12.8 18 15 15.5 15 12.5 C15 9 10 3 10 3Z" stroke-width="1.5" fill="none"/>
+  <!-- Inner level line -->
+  <line x1="7" y1="13" x2="13" y2="13" stroke-width="1" stroke-linecap="round"/>
+</svg>

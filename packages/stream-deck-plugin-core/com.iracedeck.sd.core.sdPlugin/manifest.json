@@ -497,6 +497,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Setup Fuel",
+      "UUID": "com.iracedeck.sd.core.setup-fuel",
+      "Icon": "imgs/actions/setup-fuel/icon",
+      "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
+      "PropertyInspectorPath": "ui/setup-fuel.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel setting",
+          "Press": "Activate fuel adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-fuel/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

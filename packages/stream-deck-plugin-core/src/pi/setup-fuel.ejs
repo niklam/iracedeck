@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="fuel-mixture">
+				<option value="fuel-mixture">Fuel Mixture</option>
+				<option value="fuel-cut-position">Fuel Cut Position</option>
+				<option value="disable-fuel-cut">Disable Fuel Cut</option>
+				<option value="low-fuel-accept">Low Fuel Accept</option>
+				<option value="fcy-mode-toggle">FCY Mode Toggle</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Fuel Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupFuel
+		}) %>
+
+		<script>
+			// Non-directional controls: hide direction dropdown
+			const NON_DIRECTIONAL = new Set(["disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"]);
+
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", NON_DIRECTIONAL.has(setting));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "fuel-mixture";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "fuel-mixture");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "fuel-mixture");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "fuel-mixture";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
