@@ -59,7 +59,8 @@ vi.mock("@iracedeck/stream-deck-shared", () => ({
 const ALL_ACTIONS = [
   "toggle-logging",
   "mark-event",
-  "toggle-recording",
+  "start-recording",
+  "stop-recording",
   "restart-recording",
 ] as const;
 
@@ -102,7 +103,7 @@ describe("TelemetryControl", () => {
       expect(result).toContain("data:image/svg+xml");
     });
 
-    it("should generate valid data URIs for all 4 actions", () => {
+    it("should generate valid data URIs for all 5 actions", () => {
       for (const action of ALL_ACTIONS) {
         const result = generateTelemetryControlSvg({ action });
 
@@ -137,7 +138,8 @@ describe("TelemetryControl", () => {
       const expectedLabels: Record<string, { line1: string; line2: string }> = {
         "toggle-logging": { line1: "LOGGING", line2: "TOGGLE" },
         "mark-event": { line1: "MARK", line2: "EVENT" },
-        "toggle-recording": { line1: "RECORDING", line2: "TOGGLE" },
+        "start-recording": { line1: "RECORDING", line2: "START" },
+        "stop-recording": { line1: "RECORDING", line2: "STOP" },
         "restart-recording": { line1: "RECORDING", line2: "RESTART" },
       };
 

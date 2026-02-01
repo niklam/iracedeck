@@ -34,7 +34,8 @@ const YELLOW = "#f1c40f";
 const ACTION_VALUES = [
   "toggle-logging",
   "mark-event",
-  "toggle-recording",
+  "start-recording",
+  "stop-recording",
   "restart-recording",
 ] as const;
 
@@ -46,7 +47,8 @@ type TelemetryControlAction = (typeof ACTION_VALUES)[number];
 const TELEMETRY_CONTROL_LABELS: Record<TelemetryControlAction, { line1: string; line2: string }> = {
   "toggle-logging": { line1: "LOGGING", line2: "TOGGLE" },
   "mark-event": { line1: "MARK", line2: "EVENT" },
-  "toggle-recording": { line1: "RECORDING", line2: "TOGGLE" },
+  "start-recording": { line1: "RECORDING", line2: "START" },
+  "stop-recording": { line1: "RECORDING", line2: "STOP" },
   "restart-recording": { line1: "RECORDING", line2: "RESTART" },
 };
 
@@ -69,10 +71,16 @@ const TELEMETRY_CONTROL_ICONS: Record<TelemetryControlAction, string> = {
     <line x1="36" y1="34" x2="36" y2="10" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
     <polygon points="36,10 48,16 36,22" fill="${YELLOW}"/>`,
 
-  // Toggle Recording: Record circle with data lines
-  "toggle-recording": `
+  // Start Recording: Record circle with data lines
+  "start-recording": `
     <circle cx="36" cy="20" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
     <circle cx="36" cy="20" r="5" fill="${RED}"/>
+    <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>`,
+
+  // Stop Recording: Stop square with data lines
+  "stop-recording": `
+    <circle cx="36" cy="20" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
+    <rect x="30" y="14" width="12" height="12" fill="${WHITE}"/>
     <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>`,
 
   // Restart Recording: Circular restart arrow with record dot
@@ -176,8 +184,11 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
         break;
 
       // SDK-based actions
-      case "toggle-recording":
-        this.executeSdkCommand(() => getCommands().telem.start(), "Toggle recording");
+      case "start-recording":
+        this.executeSdkCommand(() => getCommands().telem.start(), "Start recording");
+        break;
+      case "stop-recording":
+        this.executeSdkCommand(() => getCommands().telem.stop(), "Stop recording");
         break;
       case "restart-recording":
         this.executeSdkCommand(() => getCommands().telem.restart(), "Restart recording");
