@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Skip-forward: triangle + vertical bar -->
+  <polygon points="4,3 14,10 4,17" stroke-width="1.5" stroke-linejoin="round"/>
+  <line x1="16" y1="3" x2="16" y2="17" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

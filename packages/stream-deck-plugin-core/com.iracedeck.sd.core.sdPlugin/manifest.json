@@ -303,6 +303,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Replay Navigation",
+      "UUID": "com.iracedeck.sd.core.replay-navigation",
+      "Icon": "imgs/actions/replay-navigation/icon",
+      "Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
+      "PropertyInspectorPath": "ui/replay-navigation.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous (session, lap, or incident)",
+          "Press": "Activate navigation action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-navigation/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",
