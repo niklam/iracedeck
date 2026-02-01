@@ -452,7 +452,8 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   }
 
   private async executeAdjustment(adjustment: AdjustmentType, direction: DirectionType): Promise<void> {
-    this.logger.info(`Executing ${adjustment} ${direction}`);
+    this.logger.info("Adjustment triggered");
+    this.logger.debug(`Executing ${adjustment} ${direction}`);
 
     const settingKey = CAMERA_EDITOR_GLOBAL_KEYS[adjustment]?.[direction];
 
