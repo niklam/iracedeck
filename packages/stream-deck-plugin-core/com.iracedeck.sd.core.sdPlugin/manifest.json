@@ -5,6 +5,28 @@
   "Author": "Niklas Lampén",
   "Actions": [
     {
+      "Name": "Audio Controls",
+      "UUID": "com.iracedeck.sd.core.audio-controls",
+      "Icon": "imgs/actions/audio-controls/icon",
+      "Tooltip": "Audio volume and mute controls (spotter, voice chat, master volume)",
+      "PropertyInspectorPath": "ui/audio-controls.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Volume up/down",
+          "Press": "Mute/silence"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/audio-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Black Box Selector",
       "UUID": "com.iracedeck.sd.core.black-box-selector",
       "Icon": "imgs/actions/black-box-selector/icon",

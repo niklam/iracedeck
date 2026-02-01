@@ -8,6 +8,7 @@ import {
   initializeSDK,
 } from "@iracedeck/stream-deck-shared";
 
+import { AudioControls } from "./actions/audio-controls.js";
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { CarControl } from "./actions/car-control.js";
 import { Chat } from "./actions/chat.js";
@@ -36,6 +37,7 @@ initializeKeyboard(
 );
 
 // Register core actions
+streamDeck.actions.registerAction(new AudioControls());
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new CarControl());
 streamDeck.actions.registerAction(new Chat());

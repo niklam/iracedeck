@@ -159,6 +159,55 @@
     }
   ],
   "chat": [
-    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
+  "audioControls": [
+    {
+      "id": "spotterVolumeUp",
+      "label": "Spotter Volume Up",
+      "default": "Shift+Ctrl+numpad_add",
+      "setting": "audioSpotterVolumeUp"
+    },
+    {
+      "id": "spotterVolumeDown",
+      "label": "Spotter Volume Down",
+      "default": "Shift+Ctrl+numpad_subtract",
+      "setting": "audioSpotterVolumeDown"
+    },
+    {
+      "id": "spotterSilence",
+      "label": "Spotter Silence",
+      "default": "Shift+Ctrl+M",
+      "setting": "audioSpotterSilence"
+    },
+    {
+      "id": "voiceChatVolumeUp",
+      "label": "Voice Chat Volume Up",
+      "default": "Shift+Ctrl+Alt+numpad_add",
+      "setting": "audioVoiceChatVolumeUp"
+    },
+    {
+      "id": "voiceChatVolumeDown",
+      "label": "Voice Chat Volume Down",
+      "default": "Shift+Ctrl+Alt+numpad_subtract",
+      "setting": "audioVoiceChatVolumeDown"
+    },
+    {
+      "id": "voiceChatMute",
+      "label": "Voice Chat Mute",
+      "default": "Shift+Ctrl+Alt+M",
+      "setting": "audioVoiceChatMute"
+    },
+    {
+      "id": "masterVolumeUp",
+      "label": "Master Volume Up",
+      "default": "Shift+Alt+numpad_add",
+      "setting": "audioMasterVolumeUp"
+    },
+    {
+      "id": "masterVolumeDown",
+      "label": "Master Volume Down",
+      "default": "Shift+Alt+numpad_subtract",
+      "setting": "audioMasterVolumeDown"
+    }
   ]
 }

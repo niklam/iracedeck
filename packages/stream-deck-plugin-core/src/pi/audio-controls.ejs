@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Category">
+			<sdpi-select id="category-select" setting="category" default="spotter">
+				<option value="spotter">Spotter</option>
+				<option value="voice-chat">Voice Chat</option>
+				<option value="master">Master</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Action" id="action-item">
+			<sdpi-select id="action-select" setting="action" default="volume-up">
+				<option value="volume-up">Volume Up</option>
+				<option value="volume-down">Volume Down</option>
+				<option value="mute" id="mute-option">Mute / Silence</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Audio Control Key Bindings',
+			keyBindings: require('./data/key-bindings.json').audioControls
+		}) %>
+
+		<script>
+			function updateVisibility(category) {
+				const actionSelect = document.getElementById("action-select");
+				const muteOption = document.querySelector('#action-select option[value="mute"]');
+				if (!muteOption) return;
+
+				if (category === "master") {
+					muteOption.style.display = "none";
+					// If mute was selected, switch to volume-up
+					if (actionSelect && actionSelect.value === "mute") {
+						actionSelect.value = "volume-up";
+					}
+				} else {
+					muteOption.style.display = "";
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const categorySelect = document.getElementById("category-select");
+
+				if (categorySelect) {
+					const initialValue = categorySelect.value || "spotter";
+					updateVisibility(initialValue);
+
+					categorySelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "spotter");
+					});
+					categorySelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "spotter");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = categorySelect.value || "spotter";
+					setInterval(() => {
+						const currentValue = categorySelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
