@@ -1,4 +1,10 @@
-import streamDeck, { action, DialRotateEvent, KeyDownEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
+import streamDeck, {
+  action,
+  DialRotateEvent,
+  KeyDownEvent,
+  WillAppearEvent,
+  WillDisappearEvent,
+} from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 import {
   ConnectionStateAwareAction,
