@@ -1,0 +1,164 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { generateMediaCaptureSvg, MEDIA_CAPTURE_GLOBAL_KEYS } from "./media-capture.js";
+
+vi.mock("@elgato/streamdeck", () => ({
+  default: {
+    logger: {
+      createScope: vi.fn(() => ({
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        trace: vi.fn(),
+      })),
+    },
+  },
+  action: () => (target: unknown) => target,
+}));
+
+vi.mock("@iracedeck/stream-deck-shared", () => ({
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    updateConnectionState = vi.fn();
+    setKeyImage = vi.fn();
+  },
+  createSDLogger: vi.fn(() => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    trace: vi.fn(),
+  })),
+  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+    if (b.modifiers?.length) {
+      return `${b.modifiers.join("+")}+${b.key}`;
+    }
+
+    return b.key;
+  }),
+  getCommands: vi.fn(() => ({
+    videoCapture: {
+      screenshot: vi.fn(() => true),
+      start: vi.fn(() => true),
+      stop: vi.fn(() => true),
+      toggle: vi.fn(() => true),
+      showTimer: vi.fn(() => true),
+      hideTimer: vi.fn(() => true),
+    },
+    texture: {
+      reloadAll: vi.fn(() => true),
+      reloadCar: vi.fn(() => true),
+    },
+  })),
+  getGlobalSettings: vi.fn(() => ({})),
+  getKeyboard: vi.fn(() => ({
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
+  })),
+  LogLevel: { Info: 2 },
+  parseKeyBinding: vi.fn(),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+const ALL_ACTIONS = [
+  "start-stop-video",
+  "video-timer",
+  "toggle-video-capture",
+  "take-screenshot",
+  "take-giant-screenshot",
+  "reload-all-textures",
+  "reload-car-textures",
+] as const;
+
+describe("MediaCapture", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("MEDIA_CAPTURE_GLOBAL_KEYS", () => {
+    it("should have exactly 1 keyboard-based action", () => {
+      expect(Object.keys(MEDIA_CAPTURE_GLOBAL_KEYS)).toHaveLength(1);
+    });
+
+    it("should have correct mapping for take-giant-screenshot", () => {
+      expect(MEDIA_CAPTURE_GLOBAL_KEYS["take-giant-screenshot"]).toBe("mediaCaptureGiantScreenshot");
+    });
+
+    it("should use mediaCapture prefix for all global keys", () => {
+      for (const [_action, key] of Object.entries(MEDIA_CAPTURE_GLOBAL_KEYS)) {
+        expect(key).toMatch(/^mediaCapture/);
+      }
+    });
+
+    it("should have unique global keys for all actions", () => {
+      const values = Object.values(MEDIA_CAPTURE_GLOBAL_KEYS);
+      const uniqueValues = new Set(values);
+
+      expect(uniqueValues.size).toBe(values.length);
+    });
+  });
+
+  describe("generateMediaCaptureSvg", () => {
+    it("should generate a valid data URI for start-stop-video", () => {
+      const result = generateMediaCaptureSvg({ action: "start-stop-video" });
+
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should generate valid data URIs for all 7 actions", () => {
+      for (const action of ALL_ACTIONS) {
+        const result = generateMediaCaptureSvg({ action });
+
+        expect(result).toContain("data:image/svg+xml");
+      }
+    });
+
+    it("should produce different icons for different actions", () => {
+      const startStop = generateMediaCaptureSvg({ action: "start-stop-video" });
+      const screenshot = generateMediaCaptureSvg({ action: "take-screenshot" });
+
+      expect(startStop).not.toBe(screenshot);
+    });
+
+    it("should include correct labels for start-stop-video", () => {
+      const result = generateMediaCaptureSvg({ action: "start-stop-video" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("START/STOP");
+      expect(decoded).toContain("VIDEO");
+    });
+
+    it("should include correct labels for take-screenshot", () => {
+      const result = generateMediaCaptureSvg({ action: "take-screenshot" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("SCREENSHOT");
+      expect(decoded).toContain("CAPTURE");
+    });
+
+    it("should include correct labels for all actions", () => {
+      const expectedLabels: Record<string, { line1: string; line2: string }> = {
+        "start-stop-video": { line1: "START/STOP", line2: "VIDEO" },
+        "video-timer": { line1: "TIMER", line2: "VIDEO" },
+        "toggle-video-capture": { line1: "TOGGLE", line2: "VIDEO" },
+        "take-screenshot": { line1: "SCREENSHOT", line2: "CAPTURE" },
+        "take-giant-screenshot": { line1: "GIANT", line2: "SCREENSHOT" },
+        "reload-all-textures": { line1: "RELOAD ALL", line2: "TEXTURES" },
+        "reload-car-textures": { line1: "RELOAD CAR", line2: "TEXTURES" },
+      };
+
+      for (const [action, labels] of Object.entries(expectedLabels)) {
+        const result = generateMediaCaptureSvg({
+          action: action as (typeof ALL_ACTIONS)[number],
+        });
+        const decoded = decodeURIComponent(result);
+
+        expect(decoded).toContain(labels.line1);
+        expect(decoded).toContain(labels.line2);
+      }
+    });
+  });
+});

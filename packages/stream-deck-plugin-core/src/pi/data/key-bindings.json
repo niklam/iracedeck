@@ -158,6 +158,14 @@
       "setting": "fuelServiceLapMarginDecrease"
     }
   ],
+  "mediaCapture": [
+    {
+      "id": "giantScreenshot",
+      "label": "Giant Screenshot",
+      "default": "Ctrl+Shift+PrintScreen",
+      "setting": "mediaCaptureGiantScreenshot"
+    }
+  ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "cameraEditorAdjustments": [
