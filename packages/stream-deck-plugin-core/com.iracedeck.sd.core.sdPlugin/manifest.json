@@ -475,6 +475,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Setup Engine",
+      "UUID": "com.iracedeck.sd.core.setup-engine",
+      "Icon": "imgs/actions/setup-engine/icon",
+      "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
+      "PropertyInspectorPath": "ui/setup-engine.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease engine setting",
+          "Press": "Activate engine adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-engine/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

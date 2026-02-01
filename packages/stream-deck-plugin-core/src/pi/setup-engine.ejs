@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select setting="setting" default="engine-power">
+				<option value="engine-power">Engine Power</option>
+				<option value="throttle-shaping">Throttle Shaping</option>
+				<option value="boost-level">Boost Level</option>
+				<option value="launch-rpm">Launch RPM</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Engine Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupEngine
+		}) %>
+	</body>
+</html>

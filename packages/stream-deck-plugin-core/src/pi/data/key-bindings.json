@@ -250,6 +250,56 @@
       "setting": "setupBrakesEngineBrakingDecrease"
     }
   ],
+  "setupEngine": [
+    {
+      "id": "enginePowerIncrease",
+      "label": "Engine Power +",
+      "default": "",
+      "setting": "setupEngineEnginePowerIncrease"
+    },
+    {
+      "id": "enginePowerDecrease",
+      "label": "Engine Power -",
+      "default": "",
+      "setting": "setupEngineEnginePowerDecrease"
+    },
+    {
+      "id": "throttleShapingIncrease",
+      "label": "Throttle Shaping +",
+      "default": "",
+      "setting": "setupEngineThrottleShapingIncrease"
+    },
+    {
+      "id": "throttleShapingDecrease",
+      "label": "Throttle Shaping -",
+      "default": "",
+      "setting": "setupEngineThrottleShapingDecrease"
+    },
+    {
+      "id": "boostLevelIncrease",
+      "label": "Boost Level +",
+      "default": "",
+      "setting": "setupEngineBoostLevelIncrease"
+    },
+    {
+      "id": "boostLevelDecrease",
+      "label": "Boost Level -",
+      "default": "",
+      "setting": "setupEngineBoostLevelDecrease"
+    },
+    {
+      "id": "launchRpmIncrease",
+      "label": "Launch RPM +",
+      "default": "",
+      "setting": "setupEngineLaunchRpmIncrease"
+    },
+    {
+      "id": "launchRpmDecrease",
+      "label": "Launch RPM -",
+      "default": "",
+      "setting": "setupEngineLaunchRpmDecrease"
+    }
+  ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "cameraEditorAdjustments": [

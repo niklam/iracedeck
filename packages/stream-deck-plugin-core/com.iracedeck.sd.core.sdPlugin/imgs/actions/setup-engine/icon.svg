@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Engine block -->
+  <rect x="4" y="6" width="12" height="10" rx="1.5" stroke-width="1.5"/>
+  <!-- Cylinder heads -->
+  <line x1="7" y1="6" x2="7" y2="3" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="10" y1="6" x2="10" y2="3" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="13" y1="6" x2="13" y2="3" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Lightning bolt for power -->
+  <polyline points="9,9 11,12 9,12 11,15" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
