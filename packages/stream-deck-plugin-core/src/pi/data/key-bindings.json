@@ -325,5 +325,7 @@
       "default": "Shift+Alt+numpad_subtract",
       "setting": "audioMasterVolumeDown"
     }
-  ]
+  ],
+  "testAlpha": [
+    { "id": "activate", "label": "Activate", "default": "Ctrl+Shift+1", "setting": "testAlphaActivate" }]
 }

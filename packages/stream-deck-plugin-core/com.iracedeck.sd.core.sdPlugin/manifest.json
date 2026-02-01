@@ -390,6 +390,21 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Test Alpha",
+      "UUID": "com.iracedeck.sd.core.test-alpha",
+      "Icon": "imgs/actions/test-alpha/icon",
+      "Tooltip": "Test action - sends a configurable keyboard shortcut",
+      "PropertyInspectorPath": "ui/test-alpha.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/test-alpha/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",
