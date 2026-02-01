@@ -157,5 +157,8 @@
       "default": "Shift+Alt+S",
       "setting": "fuelServiceLapMarginDecrease"
     }
+  ],
+  "chat": [
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }
   ]
 }

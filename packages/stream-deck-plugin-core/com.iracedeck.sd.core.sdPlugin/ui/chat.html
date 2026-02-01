@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="open-chat">
+				<option value="open-chat">Open Chat</option>
+				<option value="reply">Reply to Chat</option>
+				<option value="whisper">Whisper</option>
+				<option value="respond-pm">Respond to Last PM</option>
+				<option value="cancel">Cancel Chat</option>
+				<option value="send-message">Send Message</option>
+				<option value="macro">Macro (1-15)</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Message Text" id="message-item" class="hidden">
+			<sdpi-textfield setting="message" placeholder="Enter message to send"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Macro Number" id="macro-item" class="hidden">
+			<sdpi-select setting="macroNumber" default="1">
+				
+				<option value="1">Macro 1</option>
+				
+				<option value="2">Macro 2</option>
+				
+				<option value="3">Macro 3</option>
+				
+				<option value="4">Macro 4</option>
+				
+				<option value="5">Macro 5</option>
+				
+				<option value="6">Macro 6</option>
+				
+				<option value="7">Macro 7</option>
+				
+				<option value="8">Macro 8</option>
+				
+				<option value="9">Macro 9</option>
+				
+				<option value="10">Macro 10</option>
+				
+				<option value="11">Macro 11</option>
+				
+				<option value="12">Macro 12</option>
+				
+				<option value="13">Macro 13</option>
+				
+				<option value="14">Macro 14</option>
+				
+				<option value="15">Macro 15</option>
+				
+			</sdpi-select>
+		</sdpi-item>
+
+		<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a "Related Key Bindings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - keyBindings: Array with objects containing id, label, default, setting
+-->
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="Whisper">
+    <ird-key-binding setting="chatWhisper" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
+
+
+		<script>
+			function updateVisibility(mode) {
+				const messageItem = document.getElementById("message-item");
+				const macroItem = document.getElementById("macro-item");
+
+				if (messageItem) {
+					messageItem.classList.toggle("hidden", mode !== "send-message");
+				}
+				if (macroItem) {
+					macroItem.classList.toggle("hidden", mode !== "macro");
+				}
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					const initialValue = modeSelect.value || "open-chat";
+					updateVisibility(initialValue);
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "open-chat");
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "open-chat");
+					});
+
+					// Polling fallback for reliable detection
+					let lastMode = modeSelect.value || "open-chat";
+					setInterval(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
