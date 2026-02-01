@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a3a1a"/>
+
+  <!-- Differential Preload icon content + increase arrow (matches differential-preload increase icon content) -->
+  <circle cx="34" cy="24" r="12" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="34" cy="24" r="8" fill="none" stroke="#888888" stroke-width="1"/>
+  <line x1="28" y1="24" x2="31" y2="24" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="37" y1="24" x2="40" y2="24" stroke="#f1c40f" stroke-width="1.5" stroke-linecap="round"/>
+  <polyline points="53,28 58,22 53,16" fill="none" stroke="#f1c40f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">DIFF PRELOAD</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">INCREASE</text>
+</svg>

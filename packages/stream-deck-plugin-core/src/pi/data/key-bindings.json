@@ -250,6 +250,164 @@
       "setting": "setupBrakesEngineBrakingDecrease"
     }
   ],
+  "setupChassis": [
+    {
+      "id": "differentialPreloadIncrease",
+      "label": "Diff Preload +",
+      "default": "",
+      "setting": "setupChassisDifferentialPreloadIncrease"
+    },
+    {
+      "id": "differentialPreloadDecrease",
+      "label": "Diff Preload -",
+      "default": "",
+      "setting": "setupChassisDifferentialPreloadDecrease"
+    },
+    {
+      "id": "differentialEntryIncrease",
+      "label": "Diff Entry +",
+      "default": "",
+      "setting": "setupChassisDifferentialEntryIncrease"
+    },
+    {
+      "id": "differentialEntryDecrease",
+      "label": "Diff Entry -",
+      "default": "",
+      "setting": "setupChassisDifferentialEntryDecrease"
+    },
+    {
+      "id": "differentialMiddleIncrease",
+      "label": "Diff Middle +",
+      "default": "",
+      "setting": "setupChassisDifferentialMiddleIncrease"
+    },
+    {
+      "id": "differentialMiddleDecrease",
+      "label": "Diff Middle -",
+      "default": "",
+      "setting": "setupChassisDifferentialMiddleDecrease"
+    },
+    {
+      "id": "differentialExitIncrease",
+      "label": "Diff Exit +",
+      "default": "",
+      "setting": "setupChassisDifferentialExitIncrease"
+    },
+    {
+      "id": "differentialExitDecrease",
+      "label": "Diff Exit -",
+      "default": "",
+      "setting": "setupChassisDifferentialExitDecrease"
+    },
+    {
+      "id": "frontArbIncrease",
+      "label": "Front ARB +",
+      "default": "",
+      "setting": "setupChassisFrontArbIncrease"
+    },
+    {
+      "id": "frontArbDecrease",
+      "label": "Front ARB -",
+      "default": "",
+      "setting": "setupChassisFrontArbDecrease"
+    },
+    {
+      "id": "rearArbIncrease",
+      "label": "Rear ARB +",
+      "default": "",
+      "setting": "setupChassisRearArbIncrease"
+    },
+    {
+      "id": "rearArbDecrease",
+      "label": "Rear ARB -",
+      "default": "",
+      "setting": "setupChassisRearArbDecrease"
+    },
+    {
+      "id": "leftSpringIncrease",
+      "label": "Left Spring +",
+      "default": "",
+      "setting": "setupChassisLeftSpringIncrease"
+    },
+    {
+      "id": "leftSpringDecrease",
+      "label": "Left Spring -",
+      "default": "",
+      "setting": "setupChassisLeftSpringDecrease"
+    },
+    {
+      "id": "rightSpringIncrease",
+      "label": "Right Spring +",
+      "default": "",
+      "setting": "setupChassisRightSpringIncrease"
+    },
+    {
+      "id": "rightSpringDecrease",
+      "label": "Right Spring -",
+      "default": "",
+      "setting": "setupChassisRightSpringDecrease"
+    },
+    {
+      "id": "lfShockIncrease",
+      "label": "LF Shock +",
+      "default": "",
+      "setting": "setupChassisLfShockIncrease"
+    },
+    {
+      "id": "lfShockDecrease",
+      "label": "LF Shock -",
+      "default": "",
+      "setting": "setupChassisLfShockDecrease"
+    },
+    {
+      "id": "rfShockIncrease",
+      "label": "RF Shock +",
+      "default": "",
+      "setting": "setupChassisRfShockIncrease"
+    },
+    {
+      "id": "rfShockDecrease",
+      "label": "RF Shock -",
+      "default": "",
+      "setting": "setupChassisRfShockDecrease"
+    },
+    {
+      "id": "lrShockIncrease",
+      "label": "LR Shock +",
+      "default": "",
+      "setting": "setupChassisLrShockIncrease"
+    },
+    {
+      "id": "lrShockDecrease",
+      "label": "LR Shock -",
+      "default": "",
+      "setting": "setupChassisLrShockDecrease"
+    },
+    {
+      "id": "rrShockIncrease",
+      "label": "RR Shock +",
+      "default": "",
+      "setting": "setupChassisRrShockIncrease"
+    },
+    {
+      "id": "rrShockDecrease",
+      "label": "RR Shock -",
+      "default": "",
+      "setting": "setupChassisRrShockDecrease"
+    },
+    {
+      "id": "powerSteeringIncrease",
+      "label": "Power Steering +",
+      "default": "",
+      "setting": "setupChassisPowerSteeringIncrease"
+    },
+    {
+      "id": "powerSteeringDecrease",
+      "label": "Power Steering -",
+      "default": "",
+      "setting": "setupChassisPowerSteeringDecrease"
+    }
+  ],
   "setupEngine": [
     {
       "id": "enginePowerIncrease",
