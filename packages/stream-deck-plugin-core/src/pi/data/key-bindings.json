@@ -159,7 +159,122 @@
     }
   ],
   "chat": [
-    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
+  "cameraEditorAdjustments": [
+    { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },
+    { "id": "latitudeDecrease", "label": "Latitude -", "default": "A", "setting": "camEditLatitudeDecrease" },
+    {
+      "id": "longitudeIncrease",
+      "label": "Longitude +",
+      "default": "S",
+      "setting": "camEditLongitudeIncrease"
+    },
+    {
+      "id": "longitudeDecrease",
+      "label": "Longitude -",
+      "default": "W",
+      "setting": "camEditLongitudeDecrease"
+    },
+    {
+      "id": "altitudeIncrease",
+      "label": "Altitude +",
+      "default": "Alt+S",
+      "setting": "camEditAltitudeIncrease"
+    },
+    {
+      "id": "altitudeDecrease",
+      "label": "Altitude -",
+      "default": "Alt+W",
+      "setting": "camEditAltitudeDecrease"
+    },
+    { "id": "yawIncrease", "label": "Yaw +", "default": "Ctrl+D", "setting": "camEditYawIncrease" },
+    { "id": "yawDecrease", "label": "Yaw -", "default": "Ctrl+A", "setting": "camEditYawDecrease" },
+    { "id": "pitchIncrease", "label": "Pitch +", "default": "Ctrl+W", "setting": "camEditPitchIncrease" },
+    { "id": "pitchDecrease", "label": "Pitch -", "default": "Ctrl+S", "setting": "camEditPitchDecrease" },
+    { "id": "fovZoomIncrease", "label": "FOV Zoom +", "default": "[", "setting": "camEditFovZoomIncrease" },
+    { "id": "fovZoomDecrease", "label": "FOV Zoom -", "default": "]", "setting": "camEditFovZoomDecrease" },
+    { "id": "keyStepIncrease", "label": "Key Step +", "default": "-", "setting": "camEditKeyStepIncrease" },
+    { "id": "keyStepDecrease", "label": "Key Step -", "default": "=", "setting": "camEditKeyStepDecrease" },
+    { "id": "vanishXIncrease", "label": "VanishX +", "default": "Alt+X", "setting": "camEditVanishXIncrease" },
+    {
+      "id": "vanishXDecrease",
+      "label": "VanishX -",
+      "default": "Ctrl+X",
+      "setting": "camEditVanishXDecrease"
+    },
+    { "id": "vanishYIncrease", "label": "VanishY +", "default": "Alt+Y", "setting": "camEditVanishYIncrease" },
+    {
+      "id": "vanishYDecrease",
+      "label": "VanishY -",
+      "default": "Ctrl+Y",
+      "setting": "camEditVanishYDecrease"
+    },
+    {
+      "id": "blimpRadiusIncrease",
+      "label": "Blimp Radius +",
+      "default": "Ctrl+H",
+      "setting": "camEditBlimpRadiusIncrease"
+    },
+    {
+      "id": "blimpRadiusDecrease",
+      "label": "Blimp Radius -",
+      "default": "Ctrl+G",
+      "setting": "camEditBlimpRadiusDecrease"
+    },
+    {
+      "id": "blimpVelocityIncrease",
+      "label": "Blimp Velocity +",
+      "default": "Alt+H",
+      "setting": "camEditBlimpVelocityIncrease"
+    },
+    {
+      "id": "blimpVelocityDecrease",
+      "label": "Blimp Velocity -",
+      "default": "Alt+G",
+      "setting": "camEditBlimpVelocityDecrease"
+    },
+    {
+      "id": "micGainIncrease",
+      "label": "Mic Gain +",
+      "default": "Alt+Up",
+      "setting": "camEditMicGainIncrease"
+    },
+    {
+      "id": "micGainDecrease",
+      "label": "Mic Gain -",
+      "default": "Alt+Down",
+      "setting": "camEditMicGainDecrease"
+    },
+    {
+      "id": "autoSetMicGain",
+      "label": "Auto Set Mic Gain",
+      "default": "Ctrl+Alt+Down",
+      "setting": "camEditAutoSetMicGain"
+    },
+    {
+      "id": "fNumberIncrease",
+      "label": "F-number +",
+      "default": "Alt+U",
+      "setting": "camEditFNumberIncrease"
+    },
+    {
+      "id": "fNumberDecrease",
+      "label": "F-number -",
+      "default": "Alt+I",
+      "setting": "camEditFNumberDecrease"
+    },
+    {
+      "id": "focusDepthIncrease",
+      "label": "Focus Depth +",
+      "default": "Ctrl+U",
+      "setting": "camEditFocusDepthIncrease"
+    },
+    {
+      "id": "focusDepthDecrease",
+      "label": "Focus Depth -",
+      "default": "Ctrl+I",
+      "setting": "camEditFocusDepthDecrease"
+    }
   ],
   "audioControls": [
     {
