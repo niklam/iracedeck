@@ -348,6 +348,28 @@
       ]
     },
     {
+      "Name": "Camera Editor Adjustments",
+      "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
+      "Icon": "imgs/actions/camera-editor-adjustments/icon",
+      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
+      "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Press": "Activate selected adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-editor-adjustments/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",

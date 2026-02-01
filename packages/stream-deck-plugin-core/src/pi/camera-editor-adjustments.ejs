@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Adjustment">
+			<sdpi-select id="adjustment-select" setting="adjustment" default="latitude">
+				<option value="latitude">Latitude</option>
+				<option value="longitude">Longitude</option>
+				<option value="altitude">Altitude</option>
+				<option value="yaw">Yaw</option>
+				<option value="pitch">Pitch</option>
+				<option value="fov-zoom">FOV Zoom</option>
+				<option value="key-step">Key Step</option>
+				<option value="vanish-x">VanishX</option>
+				<option value="vanish-y">VanishY</option>
+				<option value="blimp-radius">Blimp Radius</option>
+				<option value="blimp-velocity">Blimp Velocity</option>
+				<option value="mic-gain">Mic Gain</option>
+				<option value="auto-set-mic-gain">Auto Set Mic Gain</option>
+				<option value="f-number">F-number</option>
+				<option value="focus-depth">Focus Depth</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			keyBindings: require('./data/key-bindings.json').cameraEditorAdjustments
+		}) %>
+
+		<script>
+			function updateVisibility(adjustment) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+
+				// Hide direction dropdown when Auto Set Mic Gain is selected
+				directionItem.classList.toggle("hidden", adjustment === "auto-set-mic-gain");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const adjustmentSelect = document.getElementById("adjustment-select");
+
+				if (adjustmentSelect) {
+					const initialValue = adjustmentSelect.value || "latitude";
+					updateVisibility(initialValue);
+
+					adjustmentSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "latitude");
+					});
+					adjustmentSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "latitude");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = adjustmentSelect.value || "latitude";
+					setInterval(() => {
+						const currentValue = adjustmentSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
