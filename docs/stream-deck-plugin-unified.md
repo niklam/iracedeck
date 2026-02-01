@@ -11,27 +11,39 @@ All planned actions will be built into the existing `@iracedeck/stream-deck-plug
 
 ---
 
+## Long-Press Modes
+
+Each sub-action specifies a long-press behavior that determines what happens when the Stream Deck button is held down:
+
+| Mode           | Behavior                                                                                                                                                                                                                          | Implementation                                                                                                               | Example                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **None**       | Sends a single action (key tap or SDK command) regardless of how long the button is held. The key is pressed and immediately released on button down; holding the Stream Deck button has no additional effect.                    | Implemented. See `black-box-selector.ts` — `onKeyDown` calls `sendKeyCombination()` (tap).                                   | Black Box Selector, Toggle UI Elements |
+| **Long press** | Holds the key down when the Stream Deck button is pressed, and releases it when the button is released. The action is active for the entire duration of the press.                                                                | Implemented. See `look-direction.ts` — `onKeyDown` calls `pressKeyCombination()`, `onKeyUp` calls `releaseKeyCombination()`. | Look Direction, Starter                |
+| **Repeat**     | Sends a single action immediately on button down, waits 500 ms, then repeats the action every 250 ms until the Stream Deck button is released. Useful for incremental adjustments where holding the button should keep adjusting. | Not yet implemented.                                                                                                         | FOV Adjust, Volume +/-                 |
+
+---
+
 # Core Racing Actions
 
 ## Main Action 1: Black Box Selector
 
 Opens a specific black box or cycles through them.
 
-| Sub-Action           | Default Key      | iRacing Setting |
-| -------------------- | ---------------- | --------------- |
-| Lap Timing           | F1               | -               |
-| Standings            | F2               | -               |
-| Relative             | F3               | -               |
-| Fuel                 | F4               | -               |
-| Tires                | F5               | -               |
-| Tire Info            | F6               | -               |
-| Pit Stop Adjustments | F7               | -               |
-| In-Car Adjustments   | F8               | -               |
-| Mirror Adjustments   | F9               | -               |
-| Radio Adjustments    | F10              | -               |
-| Graphics Adjustments | F11              | -               |
-| Cycle Next           | _(configurable)_ | -               |
-| Cycle Previous       | _(configurable)_ | -               |
+| Sub-Action           | Default Key      | iRacing Setting | Long-Press | Notes |
+| -------------------- | ---------------- | --------------- | ---------- | ----- |
+| Lap Timing           | F1               | -               | None       | -     |
+| Standings            | F2               | -               | None       | -     |
+| Relative             | F3               | -               | None       | -     |
+| Fuel                 | F4               | -               | None       | -     |
+| Tires                | F5               | -               | None       | -     |
+| Tire Info            | F6               | -               | None       | -     |
+| Pit Stop Adjustments | F7               | -               | None       | -     |
+| In-Car Adjustments   | F8               | -               | None       | -     |
+| Mirror Adjustments   | F9               | -               | None       | -     |
+| Radio Adjustments    | F10              | -               | None       | -     |
+| Graphics Adjustments | F11              | -               | None       | -     |
+| Cycle Next           | _(configurable)_ | -               | None       | -     |
+| Cycle Previous       | _(configurable)_ | -               | None       | -     |
 
 **Type:** Multi-toggle with mode selector (Direct/Next/Previous)
 
@@ -41,10 +53,10 @@ Opens a specific black box or cycles through them.
 
 Cycles through split/delta display modes.
 
-| Sub-Action | Default Key | iRacing Setting |
-| ---------- | ----------- | --------------- |
-| Next       | TAB         | -               |
-| Previous   | Shift+TAB   | -               |
+| Sub-Action | Default Key | iRacing Setting | Long-Press | Notes |
+| ---------- | ----------- | --------------- | ---------- | ----- |
+| Next       | TAB         | -               | None       | -     |
+| Previous   | Shift+TAB   | -               | None       | -     |
 
 **Type:** +/- (direction selector)
 
@@ -54,17 +66,17 @@ Cycles through split/delta display modes.
 
 Toggles various UI display elements on/off.
 
-| Sub-Action            | Default Key | iRacing Setting |
-| --------------------- | ----------- | --------------- |
-| Dash Box              | D           | -               |
-| Speed/Gear/Pedals     | P           | -               |
-| Radio Display         | O           | -               |
-| FPS/Network Display   | F           | -               |
-| Weather Radar         | Shift+Alt+R | -               |
-| Virtual Mirror        | Alt+M       | -               |
-| UI Edit Mode          | Alt+K       | -               |
-| Display Reference Car | Ctrl+C      | -               |
-| Replay UI Visibility  | _(SDK)_     | SDK             |
+| Sub-Action            | Default Key | iRacing Setting | Long-Press | Notes |
+| --------------------- | ----------- | --------------- | ---------- | ----- |
+| Dash Box              | D           | -               | None       | -     |
+| Speed/Gear/Pedals     | P           | -               | None       | -     |
+| Radio Display         | O           | -               | None       | -     |
+| FPS/Network Display   | F           | -               | None       | -     |
+| Weather Radar         | Shift+Alt+R | -               | None       | -     |
+| Virtual Mirror        | Alt+M       | -               | None       | -     |
+| UI Edit Mode          | Alt+K       | -               | None       | -     |
+| Display Reference Car | Ctrl+C      | -               | None       | -     |
+| Replay UI Visibility  | _(SDK)_     | SDK             | None       | -     |
 
 **Type:** Toggle (item selector dropdown)
 
@@ -74,13 +86,13 @@ Toggles various UI display elements on/off.
 
 Core car operation controls.
 
-| Sub-Action         | Default Key | iRacing Setting |
-| ------------------ | ----------- | --------------- |
-| Starter            | S           | -               |
-| Ignition           | I           | -               |
-| Pit Speed Limiter  | A           | -               |
-| Enter/Exit/Tow Car | Shift+R     | -               |
-| Pause Sim          | Shift+P     | -               |
+| Sub-Action         | Default Key | iRacing Setting | Long-Press | Notes                |
+| ------------------ | ----------- | --------------- | ---------- | -------------------- |
+| Starter            | S           | -               | Long press | Hold to crank engine |
+| Ignition           | I           | -               | None       | -                    |
+| Pit Speed Limiter  | A           | -               | None       | -                    |
+| Enter/Exit/Tow Car | Shift+R     | -               | None       | -                    |
+| Pause Sim          | Shift+P     | -               | None       | -                    |
 
 **Type:** Button/Toggle (item selector dropdown)
 
@@ -90,12 +102,12 @@ Core car operation controls.
 
 Changes driver view direction.
 
-| Sub-Action | Default Key | iRacing Setting |
-| ---------- | ----------- | --------------- |
-| Look Left  | Z           | -               |
-| Look Right | X           | -               |
-| Look Up    | ↑           | -               |
-| Look Down  | ↓           | -               |
+| Sub-Action | Default Key | iRacing Setting | Long-Press | Notes        |
+| ---------- | ----------- | --------------- | ---------- | ------------ |
+| Look Left  | Z           | -               | Long press | Hold to look |
+| Look Right | X           | -               | Long press | Hold to look |
+| Look Up    | ↑           | -               | Long press | Hold to look |
+| Look Down  | ↓           | -               | Long press | Hold to look |
 
 **Type:** Multi-toggle (direction selector)
 
@@ -105,17 +117,17 @@ Changes driver view direction.
 
 Camera/view position adjustments.
 
-| Sub-Action         | Default Key   | iRacing Setting |
-| ------------------ | ------------- | --------------- |
-| FOV Increase       | ]             | -               |
-| FOV Decrease       | [             | -               |
-| Horizon Up         | Shift+]       | -               |
-| Horizon Down       | Shift+[       | -               |
-| Driver Height Up   | Ctrl+]        | -               |
-| Driver Height Down | Ctrl+[        | -               |
-| Recenter VR        | ;             | -               |
-| UI Size Increase   | Ctrl+PageUp   | -               |
-| UI Size Decrease   | Ctrl+PageDown | -               |
+| Sub-Action         | Default Key   | iRacing Setting | Long-Press | Notes |
+| ------------------ | ------------- | --------------- | ---------- | ----- |
+| FOV Increase       | ]             | -               | Repeat     | -     |
+| FOV Decrease       | [             | -               | Repeat     | -     |
+| Horizon Up         | Shift+]       | -               | Repeat     | -     |
+| Horizon Down       | Shift+[       | -               | Repeat     | -     |
+| Driver Height Up   | Ctrl+]        | -               | Repeat     | -     |
+| Driver Height Down | Ctrl+[        | -               | Repeat     | -     |
+| Recenter VR        | ;             | -               | None       | -     |
+| UI Size Increase   | Ctrl+PageUp   | -               | Repeat     | -     |
+| UI Size Decrease   | Ctrl+PageDown | -               | Repeat     | -     |
 
 **Type:** +/- or Button (item + direction selector)
 
@@ -125,15 +137,15 @@ Camera/view position adjustments.
 
 Miscellaneous cockpit controls including dashboard settings.
 
-| Sub-Action             | Default Key | iRacing Setting |
-| ---------------------- | ----------- | --------------- |
-| Trigger Wipers         | Ctrl+Alt+W  | -               |
-| FFB Max Force Increase | _(SDK)_     | SDK             |
-| FFB Max Force Decrease | _(SDK)_     | SDK             |
-| Report Latency         | L           | -               |
-| Dash Page 1 +/-        | -           | Adjustment      |
-| Dash Page 2 +/-        | -           | Adjustment      |
-| In Lap Mode Toggle     | Shift+Alt+L | -               |
+| Sub-Action             | Default Key | iRacing Setting | Long-Press | Notes |
+| ---------------------- | ----------- | --------------- | ---------- | ----- |
+| Trigger Wipers         | Ctrl+Alt+W  | -               | None       | -     |
+| FFB Max Force Increase | _(SDK)_     | SDK             | Repeat     | -     |
+| FFB Max Force Decrease | _(SDK)_     | SDK             | Repeat     | -     |
+| Report Latency         | L           | -               | None       | -     |
+| Dash Page 1 +/-        | -           | Adjustment      | Repeat     | -     |
+| Dash Page 2 +/-        | -           | Adjustment      | Repeat     | -     |
+| In Lap Mode Toggle     | Shift+Alt+L | -               | None       | -     |
 
 **Type:** Button or +/- (item selector)
 
@@ -145,11 +157,11 @@ Miscellaneous cockpit controls including dashboard settings.
 
 Quick pit stop toggles (no adjustment values).
 
-| Sub-Action           | Default Key | iRacing Setting |
-| -------------------- | ----------- | --------------- |
-| Clear All Checkboxes | _(SDK)_     | SDK             |
-| Windshield Tearoff   | _(SDK)_     | SDK             |
-| Request Fast Repair  | _(SDK)_     | SDK             |
+| Sub-Action           | Default Key | iRacing Setting | Long-Press | Notes |
+| -------------------- | ----------- | --------------- | ---------- | ----- |
+| Clear All Checkboxes | _(SDK)_     | SDK             | None       | -     |
+| Windshield Tearoff   | _(SDK)_     | SDK             | None       | -     |
+| Request Fast Repair  | _(SDK)_     | SDK             | None       | -     |
 
 **Type:** Button/Toggle (item selector)
 
@@ -159,15 +171,15 @@ Quick pit stop toggles (no adjustment values).
 
 Complete fuel management for pit stops and autofuel.
 
-| Sub-Action          | Default Key  | Notes               |
-| ------------------- | ------------ | ------------------- |
-| Add Fuel            | -            | SDK - adjust amount |
-| Reduce Fuel         | -            | SDK - adjust amount |
-| Set Fuel Amount     | -            | SDK - direct value  |
-| Clear Fuel Checkbox | _(SDK)_      | SDK                 |
-| Toggle Autofuel     | Shift+Ctrl+A | -                   |
-| Increase Lap Margin | Shift+Alt+X  | -                   |
-| Decrease Lap Margin | Shift+Alt+S  | -                   |
+| Sub-Action          | Default Key  | iRacing Setting | Long-Press | Notes         |
+| ------------------- | ------------ | --------------- | ---------- | ------------- |
+| Add Fuel            | -            | SDK             | Repeat     | Adjust amount |
+| Reduce Fuel         | -            | SDK             | Repeat     | Adjust amount |
+| Set Fuel Amount     | -            | SDK             | None       | Direct value  |
+| Clear Fuel Checkbox | _(SDK)_      | SDK             | None       | -             |
+| Toggle Autofuel     | Shift+Ctrl+A | -               | None       | -             |
+| Increase Lap Margin | Shift+Alt+X  | -               | Repeat     | -             |
+| Decrease Lap Margin | Shift+Alt+S  | -               | Repeat     | -             |
 
 **Type:** Adjustment/Toggle (+/- or value input)
 **SDK Support:** Partial (pit commands via SDK, autofuel via keyboard)
@@ -178,15 +190,15 @@ Complete fuel management for pit stops and autofuel.
 
 Tire request, compound, and clear management.
 
-| Sub-Action           | Notes |
-| -------------------- | ----- |
-| Request LF           | SDK   |
-| Request RF           | SDK   |
-| Request LR           | SDK   |
-| Request RR           | SDK   |
-| Request All          | SDK   |
-| Change Compound      | SDK   |
-| Clear Tires Checkbox | SDK   |
+| Sub-Action           | Default Key | iRacing Setting | Long-Press | Notes |
+| -------------------- | ----------- | --------------- | ---------- | ----- |
+| Request LF           | _(SDK)_     | SDK             | None       | -     |
+| Request RF           | _(SDK)_     | SDK             | None       | -     |
+| Request LR           | _(SDK)_     | SDK             | None       | -     |
+| Request RR           | _(SDK)_     | SDK             | None       | -     |
+| Request All          | _(SDK)_     | SDK             | None       | -     |
+| Change Compound      | _(SDK)_     | SDK             | None       | -     |
+| Clear Tires Checkbox | _(SDK)_     | SDK             | None       | -     |
 
 **Type:** Configurable (tire selector checkboxes + compound dropdown)
 **SDK Support:** Yes
@@ -199,15 +211,15 @@ Tire request, compound, and clear management.
 
 All text chat operations, messages, and macros.
 
-| Sub-Action         | Default Key | Notes                     |
-| ------------------ | ----------- | ------------------------- |
-| Open Chat          | T           | SDK                       |
-| Reply to Chat      | R           | SDK                       |
-| Whisper            | / [num]     | -                         |
-| Respond to Last PM | /r          | SDK                       |
-| Cancel Chat        | _(SDK)_     | SDK                       |
-| Send Message       | -           | SDK - configurable text   |
-| Macro (1-15)       | -           | SDK - select number in PI |
+| Sub-Action         | Default Key | iRacing Setting | Long-Press | Notes               |
+| ------------------ | ----------- | --------------- | ---------- | ------------------- |
+| Open Chat          | T           | SDK             | None       | -                   |
+| Reply to Chat      | R           | SDK             | None       | -                   |
+| Whisper            | / [num]     | -               | None       | -                   |
+| Respond to Last PM | /r          | SDK             | None       | -                   |
+| Cancel Chat        | _(SDK)_     | SDK             | None       | -                   |
+| Send Message       | -           | SDK             | None       | Configurable text   |
+| Macro (1-15)       | -           | SDK             | None       | Select number in PI |
 
 **Settings for Send Message mode:**
 
@@ -228,16 +240,16 @@ All text chat operations, messages, and macros.
 
 All audio volume and mute controls.
 
-| Sub-Action             | Default Key             | iRacing Setting |
-| ---------------------- | ----------------------- | --------------- |
-| Spotter Volume Up      | Shift+Ctrl+NUMPAD +     | -               |
-| Spotter Volume Down    | Shift+Ctrl+NUMPAD -     | -               |
-| Spotter Silence        | Shift+Ctrl+M            | -               |
-| Voice Chat Volume Up   | Shift+Ctrl+Alt+NUMPAD + | -               |
-| Voice Chat Volume Down | Shift+Ctrl+Alt+NUMPAD - | -               |
-| Voice Chat Mute        | Shift+Ctrl+Alt+M        | -               |
-| Master Volume Increase | Shift+Alt+NUMPAD +      | -               |
-| Master Volume Decrease | Shift+Alt+NUMPAD -      | -               |
+| Sub-Action             | Default Key             | iRacing Setting | Long-Press | Notes |
+| ---------------------- | ----------------------- | --------------- | ---------- | ----- |
+| Spotter Volume Up      | Shift+Ctrl+NUMPAD +     | -               | Repeat     | -     |
+| Spotter Volume Down    | Shift+Ctrl+NUMPAD -     | -               | Repeat     | -     |
+| Spotter Silence        | Shift+Ctrl+M            | -               | None       | -     |
+| Voice Chat Volume Up   | Shift+Ctrl+Alt+NUMPAD + | -               | Repeat     | -     |
+| Voice Chat Volume Down | Shift+Ctrl+Alt+NUMPAD - | -               | Repeat     | -     |
+| Voice Chat Mute        | Shift+Ctrl+Alt+M        | -               | None       | -     |
+| Master Volume Increase | Shift+Alt+NUMPAD +      | -               | Repeat     | -     |
+| Master Volume Decrease | Shift+Alt+NUMPAD -      | -               | Repeat     | -     |
 
 **Type:** +/- or Toggle (category + action selector)
 
@@ -249,16 +261,16 @@ All audio volume and mute controls.
 
 Playback control for replays.
 
-| Sub-Action     | Default Key    | Notes |
-| -------------- | -------------- | ----- |
-| Play           | _(SDK)_        | SDK   |
-| Pause          | _(SDK)_        | SDK   |
-| Stop           | NUMPAD .       | SDK   |
-| Fast Forward   | Shift+NUMPAD 6 | SDK   |
-| Rewind         | Shift+NUMPAD 4 | SDK   |
-| Slow Motion    | NUMPAD 8       | SDK   |
-| Frame Forward  | NUMPAD 6       | SDK   |
-| Frame Backward | NUMPAD 4       | SDK   |
+| Sub-Action     | Default Key    | iRacing Setting | Long-Press | Notes |
+| -------------- | -------------- | --------------- | ---------- | ----- |
+| Play           | _(SDK)_        | SDK             | None       | -     |
+| Pause          | _(SDK)_        | SDK             | None       | -     |
+| Stop           | NUMPAD .       | SDK             | None       | -     |
+| Fast Forward   | Shift+NUMPAD 6 | SDK             | None       | -     |
+| Rewind         | Shift+NUMPAD 4 | SDK             | None       | -     |
+| Slow Motion    | NUMPAD 8       | SDK             | None       | -     |
+| Frame Forward  | NUMPAD 6       | SDK             | Repeat     | -     |
+| Frame Backward | NUMPAD 4       | SDK             | Repeat     | -     |
 
 **Type:** Button (transport action selector)
 
@@ -268,9 +280,9 @@ Playback control for replays.
 
 Set replay playback speed.
 
-| Settings    | Notes          |
-| ----------- | -------------- |
-| Speed Value | SDK adjustment |
+| Sub-Action  | Default Key | iRacing Setting | Long-Press | Notes          |
+| ----------- | ----------- | --------------- | ---------- | -------------- |
+| Speed Value | _(SDK)_     | SDK             | Repeat     | SDK adjustment |
 
 **Type:** Adjustment
 **SDK Support:** Yes
@@ -281,19 +293,19 @@ Set replay playback speed.
 
 Jump to specific points in replay.
 
-| Sub-Action          | Default Key    | Notes              |
-| ------------------- | -------------- | ------------------ |
-| Next Session        | Ctrl+NUMPAD 6  | SDK                |
-| Previous Session    | Ctrl+NUMPAD 4  | SDK                |
-| Next Lap            | Shift+NUMPAD 3 | SDK                |
-| Previous Lap        | Shift+NUMPAD 1 | SDK                |
-| Next Incident       | Ctrl+NUMPAD 3  | SDK                |
-| Previous Incident   | Ctrl+NUMPAD 1  | SDK                |
-| Jump to Start       | NUMPAD 7       | SDK                |
-| Jump to End         | NUMPAD 1       | SDK                |
-| Set Play Position   | _(SDK)_        | SDK - configurable |
-| Search Session Time | _(SDK)_        | SDK - configurable |
-| Erase Tape          | _(SDK)_        | SDK                |
+| Sub-Action          | Default Key    | iRacing Setting | Long-Press | Notes        |
+| ------------------- | -------------- | --------------- | ---------- | ------------ |
+| Next Session        | Ctrl+NUMPAD 6  | SDK             | None       | -            |
+| Previous Session    | Ctrl+NUMPAD 4  | SDK             | None       | -            |
+| Next Lap            | Shift+NUMPAD 3 | SDK             | None       | -            |
+| Previous Lap        | Shift+NUMPAD 1 | SDK             | None       | -            |
+| Next Incident       | Ctrl+NUMPAD 3  | SDK             | None       | -            |
+| Previous Incident   | Ctrl+NUMPAD 1  | SDK             | None       | -            |
+| Jump to Start       | NUMPAD 7       | SDK             | None       | -            |
+| Jump to End         | NUMPAD 1       | SDK             | None       | -            |
+| Set Play Position   | _(SDK)_        | SDK             | None       | Configurable |
+| Search Session Time | _(SDK)_        | SDK             | None       | Configurable |
+| Erase Tape          | _(SDK)_        | SDK             | None       | -            |
 
 **Type:** Button/Configurable (navigation action selector)
 
@@ -305,16 +317,16 @@ Jump to specific points in replay.
 
 Cycle through cameras and cars.
 
-| Sub-Action              | Default Key | Notes |
-| ----------------------- | ----------- | ----- |
-| Next Camera             | C           | SDK   |
-| Previous Camera         | Shift+C     | SDK   |
-| Next Sub-Camera         | B           | SDK   |
-| Previous Sub-Camera     | Shift+B     | SDK   |
-| Next Car                | V           | SDK   |
-| Previous Car            | Shift+V     | SDK   |
-| Next Driving Camera     | PageDown    | SDK   |
-| Previous Driving Camera | PageUp      | SDK   |
+| Sub-Action              | Default Key | iRacing Setting | Long-Press | Notes |
+| ----------------------- | ----------- | --------------- | ---------- | ----- |
+| Next Camera             | C           | SDK             | None       | -     |
+| Previous Camera         | Shift+C     | SDK             | None       | -     |
+| Next Sub-Camera         | B           | SDK             | None       | -     |
+| Previous Sub-Camera     | Shift+B     | SDK             | None       | -     |
+| Next Car                | V           | SDK             | None       | -     |
+| Previous Car            | Shift+V     | SDK             | None       | -     |
+| Next Driving Camera     | PageDown    | SDK             | None       | -     |
+| Previous Driving Camera | PageUp      | SDK             | None       | -     |
 
 **Type:** +/- (camera type + direction selector)
 
@@ -324,15 +336,15 @@ Cycle through cameras and cars.
 
 Focus camera on specific target.
 
-| Sub-Action            | Default Key | Notes              |
-| --------------------- | ----------- | ------------------ |
-| Focus Your Car        | Ctrl+V      | SDK                |
-| Focus on Leader       | _(SDK)_     | SDK                |
-| Focus on Incident     | _(SDK)_     | SDK                |
-| Focus on Exiting Cars | _(SDK)_     | SDK                |
-| Switch by Position    | _(SDK)_     | SDK - configurable |
-| Switch by Car Number  | _(SDK)_     | SDK - configurable |
-| Set Camera State      | _(SDK)_     | SDK - configurable |
+| Sub-Action            | Default Key | iRacing Setting | Long-Press | Notes        |
+| --------------------- | ----------- | --------------- | ---------- | ------------ |
+| Focus Your Car        | Ctrl+V      | SDK             | None       | -            |
+| Focus on Leader       | _(SDK)_     | SDK             | None       | -            |
+| Focus on Incident     | _(SDK)_     | SDK             | None       | -            |
+| Focus on Exiting Cars | _(SDK)_     | SDK             | None       | -            |
+| Switch by Position    | _(SDK)_     | SDK             | None       | Configurable |
+| Switch by Car Number  | _(SDK)_     | SDK             | None       | Configurable |
+| Set Camera State      | _(SDK)_     | SDK             | None       | Configurable |
 
 **Type:** Button/Configurable (focus target selector)
 
@@ -342,23 +354,23 @@ Focus camera on specific target.
 
 Camera position and view editing (for broadcasters).
 
-| Sub-Action         | Default Key     | Notes |
-| ------------------ | --------------- | ----- |
-| Latitude +/-       | D / A           | -     |
-| Longitude +/-      | S / W           | -     |
-| Altitude +/-       | Alt+S / Alt+W   | -     |
-| Yaw +/-            | Ctrl+D / Ctrl+A | -     |
-| Pitch +/-          | Ctrl+W / Ctrl+S | -     |
-| FOV Zoom +/-       | [ / ]           | -     |
-| Key Step +/-       | - / =           | -     |
-| VanishX +/-        | Alt+X / Ctrl+X  | -     |
-| VanishY +/-        | Alt+Y / Ctrl+Y  | -     |
-| Blimp Radius +/-   | Ctrl+H / Ctrl+G | -     |
-| Blimp Velocity +/- | Alt+H / Alt+G   | -     |
-| Mic Gain +/-       | Alt+Up/Down     | -     |
-| Auto Set Mic Gain  | Ctrl+Alt+Down   | -     |
-| F-number +/-       | Alt+U / Alt+I   | -     |
-| Focus Depth +/-    | Ctrl+U / Ctrl+I | -     |
+| Sub-Action         | Default Key     | iRacing Setting | Long-Press | Notes |
+| ------------------ | --------------- | --------------- | ---------- | ----- |
+| Latitude +/-       | D / A           | -               | Repeat     | -     |
+| Longitude +/-      | S / W           | -               | Repeat     | -     |
+| Altitude +/-       | Alt+S / Alt+W   | -               | Repeat     | -     |
+| Yaw +/-            | Ctrl+D / Ctrl+A | -               | Repeat     | -     |
+| Pitch +/-          | Ctrl+W / Ctrl+S | -               | Repeat     | -     |
+| FOV Zoom +/-       | [ / ]           | -               | Repeat     | -     |
+| Key Step +/-       | - / =           | -               | Repeat     | -     |
+| VanishX +/-        | Alt+X / Ctrl+X  | -               | Repeat     | -     |
+| VanishY +/-        | Alt+Y / Ctrl+Y  | -               | Repeat     | -     |
+| Blimp Radius +/-   | Ctrl+H / Ctrl+G | -               | Repeat     | -     |
+| Blimp Velocity +/- | Alt+H / Alt+G   | -               | Repeat     | -     |
+| Mic Gain +/-       | Alt+Up/Down     | -               | Repeat     | -     |
+| Auto Set Mic Gain  | Ctrl+Alt+Down   | -               | None       | -     |
+| F-number +/-       | Alt+U / Alt+I   | -               | Repeat     | -     |
+| Focus Depth +/-    | Ctrl+U / Ctrl+I | -               | Repeat     | -     |
 
 **Type:** +/- or Button (adjustment selector)
 
@@ -368,38 +380,38 @@ Camera position and view editing (for broadcasters).
 
 Camera editor toggles and management (for broadcasters).
 
-| Sub-Action              | Default Key       | Notes |
-| ----------------------- | ----------------- | ----- |
-| Open Camera Tool        | Ctrl+F12          | -     |
-| Key Acceleration Toggle | Ctrl+P            | -     |
-| Key 10x Toggle          | Alt+P             | -     |
-| Parabolic Mic Toggle    | Ctrl+O            | -     |
-| Cycle Position Type     | Alt+N             | -     |
-| Cycle Aim Type          | Alt+M             | -     |
-| Acquire Start           | Ctrl+Q            | -     |
-| Acquire End             | Shift+Q           | -     |
-| Temporary Edits Toggle  | Ctrl+L            | -     |
-| Dampening Toggle        | Ctrl+N            | -     |
-| Zoom Toggle             | Ctrl+M            | -     |
-| Beyond Fence Toggle     | Ctrl+B            | -     |
-| In Cockpit Toggle       | Alt+B             | -     |
-| Mouse Navigation Toggle | Ctrl+Z            | -     |
-| Pitch Gyro Toggle       | Ctrl+J            | -     |
-| Roll Gyro Toggle        | Alt+J             | -     |
-| Limit Shot Range Toggle | Alt+O             | -     |
-| Show Camera Toggle      | Alt+Q             | -     |
-| Shot Selection Toggle   | Ctrl+T            | -     |
-| Manual Focus Toggle     | Ctrl+F            | -     |
-| Insert Camera           | Shift+Ctrl+Insert | -     |
-| Remove Camera           | Shift+Ctrl+Delete | -     |
-| Copy Camera             | Shift+Ctrl+C      | -     |
-| Paste Camera            | Shift+Ctrl+V      | -     |
-| Copy Group              | Ctrl+Alt+C        | -     |
-| Paste Group             | Ctrl+Alt+V        | -     |
-| Save Track Camera       | Ctrl+F11          | -     |
-| Load Track Camera       | Shift+Ctrl+F11    | -     |
-| Save Car Camera         | Alt+F11           | -     |
-| Load Car Camera         | Shift+Alt+F11     | -     |
+| Sub-Action              | Default Key       | iRacing Setting | Long-Press | Notes |
+| ----------------------- | ----------------- | --------------- | ---------- | ----- |
+| Open Camera Tool        | Ctrl+F12          | -               | None       | -     |
+| Key Acceleration Toggle | Ctrl+P            | -               | None       | -     |
+| Key 10x Toggle          | Alt+P             | -               | None       | -     |
+| Parabolic Mic Toggle    | Ctrl+O            | -               | None       | -     |
+| Cycle Position Type     | Alt+N             | -               | None       | -     |
+| Cycle Aim Type          | Alt+M             | -               | None       | -     |
+| Acquire Start           | Ctrl+Q            | -               | None       | -     |
+| Acquire End             | Shift+Q           | -               | None       | -     |
+| Temporary Edits Toggle  | Ctrl+L            | -               | None       | -     |
+| Dampening Toggle        | Ctrl+N            | -               | None       | -     |
+| Zoom Toggle             | Ctrl+M            | -               | None       | -     |
+| Beyond Fence Toggle     | Ctrl+B            | -               | None       | -     |
+| In Cockpit Toggle       | Alt+B             | -               | None       | -     |
+| Mouse Navigation Toggle | Ctrl+Z            | -               | None       | -     |
+| Pitch Gyro Toggle       | Ctrl+J            | -               | None       | -     |
+| Roll Gyro Toggle        | Alt+J             | -               | None       | -     |
+| Limit Shot Range Toggle | Alt+O             | -               | None       | -     |
+| Show Camera Toggle      | Alt+Q             | -               | None       | -     |
+| Shot Selection Toggle   | Ctrl+T            | -               | None       | -     |
+| Manual Focus Toggle     | Ctrl+F            | -               | None       | -     |
+| Insert Camera           | Shift+Ctrl+Insert | -               | None       | -     |
+| Remove Camera           | Shift+Ctrl+Delete | -               | None       | -     |
+| Copy Camera             | Shift+Ctrl+C      | -               | None       | -     |
+| Paste Camera            | Shift+Ctrl+V      | -               | None       | -     |
+| Copy Group              | Ctrl+Alt+C        | -               | None       | -     |
+| Paste Group             | Ctrl+Alt+V        | -               | None       | -     |
+| Save Track Camera       | Ctrl+F11          | -               | None       | -     |
+| Load Track Camera       | Shift+Ctrl+F11    | -               | None       | -     |
+| Save Car Camera         | Alt+F11           | -               | None       | -     |
+| Load Car Camera         | Shift+Alt+F11     | -               | None       | -     |
 
 **Type:** Button/Toggle (action selector)
 
@@ -411,15 +423,15 @@ Camera editor toggles and management (for broadcasters).
 
 Video and screenshot functions.
 
-| Sub-Action            | Default Key       | Notes              |
-| --------------------- | ----------------- | ------------------ |
-| Start/Stop Video      | Ctrl+Alt+Shift+V  | SDK                |
-| Video Timer           | Alt+V             | SDK                |
-| Toggle Video Capture  | _(SDK)_           | SDK                |
-| Take Screenshot       | Ctrl+Alt+Shift+S  | SDK                |
-| Take Giant Screenshot | Ctrl+Shift+PrtScn | -                  |
-| Reload All Textures   | Ctrl+R            | SDK                |
-| Reload Car Textures   | _(SDK)_           | SDK - configurable |
+| Sub-Action            | Default Key       | iRacing Setting | Long-Press | Notes        |
+| --------------------- | ----------------- | --------------- | ---------- | ------------ |
+| Start/Stop Video      | Ctrl+Alt+Shift+V  | SDK             | None       | -            |
+| Video Timer           | Alt+V             | SDK             | None       | -            |
+| Toggle Video Capture  | _(SDK)_           | SDK             | None       | -            |
+| Take Screenshot       | Ctrl+Alt+Shift+S  | SDK             | None       | -            |
+| Take Giant Screenshot | Ctrl+Shift+PrtScn | -               | None       | -            |
+| Reload All Textures   | Ctrl+R            | SDK             | None       | -            |
+| Reload Car Textures   | _(SDK)_           | SDK             | None       | Configurable |
 
 **Type:** Button/Toggle (capture action selector)
 
@@ -429,12 +441,12 @@ Video and screenshot functions.
 
 Telemetry logging and recording.
 
-| Sub-Action        | Default Key | Notes |
-| ----------------- | ----------- | ----- |
-| Toggle Logging    | Alt+L       | SDK   |
-| Mark Event        | M           | -     |
-| Toggle Recording  | _(SDK)_     | SDK   |
-| Restart Recording | _(SDK)_     | SDK   |
+| Sub-Action        | Default Key | iRacing Setting | Long-Press | Notes |
+| ----------------- | ----------- | --------------- | ---------- | ----- |
+| Toggle Logging    | Alt+L       | SDK             | None       | -     |
+| Mark Event        | M           | -               | None       | -     |
+| Toggle Recording  | _(SDK)_     | SDK             | None       | -     |
+| Restart Recording | _(SDK)_     | SDK             | None       | -     |
 
 **Type:** Button/Toggle (telemetry action selector)
 
@@ -446,15 +458,15 @@ Telemetry logging and recording.
 
 Brake-related car adjustments.
 
-| Sub-Action          | Notes      |
-| ------------------- | ---------- |
-| ABS Toggle          | Toggle     |
-| ABS Adjust +/-      | Adjustment |
-| Brake Bias +/-      | - / = keys |
-| Brake Bias Fine +/- | Adjustment |
-| Peak Brake Bias +/- | Adjustment |
-| Brake Misc +/-      | Adjustment |
-| Engine Braking +/-  | Adjustment |
+| Sub-Action          | Default Key | iRacing Setting | Long-Press | Notes |
+| ------------------- | ----------- | --------------- | ---------- | ----- |
+| ABS Toggle          | -           | -               | None       | -     |
+| ABS Adjust +/-      | -           | Adjustment      | Repeat     | -     |
+| Brake Bias +/-      | - / =       | -               | Repeat     | -     |
+| Brake Bias Fine +/- | -           | Adjustment      | Repeat     | -     |
+| Peak Brake Bias +/- | -           | Adjustment      | Repeat     | -     |
+| Brake Misc +/-      | -           | Adjustment      | Repeat     | -     |
+| Engine Braking +/-  | -           | Adjustment      | Repeat     | -     |
 
 **Type:** Toggle or +/- (setting + direction selector)
 
@@ -464,12 +476,12 @@ Brake-related car adjustments.
 
 Engine power and throttle adjustments.
 
-| Sub-Action           | Notes      |
-| -------------------- | ---------- |
-| Engine Power +/-     | Adjustment |
-| Throttle Shaping +/- | Adjustment |
-| Boost Level +/-      | Adjustment |
-| Launch RPM +/-       | Adjustment |
+| Sub-Action           | Default Key | iRacing Setting | Long-Press | Notes |
+| -------------------- | ----------- | --------------- | ---------- | ----- |
+| Engine Power +/-     | -           | Adjustment      | Repeat     | -     |
+| Throttle Shaping +/- | -           | Adjustment      | Repeat     | -     |
+| Boost Level +/-      | -           | Adjustment      | Repeat     | -     |
+| Launch RPM +/-       | -           | Adjustment      | Repeat     | -     |
 
 **Type:** +/- (setting selector)
 
@@ -479,13 +491,13 @@ Engine power and throttle adjustments.
 
 Fuel mixture and cut adjustments (in-car setup, not pit service).
 
-| Sub-Action            | Notes      |
-| --------------------- | ---------- |
-| Fuel Mixture +/-      | Adjustment |
-| Fuel Cut Position +/- | Adjustment |
-| Disable Fuel Cut      | Toggle     |
-| Low Fuel Accept       | Button     |
-| FCY Mode Toggle       | Toggle     |
+| Sub-Action            | Default Key | iRacing Setting | Long-Press | Notes |
+| --------------------- | ----------- | --------------- | ---------- | ----- |
+| Fuel Mixture +/-      | -           | Adjustment      | Repeat     | -     |
+| Fuel Cut Position +/- | -           | Adjustment      | Repeat     | -     |
+| Disable Fuel Cut      | -           | -               | None       | -     |
+| Low Fuel Accept       | -           | -               | None       | -     |
+| FCY Mode Toggle       | -           | -               | None       | -     |
 
 **Type:** Toggle/Button or +/- (setting selector)
 
@@ -495,13 +507,13 @@ Fuel mixture and cut adjustments (in-car setup, not pit service).
 
 Traction control adjustments.
 
-| Sub-Action    | Notes      |
-| ------------- | ---------- |
-| TC Toggle     | Toggle     |
-| TC Slot 1 +/- | Adjustment |
-| TC Slot 2 +/- | Adjustment |
-| TC Slot 3 +/- | Adjustment |
-| TC Slot 4 +/- | Adjustment |
+| Sub-Action    | Default Key | iRacing Setting | Long-Press | Notes |
+| ------------- | ----------- | --------------- | ---------- | ----- |
+| TC Toggle     | -           | -               | None       | -     |
+| TC Slot 1 +/- | -           | Adjustment      | Repeat     | -     |
+| TC Slot 2 +/- | -           | Adjustment      | Repeat     | -     |
+| TC Slot 3 +/- | -           | Adjustment      | Repeat     | -     |
+| TC Slot 4 +/- | -           | Adjustment      | Repeat     | -     |
 
 **Type:** Toggle or +/- (TC slot selector)
 
@@ -511,21 +523,21 @@ Traction control adjustments.
 
 Suspension and handling adjustments.
 
-| Sub-Action               | Notes      |
-| ------------------------ | ---------- |
-| Differential Preload +/- | Adjustment |
-| Differential Entry +/-   | Adjustment |
-| Differential Middle +/-  | Adjustment |
-| Differential Exit +/-    | Adjustment |
-| Front ARB +/-            | Adjustment |
-| Rear ARB +/-             | Adjustment |
-| Left Spring +/-          | Adjustment |
-| Right Spring +/-         | Adjustment |
-| LF Shock +/-             | Adjustment |
-| RF Shock +/-             | Adjustment |
-| LR Shock +/-             | Adjustment |
-| RR Shock +/-             | Adjustment |
-| Power Steering +/-       | Adjustment |
+| Sub-Action               | Default Key | iRacing Setting | Long-Press | Notes |
+| ------------------------ | ----------- | --------------- | ---------- | ----- |
+| Differential Preload +/- | -           | Adjustment      | Repeat     | -     |
+| Differential Entry +/-   | -           | Adjustment      | Repeat     | -     |
+| Differential Middle +/-  | -           | Adjustment      | Repeat     | -     |
+| Differential Exit +/-    | -           | Adjustment      | Repeat     | -     |
+| Front ARB +/-            | -           | Adjustment      | Repeat     | -     |
+| Rear ARB +/-             | -           | Adjustment      | Repeat     | -     |
+| Left Spring +/-          | -           | Adjustment      | Repeat     | -     |
+| Right Spring +/-         | -           | Adjustment      | Repeat     | -     |
+| LF Shock +/-             | -           | Adjustment      | Repeat     | -     |
+| RF Shock +/-             | -           | Adjustment      | Repeat     | -     |
+| LR Shock +/-             | -           | Adjustment      | Repeat     | -     |
+| RR Shock +/-             | -           | Adjustment      | Repeat     | -     |
+| Power Steering +/-       | -           | Adjustment      | Repeat     | -     |
 
 **Type:** +/- (component selector)
 
@@ -535,12 +547,12 @@ Suspension and handling adjustments.
 
 Aerodynamic adjustments.
 
-| Sub-Action          | Notes      |
-| ------------------- | ---------- |
-| Front Wing +/-      | Adjustment |
-| Rear Wing +/-       | Adjustment |
-| Qualifying Tape +/- | Adjustment |
-| RF Brake Attached   | Toggle     |
+| Sub-Action          | Default Key | iRacing Setting | Long-Press | Notes |
+| ------------------- | ----------- | --------------- | ---------- | ----- |
+| Front Wing +/-      | -           | Adjustment      | Repeat     | -     |
+| Rear Wing +/-       | -           | Adjustment      | Repeat     | -     |
+| Qualifying Tape +/- | -           | Adjustment      | Repeat     | -     |
+| RF Brake Attached   | -           | -               | None       | -     |
 
 **Type:** +/- or Toggle (aero component selector)
 
@@ -550,14 +562,14 @@ Aerodynamic adjustments.
 
 Hybrid/ERS system adjustments.
 
-| Sub-Action             | Notes      |
-| ---------------------- | ---------- |
-| MGU-K Re-Gen Gain +/-  | Adjustment |
-| MGU-K Deploy Mode +/-  | Adjustment |
-| MGU-K Fixed Deploy +/- | Adjustment |
-| HYS Boost              | Hold       |
-| HYS Regen              | Hold       |
-| HYS No Boost           | Toggle     |
+| Sub-Action             | Default Key | iRacing Setting | Long-Press | Notes         |
+| ---------------------- | ----------- | --------------- | ---------- | ------------- |
+| MGU-K Re-Gen Gain +/-  | -           | Adjustment      | Repeat     | -             |
+| MGU-K Deploy Mode +/-  | -           | Adjustment      | Repeat     | -             |
+| MGU-K Fixed Deploy +/- | -           | Adjustment      | Repeat     | -             |
+| HYS Boost              | -           | -               | Long press | Hold to boost |
+| HYS Regen              | -           | -               | Long press | Hold to regen |
+| HYS No Boost           | -           | -               | None       | -             |
 
 **Type:** +/-, Toggle, or Hold (hybrid setting selector)
 
@@ -610,3 +622,4 @@ Hybrid/ERS system adjustments.
 - Actions marked "SDK" use iRacing SDK commands (preferred over keyboard shortcuts)
 - Camera Editor actions are specialized for broadcasters/content creators
 - All actions use the plugin UUID `com.iracedeck.sd.core`
+- Long-press behavior is specified per sub-action; see the [Long-Press Modes](#long-press-modes) section for definitions
