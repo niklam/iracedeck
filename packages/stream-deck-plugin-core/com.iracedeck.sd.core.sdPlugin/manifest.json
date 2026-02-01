@@ -453,6 +453,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Setup Brakes",
+      "UUID": "com.iracedeck.sd.core.setup-brakes",
+      "Icon": "imgs/actions/setup-brakes/icon",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
+      "PropertyInspectorPath": "ui/setup-brakes.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease brake setting",
+          "Press": "Activate brake adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-brakes/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="brake-bias">
+				<option value="abs-toggle">ABS Toggle</option>
+				<option value="abs-adjust">ABS Adjust</option>
+				<option value="brake-bias">Brake Bias</option>
+				<option value="brake-bias-fine">Brake Bias Fine</option>
+				<option value="peak-brake-bias">Peak Brake Bias</option>
+				<option value="brake-misc">Brake Misc</option>
+				<option value="engine-braking">Engine Braking</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!--
+  Global Key Bindings Component
+
+  Displays key binding inputs in a "Related Key Bindings" section.
+  Key bindings are stored in global settings (shared across all action instances).
+
+  Parameters:
+    - keyBindings: Array with objects containing id, label, default, setting
+-->
+<div class="ird-key-bindings-section">
+  <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="ABS Toggle">
+    <ird-key-binding setting="setupBrakesAbsToggle" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="ABS Adjust +">
+    <ird-key-binding setting="setupBrakesAbsAdjustIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="ABS Adjust -">
+    <ird-key-binding setting="setupBrakesAbsAdjustDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Bias +">
+    <ird-key-binding setting="setupBrakesBrakeBiasIncrease" default="=" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Bias -">
+    <ird-key-binding setting="setupBrakesBrakeBiasDecrease" default="-" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Bias Fine +">
+    <ird-key-binding setting="setupBrakesBrakeBiasFineIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Bias Fine -">
+    <ird-key-binding setting="setupBrakesBrakeBiasFineDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Peak Brake Bias +">
+    <ird-key-binding setting="setupBrakesPeakBrakeBiasIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Peak Brake Bias -">
+    <ird-key-binding setting="setupBrakesPeakBrakeBiasDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Misc +">
+    <ird-key-binding setting="setupBrakesBrakeMiscIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Brake Misc -">
+    <ird-key-binding setting="setupBrakesBrakeMiscDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Engine Braking +">
+    <ird-key-binding setting="setupBrakesEngineBrakingIncrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Engine Braking -">
+    <ird-key-binding setting="setupBrakesEngineBrakingDecrease" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+</div>
+
+
+		<script>
+			// ABS Toggle is the only non-directional control
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", setting === "abs-toggle");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "brake-bias";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "brake-bias");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "brake-bias");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "brake-bias";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

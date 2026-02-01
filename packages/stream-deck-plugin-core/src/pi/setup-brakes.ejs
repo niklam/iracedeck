@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="brake-bias">
+				<option value="abs-toggle">ABS Toggle</option>
+				<option value="abs-adjust">ABS Adjust</option>
+				<option value="brake-bias">Brake Bias</option>
+				<option value="brake-bias-fine">Brake Bias Fine</option>
+				<option value="peak-brake-bias">Peak Brake Bias</option>
+				<option value="brake-misc">Brake Misc</option>
+				<option value="engine-braking">Engine Braking</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Brake Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupBrakes
+		}) %>
+
+		<script>
+			// ABS Toggle is the only non-directional control
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", setting === "abs-toggle");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "brake-bias";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "brake-bias");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "brake-bias");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "brake-bias";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

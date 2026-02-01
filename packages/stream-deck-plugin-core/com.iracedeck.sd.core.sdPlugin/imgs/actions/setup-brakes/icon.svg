@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Brake disc icon -->
+  <circle cx="10" cy="10" r="7" stroke-width="1.5" fill="none"/>
+  <circle cx="10" cy="10" r="3.5" stroke-width="1" fill="none"/>
+  <!-- Caliper -->
+  <rect x="13" y="6" width="3" height="8" rx="1" fill="#ffffff" stroke="none"/>
+</svg>

@@ -180,6 +180,76 @@
       "setting": "telemetryControlMarkEvent"
     }
   ],
+  "setupBrakes": [
+    { "id": "absToggle", "label": "ABS Toggle", "default": "", "setting": "setupBrakesAbsToggle" },
+    { "id": "absAdjustIncrease", "label": "ABS Adjust +", "default": "", "setting": "setupBrakesAbsAdjustIncrease" },
+    {
+      "id": "absAdjustDecrease",
+      "label": "ABS Adjust -",
+      "default": "",
+      "setting": "setupBrakesAbsAdjustDecrease"
+    },
+    {
+      "id": "brakeBiasIncrease",
+      "label": "Brake Bias +",
+      "default": "=",
+      "setting": "setupBrakesBrakeBiasIncrease"
+    },
+    {
+      "id": "brakeBiasDecrease",
+      "label": "Brake Bias -",
+      "default": "-",
+      "setting": "setupBrakesBrakeBiasDecrease"
+    },
+    {
+      "id": "brakeBiasFineIncrease",
+      "label": "Brake Bias Fine +",
+      "default": "",
+      "setting": "setupBrakesBrakeBiasFineIncrease"
+    },
+    {
+      "id": "brakeBiasFineDecrease",
+      "label": "Brake Bias Fine -",
+      "default": "",
+      "setting": "setupBrakesBrakeBiasFineDecrease"
+    },
+    {
+      "id": "peakBrakeBiasIncrease",
+      "label": "Peak Brake Bias +",
+      "default": "",
+      "setting": "setupBrakesPeakBrakeBiasIncrease"
+    },
+    {
+      "id": "peakBrakeBiasDecrease",
+      "label": "Peak Brake Bias -",
+      "default": "",
+      "setting": "setupBrakesPeakBrakeBiasDecrease"
+    },
+    {
+      "id": "brakeMiscIncrease",
+      "label": "Brake Misc +",
+      "default": "",
+      "setting": "setupBrakesBrakeMiscIncrease"
+    },
+    {
+      "id": "brakeMiscDecrease",
+      "label": "Brake Misc -",
+      "default": "",
+      "setting": "setupBrakesBrakeMiscDecrease"
+    },
+    {
+      "id": "engineBrakingIncrease",
+      "label": "Engine Braking +",
+      "default": "",
+      "setting": "setupBrakesEngineBrakingIncrease"
+    },
+    {
+      "id": "engineBrakingDecrease",
+      "label": "Engine Braking -",
+      "default": "",
+      "setting": "setupBrakesEngineBrakingDecrease"
+    }
+  ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "cameraEditorAdjustments": [
