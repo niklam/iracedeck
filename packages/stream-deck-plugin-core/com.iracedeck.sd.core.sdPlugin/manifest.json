@@ -477,6 +477,28 @@
       ]
     },
     {
+      "Name": "Setup Chassis",
+      "UUID": "com.iracedeck.sd.core.setup-chassis",
+      "Icon": "imgs/actions/setup-chassis/icon",
+      "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
+      "PropertyInspectorPath": "ui/setup-chassis.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease chassis setting",
+          "Press": "Activate chassis adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-chassis/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Setup Engine",
       "UUID": "com.iracedeck.sd.core.setup-engine",
       "Icon": "imgs/actions/setup-engine/icon",

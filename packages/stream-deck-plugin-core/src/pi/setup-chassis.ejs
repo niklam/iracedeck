@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Component">
+			<sdpi-select setting="setting" default="differential-preload">
+				<option value="differential-preload">Differential Preload</option>
+				<option value="differential-entry">Differential Entry</option>
+				<option value="differential-middle">Differential Middle</option>
+				<option value="differential-exit">Differential Exit</option>
+				<option value="front-arb">Front ARB</option>
+				<option value="rear-arb">Rear ARB</option>
+				<option value="left-spring">Left Spring</option>
+				<option value="right-spring">Right Spring</option>
+				<option value="lf-shock">LF Shock</option>
+				<option value="rf-shock">RF Shock</option>
+				<option value="lr-shock">LR Shock</option>
+				<option value="rr-shock">RR Shock</option>
+				<option value="power-steering">Power Steering</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Chassis Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupChassis
+		}) %>
+	</body>
+</html>
