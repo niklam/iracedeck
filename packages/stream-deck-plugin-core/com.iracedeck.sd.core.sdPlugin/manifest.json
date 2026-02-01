@@ -420,6 +420,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Test Gamma",
+      "UUID": "com.iracedeck.sd.core.test-gamma",
+      "Icon": "imgs/actions/test-gamma/icon",
+      "Tooltip": "Test action — sends a configurable keyboard shortcut",
+      "PropertyInspectorPath": "ui/test-gamma.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Activate test gamma",
+          "Press": "Activate test gamma"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/test-gamma/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

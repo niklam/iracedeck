@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('global-key-bindings', {
+			keyBindings: require('./data/key-bindings.json').testGamma
+		}) %>
+	</body>
+</html>

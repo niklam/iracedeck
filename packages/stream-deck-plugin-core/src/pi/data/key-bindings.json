@@ -160,6 +160,8 @@
   ],
   "chat": [
     { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
+  "testGamma": [
+    { "id": "activate", "label": "Activate", "default": "Ctrl+Shift+3", "setting": "testGammaActivate" }],
   "cameraEditorAdjustments": [
     { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },
     { "id": "latitudeDecrease", "label": "Latitude -", "default": "A", "setting": "camEditLatitudeDecrease" },
