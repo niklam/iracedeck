@@ -499,6 +499,28 @@
       ]
     },
     {
+      "Name": "Setup Aero",
+      "UUID": "com.iracedeck.sd.core.setup-aero",
+      "Icon": "imgs/actions/setup-aero/icon",
+      "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
+      "PropertyInspectorPath": "ui/setup-aero.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease aero setting",
+          "Press": "Activate aero adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-aero/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Setup Engine",
       "UUID": "com.iracedeck.sd.core.setup-engine",
       "Icon": "imgs/actions/setup-engine/icon",

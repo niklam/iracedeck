@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#1a1a3a"/>
+
+  <!-- Front wing icon content (increase variant): wing profile + right arrow -->
+  <path d="M12,28 Q20,14 40,18 Q50,20 56,24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <line x1="50" y1="22" x2="50" y2="34" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <polyline points="53,28 58,22 53,16" fill="none" stroke="#f1c40f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">FRONT WING</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">INCREASE</text>
+</svg>
