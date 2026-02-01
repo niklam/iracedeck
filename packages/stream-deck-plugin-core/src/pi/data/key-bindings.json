@@ -39,6 +39,23 @@
     { "id": "up", "label": "Look Up", "default": "", "setting": "lookDirectionUp" },
     { "id": "down", "label": "Look Down", "default": "", "setting": "lookDirectionDown" }
   ],
+  "carControl": [
+    { "id": "starter", "label": "Starter", "default": "S", "setting": "carControlStarter" },
+    { "id": "ignition", "label": "Ignition", "default": "I", "setting": "carControlIgnition" },
+    {
+      "id": "pitSpeedLimiter",
+      "label": "Pit Speed Limiter",
+      "default": "A",
+      "setting": "carControlPitSpeedLimiter"
+    },
+    {
+      "id": "enterExitTow",
+      "label": "Enter/Exit/Tow Car",
+      "default": "Shift+R",
+      "setting": "carControlEnterExitTow"
+    },
+    { "id": "pauseSim", "label": "Pause Sim", "default": "Shift+P", "setting": "carControlPauseSim" }
+  ],
   "viewAdjustment": [
     { "id": "fovIncrease", "label": "FOV Increase", "default": "]", "setting": "viewAdjustFovIncrease" },
     { "id": "fovDecrease", "label": "FOV Decrease", "default": "[", "setting": "viewAdjustFovDecrease" },

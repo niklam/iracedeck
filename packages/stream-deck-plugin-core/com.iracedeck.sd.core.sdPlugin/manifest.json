@@ -89,6 +89,27 @@
       ]
     },
     {
+      "Name": "Car Control",
+      "UUID": "com.iracedeck.sd.core.car-control",
+      "Icon": "imgs/actions/car-control/icon",
+      "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
+      "PropertyInspectorPath": "ui/car-control.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate car control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/car-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

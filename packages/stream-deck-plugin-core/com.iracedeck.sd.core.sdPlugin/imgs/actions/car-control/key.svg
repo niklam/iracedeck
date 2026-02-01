@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a2a"/>
+
+  <!-- Key/ignition icon (starter default) -->
+  <circle cx="36" cy="22" r="10" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="36" cy="22" r="3" fill="#ffffff"/>
+  <path d="M46 22 A10 10 0 0 1 36 32" fill="none" stroke="#f1c40f" stroke-width="2" stroke-linecap="round"/>
+  <path d="M36 32 L38 28 M36 32 L32 30" fill="none" stroke="#f1c40f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">CAR</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">CONTROL</text>
+</svg>
