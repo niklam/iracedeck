@@ -259,6 +259,28 @@
           "FontSize": 14
         }
       ]
+    },
+    {
+      "Name": "Replay Transport",
+      "UUID": "com.iracedeck.sd.core.replay-transport",
+      "Icon": "imgs/actions/replay-transport/icon",
+      "Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
+      "PropertyInspectorPath": "ui/replay-transport.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Frame forward/backward",
+          "Press": "Play/Pause"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-transport/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
     }
   ],
   "Category": "iRaceDeck Core",

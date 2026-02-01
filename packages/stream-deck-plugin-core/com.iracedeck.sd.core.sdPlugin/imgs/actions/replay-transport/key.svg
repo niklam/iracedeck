@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
+
+  <!-- Play triangle -->
+  <polygon points="28,14 52,26 28,38" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">PLAY</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">REPLAY</text>
+</svg>

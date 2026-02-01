@@ -159,8 +159,7 @@
     }
   ],
   "chat": [
-    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }
-  ],
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
   "audioControls": [
     {
       "id": "spotterVolumeUp",
