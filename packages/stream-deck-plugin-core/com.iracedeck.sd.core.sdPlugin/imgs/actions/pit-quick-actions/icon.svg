@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Wrench silhouette -->
+  <path d="M4 16 L11 9" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M11 9 A4 4 0 1 1 15 5" fill="none" stroke-width="1.5"/>
+  <path d="M15 5 L17 3" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M2 18 L4 16" stroke-width="2" stroke-linecap="round"/>
+</svg>

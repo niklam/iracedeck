@@ -132,6 +132,27 @@
       ]
     },
     {
+      "Name": "Pit Quick Actions",
+      "UUID": "com.iracedeck.sd.core.pit-quick-actions",
+      "Icon": "imgs/actions/pit-quick-actions/icon",
+      "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
+      "PropertyInspectorPath": "ui/pit-quick-actions.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate pit action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/pit-quick-actions/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a2a"/>
+
+  <!-- Checklist with X (clear all checkboxes default) -->
+  <rect x="22" y="10" width="12" height="10" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <polyline points="25,15 27,18 31,12" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="22" y="24" width="12" height="10" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <polyline points="25,29 27,32 31,26" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="38" y1="15" x2="50" y2="15" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="38" y1="29" x2="50" y2="29" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="40" y1="20" x2="52" y2="32" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="52" y1="20" x2="40" y2="32" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">PIT</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">QUICK ACTIONS</text>
+</svg>
