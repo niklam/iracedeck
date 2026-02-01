@@ -276,6 +276,133 @@
       "setting": "camEditFocusDepthDecrease"
     }
   ],
+  "cameraEditorControls": [
+    { "id": "openCameraTool", "label": "Open Camera Tool", "default": "Ctrl+F12", "setting": "camCtrlOpenCameraTool" },
+    {
+      "id": "keyAccelerationToggle",
+      "label": "Key Acceleration Toggle",
+      "default": "Ctrl+P",
+      "setting": "camCtrlKeyAccelerationToggle"
+    },
+    { "id": "key10xToggle", "label": "Key 10x Toggle", "default": "Alt+P", "setting": "camCtrlKey10xToggle" },
+    {
+      "id": "parabolicMicToggle",
+      "label": "Parabolic Mic Toggle",
+      "default": "Ctrl+O",
+      "setting": "camCtrlParabolicMicToggle"
+    },
+    {
+      "id": "cyclePositionType",
+      "label": "Cycle Position Type",
+      "default": "Alt+N",
+      "setting": "camCtrlCyclePositionType"
+    },
+    { "id": "cycleAimType", "label": "Cycle Aim Type", "default": "Alt+M", "setting": "camCtrlCycleAimType" },
+    { "id": "acquireStart", "label": "Acquire Start", "default": "Ctrl+Q", "setting": "camCtrlAcquireStart" },
+    { "id": "acquireEnd", "label": "Acquire End", "default": "Shift+Q", "setting": "camCtrlAcquireEnd" },
+    {
+      "id": "temporaryEditsToggle",
+      "label": "Temporary Edits Toggle",
+      "default": "Ctrl+L",
+      "setting": "camCtrlTemporaryEditsToggle"
+    },
+    {
+      "id": "dampeningToggle",
+      "label": "Dampening Toggle",
+      "default": "Ctrl+N",
+      "setting": "camCtrlDampeningToggle"
+    },
+    { "id": "zoomToggle", "label": "Zoom Toggle", "default": "Ctrl+M", "setting": "camCtrlZoomToggle" },
+    {
+      "id": "beyondFenceToggle",
+      "label": "Beyond Fence Toggle",
+      "default": "Ctrl+B",
+      "setting": "camCtrlBeyondFenceToggle"
+    },
+    {
+      "id": "inCockpitToggle",
+      "label": "In Cockpit Toggle",
+      "default": "Alt+B",
+      "setting": "camCtrlInCockpitToggle"
+    },
+    {
+      "id": "mouseNavigationToggle",
+      "label": "Mouse Navigation Toggle",
+      "default": "Ctrl+Z",
+      "setting": "camCtrlMouseNavigationToggle"
+    },
+    {
+      "id": "pitchGyroToggle",
+      "label": "Pitch Gyro Toggle",
+      "default": "Ctrl+J",
+      "setting": "camCtrlPitchGyroToggle"
+    },
+    { "id": "rollGyroToggle", "label": "Roll Gyro Toggle", "default": "Alt+J", "setting": "camCtrlRollGyroToggle" },
+    {
+      "id": "limitShotRangeToggle",
+      "label": "Limit Shot Range Toggle",
+      "default": "Alt+O",
+      "setting": "camCtrlLimitShotRangeToggle"
+    },
+    {
+      "id": "showCameraToggle",
+      "label": "Show Camera Toggle",
+      "default": "Alt+Q",
+      "setting": "camCtrlShowCameraToggle"
+    },
+    {
+      "id": "shotSelectionToggle",
+      "label": "Shot Selection Toggle",
+      "default": "Ctrl+T",
+      "setting": "camCtrlShotSelectionToggle"
+    },
+    {
+      "id": "manualFocusToggle",
+      "label": "Manual Focus Toggle",
+      "default": "Ctrl+F",
+      "setting": "camCtrlManualFocusToggle"
+    },
+    {
+      "id": "insertCamera",
+      "label": "Insert Camera",
+      "default": "Shift+Ctrl+Insert",
+      "setting": "camCtrlInsertCamera"
+    },
+    {
+      "id": "removeCamera",
+      "label": "Remove Camera",
+      "default": "Shift+Ctrl+Delete",
+      "setting": "camCtrlRemoveCamera"
+    },
+    { "id": "copyCamera", "label": "Copy Camera", "default": "Shift+Ctrl+C", "setting": "camCtrlCopyCamera" },
+    { "id": "pasteCamera", "label": "Paste Camera", "default": "Shift+Ctrl+V", "setting": "camCtrlPasteCamera" },
+    { "id": "copyGroup", "label": "Copy Group", "default": "Ctrl+Alt+C", "setting": "camCtrlCopyGroup" },
+    { "id": "pasteGroup", "label": "Paste Group", "default": "Ctrl+Alt+V", "setting": "camCtrlPasteGroup" },
+    {
+      "id": "saveTrackCamera",
+      "label": "Save Track Camera",
+      "default": "Ctrl+F11",
+      "setting": "camCtrlSaveTrackCamera"
+    },
+    {
+      "id": "loadTrackCamera",
+      "label": "Load Track Camera",
+      "default": "Shift+Ctrl+F11",
+      "setting": "camCtrlLoadTrackCamera"
+    },
+    {
+      "id": "saveCarCamera",
+      "label": "Save Car Camera",
+      "default": "Alt+F11",
+      "setting": "camCtrlSaveCarCamera"
+    },
+    {
+      "id": "loadCarCamera",
+      "label": "Load Car Camera",
+      "default": "Shift+Alt+F11",
+      "setting": "camCtrlLoadCarCamera"
+    }
+  ],
   "audioControls": [
     {
       "id": "spotterVolumeUp",

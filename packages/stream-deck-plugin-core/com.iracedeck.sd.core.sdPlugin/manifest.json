@@ -370,6 +370,27 @@
       ]
     },
     {
+      "Name": "Camera Editor Controls",
+      "UUID": "com.iracedeck.sd.core.camera-editor-controls",
+      "Icon": "imgs/actions/camera-editor-controls/icon",
+      "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
+      "PropertyInspectorPath": "ui/camera-editor-controls.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate selected control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-editor-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",

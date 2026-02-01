@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select setting="control" default="open-camera-tool">
+				<option value="open-camera-tool">Open Camera Tool</option>
+				<option value="key-acceleration-toggle">Key Acceleration Toggle</option>
+				<option value="key-10x-toggle">Key 10x Toggle</option>
+				<option value="parabolic-mic-toggle">Parabolic Mic Toggle</option>
+				<option value="cycle-position-type">Cycle Position Type</option>
+				<option value="cycle-aim-type">Cycle Aim Type</option>
+				<option value="acquire-start">Acquire Start</option>
+				<option value="acquire-end">Acquire End</option>
+				<option value="temporary-edits-toggle">Temporary Edits Toggle</option>
+				<option value="dampening-toggle">Dampening Toggle</option>
+				<option value="zoom-toggle">Zoom Toggle</option>
+				<option value="beyond-fence-toggle">Beyond Fence Toggle</option>
+				<option value="in-cockpit-toggle">In Cockpit Toggle</option>
+				<option value="mouse-navigation-toggle">Mouse Navigation Toggle</option>
+				<option value="pitch-gyro-toggle">Pitch Gyro Toggle</option>
+				<option value="roll-gyro-toggle">Roll Gyro Toggle</option>
+				<option value="limit-shot-range-toggle">Limit Shot Range Toggle</option>
+				<option value="show-camera-toggle">Show Camera Toggle</option>
+				<option value="shot-selection-toggle">Shot Selection Toggle</option>
+				<option value="manual-focus-toggle">Manual Focus Toggle</option>
+				<option value="insert-camera">Insert Camera</option>
+				<option value="remove-camera">Remove Camera</option>
+				<option value="copy-camera">Copy Camera</option>
+				<option value="paste-camera">Paste Camera</option>
+				<option value="copy-group">Copy Group</option>
+				<option value="paste-group">Paste Group</option>
+				<option value="save-track-camera">Save Track Camera</option>
+				<option value="load-track-camera">Load Track Camera</option>
+				<option value="save-car-camera">Save Car Camera</option>
+				<option value="load-car-camera">Load Car Camera</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Camera Editor Control Key Bindings',
+			keyBindings: require('./data/key-bindings.json').cameraEditorControls
+		}) %>
+	</body>
+</html>
