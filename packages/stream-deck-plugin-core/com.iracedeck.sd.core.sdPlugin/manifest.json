@@ -153,6 +153,28 @@
       ]
     },
     {
+      "Name": "Fuel Service",
+      "UUID": "com.iracedeck.sd.core.fuel-service",
+      "Icon": "imgs/actions/fuel-service/icon",
+      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
+      "PropertyInspectorPath": "ui/fuel-service.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel",
+          "Press": "Activate fuel action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/fuel-service/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

@@ -137,5 +137,25 @@
       "default": "Shift+Alt+L",
       "setting": "cockpitMiscInLapMode"
     }
+  ],
+  "fuelService": [
+    {
+      "id": "toggleAutofuel",
+      "label": "Toggle Autofuel",
+      "default": "Shift+Ctrl+A",
+      "setting": "fuelServiceToggleAutofuel"
+    },
+    {
+      "id": "lapMarginIncrease",
+      "label": "Lap Margin Increase",
+      "default": "Shift+Alt+X",
+      "setting": "fuelServiceLapMarginIncrease"
+    },
+    {
+      "id": "lapMarginDecrease",
+      "label": "Lap Margin Decrease",
+      "default": "Shift+Alt+S",
+      "setting": "fuelServiceLapMarginDecrease"
+    }
   ]
 }

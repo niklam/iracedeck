@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Mode">
+			<sdpi-select setting="mode" default="add-fuel">
+				<option value="add-fuel">Add Fuel</option>
+				<option value="reduce-fuel">Reduce Fuel</option>
+				<option value="set-fuel-amount">Set Fuel Amount</option>
+				<option value="clear-fuel">Clear Fuel Checkbox</option>
+				<option value="toggle-autofuel">Toggle Autofuel</option>
+				<option value="lap-margin-increase">Lap Margin Increase</option>
+				<option value="lap-margin-decrease">Lap Margin Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Fuel Service Key Bindings',
+			keyBindings: require('./data/key-bindings.json').fuelService
+		}) %>
+	</body>
+</html>

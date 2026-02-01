@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a2a"/>
+  <rect x="24" y="10" width="16" height="24" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <rect x="28" y="6" width="8" height="6" rx="1" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M40 14 L44 14 L44 28 L40 28" fill="none" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="52" y1="18" x2="52" y2="30" stroke="#2ecc71" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="46" y1="24" x2="58" y2="24" stroke="#2ecc71" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">ADD FUEL</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">PIT</text>
+</svg>
