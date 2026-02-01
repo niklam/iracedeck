@@ -408,6 +408,25 @@
       "setting": "setupChassisPowerSteeringDecrease"
     }
   ],
+  "setupAero": [
+    { "id": "frontWingIncrease", "label": "Front Wing +", "default": "", "setting": "setupAeroFrontWingIncrease" },
+    { "id": "frontWingDecrease", "label": "Front Wing -", "default": "", "setting": "setupAeroFrontWingDecrease" },
+    { "id": "rearWingIncrease", "label": "Rear Wing +", "default": "", "setting": "setupAeroRearWingIncrease" },
+    { "id": "rearWingDecrease", "label": "Rear Wing -", "default": "", "setting": "setupAeroRearWingDecrease" },
+    {
+      "id": "qualifyingTapeIncrease",
+      "label": "Qualifying Tape +",
+      "default": "",
+      "setting": "setupAeroQualifyingTapeIncrease"
+    },
+    {
+      "id": "qualifyingTapeDecrease",
+      "label": "Qualifying Tape -",
+      "default": "",
+      "setting": "setupAeroQualifyingTapeDecrease"
+    },
+    { "id": "rfBrakeAttached", "label": "RF Brake Attached", "default": "", "setting": "setupAeroRfBrakeAttached" }
+  ],
   "setupEngine": [
     {
       "id": "enginePowerIncrease",

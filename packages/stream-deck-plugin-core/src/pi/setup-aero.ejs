@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="front-wing">
+				<option value="front-wing">Front Wing</option>
+				<option value="rear-wing">Rear Wing</option>
+				<option value="qualifying-tape">Qualifying Tape</option>
+				<option value="rf-brake-attached">RF Brake Attached</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Aero Setup Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupAero
+		}) %>
+
+		<script>
+			// RF Brake Attached is the only non-directional control
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", setting === "rf-brake-attached");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "front-wing";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "front-wing");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "front-wing");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "front-wing";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
