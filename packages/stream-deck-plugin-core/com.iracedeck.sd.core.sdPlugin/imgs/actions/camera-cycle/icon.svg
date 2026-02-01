@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Movie camera icon -->
+  <rect x="3" y="6" width="10" height="8" rx="1" stroke-width="1.5"/>
+  <polygon points="13,8 17,5 17,15 13,12" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

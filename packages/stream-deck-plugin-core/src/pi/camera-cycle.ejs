@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Camera">
+			<sdpi-select setting="cameraType" default="camera">
+				<option value="camera">Camera</option>
+				<option value="sub-camera">Sub-Camera</option>
+				<option value="car">Car</option>
+				<option value="driving">Driving Camera</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction">
+			<sdpi-select setting="direction" default="next">
+				<option value="next">Next</option>
+				<option value="previous">Previous</option>
+			</sdpi-select>
+		</sdpi-item>
+	</body>
+</html>

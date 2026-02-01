@@ -305,6 +305,28 @@
       ]
     },
     {
+      "Name": "Camera Cycle",
+      "UUID": "com.iracedeck.sd.core.camera-cycle",
+      "Icon": "imgs/actions/camera-cycle/icon",
+      "Tooltip": "Cycle through cameras, sub-cameras, cars, and driving cameras",
+      "PropertyInspectorPath": "ui/camera-cycle.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous camera",
+          "Press": "Activate camera cycle"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-cycle/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",

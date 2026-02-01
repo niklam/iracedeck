@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <!-- Main background -->
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
+
+  <!-- Movie camera icon -->
+  <rect x="20" y="14" width="20" height="16" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+  <polygon points="40,17 52,12 52,36 40,31" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Right chevron (next indicator) -->
+  <polyline points="56,20 62,24 56,28" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Two-line label -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">NEXT</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">CAMERA</text>
+</svg>
