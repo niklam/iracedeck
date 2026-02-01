@@ -259,7 +259,8 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   }
 
   private async executeControl(control: CockpitMiscControl, direction: DirectionType): Promise<void> {
-    this.logger.info(`Executing ${control} ${direction}`);
+    this.logger.info("Control executed");
+    this.logger.debug(`Executing ${control} ${direction}`);
 
     const settingKey = this.resolveGlobalKey(control, direction);
 
