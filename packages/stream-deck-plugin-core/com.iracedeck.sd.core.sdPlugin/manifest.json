@@ -175,6 +175,27 @@
       ]
     },
     {
+      "Name": "Tire Service",
+      "UUID": "com.iracedeck.sd.core.tire-service",
+      "Icon": "imgs/actions/tire-service/icon",
+      "Tooltip": "Tire management for pit stops (request tires, change compound, clear)",
+      "PropertyInspectorPath": "ui/tire-service.html",
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate tire action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/tire-service/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

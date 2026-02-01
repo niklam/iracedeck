@@ -15,6 +15,7 @@ import { FuelService } from "./actions/fuel-service.js";
 import { LookDirection } from "./actions/look-direction.js";
 import { PitQuickActions } from "./actions/pit-quick-actions.js";
 import { SplitsDeltaCycle } from "./actions/splits-delta-cycle.js";
+import { TireService } from "./actions/tire-service.js";
 import { ToggleUiElements } from "./actions/toggle-ui-elements.js";
 import { ViewAdjustment } from "./actions/view-adjustment.js";
 
@@ -41,6 +42,7 @@ streamDeck.actions.registerAction(new FuelService());
 streamDeck.actions.registerAction(new LookDirection());
 streamDeck.actions.registerAction(new PitQuickActions());
 streamDeck.actions.registerAction(new SplitsDeltaCycle());
+streamDeck.actions.registerAction(new TireService());
 streamDeck.actions.registerAction(new ToggleUiElements());
 streamDeck.actions.registerAction(new ViewAdjustment());
 
