@@ -276,6 +276,14 @@
       "setting": "camEditFocusDepthDecrease"
     }
   ],
+  "testBeta": [
+    {
+      "id": "activate",
+      "label": "Activate",
+      "default": "Ctrl+Shift+2",
+      "setting": "testBetaActivate"
+    }
+  ],
   "audioControls": [
     {
       "id": "spotterVolumeUp",

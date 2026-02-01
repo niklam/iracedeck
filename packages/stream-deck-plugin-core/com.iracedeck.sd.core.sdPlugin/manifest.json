@@ -370,6 +370,21 @@
       ]
     },
     {
+      "Name": "Test Beta",
+      "UUID": "com.iracedeck.sd.core.test-beta",
+      "Icon": "imgs/actions/test-beta/icon",
+      "Tooltip": "Test action — sends a configurable keyboard shortcut (test issue, will be reverted)",
+      "PropertyInspectorPath": "ui/test-beta.html",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/test-beta/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Navigation",
       "UUID": "com.iracedeck.sd.core.replay-navigation",
       "Icon": "imgs/actions/replay-navigation/icon",
