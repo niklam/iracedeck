@@ -431,6 +431,7 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
+          "Rotate": "Activate test gamma",
           "Press": "Activate test gamma"
         }
       },
