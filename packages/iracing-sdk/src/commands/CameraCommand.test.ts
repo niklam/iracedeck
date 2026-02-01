@@ -219,6 +219,108 @@ describe("CameraCommand", () => {
     });
   });
 
+  describe("cycleCamera", () => {
+    it("should send CamSwitchPos with incremented group for next", () => {
+      cameraCommand.cycleCamera(5, 3, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 4, 0);
+    });
+
+    it("should send CamSwitchPos with decremented group for previous", () => {
+      cameraCommand.cycleCamera(5, 3, -1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 2, 0);
+    });
+
+    it("should pass camera=0 to keep current sub-camera", () => {
+      cameraCommand.cycleCamera(2, 1, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 2, 2, 0);
+    });
+
+    it("should return true", () => {
+      expect(cameraCommand.cycleCamera(1, 1, 1)).toBe(true);
+    });
+  });
+
+  describe("cycleSubCamera", () => {
+    it("should send CamSwitchPos with incremented camera for next", () => {
+      cameraCommand.cycleSubCamera(5, 3, 2, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 3, 3);
+    });
+
+    it("should send CamSwitchPos with decremented camera for previous", () => {
+      cameraCommand.cycleSubCamera(5, 3, 2, -1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 3, 1);
+    });
+
+    it("should preserve current group", () => {
+      cameraCommand.cycleSubCamera(0, 7, 4, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 0, 7, 5);
+    });
+
+    it("should return true", () => {
+      expect(cameraCommand.cycleSubCamera(1, 1, 1, 1)).toBe(true);
+    });
+  });
+
+  describe("cycleCar", () => {
+    it("should send CamSwitchPos with incremented car position for next", () => {
+      cameraCommand.cycleCar(5, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 6, 0, 0);
+    });
+
+    it("should send CamSwitchPos with decremented car position for previous", () => {
+      cameraCommand.cycleCar(5, -1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 4, 0, 0);
+    });
+
+    it("should pass group=0 and camera=0 to keep current camera", () => {
+      cameraCommand.cycleCar(3, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 4, 0, 0);
+    });
+
+    it("should return true", () => {
+      expect(cameraCommand.cycleCar(1, 1)).toBe(true);
+    });
+  });
+
+  describe("cycleDrivingCamera", () => {
+    it("should send CamSwitchPos with incremented group for next", () => {
+      cameraCommand.cycleDrivingCamera(5, 3, 1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 4, 0);
+    });
+
+    it("should send CamSwitchPos with decremented group for previous", () => {
+      cameraCommand.cycleDrivingCamera(5, 3, -1);
+
+      expect(mockNative.broadcastMsg).toHaveBeenCalledWith(BroadcastMsg.CamSwitchPos, 5, 2, 0);
+    });
+
+    it("should behave identically to cycleCamera", () => {
+      cameraCommand.cycleCamera(10, 5, 1);
+      const cameraCycleArgs = (mockNative.broadcastMsg as ReturnType<typeof vi.fn>).mock.calls[0];
+
+      (mockNative.broadcastMsg as ReturnType<typeof vi.fn>).mockClear();
+
+      cameraCommand.cycleDrivingCamera(10, 5, 1);
+      const drivingCycleArgs = (mockNative.broadcastMsg as ReturnType<typeof vi.fn>).mock.calls[0];
+
+      expect(drivingCycleArgs).toEqual(cameraCycleArgs);
+    });
+
+    it("should return true", () => {
+      expect(cameraCommand.cycleDrivingCamera(1, 1, 1)).toBe(true);
+    });
+  });
+
   describe("return values", () => {
     it("all methods should return true", () => {
       expect(cameraCommand.switchPos(1, 1, 1)).toBe(true);
@@ -229,6 +331,10 @@ describe("CameraCommand", () => {
       expect(cameraCommand.focusOnLeader(1, 1)).toBe(true);
       expect(cameraCommand.focusOnIncident(1, 1)).toBe(true);
       expect(cameraCommand.focusOnExiting(1, 1)).toBe(true);
+      expect(cameraCommand.cycleCamera(1, 1, 1)).toBe(true);
+      expect(cameraCommand.cycleSubCamera(1, 1, 1, 1)).toBe(true);
+      expect(cameraCommand.cycleCar(1, 1)).toBe(true);
+      expect(cameraCommand.cycleDrivingCamera(1, 1, 1)).toBe(true);
     });
   });
 });
