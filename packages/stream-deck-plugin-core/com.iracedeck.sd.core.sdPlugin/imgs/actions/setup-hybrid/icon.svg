@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Battery body -->
+  <rect x="3" y="6" width="12" height="9" rx="1.5" stroke-width="1.5"/>
+  <!-- Battery terminal -->
+  <line x1="15" y1="9" x2="17" y2="9" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="15" y1="12" x2="17" y2="12" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Lightning bolt (ERS/hybrid) -->
+  <polyline points="8,8 10,11 8,11 10,14" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
