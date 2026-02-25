@@ -16,13 +16,13 @@
     "src/*.cc"
   ],
   "dependencies": {
-    "node-addon-api": "^8.0.0"
+    "node-addon-api": "^8.5.0"
   },
   "devDependencies": {
-    "@types/node": "~24.0.0",
-    "node-gyp": "^12.1.0",
-    "rimraf": "^5.0.0",
-    "typescript": "^5.2.2"
+    "@types/node": "~24.0.15",
+    "node-gyp": "^12.2.0",
+    "rimraf": "^5.0.10",
+    "typescript": "^5.9.3"
   },
   "os": [
     "win32"

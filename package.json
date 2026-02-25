@@ -26,21 +26,21 @@
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-*\" run watch"
   },
   "devDependencies": {
-    "@elgato/eslint-config": "^0.3.1",
+    "@elgato/eslint-config": "^0.3.2",
     "@elgato/prettier-config": "^0.3.3",
-    "@eslint/js": "^9.39.2",
-    "@stylistic/eslint-plugin": "^5.6.1",
-    "@tsconfig/node22": "^22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.51.0",
-    "@typescript-eslint/parser": "^8.51.0",
-    "eslint": "^9.39.2",
+    "@eslint/js": "^9.39.3",
+    "@stylistic/eslint-plugin": "^5.9.0",
+    "@tsconfig/node22": "^22.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^9.39.3",
     "eslint-config-prettier": "^10.1.8",
-    "firebase-tools": "^15.3.1",
-    "globals": "^17.0.0",
-    "node-gyp": "^12.1.0",
-    "prettier": "^3.7.4",
-    "turbo": "^2.8.1",
-    "typescript": "^5.2.2",
-    "vitest": "^4.0.16"
+    "firebase-tools": "^15.7.0",
+    "globals": "^17.3.0",
+    "node-gyp": "^12.2.0",
+    "prettier": "^3.8.1",
+    "turbo": "^2.8.11",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

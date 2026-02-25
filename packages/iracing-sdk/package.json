@@ -26,10 +26,10 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@types/node": "~24.0.0",
-    "rimraf": "^5.0.0",
-    "typescript": "^5.2.2",
-    "vitest": "^4.0.16"
+    "@types/node": "~24.0.15",
+    "rimraf": "^5.0.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "os": [
     "win32"
