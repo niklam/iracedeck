@@ -254,6 +254,75 @@ pnpm test        # All tests pass
 pnpm build       # Build succeeds
 ```
 
+## Telemetry-Aware Icons
+
+Some actions update their icon based on live iRacing telemetry (4Hz updates via `sdkController`). Use this pattern when an action's visual state depends on telemetry data.
+
+### Available telemetry
+
+Telemetry fields are on the `TelemetryData` interface from `@iracedeck/iracing-sdk`. Key fields:
+
+- `EngineWarnings` — bitfield: `PitSpeedLimiter`, `EngineStalled`, `RevLimiterActive`, etc.
+- `PitSvFlags` — bitfield: tire change flags, fuel, windshield, etc.
+- `PlayerTireCompound` — current tire compound (0=dry, 1=wet)
+- `OnPitRoad`, `PitstopActive`, `PlayerCarInPitStall` — pit state booleans
+
+Use `hasFlag(value, flag)` from `@iracedeck/iracing-sdk` for bitfield checks.
+
+### Pattern
+
+```typescript
+import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+
+// 1. Helper to extract state from telemetry
+export function isSomeStateActive(telemetry: TelemetryData | null): boolean {
+  if (!telemetry || telemetry.EngineWarnings === undefined) return false;
+  return hasFlag(telemetry.EngineWarnings, EngineWarnings.SomeFlag);
+}
+
+// 2. Icon generation accepts telemetry-derived state
+export function generateSvg(settings: Settings, someState?: boolean): string { ... }
+
+// 3. In the action class: Maps for tracking state per context
+private activeContexts = new Map<string, Settings>();
+private lastState = new Map<string, string>();
+
+// 4. Subscribe with telemetry callback in onWillAppear
+this.sdkController.subscribe(ev.action.id, (telemetry) => {
+  this.updateConnectionState();
+  const storedSettings = this.activeContexts.get(ev.action.id);
+  if (storedSettings) {
+    this.updateDisplayFromTelemetry(ev.action.id, telemetry, storedSettings);
+  }
+});
+
+// 5. State caching — only re-render when state changes
+private async updateDisplayFromTelemetry(contextId, telemetry, settings) {
+  const stateKey = this.buildStateKey(settings, /* telemetry-derived values */);
+  if (this.lastState.get(contextId) !== stateKey) {
+    this.lastState.set(contextId, stateKey);
+    await this.updateKeyImage(contextId, generateSvg(settings, /* state */));
+  }
+}
+
+// 6. Clean up both Maps in onWillDisappear
+this.activeContexts.delete(ev.action.id);
+this.lastState.delete(ev.action.id);
+```
+
+Key points:
+- `updateKeyImage(contextId, svg)` updates without needing the event object (for telemetry callbacks)
+- `getCurrentTelemetry()` on `sdkController` for initial display in `updateDisplay`
+- State caching prevents re-rendering every 250ms tick when nothing changed
+- Update `activeContexts` in both `onWillAppear` and `onDidReceiveSettings`
+
+### Reference implementations
+
+| Pattern | Example |
+|---------|---------|
+| Telemetry-aware icon (single control) | `car-control.ts` (pit-speed-limiter) |
+| Telemetry-aware icon (full action) | `tire-service.ts` |
+
 ### Reference implementations
 
 | Pattern | Example |
