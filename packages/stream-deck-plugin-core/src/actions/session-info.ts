@@ -20,8 +20,11 @@ const FLASH_STEPS = 12; // on-off x6 (6 red flashes)
 /** iRacing uses 604800s (7 days) as the sentinel for unlimited session time */
 const UNLIMITED_TIME_THRESHOLD = 604800;
 
+/** iRacing uses 32767 as the sentinel for unlimited laps */
+const UNLIMITED_LAPS = 32767;
+
 const SessionInfoSettings = z.object({
-  mode: z.enum(["incidents", "time-remaining"]).default("incidents"),
+  mode: z.enum(["incidents", "time-remaining", "laps"]).default("incidents"),
 });
 
 type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
@@ -53,7 +56,12 @@ export function formatSessionTime(seconds: number): string {
  * Generates an SVG data URI for the session info display.
  */
 export function generateSessionInfoSvg(settings: SessionInfoSettings, value: string, isFlashing: boolean): string {
-  const titleLabel = settings.mode === "incidents" ? "INCIDENTS" : "TIME LEFT";
+  const titleLabels: Record<string, string> = {
+    incidents: "INCIDENTS",
+    "time-remaining": "TIME LEFT",
+    laps: "LAPS",
+  };
+  const titleLabel = titleLabels[settings.mode] ?? "INCIDENTS";
   const valueFontSize = settings.mode === "incidents" ? "24" : value.length > 5 ? "14" : "18";
   const valueY = settings.mode === "incidents" ? "52" : "50";
   const backgroundColor = isFlashing ? BACKGROUND_FLASH : BACKGROUND_DEFAULT;
@@ -159,13 +167,26 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
   private extractDisplayValue(settings: SessionInfoSettings, telemetry: TelemetryData | null): string {
     if (!telemetry) {
-      return settings.mode === "incidents" ? "--" : "--:--";
+      if (settings.mode === "incidents") return "--";
+      if (settings.mode === "laps") return "-/-";
+
+      return "--:--";
     }
 
     if (settings.mode === "incidents") {
       const count = telemetry.PlayerCarMyIncidentCount;
 
       return count !== undefined ? `${count}x` : "--";
+    }
+
+    if (settings.mode === "laps") {
+      const lap = telemetry.Lap;
+      const total = telemetry.SessionLapsTotal;
+
+      if (lap === undefined || total === undefined) return "-/-";
+      if (total >= UNLIMITED_LAPS) return `${lap}/\u221E`;
+
+      return `${lap}/${total}`;
     }
 
     const remain = telemetry.SessionTimeRemain;

@@ -180,6 +180,34 @@ describe("SessionInfo", () => {
 
       expect(incidents).not.toBe(time);
     });
+
+    it("should use LAPS title for laps mode", () => {
+      const result = generateSessionInfoSvg({ mode: "laps" }, "5/20", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("LAPS");
+    });
+
+    it("should use font size 18 for short lap values", () => {
+      const result = generateSessionInfoSvg({ mode: "laps" }, "5/20", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("18");
+    });
+
+    it("should use font size 14 for long lap values", () => {
+      const result = generateSessionInfoSvg({ mode: "laps" }, "100/200", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("14");
+    });
+
+    it("should include infinity symbol for unlimited laps", () => {
+      const result = generateSessionInfoSvg({ mode: "laps" }, "5/\u221E", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("\u221E");
+    });
   });
 
   describe("telemetry-aware lifecycle", () => {
