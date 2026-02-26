@@ -30,7 +30,7 @@ import carControlTemplate from "../../icons/car-control.svg";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
-const YELLOW = "#f1c40f";
+const RED = "#e74c3c";
 const BLUE = "#3498db";
 
 type CarControlType = "starter" | "ignition" | "pit-speed-limiter" | "enter-exit-tow" | "pause-sim";
@@ -39,7 +39,7 @@ type CarControlType = "starter" | "ignition" | "pit-speed-limiter" | "enter-exit
  * Label configuration for each car control (line1 bold, line2 subdued)
  */
 const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string }> = {
-  starter: { line1: "STARTER", line2: "HOLD" },
+  starter: { line1: "START", line2: "ENGINE" },
   ignition: { line1: "IGNITION", line2: "TOGGLE" },
   "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
   "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
@@ -74,12 +74,12 @@ export const PIT_LIMITER_INACTIVE_ICON = `
  * SVG icon content for each car control
  */
 const CAR_CONTROL_ICONS: Record<CarControlType, string> = {
-  // Starter: Circular keyhole with crank arrow
+  // Starter: Red push-button with "START" label
   starter: `
-    <circle cx="36" cy="22" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="3" fill="${WHITE}"/>
-    <path d="M46 22 A10 10 0 0 1 36 32" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M36 32 L38 28 M36 32 L32 30" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    <circle cx="36" cy="24" r="15" fill="${RED}"/>
+    <circle cx="36" cy="24" r="12" fill="#c0392b"/>
+    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="7" font-weight="bold">START</text>`,
 
   // Ignition: Power symbol
   ignition: `
