@@ -8,6 +8,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -30,7 +31,7 @@ import carControlTemplate from "../../icons/car-control.svg";
 const WHITE = "#ffffff";
 const GRAY = "#888888";
 const YELLOW = "#f1c40f";
-const RED = "#e74c3c";
+const BLUE = "#3498db";
 
 type CarControlType = "starter" | "ignition" | "pit-speed-limiter" | "enter-exit-tow" | "pause-sim";
 
@@ -44,6 +45,30 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
   "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
   "pause-sim": { line1: "PAUSE", line2: "SIM" },
 };
+
+/**
+ * @internal Exported for testing
+ *
+ * Pit limiter icon content when ACTIVE (limiter engaged) — blue with white filled center.
+ */
+export const PIT_LIMITER_ACTIVE_ICON = `
+    <circle cx="36" cy="24" r="15" fill="none" stroke="${BLUE}" stroke-width="4"/>
+    <circle cx="36" cy="24" r="12" fill="none" stroke="${BLUE}" stroke-width="2"/>
+    <circle cx="36" cy="24" r="10" fill="${WHITE}"/>
+    <text x="36" y="27" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LIM</text>`;
+
+/**
+ * @internal Exported for testing
+ *
+ * Pit limiter icon content when INACTIVE (limiter off) — gray with dark center.
+ */
+export const PIT_LIMITER_INACTIVE_ICON = `
+    <circle cx="36" cy="24" r="15" fill="none" stroke="${GRAY}" stroke-width="2"/>
+    <circle cx="36" cy="24" r="12" fill="none" stroke="${GRAY}" stroke-width="1"/>
+    <circle cx="36" cy="24" r="10" fill="#2a3a2a" stroke="${GRAY}" stroke-width="1"/>
+    <text x="36" y="27" text-anchor="middle" dominant-baseline="central"
+          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LIM</text>`;
 
 /**
  * SVG icon content for each car control
@@ -62,12 +87,8 @@ const CAR_CONTROL_ICONS: Record<CarControlType, string> = {
     <rect x="33" y="10" width="6" height="6" fill="#2a3a2a"/>
     <line x1="36" y1="12" x2="36" y2="26" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
 
-  // Pit Speed Limiter: Speed limit circle with "PIT"
-  "pit-speed-limiter": `
-    <circle cx="36" cy="22" r="12" fill="none" stroke="${RED}" stroke-width="2"/>
-    <line x1="44" y1="14" x2="28" y2="30" stroke="${RED}" stroke-width="2"/>
-    <text x="36" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">PIT</text>`,
+  // Pit Speed Limiter: Concentric circle "LIM" disc (default: inactive/gray)
+  "pit-speed-limiter": PIT_LIMITER_INACTIVE_ICON,
 
   // Enter/Exit/Tow: Car body with bidirectional arrow
   "enter-exit-tow": `
@@ -97,6 +118,17 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "pause-sim": "carControlPauseSim",
 };
 
+/**
+ * @internal Exported for testing
+ *
+ * Check if pit speed limiter is active from telemetry.
+ */
+export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
+  if (!telemetry || telemetry.EngineWarnings === undefined) return false;
+
+  return hasFlag(telemetry.EngineWarnings, EngineWarnings.PitSpeedLimiter);
+}
+
 const CarControlSettings = z.object({
   control: z.enum(["starter", "ignition", "pit-speed-limiter", "enter-exit-tow", "pause-sim"]).default("starter"),
 });
@@ -108,10 +140,17 @@ type CarControlSettings = z.infer<typeof CarControlSettings>;
  *
  * Generates an SVG data URI icon for the car control action.
  */
-export function generateCarControlSvg(settings: CarControlSettings): string {
+export function generateCarControlSvg(settings: CarControlSettings, pitLimiterActive?: boolean): string {
   const { control } = settings;
 
-  const iconContent = CAR_CONTROL_ICONS[control] || CAR_CONTROL_ICONS["starter"];
+  let iconContent: string;
+
+  if (control === "pit-speed-limiter" && pitLimiterActive !== undefined) {
+    iconContent = pitLimiterActive ? PIT_LIMITER_ACTIVE_ICON : PIT_LIMITER_INACTIVE_ICON;
+  } else {
+    iconContent = CAR_CONTROL_ICONS[control] || CAR_CONTROL_ICONS["starter"];
+  }
+
   const labels = CAR_CONTROL_LABELS[control] || CAR_CONTROL_LABELS["starter"];
 
   const svg = renderIconTemplate(carControlTemplate, {
@@ -135,12 +174,25 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   /** Currently held key combinations per action context, tracked for cleanup on release/disappear */
   private heldCombinations = new Map<string, KeyCombination>();
 
+  /** Settings per action context for telemetry-driven updates */
+  private activeContexts = new Map<string, CarControlSettings>();
+
+  /** State hash cache to prevent re-rendering every telemetry tick */
+  private lastState = new Map<string, string>();
+
   override async onWillAppear(ev: WillAppearEvent<CarControlSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
 
-    this.sdkController.subscribe(ev.action.id, () => {
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
       this.updateConnectionState();
+
+      const storedSettings = this.activeContexts.get(ev.action.id);
+
+      if (storedSettings) {
+        this.updateDisplayFromTelemetry(ev.action.id, telemetry, storedSettings);
+      }
     });
   }
 
@@ -148,10 +200,13 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     await this.releaseHeldKey(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastState.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CarControlSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -285,8 +340,41 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   ): Promise<void> {
     this.updateConnectionState();
 
-    const svgDataUri = generateCarControlSvg(settings);
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const pitLimiterState = settings.control === "pit-speed-limiter" ? isPitLimiterActive(telemetry) : undefined;
+
+    const svgDataUri = generateCarControlSvg(settings, pitLimiterState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+
+    // Initialize state cache
+    const stateKey = this.buildStateKey(settings, pitLimiterState ?? false);
+    this.lastState.set(ev.action.id, stateKey);
+  }
+
+  private buildStateKey(settings: CarControlSettings, pitLimiterActive: boolean): string {
+    if (settings.control === "pit-speed-limiter") {
+      return `pit-speed-limiter|${pitLimiterActive}`;
+    }
+
+    return settings.control;
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: CarControlSettings,
+  ): Promise<void> {
+    if (settings.control !== "pit-speed-limiter") return;
+
+    const active = isPitLimiterActive(telemetry);
+    const stateKey = this.buildStateKey(settings, active);
+    const lastStateKey = this.lastState.get(contextId);
+
+    if (lastStateKey !== stateKey) {
+      this.lastState.set(contextId, stateKey);
+      const svgDataUri = generateCarControlSvg(settings, active);
+      await this.updateKeyImage(contextId, svgDataUri);
+    }
   }
 }

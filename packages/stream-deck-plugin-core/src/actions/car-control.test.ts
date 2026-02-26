@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CAR_CONTROL_GLOBAL_KEYS, CarControl, generateCarControlSvg } from "./car-control.js";
+import {
+  CAR_CONTROL_GLOBAL_KEYS,
+  CarControl,
+  generateCarControlSvg,
+  isPitLimiterActive,
+  PIT_LIMITER_ACTIVE_ICON,
+  PIT_LIMITER_INACTIVE_ICON,
+} from "./car-control.js";
 
 const {
   mockPressKeyCombination,
@@ -31,11 +38,17 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
+vi.mock("@iracedeck/iracing-sdk", () => ({
+  hasFlag: (value: number, flag: number) => (value & flag) !== 0,
+  EngineWarnings: { PitSpeedLimiter: 0x0010 },
+}));
+
 vi.mock("@iracedeck/stream-deck-shared", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -233,6 +246,109 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ignition" }) as any);
 
       expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isPitLimiterActive", () => {
+    it("should return false when telemetry is null", () => {
+      expect(isPitLimiterActive(null)).toBe(false);
+    });
+
+    it("should return false when EngineWarnings is undefined", () => {
+      expect(isPitLimiterActive({} as any)).toBe(false);
+    });
+
+    it("should return false when pit speed limiter flag is not set", () => {
+      expect(isPitLimiterActive({ EngineWarnings: 0 } as any)).toBe(false);
+    });
+
+    it("should return true when pit speed limiter flag is set", () => {
+      expect(isPitLimiterActive({ EngineWarnings: 0x0010 } as any)).toBe(true);
+    });
+
+    it("should return true when pit speed limiter is set among other flags", () => {
+      expect(isPitLimiterActive({ EngineWarnings: 0x0011 } as any)).toBe(true);
+    });
+  });
+
+  describe("pit limiter icon constants", () => {
+    it("should have distinct active and inactive icons", () => {
+      expect(PIT_LIMITER_ACTIVE_ICON).not.toBe(PIT_LIMITER_INACTIVE_ICON);
+    });
+
+    it("active icon should contain blue color", () => {
+      expect(PIT_LIMITER_ACTIVE_ICON).toContain("#3498db");
+    });
+
+    it("inactive icon should contain gray color", () => {
+      expect(PIT_LIMITER_INACTIVE_ICON).toContain("#888888");
+    });
+
+    it("both icons should contain LIM text", () => {
+      expect(PIT_LIMITER_ACTIVE_ICON).toContain("LIM");
+      expect(PIT_LIMITER_INACTIVE_ICON).toContain("LIM");
+    });
+  });
+
+  describe("generateCarControlSvg telemetry variants", () => {
+    it("should use active icon when pitLimiterActive is true", () => {
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("#3498db");
+    });
+
+    it("should use inactive icon when pitLimiterActive is false", () => {
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("#888888");
+    });
+
+    it("should use default (inactive) icon when pitLimiterActive is undefined", () => {
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("#888888");
+    });
+
+    it("should not affect other controls when pitLimiterActive is passed", () => {
+      const starter = generateCarControlSvg({ control: "starter" }, true);
+      const starterDefault = generateCarControlSvg({ control: "starter" });
+
+      expect(starter).toBe(starterDefault);
+    });
+  });
+
+  describe("telemetry-aware lifecycle", () => {
+    let action: CarControl;
+
+    beforeEach(() => {
+      action = new CarControl();
+    });
+
+    it("should subscribe with telemetry callback on onWillAppear", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
+
+      expect(action["sdkController"].subscribe).toHaveBeenCalledWith("action-1", expect.any(Function));
+    });
+
+    it("should clean up maps on onWillDisappear", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1") as any);
+
+      expect(action["sdkController"].unsubscribe).toHaveBeenCalledWith("action-1");
+      expect(action["activeContexts"].has("action-1")).toBe(false);
+      expect(action["lastState"].has("action-1")).toBe(false);
+    });
+
+    it("should update activeContexts on onDidReceiveSettings", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "starter" }) as any);
+      await action.onDidReceiveSettings(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
+
+      expect(action["activeContexts"].get("action-1")).toEqual({
+        control: "pit-speed-limiter",
+      });
     });
   });
 
