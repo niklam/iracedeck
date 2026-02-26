@@ -20,7 +20,13 @@ import z from "zod";
 
 import tireServiceTemplate from "../../icons/tire-service.svg";
 
+const GRAY = "#888888";
+const WHITE = "#ffffff";
+const YELLOW = "#f1c40f";
+const RED = "#e74c3c";
+
 const TireServiceSettings = z.object({
+  action: z.enum(["toggle-tires", "change-compound", "clear-tires"]).default("toggle-tires"),
   lf: z.coerce.boolean().default(true),
   rf: z.coerce.boolean().default(true),
   lr: z.coerce.boolean().default(true),
@@ -28,6 +34,23 @@ const TireServiceSettings = z.object({
 });
 
 type TireServiceSettings = z.infer<typeof TireServiceSettings>;
+
+/**
+ * SVG icon content for change-compound and clear-tires actions.
+ */
+const COMPOUND_ICON_CONTENT = `
+    <circle cx="36" cy="24" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
+    <circle cx="36" cy="24" r="4" fill="none" stroke="${GRAY}" stroke-width="1"/>
+    <path d="M28 36 L24 40 L28 44" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="24" y1="40" x2="48" y2="40" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
+    <path d="M44 36 L48 32 L44 28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="48" y1="32" x2="24" y2="32" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>`;
+
+const CLEAR_TIRES_ICON_CONTENT = `
+    <circle cx="36" cy="26" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
+    <circle cx="36" cy="26" r="4" fill="none" stroke="${GRAY}" stroke-width="1"/>
+    <line x1="29" y1="19" x2="43" y2="33" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="43" y1="19" x2="29" y2="33" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`;
 
 /**
  * Get tire fill color based on settings and current state.
@@ -76,11 +99,36 @@ export function buildTireToggleMacro(settings: TireServiceSettings): string | nu
   const parts: string[] = [];
 
   if (settings.lf) parts.push("!lf");
+
   if (settings.rf) parts.push("!rf");
+
   if (settings.lr) parts.push("!lr");
+
   if (settings.rr) parts.push("!rr");
 
   return parts.length > 0 ? `#${parts.join(" ")}` : null;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Generates the car body SVG content with colored tires for the toggle-tires action.
+ */
+function generateToggleTiresIconContent(
+  settings: TireServiceSettings,
+  currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
+): string {
+  const lfColor = getTireColor(settings.lf ?? false, currentState.lf);
+  const rfColor = getTireColor(settings.rf ?? false, currentState.rf);
+  const lrColor = getTireColor(settings.lr ?? false, currentState.lr);
+  const rrColor = getTireColor(settings.rr ?? false, currentState.rr);
+
+  return `
+    <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="${GRAY}" stroke-width="2"/>
+    <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${lfColor}" stroke="${GRAY}" stroke-width="1"/>
+    <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${rfColor}" stroke="${GRAY}" stroke-width="1"/>
+    <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${lrColor}" stroke="${GRAY}" stroke-width="1"/>
+    <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${rrColor}" stroke="${GRAY}" stroke-width="1"/>`;
 }
 
 /**
@@ -92,26 +140,45 @@ export function generateTireServiceSvg(
   settings: TireServiceSettings,
   currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
 ): string {
-  const lfColor = getTireColor(settings.lf ?? false, currentState.lf);
-  const rfColor = getTireColor(settings.rf ?? false, currentState.rf);
-  const lrColor = getTireColor(settings.lr ?? false, currentState.lr);
-  const rrColor = getTireColor(settings.rr ?? false, currentState.rr);
+  let iconContent: string;
+  let textElement: string;
 
-  const anyTireOn =
-    (settings.lf && currentState.lf) ||
-    (settings.rf && currentState.rf) ||
-    (settings.lr && currentState.lr) ||
-    (settings.rr && currentState.rr);
+  switch (settings.action) {
+    case "change-compound": {
+      iconContent = COMPOUND_ICON_CONTENT;
+      textElement = [
+        generateIconText({ text: "TIRE", fontSize: 10, fill: "#ffffff", baseY: 52 }),
+        generateIconText({ text: "COMPOUND", fontSize: 8, fill: "#aaaaaa", baseY: 63 }),
+      ].join("\n");
+      break;
+    }
+    case "clear-tires": {
+      iconContent = CLEAR_TIRES_ICON_CONTENT;
+      textElement = [
+        generateIconText({ text: "CLEAR", fontSize: 10, fill: "#ffffff", baseY: 52 }),
+        generateIconText({ text: "TIRES", fontSize: 8, fill: "#aaaaaa", baseY: 63 }),
+      ].join("\n");
+      break;
+    }
+    default: {
+      iconContent = generateToggleTiresIconContent(settings, currentState);
 
-  const titleText = anyTireOn ? "Change" : "No Change";
-  const titleColor = anyTireOn ? "#FFFFFF" : "#FF4444";
+      const anyTireOn =
+        (settings.lf && currentState.lf) ||
+        (settings.rf && currentState.rf) ||
+        (settings.lr && currentState.lr) ||
+        (settings.rr && currentState.rr);
 
-  const textElement = generateIconText({ text: titleText, fontSize: 12, fill: titleColor });
+      const titleText = anyTireOn ? "Change" : "No Change";
+      const titleColor = anyTireOn ? "#FFFFFF" : "#FF4444";
+
+      textElement = generateIconText({ text: titleText, fontSize: 12, fill: titleColor });
+      break;
+    }
+  }
+
   const svg = renderIconTemplate(tireServiceTemplate, {
-    lfColor,
-    rfColor,
-    lrColor,
-    rrColor,
+    iconContent,
     textElement,
   });
 
@@ -120,10 +187,9 @@ export function generateTireServiceSvg(
 
 /**
  * Tire Service
- * Toggles tire change selections in pit service based on configured checkboxes.
- * Dynamic icon shows car from above with tire colors based on current iRacing state.
+ * Manages tire pit service: toggle tire changes, change compound, or clear tire selections.
+ * Toggle mode: dynamic icon shows car with tire colors based on current iRacing state.
  * Green = will be changed, Red = configured but not active, Black = not configured.
- * On press: toggles the configured tires (if currently on, turns off; if off, turns on).
  */
 @action({ UUID: "com.iracedeck.sd.core.tire-service" })
 export class TireService extends ConnectionStateAwareAction<TireServiceSettings> {
@@ -175,12 +241,12 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
 
   override async onKeyDown(ev: KeyDownEvent<TireServiceSettings>): Promise<void> {
     this.logger.info("Key down received");
-    this.executeTireToggle(ev.payload.settings);
+    this.executeAction(ev.payload.settings);
   }
 
   override async onDialDown(ev: DialDownEvent<TireServiceSettings>): Promise<void> {
     this.logger.info("Dial down received");
-    this.executeTireToggle(ev.payload.settings);
+    this.executeAction(ev.payload.settings);
   }
 
   private parseSettings(settings: unknown): TireServiceSettings {
@@ -226,10 +292,10 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     settings: TireServiceSettings,
     tireState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
   ): string {
-    return `${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
+    return `${settings.action}|${settings.lf}|${settings.rf}|${settings.lr}|${settings.rr}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}`;
   }
 
-  private executeTireToggle(rawSettings: unknown): void {
+  private executeAction(rawSettings: unknown): void {
     if (!this.sdkController.getConnectionStatus()) {
       this.logger.info("Not connected to iRacing");
 
@@ -237,21 +303,52 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     }
 
     const settings = this.parseSettings(rawSettings);
-    const macro = buildTireToggleMacro(settings);
 
-    if (!macro) {
-      this.logger.warn("No tires configured");
+    switch (settings.action) {
+      case "change-compound": {
+        this.logger.debug("Sending tire compound change");
+        const success = getCommands().pit.tireCompound(0);
 
-      return;
-    }
+        if (success) {
+          this.logger.info("Tire compound change sent");
+        } else {
+          this.logger.warn("Failed to send tire compound change");
+        }
 
-    this.logger.debug(`Sending pit macro: ${macro}`);
-    const success = getCommands().chat.sendMessage(macro);
+        break;
+      }
+      case "clear-tires": {
+        this.logger.debug("Sending clear tires");
+        const success = getCommands().pit.clearTires();
 
-    if (success) {
-      this.logger.info("Tire toggle sent");
-    } else {
-      this.logger.warn("Failed to send tire toggle");
+        if (success) {
+          this.logger.info("Clear tires sent");
+        } else {
+          this.logger.warn("Failed to send clear tires");
+        }
+
+        break;
+      }
+      default: {
+        const macro = buildTireToggleMacro(settings);
+
+        if (!macro) {
+          this.logger.warn("No tires configured");
+
+          return;
+        }
+
+        this.logger.debug(`Sending pit macro: ${macro}`);
+        const success = getCommands().chat.sendMessage(macro);
+
+        if (success) {
+          this.logger.info("Tire toggle sent");
+        } else {
+          this.logger.warn("Failed to send tire toggle");
+        }
+
+        break;
+      }
     }
   }
 }

@@ -2,17 +2,7 @@
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a2a"/>
-
-    <!-- Car body (top half) -->
-    <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="#888888" stroke-width="2"/>
-    <!-- Left Front tire -->
-    <rect x="14" y="8" width="8" height="10" rx="1.5" fill="{{lfColor}}" stroke="#888888" stroke-width="1"/>
-    <!-- Right Front tire -->
-    <rect x="50" y="8" width="8" height="10" rx="1.5" fill="{{rfColor}}" stroke="#888888" stroke-width="1"/>
-    <!-- Left Rear tire -->
-    <rect x="14" y="26" width="8" height="10" rx="1.5" fill="{{lrColor}}" stroke="#888888" stroke-width="1"/>
-    <!-- Right Rear tire -->
-    <rect x="50" y="26" width="8" height="10" rx="1.5" fill="{{rrColor}}" stroke="#888888" stroke-width="1"/>
+{{iconContent}}
 {{textElement}}
   </g>
 </svg>

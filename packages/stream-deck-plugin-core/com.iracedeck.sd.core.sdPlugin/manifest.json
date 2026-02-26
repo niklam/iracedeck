@@ -221,9 +221,15 @@
       "Name": "Tire Service",
       "UUID": "com.iracedeck.sd.core.tire-service",
       "Icon": "imgs/actions/tire-service/icon",
-      "Tooltip": "Toggle tire change selections for pit stops with live state feedback",
+      "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
       "PropertyInspectorPath": "ui/tire-service.html",
-      "Controllers": ["Keypad"],
+      "Controllers": ["Keypad", "Encoder"],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Press": "Activate tire action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/tire-service/key",

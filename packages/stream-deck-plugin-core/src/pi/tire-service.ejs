@@ -4,17 +4,72 @@
 		<%- include('head-common') %>
 	</head>
 	<body>
-		<sdpi-item label="Left Front">
-			<sdpi-checkbox setting="lf" default="true"></sdpi-checkbox>
+		<sdpi-item label="Action">
+			<sdpi-select id="action-select" setting="action" default="toggle-tires">
+				<option value="toggle-tires">Toggle Tires</option>
+				<option value="change-compound">Change Compound</option>
+				<option value="clear-tires">Clear Tires</option>
+			</sdpi-select>
 		</sdpi-item>
-		<sdpi-item label="Right Front">
-			<sdpi-checkbox setting="rf" default="true"></sdpi-checkbox>
-		</sdpi-item>
-		<sdpi-item label="Left Rear">
-			<sdpi-checkbox setting="lr" default="true"></sdpi-checkbox>
-		</sdpi-item>
-		<sdpi-item label="Right Rear">
-			<sdpi-checkbox setting="rr" default="true"></sdpi-checkbox>
-		</sdpi-item>
+
+		<div id="tire-checkboxes" class="hidden">
+			<sdpi-item label="Left Front">
+				<sdpi-checkbox setting="lf" default="true"></sdpi-checkbox>
+			</sdpi-item>
+			<sdpi-item label="Right Front">
+				<sdpi-checkbox setting="rf" default="true"></sdpi-checkbox>
+			</sdpi-item>
+			<sdpi-item label="Left Rear">
+				<sdpi-checkbox setting="lr" default="true"></sdpi-checkbox>
+			</sdpi-item>
+			<sdpi-item label="Right Rear">
+				<sdpi-checkbox setting="rr" default="true"></sdpi-checkbox>
+			</sdpi-item>
+		</div>
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const actionSelect = document.getElementById("action-select");
+				if (actionSelect) {
+					actionSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+					actionSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+
+					// Poll until value is populated, then keep polling for changes
+					let lastAction = "";
+					setInterval(() => {
+						const currentAction = actionSelect.value;
+						if (currentAction && currentAction !== lastAction) {
+							lastAction = currentAction;
+							updateVisibility(currentAction);
+						}
+					}, 100);
+				}
+			}
+
+			function updateVisibility(actionType) {
+				const checkboxes = document.getElementById("tire-checkboxes");
+				if (actionType === "toggle-tires") {
+					checkboxes?.classList.remove("hidden");
+				} else {
+					checkboxes?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 	</body>
 </html>
