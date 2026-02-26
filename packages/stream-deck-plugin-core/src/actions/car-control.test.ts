@@ -4,9 +4,11 @@ import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
   generateCarControlSvg,
+  getPitSpeedLimit,
   isPitLimiterActive,
-  PIT_LIMITER_ACTIVE_ICON,
-  PIT_LIMITER_INACTIVE_ICON,
+  parsePitSpeedLimit,
+  pitLimiterActiveIcon,
+  pitLimiterInactiveIcon,
 } from "./car-control.js";
 
 const {
@@ -15,12 +17,14 @@ const {
   mockSendKeyCombination,
   mockParseKeyBinding,
   mockGetGlobalSettings,
+  mockGetSessionInfo,
 } = vi.hoisted(() => ({
   mockPressKeyCombination: vi.fn().mockResolvedValue(true),
   mockReleaseKeyCombination: vi.fn().mockResolvedValue(true),
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockParseKeyBinding: vi.fn(),
   mockGetGlobalSettings: vi.fn(() => ({})),
+  mockGetSessionInfo: vi.fn(() => null),
 }));
 
 vi.mock("@elgato/streamdeck", () => ({
@@ -66,6 +70,7 @@ vi.mock("@iracedeck/stream-deck-shared", () => ({
     return b.key;
   }),
   getGlobalSettings: mockGetGlobalSettings,
+  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: mockSendKeyCombination,
     pressKeyCombination: mockPressKeyCombination,
@@ -271,49 +276,116 @@ describe("CarControl", () => {
     });
   });
 
-  describe("pit limiter icon constants", () => {
-    it("should have distinct active and inactive icons", () => {
-      expect(PIT_LIMITER_ACTIVE_ICON).not.toBe(PIT_LIMITER_INACTIVE_ICON);
+  describe("parsePitSpeedLimit", () => {
+    it("should parse '80.00 kph' to 80", () => {
+      expect(parsePitSpeedLimit("80.00 kph")).toBe(80);
+    });
+
+    it("should parse '60.00 mph' to 60", () => {
+      expect(parsePitSpeedLimit("60.00 mph")).toBe(60);
+    });
+
+    it("should parse '100.50 kph' to 100", () => {
+      expect(parsePitSpeedLimit("100.50 kph")).toBe(100);
+    });
+
+    it("should return 80 for undefined", () => {
+      expect(parsePitSpeedLimit(undefined)).toBe(80);
+    });
+
+    it("should return 80 for empty string", () => {
+      expect(parsePitSpeedLimit("")).toBe(80);
+    });
+
+    it("should return 80 for non-numeric string", () => {
+      expect(parsePitSpeedLimit("unknown")).toBe(80);
+    });
+  });
+
+  describe("getPitSpeedLimit", () => {
+    it("should return speed from session info", () => {
+      mockGetSessionInfo.mockReturnValue({
+        WeekendInfo: { TrackPitSpeedLimit: "80.00 kph" },
+      });
+
+      expect(getPitSpeedLimit()).toBe(80);
+    });
+
+    it("should return 80 when session info is null", () => {
+      mockGetSessionInfo.mockReturnValue(null);
+
+      expect(getPitSpeedLimit()).toBe(80);
+    });
+
+    it("should return 80 when WeekendInfo is missing", () => {
+      mockGetSessionInfo.mockReturnValue({});
+
+      expect(getPitSpeedLimit()).toBe(80);
+    });
+  });
+
+  describe("pit limiter icon functions", () => {
+    it("should produce distinct active and inactive icons", () => {
+      expect(pitLimiterActiveIcon(80)).not.toBe(pitLimiterInactiveIcon(80));
     });
 
     it("active icon should contain blue color", () => {
-      expect(PIT_LIMITER_ACTIVE_ICON).toContain("#3498db");
+      expect(pitLimiterActiveIcon(80)).toContain("#3498db");
     });
 
-    it("inactive icon should contain gray color", () => {
-      expect(PIT_LIMITER_INACTIVE_ICON).toContain("#888888");
+    it("inactive icon should contain red border color", () => {
+      expect(pitLimiterInactiveIcon(80)).toContain("#e74c3c");
     });
 
-    it("both icons should contain LIM text", () => {
-      expect(PIT_LIMITER_ACTIVE_ICON).toContain("LIM");
-      expect(PIT_LIMITER_INACTIVE_ICON).toContain("LIM");
+    it("both icons should contain the speed number", () => {
+      expect(pitLimiterActiveIcon(80)).toContain("80");
+      expect(pitLimiterInactiveIcon(80)).toContain("80");
+    });
+
+    it("should use the provided speed value", () => {
+      expect(pitLimiterActiveIcon(60)).toContain("60");
+      expect(pitLimiterInactiveIcon(100)).toContain("100");
     });
   });
 
   describe("generateCarControlSvg telemetry variants", () => {
     it("should use active icon when pitLimiterActive is true", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true, 80);
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("#3498db");
     });
 
     it("should use inactive icon when pitLimiterActive is false", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false, 80);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("#888888");
+      expect(decoded).toContain("#e74c3c");
     });
 
     it("should use default (inactive) icon when pitLimiterActive is undefined", () => {
       const result = generateCarControlSvg({ control: "pit-speed-limiter" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("#888888");
+      expect(decoded).toContain("#e74c3c");
+    });
+
+    it("should include speed limit in the icon", () => {
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false, 60);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("60");
+    });
+
+    it("should use default speed when pitSpeedLimit is undefined", () => {
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("80");
     });
 
     it("should not affect other controls when pitLimiterActive is passed", () => {
-      const starter = generateCarControlSvg({ control: "starter" }, true);
+      const starter = generateCarControlSvg({ control: "starter" }, true, 80);
       const starterDefault = generateCarControlSvg({ control: "starter" });
 
       expect(starter).toBe(starterDefault);

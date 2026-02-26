@@ -15,6 +15,7 @@ import {
   formatKeyBinding,
   getGlobalSettings,
   getKeyboard,
+  getSDK,
   type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
@@ -46,29 +47,57 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
   "pause-sim": { line1: "PAUSE", line2: "SIM" },
 };
 
-/**
- * @internal Exported for testing
- *
- * Pit limiter icon content when ACTIVE (limiter engaged) — blue with white filled center.
- */
-export const PIT_LIMITER_ACTIVE_ICON = `
-    <circle cx="36" cy="24" r="15" fill="none" stroke="${BLUE}" stroke-width="4"/>
-    <circle cx="36" cy="24" r="12" fill="none" stroke="${BLUE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="10" fill="${WHITE}"/>
-    <text x="36" y="27" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LIM</text>`;
+const DEFAULT_PIT_SPEED = 80;
 
 /**
  * @internal Exported for testing
  *
- * Pit limiter icon content when INACTIVE (limiter off) — gray with dark center.
+ * Parse the pit speed limit from session info string (e.g. "80.00 kph") to an integer.
  */
-export const PIT_LIMITER_INACTIVE_ICON = `
-    <circle cx="36" cy="24" r="15" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="12" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="36" cy="24" r="10" fill="#2a3a2a" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="27" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LIM</text>`;
+export function parsePitSpeedLimit(value: string | undefined): number {
+  if (!value) return DEFAULT_PIT_SPEED;
+
+  const match = value.match(/^(\d+)/);
+
+  return match ? parseInt(match[1], 10) : DEFAULT_PIT_SPEED;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Get pit speed limit from session info.
+ */
+export function getPitSpeedLimit(): number {
+  const sessionInfo = getSDK().sdk.getSessionInfo();
+  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
+
+  return parsePitSpeedLimit(weekendInfo?.TrackPitSpeedLimit as string | undefined);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Pit limiter icon content when ACTIVE (limiter engaged) — speed limit sign with blue highlight.
+ */
+export function pitLimiterActiveIcon(speed: number): string {
+  return `
+    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${BLUE}" stroke-width="4"/>
+    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Pit limiter icon content when INACTIVE (limiter off) — speed limit sign with red border.
+ */
+export function pitLimiterInactiveIcon(speed: number): string {
+  return `
+    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${RED}" stroke-width="4"/>
+    <circle cx="36" cy="23" r="15" fill="none" stroke="${GRAY}" stroke-width="1"/>
+    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+}
 
 /**
  * SVG icon content for each car control
@@ -86,8 +115,8 @@ const CAR_CONTROL_ICONS: Record<CarControlType, string> = {
     <path d="M30 17 A11 11 0 1 0 42 17" fill="none" stroke="${WHITE}" stroke-width="4" stroke-linecap="round"/>
     <line x1="36" y1="12" x2="36" y2="24" stroke="${WHITE}" stroke-width="4" stroke-linecap="round"/>`,
 
-  // Pit Speed Limiter: Concentric circle "LIM" disc (default: inactive/gray)
-  "pit-speed-limiter": PIT_LIMITER_INACTIVE_ICON,
+  // Pit Speed Limiter: Speed limit sign (default: inactive with default speed)
+  "pit-speed-limiter": pitLimiterInactiveIcon(DEFAULT_PIT_SPEED),
 
   // Enter/Exit/Tow: Car body with bidirectional arrow
   "enter-exit-tow": `
@@ -139,13 +168,18 @@ type CarControlSettings = z.infer<typeof CarControlSettings>;
  *
  * Generates an SVG data URI icon for the car control action.
  */
-export function generateCarControlSvg(settings: CarControlSettings, pitLimiterActive?: boolean): string {
+export function generateCarControlSvg(
+  settings: CarControlSettings,
+  pitLimiterActive?: boolean,
+  pitSpeedLimit?: number,
+): string {
   const { control } = settings;
 
   let iconContent: string;
 
   if (control === "pit-speed-limiter" && pitLimiterActive !== undefined) {
-    iconContent = pitLimiterActive ? PIT_LIMITER_ACTIVE_ICON : PIT_LIMITER_INACTIVE_ICON;
+    const speed = pitSpeedLimit ?? DEFAULT_PIT_SPEED;
+    iconContent = pitLimiterActive ? pitLimiterActiveIcon(speed) : pitLimiterInactiveIcon(speed);
   } else {
     iconContent = CAR_CONTROL_ICONS[control] || CAR_CONTROL_ICONS["starter"];
   }
@@ -341,19 +375,20 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     const telemetry = this.sdkController.getCurrentTelemetry();
     const pitLimiterState = settings.control === "pit-speed-limiter" ? isPitLimiterActive(telemetry) : undefined;
+    const pitSpeedLimit = settings.control === "pit-speed-limiter" ? getPitSpeedLimit() : undefined;
 
-    const svgDataUri = generateCarControlSvg(settings, pitLimiterState);
+    const svgDataUri = generateCarControlSvg(settings, pitLimiterState, pitSpeedLimit);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
 
     // Initialize state cache
-    const stateKey = this.buildStateKey(settings, pitLimiterState ?? false);
+    const stateKey = this.buildStateKey(settings, pitLimiterState ?? false, pitSpeedLimit);
     this.lastState.set(ev.action.id, stateKey);
   }
 
-  private buildStateKey(settings: CarControlSettings, pitLimiterActive: boolean): string {
+  private buildStateKey(settings: CarControlSettings, pitLimiterActive: boolean, pitSpeedLimit?: number): string {
     if (settings.control === "pit-speed-limiter") {
-      return `pit-speed-limiter|${pitLimiterActive}`;
+      return `pit-speed-limiter|${pitLimiterActive}|${pitSpeedLimit ?? DEFAULT_PIT_SPEED}`;
     }
 
     return settings.control;
@@ -367,12 +402,13 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     if (settings.control !== "pit-speed-limiter") return;
 
     const active = isPitLimiterActive(telemetry);
-    const stateKey = this.buildStateKey(settings, active);
+    const pitSpeedLimit = getPitSpeedLimit();
+    const stateKey = this.buildStateKey(settings, active, pitSpeedLimit);
     const lastStateKey = this.lastState.get(contextId);
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateCarControlSvg(settings, active);
+      const svgDataUri = generateCarControlSvg(settings, active, pitSpeedLimit);
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }
