@@ -33,7 +33,7 @@ const {
   })),
   mockGetConnectionStatus: vi.fn(() => true),
   mockGetCurrentTelemetry: vi.fn(() => ({ PitSvFlags: 0, PlayerTireCompound: 0, PitSvTireCompound: 0 })),
-  mockGetSessionInfo: vi.fn(() => null),
+  mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
 }));
 
 vi.mock("@elgato/streamdeck", () => ({

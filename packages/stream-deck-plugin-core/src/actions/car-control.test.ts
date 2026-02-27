@@ -24,7 +24,7 @@ const {
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockParseKeyBinding: vi.fn(),
   mockGetGlobalSettings: vi.fn(() => ({})),
-  mockGetSessionInfo: vi.fn(() => null),
+  mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
 }));
 
 vi.mock("@elgato/streamdeck", () => ({

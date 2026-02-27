@@ -11,6 +11,15 @@ pnpm build:stream-deck
 pnpm watch:stream-deck
 ```
 
+### Build verification
+
+**Always review the full build output.** The build may succeed (exit code 0) while still emitting TypeScript warnings from `@rollup/plugin-typescript`. These warnings indicate real type errors that must be fixed before committing.
+
+- Run the build and capture all output (do not just check the exit code or tail the last few lines).
+- Search the output for `TS[0-9]+:` patterns (e.g., `TS2345`, `TS2322`) — these are TypeScript diagnostics that need fixing.
+- Ignore `Circular dependency` warnings from `zod` internals and `npm warn Unknown env config` — these are known and harmless.
+- Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
+
 Branching
 
 New features and changes must be developed in a new branch, not directly on `master`.
