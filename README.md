@@ -1,267 +1,146 @@
 # iRaceDeck
 
-Open source iRacing button box plugin for Elgato Stream Deck. Turn your Stream Deck into a powerful button box with live telemetry displays and customizable racing controls.
-
-## What is iRaceDeck?
-
-iRaceDeck transforms your Elgato Stream Deck into a virtual button box for iRacing. Display live telemetry data, monitor race information, and create custom racing controls - all on your Stream Deck's programmable buttons.
+Open-source [Elgato Stream Deck](https://www.elgato.com/stream-deck) plugin for [iRacing](https://www.iracing.com/). Turn your Stream Deck into a fully-featured button box with live telemetry, pit controls, camera management, and more.
 
 ## Features
 
-### Current Actions
+**28 actions** across 8 categories, all with Stream Deck+ encoder support:
 
-**Vehicle Displays:**
+| Category | Actions | Examples |
+|----------|---------|---------|
+| **Display & Session** | Session Info | Incidents, lap count, position, fuel, flags |
+| **Driving Controls** | Audio, Black Box, Look Direction, Car Control | Spotter volume, black box cycling, pit limiter, ignition |
+| **Cockpit & Interface** | Cockpit Misc, Splits Delta, Telemetry, Toggle UI | Wipers, FFB, delta modes, HUD elements |
+| **View & Camera** | View Adjustment, Replay (3), Camera (4) | FOV, replay transport, camera focus, broadcast tools |
+| **Media** | Media Capture | Video recording, screenshots |
+| **Pit Service** | Quick Actions, Fuel, Tires | Tearoff, fuel add/reduce, tire compound, fast repair |
+| **Car Setup** | Brakes, Chassis, Aero, Engine, Fuel, Hybrid | Brake bias, ARB, wing, boost, ERS deploy modes |
+| **Chat** | Chat | Open chat, macros, whisper, reply |
 
-- **Speed Display**: Shows current speed in MPH or KPH (press to toggle units)
-- **Gear Display**: Shows current gear (R, N, 1-9)
+**Key highlights:**
 
-**Pit Service:**
-
-- **Fuel to Add**: Display and toggle fuel fill
-- **Add/Reduce Fuel**: Adjust pit fuel amount
-- **Tire Compound**: Toggle between dry and wet tires
-- **Change Tires**: Configure which tires to change
-- **Fast Repair**: Toggle fast repair
-
-**Environment:**
-
-- **Sky Conditions**: Display current weather
-
-**Communications:**
-
-- **Chat Message**: Send custom chat messages to iRacing
-
-### Technical Features
-
-- Real-time updates (10 times per second)
-- Automatic connection/reconnection to iRacing
-- Native C++ addon for maximum performance
-- Windows-only (iRacing is Windows-only)
+- Live telemetry at 4 Hz with automatic iRacing connection/reconnection
+- All keyboard shortcuts are user-configurable via the Property Inspector
+- SDK-first design: uses iRacing broadcast commands where possible, keyboard simulation only as fallback
+- Native C++ addon for low-latency Win32 API access
 
 ## Installation
 
-### For Users
+### Users
 
-1. Download the latest release `.streamDeckPlugin` file
-2. Double-click the file to install
-3. The plugin will appear in your Stream Deck software under the "iRaceDeck" category
+1. Download the latest `.streamDeckPlugin` release
+2. Double-click to install
+3. Find **iRaceDeck** in the Stream Deck action list
 
-### For Developers
+### Developers
 
-#### Prerequisites
+**Prerequisites:**
 
-- Node.js 20 or later
-- pnpm 10 or later
-- Windows 10 or later
-- Python 3.x (for building native addon)
-- Visual Studio Build Tools with C++ workload
-- Elgato Stream Deck software
-- iRacing installed (for testing)
-
-#### Setup
+- Windows 10+ (iRacing is Windows-only)
+- [Node.js](https://nodejs.org/) 24+
+- [pnpm](https://pnpm.io/) 10+
+- Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (for the native addon)
+- [Elgato Stream Deck](https://docs.elgato.com/sdk/) software
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/your-org/iRaceDeck.git
 cd iRaceDeck
-
-# Install dependencies
 pnpm install
-
-# Build all packages
-pnpm run build
+pnpm build
 ```
 
-#### Development
+#### Development workflow
 
 ```bash
-# Build specific packages
-pnpm --filter @iracedeck/iracing-sdk run build
+# Build only the Stream Deck plugin packages
 pnpm build:stream-deck
 
-# Watch mode (if configured)
-pnpm run dev
+# Watch mode with hot-reload (restarts Stream Deck automatically)
+pnpm watch:stream-deck
+
+# Run tests
+pnpm test
+
+# Lint and format
+pnpm lint:fix
+pnpm format:fix
 ```
 
 ## Project Structure
 
-This is a pnpm monorepo managed with Turborepo:
+A pnpm monorepo built with [Turborepo](https://turbo.build/):
 
 ```
-iRaceDeck/
-├── packages/
-│   ├── iracing-native/           # @iracedeck/iracing-native
-│   │   ├── src/
-│   │   │   ├── addon.cc          # C++ N-API addon
-│   │   │   └── index.ts          # TypeScript wrapper
-│   │   ├── binding.gyp           # Native build config
-│   │   └── package.json
-│   │
-│   ├── iracing-sdk/              # @iracedeck/iracing-sdk
-│   │   ├── src/
-│   │   │   ├── IRacingSDK.ts     # Main SDK class
-│   │   │   ├── types.ts          # iRacing type definitions
-│   │   │   ├── commands/         # Broadcast commands (Pit, Chat, etc.)
-│   │   │   └── index.ts
-│   │   └── package.json
-│   │
-│   ├── stream-deck-shared/        # @iracedeck/stream-deck-shared
-│   │   └── ...                    # Shared utilities, PI components, types
-│   │
-│   └── stream-deck-plugin-core/   # @iracedeck/stream-deck-plugin-core
-│       ├── src/
-│       │   ├── plugin.ts         # Plugin entry point
-│       │   └── actions/          # Stream Deck actions
-│       ├── com.iracedeck.sd.core.sdPlugin/
-│       │   ├── manifest.json     # Plugin metadata
-│       │   ├── bin/              # Compiled output
-│       │   └── imgs/             # Plugin icons
-│       └── package.json
-│
-├── pnpm-workspace.yaml
-├── turbo.json
-├── tsconfig.base.json
-└── package.json
+packages/
+  iracing-native/          C++ N-API addon (shared memory, window messaging, scan codes)
+  iracing-sdk/             TypeScript SDK (telemetry, broadcast commands, session parsing)
+  logger/                  Shared logger interface
+  stream-deck-shared/      Base classes, icon utilities, keyboard service, PI components
+  stream-deck-plugin-core/ The Stream Deck plugin (actions, icons, Property Inspector)
 ```
 
-### Package Overview
+| Package | Role |
+|---------|------|
+| `@iracedeck/iracing-native` | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
+| `@iracedeck/iracing-sdk` | TypeScript SDK for reading telemetry and sending iRacing broadcast commands |
+| `@iracedeck/logger` | Shared logging interface with scoped loggers |
+| `@iracedeck/stream-deck-shared` | Action base classes, icon generation, keyboard service, PI components, global settings |
+| `@iracedeck/stream-deck-plugin-core` | The Stream Deck plugin: 28 actions with icons and Property Inspector UIs |
 
-| Package                              | Description                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------ |
-| `@iracedeck/iracing-native`          | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging) |
-| `@iracedeck/iracing-sdk`             | TypeScript SDK for iRacing telemetry and broadcast commands              |
-| `@iracedeck/stream-deck-shared`      | Shared utilities, PI components, and types for Stream Deck plugins       |
-| `@iracedeck/stream-deck-plugin-core` | Core Stream Deck plugin with driving/interface actions                    |
+### How it fits together
 
-## Technical Architecture
-
-### Native Addon (`@iracedeck/iracing-native`)
-
-The native addon provides low-level access to Windows APIs:
-
-- **Memory-Mapped Files**: Open and read iRacing's shared memory
-- **Window Messaging**: Send broadcast messages, WM_CHAR for chat
-- **Win32 Functions**: FindWindow, RegisterWindowMessage, SendNotifyMessage
-
-### SDK (`@iracedeck/iracing-sdk`)
-
-The SDK provides a clean TypeScript API:
-
-- **IRacingSDK**: Main class for connecting and reading telemetry
-- **Commands**: PitCommand, ChatCommand, CameraCommand, etc.
-- **Types**: Full TypeScript definitions for iRacing data structures
-
-### Plugin (`@iracedeck/stream-deck-plugin-core`)
-
-The core Stream Deck plugin:
-
-- **Actions**: Individual Stream Deck button implementations
-- **ConnectionStateAwareAction**: Base class handling iRacing connection state
-- Uses Rollup to bundle for the Stream Deck runtime
-
-## Available Telemetry Variables
-
-The iRacing SDK provides access to hundreds of telemetry variables. Some useful ones:
-
-- `Speed`: Vehicle speed (m/s)
-- `Gear`: Current gear (-1 = R, 0 = N, 1+ = forward)
-- `RPM`: Engine RPM
-- `FuelLevel`: Fuel level (liters)
-- `PitSvFuel`: Fuel to add at pit stop
-- `PitSvFlags`: Pit service flags (tires, fuel, fast repair)
-- `Throttle`: Throttle position (0-1)
-- `Brake`: Brake position (0-1)
-- `LapCurrentLapTime`: Current lap time (seconds)
-- `SessionTimeRemain`: Time remaining in session
-
-## Adding New Actions
-
-1. Create a new action file in `packages/stream-deck-plugin-core/src/actions/`
-2. Extend `ConnectionStateAwareAction` from `@iracedeck/stream-deck-shared`
-3. Register the action in `packages/stream-deck-plugin-core/src/plugin.ts`
-4. Add action metadata to `manifest.json`
-5. Add icons to the `imgs/actions/` folder
-
-Example:
-
-```typescript
-import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
-import { TelemetryData } from "@iracedeck/iracing-sdk";
-
-import { SDKController } from "../sdk-controller";
-
-@action({ UUID: "com.iracedeck.sd.rpm" })
-export class RPMDisplay extends SingletonAction {
-  private sdkController = SDKController.getInstance();
-
-  override async onWillAppear(ev: WillAppearEvent): Promise<void> {
-    this.sdkController.subscribe(ev.action.id, (telemetry, isConnected) => {
-      this.updateDisplay(ev.action.id, telemetry, isConnected);
-    });
-  }
-
-  override async onWillDisappear(ev: WillDisappearEvent): Promise<void> {
-    this.sdkController.unsubscribe(ev.action.id);
-  }
-
-  private async updateDisplay(contextId: string, telemetry: TelemetryData | null, isConnected: boolean) {
-    const action = streamDeck.actions.getActionById(contextId);
-    if (!action) return;
-
-    if (!isConnected) {
-      await action.setTitle("iRacing\nnot\nconnected");
-    } else if (telemetry?.RPM) {
-      await action.setTitle(Math.round(telemetry.RPM).toString());
-    } else {
-      await action.setTitle("N/A");
-    }
-  }
-}
 ```
+Stream Deck button press
+  -> stream-deck-plugin-core (action handler)
+    -> stream-deck-shared (keyboard service / SDK commands)
+      -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)
+        -> iRacing
 
-## Troubleshooting
-
-### Plugin doesn't connect to iRacing
-
-- Ensure iRacing is running and in a session (on track)
-- Check that you're on Windows (macOS/Linux not supported)
-- iRacing's telemetry is only available when actively driving
-
-### Build errors with native addon
-
-- Ensure Python 3.x is installed and in PATH
-- Install Visual Studio Build Tools with "Desktop development with C++"
-- Set `msvs_version` if using a non-standard VS version:
-  ```bash
-  npm config set msvs_version 2022
-  ```
-
-### Display shows "N/A"
-
-- iRacing is not running or not in a session
-- The plugin will automatically reconnect when iRacing starts
-
-## License
-
-MIT
-
-## Credits
-
-Built with:
-
-- [Elgato Stream Deck SDK](https://github.com/elgatosf/streamdeck)
-- [Node-API (N-API)](https://nodejs.org/api/n-api.html) - Native addon API
-- [iRacing SDK](https://forums.iracing.com/discussion/15068/official-iracing-sdk) - Official iRacing telemetry API
-- Reference: [pyirsdk](https://github.com/kutu/pyirsdk) - Python iRacing SDK implementation
+iRacing telemetry (shared memory)
+  -> iracing-native (reads memory-mapped file)
+    -> iracing-sdk (parses telemetry buffer, 4 Hz update loop)
+      -> stream-deck-plugin-core (updates button display)
+```
 
 ## Contributing
 
-Contributions are welcome! Feel free to:
+Contributions are welcome! Here's how to get started:
 
-- Add new actions for different telemetry data
-- Improve error handling
-- Add configuration options
-- Create better icons
-- Write documentation
+1. Fork the repo and create a branch (`feature/123-your-feature`)
+2. Follow [conventional commits](https://www.conventionalcommits.org/) with package scope (e.g. `feat(stream-deck-plugin-core): add new action`)
+3. Add tests for new code (Vitest)
+4. Make sure `pnpm build` and `pnpm test` pass
+5. Open a pull request
 
-Please open an issue or pull request on GitHub.
+### Adding a new action
+
+Actions live in `packages/stream-deck-plugin-core/src/actions/`. Each action needs:
+
+1. An action class extending `ConnectionStateAwareAction`
+2. Registration in `plugin.ts`
+3. An entry in `manifest.json`
+4. Category icon (20x20 SVG) and key icon (72x72 SVG)
+5. A Property Inspector template (EJS -> HTML)
+6. Unit tests
+
+See the existing actions for reference, or check the package-level docs in `packages/stream-deck-plugin-core/`.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Plugin doesn't connect | Make sure iRacing is running and you're in a session (on track) |
+| Buttons show nothing | iRacing telemetry is only available while driving; the plugin reconnects automatically |
+| Native addon build fails | Install Python 3.x and VS Build Tools with C++ workload. Try `npm config set msvs_version 2022` |
+| Key presses don't work | Check your key bindings in the Property Inspector match your iRacing configuration |
+
+## License
+
+[MIT](LICENSE)
+
+## Acknowledgements
+
+- [Elgato Stream Deck SDK](https://github.com/elgatosf/streamdeck)
+- [iRacing SDK](https://forums.iracing.com/discussion/15068/official-iracing-sdk)
+- [Node-API (N-API)](https://nodejs.org/api/n-api.html)
+- [pyirsdk](https://github.com/kutu/pyirsdk) (reference implementation)
