@@ -1,718 +1,718 @@
 {
-	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
-	"Name": "iRaceDeck",
-	"Version": "0.9.0.0",
-	"Author": "Niklas Lampén",
-	"Actions": [
-		{
-			"Name": "Audio Controls",
-			"UUID": "com.iracedeck.sd.core.audio-controls",
-			"Icon": "imgs/actions/audio-controls/icon",
-			"Tooltip": "Audio volume and mute controls (spotter, voice chat, master volume)",
-			"PropertyInspectorPath": "ui/audio-controls.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Volume up/down",
-					"Push": "Mute/silence"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/audio-controls/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Black Box Selector",
-			"UUID": "com.iracedeck.sd.core.black-box-selector",
-			"Icon": "imgs/actions/black-box-selector/icon",
-			"Tooltip": "Cycle through or select iRacing black boxes",
-			"PropertyInspectorPath": "ui/black-box-selector.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Next/Previous black box"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/black-box-selector/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Splits Delta Cycle",
-			"UUID": "com.iracedeck.sd.core.splits-delta-cycle",
-			"Icon": "imgs/actions/splits-delta-cycle/icon",
-			"Tooltip": "Cycle through iRacing split-time delta display modes",
-			"PropertyInspectorPath": "ui/splits-delta-cycle.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Next/Previous splits delta"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/splits-delta-cycle/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Telemetry Control",
-			"UUID": "com.iracedeck.sd.core.telemetry-control",
-			"Icon": "imgs/actions/telemetry-control/icon",
-			"Tooltip": "Telemetry logging and recording controls",
-			"PropertyInspectorPath": "ui/telemetry-control.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate telemetry action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/telemetry-control/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Toggle UI Elements",
-			"UUID": "com.iracedeck.sd.core.toggle-ui-elements",
-			"Icon": "imgs/actions/toggle-ui-elements/icon",
-			"Tooltip": "Toggle iRacing UI elements on or off",
-			"PropertyInspectorPath": "ui/toggle-ui-elements.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Toggle UI element"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/toggle-ui-elements/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Look Direction",
-			"UUID": "com.iracedeck.sd.core.look-direction",
-			"Icon": "imgs/actions/look-direction/icon",
-			"Tooltip": "Change the driver's view direction",
-			"PropertyInspectorPath": "ui/look-direction.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate look direction"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/look-direction/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Car Control",
-			"UUID": "com.iracedeck.sd.core.car-control",
-			"Icon": "imgs/actions/car-control/icon",
-			"Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
-			"PropertyInspectorPath": "ui/car-control.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate car control"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/car-control/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Cockpit Misc",
-			"UUID": "com.iracedeck.sd.core.cockpit-misc",
-			"Icon": "imgs/actions/cockpit-misc/icon",
-			"Tooltip": "Miscellaneous cockpit controls (wipers, FFB, latency, dash pages, in-lap mode)",
-			"PropertyInspectorPath": "ui/cockpit-misc.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease adjustment",
-					"Push": "Activate control"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/cockpit-misc/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Pit Quick Actions",
-			"UUID": "com.iracedeck.sd.core.pit-quick-actions",
-			"Icon": "imgs/actions/pit-quick-actions/icon",
-			"Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
-			"PropertyInspectorPath": "ui/pit-quick-actions.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate pit action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/pit-quick-actions/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Fuel Service",
-			"UUID": "com.iracedeck.sd.core.fuel-service",
-			"Icon": "imgs/actions/fuel-service/icon",
-			"Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
-			"PropertyInspectorPath": "ui/fuel-service.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease fuel",
-					"Push": "Activate fuel action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/fuel-service/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Tire Service",
-			"UUID": "com.iracedeck.sd.core.tire-service",
-			"Icon": "imgs/actions/tire-service/icon",
-			"Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
-			"PropertyInspectorPath": "ui/tire-service.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate tire action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/tire-service/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Chat",
-			"UUID": "com.iracedeck.sd.core.chat",
-			"Icon": "imgs/actions/chat/icon",
-			"Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
-			"PropertyInspectorPath": "ui/chat.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate chat action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/chat/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "View Adjustment",
-			"UUID": "com.iracedeck.sd.core.view-adjustment",
-			"Icon": "imgs/actions/view-adjustment/icon",
-			"Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
-			"PropertyInspectorPath": "ui/view-adjustment.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease adjustment",
-					"Push": "Activate adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/view-adjustment/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Replay Transport",
-			"UUID": "com.iracedeck.sd.core.replay-transport",
-			"Icon": "imgs/actions/replay-transport/icon",
-			"Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
-			"PropertyInspectorPath": "ui/replay-transport.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Frame forward/backward",
-					"Push": "Play/Pause"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/replay-transport/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Replay Speed",
-			"UUID": "com.iracedeck.sd.core.replay-speed",
-			"Icon": "imgs/actions/replay-speed/icon",
-			"Tooltip": "Increase or decrease replay playback speed",
-			"PropertyInspectorPath": "ui/replay-speed.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease speed",
-					"Push": "Reset to normal speed"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/replay-speed/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Camera Cycle",
-			"UUID": "com.iracedeck.sd.core.camera-cycle",
-			"Icon": "imgs/actions/camera-cycle/icon",
-			"Tooltip": "Cycle through cameras, sub-cameras, cars, and driving cameras",
-			"PropertyInspectorPath": "ui/camera-cycle.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Next/Previous camera",
-					"Push": "Activate camera cycle"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/camera-cycle/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Camera Focus",
-			"UUID": "com.iracedeck.sd.core.camera-focus",
-			"Icon": "imgs/actions/camera-focus/icon",
-			"Tooltip": "Focus the camera on specific targets (your car, leader, incidents, positions)",
-			"PropertyInspectorPath": "ui/camera-focus.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Focus on selected target"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/camera-focus/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Camera Editor Adjustments",
-			"UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
-			"Icon": "imgs/actions/camera-editor-adjustments/icon",
-			"Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
-			"PropertyInspectorPath": "ui/camera-editor-adjustments.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease adjustment",
-					"Push": "Activate selected adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/camera-editor-adjustments/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Camera Editor Controls",
-			"UUID": "com.iracedeck.sd.core.camera-editor-controls",
-			"Icon": "imgs/actions/camera-editor-controls/icon",
-			"Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
-			"PropertyInspectorPath": "ui/camera-editor-controls.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate selected control"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/camera-editor-controls/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Media Capture",
-			"UUID": "com.iracedeck.sd.core.media-capture",
-			"Icon": "imgs/actions/media-capture/icon",
-			"Tooltip": "Video recording, screenshots, and texture management",
-			"PropertyInspectorPath": "ui/media-capture.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Push": "Activate selected capture action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/media-capture/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Replay Navigation",
-			"UUID": "com.iracedeck.sd.core.replay-navigation",
-			"Icon": "imgs/actions/replay-navigation/icon",
-			"Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
-			"PropertyInspectorPath": "ui/replay-navigation.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Next/Previous (session, lap, or incident)",
-					"Push": "Activate navigation action"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/replay-navigation/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Brakes",
-			"UUID": "com.iracedeck.sd.core.setup-brakes",
-			"Icon": "imgs/actions/setup-brakes/icon",
-			"Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
-			"PropertyInspectorPath": "ui/setup-brakes.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease brake setting",
-					"Push": "Activate brake adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-brakes/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Chassis",
-			"UUID": "com.iracedeck.sd.core.setup-chassis",
-			"Icon": "imgs/actions/setup-chassis/icon",
-			"Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
-			"PropertyInspectorPath": "ui/setup-chassis.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease chassis setting",
-					"Push": "Activate chassis adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-chassis/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Aero",
-			"UUID": "com.iracedeck.sd.core.setup-aero",
-			"Icon": "imgs/actions/setup-aero/icon",
-			"Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
-			"PropertyInspectorPath": "ui/setup-aero.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease aero setting",
-					"Push": "Activate aero adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-aero/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Engine",
-			"UUID": "com.iracedeck.sd.core.setup-engine",
-			"Icon": "imgs/actions/setup-engine/icon",
-			"Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
-			"PropertyInspectorPath": "ui/setup-engine.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease engine setting",
-					"Push": "Activate engine adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-engine/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Fuel",
-			"UUID": "com.iracedeck.sd.core.setup-fuel",
-			"Icon": "imgs/actions/setup-fuel/icon",
-			"Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
-			"PropertyInspectorPath": "ui/setup-fuel.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease fuel setting",
-					"Push": "Activate fuel adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-fuel/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Setup Hybrid",
-			"UUID": "com.iracedeck.sd.core.setup-hybrid",
-			"Icon": "imgs/actions/setup-hybrid/icon",
-			"Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
-			"PropertyInspectorPath": "ui/setup-hybrid.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "$B1",
-				"TriggerDescription": {
-					"Rotate": "Increase/Decrease hybrid setting",
-					"Push": "Activate hybrid adjustment"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/setup-hybrid/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		},
-		{
-			"Name": "Session Info",
-			"UUID": "com.iracedeck.sd.core.session-info",
-			"Icon": "imgs/actions/session-info/icon",
-			"Tooltip": "Display live session data (incidents, time, laps, position, fuel, flags)",
-			"PropertyInspectorPath": "ui/session-info.html",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/session-info/key",
-					"TitleAlignment": "bottom",
-					"FontSize": 14
-				}
-			]
-		}
-	],
-	"Category": "iRaceDeck",
-	"CategoryIcon": "imgs/plugin/category-icon",
-	"CodePath": "bin/plugin.js",
-	"Description": "Complete iRacing controls for Elgato Stream Deck.",
-	"PropertyInspectorPath": "ui/settings.html",
-	"Icon": "imgs/plugin/marketplace",
-	"SDKVersion": 3,
-	"Software": {
-		"MinimumVersion": "7.1"
-	},
-	"OS": [
-		{
-			"Platform": "windows",
-			"MinimumVersion": "10"
-		},
-		{
-			"Platform": "mac",
-			"MinimumVersion": "15"
-		}
-	],
-	"Nodejs": {
-		"Version": "24",
-		"Debug": "enabled"
-	},
-	"ApplicationsToMonitor": {
-		"windows": [
-			"iRacingSim64DX11.exe"
-		]
-	},
-	"UUID": "com.iracedeck.sd.core"
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "Name": "iRaceDeck",
+  "Version": "0.9.1.0",
+  "Author": "Niklas Lampén",
+  "Actions": [
+    {
+      "Name": "Audio Controls",
+      "UUID": "com.iracedeck.sd.core.audio-controls",
+      "Icon": "imgs/actions/audio-controls/icon",
+      "Tooltip": "Audio volume and mute controls (spotter, voice chat, master volume)",
+      "PropertyInspectorPath": "ui/audio-controls.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Volume up/down",
+          "Push": "Mute/silence"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/audio-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Black Box Selector",
+      "UUID": "com.iracedeck.sd.core.black-box-selector",
+      "Icon": "imgs/actions/black-box-selector/icon",
+      "Tooltip": "Cycle through or select iRacing black boxes",
+      "PropertyInspectorPath": "ui/black-box-selector.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous black box"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/black-box-selector/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Splits Delta Cycle",
+      "UUID": "com.iracedeck.sd.core.splits-delta-cycle",
+      "Icon": "imgs/actions/splits-delta-cycle/icon",
+      "Tooltip": "Cycle through iRacing split-time delta display modes",
+      "PropertyInspectorPath": "ui/splits-delta-cycle.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous splits delta"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/splits-delta-cycle/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Telemetry Control",
+      "UUID": "com.iracedeck.sd.core.telemetry-control",
+      "Icon": "imgs/actions/telemetry-control/icon",
+      "Tooltip": "Telemetry logging and recording controls",
+      "PropertyInspectorPath": "ui/telemetry-control.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate telemetry action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/telemetry-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Toggle UI Elements",
+      "UUID": "com.iracedeck.sd.core.toggle-ui-elements",
+      "Icon": "imgs/actions/toggle-ui-elements/icon",
+      "Tooltip": "Toggle iRacing UI elements on or off",
+      "PropertyInspectorPath": "ui/toggle-ui-elements.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Toggle UI element"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/toggle-ui-elements/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Look Direction",
+      "UUID": "com.iracedeck.sd.core.look-direction",
+      "Icon": "imgs/actions/look-direction/icon",
+      "Tooltip": "Change the driver's view direction",
+      "PropertyInspectorPath": "ui/look-direction.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate look direction"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/look-direction/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Car Control",
+      "UUID": "com.iracedeck.sd.core.car-control",
+      "Icon": "imgs/actions/car-control/icon",
+      "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
+      "PropertyInspectorPath": "ui/car-control.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate car control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/car-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Cockpit Misc",
+      "UUID": "com.iracedeck.sd.core.cockpit-misc",
+      "Icon": "imgs/actions/cockpit-misc/icon",
+      "Tooltip": "Miscellaneous cockpit controls (wipers, FFB, latency, dash pages, in-lap mode)",
+      "PropertyInspectorPath": "ui/cockpit-misc.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/cockpit-misc/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Pit Quick Actions",
+      "UUID": "com.iracedeck.sd.core.pit-quick-actions",
+      "Icon": "imgs/actions/pit-quick-actions/icon",
+      "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
+      "PropertyInspectorPath": "ui/pit-quick-actions.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate pit action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/pit-quick-actions/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Fuel Service",
+      "UUID": "com.iracedeck.sd.core.fuel-service",
+      "Icon": "imgs/actions/fuel-service/icon",
+      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
+      "PropertyInspectorPath": "ui/fuel-service.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel",
+          "Push": "Activate fuel action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/fuel-service/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Tire Service",
+      "UUID": "com.iracedeck.sd.core.tire-service",
+      "Icon": "imgs/actions/tire-service/icon",
+      "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
+      "PropertyInspectorPath": "ui/tire-service.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate tire action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/tire-service/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Chat",
+      "UUID": "com.iracedeck.sd.core.chat",
+      "Icon": "imgs/actions/chat/icon",
+      "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
+      "PropertyInspectorPath": "ui/chat.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate chat action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/chat/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "View Adjustment",
+      "UUID": "com.iracedeck.sd.core.view-adjustment",
+      "Icon": "imgs/actions/view-adjustment/icon",
+      "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
+      "PropertyInspectorPath": "ui/view-adjustment.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/view-adjustment/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Replay Transport",
+      "UUID": "com.iracedeck.sd.core.replay-transport",
+      "Icon": "imgs/actions/replay-transport/icon",
+      "Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
+      "PropertyInspectorPath": "ui/replay-transport.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Frame forward/backward",
+          "Push": "Play/Pause"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-transport/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Replay Speed",
+      "UUID": "com.iracedeck.sd.core.replay-speed",
+      "Icon": "imgs/actions/replay-speed/icon",
+      "Tooltip": "Increase or decrease replay playback speed",
+      "PropertyInspectorPath": "ui/replay-speed.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease speed",
+          "Push": "Reset to normal speed"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-speed/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Camera Cycle",
+      "UUID": "com.iracedeck.sd.core.camera-cycle",
+      "Icon": "imgs/actions/camera-cycle/icon",
+      "Tooltip": "Cycle through cameras, sub-cameras, cars, and driving cameras",
+      "PropertyInspectorPath": "ui/camera-cycle.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous camera",
+          "Push": "Activate camera cycle"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-cycle/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Camera Focus",
+      "UUID": "com.iracedeck.sd.core.camera-focus",
+      "Icon": "imgs/actions/camera-focus/icon",
+      "Tooltip": "Focus the camera on specific targets (your car, leader, incidents, positions)",
+      "PropertyInspectorPath": "ui/camera-focus.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Focus on selected target"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-focus/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Camera Editor Adjustments",
+      "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
+      "Icon": "imgs/actions/camera-editor-adjustments/icon",
+      "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
+      "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate selected adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-editor-adjustments/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Camera Editor Controls",
+      "UUID": "com.iracedeck.sd.core.camera-editor-controls",
+      "Icon": "imgs/actions/camera-editor-controls/icon",
+      "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
+      "PropertyInspectorPath": "ui/camera-editor-controls.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate selected control"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/camera-editor-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Media Capture",
+      "UUID": "com.iracedeck.sd.core.media-capture",
+      "Icon": "imgs/actions/media-capture/icon",
+      "Tooltip": "Video recording, screenshots, and texture management",
+      "PropertyInspectorPath": "ui/media-capture.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate selected capture action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/media-capture/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Replay Navigation",
+      "UUID": "com.iracedeck.sd.core.replay-navigation",
+      "Icon": "imgs/actions/replay-navigation/icon",
+      "Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
+      "PropertyInspectorPath": "ui/replay-navigation.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous (session, lap, or incident)",
+          "Push": "Activate navigation action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-navigation/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Brakes",
+      "UUID": "com.iracedeck.sd.core.setup-brakes",
+      "Icon": "imgs/actions/setup-brakes/icon",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
+      "PropertyInspectorPath": "ui/setup-brakes.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease brake setting",
+          "Push": "Activate brake adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-brakes/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Chassis",
+      "UUID": "com.iracedeck.sd.core.setup-chassis",
+      "Icon": "imgs/actions/setup-chassis/icon",
+      "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
+      "PropertyInspectorPath": "ui/setup-chassis.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease chassis setting",
+          "Push": "Activate chassis adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-chassis/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Aero",
+      "UUID": "com.iracedeck.sd.core.setup-aero",
+      "Icon": "imgs/actions/setup-aero/icon",
+      "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
+      "PropertyInspectorPath": "ui/setup-aero.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease aero setting",
+          "Push": "Activate aero adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-aero/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Engine",
+      "UUID": "com.iracedeck.sd.core.setup-engine",
+      "Icon": "imgs/actions/setup-engine/icon",
+      "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
+      "PropertyInspectorPath": "ui/setup-engine.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease engine setting",
+          "Push": "Activate engine adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-engine/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Fuel",
+      "UUID": "com.iracedeck.sd.core.setup-fuel",
+      "Icon": "imgs/actions/setup-fuel/icon",
+      "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
+      "PropertyInspectorPath": "ui/setup-fuel.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel setting",
+          "Push": "Activate fuel adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-fuel/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Hybrid",
+      "UUID": "com.iracedeck.sd.core.setup-hybrid",
+      "Icon": "imgs/actions/setup-hybrid/icon",
+      "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
+      "PropertyInspectorPath": "ui/setup-hybrid.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease hybrid setting",
+          "Push": "Activate hybrid adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-hybrid/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Session Info",
+      "UUID": "com.iracedeck.sd.core.session-info",
+      "Icon": "imgs/actions/session-info/icon",
+      "Tooltip": "Display live session data (incidents, time, laps, position, fuel, flags)",
+      "PropertyInspectorPath": "ui/session-info.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/session-info/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    }
+  ],
+  "Category": "iRaceDeck",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "Complete iRacing controls for Elgato Stream Deck.",
+  "PropertyInspectorPath": "ui/settings.html",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "7.1"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    },
+    {
+      "Platform": "mac",
+      "MinimumVersion": "15"
+    }
+  ],
+  "Nodejs": {
+    "Version": "24",
+    "Debug": "enabled"
+  },
+  "ApplicationsToMonitor": {
+    "windows": [
+      "iRacingSim64DX11.exe"
+    ]
+  },
+  "UUID": "com.iracedeck.sd.core"
 }
