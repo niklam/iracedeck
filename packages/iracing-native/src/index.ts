@@ -21,6 +21,7 @@ export { IRacingNativeMock } from "./mock-impl.js";
 
 // Try to load native addon (only on Windows, with safety catch)
 let addon: any = null;
+
 if (platform() === "win32") {
   try {
     const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,7 @@ export class IRacingNative {
 
   private getMock(): IRacingNativeMock {
     if (!this.mock) this.mock = new IRacingNativeMock();
+
     return this.mock;
   }
 

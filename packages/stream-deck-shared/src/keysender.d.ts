@@ -8,10 +8,7 @@ declare module "keysender" {
   export type KeyboardButton = string;
   export interface Keyboard {
     sendKey(key: KeyboardButton | KeyboardButton[]): Promise<void>;
-    toggleKey(
-      key: KeyboardButton | KeyboardButton[],
-      state: boolean,
-    ): Promise<void>;
+    toggleKey(key: KeyboardButton | KeyboardButton[], state: boolean): Promise<void>;
   }
   export class Hardware {
     keyboard: Keyboard;

@@ -5,26 +5,27 @@
  * driving around the track. These are placeholder values — replace
  * with real telemetry captures for more accurate simulation.
  */
-import { SessionState, TrkLoc, Flags, PitSvFlags } from "../defines.js";
+import { Flags, PitSvFlags, SessionState, TrkLoc } from "../defines.js";
 import type { MockSnapshotValues } from "./telemetry.js";
-
-/** Number of cars in the mock session */
-const NUM_CARS = 3;
 
 /** Create a 64-element array with default value, setting specific car values */
 function carArray(defaultVal: number, carValues: Record<number, number>): number[] {
   const arr = new Array<number>(64).fill(defaultVal);
+
   for (const [idx, val] of Object.entries(carValues)) {
     arr[Number(idx)] = val;
   }
+
   return arr;
 }
 
 function carBoolArray(defaultVal: boolean, carValues: Record<number, boolean>): boolean[] {
   const arr = new Array<boolean>(64).fill(defaultVal);
+
   for (const [idx, val] of Object.entries(carValues)) {
     arr[Number(idx)] = val;
   }
+
   return arr;
 }
 
@@ -50,7 +51,7 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   PlayerCarMyIncidentCount: 0,
 
   // Vehicle state
-  Speed: 75.5,       // ~272 km/h
+  Speed: 75.5, // ~272 km/h
   RPM: 7800.0,
   Gear: 5,
   Throttle: 1.0,
@@ -83,7 +84,12 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   PitstopActive: false,
 
   // Pit service
-  PitSvFlags: PitSvFlags.FuelFill | PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange,
+  PitSvFlags:
+    PitSvFlags.FuelFill |
+    PitSvFlags.LFTireChange |
+    PitSvFlags.RFTireChange |
+    PitSvFlags.LRTireChange |
+    PitSvFlags.RRTireChange,
   PitSvFuel: 50.0,
   PitRepairLeft: 0.0,
   PitOptRepairLeft: 0.0,
@@ -107,7 +113,7 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   CarIdxTrackSurface: carArray(TrkLoc.NotInWorld, { 0: TrkLoc.OnTrack, 1: TrkLoc.OnTrack, 2: TrkLoc.OnTrack }),
 
   // Display
-  DisplayUnits: 1,  // Metric
+  DisplayUnits: 1, // Metric
 
   // Environment
   AirTemp: 25.56,
@@ -124,7 +130,7 @@ export const SNAPSHOT_BRAKING: MockSnapshotValues = {
   SessionTime: 248.0,
   SessionTick: 14880,
 
-  Speed: 22.2,       // ~80 km/h (hard braking)
+  Speed: 22.2, // ~80 km/h (hard braking)
   RPM: 4200.0,
   Gear: 2,
   Throttle: 0.0,
@@ -140,7 +146,7 @@ export const SNAPSHOT_BRAKING: MockSnapshotValues = {
   LatAccel: -8.5,
   LongAccel: -35.0,
 
-  CarIdxLapDistPct: carArray(-1, { 0: 0.38, 1: 0.34, 2: 0.30 }),
+  CarIdxLapDistPct: carArray(-1, { 0: 0.38, 1: 0.34, 2: 0.3 }),
 };
 
 /**
@@ -154,7 +160,7 @@ export const SNAPSHOT_PIT_ENTRY: MockSnapshotValues = {
 
   PlayerTrackSurface: TrkLoc.AproachingPits,
 
-  Speed: 16.7,       // ~60 km/h (pit speed limit)
+  Speed: 16.7, // ~60 km/h (pit speed limit)
   RPM: 3500.0,
   Gear: 3,
   Throttle: 0.3,
@@ -176,7 +182,7 @@ export const SNAPSHOT_PIT_ENTRY: MockSnapshotValues = {
   LongAccel: 0.0,
 
   CarIdxLap: carArray(-1, { 0: 4, 1: 4, 2: 3 }),
-  CarIdxLapDistPct: carArray(-1, { 0: 0.12, 1: 0.45, 2: 0.40 }),
+  CarIdxLapDistPct: carArray(-1, { 0: 0.12, 1: 0.45, 2: 0.4 }),
   CarIdxOnPitRoad: carBoolArray(false, { 0: true }),
   CarIdxTrackSurface: carArray(TrkLoc.NotInWorld, { 0: TrkLoc.AproachingPits, 1: TrkLoc.OnTrack, 2: TrkLoc.OnTrack }),
 };

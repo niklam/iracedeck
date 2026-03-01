@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { VarType, VarTypeBytes } from "../defines.js";
-import {
-  buildTelemetryBuffer,
-  getBufferSize,
-  MOCK_VAR_HEADERS,
-  MOCK_VAR_INDEX_MAP,
-} from "./telemetry.js";
+import { buildTelemetryBuffer, getBufferSize, MOCK_VAR_HEADERS, MOCK_VAR_INDEX_MAP } from "./telemetry.js";
 
 describe("MOCK_VAR_HEADERS", () => {
   it("should have non-empty headers array", () => {
@@ -27,8 +22,7 @@ describe("MOCK_VAR_HEADERS", () => {
 
     for (let i = 0; i < ranges.length; i++) {
       for (let j = i + 1; j < ranges.length; j++) {
-        const overlap =
-          ranges[i].start < ranges[j].end && ranges[j].start < ranges[i].end;
+        const overlap = ranges[i].start < ranges[j].end && ranges[j].start < ranges[i].end;
         expect(overlap, `${ranges[i].name} overlaps with ${ranges[j].name}`).toBe(false);
       }
     }
@@ -58,6 +52,7 @@ describe("MOCK_VAR_INDEX_MAP", () => {
 
   it("should contain common telemetry variables", () => {
     const expected = ["Speed", "RPM", "Gear", "FuelLevel", "Lap", "SessionTime"];
+
     for (const name of expected) {
       expect(MOCK_VAR_INDEX_MAP.has(name), `Missing variable: ${name}`).toBe(true);
     }
@@ -71,6 +66,7 @@ describe("getBufferSize", () => {
 
   it("should cover all variable data", () => {
     const size = getBufferSize();
+
     for (const h of MOCK_VAR_HEADERS) {
       const end = h.offset + VarTypeBytes[h.type] * h.count;
       expect(size, `Buffer too small for ${h.name}`).toBeGreaterThanOrEqual(end);

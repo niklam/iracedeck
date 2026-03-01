@@ -7,12 +7,7 @@
 import type { BroadcastMsg, IRSDKHeader, VarHeader } from "./defines.js";
 import { MOCK_SESSION_INFO_YAML } from "./mock-data/session-info.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
-import {
-  buildTelemetryBuffer,
-  getBufferSize,
-  MOCK_VAR_HEADERS,
-  MOCK_VAR_INDEX_MAP,
-} from "./mock-data/telemetry.js";
+import { buildTelemetryBuffer, getBufferSize, MOCK_VAR_HEADERS, MOCK_VAR_INDEX_MAP } from "./mock-data/telemetry.js";
 
 /** Default interval between snapshot rotations in milliseconds */
 const DEFAULT_ROTATION_INTERVAL_MS = 3000;
@@ -32,6 +27,7 @@ export class IRacingNativeMock {
     this.connected = true;
     this.lastRotationTime = Date.now();
     this.sessionInfoUpdate = 1;
+
     return true;
   }
 
@@ -45,6 +41,7 @@ export class IRacingNativeMock {
 
   getHeader(): IRSDKHeader | null {
     if (!this.connected) return null;
+
     return {
       ver: 2,
       status: 1,
@@ -61,22 +58,27 @@ export class IRacingNativeMock {
 
   getData(_index: number): Buffer | null {
     if (!this.connected) return null;
+
     return buildTelemetryBuffer(MOCK_SNAPSHOTS[this.currentSnapshotIndex]);
   }
 
   waitForData(_timeoutMs?: number): Buffer | null {
     if (!this.connected) return null;
+
     this.maybeRotateSnapshot();
+
     return buildTelemetryBuffer(MOCK_SNAPSHOTS[this.currentSnapshotIndex]);
   }
 
   getSessionInfoStr(): string | null {
     if (!this.connected) return null;
+
     return MOCK_SESSION_INFO_YAML;
   }
 
   getVarHeaderEntry(index: number): VarHeader | null {
     if (index < 0 || index >= MOCK_VAR_HEADERS.length) return null;
+
     return MOCK_VAR_HEADERS[index];
   }
 
@@ -84,17 +86,13 @@ export class IRacingNativeMock {
     return MOCK_VAR_INDEX_MAP.get(name) ?? -1;
   }
 
-  broadcastMsg(
-    msg: BroadcastMsg | number,
-    var1: number,
-    var2?: number,
-    var3?: number,
-  ): void {
+  broadcastMsg(msg: BroadcastMsg | number, var1: number, var2?: number, var3?: number): void {
     console.debug(`[IRacingNativeMock] broadcastMsg(${msg}, ${var1}, ${var2 ?? 0}, ${var3 ?? 0})`);
   }
 
   sendChatMessage(message: string): boolean {
     console.debug(`[IRacingNativeMock] sendChatMessage("${message}")`);
+
     return true;
   }
 
@@ -112,9 +110,9 @@ export class IRacingNativeMock {
 
   private maybeRotateSnapshot(): void {
     const now = Date.now();
+
     if (now - this.lastRotationTime >= this.rotationIntervalMs) {
-      this.currentSnapshotIndex =
-        (this.currentSnapshotIndex + 1) % MOCK_SNAPSHOTS.length;
+      this.currentSnapshotIndex = (this.currentSnapshotIndex + 1) % MOCK_SNAPSHOTS.length;
       this.lastRotationTime = now;
     }
   }

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VarType } from "./defines.js";
-import { IRacingNativeMock } from "./mock-impl.js";
-import { MOCK_VAR_HEADERS } from "./mock-data/telemetry.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
+import { MOCK_VAR_HEADERS } from "./mock-data/telemetry.js";
+import { IRacingNativeMock } from "./mock-impl.js";
 
 describe("IRacingNativeMock", () => {
   let mock: IRacingNativeMock;
@@ -172,10 +172,13 @@ describe("IRacingNativeMock", () => {
       fastMock.startup();
 
       const snapshots = new Set<string>();
+
       return new Promise<void>((resolve) => {
         const collect = () => {
           const buf = fastMock.waitForData();
+
           if (buf) snapshots.add(buf.toString("hex"));
+
           if (snapshots.size >= MOCK_SNAPSHOTS.length) {
             resolve();
           } else {
