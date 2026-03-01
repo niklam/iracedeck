@@ -1,4 +1,4 @@
-# @iracedeck/stream-deck-plugin-core
+# @iracedeck/stream-deck-plugin
 
 Core Stream Deck plugin for iRaceDeck. Contains all iRacing-related actions and shared utilities.
 

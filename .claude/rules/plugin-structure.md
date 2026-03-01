@@ -2,11 +2,11 @@
 # Stream Deck Plugin Structure
 
 ## Active Plugins
-- `stream-deck-plugin-core` (com.iracedeck.sd.core) - Core driving/interface actions
+- `stream-deck-plugin` (com.iracedeck.sd.core) - Core driving/interface actions
 
 ## Creating New Plugins
 
-Use `stream-deck-plugin-core` as the reference implementation for plugin structure, action patterns, icon templates, PI templates, and tests. Create the following structure:
+Use `stream-deck-plugin` as the reference implementation for plugin structure, action patterns, icon templates, PI templates, and tests. Create the following structure:
 
 ```
 packages/stream-deck-plugin-{name}/
@@ -95,7 +95,7 @@ const pkg = {
 };
 ```
 
-Reference `stream-deck-plugin-core/rollup.config.mjs` for the correct configuration.
+Reference `stream-deck-plugin/rollup.config.mjs` for the correct configuration.
 
 ### Application Monitoring
 

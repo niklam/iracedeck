@@ -85,4 +85,4 @@ describe("MyAction", () => {
 
 ### Reference Implementation
 
-See `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.test.ts` for a complete example.
+See `packages/stream-deck-plugin/src/actions/splits-delta-cycle.test.ts` for a complete example.

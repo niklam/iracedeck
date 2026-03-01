@@ -110,13 +110,13 @@ The scope should usually be the package name:
 - `logger`
 - `iracing-native`
 - `iracing-sdk`
-- `stream-deck-plugin-core`
+- `stream-deck-plugin`
 - `website`
 
 ### Examples
 
 ```
-feat(stream-deck-plugin-core): add fuel calculation action
+feat(stream-deck-plugin): add fuel calculation action
 fix(iracing-sdk): handle disconnection gracefully
 refactor(iracing-sdk): simplify telemetry parsing
 ```
@@ -137,7 +137,7 @@ packages/
 ├── logger/                    # Logger interface
 ├── iracing-native/            # Native C++ addon for iRacing SDK
 ├── iracing-sdk/               # High-level SDK wrapper
-├── stream-deck-plugin-core/   # Stream Deck plugin (actions, shared utilities, PI components)
+├── stream-deck-plugin/   # Stream Deck plugin (actions, shared utilities, PI components)
 └── website/                   # Promotional website
 ```
 

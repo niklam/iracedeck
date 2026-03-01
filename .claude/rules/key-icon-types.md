@@ -50,12 +50,12 @@ There are two label layouts:
 **Standard** (line1 = primary on top, line2 = secondary on bottom):
 - Used when the category/name is the most important info (e.g., "STANDINGS" / "toggle")
 - Template: `{{labelLine1}}` at y=52 (primary), `{{labelLine2}}` at y=63 (secondary)
-- Reference: `packages/stream-deck-plugin-core/icons/black-box-selector.svg`
+- Reference: `packages/stream-deck-plugin/icons/black-box-selector.svg`
 
 **Inverted** (line2 = secondary on top, line1 = primary on bottom):
 - Used when the action/direction word is more important than the category (e.g., "splits delta" / "NEXT")
 - Template: `{{labelLine2}}` at y=52 (secondary), `{{labelLine1}}` at y=63 (primary)
-- Reference: `packages/stream-deck-plugin-core/icons/splits-delta-cycle.svg`
+- Reference: `packages/stream-deck-plugin/icons/splits-delta-cycle.svg`
 
 ### Background Colors
 
@@ -162,7 +162,7 @@ Extends Default Key Icon Type (Standard label layout) with an inner frame. See [
 - Adds inner black box frame (dark olive #2d2510, brown stroke #4a3728)
 - Uses Standard label layout (primary name on top, secondary action on bottom)
 - Background: #2a2a2a
-- Reference: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
+- Reference: `packages/stream-deck-plugin/src/actions/black-box-selector.ts`
 
 ### Inverted Type
 
@@ -170,7 +170,7 @@ Uses the Inverted label layout where the action word is prominent (bottom, bold)
 
 - Category/context label on top (secondary), action word on bottom (primary)
 - Background color varies per action
-- Reference: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`
+- Reference: `packages/stream-deck-plugin/src/actions/splits-delta-cycle.ts`
 
 ### Data Display Type
 
@@ -194,4 +194,4 @@ Optimized for showing live telemetry values. Small title at top, large centered 
 ```
 
 - Background: #2a3444 (dark blue-gray)
-- Reference: `packages/stream-deck-plugin-core/src/actions/session-info.ts`
+- Reference: `packages/stream-deck-plugin/src/actions/session-info.ts`

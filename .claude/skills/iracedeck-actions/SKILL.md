@@ -28,8 +28,8 @@ Each action entry:
 When asked about actions or controls:
 1. Read `docs/reference/actions.json` and search by action name, mode value, or category
 2. Report: action name, ID, file, modes with labels
-3. For implementation details, check the source at `packages/stream-deck-plugin-core/src/actions/{file}`
-4. For PI templates, check `packages/stream-deck-plugin-core/src/pi/{action-name}.ejs`
+3. For implementation details, check the source at `packages/stream-deck-plugin/src/actions/{file}`
+4. For PI templates, check `packages/stream-deck-plugin/src/pi/{action-name}.ejs`
 
 ## Category Overview
 
@@ -137,9 +137,9 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 
 | File | Role |
 |------|------|
-| `packages/stream-deck-plugin-core/com.iracedeck.sd.core.sdPlugin/manifest.json` | Action registration, UUIDs, encoder config |
-| `packages/stream-deck-plugin-core/src/actions/` | Action source files (28 .ts files) |
-| `packages/stream-deck-plugin-core/src/pi/` | Property Inspector EJS templates |
-| `packages/stream-deck-plugin-core/src/pi/data/key-bindings.json` | Global key binding definitions |
-| `packages/stream-deck-plugin-core/icons/` | SVG icon Mustache templates |
-| `packages/stream-deck-plugin-core/src/plugin.ts` | Action registration and initialization |
+| `packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json` | Action registration, UUIDs, encoder config |
+| `packages/stream-deck-plugin/src/actions/` | Action source files (28 .ts files) |
+| `packages/stream-deck-plugin/src/pi/` | Property Inspector EJS templates |
+| `packages/stream-deck-plugin/src/pi/data/key-bindings.json` | Global key binding definitions |
+| `packages/stream-deck-plugin/icons/` | SVG icon Mustache templates |
+| `packages/stream-deck-plugin/src/plugin.ts` | Action registration and initialization |

@@ -1,8 +1,8 @@
 ---
 paths:
-  - packages/stream-deck-plugin-core/src/actions/black-box-selector.ts
-  - packages/stream-deck-plugin-core/icons/black-box-selector.svg
-  - packages/stream-deck-plugin-core/com.iracedeck.sd.core.sdPlugin/imgs/actions/black-box-selector/*
+  - packages/stream-deck-plugin/src/actions/black-box-selector.ts
+  - packages/stream-deck-plugin/icons/black-box-selector.svg
+  - packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/imgs/actions/black-box-selector/*
 ---
 # Black Box Icon Design Guidelines
 

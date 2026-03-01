@@ -74,7 +74,7 @@ if (keyBinding?.key) {
 
 ### GlobalSettingsSchema
 
-Global settings are validated with Zod. The schema is in `stream-deck-plugin-core/src/shared/global-settings.ts`:
+Global settings are validated with Zod. The schema is in `stream-deck-plugin/src/shared/global-settings.ts`:
 
 ```typescript
 const GlobalSettingsSchema = z.object({

@@ -1,6 +1,6 @@
 # Stream Deck Plugin Core — Action Planning
 
-All planned actions will be built into the existing `@iracedeck/stream-deck-plugin-core` package (`com.iracedeck.sd.core`). The plugin supports up to 32 main actions, each containing multiple sub-actions selectable via Property Inspector dropdown.
+All planned actions will be built into the existing `@iracedeck/stream-deck-plugin` package (`com.iracedeck.sd.core`). The plugin supports up to 32 main actions, each containing multiple sub-actions selectable via Property Inspector dropdown.
 
 **Benefits of consolidating into one plugin:**
 

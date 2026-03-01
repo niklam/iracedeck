@@ -131,7 +131,7 @@ override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> 
 ```
 
 ### Reference implementation
-- Long-press action: `packages/stream-deck-plugin-core/src/actions/look-direction.ts`
+- Long-press action: `packages/stream-deck-plugin/src/actions/look-direction.ts`
 
 ## Plugin Setup for Keyboard Support
 
@@ -218,9 +218,9 @@ if (binding?.key) {
 ```
 
 ## Reference Implementation
-- Global key bindings: `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
-- Cycle action with global key bindings: `packages/stream-deck-plugin-core/src/actions/splits-delta-cycle.ts`
-- Long-press (key hold): `packages/stream-deck-plugin-core/src/actions/look-direction.ts`
+- Global key bindings: `packages/stream-deck-plugin/src/actions/black-box-selector.ts`
+- Cycle action with global key bindings: `packages/stream-deck-plugin/src/actions/splits-delta-cycle.ts`
+- Long-press (key hold): `packages/stream-deck-plugin/src/actions/look-direction.ts`
 
 ## Do NOT Use
 - Hardcoded key mappings in action code
@@ -231,8 +231,8 @@ When modifying keyboard functionality, changes must be synchronized across all l
 
 1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
 2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
-3. **Keyboard service** (`stream-deck-plugin-core/src/shared/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
-4. **Plugin init** (`stream-deck-plugin-core/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
+3. **Keyboard service** (`stream-deck-plugin/src/shared/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
+4. **Plugin init** (`stream-deck-plugin/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
 5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
 6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API
 7. **Package CLAUDE.md** (`iracing-native/CLAUDE.md`) — must document all native keyboard functions

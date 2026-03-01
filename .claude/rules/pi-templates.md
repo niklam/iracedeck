@@ -54,7 +54,7 @@ packages/stream-deck-plugin-{name}/
 
 ### Available Partials
 
-Located in `packages/stream-deck-plugin-core/src/pi-templates/partials/`:
+Located in `packages/stream-deck-plugin/src/pi-templates/partials/`:
 
 - **head-common.ejs** - Required scripts and common styles
 - **accordion.ejs** - Collapsible section component

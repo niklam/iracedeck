@@ -1,5 +1,5 @@
 {
-  "description": "All Stream Deck actions in @iracedeck/stream-deck-plugin-core with their modes and sub-actions.",
+  "description": "All Stream Deck actions in @iracedeck/stream-deck-plugin with their modes and sub-actions.",
   "categories": [
     {
       "name": "Display & Session",

@@ -48,7 +48,7 @@ Follow these commit message rules strictly:
 - `chore`: Build, config, or tooling changes
 - `perf`: Performance improvements
 
-**Scope**: Usually the package name (e.g., `iracing-sdk`, `stream-deck-plugin-core`, `logger`)
+**Scope**: Usually the package name (e.g., `iracing-sdk`, `stream-deck-plugin`, `logger`)
 
 **Rules from CLAUDE.md**:
 
@@ -59,7 +59,7 @@ Follow these commit message rules strictly:
 
 **Examples**:
 
-- `feat(stream-deck-plugin-core): add fuel calculator action`
+- `feat(stream-deck-plugin): add fuel calculator action`
 - `fix(iracing-sdk): handle connection timeout gracefully`
 - `refactor(logger): replace singleton with dependency injection`
 - `test(iracing-native): add unit tests for telemetry parser`
@@ -114,7 +114,7 @@ Before finalizing any commit, verify:
 
 PRs in this project are **squash-merged** into `master`. The squash commit subject is the PR title, so:
 
-- The PR title must be a valid conventional commit message (e.g., `feat(stream-deck-plugin-core): add fuel calculator action`)
+- The PR title must be a valid conventional commit message (e.g., `feat(stream-deck-plugin): add fuel calculator action`)
 - Individual commits on a feature branch are collapsed into one squash commit on merge
 - Merging is handled manually or by automation via `gh pr merge --squash` — never by this agent
 - When reviewing a PR branch, focus on code quality and passing checks; do NOT merge

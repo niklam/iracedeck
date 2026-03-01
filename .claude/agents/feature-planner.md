@@ -80,7 +80,7 @@ Individual action docs go in `docs/plugins/{plugin}/actions/{action-name}.md`.
 
 ### Reference Implementation
 
-Use `packages/stream-deck-plugin-core` as the canonical reference for all patterns: plugin structure, action implementation, icon templates (Standard and Inverted label layouts), PI templates, tests, and keyboard shortcut actions.
+Use `packages/stream-deck-plugin` as the canonical reference for all patterns: plugin structure, action implementation, icon templates (Standard and Inverted label layouts), PI templates, tests, and keyboard shortcut actions.
 
 Key requirements:
 - **Section order**: Properties → Behavior → Settings → Keyboard Simulation → Icon States → Notes

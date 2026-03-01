@@ -24,7 +24,7 @@
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
     "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
-    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin-core\" run watch"
+    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch"
   },
   "devDependencies": {
     "@elgato/eslint-config": "^0.3.2",

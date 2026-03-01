@@ -63,14 +63,14 @@ Directional Actions (increase/decrease, cycle)
 
 ## Property Inspector Components
 
-Shared PI components are in `packages/stream-deck-plugin-core/src/pi/` and compiled to `pi-components.js`.
+Shared PI components are in `packages/stream-deck-plugin/src/pi/` and compiled to `pi-components.js`.
 
 ### Required Files in UI Folder
 Each plugin's `ui/` folder MUST contain these files:
 - `sdpi-components.js` - Stream Deck Property Inspector components
 - `pi-components.js` - iRaceDeck custom components (for `ird-key-binding`)
 
-**IMPORTANT**: These files must be copied from an existing plugin (e.g., `stream-deck-plugin-core`) when creating a new plugin. The Property Inspector will fail silently if these files are missing.
+**IMPORTANT**: These files must be copied from an existing plugin (e.g., `stream-deck-plugin`) when creating a new plugin. The Property Inspector will fail silently if these files are missing.
 
 ### Required Scripts in HTML
 Always include both scripts in PI HTML files:
@@ -140,7 +140,7 @@ setInterval(() => {
 
 Use this pattern to show/hide sub-settings based on a mode dropdown. Start hidden with `class="hidden"` and toggle via JavaScript.
 
-Reference implementation: `stream-deck-plugin-core/src/pi/session-info.ejs` (shows position/fuel sub-settings only when their mode is selected).
+Reference implementation: `stream-deck-plugin/src/pi/session-info.ejs` (shows position/fuel sub-settings only when their mode is selected).
 
 sdpi-components are web components. To show/hide elements based on select values:
 
@@ -206,7 +206,7 @@ if (document.readyState === "loading") {
 
 ### Building PI Components
 ```bash
-cd packages/stream-deck-plugin-core
+cd packages/stream-deck-plugin
 pnpm build:pi
 pnpm build
 ```

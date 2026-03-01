@@ -75,7 +75,7 @@ packages/
   iracing-native/          C++ N-API addon (shared memory, window messaging, scan codes)
   iracing-sdk/             TypeScript SDK (telemetry, broadcast commands, session parsing)
   logger/                  Shared logger interface
-  stream-deck-plugin-core/ The Stream Deck plugin (actions, icons, Property Inspector, shared utilities)
+  stream-deck-plugin/ The Stream Deck plugin (actions, icons, Property Inspector, shared utilities)
 ```
 
 | Package | Role |
@@ -83,20 +83,20 @@ packages/
 | `@iracedeck/iracing-native` | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
 | `@iracedeck/iracing-sdk` | TypeScript SDK for reading telemetry and sending iRacing broadcast commands |
 | `@iracedeck/logger` | Shared logging interface with scoped loggers |
-| `@iracedeck/stream-deck-plugin-core` | The Stream Deck plugin: 28 actions with icons, Property Inspector UIs, and shared utilities (base classes, icon generation, keyboard service, PI components, global settings) |
+| `@iracedeck/stream-deck-plugin` | The Stream Deck plugin: 28 actions with icons, Property Inspector UIs, and shared utilities (base classes, icon generation, keyboard service, PI components, global settings) |
 
 ### How it fits together
 
 ```
 Stream Deck button press
-  -> stream-deck-plugin-core (action handler + keyboard service / SDK commands)
+  -> stream-deck-plugin (action handler + keyboard service / SDK commands)
     -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)
       -> iRacing
 
 iRacing telemetry (shared memory)
   -> iracing-native (reads memory-mapped file)
     -> iracing-sdk (parses telemetry buffer, 4 Hz update loop)
-      -> stream-deck-plugin-core (updates button display)
+      -> stream-deck-plugin (updates button display)
 ```
 
 ## Contributing
@@ -104,14 +104,14 @@ iRacing telemetry (shared memory)
 Contributions are welcome! Here's how to get started:
 
 1. Fork the repo and create a branch (`feature/123-your-feature`)
-2. Follow [conventional commits](https://www.conventionalcommits.org/) with package scope (e.g. `feat(stream-deck-plugin-core): add new action`)
+2. Follow [conventional commits](https://www.conventionalcommits.org/) with package scope (e.g. `feat(stream-deck-plugin): add new action`)
 3. Add tests for new code (Vitest)
 4. Make sure `pnpm build` and `pnpm test` pass
 5. Open a pull request
 
 ### Adding a new action
 
-Actions live in `packages/stream-deck-plugin-core/src/actions/`. Each action needs:
+Actions live in `packages/stream-deck-plugin/src/actions/`. Each action needs:
 
 1. An action class extending `ConnectionStateAwareAction`
 2. Registration in `plugin.ts`
@@ -120,7 +120,7 @@ Actions live in `packages/stream-deck-plugin-core/src/actions/`. Each action nee
 5. A Property Inspector template (EJS -> HTML)
 6. Unit tests
 
-See the existing actions for reference, or check the package-level docs in `packages/stream-deck-plugin-core/`.
+See the existing actions for reference, or check the package-level docs in `packages/stream-deck-plugin/`.
 
 ## Troubleshooting
 

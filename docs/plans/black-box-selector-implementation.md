@@ -6,7 +6,7 @@ Implement the Black Box Selector action for the Core plugin that allows users to
 ## Files to Create/Modify
 
 ### 1. Action Implementation
-**File:** `packages/stream-deck-plugin-core/src/actions/black-box-selector.ts`
+**File:** `packages/stream-deck-plugin/src/actions/black-box-selector.ts`
 
 Create the action class extending `ConnectionStateAwareAction` with:
 - **Settings Schema (Zod):**
@@ -46,14 +46,14 @@ Create the action class extending `ConnectionStateAwareAction` with:
 - **Dynamic icon generation:** Show appropriate icon based on mode and selection
 
 ### 2. Plugin Registration
-**File:** `packages/stream-deck-plugin-core/src/plugin.ts`
+**File:** `packages/stream-deck-plugin/src/plugin.ts`
 
 - Import `BlackBoxSelector` action
 - Register with `streamDeck.actions.registerAction(new BlackBoxSelector())`
 - Import keyboard initialization from shared package
 
 ### 3. Manifest Entry
-**File:** `packages/stream-deck-plugin-core/com.iracedeck.sd.core.sdPlugin/manifest.json`
+**File:** `packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json`
 
 Add action to the `Actions` array:
 ```json
@@ -81,7 +81,7 @@ Add action to the `Actions` array:
 ```
 
 ### 4. Property Inspector UI
-**File:** `packages/stream-deck-plugin-core/com.iracedeck.sd.core.sdPlugin/ui/black-box-selector.html`
+**File:** `packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/ui/black-box-selector.html`
 
 Create settings UI with:
 - Include both `sdpi-components.js` and `pi-components.js` (for `ird-key-binding`)
@@ -120,7 +120,7 @@ Create settings UI with:
 ```
 
 ### 5. Icon Template
-**File:** `packages/stream-deck-plugin-core/icons/black-box-selector.svg`
+**File:** `packages/stream-deck-plugin/icons/black-box-selector.svg`
 
 Create SVG template (72x72) with:
 - Mustache placeholders for dynamic content
@@ -128,7 +128,7 @@ Create SVG template (72x72) with:
 - Support for mode-specific icons
 
 ### 6. Static Icons (for manifest)
-**Directory:** `packages/stream-deck-plugin-core/com.iracedeck.sd.core.sdPlugin/imgs/actions/black-box-selector/`
+**Directory:** `packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/imgs/actions/black-box-selector/`
 
 Create:
 - `icon.svg` - Action catalog icon
@@ -229,7 +229,7 @@ const keyBindingField = z
 
 ## Verification Steps
 
-1. Build the plugin: `pnpm build` in `packages/stream-deck-plugin-core`
+1. Build the plugin: `pnpm build` in `packages/stream-deck-plugin`
 2. Restart Stream Deck to load the updated plugin
 3. Add the Black Box Selector action to a key
 4. Test Direct mode:

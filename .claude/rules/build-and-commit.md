@@ -78,6 +78,6 @@ Merging
 
 - PRs are squash-merged into `master` via `gh pr merge --squash`.
 - The squash commit subject is the PR title, which must follow conventional commit format (`<type>(<scope>): <description>`).
-- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(stream-deck-plugin-core): add Camera Focus action (#42)`.
+- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(stream-deck-plugin): add Camera Focus action (#42)`.
 - Ensure the PR title is a valid conventional commit message (with PR number suffix) before merging.
 - Merging is performed manually or by automation — never by a Claude review step.

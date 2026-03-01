@@ -32,7 +32,7 @@ platform() === "win32"?
 ### Native dependencies
 
 - `keysender` is in `optionalDependencies` — silently fails to install on macOS
-- A type shim at `stream-deck-plugin-core/src/shared/keysender.d.ts` provides TypeScript types when keysender isn't installed
+- A type shim at `stream-deck-plugin/src/shared/keysender.d.ts` provides TypeScript types when keysender isn't installed
 - `node-gyp` is skipped on non-Windows via `iracing-native/scripts/build.mjs`
 
 ## When adding new native methods
