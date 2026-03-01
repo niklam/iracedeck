@@ -112,14 +112,12 @@ The scope should usually be the package name:
 - `iracing-sdk`
 - `stream-deck-shared`
 - `stream-deck-plugin`
-- `stream-deck-plugin-comms`
-- `stream-deck-plugin-pit`
 - `website`
 
 ### Examples
 
 ```
-feat(stream-deck-plugin-pit): add fuel calculation action
+feat(stream-deck-plugin-core): add fuel calculation action
 fix(iracing-sdk): handle disconnection gracefully
 refactor(stream-deck-shared): extract icon utilities
 ```
@@ -142,8 +140,6 @@ packages/
 ├── iracing-sdk/               # High-level SDK wrapper
 ├── stream-deck-shared/        # Shared Stream Deck utilities
 ├── stream-deck-plugin/        # Main Stream Deck plugin
-├── stream-deck-plugin-comms/  # Communication plugin
-├── stream-deck-plugin-pit/    # Pit service plugin
 └── website/                   # Promotional website
 ```
 

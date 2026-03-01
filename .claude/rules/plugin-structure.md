@@ -4,10 +4,6 @@
 ## Active Plugins
 - `stream-deck-plugin-core` (com.iracedeck.sd.core) - Core driving/interface actions
 
-## Deprecated Plugins
-- `stream-deck-plugin-comms` (com.iracedeck.sd.comms) - Communication actions. Deprecated; do not add new actions here.
-- `stream-deck-plugin-pit` (com.iracedeck.sd.pit) - Pit service actions. Deprecated; do not add new actions here.
-
 ## Creating New Plugins
 
 Use `stream-deck-plugin-core` as the reference implementation for plugin structure, action patterns, icon templates, PI templates, and tests. Create the following structure:

@@ -9,8 +9,6 @@ Packages
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/stream-deck-shared`
 - `@iracedeck/stream-deck-plugin-core` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions
-- `@iracedeck/stream-deck-plugin-comms` *(deprecated)*
-- `@iracedeck/stream-deck-plugin-pit` *(deprecated)*
 - `@iracedeck/website`
 
 High-level guidance

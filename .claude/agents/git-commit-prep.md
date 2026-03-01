@@ -48,7 +48,7 @@ Follow these commit message rules strictly:
 - `chore`: Build, config, or tooling changes
 - `perf`: Performance improvements
 
-**Scope**: Usually the package name (e.g., `iracing-sdk`, `stream-deck-plugin-pit`, `logger`)
+**Scope**: Usually the package name (e.g., `iracing-sdk`, `stream-deck-plugin-core`, `logger`)
 
 **Rules from CLAUDE.md**:
 
@@ -59,7 +59,7 @@ Follow these commit message rules strictly:
 
 **Examples**:
 
-- `feat(stream-deck-plugin-pit): add fuel calculator action`
+- `feat(stream-deck-plugin-core): add fuel calculator action`
 - `fix(iracing-sdk): handle connection timeout gracefully`
 - `refactor(logger): replace singleton with dependency injection`
 - `test(iracing-native): add unit tests for telemetry parser`
