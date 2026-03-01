@@ -75,8 +75,7 @@ packages/
   iracing-native/          C++ N-API addon (shared memory, window messaging, scan codes)
   iracing-sdk/             TypeScript SDK (telemetry, broadcast commands, session parsing)
   logger/                  Shared logger interface
-  stream-deck-shared/      Base classes, icon utilities, keyboard service, PI components
-  stream-deck-plugin-core/ The Stream Deck plugin (actions, icons, Property Inspector)
+  stream-deck-plugin-core/ The Stream Deck plugin (actions, icons, Property Inspector, shared utilities)
 ```
 
 | Package | Role |
@@ -84,17 +83,15 @@ packages/
 | `@iracedeck/iracing-native` | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
 | `@iracedeck/iracing-sdk` | TypeScript SDK for reading telemetry and sending iRacing broadcast commands |
 | `@iracedeck/logger` | Shared logging interface with scoped loggers |
-| `@iracedeck/stream-deck-shared` | Action base classes, icon generation, keyboard service, PI components, global settings |
-| `@iracedeck/stream-deck-plugin-core` | The Stream Deck plugin: 28 actions with icons and Property Inspector UIs |
+| `@iracedeck/stream-deck-plugin-core` | The Stream Deck plugin: 28 actions with icons, Property Inspector UIs, and shared utilities (base classes, icon generation, keyboard service, PI components, global settings) |
 
 ### How it fits together
 
 ```
 Stream Deck button press
-  -> stream-deck-plugin-core (action handler)
-    -> stream-deck-shared (keyboard service / SDK commands)
-      -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)
-        -> iRacing
+  -> stream-deck-plugin-core (action handler + keyboard service / SDK commands)
+    -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)
+      -> iRacing
 
 iRacing telemetry (shared memory)
   -> iracing-native (reads memory-mapped file)

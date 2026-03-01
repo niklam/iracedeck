@@ -7,6 +7,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import cameraCycleTemplate from "../../icons/camera-cycle.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -14,10 +17,7 @@ import {
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import cameraCycleTemplate from "../../icons/camera-cycle.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";

@@ -1,12 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
 import { IRacingNative } from "@iracedeck/iracing-native";
-import {
-  createSDLogger,
-  initAppMonitor,
-  initGlobalSettings,
-  initializeKeyboard,
-  initializeSDK,
-} from "@iracedeck/stream-deck-shared";
 
 import { AudioControls } from "./actions/audio-controls.js";
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
@@ -36,6 +29,13 @@ import { TelemetryControl } from "./actions/telemetry-control.js";
 import { TireService } from "./actions/tire-service.js";
 import { ToggleUiElements } from "./actions/toggle-ui-elements.js";
 import { ViewAdjustment } from "./actions/view-adjustment.js";
+import {
+  createSDLogger,
+  initAppMonitor,
+  initGlobalSettings,
+  initializeKeyboard,
+  initializeSDK,
+} from "./shared/index.js";
 
 // Enable trace logging
 streamDeck.logger.setLevel("trace");

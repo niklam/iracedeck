@@ -7,6 +7,9 @@ import streamDeck, {
   WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
+import z from "zod";
+
+import toggleUiElementsTemplate from "../../icons/toggle-ui-elements.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -22,10 +25,7 @@ import {
   parseKeyBinding,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import toggleUiElementsTemplate from "../../icons/toggle-ui-elements.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";

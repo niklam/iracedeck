@@ -7,6 +7,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import audioControlsTemplate from "../../icons/audio-controls.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -21,10 +24,7 @@ import {
   parseKeyBinding,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import audioControlsTemplate from "../../icons/audio-controls.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";

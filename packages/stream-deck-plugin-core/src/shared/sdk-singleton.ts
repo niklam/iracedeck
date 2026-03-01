@@ -12,12 +12,12 @@
  * @example
  * // In plugin.ts (entry point)
  * import streamDeck from "@elgato/streamdeck";
- * import { createSDLogger, initializeSDK } from "@iracedeck/stream-deck-shared";
+ * import { createSDLogger, initializeSDK } from "./shared/index.js";
  *
  * initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
  *
  * // In action files
- * import { getController, getCommands } from "@iracedeck/stream-deck-shared";
+ * import { getController, getCommands } from "./shared/index.js";
  *
  * const controller = getController();
  * const { pit, camera } = getCommands();

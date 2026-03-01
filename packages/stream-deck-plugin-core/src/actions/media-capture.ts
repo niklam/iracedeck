@@ -6,6 +6,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import mediaCaptureTemplate from "../../icons/media-capture.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -20,10 +23,7 @@ import {
   parseKeyBinding,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import mediaCaptureTemplate from "../../icons/media-capture.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";

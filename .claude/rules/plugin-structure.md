@@ -67,7 +67,7 @@ output: {
 
 1. **Mark native modules as external** - Native CommonJS modules like `keysender` cannot be bundled into ES modules. Add them to the `external` array:
 ```javascript
-external: ["@iracedeck/iracing-native", "@iracedeck/stream-deck-shared", "yaml", "keysender"],
+external: ["@iracedeck/iracing-native", "yaml", "keysender"],
 ```
 
 2. **Include them as runtime dependencies** - Add to the emitted `package.json` in the `generateBundle` hook:
@@ -76,7 +76,6 @@ const pkg = {
   type: "module",
   dependencies: {
     "@iracedeck/iracing-native": "file:../../../iracing-native",
-    "@iracedeck/stream-deck-shared": "file:../../../stream-deck-shared",
     "keysender": "^2.3.1",
     yaml: "^2.8.2",
   }
@@ -118,7 +117,7 @@ The initialization order in `plugin.ts` is critical:
 
 ```typescript
 import streamDeck from "@elgato/streamdeck";
-import { initializeSDK, initializeKeyboard, initGlobalSettings, initAppMonitor } from "@iracedeck/stream-deck-shared";
+import { initializeSDK, initializeKeyboard, initGlobalSettings, initAppMonitor } from "./shared/index.js";
 
 // 1. Enable logging
 streamDeck.logger.setLevel("trace");

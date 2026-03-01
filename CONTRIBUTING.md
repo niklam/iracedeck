@@ -74,7 +74,7 @@ pnpm precommit
 ### Stream Deck Actions
 
 - Actions are located in `{package}/src/actions/**`
-- All actions must extend `ConnectionStateAwareAction` from `@iracedeck/stream-deck-shared`
+- All actions must extend `ConnectionStateAwareAction` from `src/shared/` in the core plugin
 - Use Zod with `z.coerce` for action settings (Stream Deck sends strings)
 - Actions must not handle offline state themselves - this is handled globally
 
@@ -110,8 +110,7 @@ The scope should usually be the package name:
 - `logger`
 - `iracing-native`
 - `iracing-sdk`
-- `stream-deck-shared`
-- `stream-deck-plugin`
+- `stream-deck-plugin-core`
 - `website`
 
 ### Examples
@@ -119,7 +118,7 @@ The scope should usually be the package name:
 ```
 feat(stream-deck-plugin-core): add fuel calculation action
 fix(iracing-sdk): handle disconnection gracefully
-refactor(stream-deck-shared): extract icon utilities
+refactor(iracing-sdk): simplify telemetry parsing
 ```
 
 ## Pull Requests
@@ -138,8 +137,7 @@ packages/
 ├── logger/                    # Logger interface
 ├── iracing-native/            # Native C++ addon for iRacing SDK
 ├── iracing-sdk/               # High-level SDK wrapper
-├── stream-deck-shared/        # Shared Stream Deck utilities
-├── stream-deck-plugin/        # Main Stream Deck plugin
+├── stream-deck-plugin-core/   # Stream Deck plugin (actions, shared utilities, PI components)
 └── website/                   # Promotional website
 ```
 

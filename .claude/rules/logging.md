@@ -3,7 +3,7 @@
 
 ## Overview
 
-Stream Deck plugins use a scoped logging system built on the Stream Deck SDK's logger. The `createSDLogger` adapter in `@iracedeck/stream-deck-shared` wraps the SDK logger to provide an `ILogger`-compatible interface.
+Stream Deck plugins use a scoped logging system built on the Stream Deck SDK's logger. The `createSDLogger` adapter in `src/shared/` wraps the SDK logger to provide an `ILogger`-compatible interface.
 
 ## Core Concepts
 
@@ -25,7 +25,7 @@ logger.info("Connected"); // Output: [iRacingSDK] Connected
 - Scope chaining via `createScope()`
 
 ```typescript
-import { createSDLogger } from "@iracedeck/stream-deck-shared";
+import { createSDLogger } from "./shared/index.js";
 
 const logger = createSDLogger(streamDeck.logger.createScope("MyModule"));
 logger.info("Hello"); // Uses proper scope prefix
@@ -40,7 +40,7 @@ Create scoped loggers in `plugin.ts` and pass them to modules that need logging:
 ```typescript
 // plugin.ts
 import streamDeck from "@elgato/streamdeck";
-import { createSDLogger, initializeSDK } from "@iracedeck/stream-deck-shared";
+import { createSDLogger, initializeSDK } from "./shared/index.js";
 
 // Good: Create scoped logger and pass to module
 initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));

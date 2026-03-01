@@ -12,7 +12,7 @@
  * @example
  * // In plugin.ts
  * import streamDeck from "@elgato/streamdeck";
- * import { createSDLogger, initAppMonitor } from "@iracedeck/stream-deck-shared";
+ * import { createSDLogger, initAppMonitor } from "./shared/index.js";
  * initAppMonitor(streamDeck, createSDLogger(streamDeck.logger.createScope("AppMonitor")));
  * streamDeck.connect();
  */

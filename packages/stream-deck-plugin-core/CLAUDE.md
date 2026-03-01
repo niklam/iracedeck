@@ -1,6 +1,10 @@
 # @iracedeck/stream-deck-plugin-core
 
-Core Stream Deck plugin for iRaceDeck. Contains all iRacing-related actions.
+Core Stream Deck plugin for iRaceDeck. Contains all iRacing-related actions and shared utilities.
+
+Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `src/shared/` with a barrel export at `src/shared/index.ts`. Actions import from `../shared/index.js` and `plugin.ts` imports from `./shared/index.js`.
+
+PI components (browser-side web components for Property Inspector) live in `src/pi-components/` and are built separately via `rollup.pi.config.mjs`. PI template partials (EJS) live in `src/pi-templates/`. The build plugin for EJS templates is at `src/build/pi-template-plugin.mjs`.
 
 ## Adding a New Action
 
@@ -35,7 +39,7 @@ import {
   parseKeyBinding,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
+} from "../shared/index.js";
 import z from "zod";
 
 import actionTemplate from "../../icons/{action-name}.svg";
@@ -103,7 +107,7 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
-vi.mock("@iracedeck/stream-deck-shared", () => ({
+vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class { /* mock fields */ },
   createSDLogger: vi.fn(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() })),
   formatKeyBinding: vi.fn((b) => b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),

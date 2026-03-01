@@ -61,7 +61,7 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   },
 }));
 
-vi.mock("@iracedeck/stream-deck-shared", () => ({
+vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = {
       subscribe: vi.fn(),

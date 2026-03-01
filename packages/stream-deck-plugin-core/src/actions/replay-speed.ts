@@ -7,6 +7,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import replaySpeedTemplate from "../../icons/replay-speed.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -14,10 +17,7 @@ import {
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import replaySpeedTemplate from "../../icons/replay-speed.svg";
+} from "../shared/index.js";
 
 const GREEN = "#2ecc71";
 const RED = "#e74c3c";

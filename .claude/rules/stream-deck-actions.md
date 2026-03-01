@@ -4,7 +4,7 @@
 ## SDK-First Principle
 
 **ALWAYS use iRacing SDK commands when available** instead of keyboard shortcuts:
-- Use `getCommands()` from `@iracedeck/stream-deck-shared` for SDK operations
+- Use `getCommands()` from `../shared/index.js` (in action code) for SDK operations
 - Check `docs/keyboard-shortcuts.md` "Available via SDK" column before implementing
 - Only fall back to `getKeyboard().sendKeyCombination()` when SDK doesn't support the feature
 
@@ -34,7 +34,7 @@ The `bin/` folder contains build output and must not be committed to git.
 
 Requirements
 
-- All actions must extend `ConnectionStateAwareAction` from `stream-deck-shared`.
+- All actions must extend `ConnectionStateAwareAction` from `../shared/index.js`.
 - Action settings should use Zod schemas when the action has settings.
 - Actions must not implement their own global offline handling; offline behavior is handled centrally.
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
@@ -63,7 +63,7 @@ Directional Actions (increase/decrease, cycle)
 
 ## Property Inspector Components
 
-Shared PI components are in `packages/stream-deck-shared/src/pi/` and compiled to `dist/pi-components.js`.
+Shared PI components are in `packages/stream-deck-plugin-core/src/pi/` and compiled to `pi-components.js`.
 
 ### Required Files in UI Folder
 Each plugin's `ui/` folder MUST contain these files:
@@ -206,7 +206,7 @@ if (document.readyState === "loading") {
 
 ### Building PI Components
 ```bash
-cd packages/stream-deck-shared
+cd packages/stream-deck-plugin-core
 pnpm build:pi
 pnpm build
 ```
@@ -234,16 +234,14 @@ Global settings are plugin-level settings shared across all action instances. Us
 ```typescript
 // plugin.ts
 import streamDeck from "@elgato/streamdeck";
-import { initGlobalSettings } from "@iracedeck/stream-deck-shared";
+import { initGlobalSettings } from "./shared/index.js";
 
 // MUST call BEFORE streamDeck.connect() - handlers must be registered first
-// MUST pass the SDK instance - bundling creates separate instances otherwise
+// MUST pass the SDK instance
 initGlobalSettings(streamDeck);
 
 streamDeck.connect();
 ```
-
-**Why pass the SDK instance?** The shared library's import of `@elgato/streamdeck` creates a different instance than the plugin's due to bundling. Passing the instance ensures event handlers are registered on the correct SDK.
 
 ### Accessing Global Settings in Actions
 
@@ -257,7 +255,7 @@ import {
   formatKeyBinding,
   type KeyboardKey,
   type KeyboardModifier,
-} from "@iracedeck/stream-deck-shared";
+} from "../shared/index.js";
 
 // Parse key binding from global settings (handles JSON strings automatically)
 const globalSettings = getGlobalSettings() as Record<string, unknown>;

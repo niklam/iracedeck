@@ -7,8 +7,7 @@ Packages
 - `@iracedeck/logger`
 - `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions
 - `@iracedeck/iracing-sdk`
-- `@iracedeck/stream-deck-shared`
-- `@iracedeck/stream-deck-plugin-core` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions
+- `@iracedeck/stream-deck-plugin-core` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions. Shared utilities (base actions, keyboard service, global settings, etc.) live in `src/shared/` within this package.
 - `@iracedeck/website`
 
 High-level guidance

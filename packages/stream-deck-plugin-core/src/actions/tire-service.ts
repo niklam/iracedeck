@@ -7,6 +7,9 @@ import streamDeck, {
   WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
+import z from "zod";
+
+import tireServiceTemplate from "../../icons/tire-service.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -16,10 +19,7 @@ import {
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import tireServiceTemplate from "../../icons/tire-service.svg";
+} from "../shared/index.js";
 
 const GRAY = "#888888";
 const WHITE = "#ffffff";

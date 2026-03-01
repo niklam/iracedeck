@@ -8,7 +8,7 @@ Create a build-time template system for Property Inspector HTML files that allow
 
 1. **Global key bindings editable from each action's PI** - The accordion with key bindings appears in every action that uses them. This is more convenient for users since they can adjust bindings without leaving the action they're configuring.
 
-2. **Global settings are plugin-scoped** - "Global" means shared across all actions *within the same plugin*, not across all plugins. Each plugin (core, pit, comms, etc.) has its own isolated global settings. This is how Stream Deck's `globalSettings` API works - it's per-plugin.
+2. **Global settings are plugin-scoped** - "Global" means shared across all actions *within the same plugin*. This is how Stream Deck's `globalSettings` API works - it's per-plugin.
 
 ## Approach: EJS Templates with Custom Rollup Plugin
 
@@ -24,40 +24,37 @@ Create a build-time template system for Property Inspector HTML files that allow
 
 ```
 packages/
-  stream-deck-shared/
+  stream-deck-plugin-core/
     src/
-      pi-templates/                    # Shared template partials
+      pi-templates/                    # Template partials
         partials/
           global-key-bindings.ejs      # Key binding controls in accordion (reusable)
           accordion.ejs                # Reusable accordion component
           head-common.ejs              # Common <head> content
       build/
-        pi-template-plugin.ts          # Rollup plugin for EJS
-        index.ts                       # Export build utilities
-      pi/
-        key-binding-input.ts           # Add `global` attribute support
-
-  stream-deck-plugin-core/             # Example plugin
-    src/
+        pi-template-plugin.mjs         # Rollup plugin for EJS
       pi/                              # Source templates
         black-box-selector.ejs
         settings.ejs
         data/
-          key-bindings.json            # Plugin-specific key binding definitions
+          key-bindings.json            # Key binding definitions
+      shared/
+        pi/
+          key-binding-input.ts         # `global` attribute support
     com.iracedeck.sd.core.sdPlugin/
       ui/                              # Output (compiled HTML)
 ```
 
-**Note:** Each plugin has its own `key-bindings.json` since global settings are plugin-scoped. The shared package provides only the build tooling and reusable UI partials.
+**Note:** The build tooling and reusable UI partials live alongside the plugin code in `stream-deck-plugin-core`.
 
 ## Implementation Steps
 
-### 1. Add EJS dependency to stream-deck-shared
+### 1. Add EJS dependency to stream-deck-plugin-core
 
-- `pnpm add ejs` in stream-deck-shared
+- `pnpm add ejs` in stream-deck-plugin-core
 - Add `@types/ejs` for TypeScript support
 
-### 2. Create Rollup plugin (`pi-template-plugin.ts`)
+### 2. Create Rollup plugin (`pi-template-plugin.mjs`)
 
 - Watch `.ejs` files in source directory
 - Watch shared partials for rebuild
@@ -106,7 +103,7 @@ packages/
 }
 ```
 
-Each plugin defines its own key bindings. The shared package only provides the accordion partial and build tooling.
+The key bindings, accordion partial, and build tooling all live within `stream-deck-plugin-core`.
 
 ### 4. Update `ird-key-binding` component
 
@@ -123,13 +120,13 @@ Add key binding fields for global storage.
 Update `rollup.config.mjs` in each plugin:
 
 ```javascript
-import { piTemplatePlugin } from "@iracedeck/stream-deck-shared/build";
+import { piTemplatePlugin } from "./src/build/pi-template-plugin.mjs";
 
 plugins: [
   piTemplatePlugin({
     templatesDir: "src/pi",
     outputDir: `${sdPlugin}/ui`,
-    partialsDir: "node_modules/@iracedeck/stream-deck-shared/dist/pi-templates/partials",
+    partialsDir: "src/pi-templates/partials",
   }),
 ]
 ```
@@ -170,17 +167,16 @@ plugins: [
 
 ## Verification
 
-1. Run `pnpm build` in stream-deck-shared
-2. Run `pnpm build` in stream-deck-plugin-core
+1. Run `pnpm build` in stream-deck-plugin-core
 3. Check `ui/black-box-selector.html` contains compiled accordion
 4. Open Stream Deck, verify PI renders with collapsible key bindings
 5. Verify key binding changes persist to global settings
 
 ## Files to Modify
 
-- `packages/stream-deck-shared/package.json` - Add ejs dependency
-- `packages/stream-deck-shared/src/build/pi-template-plugin.ts` - NEW
-- `packages/stream-deck-shared/src/pi-templates/` - NEW directory
-- `packages/stream-deck-shared/src/pi/key-binding-input.ts` - Add global attribute
+- `packages/stream-deck-plugin-core/package.json` - Add ejs dependency
+- `packages/stream-deck-plugin-core/src/build/pi-template-plugin.mjs` - Rollup plugin for EJS
+- `packages/stream-deck-plugin-core/src/pi-templates/` - Template partials directory
+- `packages/stream-deck-plugin-core/src/shared/pi/key-binding-input.ts` - Global attribute support
 - `packages/stream-deck-plugin-core/rollup.config.mjs` - Add plugin
-- `packages/stream-deck-plugin-core/src/pi/` - NEW directory with .ejs files
+- `packages/stream-deck-plugin-core/src/pi/` - EJS template sources

@@ -6,16 +6,16 @@ import {
   type SessionInfo as IRacingSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import z from "zod";
+
+import sessionInfoTemplate from "../../icons/session-info.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import sessionInfoTemplate from "../../icons/session-info.svg";
+} from "../shared/index.js";
 
 const BACKGROUND_DEFAULT = "#2a3444";
 const BACKGROUND_FLASH = "#e74c3c";

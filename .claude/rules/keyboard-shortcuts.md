@@ -67,7 +67,7 @@ const MyActionSettings = z.object({
 ## Sending Key Combinations
 
 ```typescript
-import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "@iracedeck/stream-deck-shared";
+import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "../shared/index.js";
 
 // In action handler
 if (settings.keyBinding?.key) {
@@ -142,7 +142,7 @@ When using `getKeyboard()` in a plugin, you MUST:
 
 ```typescript
 // plugin.ts
-import { initializeKeyboard } from "@iracedeck/stream-deck-shared";
+import { initializeKeyboard } from "./shared/index.js";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
 const native = new IRacingNative();
@@ -170,7 +170,7 @@ When key bindings should be shared across all instances of an action type (e.g.,
 ```typescript
 // plugin.ts - MUST pass SDK instance and call BEFORE connect()
 import streamDeck from "@elgato/streamdeck";
-import { initGlobalSettings } from "@iracedeck/stream-deck-shared";
+import { initGlobalSettings } from "./shared/index.js";
 
 initGlobalSettings(streamDeck);
 streamDeck.connect();
@@ -187,7 +187,7 @@ import {
   parseKeyBinding,
   type KeyboardKey,
   type KeyboardModifier,
-} from "@iracedeck/stream-deck-shared";
+} from "../shared/index.js";
 
 const globalSettings = getGlobalSettings() as Record<string, unknown>;
 const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
@@ -207,7 +207,7 @@ if (binding?.key) {
 Use the shared `formatKeyBinding` utility for human-readable log output:
 
 ```typescript
-import { formatKeyBinding, parseKeyBinding } from "@iracedeck/stream-deck-shared";
+import { formatKeyBinding, parseKeyBinding } from "../shared/index.js";
 
 const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
 if (binding?.key) {
@@ -231,8 +231,8 @@ When modifying keyboard functionality, changes must be synchronized across all l
 
 1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
 2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
-3. **Keyboard service** (`stream-deck-shared/src/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
-4. **Plugin init** (`stream-deck-plugin-*/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
+3. **Keyboard service** (`stream-deck-plugin-core/src/shared/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
+4. **Plugin init** (`stream-deck-plugin-core/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
 5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
 6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API
 7. **Package CLAUDE.md** (`iracing-native/CLAUDE.md`) — must document all native keyboard functions

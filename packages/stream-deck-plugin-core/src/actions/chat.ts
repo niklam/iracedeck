@@ -7,6 +7,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import chatTemplate from "../../icons/chat.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -22,10 +25,7 @@ import {
   parseKeyBinding,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import chatTemplate from "../../icons/chat.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const COLOR_PLACEHOLDER = "{{color}}";

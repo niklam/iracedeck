@@ -15,14 +15,14 @@
  *
  * @example
  * // In plugin.ts (entry point)
- * import { initializeKeyboard } from "@iracedeck/stream-deck-shared";
+ * import { initializeKeyboard } from "./shared/index.js";
  * import { IRacingNative } from "@iracedeck/iracing-native";
  *
  * const native = new IRacingNative();
  * initializeKeyboard(logger, (scanCodes) => native.sendScanKeys(scanCodes));
  *
  * // In action files
- * import { getKeyboard } from "@iracedeck/stream-deck-shared";
+ * import { getKeyboard } from "./shared/index.js";
  *
  * const keyboard = getKeyboard();
  * await keyboard.sendKeyCombination({ key: "f3", code: "F3" });

@@ -12,11 +12,11 @@
  * @example
  * // In plugin.ts
  * import streamDeck from "@elgato/streamdeck";
- * import { createSDLogger, initGlobalSettings } from "@iracedeck/stream-deck-shared";
+ * import { createSDLogger, initGlobalSettings } from "./shared/index.js";
  * initGlobalSettings(streamDeck, createSDLogger(streamDeck.logger.createScope("GlobalSettings")));
  *
  * // In actions
- * import { getGlobalSettings } from "@iracedeck/stream-deck-shared";
+ * import { getGlobalSettings } from "./shared/index.js";
  * const settings = getGlobalSettings();
  * if (settings.disableWhenDisconnected) { ... }
  */

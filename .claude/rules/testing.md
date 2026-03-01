@@ -52,7 +52,7 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 // Mock shared utilities
-vi.mock("@iracedeck/stream-deck-shared", () => ({
+vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();

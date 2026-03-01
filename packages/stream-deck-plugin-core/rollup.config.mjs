@@ -6,7 +6,7 @@ import path from "node:path";
 import url from "node:url";
 import process from "node:process";
 import { readFileSync, readdirSync } from "node:fs";
-import { piTemplatePlugin } from "@iracedeck/stream-deck-shared/build";
+import { piTemplatePlugin } from "./src/build/pi-template-plugin.mjs";
 
 /**
  * Rollup plugin to import SVG files as strings
@@ -44,13 +44,13 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/iracing-native", "@iracedeck/stream-deck-shared", "yaml", "keysender"],
+	external: ["@iracedeck/iracing-native", "yaml", "keysender"],
 	plugins: [
 		svgPlugin(),
 		piTemplatePlugin({
 			templatesDir: "src/pi",
 			outputDir: `${sdPlugin}/ui`,
-			partialsDir: "node_modules/@iracedeck/stream-deck-shared/dist/pi-templates/partials",
+			partialsDir: "src/pi-templates/partials",
 		}),
 		{
 			name: "watch-externals",
@@ -89,7 +89,6 @@ const config = {
 					type: "module",
 					dependencies: {
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
-						"@iracedeck/stream-deck-shared": "file:../../../stream-deck-shared",
 						yaml: "^2.8.2",
 					},
 					optionalDependencies: {

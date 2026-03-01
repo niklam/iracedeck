@@ -6,6 +6,9 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import z from "zod";
+
+import pitQuickActionsTemplate from "../../icons/pit-quick-actions.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -13,10 +16,7 @@ import {
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
-} from "@iracedeck/stream-deck-shared";
-import z from "zod";
-
-import pitQuickActionsTemplate from "../../icons/pit-quick-actions.svg";
+} from "../shared/index.js";
 
 const WHITE = "#ffffff";
 const RED = "#e74c3c";

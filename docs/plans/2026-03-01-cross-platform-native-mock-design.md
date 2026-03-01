@@ -2,7 +2,7 @@
 
 ## Context
 
-`@iracedeck/iracing-native` is a C++ N-API addon that wraps the iRacing SDK (Windows-only). Every downstream package (`iracing-sdk`, `stream-deck-shared`, `stream-deck-plugin-core`) depends on it, and all have `"os": ["win32"]` in their `package.json`. This means `pnpm install`, `pnpm build`, and `pnpm test` all fail on macOS.
+`@iracedeck/iracing-native` is a C++ N-API addon that wraps the iRacing SDK (Windows-only). Every downstream package (`iracing-sdk`, `stream-deck-plugin-core`) depends on it, and all have `"os": ["win32"]` in their `package.json`. This means `pnpm install`, `pnpm build`, and `pnpm test` all fail on macOS.
 
 **Goal**: Make the full development loop (install → build → test → runtime mock) work on macOS while keeping Windows behavior identical.
 
@@ -56,4 +56,4 @@ The mock cycles through 3 telemetry snapshots every 3 seconds:
 | `packages/iracing-native/src/mock-impl.ts` | Mock IRacingNative class |
 | `packages/iracing-native/src/mock-data/` | Session info, var headers, snapshots |
 | `packages/iracing-native/scripts/build.mjs` | Platform-aware build script |
-| `packages/stream-deck-shared/src/keysender.d.ts` | Type shim for keysender |
+| `packages/stream-deck-plugin-core/src/shared/keysender.d.ts` | Type shim for keysender |

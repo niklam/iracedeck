@@ -54,7 +54,7 @@ packages/stream-deck-plugin-{name}/
 
 ### Available Partials
 
-Located in `@iracedeck/stream-deck-shared/dist/pi-templates/partials/`:
+Located in `packages/stream-deck-plugin-core/src/pi-templates/partials/`:
 
 - **head-common.ejs** - Required scripts and common styles
 - **accordion.ejs** - Collapsible section component
@@ -65,7 +65,7 @@ Located in `@iracedeck/stream-deck-shared/dist/pi-templates/partials/`:
 Add `piTemplatePlugin` to your plugin's rollup.config.mjs:
 
 ```javascript
-import { piTemplatePlugin } from "@iracedeck/stream-deck-shared/build";
+import { piTemplatePlugin } from "./src/build/pi-template-plugin.mjs";
 
 const sdPlugin = "com.iracedeck.sd.{name}.sdPlugin";
 
@@ -74,7 +74,7 @@ export default {
     piTemplatePlugin({
       templatesDir: "src/pi",
       outputDir: `${sdPlugin}/ui`,
-      partialsDir: "node_modules/@iracedeck/stream-deck-shared/dist/pi-templates/partials",
+      partialsDir: "src/pi-templates/partials",
     }),
     // ... other plugins
   ],
