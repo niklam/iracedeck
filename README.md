@@ -6,6 +6,10 @@
   Open-source <a href="https://www.elgato.com/stream-deck">Elgato Stream Deck</a> plugin for <a href="https://www.iracing.com/">iRacing</a>. Turn your Stream Deck into a fully-featured button box with live telemetry, pit controls, camera management, and more.
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/c6nRYywpah"><img src="https://img.shields.io/discord/1477659500851888219?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord"></a>
+</p>
+
 ## Features
 
 **28 actions** across 8 categories, all with Stream Deck+ encoder support:
