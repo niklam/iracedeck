@@ -294,7 +294,8 @@ For Stream Deck+ encoder (dial) support:
   "Encoder": {
     "layout": "$B1",
     "TriggerDescription": {
-      "Rotate": "Description for rotation"
+      "Rotate": "Description for rotation",
+      "Push": "Description for press"
     }
   }
 }

@@ -215,7 +215,7 @@ Add entry to the `Actions` array:
     "layout": "$B1",
     "TriggerDescription": {
       "Rotate": "What rotation does",
-      "Press": "What press does"
+      "Push": "What press does"
     }
   },
   "States": [
