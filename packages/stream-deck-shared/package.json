@@ -30,8 +30,10 @@
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "ejs": "^4.0.1",
-    "keysender": "^2.4.0",
     "zod": "^3.25.76"
+  },
+  "optionalDependencies": {
+    "keysender": "^2.4.0"
   },
   "peerDependencies": {
     "@elgato/streamdeck": "^2.0.0"

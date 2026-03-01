@@ -2,6 +2,40 @@
 
 Native Node.js addon (C++/N-API) for iRacing SDK integration and keyboard input.
 
+## Cross-Platform Architecture
+
+The package detects the platform at module load time and behaves accordingly:
+
+- **Windows (`win32`)**: Loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g., fresh clone without `node-gyp rebuild`), falls back to the mock.
+- **Other platforms**: Skips native addon loading entirely and uses `IRacingNativeMock`.
+
+The `IRacingNative` class delegates every method call to either `addon` (native) or `IRacingNativeMock`. Consumers never need to know which is active.
+
+### Build behavior
+
+The `build` script (`scripts/build.mjs`) is platform-aware:
+- On Windows: runs `node-gyp rebuild` then `tsc`
+- On macOS/Linux: runs `tsc` only (skips native compilation)
+
+### Mock implementation
+
+`IRacingNativeMock` (in `src/mock-impl.ts`) provides:
+- Simulated connection lifecycle (`startup`/`shutdown`/`isConnected`)
+- Mock telemetry data that rotates through 3 snapshots (mid-straight, braking, pit entry)
+- Mock session info YAML (Spa practice, 3 drivers)
+- No-op implementations for broadcast messages, chat, and keyboard input
+
+### Mock data
+
+Located in `src/mock-data/`:
+- `session-info.ts` — YAML string for a practice session at Spa
+- `telemetry.ts` — Variable headers with computed offsets and a `buildTelemetryBuffer()` function
+- `snapshots.ts` — 3 telemetry snapshots with realistic values
+
+### When adding new native methods
+
+In addition to the cross-package sync steps below, you must also add the method to `IRacingNativeMock` in `src/mock-impl.ts`.
+
 ## Keyboard Input Functions
 
 The addon provides three keyboard functions using Windows `SendInput()` with `KEYEVENTF_SCANCODE` for layout-independent physical key sending.

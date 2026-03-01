@@ -20,6 +20,10 @@ High-level guidance
 - Use `paths` frontmatter in rules when a rule applies only to certain files.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
 
+Cross-platform development
+
+This project supports development on both Windows and macOS. The native addon (`@iracedeck/iracing-native`) automatically uses a mock implementation on non-Windows platforms. See the `cross-platform-development` skill and `packages/iracing-native/CLAUDE.md` for details.
+
 How to import or reference
 
 You can import or reference specific rule files from other markdown using `@.claude/rules/<file>.md` if needed.

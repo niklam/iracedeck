@@ -90,8 +90,10 @@ const config = {
 					dependencies: {
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						"@iracedeck/stream-deck-shared": "file:../../../stream-deck-shared",
-						"keysender": "^2.3.1",
 						yaml: "^2.8.2",
+					},
+					optionalDependencies: {
+						"keysender": "^2.3.1",
 					}
 				};
 				this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });

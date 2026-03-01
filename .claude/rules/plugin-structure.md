@@ -89,6 +89,17 @@ const pkg = {
 
 **Why this matters**: Bundling `keysender` (a native CommonJS module) into an ES module output causes runtime errors like "require is not defined". The module must be loaded at runtime from `node_modules`.
 
+3. **Use `optionalDependencies` for keysender** - In the emitted `package.json`, place `keysender` under `optionalDependencies` so it installs on Windows but silently fails on macOS/Linux:
+```javascript
+const pkg = {
+  type: "module",
+  dependencies: { /* ... */ },
+  optionalDependencies: {
+    "keysender": "^2.3.1",
+  }
+};
+```
+
 Reference `stream-deck-plugin-core/rollup.config.mjs` for the correct configuration.
 
 ### Application Monitoring

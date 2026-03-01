@@ -33,9 +33,6 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
-  "os": [
-    "win32"
-  ],
   "engines": {
     "node": ">=24.0.0"
   },
