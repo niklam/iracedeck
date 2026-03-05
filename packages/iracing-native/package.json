@@ -18,7 +18,7 @@
     "src/*.cc"
   ],
   "dependencies": {
-    "node-addon-api": "^8.5.0"
+    "node-addon-api": "^8.6.0"
   },
   "devDependencies": {
     "@types/node": "~24.0.15",
