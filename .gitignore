@@ -12,7 +12,6 @@ yarn.lock
 
 # Build output
 dist/
-build/
 
 # Stream Deck plugin packages (built artifacts)
 *.streamDeckPlugin
