@@ -27,9 +27,13 @@ jobs:
         run: pnpm build
 
       - name: Pack Stream Deck plugin
-        run: npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
+          Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "iracedeck-v${version}.streamDeckPlugin"
+        shell: pwsh
 
       - name: Attach plugin to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: com.iracedeck.sd.core.streamDeckPlugin
+          files: iracedeck-v*.streamDeckPlugin
