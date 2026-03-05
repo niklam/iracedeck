@@ -143,6 +143,10 @@ See the existing actions for reference, or check the package-level docs in `pack
 
 [MIT](LICENSE)
 
+## Inspiration
+
+This project was inspired by [iRaceIT](https://iraceit.itxware.de/), a Stream Deck plugin for iRacing.
+
 ## Acknowledgements
 
 - [Elgato Stream Deck SDK](https://github.com/elgatosf/streamdeck)
