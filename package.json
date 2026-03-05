@@ -1,5 +1,6 @@
 {
   "name": "iracedeck",
+  "version": "0.9.1",
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "type": "module",
@@ -25,12 +26,15 @@
     "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
+    "release": "release-it",
+    "release:dry": "release-it --dry-run",
     "prepare": "husky"
   },
   "devDependencies": {
     "@elgato/eslint-config": "^0.3.2",
     "@elgato/prettier-config": "^0.3.3",
     "@eslint/js": "^9.39.3",
+    "@release-it/conventional-changelog": "^10.0.5",
     "@stylistic/eslint-plugin": "^5.9.0",
     "@tsconfig/node22": "^22.0.5",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
@@ -43,6 +47,7 @@
     "lint-staged": "^16.3.2",
     "node-gyp": "^12.2.0",
     "prettier": "^3.8.1",
+    "release-it": "^19.2.4",
     "turbo": "^2.8.11",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
