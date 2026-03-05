@@ -24,7 +24,8 @@
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
     "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
-    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch"
+    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@elgato/eslint-config": "^0.3.2",
@@ -38,10 +39,21 @@
     "eslint-config-prettier": "^10.1.8",
     "firebase-tools": "^15.7.0",
     "globals": "^17.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
     "node-gyp": "^12.2.0",
     "prettier": "^3.8.1",
     "turbo": "^2.8.11",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
   }
 }
