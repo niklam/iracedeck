@@ -76,4 +76,4 @@ By submitting a pull request, you agree that your contribution will be licensed 
 
 ## Questions?
 
-Open a [discussion](https://github.com/niklam/iracedeck/discussions) or comment on an issue. Don't open a PR to ask a question.
+Join the [iRaceDeck Discord](https://discord.gg/c6nRYywpah) or comment on an issue. Don't open a PR to ask a question.

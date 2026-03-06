@@ -11,8 +11,10 @@ yarn.lock
 # Note: pnpm-lock.yaml should be committed
 
 # Build output
-dist/
-build/
+/dist/
+/packages/*/dist/
+/build/
+/packages/*/build/
 
 # Stream Deck plugin packages (built artifacts)
 *.streamDeckPlugin

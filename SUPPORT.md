@@ -2,7 +2,7 @@
 
 ## Getting Help
 
-- **Questions & discussion** — use [GitHub Discussions](https://github.com/niklam/iracedeck/discussions)
+- **Questions & discussion** — join the [iRaceDeck Discord](https://discord.gg/c6nRYywpah)
 - **Bug reports** — [open an issue](https://github.com/niklam/iracedeck/issues/new?template=bug_report.yml)
 - **Feature requests** — [open an issue](https://github.com/niklam/iracedeck/issues/new?template=feature_request.yml)
 
