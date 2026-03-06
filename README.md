@@ -107,6 +107,38 @@ iRacing telemetry (shared memory)
       -> stream-deck-plugin (updates button display)
 ```
 
+## Releasing
+
+All packages share a single version number. Releases are automated using [release-it](https://github.com/release-it/release-it) with the conventional-changelog plugin.
+
+### How to release
+
+```bash
+pnpm release            # auto-detect version bump from commits
+pnpm release -- 2.0.0   # force a specific version
+pnpm release:dry        # preview without making changes
+```
+
+The release script will:
+
+1. Analyze conventional commits since the last tag to determine the version bump (`fix` = patch, `feat` = minor, `BREAKING CHANGE` = major)
+2. Update `CHANGELOG.md` with grouped entries (Features, Bug Fixes, etc.)
+3. Bump the version in the root `package.json`, all `packages/*/package.json` files, and the Stream Deck `manifest.json`
+4. Create a commit (`chore(release): vX.Y.Z`), git tag (`vX.Y.Z`), and push to origin
+5. Create a GitHub Release with the changelog as release notes
+
+### Stream Deck plugin pack (CI)
+
+A GitHub Actions workflow (`.github/workflows/release-pack.yml`) triggers automatically when a version tag is pushed. It:
+
+1. Builds the full project on Windows
+2. Packs the Stream Deck plugin using `streamdeck pack`
+3. Attaches the `iracedeck-vX.Y.Z.streamDeckPlugin` file to the GitHub Release
+
+### Requirements
+
+- [GitHub CLI](https://cli.github.com/) (`gh`) must be authenticated — the release script reads your token via `gh auth token`
+
 ## Contributing
 
 Contributions are welcome! Here's how to get started:
