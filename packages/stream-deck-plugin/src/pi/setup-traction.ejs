@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Setting">
+			<sdpi-select id="setting-select" setting="setting" default="tc-toggle">
+				<option value="tc-toggle">TC Toggle</option>
+				<option value="tc-slot-1">TC Slot 1</option>
+				<option value="tc-slot-2">TC Slot 2</option>
+				<option value="tc-slot-3">TC Slot 3</option>
+				<option value="tc-slot-4">TC Slot 4</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item">
+			<sdpi-select setting="direction" default="increase">
+				<option value="increase">Increase</option>
+				<option value="decrease">Decrease</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'Traction Control Key Bindings',
+			keyBindings: require('./data/key-bindings.json').setupTraction
+		}) %>
+
+		<script>
+			// TC Toggle is the only non-directional control
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", setting === "tc-toggle");
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "tc-toggle";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "tc-toggle");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "tc-toggle");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "tc-toggle";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>
