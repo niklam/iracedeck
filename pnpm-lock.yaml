@@ -21,8 +21,8 @@ importers:
         specifier: 10.0.5
         version: 10.0.5(conventional-commits-filter@5.0.0)(conventional-commits-parser@6.3.0)(release-it@19.2.4(@types/node@25.3.5))
       '@stylistic/eslint-plugin':
-        specifier: 5.9.0
-        version: 5.9.0(eslint@9.39.3(jiti@2.6.1))
+        specifier: 5.10.0
+        version: 5.10.0(eslint@9.39.3(jiti@2.6.1))
       '@tsconfig/node22':
         specifier: 22.0.5
         version: 22.0.5
@@ -42,8 +42,8 @@ importers:
         specifier: 15.9.0
         version: 15.9.0(@types/node@25.3.5)(encoding@0.1.13)(typescript@5.9.3)
       globals:
-        specifier: 17.3.0
-        version: 17.3.0
+        specifier: 17.4.0
+        version: 17.4.0
       husky:
         specifier: 9.1.7
         version: 9.1.7
@@ -60,8 +60,8 @@ importers:
         specifier: 19.2.4
         version: 19.2.4(@types/node@25.3.5)
       turbo:
-        specifier: 2.8.11
-        version: 2.8.11
+        specifier: 2.8.13
+        version: 2.8.13
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -72,8 +72,8 @@ importers:
   packages/iracing-native:
     dependencies:
       node-addon-api:
-        specifier: 8.5.0
-        version: 8.5.0
+        specifier: 8.6.0
+        version: 8.6.0
     devDependencies:
       '@types/node':
         specifier: 24.0.15
@@ -131,8 +131,8 @@ importers:
   packages/stream-deck-plugin:
     dependencies:
       '@elgato/streamdeck':
-        specifier: 2.0.1
-        version: 2.0.1
+        specifier: 2.0.2
+        version: 2.0.2
       '@iracedeck/iracing-native':
         specifier: workspace:*
         version: link:../iracing-native
@@ -150,8 +150,8 @@ importers:
         specifier: 1.7.1
         version: 1.7.1(@types/node@24.0.15)
       '@elgato/utils':
-        specifier: 0.4.1
-        version: 0.4.1
+        specifier: 0.4.2
+        version: 0.4.2
       '@rollup/plugin-commonjs':
         specifier: 29.0.1
         version: 29.0.1(rollup@4.59.0)
@@ -326,12 +326,15 @@ packages:
   '@elgato/schemas@0.4.13':
     resolution: {integrity: sha512-96tinjod0P4OHAcosIm5X5915Y0zqfevTC9T8R1gCmSNcCEgIiDVzEdeAS54WgLrlnhQtXgrdIb2DtDol6FAjQ==}
 
-  '@elgato/streamdeck@2.0.1':
-    resolution: {integrity: sha512-pt69kBa8A9BEGVLijuVAETkQa8P/uXizplfFe29d4A5gjaeIv8jlDl9Mw8Pkmwakez8ti0ye7v/psjEleqTlpQ==}
+  '@elgato/schemas@0.4.14':
+    resolution: {integrity: sha512-kwfYJ30qAxJW9AMkSSjTEY/VARW+xzuc3tW7CinB7ja+liGHaNUx20CRwLCD9xrbZ/7V1cDolPvNhNWmWvihZg==}
+
+  '@elgato/streamdeck@2.0.2':
+    resolution: {integrity: sha512-XKY0wEm492geMDdxEC0M7ayxXB6WQHQbnFoJl33cnq0T6QkImSrjLrCPu5jKe0TNo6suY5/0iM1TcREU+6kKQQ==}
     engines: {node: '>=20.5.1'}
 
-  '@elgato/utils@0.4.1':
-    resolution: {integrity: sha512-Az66McfjYXajL7ZLud+SaO0n2+Q2RedVwxfRdkS1d5uyNiXf25KWOfdU2zS7un3H/d+a+lxdX7pFqiKTDf6/UA==}
+  '@elgato/utils@0.4.2':
+    resolution: {integrity: sha512-zIMMrvTy4OeYYUD9bib7HzoeSfDHKtL1H3cHLXCZLlzov1vk1PMJ5welopaSr5n6H7VOrDkPQFR+893vYQJa1g==}
 
   '@es-joy/jsdoccomment@0.56.0':
     resolution: {integrity: sha512-c6EW+aA1w2rjqOMjbL93nZlwxp6c1Ln06vTYs5FjRRhmJXK8V/OrSXdT+pUr4aRYgjCgu8/OkiZr0tzeVrRSbw==}
@@ -1112,8 +1115,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@stylistic/eslint-plugin@5.9.0':
-    resolution: {integrity: sha512-FqqSkvDMYJReydrMhlugc71M76yLLQWNfmGq+SIlLa7N3kHp8Qq8i2PyWrVNAfjOyOIY+xv9XaaYwvVW7vroMA==}
+  '@stylistic/eslint-plugin@5.10.0':
+    resolution: {integrity: sha512-nPK52ZHvot8Ju/0A4ucSX1dcPV2/1clx0kLcH5wDmrE4naKso7TUC/voUyU1O9OTKTrR6MYip6LP0ogEMQ9jPQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: ^9.0.0 || ^10.0.0
@@ -2526,8 +2529,8 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
-  globals@17.3.0:
-    resolution: {integrity: sha512-yMqGUQVVCkD4tqjOJf3TnrvaaHDMYp4VlUSObbkIiuCPe/ofdMBFIAcBbCSRFWOnos6qRiTVStDwqPLUclaxIw==}
+  globals@17.4.0:
+    resolution: {integrity: sha512-hjrNztw/VajQwOLsMNT1cbJiH2muO3OROCHnbehc8eY5JyD2gqz4AcMHPqgaOR59DjgUjYAYLeH699g/eWi2jw==}
     engines: {node: '>=18'}
 
   google-auth-library@10.6.1:
@@ -3298,8 +3301,8 @@ packages:
     resolution: {integrity: sha512-NHDDGYudnvRutt/VhKFlX26IotXe1w0cmkDm6JGquh5bz/bDTw0LufSmH/GxTjEdpHEO+bVKFTwdrcGa/9XlKQ==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  node-addon-api@8.5.0:
-    resolution: {integrity: sha512-/bRZty2mXUIFY/xU5HLvveNHlswNJej+RnxBjOMkidWfwZzgTbPG1E3K5TOxRLOR+5hX7bSofy8yf1hZevMS8A==}
+  node-addon-api@8.6.0:
+    resolution: {integrity: sha512-gBVjCaqDlRUk0EwoPNKzIr9KkS9041G/q31IBShPs1Xz6UTA+EXdZADbzqAJQrpDRq71CIMnOP5VMut3SL0z5Q==}
     engines: {node: ^18 || ^20 || >= 21}
 
   node-domexception@1.0.0:
@@ -4212,38 +4215,38 @@ packages:
     resolution: {integrity: sha512-LxhtAkPDTkVCMQjt2h6eBVY28KCjikZqZfMcC15YBeNjkgUpdCfBu5HoiOTDu86v6smE8yOjyEktJ8hlbANHQA==}
     engines: {node: '>=0.6.x'}
 
-  turbo-darwin-64@2.8.11:
-    resolution: {integrity: sha512-XKaCWaz4OCt77oYYvGCIRpvYD4c/aNaKjRkUpv+e8rN3RZb+5Xsyew4yRO+gaHdMIUhQznXNXfHlhs+/p7lIhA==}
+  turbo-darwin-64@2.8.13:
+    resolution: {integrity: sha512-PmOvodQNiOj77+Zwoqku70vwVjKzL34RTNxxoARjp5RU5FOj/CGiC6vcDQhNtFPUOWSAaogHF5qIka9TBhX4XA==}
     cpu: [x64]
     os: [darwin]
 
-  turbo-darwin-arm64@2.8.11:
-    resolution: {integrity: sha512-VvynLHGUNvQ9k7GZjRPSsRcK4VkioTfFb7O7liAk4nHKjEcMdls7GqxzjVWgJiKz3hWmQGaP9hRa9UUnhVWCxA==}
+  turbo-darwin-arm64@2.8.13:
+    resolution: {integrity: sha512-kI+anKcLIM4L8h+NsM7mtAUpElkCOxv5LgiQVQR8BASyDFfc8Efj5kCk3cqxuxOvIqx0sLfCX7atrHQ2kwuNJQ==}
     cpu: [arm64]
     os: [darwin]
 
-  turbo-linux-64@2.8.11:
-    resolution: {integrity: sha512-cbSn37dcm+EmkQ7DD0euy7xV7o2el4GAOr1XujvkAyKjjNvQ+6QIUeDgQcwAx3D17zPpDvfDMJY2dLQadWnkmQ==}
+  turbo-linux-64@2.8.13:
+    resolution: {integrity: sha512-j29KnQhHyzdzgCykBFeBqUPS4Wj7lWMnZ8CHqytlYDap4Jy70l4RNG46pOL9+lGu6DepK2s1rE86zQfo0IOdPw==}
     cpu: [x64]
     os: [linux]
 
-  turbo-linux-arm64@2.8.11:
-    resolution: {integrity: sha512-+trymp2s2aBrhS04l6qFxcExzZ8ffndevuUB9c5RCeqsVpZeiWuGQlWNm5XjOmzoMayxRARZ5ma7yiWbGMiLqQ==}
+  turbo-linux-arm64@2.8.13:
+    resolution: {integrity: sha512-OEl1YocXGZDRDh28doOUn49QwNe82kXljO1HXApjU0LapkDiGpfl3jkAlPKxEkGDSYWc8MH5Ll8S16Rf5tEBYg==}
     cpu: [arm64]
     os: [linux]
 
-  turbo-windows-64@2.8.11:
-    resolution: {integrity: sha512-3kJjFSM4yw1n9Uzmi+XkAUgCae19l/bH6RJ442xo7mnZm0tpOjo33F+FYHoSVpIWVMd0HG0LDccyafPSdylQbA==}
+  turbo-windows-64@2.8.13:
+    resolution: {integrity: sha512-717bVk1+Pn2Jody7OmWludhEirEe0okoj1NpRbSm5kVZz/yNN/jfjbxWC6ilimXMz7xoMT3IDfQFJsFR3PMANA==}
     cpu: [x64]
     os: [win32]
 
-  turbo-windows-arm64@2.8.11:
-    resolution: {integrity: sha512-JOM4uF2vuLsJUvibdR6X9QqdZr6BhC6Nhlrw4LKFPsXZZI/9HHLoqAiYRpE4MuzIwldCH/jVySnWXrI1SKto0g==}
+  turbo-windows-arm64@2.8.13:
+    resolution: {integrity: sha512-R819HShLIT0Wj6zWVnIsYvSNtRNj1q9VIyaUz0P24SMcLCbQZIm1sV09F4SDbg+KCCumqD2lcaR2UViQ8SnUJA==}
     cpu: [arm64]
     os: [win32]
 
-  turbo@2.8.11:
-    resolution: {integrity: sha512-H+rwSHHPLoyPOSoHdmI1zY0zy0GGj1Dmr7SeJW+nZiWLz2nex8EJ+fkdVabxXFMNEux+aywI4Sae8EqhmnOv4A==}
+  turbo@2.8.13:
+    resolution: {integrity: sha512-nyM99hwFB9/DHaFyKEqatdayGjsMNYsQ/XBNO6MITc7roncZetKb97MpHxWf3uiU+LB9c9HUlU3Jp2Ixei2k1A==}
     hasBin: true
 
   type-check@0.4.0:
@@ -4825,16 +4828,18 @@ snapshots:
 
   '@elgato/schemas@0.4.13': {}
 
-  '@elgato/streamdeck@2.0.1':
+  '@elgato/schemas@0.4.14': {}
+
+  '@elgato/streamdeck@2.0.2':
     dependencies:
-      '@elgato/schemas': 0.4.13
-      '@elgato/utils': 0.4.1
+      '@elgato/schemas': 0.4.14
+      '@elgato/utils': 0.4.2
       ws: 8.19.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@elgato/utils@0.4.1':
+  '@elgato/utils@0.4.2':
     dependencies:
       zod: 3.25.76
 
@@ -5646,7 +5651,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@stylistic/eslint-plugin@5.9.0(eslint@9.39.3(jiti@2.6.1))':
+  '@stylistic/eslint-plugin@5.10.0(eslint@9.39.3(jiti@2.6.1))':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.3(jiti@2.6.1))
       '@typescript-eslint/types': 8.56.1
@@ -7366,7 +7371,7 @@ snapshots:
 
   globals@14.0.0: {}
 
-  globals@17.3.0: {}
+  globals@17.4.0: {}
 
   google-auth-library@10.6.1:
     dependencies:
@@ -8116,7 +8121,7 @@ snapshots:
     dependencies:
       type-fest: 2.19.0
 
-  node-addon-api@8.5.0: {}
+  node-addon-api@8.6.0: {}
 
   node-domexception@1.0.0: {}
 
@@ -9191,32 +9196,32 @@ snapshots:
 
   tsscmp@1.0.6: {}
 
-  turbo-darwin-64@2.8.11:
+  turbo-darwin-64@2.8.13:
     optional: true
 
-  turbo-darwin-arm64@2.8.11:
+  turbo-darwin-arm64@2.8.13:
     optional: true
 
-  turbo-linux-64@2.8.11:
+  turbo-linux-64@2.8.13:
     optional: true
 
-  turbo-linux-arm64@2.8.11:
+  turbo-linux-arm64@2.8.13:
     optional: true
 
-  turbo-windows-64@2.8.11:
+  turbo-windows-64@2.8.13:
     optional: true
 
-  turbo-windows-arm64@2.8.11:
+  turbo-windows-arm64@2.8.13:
     optional: true
 
-  turbo@2.8.11:
+  turbo@2.8.13:
     optionalDependencies:
-      turbo-darwin-64: 2.8.11
-      turbo-darwin-arm64: 2.8.11
-      turbo-linux-64: 2.8.11
-      turbo-linux-arm64: 2.8.11
-      turbo-windows-64: 2.8.11
-      turbo-windows-arm64: 2.8.11
+      turbo-darwin-64: 2.8.13
+      turbo-darwin-arm64: 2.8.13
+      turbo-linux-64: 2.8.13
+      turbo-linux-arm64: 2.8.13
+      turbo-windows-64: 2.8.13
+      turbo-windows-arm64: 2.8.13
 
   type-check@0.4.0:
     dependencies:
