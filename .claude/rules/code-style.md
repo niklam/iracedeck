@@ -7,6 +7,7 @@
 - Avoid side effects in constructors and public methods; prefer returning new state.
 - Tests are required for all new code (see `testing.md`).
 - Use clear, descriptive filenames and group related utilities under packages.
+- Use exact dependency versions (no `^` or `~` prefixes). The `.npmrc` has `save-exact=true` to enforce this for `pnpm add`.
 
 Formatting
 

@@ -18,14 +18,14 @@
     "src/*.cc"
   ],
   "dependencies": {
-    "node-addon-api": "^8.5.0"
+    "node-addon-api": "8.5.0"
   },
   "devDependencies": {
-    "@types/node": "~24.0.15",
-    "node-gyp": "^12.2.0",
-    "rimraf": "^6.1.3",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "@types/node": "24.0.15",
+    "node-gyp": "12.2.0",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
   },
   "engines": {
     "node": ">=24.0.0"

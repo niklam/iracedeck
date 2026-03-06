@@ -89,10 +89,10 @@ const config = {
 					type: "module",
 					dependencies: {
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
-						yaml: "^2.8.2",
+						yaml: "2.8.2",
 					},
 					optionalDependencies: {
-						"keysender": "^2.3.1",
+						"keysender": "2.4.0",
 					}
 				};
 				this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });

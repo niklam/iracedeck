@@ -9,6 +9,6 @@
     "serve": "npx serve public_html"
   },
   "devDependencies": {
-    "firebase-tools": "^15.9.0"
+    "firebase-tools": "15.9.0"
   }
 }

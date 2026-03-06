@@ -76,8 +76,8 @@ const pkg = {
   type: "module",
   dependencies: {
     "@iracedeck/iracing-native": "file:../../../iracing-native",
-    "keysender": "^2.3.1",
-    yaml: "^2.8.2",
+    "keysender": "2.4.0",
+    yaml: "2.8.2",
   }
 };
 ```
@@ -90,7 +90,7 @@ const pkg = {
   type: "module",
   dependencies: { /* ... */ },
   optionalDependencies: {
-    "keysender": "^2.3.1",
+    "keysender": "2.4.0",
   }
 };
 ```
