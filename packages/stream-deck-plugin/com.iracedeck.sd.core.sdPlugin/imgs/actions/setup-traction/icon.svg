@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#ffffff">
+  <!-- Tire circle -->
+  <circle cx="10" cy="10" r="7" stroke-width="1.5"/>
+  <!-- Inner hub -->
+  <circle cx="10" cy="10" r="3" stroke-width="1"/>
+  <!-- Traction wavy lines below tire -->
+  <path d="M4,18 Q6,16 8,18 Q10,20 12,18 Q14,16 16,18" stroke-width="1" stroke-linecap="round" fill="none"/>
+</svg>
