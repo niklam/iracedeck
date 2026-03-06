@@ -41,7 +41,7 @@
     "@typescript-eslint/parser": "^8.56.1",
     "eslint": "^9.39.3",
     "eslint-config-prettier": "^10.1.8",
-    "firebase-tools": "^15.7.0",
+    "firebase-tools": "^15.9.0",
     "globals": "^17.3.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.3.2",
