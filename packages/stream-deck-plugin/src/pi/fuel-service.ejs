@@ -62,15 +62,17 @@
 				}
 
 				if (modeSelect) {
+					updateVisibility(modeSelect.value || "add-fuel");
+
 					modeSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value);
+						updateVisibility(ev.target.value || "add-fuel");
 					});
 					modeSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value);
+						updateVisibility(ev.target.value || "add-fuel");
 					});
 
-					// Poll until value is populated, then keep polling for changes
-					let lastMode = "";
+					// Polling fallback for reliable detection
+					let lastMode = modeSelect.value || "add-fuel";
 					setInterval(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
