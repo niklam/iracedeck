@@ -2,6 +2,34 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateViewAdjustmentSvg, VIEW_ADJUSTMENT_GLOBAL_KEYS } from "./view-adjustment.js";
 
+vi.mock("@iracedeck/icons/view-adjustment/driver-height-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">driver-height-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/driver-height-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">driver-height-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/fov-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">fov-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/fov-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">fov-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/horizon-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">horizon-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/horizon-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">horizon-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/recenter-vr.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">recenter-vr {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/ui-size-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">ui-size-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/view-adjustment/ui-size-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">ui-size-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -43,8 +71,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

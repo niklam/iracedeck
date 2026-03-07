@@ -8,6 +8,34 @@ const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = v
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
+vi.mock("@iracedeck/icons/setup-traction/tc-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-1-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-1-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-2-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-2-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-3-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-3-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -50,8 +78,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -190,26 +224,26 @@ describe("SetupTraction", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
+      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         "tc-toggle": {
-          increase: { line1: "TC", line2: "TOGGLE" },
-          decrease: { line1: "TC", line2: "TOGGLE" },
+          increase: { mainLabel: "TC", subLabel: "TOGGLE" },
+          decrease: { mainLabel: "TC", subLabel: "TOGGLE" },
         },
         "tc-slot-1": {
-          increase: { line1: "TC SLOT 1", line2: "INCREASE" },
-          decrease: { line1: "TC SLOT 1", line2: "DECREASE" },
+          increase: { mainLabel: "TC SLOT 1", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC SLOT 1", subLabel: "DECREASE" },
         },
         "tc-slot-2": {
-          increase: { line1: "TC SLOT 2", line2: "INCREASE" },
-          decrease: { line1: "TC SLOT 2", line2: "DECREASE" },
+          increase: { mainLabel: "TC SLOT 2", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC SLOT 2", subLabel: "DECREASE" },
         },
         "tc-slot-3": {
-          increase: { line1: "TC SLOT 3", line2: "INCREASE" },
-          decrease: { line1: "TC SLOT 3", line2: "DECREASE" },
+          increase: { mainLabel: "TC SLOT 3", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC SLOT 3", subLabel: "DECREASE" },
         },
         "tc-slot-4": {
-          increase: { line1: "TC SLOT 4", line2: "INCREASE" },
-          decrease: { line1: "TC SLOT 4", line2: "DECREASE" },
+          increase: { mainLabel: "TC SLOT 4", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC SLOT 4", subLabel: "DECREASE" },
         },
       };
 
@@ -221,8 +255,8 @@ describe("SetupTraction", () => {
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.line1);
-          expect(decoded).toContain(labels.line2);
+          expect(decoded).toContain(labels.mainLabel);
+          expect(decoded).toContain(labels.subLabel);
         }
       }
     });

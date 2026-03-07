@@ -7,9 +7,17 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import tcSlot1DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-decrease.svg";
+import tcSlot1IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-1-increase.svg";
+import tcSlot2DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-2-decrease.svg";
+import tcSlot2IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-2-increase.svg";
+import tcSlot3DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-3-decrease.svg";
+import tcSlot3IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-3-increase.svg";
+import tcSlot4DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg";
+import tcSlot4IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-increase.svg";
+import tcToggleIconSvg from "@iracedeck/icons/setup-traction/tc-toggle.svg";
 import z from "zod";
 
-import setupTractionTemplate from "../../icons/setup-traction.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,10 +34,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const GREEN = "#2ecc71";
-
 type SetupTractionSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
 
 type DirectionType = "increase" | "decrease";
@@ -43,107 +47,33 @@ const DIRECTIONAL_CONTROLS: Set<SetupTractionSetting> = new Set([
 ]);
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
+ * Flat icon lookup record mapping setting + direction keys to standalone SVG templates.
  */
-const SETUP_TRACTION_LABELS: Record<
-  SetupTractionSetting,
-  Record<DirectionType, { line1: string; line2: string }> | { line1: string; line2: string }
-> = {
-  "tc-toggle": { line1: "TC", line2: "TOGGLE" },
-  "tc-slot-1": {
-    increase: { line1: "TC SLOT 1", line2: "INCREASE" },
-    decrease: { line1: "TC SLOT 1", line2: "DECREASE" },
-  },
-  "tc-slot-2": {
-    increase: { line1: "TC SLOT 2", line2: "INCREASE" },
-    decrease: { line1: "TC SLOT 2", line2: "DECREASE" },
-  },
-  "tc-slot-3": {
-    increase: { line1: "TC SLOT 3", line2: "INCREASE" },
-    decrease: { line1: "TC SLOT 3", line2: "DECREASE" },
-  },
-  "tc-slot-4": {
-    increase: { line1: "TC SLOT 4", line2: "INCREASE" },
-    decrease: { line1: "TC SLOT 4", line2: "DECREASE" },
-  },
+const SETUP_TRACTION_ICONS: Record<string, string> = {
+  "tc-toggle": tcToggleIconSvg,
+  "tc-slot-1-increase": tcSlot1IncreaseIconSvg,
+  "tc-slot-1-decrease": tcSlot1DecreaseIconSvg,
+  "tc-slot-2-increase": tcSlot2IncreaseIconSvg,
+  "tc-slot-2-decrease": tcSlot2DecreaseIconSvg,
+  "tc-slot-3-increase": tcSlot3IncreaseIconSvg,
+  "tc-slot-3-decrease": tcSlot3DecreaseIconSvg,
+  "tc-slot-4-increase": tcSlot4IncreaseIconSvg,
+  "tc-slot-4-decrease": tcSlot4DecreaseIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * Non-directional controls have a single icon; directional controls have per-direction variants.
+ * Label configuration for each setting + direction combination.
  */
-const SETUP_TRACTION_ICONS: Record<SetupTractionSetting, Record<DirectionType, string> | string> = {
-  // TC Toggle: tire circle with "TC" text badge (no arrow)
-  "tc-toggle": `
-    <circle cx="36" cy="24" r="14" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="7" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">TC</text>`,
-
-  // TC Slot 1: tire circle with "1" label + directional arrow
-  "tc-slot-1": {
-    increase: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">1</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">1</text>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // TC Slot 2: tire circle with "2" label + directional arrow
-  "tc-slot-2": {
-    increase: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">2</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">2</text>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // TC Slot 3: tire circle with "3" label + directional arrow
-  "tc-slot-3": {
-    increase: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">3</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">3</text>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // TC Slot 4: tire circle with "4" label + directional arrow
-  "tc-slot-4": {
-    increase: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">4</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="30" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="30" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">4</text>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
+const SETUP_TRACTION_LABELS: Record<string, { mainLabel: string; subLabel: string }> = {
+  "tc-toggle": { mainLabel: "TC", subLabel: "TOGGLE" },
+  "tc-slot-1-increase": { mainLabel: "TC SLOT 1", subLabel: "INCREASE" },
+  "tc-slot-1-decrease": { mainLabel: "TC SLOT 1", subLabel: "DECREASE" },
+  "tc-slot-2-increase": { mainLabel: "TC SLOT 2", subLabel: "INCREASE" },
+  "tc-slot-2-decrease": { mainLabel: "TC SLOT 2", subLabel: "DECREASE" },
+  "tc-slot-3-increase": { mainLabel: "TC SLOT 3", subLabel: "INCREASE" },
+  "tc-slot-3-decrease": { mainLabel: "TC SLOT 3", subLabel: "DECREASE" },
+  "tc-slot-4-increase": { mainLabel: "TC SLOT 4", subLabel: "INCREASE" },
+  "tc-slot-4-decrease": { mainLabel: "TC SLOT 4", subLabel: "DECREASE" },
 };
 
 /**
@@ -172,25 +102,30 @@ const SetupTractionSettings = z.object({
 type SetupTractionSettings = z.infer<typeof SetupTractionSettings>;
 
 /**
+ * Resolves the flat icon lookup key from setting and direction.
+ */
+function resolveIconKey(setting: SetupTractionSetting, direction: DirectionType): string {
+  if (DIRECTIONAL_CONTROLS.has(setting)) {
+    return `${setting}-${direction}`;
+  }
+
+  return setting;
+}
+
+/**
  * @internal Exported for testing
  *
  * Generates an SVG data URI icon for the setup traction action.
  */
 export function generateSetupTractionSvg(settings: SetupTractionSettings): string {
-  const { setting, direction } = settings;
+  const iconKey = resolveIconKey(settings.setting, settings.direction);
 
-  const iconEntry = SETUP_TRACTION_ICONS[setting];
-  const iconContent =
-    typeof iconEntry === "string" ? iconEntry : (iconEntry?.[direction] ?? SETUP_TRACTION_ICONS["tc-toggle"]);
+  const iconSvg = SETUP_TRACTION_ICONS[iconKey] || SETUP_TRACTION_ICONS["tc-toggle"];
+  const labels = SETUP_TRACTION_LABELS[iconKey] || { mainLabel: "TC", subLabel: "SETUP" };
 
-  const labelEntry = SETUP_TRACTION_LABELS[setting];
-  const labels: { line1: string; line2: string } =
-    "line1" in labelEntry ? labelEntry : (labelEntry[direction] ?? { line1: "TC", line2: "SETUP" });
-
-  const svg = renderIconTemplate(setupTractionTemplate, {
-    iconContent: iconContent as string,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

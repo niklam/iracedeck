@@ -8,6 +8,34 @@ const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = v
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
+vi.mock("@iracedeck/icons/audio-controls/spotter-volume-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/spotter-volume-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/spotter-mute.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/voice-chat-mute.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/master-volume-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/master-volume-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/master-mute.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -50,8 +78,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -226,22 +260,22 @@ describe("AudioControls", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
+      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         spotter: {
-          "volume-up": { line1: "SPOTTER", line2: "VOL UP" },
-          "volume-down": { line1: "SPOTTER", line2: "VOL DOWN" },
-          mute: { line1: "SPOTTER", line2: "SILENCE" },
+          "volume-up": { mainLabel: "SPOTTER", subLabel: "VOL UP" },
+          "volume-down": { mainLabel: "SPOTTER", subLabel: "VOL DOWN" },
+          mute: { mainLabel: "SPOTTER", subLabel: "SILENCE" },
         },
         "voice-chat": {
-          "volume-up": { line1: "VOICE", line2: "VOL UP" },
-          "volume-down": { line1: "VOICE", line2: "VOL DOWN" },
-          mute: { line1: "VOICE", line2: "MUTE" },
+          "volume-up": { mainLabel: "VOICE", subLabel: "VOL UP" },
+          "volume-down": { mainLabel: "VOICE", subLabel: "VOL DOWN" },
+          mute: { mainLabel: "VOICE", subLabel: "MUTE" },
         },
         master: {
-          "volume-up": { line1: "MASTER", line2: "VOL UP" },
-          "volume-down": { line1: "MASTER", line2: "VOL DOWN" },
+          "volume-up": { mainLabel: "MASTER", subLabel: "VOL UP" },
+          "volume-down": { mainLabel: "MASTER", subLabel: "VOL DOWN" },
           // master-mute falls back to volume-up
-          mute: { line1: "MASTER", line2: "VOL UP" },
+          mute: { mainLabel: "MASTER", subLabel: "VOL UP" },
         },
       };
 
@@ -253,8 +287,8 @@ describe("AudioControls", () => {
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.line1);
-          expect(decoded).toContain(labels.line2);
+          expect(decoded).toContain(labels.mainLabel);
+          expect(decoded).toContain(labels.subLabel);
         }
       }
     });

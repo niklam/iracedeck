@@ -2,6 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupAeroSvg, SETUP_AERO_GLOBAL_KEYS, SetupAero } from "./setup-aero.js";
 
+vi.mock("@iracedeck/icons/setup-aero/front-wing-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">front-wing-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/front-wing-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">front-wing-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/qualifying-tape-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">qualifying-tape-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/qualifying-tape-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">qualifying-tape-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/rear-wing-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rear-wing-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/rear-wing-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rear-wing-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-aero/rf-brake-attached.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rf-brake-attached {{mainLabel}} {{subLabel}}</svg>',
+}));
+
 const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockParseKeyBinding: vi.fn(),
@@ -50,8 +72,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

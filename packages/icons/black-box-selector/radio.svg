@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a2a2a"/>
+
+    <!-- Black box frame -->
+    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <path d="M28 44 a20 20 0 0 1 40 0" fill="none" stroke="#888888" stroke-width="3"/>
+    <rect x="24" y="40" width="10" height="18" rx="4" fill="#888888"/>
+    <rect x="62" y="40" width="10" height="18" rx="4" fill="#888888"/>
+    <path d="M28 58 q0 8 10 8 h4" fill="none" stroke="#888888" stroke-width="2"/>
+    <ellipse cx="44" cy="66" rx="4" ry="3" fill="#888888"/>
+    <text x="88" y="32" fill="#ffffff" font-family="Arial, sans-serif" font-size="10">CH</text>
+    <text x="88" y="50" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">ALL</text>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

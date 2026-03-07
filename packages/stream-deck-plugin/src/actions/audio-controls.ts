@@ -7,9 +7,17 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import masterMuteIconSvg from "@iracedeck/icons/audio-controls/master-mute.svg";
+import masterVolumeDownIconSvg from "@iracedeck/icons/audio-controls/master-volume-down.svg";
+import masterVolumeUpIconSvg from "@iracedeck/icons/audio-controls/master-volume-up.svg";
+import spotterMuteIconSvg from "@iracedeck/icons/audio-controls/spotter-mute.svg";
+import spotterVolumeDownIconSvg from "@iracedeck/icons/audio-controls/spotter-volume-down.svg";
+import spotterVolumeUpIconSvg from "@iracedeck/icons/audio-controls/spotter-volume-up.svg";
+import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
+import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
+import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 import z from "zod";
 
-import audioControlsTemplate from "../../icons/audio-controls.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,12 +34,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-const YELLOW = "#f1c40f";
-
 type AudioCategory = "spotter" | "voice-chat" | "master";
 type AudioAction = "volume-up" | "volume-down" | "mute";
 
@@ -39,78 +41,38 @@ type AudioAction = "volume-up" | "volume-down" | "mute";
 const MUTE_CATEGORIES: Set<AudioCategory> = new Set(["spotter", "voice-chat"]);
 
 /**
- * Label configuration for each category + action combination.
+ * Flat record mapping "{category}-{action}" keys to imported SVGs.
  */
-const AUDIO_CONTROLS_LABELS: Record<AudioCategory, Record<AudioAction, { line1: string; line2: string }>> = {
-  spotter: {
-    "volume-up": { line1: "SPOTTER", line2: "VOL UP" },
-    "volume-down": { line1: "SPOTTER", line2: "VOL DOWN" },
-    mute: { line1: "SPOTTER", line2: "SILENCE" },
-  },
-  "voice-chat": {
-    "volume-up": { line1: "VOICE", line2: "VOL UP" },
-    "volume-down": { line1: "VOICE", line2: "VOL DOWN" },
-    mute: { line1: "VOICE", line2: "MUTE" },
-  },
-  master: {
-    "volume-up": { line1: "MASTER", line2: "VOL UP" },
-    "volume-down": { line1: "MASTER", line2: "VOL DOWN" },
-    mute: { line1: "MASTER", line2: "VOLUME" },
-  },
+const AUDIO_ICONS: Record<string, string> = {
+  "spotter-volume-up": spotterVolumeUpIconSvg,
+  "spotter-volume-down": spotterVolumeDownIconSvg,
+  "spotter-mute": spotterMuteIconSvg,
+  "voice-chat-volume-up": voiceChatVolumeUpIconSvg,
+  "voice-chat-volume-down": voiceChatVolumeDownIconSvg,
+  "voice-chat-mute": voiceChatMuteIconSvg,
+  "master-volume-up": masterVolumeUpIconSvg,
+  "master-volume-down": masterVolumeDownIconSvg,
+  "master-mute": masterMuteIconSvg,
 };
 
 /**
- * SVG icon content for each category + action combination.
+ * Label configuration for each category + action combination.
  */
-const AUDIO_CONTROLS_ICONS: Record<AudioCategory, Record<AudioAction, string>> = {
+const AUDIO_CONTROLS_LABELS: Record<AudioCategory, Record<AudioAction, { mainLabel: string; subLabel: string }>> = {
   spotter: {
-    "volume-up": `
-    <path d="M20 20v12h6l8 8V12l-8 8h-6z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 17a8 8 0 0 1 0 18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M44 12a14 14 0 0 1 0 28" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="54,22 58,16 62,22" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    "volume-down": `
-    <path d="M20 20v12h6l8 8V12l-8 8h-6z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 17a8 8 0 0 1 0 18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M44 12a14 14 0 0 1 0 28" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="54,16 58,22 62,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    mute: `
-    <path d="M20 20v12h6l8 8V12l-8 8h-6z" fill="none" stroke="${GRAY}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 17a8 8 0 0 1 0 18" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="18" y1="14" x2="50" y2="38" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
+    "volume-up": { mainLabel: "SPOTTER", subLabel: "VOL UP" },
+    "volume-down": { mainLabel: "SPOTTER", subLabel: "VOL DOWN" },
+    mute: { mainLabel: "SPOTTER", subLabel: "SILENCE" },
   },
   "voice-chat": {
-    "volume-up": `
-    <rect x="30" y="10" width="12" height="20" rx="6" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <path d="M24 24v4a12 12 0 0 0 24 0v-4" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="40" x2="36" y2="44" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="54,22 58,16 62,22" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    "volume-down": `
-    <rect x="30" y="10" width="12" height="20" rx="6" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <path d="M24 24v4a12 12 0 0 0 24 0v-4" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="40" x2="36" y2="44" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="54,16 58,22 62,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    mute: `
-    <rect x="30" y="10" width="12" height="20" rx="6" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <path d="M24 24v4a12 12 0 0 0 24 0v-4" fill="none" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="40" x2="36" y2="44" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="22" y1="14" x2="50" y2="42" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
+    "volume-up": { mainLabel: "VOICE", subLabel: "VOL UP" },
+    "volume-down": { mainLabel: "VOICE", subLabel: "VOL DOWN" },
+    mute: { mainLabel: "VOICE", subLabel: "MUTE" },
   },
   master: {
-    "volume-up": `
-    <path d="M16 20v12h8l10 10V10L24 20h-8z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 15a12 12 0 0 1 0 22" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M44 10a18 18 0 0 1 0 32" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="54,22 58,16 62,22" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    "volume-down": `
-    <path d="M16 20v12h8l10 10V10L24 20h-8z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 15a12 12 0 0 1 0 22" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M44 10a18 18 0 0 1 0 32" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="54,16 58,22 62,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    mute: `
-    <path d="M16 20v12h8l10 10V10L24 20h-8z" fill="none" stroke="${GRAY}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M40 15a12 12 0 0 1 0 22" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="14" y1="14" x2="52" y2="38" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
+    "volume-up": { mainLabel: "MASTER", subLabel: "VOL UP" },
+    "volume-down": { mainLabel: "MASTER", subLabel: "VOL DOWN" },
+    mute: { mainLabel: "MASTER", subLabel: "VOLUME" },
   },
 };
 
@@ -148,14 +110,11 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
   // For master category with mute, fall back to volume-up display
   const effectiveAction = category === "master" && audioAction === "mute" ? "volume-up" : audioAction;
 
-  const iconContent = AUDIO_CONTROLS_ICONS[category][effectiveAction];
+  const iconKey = `${category}-${effectiveAction}`;
+  const iconSvg = AUDIO_ICONS[iconKey] || AUDIO_ICONS["spotter-volume-up"];
   const labels = AUDIO_CONTROLS_LABELS[category][effectiveAction];
 
-  const svg = renderIconTemplate(audioControlsTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
-  });
+  const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel });
 
   return svgToDataUri(svg);
 }

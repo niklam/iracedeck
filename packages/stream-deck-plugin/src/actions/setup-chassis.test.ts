@@ -2,6 +2,85 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupChassisSvg, SETUP_CHASSIS_GLOBAL_KEYS, SetupChassis } from "./setup-chassis.js";
 
+vi.mock("@iracedeck/icons/setup-chassis/differential-entry-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-entry-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-entry-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-entry-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-exit-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-exit-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-exit-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-exit-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-middle-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-middle-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-middle-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-middle-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-preload-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-preload-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/differential-preload-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">differential-preload-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/front-arb-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">front-arb-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/front-arb-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">front-arb-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/left-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/left-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">left-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/lf-shock-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lf-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/lf-shock-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lf-shock-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/lr-shock-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/lr-shock-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">lr-shock-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/power-steering-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">power-steering-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/power-steering-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">power-steering-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rear-arb-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rear-arb-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rear-arb-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rear-arb-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rf-shock-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rf-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rf-shock-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rf-shock-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/right-spring-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/right-spring-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">right-spring-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rr-shock-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-shock-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-chassis/rr-shock-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">rr-shock-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+
 const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockParseKeyBinding: vi.fn(),
@@ -50,8 +129,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

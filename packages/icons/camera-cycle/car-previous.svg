@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+
+    <!-- Car silhouette + left chevron -->
+    <path d="M 40,60 L 48,40 L 96,40 L 108,60 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="56" cy="64" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="92" cy="64" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polyline points="32,40 20,48 32,56" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>
