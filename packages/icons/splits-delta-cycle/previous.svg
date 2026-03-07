@@ -11,8 +11,8 @@
 
     <!-- Two-line label (line2 on top subdued, line1 on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">SPLITS DELTA</text>
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{labelLine2}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">PREVIOUS</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{labelLine1}}</text>
   </g>
 </svg>

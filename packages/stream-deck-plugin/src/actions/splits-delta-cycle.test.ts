@@ -18,10 +18,10 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">NEXT SPLITS DELTA</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{labelLine1}} {{labelLine2}}</svg>',
 }));
 vi.mock("@iracedeck/icons/splits-delta-cycle/previous.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">PREVIOUS SPLITS DELTA</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{labelLine1}} {{labelLine2}}</svg>',
 }));
 
 vi.mock("../shared/index.js", () => ({
@@ -50,6 +50,15 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
+  }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
 

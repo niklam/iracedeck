@@ -22,6 +22,7 @@ import {
   type KeyCombination,
   LogLevel,
   parseKeyBinding,
+  renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -48,7 +49,15 @@ export const GLOBAL_KEY_NAMES = {
  * @internal Exported for testing
  */
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
-  const svg = DIRECTION_ICONS[settings.direction] || DIRECTION_ICONS.next;
+  const { direction } = settings;
+  const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
+  const labels =
+    direction === "next" ? { line1: "NEXT", line2: "SPLITS DELTA" } : { line1: "PREVIOUS", line2: "SPLITS DELTA" };
+
+  const svg = renderIconTemplate(iconSvg, {
+    labelLine1: labels.line1,
+    labelLine2: labels.line2,
+  });
 
   return svgToDataUri(svg);
 }
