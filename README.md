@@ -166,6 +166,7 @@ See the existing actions for reference, or check the package-level docs in `pack
 
 | Problem | Solution |
 |---------|----------|
+| Double-clicking `.streamDeckPlugin` doesn't install | Rename the file to add `.zip` at the end, extract the contents to `%APPDATA%\Elgato\StreamDeck\Plugins`, and restart Stream Deck |
 | Plugin doesn't connect | Make sure iRacing is running and you're in a session (on track) |
 | Buttons show nothing | iRacing telemetry is only available while driving; the plugin reconnects automatically |
 | Native addon build fails | Install Python 3.x and VS Build Tools with C++ workload. Try `npm config set msvs_version 2022` |
