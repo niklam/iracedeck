@@ -7,9 +7,16 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import fastForwardIconSvg from "@iracedeck/icons/replay-transport/fast-forward.svg";
+import frameBackwardIconSvg from "@iracedeck/icons/replay-transport/frame-backward.svg";
+import frameForwardIconSvg from "@iracedeck/icons/replay-transport/frame-forward.svg";
+import pauseIconSvg from "@iracedeck/icons/replay-transport/pause.svg";
+import playIconSvg from "@iracedeck/icons/replay-transport/play.svg";
+import rewindIconSvg from "@iracedeck/icons/replay-transport/rewind.svg";
+import slowMotionIconSvg from "@iracedeck/icons/replay-transport/slow-motion.svg";
+import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
 import z from "zod";
 
-import replayTransportTemplate from "../../icons/replay-transport.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -18,12 +25,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-const YELLOW = "#f1c40f";
-const GRAY = "#888888";
 
 type TransportAction =
   | "play"
@@ -36,61 +37,31 @@ type TransportAction =
   | "frame-backward";
 
 /**
- * Label configuration for each transport action (line1 bold, line2 subdued)
+ * Label configuration for each transport action (mainLabel prominent, subLabel subdued)
  */
-const REPLAY_TRANSPORT_LABELS: Record<TransportAction, { line1: string; line2: string }> = {
-  play: { line1: "PLAY", line2: "REPLAY" },
-  pause: { line1: "PAUSE", line2: "REPLAY" },
-  stop: { line1: "STOP", line2: "REPLAY" },
-  "fast-forward": { line1: "FWD", line2: "REPLAY" },
-  rewind: { line1: "REWIND", line2: "REPLAY" },
-  "slow-motion": { line1: "SLOW MO", line2: "REPLAY" },
-  "frame-forward": { line1: "FRAME", line2: "FWD" },
-  "frame-backward": { line1: "FRAME", line2: "BACK" },
+const REPLAY_TRANSPORT_LABELS: Record<TransportAction, { mainLabel: string; subLabel: string }> = {
+  play: { mainLabel: "PLAY", subLabel: "REPLAY" },
+  pause: { mainLabel: "PAUSE", subLabel: "REPLAY" },
+  stop: { mainLabel: "STOP", subLabel: "REPLAY" },
+  "fast-forward": { mainLabel: "FWD", subLabel: "REPLAY" },
+  rewind: { mainLabel: "REWIND", subLabel: "REPLAY" },
+  "slow-motion": { mainLabel: "SLOW MO", subLabel: "REPLAY" },
+  "frame-forward": { mainLabel: "FRAME", subLabel: "FWD" },
+  "frame-backward": { mainLabel: "FRAME", subLabel: "BACK" },
 };
 
 /**
- * SVG icon content for each transport action
+ * SVG icon templates for each transport action
  */
 const REPLAY_TRANSPORT_ICONS: Record<TransportAction, string> = {
-  // Play: Right-pointing triangle
-  play: `
-    <polygon points="28,14 52,26 28,38" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linejoin="round"/>`,
-
-  // Pause: Two vertical bars
-  pause: `
-    <rect x="26" y="14" width="6" height="24" rx="1" fill="${WHITE}"/>
-    <rect x="40" y="14" width="6" height="24" rx="1" fill="${WHITE}"/>`,
-
-  // Stop: Square
-  stop: `
-    <rect x="26" y="14" width="20" height="20" rx="2" fill="none" stroke="${RED}" stroke-width="2"/>`,
-
-  // Fast Forward: Double right-pointing triangles
-  "fast-forward": `
-    <polygon points="22,14 38,26 22,38" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <polygon points="36,14 52,26 36,38" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>`,
-
-  // Rewind: Double left-pointing triangles
-  rewind: `
-    <polygon points="50,14 34,26 50,38" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <polygon points="36,14 20,26 36,38" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>`,
-
-  // Slow Motion: Right-pointing triangle with "½" indicator
-  "slow-motion": `
-    <polygon points="24,14 46,26 24,38" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <text x="54" y="18" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">½</text>`,
-
-  // Frame Forward: Right-pointing triangle with right bar
-  "frame-forward": `
-    <polygon points="24,14 42,26 24,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="48" y1="14" x2="48" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Frame Backward: Left-pointing triangle with left bar
-  "frame-backward": `
-    <polygon points="48,14 30,26 48,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="24" y1="14" x2="24" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
+  play: playIconSvg,
+  pause: pauseIconSvg,
+  stop: stopIconSvg,
+  "fast-forward": fastForwardIconSvg,
+  rewind: rewindIconSvg,
+  "slow-motion": slowMotionIconSvg,
+  "frame-forward": frameForwardIconSvg,
+  "frame-backward": frameBackwardIconSvg,
 };
 
 const ReplayTransportSettings = z.object({
@@ -118,13 +89,12 @@ type ReplayTransportSettings = z.infer<typeof ReplayTransportSettings>;
 export function generateReplayTransportSvg(settings: ReplayTransportSettings): string {
   const { transport } = settings;
 
-  const iconContent = REPLAY_TRANSPORT_ICONS[transport] || REPLAY_TRANSPORT_ICONS["play"];
+  const iconSvg = REPLAY_TRANSPORT_ICONS[transport] || REPLAY_TRANSPORT_ICONS["play"];
   const labels = REPLAY_TRANSPORT_LABELS[transport] || REPLAY_TRANSPORT_LABELS["play"];
 
-  const svg = renderIconTemplate(replayTransportTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

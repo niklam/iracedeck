@@ -7,9 +7,19 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import eraseTapeIcon from "@iracedeck/icons/replay-navigation/erase-tape.svg";
+import jumpToEndIcon from "@iracedeck/icons/replay-navigation/jump-to-end.svg";
+import jumpToStartIcon from "@iracedeck/icons/replay-navigation/jump-to-start.svg";
+import nextIncidentIcon from "@iracedeck/icons/replay-navigation/next-incident.svg";
+import nextLapIcon from "@iracedeck/icons/replay-navigation/next-lap.svg";
+import nextSessionIcon from "@iracedeck/icons/replay-navigation/next-session.svg";
+import prevIncidentIcon from "@iracedeck/icons/replay-navigation/prev-incident.svg";
+import prevLapIcon from "@iracedeck/icons/replay-navigation/prev-lap.svg";
+import prevSessionIcon from "@iracedeck/icons/replay-navigation/prev-session.svg";
+import searchSessionTimeIcon from "@iracedeck/icons/replay-navigation/search-session-time.svg";
+import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-position.svg";
 import z from "zod";
 
-import replayNavigationTemplate from "../../icons/replay-navigation.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -18,12 +28,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-const YELLOW = "#f1c40f";
-const GRAY = "#888888";
 
 /** ReplayPosMode.Begin — position from beginning of replay */
 const REPLAY_POS_BEGIN = 0;
@@ -42,96 +46,37 @@ type NavigationAction =
   | "erase-tape";
 
 /**
- * Label configuration for each navigation action (line1 bold, line2 subdued)
+ * Label configuration for each navigation action (mainLabel prominent, subLabel subdued)
  */
-const REPLAY_NAVIGATION_LABELS: Record<NavigationAction, { line1: string; line2: string }> = {
-  "next-session": { line1: "NEXT", line2: "SESSION" },
-  "prev-session": { line1: "PREV", line2: "SESSION" },
-  "next-lap": { line1: "NEXT", line2: "LAP" },
-  "prev-lap": { line1: "PREV", line2: "LAP" },
-  "next-incident": { line1: "NEXT", line2: "INCIDENT" },
-  "prev-incident": { line1: "PREV", line2: "INCIDENT" },
-  "jump-to-start": { line1: "GO TO", line2: "START" },
-  "jump-to-end": { line1: "GO TO", line2: "END" },
-  "set-play-position": { line1: "SET", line2: "POSITION" },
-  "search-session-time": { line1: "SEARCH", line2: "TIME" },
-  "erase-tape": { line1: "ERASE", line2: "TAPE" },
+const REPLAY_NAVIGATION_LABELS: Record<NavigationAction, { mainLabel: string; subLabel: string }> = {
+  "next-session": { mainLabel: "NEXT", subLabel: "SESSION" },
+  "prev-session": { mainLabel: "PREV", subLabel: "SESSION" },
+  "next-lap": { mainLabel: "NEXT", subLabel: "LAP" },
+  "prev-lap": { mainLabel: "PREV", subLabel: "LAP" },
+  "next-incident": { mainLabel: "NEXT", subLabel: "INCIDENT" },
+  "prev-incident": { mainLabel: "PREV", subLabel: "INCIDENT" },
+  "jump-to-start": { mainLabel: "GO TO", subLabel: "START" },
+  "jump-to-end": { mainLabel: "GO TO", subLabel: "END" },
+  "set-play-position": { mainLabel: "SET", subLabel: "POSITION" },
+  "search-session-time": { mainLabel: "SEARCH", subLabel: "TIME" },
+  "erase-tape": { mainLabel: "ERASE", subLabel: "TAPE" },
 };
 
 /**
- * SVG icon content for each navigation action
+ * SVG icon templates for each navigation action
  */
-const REPLAY_NAVIGATION_ICONS: Record<NavigationAction, string> = {
-  // Next Session: Right arrow + vertical bar (skip-next)
-  "next-session": `
-    <polygon points="24,14 44,26 24,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="48" y1="14" x2="48" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Previous Session: Left arrow + vertical bar (skip-prev)
-  "prev-session": `
-    <polygon points="48,14 28,26 48,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="24" y1="14" x2="24" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Next Lap: Circular arrow clockwise + "L"
-  "next-lap": `
-    <path d="M 42,18 A 12,12 0 1,1 30,14" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <polygon points="42,13 42,23 48,18" fill="${GREEN}"/>
-    <text x="36" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">L</text>`,
-
-  // Previous Lap: Circular arrow counter-clockwise + "L"
-  "prev-lap": `
-    <path d="M 30,18 A 12,12 0 1,0 42,14" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <polygon points="30,13 30,23 24,18" fill="${GREEN}"/>
-    <text x="36" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">L</text>`,
-
-  // Next Incident: Warning triangle + right arrow
-  "next-incident": `
-    <polygon points="30,14 20,34 40,34" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <text x="30" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="${YELLOW}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">!</text>
-    <polyline points="46,20 54,26 46,32" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Previous Incident: Warning triangle + left arrow
-  "prev-incident": `
-    <polygon points="42,14 52,34 32,34" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <text x="42" y="30" text-anchor="middle" dominant-baseline="central"
-          fill="${YELLOW}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">!</text>
-    <polyline points="26,20 18,26 26,32" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Jump to Start: Double left arrow + vertical bar
-  "jump-to-start": `
-    <line x1="20" y1="14" x2="20" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>
-    <polygon points="40,14 26,26 40,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <polygon points="52,14 38,26 52,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>`,
-
-  // Jump to End: Double right arrow + vertical bar
-  "jump-to-end": `
-    <polygon points="20,14 34,26 20,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <polygon points="32,14 46,26 32,38" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="52" y1="14" x2="52" y2="38" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Set Play Position: Crosshair/target
-  "set-play-position": `
-    <circle cx="36" cy="26" r="10" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <circle cx="36" cy="26" r="3" fill="${GRAY}"/>
-    <line x1="36" y1="12" x2="36" y2="18" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="34" x2="36" y2="40" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="22" y1="26" x2="28" y2="26" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="44" y1="26" x2="50" y2="26" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Search Session Time: Clock/timer
-  "search-session-time": `
-    <circle cx="36" cy="26" r="12" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <line x1="36" y1="26" x2="36" y2="18" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="26" x2="43" y2="29" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="11" x2="36" y2="14" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Erase Tape: X/cross
-  "erase-tape": `
-    <line x1="24" y1="14" x2="48" y2="38" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="48" y1="14" x2="24" y2="38" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
+const NAVIGATION_ICONS: Record<NavigationAction, string> = {
+  "next-session": nextSessionIcon,
+  "prev-session": prevSessionIcon,
+  "next-lap": nextLapIcon,
+  "prev-lap": prevLapIcon,
+  "next-incident": nextIncidentIcon,
+  "prev-incident": prevIncidentIcon,
+  "jump-to-start": jumpToStartIcon,
+  "jump-to-end": jumpToEndIcon,
+  "set-play-position": setPlayPositionIcon,
+  "search-session-time": searchSessionTimeIcon,
+  "erase-tape": eraseTapeIcon,
 };
 
 /**
@@ -179,13 +124,12 @@ type ReplayNavigationSettings = z.infer<typeof ReplayNavigationSettings>;
 export function generateReplayNavigationSvg(settings: { navigation: NavigationAction }): string {
   const { navigation } = settings;
 
-  const iconContent = REPLAY_NAVIGATION_ICONS[navigation] || REPLAY_NAVIGATION_ICONS["next-session"];
+  const iconSvg = NAVIGATION_ICONS[navigation] || NAVIGATION_ICONS["next-session"];
   const labels = REPLAY_NAVIGATION_LABELS[navigation] || REPLAY_NAVIGATION_LABELS["next-session"];
 
-  const svg = renderIconTemplate(replayNavigationTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);
