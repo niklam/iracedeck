@@ -6,6 +6,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -115,12 +116,6 @@ export function generateTireIcon(compoundType: string): string {
     <circle cx="36" cy="22" r="12" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="2"/>
     <circle cx="36" cy="22" r="5" fill="${GRAY}" stroke="${GRAY}" stroke-width="1"/>`;
 }
-
-const CLEAR_TIRES_ICON_CONTENT = `
-    <circle cx="36" cy="26" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="26" r="4" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="29" y1="19" x2="43" y2="33" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="43" y1="19" x2="29" y2="33" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`;
 
 /**
  * Get tire fill color based on settings and current state.
@@ -248,12 +243,12 @@ export function generateTireServiceSvg(
       break;
     }
     case "clear-tires": {
-      iconContent = CLEAR_TIRES_ICON_CONTENT;
-      textElement = [
-        generateIconText({ text: "CLEAR", fontSize: 10, fill: "#ffffff", baseY: 52 }),
-        generateIconText({ text: "TIRES", fontSize: 8, fill: "#aaaaaa", baseY: 63 }),
-      ].join("\n");
-      break;
+      const svg = renderIconTemplate(clearTiresIconSvg, {
+        mainLabel: "CLEAR",
+        subLabel: "TIRES",
+      });
+
+      return svgToDataUri(svg);
     }
     default: {
       iconContent = generateToggleTiresIconContent(settings, currentState);

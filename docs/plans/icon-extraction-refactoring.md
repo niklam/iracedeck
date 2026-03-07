@@ -160,19 +160,18 @@ When an action is fully migrated:
 - [x] `fuel-service` — 7 static icon variants extracted; dynamic fuel amount labels stay inline
 - [x] `car-control` — 4 static modes extracted; pit-speed-limiter stays inline (dynamic speed)
 - [x] `chat` — 5 standard mode icons extracted; send-message/macro with `generateIconText()` stay inline
-- [ ] `tire-service` — telemetry-driven compound/wear display stays inline
-- [ ] `session-info` — different template structure; telemetry-driven content stays inline
+- [x] `tire-service` — clear-tires static icon extracted; toggle-tires and change-compound stay inline (telemetry-driven)
+- [x] `session-info` — all content is dynamic (no static icons to extract); template stays inline
 
 ---
 
 ## Cleanup (after all actions migrated)
 
-- [ ] Delete `packages/stream-deck-plugin/icons/` directory (all templates moved)
-- [ ] Remove unused `labelLine1`/`labelLine2` references from rules and docs
-- [ ] Update `.claude/rules/icons.md` and `.claude/rules/key-icon-types.md` with new conventions
-- [ ] Update `packages/stream-deck-plugin/CLAUDE.md` action creation instructions
-- [ ] Consider removing `extractSvgContent()` if no action uses it
-- [ ] Consider removing `loadIconTemplate()` / `renderIcon()` if no action uses filesystem loading
+- [x] Delete unused templates from `packages/stream-deck-plugin/icons/` (3 remain for dynamic actions: car-control, session-info, tire-service)
+- [x] Remove unused `labelLine1`/`labelLine2` references from rules, docs, and remaining templates
+- [x] Update `.claude/rules/icons.md` and `.claude/rules/key-icon-types.md` with new conventions
+- [x] Update `packages/stream-deck-plugin/CLAUDE.md` action creation instructions
+- [x] Removed `extractSvgContent()`, `loadIconTemplate()`, `renderIcon()`, `clearTemplateCache()` — no action uses them
 
 ---
 

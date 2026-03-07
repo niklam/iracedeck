@@ -1,7 +1,7 @@
 ---
 paths:
   - packages/stream-deck-plugin/src/actions/black-box-selector.ts
-  - packages/stream-deck-plugin/icons/black-box-selector.svg
+  - packages/icons/black-box-selector/*
   - packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/imgs/actions/black-box-selector/*
 ---
 # Black Box Icon Design Guidelines
@@ -162,9 +162,9 @@ const RED = "#e74c3c";     // Hot temperatures
 
     <!-- Two-line label -->
     <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{mainLabel}}</text>
     <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{subLabel}}</text>
   </g>
 </svg>
 ```
