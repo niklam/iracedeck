@@ -18,10 +18,10 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{labelLine1}} {{labelLine2}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/splits-delta-cycle/previous.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{labelLine1}} {{labelLine2}}</svg>',
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
 vi.mock("../shared/index.js", () => ({

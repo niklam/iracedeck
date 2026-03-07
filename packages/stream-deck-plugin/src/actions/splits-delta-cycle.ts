@@ -51,12 +51,9 @@ export const GLOBAL_KEY_NAMES = {
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
   const { direction } = settings;
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
-  const labels =
-    direction === "next" ? { line1: "NEXT", line2: "SPLITS DELTA" } : { line1: "PREVIOUS", line2: "SPLITS DELTA" };
-
   const svg = renderIconTemplate(iconSvg, {
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+    mainLabel: direction === "next" ? "NEXT" : "PREVIOUS",
+    subLabel: "SPLITS DELTA",
   });
 
   return svgToDataUri(svg);
