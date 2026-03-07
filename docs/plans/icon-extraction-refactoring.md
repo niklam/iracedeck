@@ -131,9 +131,9 @@ When an action is fully migrated:
 - [x] `replay-speed` — 2 variants (increase, decrease)
 - [x] `look-direction` — 4 variants (look-left, look-right, look-up, look-down)
 - [x] `media-capture` — 7 variants per capture mode
-- [ ] `pit-quick-actions` — variants per pit action
-- [ ] `telemetry-control` — variants per control mode
-- [ ] `toggle-ui-elements` — variants per UI element
+- [x] `pit-quick-actions` — 3 variants (clear-all-checkboxes, windshield-tearoff, request-fast-repair)
+- [x] `telemetry-control` — 5 variants (toggle-logging, mark-event, start/stop/restart-recording)
+- [x] `toggle-ui-elements` — 9 variants (dash-box, speed-gear-pedals, radio-display, etc.)
 - [ ] `camera-focus` — variants per focus mode
 - [ ] `camera-editor-controls` — variants per control
 - [ ] `cockpit-misc` — variants per cockpit action
