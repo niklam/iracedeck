@@ -94,6 +94,21 @@ export function clearTemplateCache(): void {
 }
 
 /**
+ * Strips the outer `<svg>` wrapper from an SVG string, returning only the inner content.
+ * Used to extract icon content fragments from valid SVG files for template injection
+ * into `{{iconContent}}` placeholders.
+ *
+ * @param svg - A complete SVG document string (with `<svg>` root element)
+ * @returns The inner content of the SVG, without the wrapping `<svg>` tags
+ */
+export function extractSvgContent(svg: string): string {
+  return svg
+    .replace(/^\s*<svg[^>]*>\s*/i, "")
+    .replace(/\s*<\/svg>\s*$/i, "")
+    .trim();
+}
+
+/**
  * Validates that an SVG template follows the required format.
  * Returns an array of validation errors (empty if valid).
  *

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clearTemplateCache,
   escapeXml,
+  extractSvgContent,
   generateIconText,
   loadIconTemplate,
   renderIcon,
@@ -197,6 +198,51 @@ describe("icon-template", () => {
       const errors = validateIconTemplate(template);
 
       expect(errors.length).toBe(3);
+    });
+  });
+
+  describe("extractSvgContent", () => {
+    it("should strip outer svg tags and return inner content", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="8" y="8" width="56" height="28"/>
+  <text x="12" y="15">LAP</text>
+</svg>`;
+      const result = extractSvgContent(svg);
+
+      expect(result).toBe(`<rect x="8" y="8" width="56" height="28"/>
+  <text x="12" y="15">LAP</text>`);
+    });
+
+    it("should handle svg with attributes", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
+  <circle cx="36" cy="36" r="10"/>
+</svg>`;
+      const result = extractSvgContent(svg);
+
+      expect(result).toBe(`<circle cx="36" cy="36" r="10"/>`);
+    });
+
+    it("should handle leading and trailing whitespace", () => {
+      const svg = `  <svg xmlns="http://www.w3.org/2000/svg">
+  <rect/>
+</svg>  `;
+      const result = extractSvgContent(svg);
+
+      expect(result).toBe("<rect/>");
+    });
+
+    it("should handle single-line svg", () => {
+      const svg = `<svg><rect x="0" y="0"/></svg>`;
+      const result = extractSvgContent(svg);
+
+      expect(result).toBe(`<rect x="0" y="0"/>`);
+    });
+
+    it("should return empty string for empty svg", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
+      const result = extractSvgContent(svg);
+
+      expect(result).toBe("");
     });
   });
 

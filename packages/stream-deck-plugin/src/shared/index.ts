@@ -27,6 +27,7 @@ export {
 export {
   clearTemplateCache,
   escapeXml,
+  extractSvgContent,
   generateIconText,
   loadIconTemplate,
   renderIcon,

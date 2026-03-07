@@ -17,6 +17,16 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
+vi.mock("@iracedeck/icons/splits-delta-cycle/template.svg", () => ({
+  default: "<svg>{{iconContent}}{{labelLine1}}{{labelLine2}}</svg>",
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/next.main.svg", () => ({
+  default: "<svg>next-icon-content</svg>",
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/previous.main.svg", () => ({
+  default: "<svg>previous-icon-content</svg>",
+}));
+
 vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
@@ -30,6 +40,7 @@ vi.mock("../shared/index.js", () => ({
     error: vi.fn(),
     trace: vi.fn(),
   })),
+  extractSvgContent: vi.fn((svg: string) => svg.replace(/<\/?svg[^>]*>/g, "")),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
