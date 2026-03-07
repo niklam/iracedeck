@@ -8,6 +8,10 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import enterExitTowIcon from "@iracedeck/icons/car-control/enter-exit-tow.svg";
+import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
+import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
+import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -100,37 +104,13 @@ export function pitLimiterInactiveIcon(speed: number): string {
 }
 
 /**
- * SVG icon content for each car control
+ * Standalone SVG templates for static car control modes (imported from @iracedeck/icons)
  */
-const CAR_CONTROL_ICONS: Record<CarControlType, string> = {
-  // Starter: Red push-button with "START" label
-  starter: `
-    <circle cx="36" cy="24" r="15" fill="${RED}"/>
-    <circle cx="36" cy="24" r="12" fill="#c0392b"/>
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="7" font-weight="bold">START</text>`,
-
-  // Ignition: Bold power symbol (arc + stem)
-  ignition: `
-    <path d="M30 17 A11 11 0 1 0 42 17" fill="none" stroke="${WHITE}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="36" y1="12" x2="36" y2="24" stroke="${WHITE}" stroke-width="4" stroke-linecap="round"/>`,
-
-  // Pit Speed Limiter: Speed limit sign (default: inactive with default speed)
-  "pit-speed-limiter": pitLimiterInactiveIcon(DEFAULT_PIT_SPEED),
-
-  // Enter/Exit/Tow: Car body with bidirectional arrow
-  "enter-exit-tow": `
-    <rect x="20" y="16" width="32" height="14" rx="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="28" cy="30" r="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <circle cx="44" cy="30" r="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <path d="M24 38 L48 38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M24 38 L28 35 M24 38 L28 41" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M48 38 L44 35 M48 38 L44 41" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Pause Sim: Pause bars
-  "pause-sim": `
-    <rect x="27" y="14" width="6" height="20" rx="1" fill="${WHITE}"/>
-    <rect x="39" y="14" width="6" height="20" rx="1" fill="${WHITE}"/>`,
+const STATIC_CAR_CONTROL_ICONS: Partial<Record<CarControlType, string>> = {
+  starter: starterIcon,
+  ignition: ignitionIcon,
+  "enter-exit-tow": enterExitTowIcon,
+  "pause-sim": pauseSimIcon,
 };
 
 /**
@@ -175,21 +155,30 @@ export function generateCarControlSvg(
 ): string {
   const { control } = settings;
 
-  let iconContent: string;
-
-  if (control === "pit-speed-limiter" && pitLimiterActive !== undefined) {
+  // Pit-speed-limiter uses the template approach (dynamic speed number)
+  if (control === "pit-speed-limiter") {
     const speed = pitSpeedLimit ?? DEFAULT_PIT_SPEED;
-    iconContent = pitLimiterActive ? pitLimiterActiveIcon(speed) : pitLimiterInactiveIcon(speed);
-  } else {
-    iconContent = CAR_CONTROL_ICONS[control] || CAR_CONTROL_ICONS["starter"];
+    const iconContent =
+      pitLimiterActive !== undefined && pitLimiterActive ? pitLimiterActiveIcon(speed) : pitLimiterInactiveIcon(speed);
+
+    const labels = CAR_CONTROL_LABELS["pit-speed-limiter"];
+
+    const svg = renderIconTemplate(carControlTemplate, {
+      iconContent,
+      labelLine1: labels.line1,
+      labelLine2: labels.line2,
+    });
+
+    return svgToDataUri(svg);
   }
 
+  // Static modes use standalone SVGs from @iracedeck/icons
+  const iconSvg = STATIC_CAR_CONTROL_ICONS[control] || starterIcon;
   const labels = CAR_CONTROL_LABELS[control] || CAR_CONTROL_LABELS["starter"];
 
-  const svg = renderIconTemplate(carControlTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.line1,
+    subLabel: labels.line2,
   });
 
   return svgToDataUri(svg);

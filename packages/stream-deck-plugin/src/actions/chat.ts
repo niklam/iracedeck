@@ -7,9 +7,13 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import cancelIcon from "@iracedeck/icons/chat/cancel.svg";
+import openChatIcon from "@iracedeck/icons/chat/open-chat.svg";
+import replyIcon from "@iracedeck/icons/chat/reply.svg";
+import respondPmIcon from "@iracedeck/icons/chat/respond-pm.svg";
+import whisperIcon from "@iracedeck/icons/chat/whisper.svg";
 import z from "zod";
 
-import chatTemplate from "../../icons/chat.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,9 +30,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const COLOR_PLACEHOLDER = "{{color}}";
 
 /**
  * SVG template for send-message mode: large chat bubble with text inside.
@@ -73,59 +74,15 @@ const CHAT_LABELS: Record<ChatMode, { line1: string; line2: string }> = {
 };
 
 /**
- * SVG icon content for each chat mode
- * Uses {{color}} placeholder for user-configurable accent color
+ * Standalone SVG templates for standard chat modes (imported from @iracedeck/icons).
+ * Send-message and macro modes use separate inline templates with dynamic text.
  */
-const CHAT_ICONS: Record<ChatMode, string> = {
-  // Open Chat: Chat bubble with pencil icon
-  "open-chat": `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="28" y1="28" x2="40" y2="18" stroke="${COLOR_PLACEHOLDER}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="28" y1="28" x2="30" y2="26" stroke="${COLOR_PLACEHOLDER}" stroke-width="3" stroke-linecap="round"/>`,
-
-  // Reply: Chat bubble with curved reply arrow
-  reply: `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M30 18 L24 23 L30 28" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M24 23 H38 A4 4 0 0 1 42 27" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Whisper: Chat bubble with ear/wave icon
-  whisper: `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M30 18 A4 4 0 0 1 30 28" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M34 15 A8 8 0 0 1 34 31" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M38 12 A12 12 0 0 1 38 34" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Respond to Last PM: Chat bubble with "/r" text
-  "respond-pm": `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <text x="36" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${COLOR_PLACEHOLDER}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">/r</text>`,
-
-  // Cancel: Chat bubble with X overlay
-  cancel: `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="28" y1="17" x2="44" y2="29" stroke="${COLOR_PLACEHOLDER}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="44" y1="17" x2="28" y2="29" stroke="${COLOR_PLACEHOLDER}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Send Message: Chat bubble with right-pointing arrow
-  "send-message": `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="24" y1="23" x2="42" y2="23" stroke="${COLOR_PLACEHOLDER}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="38,18 44,23 38,28" fill="none" stroke="${COLOR_PLACEHOLDER}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Macro: Chat bubble with # symbol
-  macro: `
-    <path d="M16 10 h40 a4 4 0 0 1 4 4 v20 a4 4 0 0 1-4 4 H38 l-3 5 l-3-5 H16 a4 4 0 0 1-4-4 V14 a4 4 0 0 1 4-4 z"
-          fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <text x="36" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${COLOR_PLACEHOLDER}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">#</text>`,
+const CHAT_ICONS: Partial<Record<ChatMode, string>> = {
+  "open-chat": openChatIcon,
+  reply: replyIcon,
+  whisper: whisperIcon,
+  "respond-pm": respondPmIcon,
+  cancel: cancelIcon,
 };
 
 /**
@@ -170,14 +127,13 @@ export function generateChatSvg(settings: ChatSettings): string {
     return generateMacroSvg(iconColor, keyText, settings.macroNumber);
   }
 
-  // For other modes: standard icon + labels approach
-  const baseIconContent = CHAT_ICONS[mode] || CHAT_ICONS["open-chat"];
-  const iconContent = baseIconContent.replace(/\{\{color\}\}/g, iconColor);
+  // For other modes: use standalone SVG templates from @iracedeck/icons
+  const iconSvg = CHAT_ICONS[mode] || CHAT_ICONS["open-chat"]!;
 
   // Determine labels: use custom key text or default labels
   const trimmedKeyText = keyText?.trim();
-  let labelLine1: string;
-  let labelLine2: string;
+  let mainLabel: string;
+  let subLabel: string;
 
   if (trimmedKeyText) {
     // Parse custom key text (supports newlines for two-line display)
@@ -187,23 +143,23 @@ export function generateChatSvg(settings: ChatSettings): string {
       .filter((line) => line.length > 0);
 
     if (lines.length >= 2) {
-      labelLine1 = lines[0];
-      labelLine2 = lines[1];
+      mainLabel = lines[0];
+      subLabel = lines[1];
     } else {
-      labelLine1 = lines[0] || "";
-      labelLine2 = "";
+      mainLabel = lines[0] || "";
+      subLabel = "";
     }
   } else {
     // Use default labels for the mode
     const labels = CHAT_LABELS[mode] || CHAT_LABELS["open-chat"];
-    labelLine1 = labels.line1;
-    labelLine2 = labels.line2;
+    mainLabel = labels.line1;
+    subLabel = labels.line2;
   }
 
-  const svg = renderIconTemplate(chatTemplate, {
-    iconContent,
-    labelLine1,
-    labelLine2,
+  const svg = renderIconTemplate(iconSvg, {
+    color: iconColor,
+    mainLabel,
+    subLabel,
   });
 
   return svgToDataUri(svg);

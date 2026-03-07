@@ -7,9 +7,15 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import addFuelIcon from "@iracedeck/icons/fuel-service/add-fuel.svg";
+import clearFuelIcon from "@iracedeck/icons/fuel-service/clear-fuel.svg";
+import lapMarginDecreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-decrease.svg";
+import lapMarginIncreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-increase.svg";
+import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
+import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
+import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
 import z from "zod";
 
-import fuelServiceTemplate from "../../icons/fuel-service.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -25,11 +31,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-const GREEN = "#2ecc71";
 
 type FuelServiceMode =
   | "add-fuel"
@@ -65,67 +66,16 @@ const FUEL_SERVICE_LABELS: Record<FuelServiceMode, { line1: string; line2: strin
 };
 
 /**
- * SVG icon content for each fuel service mode
+ * SVG templates for each fuel service mode (imported from @iracedeck/icons)
  */
 const FUEL_SERVICE_ICONS: Record<FuelServiceMode, string> = {
-  // Add Fuel: Gas pump with + indicator (green)
-  "add-fuel": `
-    <rect x="24" y="10" width="16" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="28" y="6" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M40 14 L44 14 L44 28 L40 28" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="52" y1="18" x2="52" y2="30" stroke="${GREEN}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="46" y1="24" x2="58" y2="24" stroke="${GREEN}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Reduce Fuel: Gas pump with - indicator (red)
-  "reduce-fuel": `
-    <rect x="24" y="10" width="16" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="28" y="6" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M40 14 L44 14 L44 28 L40 28" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="46" y1="24" x2="58" y2="24" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Set Fuel Amount: Gas pump with = indicator (yellow)
-  "set-fuel-amount": `
-    <rect x="24" y="10" width="16" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="28" y="6" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M40 14 L44 14 L44 28 L40 28" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="48" y1="20" x2="56" y2="20" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="48" y1="26" x2="56" y2="26" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Clear Fuel: Gas pump with X overlay (red)
-  "clear-fuel": `
-    <rect x="24" y="10" width="16" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="28" y="6" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M40 14 L44 14 L44 28 L40 28" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="48" y1="18" x2="58" y2="30" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="58" y1="18" x2="48" y2="30" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Toggle Autofuel: Gas pump with circular auto/recycle arrow
-  "toggle-autofuel": `
-    <rect x="20" y="10" width="16" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="24" y="6" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M36 14 L40 14 L40 28 L36 28" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M50 14 A8 8 0 1 1 50 30" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="50,10 50,14 54,14" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Lap Margin Increase: Checkered flag with up arrow (green)
-  "lap-margin-increase": `
-    <path d="M18 14 L36 14 L36 34 L18 34 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="18" y1="14" x2="18" y2="38" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <rect x="22" y="18" width="5" height="4" fill="${GRAY}"/>
-    <rect x="27" y="18" width="5" height="4" fill="${WHITE}"/>
-    <rect x="22" y="26" width="5" height="4" fill="${WHITE}"/>
-    <rect x="27" y="26" width="5" height="4" fill="${GRAY}"/>
-    <polyline points="48,28 54,20 60,28" fill="none" stroke="${GREEN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Lap Margin Decrease: Checkered flag with down arrow (green)
-  "lap-margin-decrease": `
-    <path d="M18 14 L36 14 L36 34 L18 34 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="18" y1="14" x2="18" y2="38" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <rect x="22" y="18" width="5" height="4" fill="${GRAY}"/>
-    <rect x="27" y="18" width="5" height="4" fill="${WHITE}"/>
-    <rect x="22" y="26" width="5" height="4" fill="${WHITE}"/>
-    <rect x="27" y="26" width="5" height="4" fill="${GRAY}"/>
-    <polyline points="48,20 54,28 60,20" fill="none" stroke="${GREEN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "add-fuel": addFuelIcon,
+  "reduce-fuel": reduceFuelIcon,
+  "set-fuel-amount": setFuelAmountIcon,
+  "clear-fuel": clearFuelIcon,
+  "toggle-autofuel": toggleAutofuelIcon,
+  "lap-margin-increase": lapMarginIncreaseIcon,
+  "lap-margin-decrease": lapMarginDecreaseIcon,
 };
 
 /**
@@ -229,13 +179,12 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
 export function generateFuelServiceSvg(settings: FuelServiceSettings): string {
   const { mode } = settings;
 
-  const iconContent = FUEL_SERVICE_ICONS[mode] || FUEL_SERVICE_ICONS["add-fuel"];
+  const iconSvg = FUEL_SERVICE_ICONS[mode] || FUEL_SERVICE_ICONS["add-fuel"];
   const labels = getFuelServiceLabels(settings);
 
-  const svg = renderIconTemplate(fuelServiceTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.line1,
+    subLabel: labels.line2,
   });
 
   return svgToDataUri(svg);
