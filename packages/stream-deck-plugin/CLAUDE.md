@@ -42,7 +42,7 @@ import {
 } from "../shared/index.js";
 import z from "zod";
 
-import actionTemplate from "../../icons/{action-name}.svg";
+import defaultIconSvg from "@iracedeck/icons/{action-name}/default.svg";
 
 // Settings schema (use z.object({}) if no action-specific settings)
 const {ActionName}Settings = z.object({
@@ -60,10 +60,9 @@ export const GLOBAL_KEY_NAME = "{camelCaseCategory}{CamelCaseBinding}";
  * @internal Exported for testing
  */
 export function generate{ActionName}Svg(settings: {ActionName}Settings): string {
-  const svg = renderIconTemplate(actionTemplate, {
-    iconContent: "...",
-    labelLine1: "LABEL",
-    labelLine2: "SUBLABEL",
+  const svg = renderIconTemplate(defaultIconSvg, {
+    mainLabel: "LABEL",
+    subLabel: "SUBLABEL",
   });
   return svgToDataUri(svg);
 }
@@ -115,34 +114,38 @@ vi.mock("../shared/index.js", () => ({
   getKeyboard: vi.fn(() => ({ sendKeyCombination: vi.fn().mockResolvedValue(true) })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_t, data) => `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`),
+  renderIconTemplate: vi.fn((_t, data) => `<svg>${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
   svgToDataUri: vi.fn((svg) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
 ```
 
 See `splits-delta-cycle.test.ts` for the full pattern.
 
-#### 3. Icon template — `icons/{action-name}.svg`
+#### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
-Mustache template, 72x72 canvas. Must include `activity-state` filter wrapper:
+Standalone 144x144 SVGs with Mustache label placeholders. One file per variant (e.g., `next.svg`, `previous.svg`, `default.svg`):
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="#BACKGROUND"/>
-    {{iconContent}}
-    <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
-    <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#BACKGROUND"/>
+
+    <!-- Icon content area: y=18 to y=86 -->
+    <!-- ... artwork ... -->
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>
 ```
 
 - Background color must be unique per action (check existing actions to avoid duplicates)
-- Icon content area: y=9 to y=43
-- Label area: line2 at y=52 (subdued `#aaaaaa`), line1 at y=63 (bright `#ffffff`)
-- Placeholders: `{{iconContent}}`, `{{labelLine1}}`, `{{labelLine2}}`
+- All coordinates doubled from 72x72 (Stream Deck downscales as needed)
+- Use literal hex color values, not constants
+- Placeholders: `{{mainLabel}}` (bold, white), `{{subLabel}}` (subdued, gray)
 
 #### 4. Category icon — `com.iracedeck.sd.core.sdPlugin/imgs/actions/{action-name}/icon.svg`
 

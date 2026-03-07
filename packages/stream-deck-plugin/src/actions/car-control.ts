@@ -165,8 +165,8 @@ export function generateCarControlSvg(
 
     const svg = renderIconTemplate(carControlTemplate, {
       iconContent,
-      labelLine1: labels.line1,
-      labelLine2: labels.line2,
+      mainLabel: labels.line1,
+      subLabel: labels.line2,
     });
 
     return svgToDataUri(svg);

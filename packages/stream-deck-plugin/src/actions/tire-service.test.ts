@@ -36,6 +36,10 @@ const {
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
 }));
 
+vi.mock("@iracedeck/icons/tire-service/clear-tires.svg", () => ({
+  default: "<svg>clear-tires-icon</svg>",
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -88,7 +92,9 @@ vi.mock("../shared/index.js", () => ({
     (opts: { text: string; fontSize: number; fill: string }) => `<text fill="${opts.fill}">${opts.text}</text>`,
   ),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}|${data.textElement || ""}</svg>`;
+    const parts = [data.iconContent, data.textElement, data.mainLabel, data.subLabel].filter(Boolean).join("|");
+
+    return `<svg>${parts}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

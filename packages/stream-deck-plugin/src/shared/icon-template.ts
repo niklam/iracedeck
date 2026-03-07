@@ -1,18 +1,9 @@
 /**
  * Icon Template Utilities
  *
- * Functions for loading and rendering SVG icon templates with placeholder support.
+ * Functions for rendering SVG icon templates with placeholder support.
  * Templates use Mustache-style {{placeholder}} syntax.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
-import { svgToDataUri } from "./overlay-utils.js";
-
-/**
- * Cache for loaded templates to avoid repeated file I/O
- */
-const templateCache = new Map<string, string>();
 
 /**
  * Escapes special XML characters in a string.
@@ -25,30 +16,6 @@ export function escapeXml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
-}
-
-/**
- * Loads an SVG template from the file system.
- *
- * @param pluginPath - Base path to the .sdPlugin directory
- * @param actionName - Name of the action (e.g., "do-fuel-add" or "vehicle/display-gear")
- * @returns The raw SVG template string
- */
-export function loadIconTemplate(pluginPath: string, actionName: string): string {
-  const cacheKey = `${pluginPath}:${actionName}`;
-
-  const cached = templateCache.get(cacheKey);
-
-  if (cached) {
-    return cached;
-  }
-
-  const templatePath = join(pluginPath, "imgs", "actions", actionName, "key-template.svg");
-  const template = readFileSync(templatePath, "utf-8");
-
-  templateCache.set(cacheKey, template);
-
-  return template;
 }
 
 /**
@@ -70,54 +37,6 @@ export function renderIconTemplate(template: string, values: Record<string, stri
   return result;
 }
 
-/**
- * Loads a template, renders it with values, and converts to data URI.
- *
- * @param pluginPath - Base path to the .sdPlugin directory
- * @param actionName - Name of the action (e.g., "do-fuel-add" or "vehicle/display-gear")
- * @param values - Object mapping placeholder names to replacement values
- * @returns Base64-encoded data URI for the rendered SVG
- */
-export function renderIcon(pluginPath: string, actionName: string, values: Record<string, string>): string {
-  const template = loadIconTemplate(pluginPath, actionName);
-  const rendered = renderIconTemplate(template, values);
-
-  return svgToDataUri(rendered);
-}
-
-/**
- * Clears the template cache.
- * Useful for testing or when templates may have changed.
- */
-export function clearTemplateCache(): void {
-  templateCache.clear();
-}
-
-/**
- * Strips the outer `<svg>` wrapper from an SVG string, returning only the inner content.
- * Used to extract icon content fragments from valid SVG files for template injection
- * into `{{iconContent}}` placeholders.
- *
- * @param svg - A complete SVG document string (with `<svg>` root element)
- * @returns The inner content of the SVG, without the wrapping `<svg>` tags
- */
-export function extractSvgContent(svg: string): string {
-  return svg
-    .replace(/^\s*<svg[^>]*>\s*/i, "")
-    .replace(/\s*<\/svg>\s*$/i, "")
-    .trim();
-}
-
-/**
- * Validates that an SVG template follows the required format.
- * Returns an array of validation errors (empty if valid).
- *
- * Required format:
- * - viewBox="0 0 72 72"
- * - Contains <g filter="url(#activity-state)">
- * - Text elements at y="62" for bottom positioning
- * - Dynamic text elements have class="title"
- */
 /**
  * Options for generating icon text elements.
  */

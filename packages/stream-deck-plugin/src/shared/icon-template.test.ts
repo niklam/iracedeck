@@ -1,35 +1,13 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  clearTemplateCache,
-  escapeXml,
-  extractSvgContent,
-  generateIconText,
-  loadIconTemplate,
-  renderIcon,
-  renderIconTemplate,
-  validateIconTemplate,
-} from "./icon-template.js";
+import { escapeXml, generateIconText, renderIconTemplate, validateIconTemplate } from "./icon-template.js";
 
 describe("icon-template", () => {
-  const testDir = join(import.meta.dirname, "__test-templates__");
   const validTemplate = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <g filter="url(#activity-state)">
     <text x="36" y="65" class="title">{{text}}</text>
   </g>
 </svg>`;
-
-  beforeEach(() => {
-    clearTemplateCache();
-    mkdirSync(join(testDir, "imgs", "actions", "test-action"), { recursive: true });
-    writeFileSync(join(testDir, "imgs", "actions", "test-action", "key-template.svg"), validTemplate);
-  });
-
-  afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
-  });
 
   describe("escapeXml", () => {
     it("should escape ampersand", () => {
@@ -58,25 +36,6 @@ describe("icon-template", () => {
 
     it("should leave normal text unchanged", () => {
       expect(escapeXml("Hello World 123")).toBe("Hello World 123");
-    });
-  });
-
-  describe("loadIconTemplate", () => {
-    it("should load template from file system", () => {
-      const template = loadIconTemplate(testDir, "test-action");
-
-      expect(template).toBe(validTemplate);
-    });
-
-    it("should cache loaded templates", () => {
-      const template1 = loadIconTemplate(testDir, "test-action");
-      const template2 = loadIconTemplate(testDir, "test-action");
-
-      expect(template1).toBe(template2);
-    });
-
-    it("should throw for non-existent template", () => {
-      expect(() => loadIconTemplate(testDir, "non-existent")).toThrow();
     });
   });
 
@@ -121,32 +80,6 @@ describe("icon-template", () => {
       const result = renderIconTemplate(template, { content: '<rect fill="#ff0000"/>' });
 
       expect(result).toBe('<svg><rect fill="#ff0000"/></svg>');
-    });
-  });
-
-  describe("renderIcon", () => {
-    it("should load, render, and convert to data URI", () => {
-      const result = renderIcon(testDir, "test-action", { text: "Hello" });
-
-      expect(result.startsWith("data:image/svg+xml;base64,")).toBe(true);
-
-      // Decode and verify content
-      const decoded = Buffer.from(result.replace("data:image/svg+xml;base64,", ""), "base64").toString("utf-8");
-
-      expect(decoded).toContain("Hello");
-      expect(decoded).not.toContain("{{text}}");
-    });
-
-    it("should use cached template on subsequent calls", () => {
-      const result1 = renderIcon(testDir, "test-action", { text: "First" });
-      const result2 = renderIcon(testDir, "test-action", { text: "Second" });
-
-      // Both should be valid data URIs
-      expect(result1.startsWith("data:image/svg+xml;base64,")).toBe(true);
-      expect(result2.startsWith("data:image/svg+xml;base64,")).toBe(true);
-
-      // But with different content
-      expect(result1).not.toBe(result2);
     });
   });
 
@@ -198,75 +131,6 @@ describe("icon-template", () => {
       const errors = validateIconTemplate(template);
 
       expect(errors.length).toBe(3);
-    });
-  });
-
-  describe("extractSvgContent", () => {
-    it("should strip outer svg tags and return inner content", () => {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <rect x="8" y="8" width="56" height="28"/>
-  <text x="12" y="15">LAP</text>
-</svg>`;
-      const result = extractSvgContent(svg);
-
-      expect(result).toBe(`<rect x="8" y="8" width="56" height="28"/>
-  <text x="12" y="15">LAP</text>`);
-    });
-
-    it("should handle svg with attributes", () => {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" fill="none">
-  <circle cx="36" cy="36" r="10"/>
-</svg>`;
-      const result = extractSvgContent(svg);
-
-      expect(result).toBe(`<circle cx="36" cy="36" r="10"/>`);
-    });
-
-    it("should handle leading and trailing whitespace", () => {
-      const svg = `  <svg xmlns="http://www.w3.org/2000/svg">
-  <rect/>
-</svg>  `;
-      const result = extractSvgContent(svg);
-
-      expect(result).toBe("<rect/>");
-    });
-
-    it("should handle single-line svg", () => {
-      const svg = `<svg><rect x="0" y="0"/></svg>`;
-      const result = extractSvgContent(svg);
-
-      expect(result).toBe(`<rect x="0" y="0"/>`);
-    });
-
-    it("should return empty string for empty svg", () => {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
-      const result = extractSvgContent(svg);
-
-      expect(result).toBe("");
-    });
-  });
-
-  describe("clearTemplateCache", () => {
-    it("should clear all cached templates", () => {
-      // Load a template to populate cache
-      loadIconTemplate(testDir, "test-action");
-
-      // Modify the file
-      const modifiedTemplate = validTemplate.replace("{{text}}", "{{modified}}");
-
-      writeFileSync(join(testDir, "imgs", "actions", "test-action", "key-template.svg"), modifiedTemplate);
-
-      // Should still return cached version
-      const cached = loadIconTemplate(testDir, "test-action");
-
-      expect(cached).toBe(validTemplate);
-
-      // Clear cache and reload
-      clearTemplateCache();
-
-      const fresh = loadIconTemplate(testDir, "test-action");
-
-      expect(fresh).toBe(modifiedTemplate);
     });
   });
 
