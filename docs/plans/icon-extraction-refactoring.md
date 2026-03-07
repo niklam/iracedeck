@@ -157,9 +157,9 @@ When an action is fully migrated:
 
 ### Actions with dynamic content (partial extraction)
 
-- [ ] `fuel-service` — static variants extractable; dynamic fuel amounts stay inline
-- [ ] `car-control` — static variants extractable; pit-limiter speed display stays inline
-- [ ] `chat` — template with dynamic text (`generateIconText()`) stays inline
+- [x] `fuel-service` — 7 static icon variants extracted; dynamic fuel amount labels stay inline
+- [x] `car-control` — 4 static modes extracted; pit-speed-limiter stays inline (dynamic speed)
+- [x] `chat` — 5 standard mode icons extracted; send-message/macro with `generateIconText()` stay inline
 - [ ] `tire-service` — telemetry-driven compound/wear display stays inline
 - [ ] `session-info` — different template structure; telemetry-driven content stays inline
 

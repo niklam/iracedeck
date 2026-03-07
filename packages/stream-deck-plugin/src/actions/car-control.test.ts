@@ -27,6 +27,19 @@ const {
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
 }));
 
+vi.mock("@iracedeck/icons/car-control/starter.svg", () => ({
+  default: "<svg>starter-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/ignition.svg", () => ({
+  default: "<svg>ignition-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/enter-exit-tow.svg", () => ({
+  default: "<svg>enter-exit-tow-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/pause-sim.svg", () => ({
+  default: "<svg>pause-sim-icon</svg>",
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -79,7 +92,7 @@ vi.mock("../shared/index.js", () => ({
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+    return `<svg>${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
