@@ -142,18 +142,18 @@ When an action is fully migrated:
 
 ### Actions with many variants
 
-- [ ] `black-box-selector` — 11 direct icons + 2 cycle icons = 13 variants
-- [ ] `audio-controls` — variants per category × action
-- [ ] `camera-cycle` — variants per camera × direction
-- [ ] `camera-editor-adjustments` — variants per adjustment × direction
-- [ ] `view-adjustment` — variants per view × direction
-- [ ] `setup-aero` — variants per setting × direction
-- [ ] `setup-brakes` — variants per setting × direction
-- [ ] `setup-chassis` — variants per setting × direction
-- [ ] `setup-engine` — variants per setting × direction
-- [ ] `setup-fuel` — variants per setting × direction
-- [ ] `setup-hybrid` — variants per setting × direction
-- [ ] `setup-traction` — variants per setting × direction
+- [x] `black-box-selector` — 11 direct icons + 2 cycle icons = 13 variants
+- [x] `audio-controls` — 9 variants (3 categories × 3 actions)
+- [x] `camera-cycle` — 8 variants (4 types × 2 directions)
+- [x] `camera-editor-adjustments` — 30 variants (15 adjustments × 2 directions)
+- [x] `view-adjustment` — 9 variants (4 directional + 1 non-directional)
+- [x] `setup-aero` — 7 variants (3 directional + 1 non-directional)
+- [x] `setup-brakes` — 13 variants (6 directional + 1 toggle)
+- [x] `setup-chassis` — 26 variants (13 settings × 2 directions)
+- [x] `setup-engine` — 8 variants (4 settings × 2 directions)
+- [x] `setup-fuel` — 7 variants (2 directional + 3 toggles)
+- [x] `setup-hybrid` — 9 variants (3 directional + 3 non-directional)
+- [x] `setup-traction` — 9 variants (4 directional + 1 toggle)
 
 ### Actions with dynamic content (partial extraction)
 
