@@ -128,9 +128,9 @@ When an action is fully migrated:
 
 ### Simple actions (few static variants)
 
-- [ ] `replay-speed` — 2 variants (increase, decrease)
-- [ ] `look-direction` — directional variants
-- [ ] `media-capture` — variants per capture mode
+- [x] `replay-speed` — 2 variants (increase, decrease)
+- [x] `look-direction` — 4 variants (look-left, look-right, look-up, look-down)
+- [x] `media-capture` — 7 variants per capture mode
 - [ ] `pit-quick-actions` — variants per pit action
 - [ ] `telemetry-control` — variants per control mode
 - [ ] `toggle-ui-elements` — variants per UI element
