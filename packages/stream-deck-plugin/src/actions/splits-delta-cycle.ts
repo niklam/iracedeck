@@ -6,15 +6,13 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
-import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.main.svg";
-import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.main.svg";
-import splitsDeltaCycleTemplate from "@iracedeck/icons/splits-delta-cycle/template.svg";
+import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
+import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import z from "zod";
 
 import {
   ConnectionStateAwareAction,
   createSDLogger,
-  extractSvgContent,
   formatKeyBinding,
   getGlobalSettings,
   getKeyboard,
@@ -24,17 +22,12 @@ import {
   type KeyCombination,
   LogLevel,
   parseKeyBinding,
-  renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
 
-/**
- * SVG icon content for cycle directions (next/previous)
- * Uses F1-style sector time colors: purple (best overall), green (personal best), yellow (slower)
- */
 const DIRECTION_ICONS: Record<string, string> = {
-  next: extractSvgContent(nextIconSvg),
-  previous: extractSvgContent(previousIconSvg),
+  next: nextIconSvg,
+  previous: previousIconSvg,
 };
 
 const SplitsDeltaCycleSettings = z.object({
@@ -55,17 +48,7 @@ export const GLOBAL_KEY_NAMES = {
  * @internal Exported for testing
  */
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
-  const { direction } = settings;
-
-  const iconContent = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
-  const labels =
-    direction === "next" ? { line1: "NEXT", line2: "SPLITS DELTA" } : { line1: "PREVIOUS", line2: "SPLITS DELTA" };
-
-  const svg = renderIconTemplate(splitsDeltaCycleTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
-  });
+  const svg = DIRECTION_ICONS[settings.direction] || DIRECTION_ICONS.next;
 
   return svgToDataUri(svg);
 }

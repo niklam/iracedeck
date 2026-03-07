@@ -17,14 +17,11 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
-vi.mock("@iracedeck/icons/splits-delta-cycle/template.svg", () => ({
-  default: "<svg>{{iconContent}}{{labelLine1}}{{labelLine2}}</svg>",
+vi.mock("@iracedeck/icons/splits-delta-cycle/next.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">NEXT SPLITS DELTA</svg>',
 }));
-vi.mock("@iracedeck/icons/splits-delta-cycle/next.main.svg", () => ({
-  default: "<svg>next-icon-content</svg>",
-}));
-vi.mock("@iracedeck/icons/splits-delta-cycle/previous.main.svg", () => ({
-  default: "<svg>previous-icon-content</svg>",
+vi.mock("@iracedeck/icons/splits-delta-cycle/previous.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">PREVIOUS SPLITS DELTA</svg>',
 }));
 
 vi.mock("../shared/index.js", () => ({
@@ -40,7 +37,6 @@ vi.mock("../shared/index.js", () => ({
     error: vi.fn(),
     trace: vi.fn(),
   })),
-  extractSvgContent: vi.fn((svg: string) => svg.replace(/<\/?svg[^>]*>/g, "")),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -54,9 +50,6 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
-  }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
 
