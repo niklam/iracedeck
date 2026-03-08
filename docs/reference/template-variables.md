@@ -107,6 +107,17 @@ Example: You are P6. A P17 car being lapped is directly in front of you, while P
 | `track_ahead` | The P17 car | Physically closest car ahead on track |
 | `race_ahead` | The P5 car | One position ahead in standings |
 
+## Test Drive Limitations
+
+In offline test drive sessions, iRacing does not provide real competition data. The following fields will have placeholder or missing values:
+
+- `irating` — returns `1` (not your actual iRating)
+- `license` — returns a default value (not your actual license)
+- `position`, `class_position` — return `0` (no race positions in test drives)
+- All `track_ahead`, `track_behind`, `race_ahead`, `race_behind` groups — empty (you are alone on track)
+
+Template variables are designed for use in **online sessions** (practice, qualifying, race) where full driver and competition data is available.
+
 ## Edge Cases
 
 - **Leading the race**: `race_ahead` fields are empty
