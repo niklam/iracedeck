@@ -17,7 +17,16 @@
 		</sdpi-item>
 
 		<sdpi-item label="Message Text" id="message-item" class="hidden">
-			<sdpi-textfield setting="message" placeholder="Enter message to send"></sdpi-textfield>
+			<sdpi-textarea setting="message" rows="3" placeholder="Enter message to send"></sdpi-textarea>
+		</sdpi-item>
+
+		<sdpi-item id="template-help" class="hidden">
+			<div style="font-size: 11px; color: #9e9e9e; line-height: 1.5;">
+				Supports <b>{{variable}}</b> placeholders for live data.
+				<a href="https://github.com/niklam/iracedeck/blob/master/docs/reference/template-variables.md"
+				   style="color: #4a90d9;"
+				   target="_blank">View template variable reference</a>
+			</div>
 		</sdpi-item>
 
 		<sdpi-item label="Macro Number" id="macro-item" class="hidden">
@@ -45,9 +54,13 @@
 			function updateVisibility(mode) {
 				const messageItem = document.getElementById("message-item");
 				const macroItem = document.getElementById("macro-item");
+				const templateHelp = document.getElementById("template-help");
 
 				if (messageItem) {
 					messageItem.classList.toggle("hidden", mode !== "send-message");
+				}
+				if (templateHelp) {
+					templateHelp.classList.toggle("hidden", mode !== "send-message");
 				}
 				if (macroItem) {
 					macroItem.classList.toggle("hidden", mode !== "macro");
