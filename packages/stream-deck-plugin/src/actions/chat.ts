@@ -12,6 +12,7 @@ import openChatIcon from "@iracedeck/icons/chat/open-chat.svg";
 import replyIcon from "@iracedeck/icons/chat/reply.svg";
 import respondPmIcon from "@iracedeck/icons/chat/respond-pm.svg";
 import whisperIcon from "@iracedeck/icons/chat/whisper.svg";
+import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
@@ -231,22 +232,36 @@ export function generateMacroSvg(iconColor: string, keyText: string, macroNumber
 export class Chat extends ConnectionStateAwareAction<ChatSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("Chat"), LogLevel.Info);
 
+  private activeContexts = new Map<string, ChatSettings>();
+  private lastRenderedIcon = new Map<string, string>();
+
   override async onWillAppear(ev: WillAppearEvent<ChatSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, () => {
       this.updateConnectionState();
+
+      const storedSettings = this.activeContexts.get(ev.action.id);
+
+      if (storedSettings && this.hasTemplateVars(storedSettings)) {
+        this.updateIconFromTelemetry(ev.action.id, storedSettings);
+      }
     });
   }
 
   override async onWillDisappear(ev: WillDisappearEvent<ChatSettings>): Promise<void> {
     await super.onWillDisappear(ev);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedIcon.delete(ev.action.id);
     this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ChatSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedIcon.delete(ev.action.id);
     await this.updateDisplay(ev, settings);
   }
 
@@ -331,8 +346,17 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
       return;
     }
 
+    // Resolve template variables if message contains {{...}} placeholders
+    let resolvedMessage = trimmed;
+
+    if (trimmed.includes("{{")) {
+      const context = buildTemplateContext(this.sdkController);
+      resolvedMessage = resolveTemplate(trimmed, context);
+      this.logger.debug(`Resolved template: "${resolvedMessage}"`);
+    }
+
     const chat = getCommands().chat;
-    const success = chat.sendMessage(trimmed);
+    const success = chat.sendMessage(resolvedMessage);
     this.logger.info("Send message executed");
     this.logger.debug(`Result: ${success}`);
   }
@@ -379,13 +403,38 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     }
   }
 
+  private hasTemplateVars(settings: ChatSettings): boolean {
+    return settings.keyText.includes("{{");
+  }
+
+  private resolveSettingsTemplates(settings: ChatSettings): ChatSettings {
+    if (!this.hasTemplateVars(settings)) return settings;
+
+    const context = buildTemplateContext(this.sdkController);
+    const resolvedKeyText = resolveTemplate(settings.keyText, context);
+
+    return { ...settings, keyText: resolvedKeyText };
+  }
+
+  private async updateIconFromTelemetry(contextId: string, settings: ChatSettings): Promise<void> {
+    const resolved = this.resolveSettingsTemplates(settings);
+    const svgDataUri = generateChatSvg(resolved);
+
+    if (this.lastRenderedIcon.get(contextId) !== svgDataUri) {
+      this.lastRenderedIcon.set(contextId, svgDataUri);
+      await this.updateKeyImage(contextId, svgDataUri);
+    }
+  }
+
   private async updateDisplay(
     ev: WillAppearEvent<ChatSettings> | DidReceiveSettingsEvent<ChatSettings>,
     settings: ChatSettings,
   ): Promise<void> {
     this.updateConnectionState();
 
-    const svgDataUri = generateChatSvg(settings);
+    const resolved = this.resolveSettingsTemplates(settings);
+    const svgDataUri = generateChatSvg(resolved);
+    this.lastRenderedIcon.set(ev.action.id, svgDataUri);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
   }

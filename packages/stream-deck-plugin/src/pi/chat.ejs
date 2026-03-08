@@ -20,6 +20,26 @@
 			<sdpi-textfield setting="message" placeholder="Enter message to send"></sdpi-textfield>
 		</sdpi-item>
 
+		<sdpi-item id="template-help" class="hidden">
+			<details>
+				<summary style="cursor: pointer; color: #9e9e9e; font-size: 11px;">
+					Template Variables (use {{variable}} syntax)
+				</summary>
+				<div style="font-size: 10px; color: #9e9e9e; padding: 4px 0; line-height: 1.6;">
+					<b>Self:</b> self.name, self.first_name, self.last_name, self.car_number,
+					self.position, self.class_position, self.lap, self.incidents<br>
+					<b>Track Ahead:</b> track_ahead.name, track_ahead.first_name, track_ahead.last_name, track_ahead.car_number<br>
+					<b>Track Behind:</b> track_behind.name, track_behind.first_name, track_behind.last_name, track_behind.car_number<br>
+					<b>Race Ahead:</b> race_ahead.name, race_ahead.first_name, race_ahead.car_number<br>
+					<b>Race Behind:</b> race_behind.name, race_behind.first_name, race_behind.car_number<br>
+					<b>Session:</b> session.type, session.laps_remaining, session.time_remaining<br>
+					<b>Track:</b> track.name, track.short_name<br>
+					<br>
+					<i>All driver groups also have: abbrev_name, irating, license, laps_completed</i>
+				</div>
+			</details>
+		</sdpi-item>
+
 		<sdpi-item label="Macro Number" id="macro-item" class="hidden">
 			<sdpi-select setting="macroNumber" default="1">
 				<% for (let i = 1; i <= 15; i++) { %>
@@ -45,9 +65,13 @@
 			function updateVisibility(mode) {
 				const messageItem = document.getElementById("message-item");
 				const macroItem = document.getElementById("macro-item");
+				const templateHelp = document.getElementById("template-help");
 
 				if (messageItem) {
 					messageItem.classList.toggle("hidden", mode !== "send-message");
+				}
+				if (templateHelp) {
+					templateHelp.classList.toggle("hidden", mode !== "send-message");
 				}
 				if (macroItem) {
 					macroItem.classList.toggle("hidden", mode !== "macro");
