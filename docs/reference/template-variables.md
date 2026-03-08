@@ -107,16 +107,50 @@ Example: You are P6. A P17 car being lapped is directly in front of you, while P
 | `track_ahead` | The P17 car | Physically closest car ahead on track |
 | `race_ahead` | The P5 car | One position ahead in standings |
 
-## Test Drive Limitations
+## Availability
 
-In offline test drive sessions, iRacing does not provide real competition data. The following fields will have placeholder or missing values:
+Not all variables have meaningful values in every session type. The **Availability** column indicates where each variable returns real data:
 
-- `irating` — returns `1` (not your actual iRating)
-- `license` — returns a default value (not your actual license)
-- `position`, `class_position` — return `0` (no race positions in test drives)
-- All `track_ahead`, `track_behind`, `race_ahead`, `race_behind` groups — empty (you are alone on track)
+- **All** — available in all session types (test drive, practice, qualifying, race)
+- **Online** — only available in online sessions; returns placeholder or empty in test drives
 
-Template variables are designed for use in **online sessions** (practice, qualifying, race) where full driver and competition data is available.
+### Self fields
+
+| Variable | Availability | Test drive value |
+|----------|-------------|-----------------|
+| `self.name` | All | |
+| `self.first_name` | All | |
+| `self.last_name` | All | |
+| `self.abbrev_name` | Online | empty |
+| `self.car_number` | All | |
+| `self.position` | Online | `0` |
+| `self.class_position` | Online | `0` |
+| `self.lap` | All | |
+| `self.laps_completed` | All | |
+| `self.irating` | Online | `1` |
+| `self.license` | Online | `R 0.01` |
+| `self.incidents` | All | |
+
+### Driver group fields (`track_ahead`, `track_behind`, `race_ahead`, `race_behind`)
+
+| Field | Availability | Test drive value |
+|-------|-------------|-----------------|
+| All fields | Online | empty (no other drivers) |
+
+### Session fields
+
+| Variable | Availability | Test drive value |
+|----------|-------------|-----------------|
+| `session.type` | All | `Offline Testing` |
+| `session.laps_remaining` | Online | `32767` (unlimited) |
+| `session.time_remaining` | Online | `10080:00` (7 days) |
+
+### Track fields
+
+| Variable | Availability |
+|----------|-------------|
+| `track.name` | All |
+| `track.short_name` | All |
 
 ## Edge Cases
 
