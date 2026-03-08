@@ -346,12 +346,13 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
       return;
     }
 
-    // Resolve template variables if message contains {{...}} placeholders
-    let resolvedMessage = trimmed;
+    // Collapse newlines into spaces (textarea allows multiline editing but chat is single-line)
+    let resolvedMessage = trimmed.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
 
-    if (trimmed.includes("{{")) {
+    // Resolve template variables if message contains {{...}} placeholders
+    if (resolvedMessage.includes("{{")) {
       const context = buildTemplateContext(this.sdkController);
-      resolvedMessage = resolveTemplate(trimmed, context);
+      resolvedMessage = resolveTemplate(resolvedMessage, context);
       this.logger.debug(`Resolved template: "${resolvedMessage}"`);
     }
 
