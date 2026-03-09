@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="144"
+   height="144"
+   viewBox="0 0 144 144"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1">
+    <rect
+       x="8"
+       y="58"
+       width="129"
+       height="34"
+       id="rect5" />
+    <rect
+       x="8"
+       y="8"
+       width="129"
+       height="34"
+       id="rect4" />
+    <rect
+       x="8"
+       y="108"
+       width="128"
+       height="28"
+       id="rect2" />
+  </defs>
+  <g
+     id="layer1">
+    <path
+       style="display:inline;fill:#00ff00;fill-opacity:1"
+       d="m 0,100 v 44 H 144 V 99.983466 Z"
+       id="path1" />
+    <path
+       style="fill:#000064;fill-opacity:1"
+       d="M 0,0 V 100 L 144,99.98347 V 0 Z"
+       id="path2" />
+    <text
+       xml:space="preserve"
+       id="text2"
+       style="font-size:24px;text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect2);display:inline;fill:#000064;fill-opacity:1"
+       x="64"
+       y="0"><tspan
+         x="34.271484"
+         y="129.23438"
+         id="tspan2"><tspan
+           style="fill:#000000"
+           id="tspan1">Refuel</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       id="text4"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect4);display:inline;fill:#000000;fill-opacity:1"
+       x="64.5"
+       y="0"><tspan
+         x="33.753906"
+         y="33.918079"
+         id="tspan4"><tspan
+           style="fill:#ffffff"
+           id="tspan3">Refuel</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       id="text5"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect5);display:inline;fill:#ffffff;fill-opacity:1"
+       x="64.5"
+       y="0"><tspan
+         x="42.558594"
+         y="83.918079"
+         id="tspan5">+10L</tspan></text>
+  </g>
+</svg>
