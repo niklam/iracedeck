@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="144"
+   height="144"
+   viewBox="0 0 144 144"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   sodipodi:docname="fuel-toggle.svg"
+   inkscape:export-filename="fuel-toggle.svg"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="px"
+     showgrid="true"
+     inkscape:zoom="2.834231"
+     inkscape:cx="64.744193"
+     inkscape:cy="61.921557"
+     inkscape:window-width="1536"
+     inkscape:window-height="790"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:grid
+       id="grid1"
+       units="px"
+       originx="0"
+       originy="0"
+       spacingx="1"
+       spacingy="1"
+       empcolor="#0099e5"
+       empopacity="0.30196078"
+       color="#0099e5"
+       opacity="0.14901961"
+       empspacing="5"
+       enabled="true"
+       visible="true"
+       dotted="false"
+       snapvisiblegridlinesonly="true" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1">
+    <rect
+       x="8"
+       y="58"
+       width="129"
+       height="34"
+       id="rect5" />
+    <rect
+       x="8"
+       y="8"
+       width="129"
+       height="34"
+       id="rect4" />
+    <rect
+       x="8"
+       y="108"
+       width="128"
+       height="28"
+       id="rect2" />
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="display:inline;fill:#00ff00;fill-opacity:1"
+       d="m 0,100 v 44 H 144 V 99.983466 Z"
+       id="path1" />
+    <path
+       style="fill:#000064;fill-opacity:1"
+       d="M 0,0 V 100 L 144,99.98347 V 0 Z"
+       id="path2" />
+    <text
+       xml:space="preserve"
+       id="text2"
+       style="font-size:24px;text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect2);display:inline;fill:#000064;fill-opacity:1"
+       x="64"
+       y="0"><tspan
+         x="34.271484"
+         y="129.23438"
+         id="tspan2"><tspan
+           style="fill:#000000"
+           id="tspan1">Refuel</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       id="text4"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect4);display:inline;fill:#000000;fill-opacity:1"
+       x="64.5"
+       y="0"><tspan
+         x="33.753906"
+         y="33.918079"
+         id="tspan4"><tspan
+           style="fill:#ffffff"
+           id="tspan3">Refuel</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       id="text5"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect5);display:inline;fill:#ffffff;fill-opacity:1"
+       x="64.5"
+       y="0"><tspan
+         x="42.558594"
+         y="83.918079"
+         id="tspan5">+10L</tspan></text>
+  </g>
+</svg>
