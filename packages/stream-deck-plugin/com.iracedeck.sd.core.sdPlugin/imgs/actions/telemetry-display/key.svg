@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3444"/>
+  <text x="36" y="16" text-anchor="middle" dominant-baseline="central"
+        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="9">SPEED</text>
+  <text x="36" y="50" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">---</text>
+</svg>

@@ -49,6 +49,8 @@ export interface TemplateContext {
     name: string;
     short_name: string;
   };
+  telemetry: Record<string, string>;
+  sessionInfo: Record<string, string>;
 }
 
 interface DriverEntry {
@@ -80,6 +82,77 @@ const EMPTY_SELF_FIELDS: SelfDriverFields = {
   ...EMPTY_DRIVER_FIELDS,
   incidents: "",
 };
+
+/**
+ * Field names that are integers (0/1) but represent boolean values.
+ * These get converted to "Yes"/"No" instead of "0"/"1".
+ */
+const BOOLEAN_INT_FIELDS = new Set([
+  "IsOnTrack",
+  "IsOnTrackCar",
+  "IsReplayPlaying",
+  "IsInGarage",
+  "IsDiskLoggingEnabled",
+  "IsDiskLoggingActive",
+  "PlayerCarDryTireSetAvailable",
+  "DriverMarker",
+  "PushToPass",
+  "PushToTalk",
+  "OnPitRoad",
+  "PitstopActive",
+  "PlayerCarInPitStall",
+]);
+
+interface FlattenOptions {
+  excludePrefix?: string;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Flattens a nested object into dot-notation keys with display-formatted string values.
+ * Skips arrays, filters keys by prefix, rounds floats to 2 decimals, converts booleans to Yes/No.
+ */
+export function flattenForDisplay(obj: Record<string, unknown>, options?: FlattenOptions): Record<string, string> {
+  const result: Record<string, string> = {};
+  const prefix = options?.excludePrefix;
+
+  function walk(current: Record<string, unknown>, path: string): void {
+    for (const key of Object.keys(current)) {
+      if (prefix && key.startsWith(prefix)) continue;
+
+      const value = current[key];
+      const fullKey = path ? `${path}.${key}` : key;
+
+      if (Array.isArray(value)) continue;
+
+      if (value !== null && value !== undefined && typeof value === "object") {
+        walk(value as Record<string, unknown>, fullKey);
+        continue;
+      }
+
+      if (typeof value === "boolean") {
+        result[fullKey] = value ? "Yes" : "No";
+      } else if (typeof value === "number") {
+        const leafKey = fullKey.includes(".") ? fullKey.substring(fullKey.lastIndexOf(".") + 1) : fullKey;
+
+        if (BOOLEAN_INT_FIELDS.has(leafKey) && (value === 0 || value === 1)) {
+          result[fullKey] = value === 1 ? "Yes" : "No";
+        } else {
+          result[fullKey] = Number.isInteger(value) ? String(value) : value.toFixed(2);
+        }
+      } else if (typeof value === "string") {
+        result[fullKey] = value;
+      } else if (value !== null && value !== undefined) {
+        result[fullKey] = String(value);
+      }
+    }
+  }
+
+  walk(obj, "");
+
+  return result;
+}
 
 /**
  * Builds the full template context from current SDK state.
@@ -119,6 +192,10 @@ export function buildTemplateContextFromData(
     race_behind: raceBehind ? buildDriverFields(raceBehind, telemetry) : { ...EMPTY_DRIVER_FIELDS },
     session: buildSessionFields(sessionInfo, telemetry),
     track: buildTrackFields(sessionInfo),
+    telemetry: telemetry
+      ? flattenForDisplay(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" })
+      : {},
+    sessionInfo: sessionInfo ? flattenForDisplay(sessionInfo as unknown as Record<string, unknown>) : {},
   };
 }
 

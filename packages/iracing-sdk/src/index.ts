@@ -104,6 +104,7 @@ export { resolveTemplate, resolvePathValue } from "./template-resolver.js";
 export {
   buildTemplateContext,
   buildTemplateContextFromData,
+  flattenForDisplay,
   splitDriverName,
   findNearestDriverOnTrack,
   findDriverByRacePosition,

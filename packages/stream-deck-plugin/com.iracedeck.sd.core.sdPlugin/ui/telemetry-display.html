@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+
+	</head>
+	<body>
+		<sdpi-item label="Title">
+			<sdpi-textfield setting="title" default="TELEMETRY"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item label="Template">
+			<sdpi-textfield setting="template" default="{{telemetry.Speed}}"></sdpi-textfield>
+		</sdpi-item>
+
+		<div style="padding: 0 16px 8px; font-size: 11px; color: #9e9e9e; line-height: 1.5;">
+			Use <b>{{telemetry.FieldName}}</b> placeholders.
+			<a href="https://iracedeck.com/docs/template-variables"
+			   style="color: #4a90d9;"
+			   target="_blank">Variable reference</a>
+		</div>
+
+		<sdpi-item label="Background Color">
+			<sdpi-color setting="backgroundColor" default="#2a3444"></sdpi-color>
+		</sdpi-item>
+
+		<sdpi-item label="Text Color">
+			<sdpi-color setting="textColor" default="#ffffff"></sdpi-color>
+		</sdpi-item>
+
+		<sdpi-item label="Font Size">
+			<sdpi-select setting="fontSize" default="18">
+				<option value="12">Small (12)</option>
+				<option value="14">Medium (14)</option>
+				<option value="18">Large (18)</option>
+				<option value="24">Extra Large (24)</option>
+			</sdpi-select>
+		</sdpi-item>
+	</body>
+</html>

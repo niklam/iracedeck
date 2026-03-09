@@ -4,6 +4,7 @@ import {
   buildTemplateContextFromData,
   findDriverByRacePosition,
   findNearestDriverOnTrack,
+  flattenForDisplay,
   formatTimeRemaining,
   splitDriverName,
 } from "./template-context.js";
@@ -398,5 +399,139 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.self.lap).toBe("12");
     expect(ctx.self.laps_completed).toBe("11");
     expect(ctx.self.incidents).toBe("7");
+  });
+
+  it("should include telemetry namespace with filtered and formatted values", () => {
+    const telemetry = makeTelemetry({
+      Speed: 156.789,
+      OilTemp: 95,
+      IsOnTrack: true,
+      CarIdxLap: [5, 6],
+      CarIdxPosition: [1, 2],
+    } as Partial<TelemetryData>);
+
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.telemetry.Speed).toBe("156.79");
+    expect(ctx.telemetry.OilTemp).toBe("95");
+    expect(ctx.telemetry.IsOnTrack).toBe("Yes");
+    expect(ctx.telemetry.CarIdxLap).toBeUndefined();
+    expect(ctx.telemetry.CarIdxPosition).toBeUndefined();
+  });
+
+  it("should include sessionInfo namespace with nested values", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const ctx = buildTemplateContextFromData(null, sessionInfo);
+
+    expect(ctx.sessionInfo["WeekendInfo.TrackDisplayName"]).toBe("Spa-Francorchamps");
+    expect(ctx.sessionInfo["WeekendInfo.TrackDisplayShortName"]).toBe("Spa");
+  });
+
+  it("should return empty telemetry and sessionInfo with null data", () => {
+    const ctx = buildTemplateContextFromData(null, null);
+
+    expect(ctx.telemetry).toEqual({});
+    expect(ctx.sessionInfo).toEqual({});
+  });
+});
+
+describe("flattenForDisplay", () => {
+  it("should flatten a flat object", () => {
+    const result = flattenForDisplay({ Speed: 100, Gear: 4 });
+
+    expect(result.Speed).toBe("100");
+    expect(result.Gear).toBe("4");
+  });
+
+  it("should flatten nested objects with dot notation", () => {
+    const result = flattenForDisplay({
+      WeekendInfo: { TrackDisplayName: "Spa", TrackLength: "7.004 km" },
+    });
+
+    expect(result["WeekendInfo.TrackDisplayName"]).toBe("Spa");
+    expect(result["WeekendInfo.TrackLength"]).toBe("7.004 km");
+  });
+
+  it("should round floating point numbers to 2 decimals", () => {
+    const result = flattenForDisplay({ Speed: 156.789, Throttle: 0.5 });
+
+    expect(result.Speed).toBe("156.79");
+    expect(result.Throttle).toBe("0.50");
+  });
+
+  it("should keep integers as integers", () => {
+    const result = flattenForDisplay({ Gear: 4, Lap: 12 });
+
+    expect(result.Gear).toBe("4");
+    expect(result.Lap).toBe("12");
+  });
+
+  it("should convert booleans to Yes/No", () => {
+    const result = flattenForDisplay({ IsOnTrack: true, IsReplayPlaying: false });
+
+    expect(result.IsOnTrack).toBe("Yes");
+    expect(result.IsReplayPlaying).toBe("No");
+  });
+
+  it("should skip arrays", () => {
+    const result = flattenForDisplay({ CarIdxLap: [1, 2, 3], Speed: 100 });
+
+    expect(result.CarIdxLap).toBeUndefined();
+    expect(result.Speed).toBe("100");
+  });
+
+  it("should skip arrays at nested levels", () => {
+    const result = flattenForDisplay({
+      DriverInfo: { Drivers: [{ Name: "test" }], DriverCarIdx: 0 },
+    });
+
+    expect(result["DriverInfo.Drivers"]).toBeUndefined();
+    expect(result["DriverInfo.DriverCarIdx"]).toBe("0");
+  });
+
+  it("should filter keys by excludePrefix", () => {
+    const result = flattenForDisplay(
+      { Speed: 100, CarIdxLap: [1], CarIdxPosition: [1], Gear: 3 },
+      { excludePrefix: "CarIdx" },
+    );
+
+    expect(result.Speed).toBe("100");
+    expect(result.Gear).toBe("3");
+    expect(result.CarIdxLap).toBeUndefined();
+    expect(result.CarIdxPosition).toBeUndefined();
+  });
+
+  it("should handle deeply nested objects", () => {
+    const result = flattenForDisplay({
+      CarSetup: { Tires: { LeftFront: { TreadRemaining: 85.5 } } },
+    });
+
+    expect(result["CarSetup.Tires.LeftFront.TreadRemaining"]).toBe("85.50");
+  });
+
+  it("should convert known boolean-semantic integer fields to Yes/No", () => {
+    const result = flattenForDisplay({ IsOnTrack: 1, IsReplayPlaying: 0, Speed: 100 });
+
+    expect(result.IsOnTrack).toBe("Yes");
+    expect(result.IsReplayPlaying).toBe("No");
+    expect(result.Speed).toBe("100");
+  });
+
+  it("should not convert unknown integer fields to Yes/No", () => {
+    const result = flattenForDisplay({ Gear: 1, Lap: 0 });
+
+    expect(result.Gear).toBe("1");
+    expect(result.Lap).toBe("0");
+  });
+
+  it("should skip null and undefined values", () => {
+    const result = flattenForDisplay({ a: null, b: undefined, c: "valid" } as Record<string, unknown>);
+
+    expect(result.a).toBeUndefined();
+    expect(result.b).toBeUndefined();
+    expect(result.c).toBe("valid");
   });
 });
