@@ -6,9 +6,38 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import acquireEndIconSvg from "@iracedeck/icons/camera-editor-controls/acquire-end.svg";
+import acquireStartIconSvg from "@iracedeck/icons/camera-editor-controls/acquire-start.svg";
+import beyondFenceToggleIconSvg from "@iracedeck/icons/camera-editor-controls/beyond-fence-toggle.svg";
+import copyCameraIconSvg from "@iracedeck/icons/camera-editor-controls/copy-camera.svg";
+import copyGroupIconSvg from "@iracedeck/icons/camera-editor-controls/copy-group.svg";
+import cycleAimTypeIconSvg from "@iracedeck/icons/camera-editor-controls/cycle-aim-type.svg";
+import cyclePositionTypeIconSvg from "@iracedeck/icons/camera-editor-controls/cycle-position-type.svg";
+import dampeningToggleIconSvg from "@iracedeck/icons/camera-editor-controls/dampening-toggle.svg";
+import inCockpitToggleIconSvg from "@iracedeck/icons/camera-editor-controls/in-cockpit-toggle.svg";
+import insertCameraIconSvg from "@iracedeck/icons/camera-editor-controls/insert-camera.svg";
+import key10xToggleIconSvg from "@iracedeck/icons/camera-editor-controls/key-10x-toggle.svg";
+import keyAccelerationToggleIconSvg from "@iracedeck/icons/camera-editor-controls/key-acceleration-toggle.svg";
+import limitShotRangeToggleIconSvg from "@iracedeck/icons/camera-editor-controls/limit-shot-range-toggle.svg";
+import loadCarCameraIconSvg from "@iracedeck/icons/camera-editor-controls/load-car-camera.svg";
+import loadTrackCameraIconSvg from "@iracedeck/icons/camera-editor-controls/load-track-camera.svg";
+import manualFocusToggleIconSvg from "@iracedeck/icons/camera-editor-controls/manual-focus-toggle.svg";
+import mouseNavigationToggleIconSvg from "@iracedeck/icons/camera-editor-controls/mouse-navigation-toggle.svg";
+import openCameraToolIconSvg from "@iracedeck/icons/camera-editor-controls/open-camera-tool.svg";
+import parabolicMicToggleIconSvg from "@iracedeck/icons/camera-editor-controls/parabolic-mic-toggle.svg";
+import pasteCameraIconSvg from "@iracedeck/icons/camera-editor-controls/paste-camera.svg";
+import pasteGroupIconSvg from "@iracedeck/icons/camera-editor-controls/paste-group.svg";
+import pitchGyroToggleIconSvg from "@iracedeck/icons/camera-editor-controls/pitch-gyro-toggle.svg";
+import removeCameraIconSvg from "@iracedeck/icons/camera-editor-controls/remove-camera.svg";
+import rollGyroToggleIconSvg from "@iracedeck/icons/camera-editor-controls/roll-gyro-toggle.svg";
+import saveCarCameraIconSvg from "@iracedeck/icons/camera-editor-controls/save-car-camera.svg";
+import saveTrackCameraIconSvg from "@iracedeck/icons/camera-editor-controls/save-track-camera.svg";
+import shotSelectionToggleIconSvg from "@iracedeck/icons/camera-editor-controls/shot-selection-toggle.svg";
+import showCameraToggleIconSvg from "@iracedeck/icons/camera-editor-controls/show-camera-toggle.svg";
+import temporaryEditsToggleIconSvg from "@iracedeck/icons/camera-editor-controls/temporary-edits-toggle.svg";
+import zoomToggleIconSvg from "@iracedeck/icons/camera-editor-controls/zoom-toggle.svg";
 import z from "zod";
 
-import cameraEditorControlsTemplate from "../../icons/camera-editor-controls.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -24,9 +53,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GRAY = "#888888";
 
 const CONTROL_VALUES = [
   "open-camera-tool",
@@ -63,279 +89,73 @@ const CONTROL_VALUES = [
 
 type ControlType = (typeof CONTROL_VALUES)[number];
 
-/**
- * Label configuration for each control.
- * Inverted layout: line1 = primary (bold, bottom), line2 = secondary (subdued, top).
- */
-const CAMERA_EDITOR_CONTROLS_LABELS: Record<ControlType, { line1: string; line2: string }> = {
-  "open-camera-tool": { line1: "OPEN", line2: "CAM TOOL" },
-  "key-acceleration-toggle": { line1: "KEY ACCEL", line2: "TOGGLE" },
-  "key-10x-toggle": { line1: "KEY 10X", line2: "TOGGLE" },
-  "parabolic-mic-toggle": { line1: "PARA MIC", line2: "TOGGLE" },
-  "cycle-position-type": { line1: "POS TYPE", line2: "CYCLE" },
-  "cycle-aim-type": { line1: "AIM TYPE", line2: "CYCLE" },
-  "acquire-start": { line1: "ACQ START", line2: "ACQUIRE" },
-  "acquire-end": { line1: "ACQ END", line2: "ACQUIRE" },
-  "temporary-edits-toggle": { line1: "TEMP EDIT", line2: "TOGGLE" },
-  "dampening-toggle": { line1: "DAMPEN", line2: "TOGGLE" },
-  "zoom-toggle": { line1: "ZOOM", line2: "TOGGLE" },
-  "beyond-fence-toggle": { line1: "BND FENCE", line2: "TOGGLE" },
-  "in-cockpit-toggle": { line1: "IN COCKPIT", line2: "TOGGLE" },
-  "mouse-navigation-toggle": { line1: "MOUSE NAV", line2: "TOGGLE" },
-  "pitch-gyro-toggle": { line1: "PITCH GYRO", line2: "TOGGLE" },
-  "roll-gyro-toggle": { line1: "ROLL GYRO", line2: "TOGGLE" },
-  "limit-shot-range-toggle": { line1: "SHOT RNG", line2: "TOGGLE" },
-  "show-camera-toggle": { line1: "SHOW CAM", line2: "TOGGLE" },
-  "shot-selection-toggle": { line1: "SHOT SEL", line2: "TOGGLE" },
-  "manual-focus-toggle": { line1: "MAN FOCUS", line2: "TOGGLE" },
-  "insert-camera": { line1: "INSERT", line2: "CAMERA" },
-  "remove-camera": { line1: "REMOVE", line2: "CAMERA" },
-  "copy-camera": { line1: "COPY", line2: "CAMERA" },
-  "paste-camera": { line1: "PASTE", line2: "CAMERA" },
-  "copy-group": { line1: "COPY", line2: "GROUP" },
-  "paste-group": { line1: "PASTE", line2: "GROUP" },
-  "save-track-camera": { line1: "SAVE", line2: "TRACK CAM" },
-  "load-track-camera": { line1: "LOAD", line2: "TRACK CAM" },
-  "save-car-camera": { line1: "SAVE", line2: "CAR CAM" },
-  "load-car-camera": { line1: "LOAD", line2: "CAR CAM" },
+const CONTROL_ICONS: Record<ControlType, string> = {
+  "open-camera-tool": openCameraToolIconSvg,
+  "key-acceleration-toggle": keyAccelerationToggleIconSvg,
+  "key-10x-toggle": key10xToggleIconSvg,
+  "parabolic-mic-toggle": parabolicMicToggleIconSvg,
+  "cycle-position-type": cyclePositionTypeIconSvg,
+  "cycle-aim-type": cycleAimTypeIconSvg,
+  "acquire-start": acquireStartIconSvg,
+  "acquire-end": acquireEndIconSvg,
+  "temporary-edits-toggle": temporaryEditsToggleIconSvg,
+  "dampening-toggle": dampeningToggleIconSvg,
+  "zoom-toggle": zoomToggleIconSvg,
+  "beyond-fence-toggle": beyondFenceToggleIconSvg,
+  "in-cockpit-toggle": inCockpitToggleIconSvg,
+  "mouse-navigation-toggle": mouseNavigationToggleIconSvg,
+  "pitch-gyro-toggle": pitchGyroToggleIconSvg,
+  "roll-gyro-toggle": rollGyroToggleIconSvg,
+  "limit-shot-range-toggle": limitShotRangeToggleIconSvg,
+  "show-camera-toggle": showCameraToggleIconSvg,
+  "shot-selection-toggle": shotSelectionToggleIconSvg,
+  "manual-focus-toggle": manualFocusToggleIconSvg,
+  "insert-camera": insertCameraIconSvg,
+  "remove-camera": removeCameraIconSvg,
+  "copy-camera": copyCameraIconSvg,
+  "paste-camera": pasteCameraIconSvg,
+  "copy-group": copyGroupIconSvg,
+  "paste-group": pasteGroupIconSvg,
+  "save-track-camera": saveTrackCameraIconSvg,
+  "load-track-camera": loadTrackCameraIconSvg,
+  "save-car-camera": saveCarCameraIconSvg,
+  "load-car-camera": loadCarCameraIconSvg,
 };
 
 /**
- * SVG icon content for each control type.
+ * Label configuration for each control.
  */
-const CAMERA_EDITOR_CONTROLS_ICONS: Record<ControlType, string> = {
-  // Tool: Camera body with wrench
-  "open-camera-tool": `
-    <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="30" cy="21" r="5" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="30" cy="21" r="2" fill="${WHITE}"/>`,
-
-  // Key Input: Key shape with speed lines
-  "key-acceleration-toggle": `
-    <rect x="24" y="12" width="24" height="18" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="22" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">KEY</text>
-    <line x1="18" y1="18" x2="22" y2="18" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="16" y1="22" x2="22" y2="22" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="18" y1="26" x2="22" y2="26" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Key Input: Key shape with "10x" text
-  "key-10x-toggle": `
-    <rect x="24" y="12" width="24" height="18" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="22" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">10x</text>`,
-
-  // Audio: Parabolic dish
-  "parabolic-mic-toggle": `
-    <path d="M22 12 Q36 28 50 12" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="36" y1="20" x2="36" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <circle cx="36" cy="20" r="2" fill="${WHITE}"/>
-    <path d="M30 38 L42 38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Cycle: Circular arrow with "P"
-  "cycle-position-type": `
-    <circle cx="36" cy="22" r="12" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M36 10 A12 12 0 1 1 24 22" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="22,18 24,22 28,20" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="36" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">P</text>`,
-
-  // Cycle: Circular arrow with crosshair
-  "cycle-aim-type": `
-    <circle cx="36" cy="22" r="12" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M36 10 A12 12 0 1 1 24 22" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="22,18 24,22 28,20" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="36" cy="22" r="4" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <line x1="36" y1="16" x2="36" y2="18" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="36" y1="26" x2="36" y2="28" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="30" y1="22" x2="32" y2="22" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="40" y1="22" x2="42" y2="22" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Acquire: Timeline with left bracket
-  "acquire-start": `
-    <line x1="16" y1="22" x2="56" y2="22" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="28" y1="14" x2="28" y2="30" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="28" y1="14" x2="34" y2="14" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="28" y1="30" x2="34" y2="30" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="38,18 42,22 38,26" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Acquire: Timeline with right bracket
-  "acquire-end": `
-    <line x1="16" y1="22" x2="56" y2="22" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="44" y1="14" x2="44" y2="30" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="38" y1="14" x2="44" y2="14" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="38" y1="30" x2="44" y2="30" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="34,18 30,22 34,26" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Toggle: Pencil with clock indicator
-  "temporary-edits-toggle": `
-    <line x1="20" y1="36" x2="42" y2="14" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="20" y1="36" x2="22" y2="30" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="20" y1="36" x2="26" y2="34" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <circle cx="50" cy="30" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="50" y1="30" x2="50" y2="25" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="50" y1="30" x2="54" y2="30" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Toggle: Damped sine wave
-  "dampening-toggle": `
-    <path d="M16 22 Q22 10 28 22 Q34 34 40 22 Q44 16 48 22 Q50 26 52 22 Q54 20 56 22"
-          fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="16" y1="36" x2="56" y2="36" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Toggle: Magnifying glass
-  "zoom-toggle": `
-    <circle cx="32" cy="20" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="39" y1="27" x2="50" y2="38" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="28" y1="20" x2="36" y2="20" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="32" y1="16" x2="32" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Toggle: Fence with arrow going over
-  "beyond-fence-toggle": `
-    <line x1="16" y1="34" x2="16" y2="14" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="30" y1="34" x2="30" y2="14" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="16" y1="20" x2="30" y2="20" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="16" y1="28" x2="30" y2="28" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M36 30 Q42 8 54 16" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="50,12 54,16 50,18" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Toggle: Steering wheel outline
-  "in-cockpit-toggle": `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="22" y1="22" x2="32" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="40" y1="22" x2="50" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="36" y1="26" x2="36" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Toggle: Mouse cursor with arrows
-  "mouse-navigation-toggle": `
-    <polygon points="28,12 28,32 33,27 38,36 42,34 37,25 44,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="48" y1="18" x2="56" y2="18" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="53,15 56,18 53,21" fill="none" stroke="${GRAY}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="48" y1="30" x2="56" y2="30" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="53,27 56,30 53,33" fill="none" stroke="${GRAY}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Toggle: Vertical rotation arc
-  "pitch-gyro-toggle": `
-    <path d="M36 10 A16 16 0 0 1 36 38" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M36 38 A16 16 0 0 1 36 10" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <polyline points="33,13 36,10 39,13" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="36" cy="24" r="2" fill="${WHITE}"/>`,
-
-  // Toggle: Angled rotation arc
-  "roll-gyro-toggle": `
-    <path d="M20 30 A16 12 30 0 1 52 30" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M52 30 A16 12 30 0 1 20 30" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <polyline points="23,27 20,30 24,32" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>`,
-
-  // Toggle: Bounded line segment
-  "limit-shot-range-toggle": `
-    <line x1="20" y1="22" x2="52" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="20" y1="16" x2="20" y2="28" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="52" y1="16" x2="52" y2="28" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="14" y1="22" x2="18" y2="22" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>
-    <line x1="54" y1="22" x2="58" y2="22" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>`,
-
-  // Toggle: Eye/visibility icon
-  "show-camera-toggle": `
-    <path d="M14 22 Q36 8 58 22 Q36 36 14 22 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>`,
-
-  // Toggle: Film frame selection
-  "shot-selection-toggle": `
-    <rect x="18" y="12" width="36" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="18" y1="18" x2="54" y2="18" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="18" y1="30" x2="54" y2="30" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="26" y1="12" x2="26" y2="36" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="46" y1="12" x2="46" y2="36" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="28" y="19" width="16" height="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>`,
-
-  // Toggle: Lens ring with "M"
-  "manual-focus-toggle": `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="9" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">M</text>`,
-
-  // Camera CRUD: Camera + "+"
-  "insert-camera": `
-    <rect x="14" y="14" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="34,17 44,12 44,32 34,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="52" y1="20" x2="52" y2="32" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="46" y1="26" x2="58" y2="26" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Camera CRUD: Camera + "×"
-  "remove-camera": `
-    <rect x="14" y="14" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="34,17 44,12 44,32 34,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="48" y1="20" x2="56" y2="32" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="56" y1="20" x2="48" y2="32" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Camera CRUD: Camera + copy sheets
-  "copy-camera": `
-    <rect x="14" y="14" width="18" height="14" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="32,17 40,13 40,30 32,26" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <rect x="44" y="18" width="10" height="12" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <rect x="48" y="14" width="10" height="12" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>`,
-
-  // Camera CRUD: Camera + clipboard
-  "paste-camera": `
-    <rect x="14" y="14" width="18" height="14" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="32,17 40,13 40,30 32,26" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <rect x="46" y="16" width="12" height="16" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <rect x="49" y="13" width="6" height="4" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>`,
-
-  // Group ops: Stacked rectangles + copy
-  "copy-group": `
-    <rect x="16" y="18" width="20" height="14" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="20" y="14" width="20" height="14" rx="2" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="46" y="20" width="10" height="12" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <rect x="50" y="16" width="10" height="12" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>`,
-
-  // Group ops: Stacked rectangles + clipboard
-  "paste-group": `
-    <rect x="16" y="18" width="20" height="14" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="20" y="14" width="20" height="14" rx="2" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="46" y="18" width="12" height="16" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <rect x="49" y="15" width="6" height="4" rx="1" fill="none" stroke="${WHITE}" stroke-width="1"/>`,
-
-  // File ops: Floppy disk + down arrow + "T"
-  "save-track-camera": `
-    <rect x="18" y="10" width="22" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="22" y="10" width="14" height="8" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="52" y1="14" x2="52" y2="28" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="48,24 52,28 56,24" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="52" y="38" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">T</text>`,
-
-  // File ops: Floppy disk + up arrow + "T"
-  "load-track-camera": `
-    <rect x="18" y="10" width="22" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="22" y="10" width="14" height="8" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="52" y1="28" x2="52" y2="14" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="48,18 52,14 56,18" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="52" y="38" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">T</text>`,
-
-  // File ops: Floppy disk + down arrow + "C"
-  "save-car-camera": `
-    <rect x="18" y="10" width="22" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="22" y="10" width="14" height="8" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="52" y1="14" x2="52" y2="28" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="48,24 52,28 56,24" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="52" y="38" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">C</text>`,
-
-  // File ops: Floppy disk + up arrow + "C"
-  "load-car-camera": `
-    <rect x="18" y="10" width="22" height="24" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="22" y="10" width="14" height="8" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="52" y1="28" x2="52" y2="14" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="48,18 52,14 56,18" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="52" y="38" text-anchor="middle" dominant-baseline="central"
-          fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">C</text>`,
+const CAMERA_EDITOR_CONTROLS_LABELS: Record<ControlType, { mainLabel: string; subLabel: string }> = {
+  "open-camera-tool": { mainLabel: "OPEN", subLabel: "CAM TOOL" },
+  "key-acceleration-toggle": { mainLabel: "KEY ACCEL", subLabel: "TOGGLE" },
+  "key-10x-toggle": { mainLabel: "KEY 10X", subLabel: "TOGGLE" },
+  "parabolic-mic-toggle": { mainLabel: "PARA MIC", subLabel: "TOGGLE" },
+  "cycle-position-type": { mainLabel: "POS TYPE", subLabel: "CYCLE" },
+  "cycle-aim-type": { mainLabel: "AIM TYPE", subLabel: "CYCLE" },
+  "acquire-start": { mainLabel: "ACQ START", subLabel: "ACQUIRE" },
+  "acquire-end": { mainLabel: "ACQ END", subLabel: "ACQUIRE" },
+  "temporary-edits-toggle": { mainLabel: "TEMP EDIT", subLabel: "TOGGLE" },
+  "dampening-toggle": { mainLabel: "DAMPEN", subLabel: "TOGGLE" },
+  "zoom-toggle": { mainLabel: "ZOOM", subLabel: "TOGGLE" },
+  "beyond-fence-toggle": { mainLabel: "BND FENCE", subLabel: "TOGGLE" },
+  "in-cockpit-toggle": { mainLabel: "IN COCKPIT", subLabel: "TOGGLE" },
+  "mouse-navigation-toggle": { mainLabel: "MOUSE NAV", subLabel: "TOGGLE" },
+  "pitch-gyro-toggle": { mainLabel: "PITCH GYRO", subLabel: "TOGGLE" },
+  "roll-gyro-toggle": { mainLabel: "ROLL GYRO", subLabel: "TOGGLE" },
+  "limit-shot-range-toggle": { mainLabel: "SHOT RNG", subLabel: "TOGGLE" },
+  "show-camera-toggle": { mainLabel: "SHOW CAM", subLabel: "TOGGLE" },
+  "shot-selection-toggle": { mainLabel: "SHOT SEL", subLabel: "TOGGLE" },
+  "manual-focus-toggle": { mainLabel: "MAN FOCUS", subLabel: "TOGGLE" },
+  "insert-camera": { mainLabel: "INSERT", subLabel: "CAMERA" },
+  "remove-camera": { mainLabel: "REMOVE", subLabel: "CAMERA" },
+  "copy-camera": { mainLabel: "COPY", subLabel: "CAMERA" },
+  "paste-camera": { mainLabel: "PASTE", subLabel: "CAMERA" },
+  "copy-group": { mainLabel: "COPY", subLabel: "GROUP" },
+  "paste-group": { mainLabel: "PASTE", subLabel: "GROUP" },
+  "save-track-camera": { mainLabel: "SAVE", subLabel: "TRACK CAM" },
+  "load-track-camera": { mainLabel: "LOAD", subLabel: "TRACK CAM" },
+  "save-car-camera": { mainLabel: "SAVE", subLabel: "CAR CAM" },
+  "load-car-camera": { mainLabel: "LOAD", subLabel: "CAR CAM" },
 };
 
 /**
@@ -390,13 +210,12 @@ type CameraEditorControlsSettings = z.infer<typeof CameraEditorControlsSettings>
 export function generateCameraEditorControlsSvg(settings: CameraEditorControlsSettings): string {
   const { control } = settings;
 
-  const iconContent = CAMERA_EDITOR_CONTROLS_ICONS[control] || CAMERA_EDITOR_CONTROLS_ICONS["open-camera-tool"];
+  const iconSvg = CONTROL_ICONS[control] || CONTROL_ICONS["open-camera-tool"];
   const labels = CAMERA_EDITOR_CONTROLS_LABELS[control] || CAMERA_EDITOR_CONTROLS_LABELS["open-camera-tool"];
 
-  const svg = renderIconTemplate(cameraEditorControlsTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

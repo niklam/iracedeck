@@ -468,6 +468,17 @@
     { "id": "hysRegen", "label": "HYS Regen", "default": "", "setting": "setupHybridHysRegen" },
     { "id": "hysNoBoost", "label": "HYS No Boost", "default": "", "setting": "setupHybridHysNoBoost" }
   ],
+  "setupTraction": [
+    { "id": "tcToggle", "label": "TC Toggle", "default": "", "setting": "setupTractionTcToggle" },
+    { "id": "tcSlot1Increase", "label": "TC Slot 1 +", "default": "", "setting": "setupTractionTcSlot1Increase" },
+    { "id": "tcSlot1Decrease", "label": "TC Slot 1 -", "default": "", "setting": "setupTractionTcSlot1Decrease" },
+    { "id": "tcSlot2Increase", "label": "TC Slot 2 +", "default": "", "setting": "setupTractionTcSlot2Increase" },
+    { "id": "tcSlot2Decrease", "label": "TC Slot 2 -", "default": "", "setting": "setupTractionTcSlot2Decrease" },
+    { "id": "tcSlot3Increase", "label": "TC Slot 3 +", "default": "", "setting": "setupTractionTcSlot3Increase" },
+    { "id": "tcSlot3Decrease", "label": "TC Slot 3 -", "default": "", "setting": "setupTractionTcSlot3Decrease" },
+    { "id": "tcSlot4Increase", "label": "TC Slot 4 +", "default": "", "setting": "setupTractionTcSlot4Increase" },
+    { "id": "tcSlot4Decrease", "label": "TC Slot 4 -", "default": "", "setting": "setupTractionTcSlot4Decrease" }
+  ],
   "setupEngine": [
     {
       "id": "enginePowerIncrease",

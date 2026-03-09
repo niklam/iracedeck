@@ -187,6 +187,13 @@ nav::after {
   justify-content: center;
 }
 
+.hero-requirement {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -533,6 +540,58 @@ nav::after {
   margin-bottom: 2rem;
 }
 
+/* Troubleshooting Section */
+.troubleshooting {
+  position: relative;
+  padding: 6rem 3rem;
+  background: var(--surface);
+}
+
+.troubleshooting-content {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.troubleshooting-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 2rem;
+}
+
+.troubleshooting-item h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.troubleshooting-item p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.troubleshooting-item ol {
+  padding-left: 1.25rem;
+  margin-top: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.troubleshooting-item li {
+  margin-bottom: 0.5rem;
+}
+
+.troubleshooting-item code {
+  background: rgba(205, 34, 39, 0.06);
+  border: 1px solid rgba(205, 34, 39, 0.12);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
 /* Footer */
 footer {
   position: relative;
@@ -630,6 +689,7 @@ footer {
     display: none;
   }
 
+  .troubleshooting,
   .support,
   .contributing {
     padding: 4rem 1.5rem;

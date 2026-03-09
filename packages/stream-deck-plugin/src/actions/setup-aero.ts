@@ -7,9 +7,15 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import frontWingDecreaseIconSvg from "@iracedeck/icons/setup-aero/front-wing-decrease.svg";
+import frontWingIncreaseIconSvg from "@iracedeck/icons/setup-aero/front-wing-increase.svg";
+import qualifyingTapeDecreaseIconSvg from "@iracedeck/icons/setup-aero/qualifying-tape-decrease.svg";
+import qualifyingTapeIncreaseIconSvg from "@iracedeck/icons/setup-aero/qualifying-tape-increase.svg";
+import rearWingDecreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-decrease.svg";
+import rearWingIncreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-increase.svg";
+import rfBrakeAttachedIconSvg from "@iracedeck/icons/setup-aero/rf-brake-attached.svg";
 import z from "zod";
 
-import setupAeroTemplate from "../../icons/setup-aero.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,10 +32,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-
 type SetupAeroSetting = "front-wing" | "rear-wing" | "qualifying-tape" | "rf-brake-attached";
 
 type DirectionType = "increase" | "decrease";
@@ -42,83 +44,39 @@ const DIRECTIONAL_CONTROLS: Set<SetupAeroSetting> = new Set([
 ]);
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
+ * Flat icon lookup record mapping setting + direction keys to imported SVGs.
  */
-const SETUP_AERO_LABELS: Record<
-  SetupAeroSetting,
-  Record<DirectionType, { line1: string; line2: string }> | { line1: string; line2: string }
-> = {
-  "front-wing": {
-    increase: { line1: "FRONT WING", line2: "INCREASE" },
-    decrease: { line1: "FRONT WING", line2: "DECREASE" },
-  },
-  "rear-wing": {
-    increase: { line1: "REAR WING", line2: "INCREASE" },
-    decrease: { line1: "REAR WING", line2: "DECREASE" },
-  },
-  "qualifying-tape": {
-    increase: { line1: "QUAL TAPE", line2: "INCREASE" },
-    decrease: { line1: "QUAL TAPE", line2: "DECREASE" },
-  },
-  "rf-brake-attached": { line1: "RF BRAKE", line2: "TOGGLE" },
+const SETUP_AERO_ICONS: Record<string, string> = {
+  "front-wing-increase": frontWingIncreaseIconSvg,
+  "front-wing-decrease": frontWingDecreaseIconSvg,
+  "rear-wing-increase": rearWingIncreaseIconSvg,
+  "rear-wing-decrease": rearWingDecreaseIconSvg,
+  "qualifying-tape-increase": qualifyingTapeIncreaseIconSvg,
+  "qualifying-tape-decrease": qualifyingTapeDecreaseIconSvg,
+  "rf-brake-attached": rfBrakeAttachedIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * Non-directional controls have a single icon; directional controls have per-direction variants.
+ * Label configuration for each setting + direction combination.
+ * Standard layout: mainLabel = primary (bold, top), subLabel = secondary (subdued, bottom).
  */
-const SETUP_AERO_ICONS: Record<SetupAeroSetting, Record<DirectionType, string> | string> = {
-  // Front Wing: wing/airfoil profile + directional arrow
+const SETUP_AERO_LABELS: Record<
+  SetupAeroSetting,
+  Record<DirectionType, { mainLabel: string; subLabel: string }> | { mainLabel: string; subLabel: string }
+> = {
   "front-wing": {
-    increase: `
-    <path d="M12,28 Q20,14 40,18 Q50,20 56,24" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="50" y1="22" x2="50" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M12,28 Q20,14 40,18 Q50,20 56,24" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="50" y1="22" x2="50" y2="34" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "FRONT WING", subLabel: "INCREASE" },
+    decrease: { mainLabel: "FRONT WING", subLabel: "DECREASE" },
   },
-
-  // Rear Wing: taller/steeper wing profile + directional arrow
   "rear-wing": {
-    increase: `
-    <path d="M16,30 Q20,10 36,14 Q46,16 52,22" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="48" y1="20" x2="48" y2="36" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="48" y1="36" x2="36" y2="36" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M16,30 Q20,10 36,14 Q46,16 52,22" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="48" y1="20" x2="48" y2="36" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="48" y1="36" x2="36" y2="36" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "REAR WING", subLabel: "INCREASE" },
+    decrease: { mainLabel: "REAR WING", subLabel: "DECREASE" },
   },
-
-  // Qualifying Tape: horizontal tape strips over grille pattern + directional arrow
   "qualifying-tape": {
-    increase: `
-    <rect x="18" y="14" width="28" height="22" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="18" y1="20" x2="46" y2="20" stroke="${GRAY}" stroke-width="0.5"/>
-    <line x1="18" y1="26" x2="46" y2="26" stroke="${GRAY}" stroke-width="0.5"/>
-    <line x1="18" y1="32" x2="46" y2="32" stroke="${GRAY}" stroke-width="0.5"/>
-    <rect x="20" y="18" width="24" height="6" rx="1" fill="${YELLOW}" opacity="0.6"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="18" y="14" width="28" height="22" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="18" y1="20" x2="46" y2="20" stroke="${GRAY}" stroke-width="0.5"/>
-    <line x1="18" y1="26" x2="46" y2="26" stroke="${GRAY}" stroke-width="0.5"/>
-    <line x1="18" y1="32" x2="46" y2="32" stroke="${GRAY}" stroke-width="0.5"/>
-    <rect x="20" y="18" width="24" height="6" rx="1" fill="${YELLOW}" opacity="0.6"/>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "QUAL TAPE", subLabel: "INCREASE" },
+    decrease: { mainLabel: "QUAL TAPE", subLabel: "DECREASE" },
   },
-
-  // RF Brake Attached: Brake disc with "RF" text badge (no arrow)
-  "rf-brake-attached": `
-    <circle cx="36" cy="24" r="14" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="7" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${YELLOW}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">RF</text>`,
+  "rf-brake-attached": { mainLabel: "RF BRAKE", subLabel: "TOGGLE" },
 };
 
 /**
@@ -152,18 +110,16 @@ type SetupAeroSettings = z.infer<typeof SetupAeroSettings>;
 export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
   const { setting, direction } = settings;
 
-  const iconEntry = SETUP_AERO_ICONS[setting];
-  const iconContent =
-    typeof iconEntry === "string" ? iconEntry : (iconEntry?.[direction] ?? SETUP_AERO_ICONS["rf-brake-attached"]);
+  const iconKey = DIRECTIONAL_CONTROLS.has(setting) ? `${setting}-${direction}` : setting;
+  const iconSvg = SETUP_AERO_ICONS[iconKey] || SETUP_AERO_ICONS["rf-brake-attached"];
 
   const labelEntry = SETUP_AERO_LABELS[setting];
-  const labels: { line1: string; line2: string } =
-    "line1" in labelEntry ? labelEntry : (labelEntry[direction] ?? { line1: "AERO", line2: "SETUP" });
+  const labels: { mainLabel: string; subLabel: string } =
+    "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "AERO", subLabel: "SETUP" });
 
-  const svg = renderIconTemplate(setupAeroTemplate, {
-    iconContent: iconContent as string,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

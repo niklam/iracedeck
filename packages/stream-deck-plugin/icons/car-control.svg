@@ -8,8 +8,8 @@
 
     <!-- Two-line label -->
     <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{mainLabel}}</text>
     <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{subLabel}}</text>
   </g>
 </svg>

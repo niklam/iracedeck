@@ -1,5 +1,6 @@
 {
   "name": "iracedeck",
+  "version": "0.11.0",
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "type": "module",
@@ -15,8 +16,8 @@
     "build:stream-deck": "pnpm install:stream-deck && pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/stream-deck-*\" build",
     "dev": "turbo run dev",
     "clean": "turbo run clean",
-    "lint": "eslint packages/*/src/**",
-    "lint:fix": "eslint --fix packages/*/src/**",
+    "lint": "eslint \"packages/*/src/**\"",
+    "lint:fix": "eslint --fix \"packages/*/src/**\"",
     "format": "prettier --check \"**/*.ts\" \"**/*.json\"",
     "format:fix": "prettier --write \"**/*.ts\" \"**/*.json\"",
     "test": "vitest run",
@@ -24,24 +25,40 @@
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
     "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
-    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch"
+    "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
+    "release": "node scripts/release.mjs",
+    "release:dry": "node scripts/release.mjs --dry-run",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@elgato/eslint-config": "^0.3.2",
-    "@elgato/prettier-config": "^0.3.3",
-    "@eslint/js": "^9.39.3",
-    "@stylistic/eslint-plugin": "^5.9.0",
-    "@tsconfig/node22": "^22.0.5",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
-    "eslint": "^9.39.3",
-    "eslint-config-prettier": "^10.1.8",
-    "firebase-tools": "^15.7.0",
-    "globals": "^17.3.0",
-    "node-gyp": "^12.2.0",
-    "prettier": "^3.8.1",
-    "turbo": "^2.8.11",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "@elgato/eslint-config": "0.3.2",
+    "@elgato/prettier-config": "0.3.3",
+    "@eslint/js": "9.39.3",
+    "@release-it/conventional-changelog": "10.0.5",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@tsconfig/node22": "22.0.5",
+    "@typescript-eslint/eslint-plugin": "8.56.1",
+    "@typescript-eslint/parser": "8.56.1",
+    "eslint": "9.39.3",
+    "eslint-config-prettier": "10.1.8",
+    "firebase-tools": "15.9.0",
+    "globals": "17.4.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.3.2",
+    "node-gyp": "12.2.0",
+    "prettier": "3.8.1",
+    "release-it": "19.2.4",
+    "turbo": "2.8.13",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
   }
 }

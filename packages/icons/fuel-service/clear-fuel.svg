@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#3a2a2a"/>
+
+    <!-- Gas pump with X overlay (red) -->
+  <g>
+      <path d="M37.27,79.51h48.05c1.28,0,2.32-1.05,2.31-2.33l-.08-6.52c-.01-1.27-1.06-2.29-2.33-2.28-1.54.02-3.56.05-5.11.07-1.29.02-2.33-1.02-2.33-2.31l.06-24.72.06-27.1c0-1.28-1.03-2.31-2.31-2.31h-28.59c-1.27,0-2.31,1.03-2.31,2.3l-.03,51.88c0,1.27-1.03,2.3-2.3,2.3h-5.05c-1.26,0-2.29,1.01-2.31,2.27-.02,1.89-.05,4.56-.04,6.46,0,1.27,1.04,2.29,2.31,2.29Z" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+      <rect x="51.47" y="19.44" width="19.64" height="12.32" rx="2" ry="2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+      <polyline points="78.24 43.83 83.91 43.83 83.91 62.06 89.36 62.06 89.36 27 83.62 21.26" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+    </g>
+
+    <line x1="96" y1="36" x2="116" y2="60" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+    <line x1="116" y1="36" x2="96" y2="60" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

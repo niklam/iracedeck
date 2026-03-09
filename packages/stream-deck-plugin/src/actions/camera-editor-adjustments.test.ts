@@ -2,6 +2,97 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CAMERA_EDITOR_GLOBAL_KEYS, generateCameraEditorAdjustmentsSvg } from "./camera-editor-adjustments.js";
 
+vi.mock("@iracedeck/icons/camera-editor-adjustments/latitude-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">latitude-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/latitude-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">latitude-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/longitude-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">longitude-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/longitude-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">longitude-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/altitude-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">altitude-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/altitude-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">altitude-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/yaw-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">yaw-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/yaw-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">yaw-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/pitch-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">pitch-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/pitch-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">pitch-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/fov-zoom-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">fov-zoom-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/fov-zoom-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">fov-zoom-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/key-step-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">key-step-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/key-step-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">key-step-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/vanish-x-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">vanish-x-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/vanish-x-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">vanish-x-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/vanish-y-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">vanish-y-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/vanish-y-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">vanish-y-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/blimp-radius-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">blimp-radius-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/blimp-radius-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">blimp-radius-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/blimp-velocity-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">blimp-velocity-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/blimp-velocity-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">blimp-velocity-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/mic-gain-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mic-gain-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/mic-gain-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">mic-gain-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/auto-set-mic-gain-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-set-mic-gain {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/auto-set-mic-gain-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-set-mic-gain {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/f-number-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">f-number-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/f-number-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">f-number-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/focus-depth-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">focus-depth-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-adjustments/focus-depth-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">focus-depth-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -43,8 +134,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -241,66 +338,66 @@ describe("CameraEditorAdjustments", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
+      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         latitude: {
-          increase: { line1: "+", line2: "LATITUDE" },
-          decrease: { line1: "-", line2: "LATITUDE" },
+          increase: { mainLabel: "+", subLabel: "LATITUDE" },
+          decrease: { mainLabel: "-", subLabel: "LATITUDE" },
         },
         longitude: {
-          increase: { line1: "+", line2: "LONGITUDE" },
-          decrease: { line1: "-", line2: "LONGITUDE" },
+          increase: { mainLabel: "+", subLabel: "LONGITUDE" },
+          decrease: { mainLabel: "-", subLabel: "LONGITUDE" },
         },
         altitude: {
-          increase: { line1: "+", line2: "ALTITUDE" },
-          decrease: { line1: "-", line2: "ALTITUDE" },
+          increase: { mainLabel: "+", subLabel: "ALTITUDE" },
+          decrease: { mainLabel: "-", subLabel: "ALTITUDE" },
         },
         yaw: {
-          increase: { line1: "+", line2: "YAW" },
-          decrease: { line1: "-", line2: "YAW" },
+          increase: { mainLabel: "+", subLabel: "YAW" },
+          decrease: { mainLabel: "-", subLabel: "YAW" },
         },
         pitch: {
-          increase: { line1: "+", line2: "PITCH" },
-          decrease: { line1: "-", line2: "PITCH" },
+          increase: { mainLabel: "+", subLabel: "PITCH" },
+          decrease: { mainLabel: "-", subLabel: "PITCH" },
         },
         "fov-zoom": {
-          increase: { line1: "+", line2: "FOV ZOOM" },
-          decrease: { line1: "-", line2: "FOV ZOOM" },
+          increase: { mainLabel: "+", subLabel: "FOV ZOOM" },
+          decrease: { mainLabel: "-", subLabel: "FOV ZOOM" },
         },
         "key-step": {
-          increase: { line1: "+", line2: "KEY STEP" },
-          decrease: { line1: "-", line2: "KEY STEP" },
+          increase: { mainLabel: "+", subLabel: "KEY STEP" },
+          decrease: { mainLabel: "-", subLabel: "KEY STEP" },
         },
         "vanish-x": {
-          increase: { line1: "+", line2: "VANISH X" },
-          decrease: { line1: "-", line2: "VANISH X" },
+          increase: { mainLabel: "+", subLabel: "VANISH X" },
+          decrease: { mainLabel: "-", subLabel: "VANISH X" },
         },
         "vanish-y": {
-          increase: { line1: "+", line2: "VANISH Y" },
-          decrease: { line1: "-", line2: "VANISH Y" },
+          increase: { mainLabel: "+", subLabel: "VANISH Y" },
+          decrease: { mainLabel: "-", subLabel: "VANISH Y" },
         },
         "blimp-radius": {
-          increase: { line1: "+", line2: "BLIMP RAD" },
-          decrease: { line1: "-", line2: "BLIMP RAD" },
+          increase: { mainLabel: "+", subLabel: "BLIMP RAD" },
+          decrease: { mainLabel: "-", subLabel: "BLIMP RAD" },
         },
         "blimp-velocity": {
-          increase: { line1: "+", line2: "BLIMP VEL" },
-          decrease: { line1: "-", line2: "BLIMP VEL" },
+          increase: { mainLabel: "+", subLabel: "BLIMP VEL" },
+          decrease: { mainLabel: "-", subLabel: "BLIMP VEL" },
         },
         "mic-gain": {
-          increase: { line1: "+", line2: "MIC GAIN" },
-          decrease: { line1: "-", line2: "MIC GAIN" },
+          increase: { mainLabel: "+", subLabel: "MIC GAIN" },
+          decrease: { mainLabel: "-", subLabel: "MIC GAIN" },
         },
         "auto-set-mic-gain": {
-          increase: { line1: "AUTO", line2: "MIC GAIN" },
-          decrease: { line1: "AUTO", line2: "MIC GAIN" },
+          increase: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
+          decrease: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
         },
         "f-number": {
-          increase: { line1: "+", line2: "F-NUMBER" },
-          decrease: { line1: "-", line2: "F-NUMBER" },
+          increase: { mainLabel: "+", subLabel: "F-NUMBER" },
+          decrease: { mainLabel: "-", subLabel: "F-NUMBER" },
         },
         "focus-depth": {
-          increase: { line1: "+", line2: "FOCUS DEPTH" },
-          decrease: { line1: "-", line2: "FOCUS DEPTH" },
+          increase: { mainLabel: "+", subLabel: "FOCUS DEPTH" },
+          decrease: { mainLabel: "-", subLabel: "FOCUS DEPTH" },
         },
       };
 
@@ -312,8 +409,8 @@ describe("CameraEditorAdjustments", () => {
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.line1);
-          expect(decoded).toContain(labels.line2);
+          expect(decoded).toContain(labels.mainLabel);
+          expect(decoded).toContain(labels.subLabel);
         }
       }
     });

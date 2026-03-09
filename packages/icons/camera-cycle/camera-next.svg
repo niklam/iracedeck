@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+
+    <!-- Movie camera + right chevron -->
+    <rect x="36" y="28" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <polygon points="80,34 104,24 104,72 80,62" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <polyline points="112,40 124,48 112,56" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

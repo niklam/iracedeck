@@ -1,6 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSetupEngineSvg, SETUP_ENGINE_GLOBAL_KEYS, SetupEngine } from "./setup-engine.js";
+import { generateSetupEngineSvg, SETUP_ENGINE_GLOBAL_KEYS } from "./setup-engine.js";
+import { SetupEngine } from "./setup-engine.js";
+
+vi.mock("@iracedeck/icons/setup-engine/engine-power-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">engine-power-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/engine-power-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">engine-power-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/throttle-shaping-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">throttle-shaping-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/throttle-shaping-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">throttle-shaping-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/boost-level-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">boost-level-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/boost-level-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">boost-level-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/launch-rpm-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">launch-rpm-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-engine/launch-rpm-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">launch-rpm-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
@@ -50,8 +76,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

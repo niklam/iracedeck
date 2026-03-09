@@ -6,9 +6,15 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import reloadAllTexturesIconSvg from "@iracedeck/icons/media-capture/reload-all-textures.svg";
+import reloadCarTexturesIconSvg from "@iracedeck/icons/media-capture/reload-car-textures.svg";
+import startStopVideoIconSvg from "@iracedeck/icons/media-capture/start-stop-video.svg";
+import takeGiantScreenshotIconSvg from "@iracedeck/icons/media-capture/take-giant-screenshot.svg";
+import takeScreenshotIconSvg from "@iracedeck/icons/media-capture/take-screenshot.svg";
+import toggleVideoCaptureIconSvg from "@iracedeck/icons/media-capture/toggle-video-capture.svg";
+import videoTimerIconSvg from "@iracedeck/icons/media-capture/video-timer.svg";
 import z from "zod";
 
-import mediaCaptureTemplate from "../../icons/media-capture.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -25,10 +31,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const RED = "#e74c3c";
-
 const ACTION_VALUES = [
   "start-stop-video",
   "video-timer",
@@ -41,85 +43,27 @@ const ACTION_VALUES = [
 
 type MediaCaptureAction = (typeof ACTION_VALUES)[number];
 
-/**
- * Label configuration for each media capture action (line1 bold, line2 subdued)
- */
-const MEDIA_CAPTURE_LABELS: Record<MediaCaptureAction, { line1: string; line2: string }> = {
-  "start-stop-video": { line1: "START/STOP", line2: "VIDEO" },
-  "video-timer": { line1: "TIMER", line2: "VIDEO" },
-  "toggle-video-capture": { line1: "TOGGLE", line2: "VIDEO" },
-  "take-screenshot": { line1: "SCREENSHOT", line2: "CAPTURE" },
-  "take-giant-screenshot": { line1: "GIANT", line2: "SCREENSHOT" },
-  "reload-all-textures": { line1: "RELOAD ALL", line2: "TEXTURES" },
-  "reload-car-textures": { line1: "RELOAD CAR", line2: "TEXTURES" },
+const ACTION_ICONS: Record<MediaCaptureAction, string> = {
+  "start-stop-video": startStopVideoIconSvg,
+  "video-timer": videoTimerIconSvg,
+  "toggle-video-capture": toggleVideoCaptureIconSvg,
+  "take-screenshot": takeScreenshotIconSvg,
+  "take-giant-screenshot": takeGiantScreenshotIconSvg,
+  "reload-all-textures": reloadAllTexturesIconSvg,
+  "reload-car-textures": reloadCarTexturesIconSvg,
 };
 
 /**
- * SVG icon content for each media capture action
+ * Label configuration for each media capture action
  */
-const MEDIA_CAPTURE_ICONS: Record<MediaCaptureAction, string> = {
-  // Start/Stop Video: Video camera body with red record circle
-  "start-stop-video": `
-    <rect x="20" y="12" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="31" cy="21" r="5" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="31" cy="21" r="2.5" fill="${RED}"/>`,
-
-  // Video Timer: Video camera with clock overlay
-  "video-timer": `
-    <rect x="16" y="12" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="38,15 48,10 48,32 38,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="52" cy="28" r="8" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="52" y1="28" x2="52" y2="23" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="52" y1="28" x2="56" y2="28" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Toggle Video Capture: Video camera with power symbol
-  "toggle-video-capture": `
-    <rect x="20" y="12" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="31" y1="16" x2="31" y2="20" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <path d="M27 18 A5 5 0 1 0 35 18" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Take Screenshot: Still camera with flash
-  "take-screenshot": `
-    <rect x="20" y="14" width="28" height="20" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="30" y="10" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="2" fill="${WHITE}"/>
-    <line x1="52" y1="12" x2="56" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="54" y1="10" x2="54" y2="14" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>`,
-
-  // Take Giant Screenshot: Still camera with magnification frame
-  "take-giant-screenshot": `
-    <rect x="16" y="14" width="26" height="20" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="26" y="10" width="8" height="6" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="29" cy="24" r="5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="29" cy="24" r="2" fill="${WHITE}"/>
-    <rect x="46" y="14" width="14" height="14" rx="1" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="48" y1="16" x2="50" y2="16" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="48" y1="16" x2="48" y2="18" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="58" y1="26" x2="56" y2="26" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="58" y1="26" x2="58" y2="24" stroke="${WHITE}" stroke-width="1" stroke-linecap="round"/>`,
-
-  // Reload All Textures: Circular reload arrows with grid pattern
-  "reload-all-textures": `
-    <path d="M36 10 A14 14 0 1 1 22 24" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="20,20 22,24 26,22" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M36 38 A14 14 0 1 1 50 24" fill="none" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="52,28 50,24 46,26" fill="none" stroke="${GRAY}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="30" y="18" width="5" height="5" fill="none" stroke="${GRAY}" stroke-width="0.8"/>
-    <rect x="37" y="18" width="5" height="5" fill="none" stroke="${GRAY}" stroke-width="0.8"/>
-    <rect x="30" y="25" width="5" height="5" fill="none" stroke="${GRAY}" stroke-width="0.8"/>
-    <rect x="37" y="25" width="5" height="5" fill="none" stroke="${GRAY}" stroke-width="0.8"/>`,
-
-  // Reload Car Textures: Car silhouette with reload arrow
-  "reload-car-textures": `
-    <path d="M18 28 L22 20 L32 18 L40 18 L50 20 L54 28 Z" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="16" y1="28" x2="56" y2="28" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <circle cx="26" cy="28" r="3" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="46" cy="28" r="3" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M36 10 A6 6 0 1 1 30 16" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="28,14 30,16 32,14" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+const MEDIA_CAPTURE_LABELS: Record<MediaCaptureAction, { mainLabel: string; subLabel: string }> = {
+  "start-stop-video": { mainLabel: "START/STOP", subLabel: "VIDEO" },
+  "video-timer": { mainLabel: "TIMER", subLabel: "VIDEO" },
+  "toggle-video-capture": { mainLabel: "TOGGLE", subLabel: "VIDEO" },
+  "take-screenshot": { mainLabel: "SCREENSHOT", subLabel: "CAPTURE" },
+  "take-giant-screenshot": { mainLabel: "GIANT", subLabel: "SCREENSHOT" },
+  "reload-all-textures": { mainLabel: "RELOAD ALL", subLabel: "TEXTURES" },
+  "reload-car-textures": { mainLabel: "RELOAD CAR", subLabel: "TEXTURES" },
 };
 
 /**
@@ -146,13 +90,12 @@ type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
 export function generateMediaCaptureSvg(settings: MediaCaptureSettings): string {
   const { action: actionType } = settings;
 
-  const iconContent = MEDIA_CAPTURE_ICONS[actionType] || MEDIA_CAPTURE_ICONS["start-stop-video"];
+  const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["start-stop-video"];
   const labels = MEDIA_CAPTURE_LABELS[actionType] || MEDIA_CAPTURE_LABELS["start-stop-video"];
 
-  const svg = renderIconTemplate(mediaCaptureTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

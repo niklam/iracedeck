@@ -23,6 +23,34 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
+vi.mock("@iracedeck/icons/cockpit-misc/trigger-wipers.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">trigger-wipers {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/ffb-max-force-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">ffb-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/ffb-max-force-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">ffb-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/report-latency.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">report-latency {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/dash-page-1-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">dash-1-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/dash-page-1-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">dash-1-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/dash-page-2-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">dash-2-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/dash-page-2-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">dash-2-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/cockpit-misc/in-lap-mode.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">in-lap-mode {{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
@@ -50,8 +78,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -227,30 +261,30 @@ describe("CockpitMisc", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
+      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         "trigger-wipers": {
-          increase: { line1: "WIPERS", line2: "TRIGGER" },
-          decrease: { line1: "WIPERS", line2: "TRIGGER" },
+          increase: { mainLabel: "WIPERS", subLabel: "TRIGGER" },
+          decrease: { mainLabel: "WIPERS", subLabel: "TRIGGER" },
         },
         "ffb-max-force": {
-          increase: { line1: "FFB FORCE", line2: "INCREASE" },
-          decrease: { line1: "FFB FORCE", line2: "DECREASE" },
+          increase: { mainLabel: "FFB FORCE", subLabel: "INCREASE" },
+          decrease: { mainLabel: "FFB FORCE", subLabel: "DECREASE" },
         },
         "report-latency": {
-          increase: { line1: "LATENCY", line2: "REPORT" },
-          decrease: { line1: "LATENCY", line2: "REPORT" },
+          increase: { mainLabel: "LATENCY", subLabel: "REPORT" },
+          decrease: { mainLabel: "LATENCY", subLabel: "REPORT" },
         },
         "dash-page-1": {
-          increase: { line1: "DASH PG 1", line2: "NEXT" },
-          decrease: { line1: "DASH PG 1", line2: "PREVIOUS" },
+          increase: { mainLabel: "DASH PG 1", subLabel: "NEXT" },
+          decrease: { mainLabel: "DASH PG 1", subLabel: "PREVIOUS" },
         },
         "dash-page-2": {
-          increase: { line1: "DASH PG 2", line2: "NEXT" },
-          decrease: { line1: "DASH PG 2", line2: "PREVIOUS" },
+          increase: { mainLabel: "DASH PG 2", subLabel: "NEXT" },
+          decrease: { mainLabel: "DASH PG 2", subLabel: "PREVIOUS" },
         },
         "in-lap-mode": {
-          increase: { line1: "IN LAP", line2: "MODE" },
-          decrease: { line1: "IN LAP", line2: "MODE" },
+          increase: { mainLabel: "IN LAP", subLabel: "MODE" },
+          decrease: { mainLabel: "IN LAP", subLabel: "MODE" },
         },
       };
 
@@ -262,8 +296,8 @@ describe("CockpitMisc", () => {
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.line1);
-          expect(decoded).toContain(labels.line2);
+          expect(decoded).toContain(labels.mainLabel);
+          expect(decoded).toContain(labels.subLabel);
         }
       }
     });

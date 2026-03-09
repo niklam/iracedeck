@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a3a3a"/>
+
+    <!-- Icon content area: radar sweep icon -->
+    <circle cx="72" cy="48" r="28" fill="none" stroke="#888888" stroke-width="2"/>
+    <circle cx="72" cy="48" r="18" fill="none" stroke="#888888" stroke-width="1"/>
+    <circle cx="72" cy="48" r="8" fill="none" stroke="#888888" stroke-width="1"/>
+    <line x1="72" y1="48" x2="72" y2="20" stroke="#ffffff" stroke-width="3"/>
+    <path d="M72 48 L60 24" fill="none" stroke="#2ecc71" stroke-width="2" opacity="0.6"/>
+    <circle cx="84" cy="36" r="4" fill="#2ecc71" opacity="0.5"/>
+    <circle cx="60" cy="32" r="3" fill="#2ecc71" opacity="0.3"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

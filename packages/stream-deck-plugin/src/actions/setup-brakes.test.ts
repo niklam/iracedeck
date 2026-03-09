@@ -1,6 +1,47 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSetupBrakesSvg, SETUP_BRAKES_GLOBAL_KEYS, SetupBrakes } from "./setup-brakes.js";
+import { generateSetupBrakesSvg, SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes.js";
+import { SetupBrakes } from "./setup-brakes.js";
+
+vi.mock("@iracedeck/icons/setup-brakes/abs-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">abs-toggle {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/abs-adjust-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">abs-adjust-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/abs-adjust-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">abs-adjust-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-bias-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-bias-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-bias-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-bias-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-bias-fine-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-bias-fine-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-bias-fine-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-bias-fine-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/peak-brake-bias-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">peak-brake-bias-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/peak-brake-bias-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">peak-brake-bias-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-misc-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-misc-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/brake-misc-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">brake-misc-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/engine-braking-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">engine-braking-increase {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-brakes/engine-braking-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">engine-braking-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
@@ -50,8 +91,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

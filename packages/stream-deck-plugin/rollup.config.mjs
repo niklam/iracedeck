@@ -8,15 +8,27 @@ import process from "node:process";
 import { readFileSync, readdirSync } from "node:fs";
 import { piTemplatePlugin } from "./src/build/pi-template-plugin.mjs";
 
+const iconsPackagePath = path.resolve(
+	path.dirname(url.fileURLToPath(import.meta.url)),
+	"../icons",
+);
+
 /**
- * Rollup plugin to import SVG files as strings
+ * Rollup plugin to import SVG files as strings.
+ * Handles both relative imports and @iracedeck/icons/ package imports.
  */
 function svgPlugin() {
 	return {
 		name: "svg",
 		resolveId(source, importer) {
-			if (source.endsWith(".svg") && importer) {
-				return path.resolve(path.dirname(importer), source);
+			if (source.endsWith(".svg")) {
+				if (source.startsWith("@iracedeck/icons/")) {
+					const relativePath = source.replace("@iracedeck/icons/", "");
+					return path.join(iconsPackagePath, relativePath);
+				}
+				if (importer) {
+					return path.resolve(path.dirname(importer), source);
+				}
 			}
 		},
 		load(id) {
@@ -56,15 +68,21 @@ const config = {
 			name: "watch-externals",
 			buildStart: function () {
 				this.addWatchFile(`${sdPlugin}/manifest.json`);
-				// Watch icons directory for SVG changes
-				try {
-					const iconsDir = path.resolve("icons");
-					readdirSync(iconsDir)
-						.filter(f => f.endsWith(".svg"))
-						.forEach(f => this.addWatchFile(path.join(iconsDir, f)));
-				} catch {
-					// icons directory may not exist
-				}
+				// Recursively watch SVG files in a directory
+				const watchSvgsRecursive = (dir) => {
+					try {
+						for (const entry of readdirSync(dir, { withFileTypes: true })) {
+							const fullPath = path.join(dir, entry.name);
+							if (entry.isDirectory()) watchSvgsRecursive(fullPath);
+							else if (entry.name.endsWith(".svg")) this.addWatchFile(fullPath);
+						}
+					} catch {
+						// directory may not exist
+					}
+				};
+				// Watch local icons directory and shared icons package
+				watchSvgsRecursive(path.resolve("icons"));
+				watchSvgsRecursive(iconsPackagePath);
 			},
 		},
 		typescript({
@@ -89,10 +107,10 @@ const config = {
 					type: "module",
 					dependencies: {
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
-						yaml: "^2.8.2",
+						yaml: "2.8.2",
 					},
 					optionalDependencies: {
-						"keysender": "^2.3.1",
+						"keysender": "2.4.0",
 					}
 				};
 				this.emitFile({ fileName: "package.json", source: JSON.stringify(pkg, null, 2), type: "asset" });

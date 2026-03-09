@@ -6,9 +6,10 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
+import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import z from "zod";
 
-import splitsDeltaCycleTemplate from "../../icons/splits-delta-cycle.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -25,29 +26,9 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const PURPLE = "#9b59b6";
-const GREEN = "#2ecc71";
-const YELLOW = "#f1c40f";
-
-/**
- * SVG icon content for cycle directions (next/previous)
- * Uses F1-style sector time colors: purple (best overall), green (personal best), yellow (slower)
- */
 const DIRECTION_ICONS: Record<string, string> = {
-  // Next: F1 sector bars + right arrow
-  next: `
-    <rect x="13" y="10" width="14" height="10" rx="2" fill="${PURPLE}"/>
-    <rect x="29" y="10" width="14" height="10" rx="2" fill="${GREEN}"/>
-    <rect x="45" y="10" width="14" height="10" rx="2" fill="${YELLOW}"/>
-    <path d="M56 33 l-14 -9 v5 h-24 v8 h24 v5 z" fill="${WHITE}"/>`,
-
-  // Previous: F1 sector bars + left arrow
-  previous: `
-    <rect x="13" y="10" width="14" height="10" rx="2" fill="${PURPLE}"/>
-    <rect x="29" y="10" width="14" height="10" rx="2" fill="${GREEN}"/>
-    <rect x="45" y="10" width="14" height="10" rx="2" fill="${YELLOW}"/>
-    <path d="M16 33 l14 -9 v5 h24 v8 h-24 v5 z" fill="${WHITE}"/>`,
+  next: nextIconSvg,
+  previous: previousIconSvg,
 };
 
 const SplitsDeltaCycleSettings = z.object({
@@ -69,15 +50,10 @@ export const GLOBAL_KEY_NAMES = {
  */
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
   const { direction } = settings;
-
-  const iconContent = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
-  const labels =
-    direction === "next" ? { line1: "NEXT", line2: "SPLITS DELTA" } : { line1: "PREVIOUS", line2: "SPLITS DELTA" };
-
-  const svg = renderIconTemplate(splitsDeltaCycleTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: direction === "next" ? "NEXT" : "PREVIOUS",
+    subLabel: "SPLITS DELTA",
   });
 
   return svgToDataUri(svg);

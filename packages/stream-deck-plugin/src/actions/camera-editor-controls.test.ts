@@ -2,6 +2,97 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS, generateCameraEditorControlsSvg } from "./camera-editor-controls.js";
 
+vi.mock("@iracedeck/icons/camera-editor-controls/open-camera-tool.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/key-acceleration-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/key-10x-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/parabolic-mic-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/cycle-position-type.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/cycle-aim-type.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/acquire-start.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/acquire-end.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/temporary-edits-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/dampening-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/zoom-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/beyond-fence-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/in-cockpit-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/mouse-navigation-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/pitch-gyro-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/roll-gyro-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/limit-shot-range-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/show-camera-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/shot-selection-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/manual-focus-toggle.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/insert-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/remove-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/copy-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/paste-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/copy-group.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/paste-group.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/save-track-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/load-track-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/save-car-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-editor-controls/load-car-camera.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -43,8 +134,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -165,37 +262,37 @@ describe("CameraEditorControls", () => {
     });
 
     it("should include correct labels for all controls", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "open-camera-tool": { line1: "OPEN", line2: "CAM TOOL" },
-        "key-acceleration-toggle": { line1: "KEY ACCEL", line2: "TOGGLE" },
-        "key-10x-toggle": { line1: "KEY 10X", line2: "TOGGLE" },
-        "parabolic-mic-toggle": { line1: "PARA MIC", line2: "TOGGLE" },
-        "cycle-position-type": { line1: "POS TYPE", line2: "CYCLE" },
-        "cycle-aim-type": { line1: "AIM TYPE", line2: "CYCLE" },
-        "acquire-start": { line1: "ACQ START", line2: "ACQUIRE" },
-        "acquire-end": { line1: "ACQ END", line2: "ACQUIRE" },
-        "temporary-edits-toggle": { line1: "TEMP EDIT", line2: "TOGGLE" },
-        "dampening-toggle": { line1: "DAMPEN", line2: "TOGGLE" },
-        "zoom-toggle": { line1: "ZOOM", line2: "TOGGLE" },
-        "beyond-fence-toggle": { line1: "BND FENCE", line2: "TOGGLE" },
-        "in-cockpit-toggle": { line1: "IN COCKPIT", line2: "TOGGLE" },
-        "mouse-navigation-toggle": { line1: "MOUSE NAV", line2: "TOGGLE" },
-        "pitch-gyro-toggle": { line1: "PITCH GYRO", line2: "TOGGLE" },
-        "roll-gyro-toggle": { line1: "ROLL GYRO", line2: "TOGGLE" },
-        "limit-shot-range-toggle": { line1: "SHOT RNG", line2: "TOGGLE" },
-        "show-camera-toggle": { line1: "SHOW CAM", line2: "TOGGLE" },
-        "shot-selection-toggle": { line1: "SHOT SEL", line2: "TOGGLE" },
-        "manual-focus-toggle": { line1: "MAN FOCUS", line2: "TOGGLE" },
-        "insert-camera": { line1: "INSERT", line2: "CAMERA" },
-        "remove-camera": { line1: "REMOVE", line2: "CAMERA" },
-        "copy-camera": { line1: "COPY", line2: "CAMERA" },
-        "paste-camera": { line1: "PASTE", line2: "CAMERA" },
-        "copy-group": { line1: "COPY", line2: "GROUP" },
-        "paste-group": { line1: "PASTE", line2: "GROUP" },
-        "save-track-camera": { line1: "SAVE", line2: "TRACK CAM" },
-        "load-track-camera": { line1: "LOAD", line2: "TRACK CAM" },
-        "save-car-camera": { line1: "SAVE", line2: "CAR CAM" },
-        "load-car-camera": { line1: "LOAD", line2: "CAR CAM" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "open-camera-tool": { mainLabel: "OPEN", subLabel: "CAM TOOL" },
+        "key-acceleration-toggle": { mainLabel: "KEY ACCEL", subLabel: "TOGGLE" },
+        "key-10x-toggle": { mainLabel: "KEY 10X", subLabel: "TOGGLE" },
+        "parabolic-mic-toggle": { mainLabel: "PARA MIC", subLabel: "TOGGLE" },
+        "cycle-position-type": { mainLabel: "POS TYPE", subLabel: "CYCLE" },
+        "cycle-aim-type": { mainLabel: "AIM TYPE", subLabel: "CYCLE" },
+        "acquire-start": { mainLabel: "ACQ START", subLabel: "ACQUIRE" },
+        "acquire-end": { mainLabel: "ACQ END", subLabel: "ACQUIRE" },
+        "temporary-edits-toggle": { mainLabel: "TEMP EDIT", subLabel: "TOGGLE" },
+        "dampening-toggle": { mainLabel: "DAMPEN", subLabel: "TOGGLE" },
+        "zoom-toggle": { mainLabel: "ZOOM", subLabel: "TOGGLE" },
+        "beyond-fence-toggle": { mainLabel: "BND FENCE", subLabel: "TOGGLE" },
+        "in-cockpit-toggle": { mainLabel: "IN COCKPIT", subLabel: "TOGGLE" },
+        "mouse-navigation-toggle": { mainLabel: "MOUSE NAV", subLabel: "TOGGLE" },
+        "pitch-gyro-toggle": { mainLabel: "PITCH GYRO", subLabel: "TOGGLE" },
+        "roll-gyro-toggle": { mainLabel: "ROLL GYRO", subLabel: "TOGGLE" },
+        "limit-shot-range-toggle": { mainLabel: "SHOT RNG", subLabel: "TOGGLE" },
+        "show-camera-toggle": { mainLabel: "SHOW CAM", subLabel: "TOGGLE" },
+        "shot-selection-toggle": { mainLabel: "SHOT SEL", subLabel: "TOGGLE" },
+        "manual-focus-toggle": { mainLabel: "MAN FOCUS", subLabel: "TOGGLE" },
+        "insert-camera": { mainLabel: "INSERT", subLabel: "CAMERA" },
+        "remove-camera": { mainLabel: "REMOVE", subLabel: "CAMERA" },
+        "copy-camera": { mainLabel: "COPY", subLabel: "CAMERA" },
+        "paste-camera": { mainLabel: "PASTE", subLabel: "CAMERA" },
+        "copy-group": { mainLabel: "COPY", subLabel: "GROUP" },
+        "paste-group": { mainLabel: "PASTE", subLabel: "GROUP" },
+        "save-track-camera": { mainLabel: "SAVE", subLabel: "TRACK CAM" },
+        "load-track-camera": { mainLabel: "LOAD", subLabel: "TRACK CAM" },
+        "save-car-camera": { mainLabel: "SAVE", subLabel: "CAR CAM" },
+        "load-car-camera": { mainLabel: "LOAD", subLabel: "CAR CAM" },
       };
 
       for (const [control, labels] of Object.entries(expectedLabels)) {
@@ -204,8 +301,8 @@ describe("CameraEditorControls", () => {
         });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

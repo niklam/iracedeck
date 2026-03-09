@@ -7,7 +7,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 ## Data File
 
-Complete action definitions (28 actions, 275 controls): `docs/reference/actions.json`
+Complete action definitions (29 actions, 284 controls): `docs/reference/actions.json`
 
 Each action entry:
 ```json
@@ -41,9 +41,9 @@ When asked about actions or controls:
 | View & Camera | 8 | 102 | FOV, replay, camera cycle/focus, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
-| Car Setup | 6 | 70 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS |
+| Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 1 | 21 | Open chat, macros (15), whisper, reply |
-| **Total** | **28** | **275** | |
+| **Total** | **29** | **284** | |
 
 ## Actions by Category
 
@@ -108,6 +108,7 @@ When asked about actions or controls:
 | Setup Engine | 8 | Engine power, throttle shaping, boost, launch RPM +/- |
 | Setup Fuel | 7 | Fuel mixture +/-, fuel cut position +/-, disable fuel cut, low fuel accept, FCY mode |
 | Setup Hybrid | 9 | MGU-K regen/deploy/fixed +/-, HYS boost (hold), HYS regen (hold), HYS no boost |
+| Setup Traction | 9 | TC toggle, TC slots 1-4 +/- |
 
 ### Chat
 
@@ -138,7 +139,7 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 | File | Role |
 |------|------|
 | `packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json` | Action registration, UUIDs, encoder config |
-| `packages/stream-deck-plugin/src/actions/` | Action source files (28 .ts files) |
+| `packages/stream-deck-plugin/src/actions/` | Action source files (29 .ts files) |
 | `packages/stream-deck-plugin/src/pi/` | Property Inspector EJS templates |
 | `packages/stream-deck-plugin/src/pi/data/key-bindings.json` | Global key binding definitions |
 | `packages/stream-deck-plugin/icons/` | SVG icon Mustache templates |

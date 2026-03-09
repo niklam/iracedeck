@@ -7,9 +7,16 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import boostLevelDecreaseIconSvg from "@iracedeck/icons/setup-engine/boost-level-decrease.svg";
+import boostLevelIncreaseIconSvg from "@iracedeck/icons/setup-engine/boost-level-increase.svg";
+import enginePowerDecreaseIconSvg from "@iracedeck/icons/setup-engine/engine-power-decrease.svg";
+import enginePowerIncreaseIconSvg from "@iracedeck/icons/setup-engine/engine-power-increase.svg";
+import launchRpmDecreaseIconSvg from "@iracedeck/icons/setup-engine/launch-rpm-decrease.svg";
+import launchRpmIncreaseIconSvg from "@iracedeck/icons/setup-engine/launch-rpm-increase.svg";
+import throttleShapingDecreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-decrease.svg";
+import throttleShapingIncreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-increase.svg";
 import z from "zod";
 
-import setupEngineTemplate from "../../icons/setup-engine.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,108 +33,37 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-
 type SetupEngineSetting = "engine-power" | "throttle-shaping" | "boost-level" | "launch-rpm";
 
 type DirectionType = "increase" | "decrease";
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
- * All engine settings are directional (+/-).
+ * Flat icon lookup mapping setting + direction keys to standalone SVG templates.
  */
-const SETUP_ENGINE_LABELS: Record<SetupEngineSetting, Record<DirectionType, { line1: string; line2: string }>> = {
-  "engine-power": {
-    increase: { line1: "ENG POWER", line2: "INCREASE" },
-    decrease: { line1: "ENG POWER", line2: "DECREASE" },
-  },
-  "throttle-shaping": {
-    increase: { line1: "THROTTLE", line2: "INCREASE" },
-    decrease: { line1: "THROTTLE", line2: "DECREASE" },
-  },
-  "boost-level": {
-    increase: { line1: "BOOST", line2: "INCREASE" },
-    decrease: { line1: "BOOST", line2: "DECREASE" },
-  },
-  "launch-rpm": {
-    increase: { line1: "LAUNCH RPM", line2: "INCREASE" },
-    decrease: { line1: "LAUNCH RPM", line2: "DECREASE" },
-  },
+const SETUP_ENGINE_ICONS: Record<string, string> = {
+  "engine-power-increase": enginePowerIncreaseIconSvg,
+  "engine-power-decrease": enginePowerDecreaseIconSvg,
+  "throttle-shaping-increase": throttleShapingIncreaseIconSvg,
+  "throttle-shaping-decrease": throttleShapingDecreaseIconSvg,
+  "boost-level-increase": boostLevelIncreaseIconSvg,
+  "boost-level-decrease": boostLevelDecreaseIconSvg,
+  "launch-rpm-increase": launchRpmIncreaseIconSvg,
+  "launch-rpm-decrease": launchRpmDecreaseIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * All engine settings are directional with per-direction arrow variants.
+ * Label configuration for each setting + direction combination.
+ * mainLabel = primary (bold, white), subLabel = secondary (subdued).
  */
-const SETUP_ENGINE_ICONS: Record<SetupEngineSetting, Record<DirectionType, string>> = {
-  // Engine Power: Engine block with lightning bolt + directional arrow
-  "engine-power": {
-    increase: `
-    <rect x="16" y="14" width="28" height="20" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="22" y1="14" x2="22" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="30" y1="14" x2="30" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="38" y1="14" x2="38" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="27,20 30,26 27,26 30,32" fill="none" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="14" width="28" height="20" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="22" y1="14" x2="22" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="30" y1="14" x2="30" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="38" y1="14" x2="38" y2="10" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="27,20 30,26 27,26 30,32" fill="none" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Throttle Shaping: Throttle response curve + directional arrow
-  "throttle-shaping": {
-    increase: `
-    <rect x="14" y="12" width="30" height="24" rx="2" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M16,34 Q28,32 32,18 L42,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="14" y="12" width="30" height="24" rx="2" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M16,34 Q28,32 32,18 L42,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Boost Level: Turbo gauge with needle + directional arrow
-  "boost-level": {
-    increase: `
-    <path d="M18,34 A16,16 0 0,1 50,34" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="34" y1="34" x2="26" y2="20" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="34" cy="34" r="2" fill="${WHITE}"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M18,34 A16,16 0 0,1 50,34" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="34" y1="34" x2="26" y2="20" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="34" cy="34" r="2" fill="${WHITE}"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Launch RPM: Tachometer arc with RPM needle + directional arrow
-  "launch-rpm": {
-    increase: `
-    <path d="M16,36 A20,20 0 0,1 52,36" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="20" y1="32" x2="20" y2="28" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="28" y1="22" x2="28" y2="18" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="38" y1="20" x2="38" y2="16" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="46" y1="26" x2="46" y2="22" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="34" y1="36" x2="42" y2="22" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="34" cy="36" r="2" fill="${WHITE}"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M16,36 A20,20 0 0,1 52,36" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="20" y1="32" x2="20" y2="28" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="28" y1="22" x2="28" y2="18" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="38" y1="20" x2="38" y2="16" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="46" y1="26" x2="46" y2="22" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="34" y1="36" x2="42" y2="22" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="34" cy="36" r="2" fill="${WHITE}"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
+const SETUP_ENGINE_LABELS: Record<string, { mainLabel: string; subLabel: string }> = {
+  "engine-power-increase": { mainLabel: "ENG POWER", subLabel: "INCREASE" },
+  "engine-power-decrease": { mainLabel: "ENG POWER", subLabel: "DECREASE" },
+  "throttle-shaping-increase": { mainLabel: "THROTTLE", subLabel: "INCREASE" },
+  "throttle-shaping-decrease": { mainLabel: "THROTTLE", subLabel: "DECREASE" },
+  "boost-level-increase": { mainLabel: "BOOST", subLabel: "INCREASE" },
+  "boost-level-decrease": { mainLabel: "BOOST", subLabel: "DECREASE" },
+  "launch-rpm-increase": { mainLabel: "LAUNCH RPM", subLabel: "INCREASE" },
+  "launch-rpm-decrease": { mainLabel: "LAUNCH RPM", subLabel: "DECREASE" },
 };
 
 /**
@@ -162,14 +98,13 @@ type SetupEngineSettings = z.infer<typeof SetupEngineSettings>;
 export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
   const { setting, direction } = settings;
 
-  const iconContent = SETUP_ENGINE_ICONS[setting]?.[direction] ?? SETUP_ENGINE_ICONS["engine-power"].increase;
+  const iconKey = `${setting}-${direction}`;
+  const iconSvg = SETUP_ENGINE_ICONS[iconKey] || SETUP_ENGINE_ICONS["engine-power-increase"];
+  const labels = SETUP_ENGINE_LABELS[iconKey] || { mainLabel: "ENGINE", subLabel: "SETUP" };
 
-  const labels = SETUP_ENGINE_LABELS[setting]?.[direction] ?? { line1: "ENGINE", line2: "SETUP" };
-
-  const svg = renderIconTemplate(setupEngineTemplate, {
-    iconContent: iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

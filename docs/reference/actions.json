@@ -540,6 +540,24 @@
             { "setting": "hys-regen", "label": "HYS Regen", "controlType": "hold" },
             { "setting": "hys-no-boost", "label": "HYS No Boost Toggle" }
           ]
+        },
+        {
+          "id": "com.iracedeck.sd.core.setup-traction",
+          "name": "Setup Traction",
+          "file": "setup-traction.ts",
+          "encoder": true,
+          "settingsKeys": ["setting", "direction"],
+          "modes": [
+            { "setting": "tc-toggle", "label": "TC Toggle" },
+            { "setting": "tc-slot-1", "direction": "increase", "label": "TC Slot 1 Increase" },
+            { "setting": "tc-slot-1", "direction": "decrease", "label": "TC Slot 1 Decrease" },
+            { "setting": "tc-slot-2", "direction": "increase", "label": "TC Slot 2 Increase" },
+            { "setting": "tc-slot-2", "direction": "decrease", "label": "TC Slot 2 Decrease" },
+            { "setting": "tc-slot-3", "direction": "increase", "label": "TC Slot 3 Increase" },
+            { "setting": "tc-slot-3", "direction": "decrease", "label": "TC Slot 3 Decrease" },
+            { "setting": "tc-slot-4", "direction": "increase", "label": "TC Slot 4 Increase" },
+            { "setting": "tc-slot-4", "direction": "decrease", "label": "TC Slot 4 Decrease" }
+          ]
         }
       ]
     },

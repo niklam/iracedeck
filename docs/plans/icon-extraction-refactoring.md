@@ -1,0 +1,186 @@
+# Icon Extraction Refactoring Plan
+
+**Goal:** Move all key icons from being embedded in TypeScript source code to standalone SVG files in the shared `@iracedeck/icons` package, making icons easier to edit visually and reusable across platforms.
+
+**Branch:** `refactor/extract-icons-to-shared-package`
+
+**Reference implementation:** `splits-delta-cycle` (already migrated)
+
+---
+
+## Design Decisions
+
+These decisions are final and must be followed for all remaining migrations.
+
+### 1. Complete standalone SVG files
+
+Each SVG file is a **complete, self-contained icon** — background, content, labels, `activity-state` filter wrapper. No separate template + fragment composition.
+
+### 2. 144x144 viewBox
+
+All icon SVGs use `viewBox="0 0 144 144"` with all coordinates doubled from the original 72x72. Stream Deck downscales as needed.
+
+### 3. Mustache placeholders for labels
+
+Labels use `{{mainLabel}}` and `{{subLabel}}` placeholders (not hardcoded text). Actions call `renderIconTemplate()` to replace placeholders before converting to data URI. This enables future translation/localization.
+
+- **`{{mainLabel}}`** — the prominent label (larger, bold, white `#ffffff`)
+- **`{{subLabel}}`** — the secondary label (smaller, subdued `#aaaaaa`)
+
+### 4. File naming
+
+- Files live in `packages/icons/{action-name}/`
+- Named by variant: `next.svg`, `previous.svg`, `lap-timing.svg`, etc.
+- No state suffix (e.g., `.main`) unless there are actual visual states (e.g., `active.svg`, `inactive.svg`)
+- Single-variant actions: use `default.svg` or a descriptive name
+
+### 5. Color constants become literal hex values
+
+Inline color constants like `${WHITE}`, `${GRAY}` must be replaced with their literal hex values in SVG files:
+
+| Constant | Hex |
+|----------|-----|
+| WHITE | `#ffffff` |
+| GRAY | `#888888` |
+| YELLOW | `#f39c12` or `#f1c40f` |
+| ORANGE | `#e67e22` |
+| GREEN | `#2ecc71` |
+| BLUE | `#3498db` |
+| RED | `#e74c3c` |
+| PURPLE | `#9b59b6` |
+
+### 6. Import pattern
+
+```typescript
+import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
+```
+
+The Rollup `svgPlugin` resolves `@iracedeck/icons/` to `packages/icons/`.
+
+### 7. Action code pattern
+
+```typescript
+import nextIconSvg from "@iracedeck/icons/{action}/next.svg";
+import previousIconSvg from "@iracedeck/icons/{action}/previous.svg";
+
+const ICONS: Record<string, string> = {
+  next: nextIconSvg,
+  previous: previousIconSvg,
+};
+
+function generateSvg(settings): string {
+  const iconSvg = ICONS[settings.direction] || ICONS.next;
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: "NEXT",
+    subLabel: "SPLITS DELTA",
+  });
+  return svgToDataUri(svg);
+}
+```
+
+### 8. SVG file structure
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <!-- Background: 144x144 rounded rect -->
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#BACKGROUND"/>
+
+    <!-- Icon content area (y=18 to y=86, doubled from 9-43) -->
+    <!-- ... artwork ... -->
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>
+```
+
+### 9. Dynamic/telemetry-driven icons
+
+Actions that generate SVG content from live telemetry data (runtime values like speed, temperature, wear %) keep their dynamic generation in TypeScript. Only static icon variants are extracted.
+
+### 10. Old files cleanup
+
+When an action is fully migrated:
+- Delete the old template from `packages/stream-deck-plugin/icons/{action}.svg`
+- The static `icon.svg` and `key.svg` in `com.iracedeck.sd.core.sdPlugin/imgs/actions/{action}/` remain unchanged (manifest references)
+
+---
+
+## Foundation (done)
+
+- [x] Create `@iracedeck/icons` package (`packages/icons/package.json`)
+- [x] Add `extractSvgContent()` utility (available but not needed for standalone approach)
+- [x] Enhance Rollup `svgPlugin` to resolve `@iracedeck/icons/` imports
+- [x] Update watch plugin for recursive SVG directory watching
+- [x] Add `svg.d.ts` type declarations for `@iracedeck/icons`
+
+## Pilot (done)
+
+- [x] `splits-delta-cycle` — 2 variants: `next.svg`, `previous.svg`
+
+---
+
+## Remaining Actions
+
+### Simple actions (few static variants)
+
+- [x] `replay-speed` — 2 variants (increase, decrease)
+- [x] `look-direction` — 4 variants (look-left, look-right, look-up, look-down)
+- [x] `media-capture` — 7 variants per capture mode
+- [x] `pit-quick-actions` — 3 variants (clear-all-checkboxes, windshield-tearoff, request-fast-repair)
+- [x] `telemetry-control` — 5 variants (toggle-logging, mark-event, start/stop/restart-recording)
+- [x] `toggle-ui-elements` — 9 variants (dash-box, speed-gear-pedals, radio-display, etc.)
+- [x] `camera-focus` — 7 variants (focus-your-car, focus-on-leader, etc.)
+- [x] `camera-editor-controls` — 30 variants per control
+- [x] `cockpit-misc` — 9 variants per cockpit action
+- [x] `replay-navigation` — 11 variants per nav action
+- [x] `replay-transport` — 8 variants per transport action
+
+### Actions with many variants
+
+- [x] `black-box-selector` — 11 direct icons + 2 cycle icons = 13 variants
+- [x] `audio-controls` — 9 variants (3 categories × 3 actions)
+- [x] `camera-cycle` — 8 variants (4 types × 2 directions)
+- [x] `camera-editor-adjustments` — 30 variants (15 adjustments × 2 directions)
+- [x] `view-adjustment` — 9 variants (4 directional + 1 non-directional)
+- [x] `setup-aero` — 7 variants (3 directional + 1 non-directional)
+- [x] `setup-brakes` — 13 variants (6 directional + 1 toggle)
+- [x] `setup-chassis` — 26 variants (13 settings × 2 directions)
+- [x] `setup-engine` — 8 variants (4 settings × 2 directions)
+- [x] `setup-fuel` — 7 variants (2 directional + 3 toggles)
+- [x] `setup-hybrid` — 9 variants (3 directional + 3 non-directional)
+- [x] `setup-traction` — 9 variants (4 directional + 1 toggle)
+
+### Actions with dynamic content (partial extraction)
+
+- [x] `fuel-service` — 7 static icon variants extracted; dynamic fuel amount labels stay inline
+- [x] `car-control` — 4 static modes extracted; pit-speed-limiter stays inline (dynamic speed)
+- [x] `chat` — 5 standard mode icons extracted; send-message/macro with `generateIconText()` stay inline
+- [x] `tire-service` — clear-tires static icon extracted; toggle-tires and change-compound stay inline (telemetry-driven)
+- [x] `session-info` — all content is dynamic (no static icons to extract); template stays inline
+
+---
+
+## Cleanup (after all actions migrated)
+
+- [x] Delete unused templates from `packages/stream-deck-plugin/icons/` (3 remain for dynamic actions: car-control, session-info, tire-service)
+- [x] Remove unused `labelLine1`/`labelLine2` references from rules, docs, and remaining templates
+- [x] Update `.claude/rules/icons.md` and `.claude/rules/key-icon-types.md` with new conventions
+- [x] Update `packages/stream-deck-plugin/CLAUDE.md` action creation instructions
+- [x] Removed `extractSvgContent()`, `loadIconTemplate()`, `renderIcon()`, `clearTemplateCache()` — no action uses them
+
+---
+
+## Verification
+
+After each action migration:
+
+1. `pnpm test` — all tests pass
+2. `pnpm build` — build succeeds with no TS warnings
+3. `pnpm watch:stream-deck` — watch mode picks up SVG changes
+4. Manual test: verify the action's icon renders correctly on Stream Deck
+5. SVG files open correctly in an SVG editor (valid standalone documents)

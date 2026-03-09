@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/website",
-  "version": "0.0.1",
+  "version": "0.11.0",
   "private": true,
   "description": "Promotional website for iRaceDeck Stream Deck plugins",
   "type": "module",
@@ -9,6 +9,6 @@
     "serve": "npx serve public_html"
   },
   "devDependencies": {
-    "firebase-tools": "^13.35.1"
+    "firebase-tools": "15.9.0"
   }
 }

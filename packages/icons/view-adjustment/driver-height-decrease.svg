@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a2a3a"/>
+
+    <!-- Driver Height down: tall figure → short figure -->
+    <circle cx="36" cy="28" r="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <line x1="36" y1="34" x2="36" y2="56" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="26" y1="44" x2="46" y2="44" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="36" y1="56" x2="28" y2="68" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="36" y1="56" x2="44" y2="68" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="64" y1="48" x2="80" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="74,42 80,48 74,54" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="108" cy="40" r="5" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="108" y1="46" x2="108" y2="58" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="100" y1="50" x2="116" y2="50" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="108" y1="58" x2="102" y2="68" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="108" y1="58" x2="114" y2="68" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Inverted label: subLabel on top, mainLabel on bottom -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

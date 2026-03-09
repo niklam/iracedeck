@@ -16,6 +16,34 @@ const {
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-regen-gain-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-regen-gain-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-deploy-mode-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-deploy-mode-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/hys-boost.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/hys-regen.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/setup-hybrid/hys-no-boost.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -60,8 +88,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -228,30 +262,30 @@ describe("SetupHybrid", () => {
     });
 
     it("should include correct labels for all combinations", () => {
-      const expectedLabels: Record<string, Record<string, { line1: string; line2: string }>> = {
+      const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
         "mguk-regen-gain": {
-          increase: { line1: "REGEN GAIN", line2: "INCREASE" },
-          decrease: { line1: "REGEN GAIN", line2: "DECREASE" },
+          increase: { mainLabel: "REGEN GAIN", subLabel: "INCREASE" },
+          decrease: { mainLabel: "REGEN GAIN", subLabel: "DECREASE" },
         },
         "mguk-deploy-mode": {
-          increase: { line1: "DEPLOY MODE", line2: "INCREASE" },
-          decrease: { line1: "DEPLOY MODE", line2: "DECREASE" },
+          increase: { mainLabel: "DEPLOY MODE", subLabel: "INCREASE" },
+          decrease: { mainLabel: "DEPLOY MODE", subLabel: "DECREASE" },
         },
         "mguk-fixed-deploy": {
-          increase: { line1: "FIXED DEPLOY", line2: "INCREASE" },
-          decrease: { line1: "FIXED DEPLOY", line2: "DECREASE" },
+          increase: { mainLabel: "FIXED DEPLOY", subLabel: "INCREASE" },
+          decrease: { mainLabel: "FIXED DEPLOY", subLabel: "DECREASE" },
         },
         "hys-boost": {
-          increase: { line1: "HYS", line2: "BOOST" },
-          decrease: { line1: "HYS", line2: "BOOST" },
+          increase: { mainLabel: "HYS", subLabel: "BOOST" },
+          decrease: { mainLabel: "HYS", subLabel: "BOOST" },
         },
         "hys-regen": {
-          increase: { line1: "HYS", line2: "REGEN" },
-          decrease: { line1: "HYS", line2: "REGEN" },
+          increase: { mainLabel: "HYS", subLabel: "REGEN" },
+          decrease: { mainLabel: "HYS", subLabel: "REGEN" },
         },
         "hys-no-boost": {
-          increase: { line1: "HYS", line2: "NO BOOST" },
-          decrease: { line1: "HYS", line2: "NO BOOST" },
+          increase: { mainLabel: "HYS", subLabel: "NO BOOST" },
+          decrease: { mainLabel: "HYS", subLabel: "NO BOOST" },
         },
       };
 
@@ -263,8 +297,8 @@ describe("SetupHybrid", () => {
           });
           const decoded = decodeURIComponent(result);
 
-          expect(decoded).toContain(labels.line1);
-          expect(decoded).toContain(labels.line2);
+          expect(decoded).toContain(labels.mainLabel);
+          expect(decoded).toContain(labels.subLabel);
         }
       }
     });

@@ -6,9 +6,13 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import markEventIconSvg from "@iracedeck/icons/telemetry-control/mark-event.svg";
+import restartRecordingIconSvg from "@iracedeck/icons/telemetry-control/restart-recording.svg";
+import startRecordingIconSvg from "@iracedeck/icons/telemetry-control/start-recording.svg";
+import stopRecordingIconSvg from "@iracedeck/icons/telemetry-control/stop-recording.svg";
+import toggleLoggingIconSvg from "@iracedeck/icons/telemetry-control/toggle-logging.svg";
 import z from "zod";
 
-import telemetryControlTemplate from "../../icons/telemetry-control.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -25,12 +29,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const RED = "#e74c3c";
-const GREEN = "#2ecc71";
-const YELLOW = "#f1c40f";
-
 const ACTION_VALUES = [
   "toggle-logging",
   "mark-event",
@@ -41,54 +39,23 @@ const ACTION_VALUES = [
 
 type TelemetryControlAction = (typeof ACTION_VALUES)[number];
 
-/**
- * Label configuration for each telemetry control action (line1 bold, line2 subdued)
- */
-const TELEMETRY_CONTROL_LABELS: Record<TelemetryControlAction, { line1: string; line2: string }> = {
-  "toggle-logging": { line1: "LOGGING", line2: "TOGGLE" },
-  "mark-event": { line1: "MARK", line2: "EVENT" },
-  "start-recording": { line1: "RECORDING", line2: "START" },
-  "stop-recording": { line1: "RECORDING", line2: "STOP" },
-  "restart-recording": { line1: "RECORDING", line2: "RESTART" },
+const ACTION_ICONS: Record<TelemetryControlAction, string> = {
+  "toggle-logging": toggleLoggingIconSvg,
+  "mark-event": markEventIconSvg,
+  "start-recording": startRecordingIconSvg,
+  "stop-recording": stopRecordingIconSvg,
+  "restart-recording": restartRecordingIconSvg,
 };
 
 /**
- * SVG icon content for each telemetry control action
+ * Label configuration for each telemetry control action
  */
-const TELEMETRY_CONTROL_ICONS: Record<TelemetryControlAction, string> = {
-  // Toggle Logging: Chart line with toggle indicator
-  "toggle-logging": `
-    <polyline points="14,28 22,18 30,24 38,12 46,20 54,10" fill="none"
-              stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="54" cy="10" r="3" fill="${GREEN}"/>
-    <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>`,
-
-  // Mark Event: Flag marker on timeline
-  "mark-event": `
-    <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>
-    <polyline points="18,34 18,28 22,28 26,34 26,28 30,28 34,34" fill="none"
-              stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <line x1="36" y1="34" x2="36" y2="10" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polygon points="36,10 48,16 36,22" fill="${YELLOW}"/>`,
-
-  // Start Recording: Record circle with data lines
-  "start-recording": `
-    <circle cx="36" cy="20" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="20" r="5" fill="${RED}"/>
-    <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>`,
-
-  // Stop Recording: Stop square with data lines
-  "stop-recording": `
-    <circle cx="36" cy="20" r="10" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="30" y="14" width="12" height="12" fill="${WHITE}"/>
-    <line x1="14" y1="34" x2="58" y2="34" stroke="${GRAY}" stroke-width="0.8"/>`,
-
-  // Restart Recording: Circular restart arrow with record dot
-  "restart-recording": `
-    <path d="M36 10 A14 14 0 1 1 22 24" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="20,20 22,24 26,22" fill="none" stroke="${WHITE}" stroke-width="1.5"
-              stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="36" cy="24" r="4" fill="${RED}"/>`,
+const TELEMETRY_CONTROL_LABELS: Record<TelemetryControlAction, { mainLabel: string; subLabel: string }> = {
+  "toggle-logging": { mainLabel: "LOGGING", subLabel: "TOGGLE" },
+  "mark-event": { mainLabel: "MARK", subLabel: "EVENT" },
+  "start-recording": { mainLabel: "RECORDING", subLabel: "START" },
+  "stop-recording": { mainLabel: "RECORDING", subLabel: "STOP" },
+  "restart-recording": { mainLabel: "RECORDING", subLabel: "RESTART" },
 };
 
 /**
@@ -116,13 +83,12 @@ type TelemetryControlSettings = z.infer<typeof TelemetryControlSettings>;
 export function generateTelemetryControlSvg(settings: TelemetryControlSettings): string {
   const { action: actionType } = settings;
 
-  const iconContent = TELEMETRY_CONTROL_ICONS[actionType] || TELEMETRY_CONTROL_ICONS["toggle-logging"];
+  const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["toggle-logging"];
   const labels = TELEMETRY_CONTROL_LABELS[actionType] || TELEMETRY_CONTROL_LABELS["toggle-logging"];
 
-  const svg = renderIconTemplate(telemetryControlTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

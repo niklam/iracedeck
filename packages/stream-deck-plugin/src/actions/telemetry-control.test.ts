@@ -2,6 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateTelemetryControlSvg, TELEMETRY_CONTROL_GLOBAL_KEYS } from "./telemetry-control.js";
 
+vi.mock("@iracedeck/icons/telemetry-control/toggle-logging.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/telemetry-control/mark-event.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/telemetry-control/start-recording.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/telemetry-control/stop-recording.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/telemetry-control/restart-recording.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -50,8 +66,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -135,12 +157,12 @@ describe("TelemetryControl", () => {
     });
 
     it("should include correct labels for all actions", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "toggle-logging": { line1: "LOGGING", line2: "TOGGLE" },
-        "mark-event": { line1: "MARK", line2: "EVENT" },
-        "start-recording": { line1: "RECORDING", line2: "START" },
-        "stop-recording": { line1: "RECORDING", line2: "STOP" },
-        "restart-recording": { line1: "RECORDING", line2: "RESTART" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "toggle-logging": { mainLabel: "LOGGING", subLabel: "TOGGLE" },
+        "mark-event": { mainLabel: "MARK", subLabel: "EVENT" },
+        "start-recording": { mainLabel: "RECORDING", subLabel: "START" },
+        "stop-recording": { mainLabel: "RECORDING", subLabel: "STOP" },
+        "restart-recording": { mainLabel: "RECORDING", subLabel: "RESTART" },
       };
 
       for (const [action, labels] of Object.entries(expectedLabels)) {
@@ -149,8 +171,8 @@ describe("TelemetryControl", () => {
         });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

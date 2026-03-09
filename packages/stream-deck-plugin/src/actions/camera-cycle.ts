@@ -7,9 +7,16 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import cameraNextSvg from "@iracedeck/icons/camera-cycle/camera-next.svg";
+import cameraPreviousSvg from "@iracedeck/icons/camera-cycle/camera-previous.svg";
+import carNextSvg from "@iracedeck/icons/camera-cycle/car-next.svg";
+import carPreviousSvg from "@iracedeck/icons/camera-cycle/car-previous.svg";
+import drivingNextSvg from "@iracedeck/icons/camera-cycle/driving-next.svg";
+import drivingPreviousSvg from "@iracedeck/icons/camera-cycle/driving-previous.svg";
+import subCameraNextSvg from "@iracedeck/icons/camera-cycle/sub-camera-next.svg";
+import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previous.svg";
 import z from "zod";
 
-import cameraCycleTemplate from "../../icons/camera-cycle.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -19,85 +26,45 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-
 const CAMERA_TYPE_VALUES = ["camera", "sub-camera", "car", "driving"] as const;
 
 type CameraType = (typeof CAMERA_TYPE_VALUES)[number];
 type Direction = "next" | "previous";
 
 /**
+ * @internal Exported for testing
+ *
  * Label configuration for each camera type + direction combination
  */
-const CAMERA_CYCLE_LABELS: Record<CameraType, Record<Direction, { line1: string; line2: string }>> = {
-  camera: { next: { line1: "NEXT", line2: "CAMERA" }, previous: { line1: "PREV", line2: "CAMERA" } },
-  "sub-camera": { next: { line1: "NEXT", line2: "SUB CAM" }, previous: { line1: "PREV", line2: "SUB CAM" } },
-  car: { next: { line1: "NEXT", line2: "CAR" }, previous: { line1: "PREV", line2: "CAR" } },
-  driving: { next: { line1: "NEXT", line2: "DRIVING" }, previous: { line1: "PREV", line2: "DRIVING" } },
+export const CAMERA_CYCLE_LABELS: Record<CameraType, Record<Direction, { mainLabel: string; subLabel: string }>> = {
+  camera: {
+    next: { mainLabel: "NEXT", subLabel: "CAMERA" },
+    previous: { mainLabel: "PREV", subLabel: "CAMERA" },
+  },
+  "sub-camera": {
+    next: { mainLabel: "NEXT", subLabel: "SUB CAM" },
+    previous: { mainLabel: "PREV", subLabel: "SUB CAM" },
+  },
+  car: {
+    next: { mainLabel: "NEXT", subLabel: "CAR" },
+    previous: { mainLabel: "PREV", subLabel: "CAR" },
+  },
+  driving: {
+    next: { mainLabel: "NEXT", subLabel: "DRIVING" },
+    previous: { mainLabel: "PREV", subLabel: "DRIVING" },
+  },
 };
 
 /**
- * SVG icon content for each camera type + direction combination
+ * @internal Exported for testing
+ *
+ * Icon SVG lookup for each camera type + direction combination
  */
-const CAMERA_CYCLE_ICONS: Record<CameraType, Record<Direction, string>> = {
-  camera: {
-    // Movie camera + right chevron
-    next: `
-    <rect x="18" y="14" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <polygon points="40,17 52,12 52,36 40,31" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <polyline points="56,20 62,24 56,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    // Movie camera + left chevron
-    previous: `
-    <rect x="22" y="14" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <polygon points="44,17 56,12 56,36 44,31" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <polyline points="16,20 10,24 16,28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-  "sub-camera": {
-    // Small camera with inner frame + right chevron
-    next: `
-    <rect x="18" y="14" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <rect x="22" y="18" width="14" height="10" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="56,20 62,24 56,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    // Small camera with inner frame + left chevron
-    previous: `
-    <rect x="22" y="14" width="22" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <rect x="26" y="18" width="14" height="10" rx="1" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="16,20 10,24 16,28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-  car: {
-    // Car silhouette + right chevron
-    next: `
-    <path d="M 16,30 L 20,20 L 44,20 L 50,30 Z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <circle cx="24" cy="32" r="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="42" cy="32" r="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="56,20 62,24 56,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    // Car silhouette + left chevron
-    previous: `
-    <path d="M 20,30 L 24,20 L 48,20 L 54,30 Z" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linejoin="round"/>
-    <circle cx="28" cy="32" r="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="46" cy="32" r="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="16,20 10,24 16,28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-  driving: {
-    // Steering wheel + right chevron
-    next: `
-    <circle cx="33" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="33" cy="24" r="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="33" y1="28" x2="33" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="21" y1="24" x2="29" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="37" y1="24" x2="45" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="56,20 62,24 56,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    // Steering wheel + left chevron
-    previous: `
-    <circle cx="37" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="37" cy="24" r="4" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="37" y1="28" x2="37" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="25" y1="24" x2="33" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="41" y1="24" x2="49" y2="24" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="16,20 10,24 16,28" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
+export const CAMERA_CYCLE_ICONS: Record<CameraType, Record<Direction, string>> = {
+  camera: { next: cameraNextSvg, previous: cameraPreviousSvg },
+  "sub-camera": { next: subCameraNextSvg, previous: subCameraPreviousSvg },
+  car: { next: carNextSvg, previous: carPreviousSvg },
+  driving: { next: drivingNextSvg, previous: drivingPreviousSvg },
 };
 
 const CameraCycleSettings = z.object({
@@ -115,13 +82,12 @@ type CameraCycleSettings = z.infer<typeof CameraCycleSettings>;
 export function generateCameraCycleSvg(settings: { cameraType: CameraType; direction: Direction }): string {
   const { cameraType, direction } = settings;
 
-  const iconContent = CAMERA_CYCLE_ICONS[cameraType]?.[direction] || CAMERA_CYCLE_ICONS["camera"]["next"];
+  const iconSvg = CAMERA_CYCLE_ICONS[cameraType]?.[direction] || CAMERA_CYCLE_ICONS["camera"]["next"];
   const labels = CAMERA_CYCLE_LABELS[cameraType]?.[direction] || CAMERA_CYCLE_LABELS["camera"]["next"];
 
-  const svg = renderIconTemplate(cameraCycleTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

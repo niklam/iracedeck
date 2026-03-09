@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateCameraCycleSvg } from "./camera-cycle.js";
+import { CAMERA_CYCLE_ICONS, CAMERA_CYCLE_LABELS, generateCameraCycleSvg } from "./camera-cycle.js";
 
 vi.mock("@elgato/streamdeck", () => ({
   default: {
@@ -15,6 +15,31 @@ vi.mock("@elgato/streamdeck", () => ({
     },
   },
   action: () => (target: unknown) => target,
+}));
+
+vi.mock("@iracedeck/icons/camera-cycle/camera-next.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">camera-next {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/camera-previous.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">camera-previous {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/sub-camera-next.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">sub-camera-next {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/sub-camera-previous.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">sub-camera-previous {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/car-next.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">car-next {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/car-previous.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">car-previous {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/driving-next.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">driving-next {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-cycle/driving-previous.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">driving-previous {{mainLabel}} {{subLabel}}</svg>',
 }));
 
 vi.mock("../shared/index.js", () => ({
@@ -39,8 +64,14 @@ vi.mock("../shared/index.js", () => ({
     },
   })),
   LogLevel: { Info: 2 },
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -48,6 +79,47 @@ vi.mock("../shared/index.js", () => ({
 describe("CameraCycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("CAMERA_CYCLE_LABELS", () => {
+    it("should have labels for all camera types and directions", () => {
+      const cameraTypes = ["camera", "sub-camera", "car", "driving"] as const;
+      const directions = ["next", "previous"] as const;
+
+      for (const type of cameraTypes) {
+        for (const dir of directions) {
+          expect(CAMERA_CYCLE_LABELS[type][dir]).toBeDefined();
+          expect(CAMERA_CYCLE_LABELS[type][dir].mainLabel).toBeTruthy();
+          expect(CAMERA_CYCLE_LABELS[type][dir].subLabel).toBeTruthy();
+        }
+      }
+    });
+
+    it("should use NEXT/PREV as mainLabel", () => {
+      expect(CAMERA_CYCLE_LABELS.camera.next.mainLabel).toBe("NEXT");
+      expect(CAMERA_CYCLE_LABELS.camera.previous.mainLabel).toBe("PREV");
+    });
+
+    it("should use camera type as subLabel", () => {
+      expect(CAMERA_CYCLE_LABELS.camera.next.subLabel).toBe("CAMERA");
+      expect(CAMERA_CYCLE_LABELS["sub-camera"].next.subLabel).toBe("SUB CAM");
+      expect(CAMERA_CYCLE_LABELS.car.next.subLabel).toBe("CAR");
+      expect(CAMERA_CYCLE_LABELS.driving.next.subLabel).toBe("DRIVING");
+    });
+  });
+
+  describe("CAMERA_CYCLE_ICONS", () => {
+    it("should have icons for all camera types and directions", () => {
+      const cameraTypes = ["camera", "sub-camera", "car", "driving"] as const;
+      const directions = ["next", "previous"] as const;
+
+      for (const type of cameraTypes) {
+        for (const dir of directions) {
+          expect(CAMERA_CYCLE_ICONS[type][dir]).toBeDefined();
+          expect(CAMERA_CYCLE_ICONS[type][dir]).toContain("svg");
+        }
+      }
+    });
   });
 
   describe("generateCameraCycleSvg", () => {
@@ -92,52 +164,10 @@ describe("CameraCycle", () => {
       expect(decoded).toContain("CAMERA");
     });
 
-    it("should include NEXT label for sub-camera/next", () => {
-      const result = generateCameraCycleSvg({ cameraType: "sub-camera", direction: "next" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("NEXT");
-      expect(decoded).toContain("SUB CAM");
-    });
-
-    it("should include PREV label for sub-camera/previous", () => {
-      const result = generateCameraCycleSvg({ cameraType: "sub-camera", direction: "previous" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("PREV");
-      expect(decoded).toContain("SUB CAM");
-    });
-
-    it("should include NEXT label for car/next", () => {
-      const result = generateCameraCycleSvg({ cameraType: "car", direction: "next" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("NEXT");
-      expect(decoded).toContain("CAR");
-    });
-
-    it("should include PREV label for car/previous", () => {
-      const result = generateCameraCycleSvg({ cameraType: "car", direction: "previous" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("PREV");
-      expect(decoded).toContain("CAR");
-    });
-
-    it("should include NEXT label for driving/next", () => {
-      const result = generateCameraCycleSvg({ cameraType: "driving", direction: "next" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("NEXT");
-      expect(decoded).toContain("DRIVING");
-    });
-
-    it("should include PREV label for driving/previous", () => {
+    it("should include correct icon template for each combination", () => {
       const result = generateCameraCycleSvg({ cameraType: "driving", direction: "previous" });
-      const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("PREV");
-      expect(decoded).toContain("DRIVING");
+      expect(decodeURIComponent(result)).toContain("driving-previous");
     });
   });
 });

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a2a3a"/>
+
+    <!-- Orbit with slow counter-clockwise arc -->
+    <circle cx="72" cy="44" r="28" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
+    <circle cx="72" cy="44" r="6" fill="#ffffff"/>
+    <circle cx="44" cy="44" r="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <path d="M40 40 A28 28 0 0 1 92 24" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M40 48 A28 28 0 0 0 60 68" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polyline points="54,64 60,68 56,74" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

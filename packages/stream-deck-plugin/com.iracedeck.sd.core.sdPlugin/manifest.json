@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "iRaceDeck",
-  "Version": "0.9.1.0",
+  "Version": "0.11.0.0",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -662,6 +662,31 @@
       "States": [
         {
           "Image": "imgs/actions/setup-hybrid/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Setup Traction",
+      "UUID": "com.iracedeck.sd.core.setup-traction",
+      "Icon": "imgs/actions/setup-traction/icon",
+      "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
+      "PropertyInspectorPath": "ui/setup-traction.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease TC setting",
+          "Push": "Activate TC adjustment"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-traction/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }

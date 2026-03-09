@@ -110,6 +110,14 @@ Before finalizing any commit, verify:
 - [ ] No AI/Claude references in commit message
 - [ ] Only relevant files are staged
 
+## Pull Request Creation
+
+When creating a PR with `gh pr create`, use the PR template (`.github/pull_request_template.md`) as the body structure:
+
+- Fill in all sections: **Related Issue**, **What changed?**, **How to test**, and **Checklist**
+- Mark checklist items as complete (`[x]`) or incomplete (`[ ]`) as appropriate
+- Use `N/A` for sections that don't apply (e.g., "Related Issue" for infra work with no issue)
+
 ## Squash Merge Awareness
 
 PRs in this project are **squash-merged** into `master`. The squash commit subject is the PR title, so:

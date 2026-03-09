@@ -7,9 +7,15 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import disableFuelCutIconSvg from "@iracedeck/icons/setup-fuel/disable-fuel-cut.svg";
+import fcyModeToggleIconSvg from "@iracedeck/icons/setup-fuel/fcy-mode-toggle.svg";
+import fuelCutPositionDecreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-cut-position-decrease.svg";
+import fuelCutPositionIncreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-cut-position-increase.svg";
+import fuelMixtureDecreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture-decrease.svg";
+import fuelMixtureIncreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture-increase.svg";
+import lowFuelAcceptIconSvg from "@iracedeck/icons/setup-fuel/low-fuel-accept.svg";
 import z from "zod";
 
-import setupFuelTemplate from "../../icons/setup-fuel.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,12 +32,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-
 type SetupFuelSetting =
   | "fuel-mixture"
   | "fuel-cut-position"
@@ -45,78 +45,37 @@ type DirectionType = "increase" | "decrease";
 const DIRECTIONAL_CONTROLS: Set<SetupFuelSetting> = new Set(["fuel-mixture", "fuel-cut-position"]);
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
+ * Flat icon lookup record mapping setting + direction keys to imported SVGs.
  */
-const SETUP_FUEL_LABELS: Record<
-  SetupFuelSetting,
-  Record<DirectionType, { line1: string; line2: string }> | { line1: string; line2: string }
-> = {
-  "fuel-mixture": {
-    increase: { line1: "FUEL MIX", line2: "INCREASE" },
-    decrease: { line1: "FUEL MIX", line2: "DECREASE" },
-  },
-  "fuel-cut-position": {
-    increase: { line1: "FUEL CUT", line2: "INCREASE" },
-    decrease: { line1: "FUEL CUT", line2: "DECREASE" },
-  },
-  "disable-fuel-cut": { line1: "FUEL CUT", line2: "DISABLE" },
-  "low-fuel-accept": { line1: "LOW FUEL", line2: "ACCEPT" },
-  "fcy-mode-toggle": { line1: "FCY MODE", line2: "TOGGLE" },
+const SETUP_FUEL_ICONS: Record<string, string> = {
+  "fuel-mixture-increase": fuelMixtureIncreaseIconSvg,
+  "fuel-mixture-decrease": fuelMixtureDecreaseIconSvg,
+  "fuel-cut-position-increase": fuelCutPositionIncreaseIconSvg,
+  "fuel-cut-position-decrease": fuelCutPositionDecreaseIconSvg,
+  "disable-fuel-cut": disableFuelCutIconSvg,
+  "low-fuel-accept": lowFuelAcceptIconSvg,
+  "fcy-mode-toggle": fcyModeToggleIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * Non-directional controls have a single icon; directional controls have per-direction variants.
+ * Label configuration for each setting + direction combination.
+ * Standard layout: mainLabel = primary (bold, top), subLabel = secondary (subdued, bottom).
  */
-const SETUP_FUEL_ICONS: Record<SetupFuelSetting, Record<DirectionType, string> | string> = {
-  // Fuel Mixture: Fuel droplet with fill level indicator + directional arrow
+const SETUP_FUEL_LABELS: Record<
+  SetupFuelSetting,
+  Record<DirectionType, { mainLabel: string; subLabel: string }> | { mainLabel: string; subLabel: string }
+> = {
   "fuel-mixture": {
-    increase: `
-    <path d="M30 10 C30 10 20 22 20 28 C20 34 24 38 30 38 C36 38 40 34 40 28 C40 22 30 10 30 10Z"
-          fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <path d="M23 30 Q30 26 37 30" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M30 10 C30 10 20 22 20 28 C20 34 24 38 30 38 C36 38 40 34 40 28 C40 22 30 10 30 10Z"
-          fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <path d="M23 30 Q30 26 37 30" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "FUEL MIX", subLabel: "INCREASE" },
+    decrease: { mainLabel: "FUEL MIX", subLabel: "DECREASE" },
   },
-
-  // Fuel Cut Position: Fuel droplet with horizontal dashed cut line + directional arrow
   "fuel-cut-position": {
-    increase: `
-    <path d="M30 10 C30 10 20 22 20 28 C20 34 24 38 30 38 C36 38 40 34 40 28 C40 22 30 10 30 10Z"
-          fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <line x1="18" y1="26" x2="42" y2="26" stroke="${RED}" stroke-width="1.5" stroke-dasharray="3,2" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <path d="M30 10 C30 10 20 22 20 28 C20 34 24 38 30 38 C36 38 40 34 40 28 C40 22 30 10 30 10Z"
-          fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <line x1="18" y1="26" x2="42" y2="26" stroke="${RED}" stroke-width="1.5" stroke-dasharray="3,2" stroke-linecap="round"/>
-    <polyline points="19,16 14,22 19,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "FUEL CUT", subLabel: "INCREASE" },
+    decrease: { mainLabel: "FUEL CUT", subLabel: "DECREASE" },
   },
-
-  // Disable Fuel Cut: Fuel droplet with X overlay in red
-  "disable-fuel-cut": `
-    <path d="M36 10 C36 10 26 22 26 28 C26 34 30 38 36 38 C42 38 46 34 46 28 C46 22 36 10 36 10Z"
-          fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <line x1="29" y1="20" x2="43" y2="36" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="43" y1="20" x2="29" y2="36" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Low Fuel Accept: Small fuel droplet with checkmark in green
-  "low-fuel-accept": `
-    <path d="M32 12 C32 12 24 22 24 27 C24 32 27 35 32 35 C37 35 40 32 40 27 C40 22 32 12 32 12Z"
-          fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <path d="M23 30 Q32 27 39 30" fill="none" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <polyline points="40,20 45,28 55,14" fill="none" stroke="${GREEN}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // FCY Mode Toggle: Caution triangle with exclamation mark in yellow
-  "fcy-mode-toggle": `
-    <path d="M36 10 L52 38 L20 38 Z" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linejoin="round"/>
-    <line x1="36" y1="18" x2="36" y2="30" stroke="${YELLOW}" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="36" cy="34" r="1.5" fill="${YELLOW}"/>`,
+  "disable-fuel-cut": { mainLabel: "FUEL CUT", subLabel: "DISABLE" },
+  "low-fuel-accept": { mainLabel: "LOW FUEL", subLabel: "ACCEPT" },
+  "fcy-mode-toggle": { mainLabel: "FCY MODE", subLabel: "TOGGLE" },
 };
 
 /**
@@ -152,18 +111,16 @@ type SetupFuelSettings = z.infer<typeof SetupFuelSettings>;
 export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
   const { setting, direction } = settings;
 
-  const iconEntry = SETUP_FUEL_ICONS[setting];
-  const iconContent =
-    typeof iconEntry === "string" ? iconEntry : (iconEntry?.[direction] ?? SETUP_FUEL_ICONS["disable-fuel-cut"]);
+  const iconKey = DIRECTIONAL_CONTROLS.has(setting) ? `${setting}-${direction}` : setting;
+  const iconSvg = SETUP_FUEL_ICONS[iconKey] || SETUP_FUEL_ICONS["disable-fuel-cut"];
 
   const labelEntry = SETUP_FUEL_LABELS[setting];
-  const labels: { line1: string; line2: string } =
-    "line1" in labelEntry ? labelEntry : (labelEntry[direction] ?? { line1: "FUEL", line2: "SETUP" });
+  const labels: { mainLabel: string; subLabel: string } =
+    "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "FUEL", subLabel: "SETUP" });
 
-  const svg = renderIconTemplate(setupFuelTemplate, {
-    iconContent: iconContent as string,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);
