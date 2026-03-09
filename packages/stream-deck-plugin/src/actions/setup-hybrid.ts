@@ -9,9 +9,17 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import hysBoostIconSvg from "@iracedeck/icons/setup-hybrid/hys-boost.svg";
+import hysNoBoostIconSvg from "@iracedeck/icons/setup-hybrid/hys-no-boost.svg";
+import hysRegenIconSvg from "@iracedeck/icons/setup-hybrid/hys-regen.svg";
+import mgukDeployModeDecreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-deploy-mode-decrease.svg";
+import mgukDeployModeIncreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-deploy-mode-increase.svg";
+import mgukFixedDeployDecreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-decrease.svg";
+import mgukFixedDeployIncreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-fixed-deploy-increase.svg";
+import mgukRegenGainDecreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-regen-gain-decrease.svg";
+import mgukRegenGainIncreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-regen-gain-increase.svg";
 import z from "zod";
 
-import setupHybridTemplate from "../../icons/setup-hybrid.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -27,10 +35,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const GREEN = "#2ecc71";
 
 type SetupHybridSetting =
   | "mguk-regen-gain"
@@ -53,99 +57,33 @@ const DIRECTIONAL_CONTROLS: Set<SetupHybridSetting> = new Set([
 const HOLD_CONTROLS: Set<SetupHybridSetting> = new Set(["hys-boost", "hys-regen"]);
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
+ * Flat icon lookup record mapping setting + direction keys to standalone SVG templates.
  */
-const SETUP_HYBRID_LABELS: Record<
-  SetupHybridSetting,
-  Record<DirectionType, { line1: string; line2: string }> | { line1: string; line2: string }
-> = {
-  "mguk-regen-gain": {
-    increase: { line1: "REGEN GAIN", line2: "INCREASE" },
-    decrease: { line1: "REGEN GAIN", line2: "DECREASE" },
-  },
-  "mguk-deploy-mode": {
-    increase: { line1: "DEPLOY MODE", line2: "INCREASE" },
-    decrease: { line1: "DEPLOY MODE", line2: "DECREASE" },
-  },
-  "mguk-fixed-deploy": {
-    increase: { line1: "FIXED DEPLOY", line2: "INCREASE" },
-    decrease: { line1: "FIXED DEPLOY", line2: "DECREASE" },
-  },
-  "hys-boost": { line1: "HYS", line2: "BOOST" },
-  "hys-regen": { line1: "HYS", line2: "REGEN" },
-  "hys-no-boost": { line1: "HYS", line2: "NO BOOST" },
+const SETUP_HYBRID_ICONS: Record<string, string> = {
+  "mguk-regen-gain-increase": mgukRegenGainIncreaseIconSvg,
+  "mguk-regen-gain-decrease": mgukRegenGainDecreaseIconSvg,
+  "mguk-deploy-mode-increase": mgukDeployModeIncreaseIconSvg,
+  "mguk-deploy-mode-decrease": mgukDeployModeDecreaseIconSvg,
+  "mguk-fixed-deploy-increase": mgukFixedDeployIncreaseIconSvg,
+  "mguk-fixed-deploy-decrease": mgukFixedDeployDecreaseIconSvg,
+  "hys-boost": hysBoostIconSvg,
+  "hys-regen": hysRegenIconSvg,
+  "hys-no-boost": hysNoBoostIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * Non-directional controls have a single icon; directional controls have per-direction variants.
+ * Label configuration for each setting + direction combination.
  */
-const SETUP_HYBRID_ICONS: Record<SetupHybridSetting, Record<DirectionType, string> | string> = {
-  // MGU-K Re-Gen Gain: Battery with regen lightning bolt + directional arrow
-  "mguk-regen-gain": {
-    increase: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <polyline points="27,17 30,22 27,22 30,27" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <polyline points="27,17 30,22 27,22 30,27" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // MGU-K Deploy Mode: Battery with outgoing deploy arrows + directional arrow
-  "mguk-deploy-mode": {
-    increase: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <line x1="24" y1="22" x2="35" y2="22" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="32,19 35,22 32,25" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <line x1="24" y1="22" x2="35" y2="22" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="32,19 35,22 32,25" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // MGU-K Fixed Deploy: Battery with horizontal bar gauge + directional arrow
-  "mguk-fixed-deploy": {
-    increase: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <rect x="20" y="20" width="14" height="4" rx="1" fill="${GREEN}" opacity="0.6"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="42" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <rect x="20" y="20" width="14" height="4" rx="1" fill="${GREEN}" opacity="0.6"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // HYS Boost: Battery with upward power burst
-  "hys-boost": `
-    <rect x="20" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="46" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <polyline points="31,27 33,21 31,21 33,14" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="29,12 33,9 37,12" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // HYS Regen: Battery with downward arrow into battery
-  "hys-regen": `
-    <rect x="20" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="46" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <line x1="33" y1="10" x2="33" y2="26" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="30,23 33,26 36,23" fill="none" stroke="${GREEN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // HYS No Boost: Battery with X/slash
-  "hys-no-boost": `
-    <rect x="20" y="14" width="26" height="16" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <rect x="46" y="19" width="3" height="6" rx="1" fill="${WHITE}"/>
-    <line x1="27" y1="18" x2="39" y2="26" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="39" y1="18" x2="27" y2="26" stroke="${GRAY}" stroke-width="2" stroke-linecap="round"/>`,
+const SETUP_HYBRID_LABELS: Record<string, { mainLabel: string; subLabel: string }> = {
+  "mguk-regen-gain-increase": { mainLabel: "REGEN GAIN", subLabel: "INCREASE" },
+  "mguk-regen-gain-decrease": { mainLabel: "REGEN GAIN", subLabel: "DECREASE" },
+  "mguk-deploy-mode-increase": { mainLabel: "DEPLOY MODE", subLabel: "INCREASE" },
+  "mguk-deploy-mode-decrease": { mainLabel: "DEPLOY MODE", subLabel: "DECREASE" },
+  "mguk-fixed-deploy-increase": { mainLabel: "FIXED DEPLOY", subLabel: "INCREASE" },
+  "mguk-fixed-deploy-decrease": { mainLabel: "FIXED DEPLOY", subLabel: "DECREASE" },
+  "hys-boost": { mainLabel: "HYS", subLabel: "BOOST" },
+  "hys-regen": { mainLabel: "HYS", subLabel: "REGEN" },
+  "hys-no-boost": { mainLabel: "HYS", subLabel: "NO BOOST" },
 };
 
 /**
@@ -183,25 +121,30 @@ const SetupHybridSettings = z.object({
 type SetupHybridSettings = z.infer<typeof SetupHybridSettings>;
 
 /**
+ * Resolves the flat icon lookup key from setting and direction.
+ */
+function resolveIconKey(setting: SetupHybridSetting, direction: DirectionType): string {
+  if (DIRECTIONAL_CONTROLS.has(setting)) {
+    return `${setting}-${direction}`;
+  }
+
+  return setting;
+}
+
+/**
  * @internal Exported for testing
  *
  * Generates an SVG data URI icon for the setup hybrid action.
  */
 export function generateSetupHybridSvg(settings: SetupHybridSettings): string {
-  const { setting, direction } = settings;
+  const iconKey = resolveIconKey(settings.setting, settings.direction);
 
-  const iconEntry = SETUP_HYBRID_ICONS[setting];
-  const iconContent =
-    typeof iconEntry === "string" ? iconEntry : (iconEntry?.[direction] ?? SETUP_HYBRID_ICONS["hys-boost"]);
+  const iconSvg = SETUP_HYBRID_ICONS[iconKey] || SETUP_HYBRID_ICONS["hys-boost"];
+  const labels = SETUP_HYBRID_LABELS[iconKey] || { mainLabel: "HYBRID", subLabel: "SETUP" };
 
-  const labelEntry = SETUP_HYBRID_LABELS[setting];
-  const labels: { line1: string; line2: string } =
-    "line1" in labelEntry ? labelEntry : (labelEntry[direction] ?? { line1: "HYBRID", line2: "SETUP" });
-
-  const svg = renderIconTemplate(setupHybridTemplate, {
-    iconContent: iconContent as string,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

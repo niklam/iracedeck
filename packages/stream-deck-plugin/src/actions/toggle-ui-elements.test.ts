@@ -2,6 +2,34 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateToggleUiElementsSvg, UI_ELEMENT_GLOBAL_KEYS } from "./toggle-ui-elements.js";
 
+vi.mock("@iracedeck/icons/toggle-ui-elements/dash-box.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/speed-gear-pedals.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/radio-display.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/fps-network-display.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/weather-radar.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/virtual-mirror.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/ui-edit-mode.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/display-ref-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/toggle-ui-elements/replay-ui.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -49,8 +77,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -169,24 +203,24 @@ describe("ToggleUiElements", () => {
     });
 
     it("should include correct labels for all elements", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "dash-box": { line1: "DASH BOX", line2: "TOGGLE" },
-        "speed-gear-pedals": { line1: "INPUTS", line2: "TOGGLE" },
-        "radio-display": { line1: "RADIO", line2: "DISPLAY" },
-        "fps-network-display": { line1: "SYSTEM", line2: "METERS" },
-        "weather-radar": { line1: "WEATHER", line2: "RADAR" },
-        "virtual-mirror": { line1: "VIRTUAL", line2: "MIRROR" },
-        "ui-edit-mode": { line1: "UI EDIT", line2: "MODE" },
-        "display-ref-car": { line1: "REFERENCE", line2: "CAR" },
-        "replay-ui": { line1: "REPLAY UI", line2: "TOGGLE" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "dash-box": { mainLabel: "DASH BOX", subLabel: "TOGGLE" },
+        "speed-gear-pedals": { mainLabel: "INPUTS", subLabel: "TOGGLE" },
+        "radio-display": { mainLabel: "RADIO", subLabel: "DISPLAY" },
+        "fps-network-display": { mainLabel: "SYSTEM", subLabel: "METERS" },
+        "weather-radar": { mainLabel: "WEATHER", subLabel: "RADAR" },
+        "virtual-mirror": { mainLabel: "VIRTUAL", subLabel: "MIRROR" },
+        "ui-edit-mode": { mainLabel: "UI EDIT", subLabel: "MODE" },
+        "display-ref-car": { mainLabel: "REFERENCE", subLabel: "CAR" },
+        "replay-ui": { mainLabel: "REPLAY UI", subLabel: "TOGGLE" },
       };
 
       for (const [element, labels] of Object.entries(expectedLabels)) {
         const result = generateToggleUiElementsSvg({ element: element as any });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

@@ -7,9 +7,34 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import differentialEntryDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-entry-decrease.svg";
+import differentialEntryIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-entry-increase.svg";
+import differentialExitDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-exit-decrease.svg";
+import differentialExitIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-exit-increase.svg";
+import differentialMiddleDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-middle-decrease.svg";
+import differentialMiddleIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-middle-increase.svg";
+import differentialPreloadDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-preload-decrease.svg";
+import differentialPreloadIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-preload-increase.svg";
+import frontArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-decrease.svg";
+import frontArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/front-arb-increase.svg";
+import leftSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-decrease.svg";
+import leftSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/left-spring-increase.svg";
+import lfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-decrease.svg";
+import lfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lf-shock-increase.svg";
+import lrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-decrease.svg";
+import lrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/lr-shock-increase.svg";
+import powerSteeringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-decrease.svg";
+import powerSteeringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/power-steering-increase.svg";
+import rearArbDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-decrease.svg";
+import rearArbIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rear-arb-increase.svg";
+import rfShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-decrease.svg";
+import rfShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rf-shock-increase.svg";
+import rightSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-decrease.svg";
+import rightSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-increase.svg";
+import rrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-decrease.svg";
+import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-increase.svg";
 import z from "zod";
 
-import setupChassisTemplate from "../../icons/setup-chassis.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,289 +51,71 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-
-type SetupChassisSetting =
-  | "differential-preload"
-  | "differential-entry"
-  | "differential-middle"
-  | "differential-exit"
-  | "front-arb"
-  | "rear-arb"
-  | "left-spring"
-  | "right-spring"
-  | "lf-shock"
-  | "rf-shock"
-  | "lr-shock"
-  | "rr-shock"
-  | "power-steering";
-
 type DirectionType = "increase" | "decrease";
 
 /**
- * Label configuration for each setting + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
- * All chassis settings are directional (+/-).
+ * Flat icon lookup record keyed by "{setting}-{direction}".
  */
-const SETUP_CHASSIS_LABELS: Record<SetupChassisSetting, Record<DirectionType, { line1: string; line2: string }>> = {
-  "differential-preload": {
-    increase: { line1: "DIFF PRELOAD", line2: "INCREASE" },
-    decrease: { line1: "DIFF PRELOAD", line2: "DECREASE" },
-  },
-  "differential-entry": {
-    increase: { line1: "DIFF ENTRY", line2: "INCREASE" },
-    decrease: { line1: "DIFF ENTRY", line2: "DECREASE" },
-  },
-  "differential-middle": {
-    increase: { line1: "DIFF MIDDLE", line2: "INCREASE" },
-    decrease: { line1: "DIFF MIDDLE", line2: "DECREASE" },
-  },
-  "differential-exit": {
-    increase: { line1: "DIFF EXIT", line2: "INCREASE" },
-    decrease: { line1: "DIFF EXIT", line2: "DECREASE" },
-  },
-  "front-arb": {
-    increase: { line1: "FRONT ARB", line2: "INCREASE" },
-    decrease: { line1: "FRONT ARB", line2: "DECREASE" },
-  },
-  "rear-arb": {
-    increase: { line1: "REAR ARB", line2: "INCREASE" },
-    decrease: { line1: "REAR ARB", line2: "DECREASE" },
-  },
-  "left-spring": {
-    increase: { line1: "LEFT SPRING", line2: "INCREASE" },
-    decrease: { line1: "LEFT SPRING", line2: "DECREASE" },
-  },
-  "right-spring": {
-    increase: { line1: "RIGHT SPRING", line2: "INCREASE" },
-    decrease: { line1: "RIGHT SPRING", line2: "DECREASE" },
-  },
-  "lf-shock": {
-    increase: { line1: "LF SHOCK", line2: "INCREASE" },
-    decrease: { line1: "LF SHOCK", line2: "DECREASE" },
-  },
-  "rf-shock": {
-    increase: { line1: "RF SHOCK", line2: "INCREASE" },
-    decrease: { line1: "RF SHOCK", line2: "DECREASE" },
-  },
-  "lr-shock": {
-    increase: { line1: "LR SHOCK", line2: "INCREASE" },
-    decrease: { line1: "LR SHOCK", line2: "DECREASE" },
-  },
-  "rr-shock": {
-    increase: { line1: "RR SHOCK", line2: "INCREASE" },
-    decrease: { line1: "RR SHOCK", line2: "DECREASE" },
-  },
-  "power-steering": {
-    increase: { line1: "PWR STEER", line2: "INCREASE" },
-    decrease: { line1: "PWR STEER", line2: "DECREASE" },
-  },
+const SETUP_CHASSIS_ICONS: Record<string, string> = {
+  "differential-preload-increase": differentialPreloadIncreaseIconSvg,
+  "differential-preload-decrease": differentialPreloadDecreaseIconSvg,
+  "differential-entry-increase": differentialEntryIncreaseIconSvg,
+  "differential-entry-decrease": differentialEntryDecreaseIconSvg,
+  "differential-middle-increase": differentialMiddleIncreaseIconSvg,
+  "differential-middle-decrease": differentialMiddleDecreaseIconSvg,
+  "differential-exit-increase": differentialExitIncreaseIconSvg,
+  "differential-exit-decrease": differentialExitDecreaseIconSvg,
+  "front-arb-increase": frontArbIncreaseIconSvg,
+  "front-arb-decrease": frontArbDecreaseIconSvg,
+  "rear-arb-increase": rearArbIncreaseIconSvg,
+  "rear-arb-decrease": rearArbDecreaseIconSvg,
+  "left-spring-increase": leftSpringIncreaseIconSvg,
+  "left-spring-decrease": leftSpringDecreaseIconSvg,
+  "right-spring-increase": rightSpringIncreaseIconSvg,
+  "right-spring-decrease": rightSpringDecreaseIconSvg,
+  "lf-shock-increase": lfShockIncreaseIconSvg,
+  "lf-shock-decrease": lfShockDecreaseIconSvg,
+  "rf-shock-increase": rfShockIncreaseIconSvg,
+  "rf-shock-decrease": rfShockDecreaseIconSvg,
+  "lr-shock-increase": lrShockIncreaseIconSvg,
+  "lr-shock-decrease": lrShockDecreaseIconSvg,
+  "rr-shock-increase": rrShockIncreaseIconSvg,
+  "rr-shock-decrease": rrShockDecreaseIconSvg,
+  "power-steering-increase": powerSteeringIncreaseIconSvg,
+  "power-steering-decrease": powerSteeringDecreaseIconSvg,
 };
 
 /**
- * SVG icon content for each setting.
- * All chassis settings are directional with per-direction arrow variants.
+ * Label configuration for each setting + direction combination.
+ * mainLabel = primary (bold, top), subLabel = secondary (subdued, bottom).
  */
-const SETUP_CHASSIS_ICONS: Record<SetupChassisSetting, Record<DirectionType, string>> = {
-  // Differential Preload: Circular gear outline with compression arrows pointing inward
-  "differential-preload": {
-    increase: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="28" y1="24" x2="31" y2="24" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="37" y1="24" x2="40" y2="24" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="28" y1="24" x2="31" y2="24" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="37" y1="24" x2="40" y2="24" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Differential Entry: Circular gear with left-side arc marker
-  "differential-entry": {
-    increase: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M26,18 A12,12 0 0,0 26,30" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M26,18 A12,12 0 0,0 26,30" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Differential Middle: Circular gear with center dot
-  "differential-middle": {
-    increase: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="34" cy="24" r="3" fill="${YELLOW}"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="34" cy="24" r="3" fill="${YELLOW}"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Differential Exit: Circular gear with right-side arc marker
-  "differential-exit": {
-    increase: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M42,18 A12,12 0 0,1 42,30" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="34" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M42,18 A12,12 0 0,1 42,30" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Front ARB: Horizontal bar with U-bend, positioned higher (y~16)
-  "front-arb": {
-    increase: `
-    <line x1="18" y1="18" x2="28" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M28,18 C28,28 40,28 40,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="40" y1="18" x2="50" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <text x="34" y="36" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="7">FRONT</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <line x1="18" y1="18" x2="28" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M28,18 C28,28 40,28 40,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="40" y1="18" x2="50" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <text x="34" y="36" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="7">FRONT</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Rear ARB: Horizontal bar with U-bend, positioned lower (y~28)
-  "rear-arb": {
-    increase: `
-    <line x1="18" y1="18" x2="28" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M28,18 C28,28 40,28 40,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="40" y1="18" x2="50" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <text x="34" y="36" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="7">REAR</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <line x1="18" y1="18" x2="28" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <path d="M28,18 C28,28 40,28 40,18" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="40" y1="18" x2="50" y2="18" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <text x="34" y="36" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="7">REAR</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Left Spring: Zigzag coil spring, shifted left of center
-  "left-spring": {
-    increase: `
-    <polyline points="28,12 24,16 32,20 24,24 32,28 24,32 32,36 28,40" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="22" y1="12" x2="34" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="22" y1="40" x2="34" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <polyline points="28,12 24,16 32,20 24,24 32,28 24,32 32,36 28,40" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="22" y1="12" x2="34" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="22" y1="40" x2="34" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Right Spring: Zigzag coil spring, shifted right of center
-  "right-spring": {
-    increase: `
-    <polyline points="38,12 34,16 42,20 34,24 42,28 34,32 42,36 38,40" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="32" y1="12" x2="44" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="32" y1="40" x2="44" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <polyline points="38,12 34,16 42,20 34,24 42,28 34,32 42,36 38,40" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="32" y1="12" x2="44" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="32" y1="40" x2="44" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // LF Shock: Shock absorber (cylinder + shaft) with "LF" text
-  "lf-shock": {
-    increase: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LF</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LF</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // RF Shock: Shock absorber with "RF" text
-  "rf-shock": {
-    increase: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">RF</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">RF</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // LR Shock: Shock absorber with "LR" text
-  "lr-shock": {
-    increase: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LR</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">LR</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // RR Shock: Shock absorber with "RR" text
-  "rr-shock": {
-    increase: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">RR</text>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="30" y="12" width="10" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="35" y1="28" x2="35" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="31" y1="40" x2="39" y2="40" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="22" y="28" text-anchor="middle" fill="${GRAY}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">RR</text>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
-
-  // Power Steering: Steering wheel circle with lightning bolt
-  "power-steering": {
-    increase: `
-    <circle cx="34" cy="22" r="14" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="22" r="4" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="34" y1="26" x2="34" y2="36" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="32,16 34,20 32,20 34,24" fill="none" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="53,28 58,22 53,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="34" cy="22" r="14" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="22" r="4" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="34" y1="26" x2="34" y2="36" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="32,16 34,20 32,20 34,24" fill="none" stroke="${YELLOW}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="17,16 12,22 17,28" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-  },
+const SETUP_CHASSIS_LABELS: Record<string, { mainLabel: string; subLabel: string }> = {
+  "differential-preload-increase": { mainLabel: "DIFF PRELOAD", subLabel: "INCREASE" },
+  "differential-preload-decrease": { mainLabel: "DIFF PRELOAD", subLabel: "DECREASE" },
+  "differential-entry-increase": { mainLabel: "DIFF ENTRY", subLabel: "INCREASE" },
+  "differential-entry-decrease": { mainLabel: "DIFF ENTRY", subLabel: "DECREASE" },
+  "differential-middle-increase": { mainLabel: "DIFF MIDDLE", subLabel: "INCREASE" },
+  "differential-middle-decrease": { mainLabel: "DIFF MIDDLE", subLabel: "DECREASE" },
+  "differential-exit-increase": { mainLabel: "DIFF EXIT", subLabel: "INCREASE" },
+  "differential-exit-decrease": { mainLabel: "DIFF EXIT", subLabel: "DECREASE" },
+  "front-arb-increase": { mainLabel: "FRONT ARB", subLabel: "INCREASE" },
+  "front-arb-decrease": { mainLabel: "FRONT ARB", subLabel: "DECREASE" },
+  "rear-arb-increase": { mainLabel: "REAR ARB", subLabel: "INCREASE" },
+  "rear-arb-decrease": { mainLabel: "REAR ARB", subLabel: "DECREASE" },
+  "left-spring-increase": { mainLabel: "LEFT SPRING", subLabel: "INCREASE" },
+  "left-spring-decrease": { mainLabel: "LEFT SPRING", subLabel: "DECREASE" },
+  "right-spring-increase": { mainLabel: "RIGHT SPRING", subLabel: "INCREASE" },
+  "right-spring-decrease": { mainLabel: "RIGHT SPRING", subLabel: "DECREASE" },
+  "lf-shock-increase": { mainLabel: "LF SHOCK", subLabel: "INCREASE" },
+  "lf-shock-decrease": { mainLabel: "LF SHOCK", subLabel: "DECREASE" },
+  "rf-shock-increase": { mainLabel: "RF SHOCK", subLabel: "INCREASE" },
+  "rf-shock-decrease": { mainLabel: "RF SHOCK", subLabel: "DECREASE" },
+  "lr-shock-increase": { mainLabel: "LR SHOCK", subLabel: "INCREASE" },
+  "lr-shock-decrease": { mainLabel: "LR SHOCK", subLabel: "DECREASE" },
+  "rr-shock-increase": { mainLabel: "RR SHOCK", subLabel: "INCREASE" },
+  "rr-shock-decrease": { mainLabel: "RR SHOCK", subLabel: "DECREASE" },
+  "power-steering-increase": { mainLabel: "PWR STEER", subLabel: "INCREASE" },
+  "power-steering-decrease": { mainLabel: "PWR STEER", subLabel: "DECREASE" },
 };
 
 /**
@@ -376,15 +183,14 @@ type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
  */
 export function generateSetupChassisSvg(settings: SetupChassisSettings): string {
   const { setting, direction } = settings;
+  const key = `${setting}-${direction}`;
 
-  const iconContent = SETUP_CHASSIS_ICONS[setting]?.[direction] ?? SETUP_CHASSIS_ICONS["differential-preload"].increase;
+  const iconSvg = SETUP_CHASSIS_ICONS[key] || SETUP_CHASSIS_ICONS["differential-preload-increase"];
+  const labels = SETUP_CHASSIS_LABELS[key] || { mainLabel: "CHASSIS", subLabel: "SETUP" };
 
-  const labels = SETUP_CHASSIS_LABELS[setting]?.[direction] ?? { line1: "CHASSIS", line2: "SETUP" };
-
-  const svg = renderIconTemplate(setupChassisTemplate, {
-    iconContent: iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);
@@ -445,7 +251,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     return parsed.success ? parsed.data : SetupChassisSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupChassisSetting, direction: DirectionType): Promise<void> {
+  private async executeSetting(setting: string, direction: DirectionType): Promise<void> {
     this.logger.info("Setting executed");
     this.logger.debug(`Executing ${setting} ${direction}`);
 

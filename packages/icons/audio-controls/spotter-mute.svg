@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+
+    <!-- Icon content area -->
+    <path d="M40 40v24h12l16 16V24l-16 16h-12z" fill="none" stroke="#888888" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M80 34a16 16 0 0 1 0 36" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="36" y1="28" x2="100" y2="76" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Two-line label (inverted layout: main on top, sub on bottom) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

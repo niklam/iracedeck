@@ -16,6 +16,19 @@ const {
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
+vi.mock("@iracedeck/icons/look-direction/look-left.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/look-direction/look-right.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/look-direction/look-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/look-direction/look-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -60,8 +73,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -140,19 +159,19 @@ describe("LookDirection", () => {
     });
 
     it("should include correct labels for all directions", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "look-left": { line1: "LOOK", line2: "LEFT" },
-        "look-right": { line1: "LOOK", line2: "RIGHT" },
-        "look-up": { line1: "LOOK", line2: "UP" },
-        "look-down": { line1: "LOOK", line2: "DOWN" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "look-left": { mainLabel: "LEFT", subLabel: "LOOK" },
+        "look-right": { mainLabel: "RIGHT", subLabel: "LOOK" },
+        "look-up": { mainLabel: "UP", subLabel: "LOOK" },
+        "look-down": { mainLabel: "DOWN", subLabel: "LOOK" },
       };
 
       for (const [direction, labels] of Object.entries(expectedLabels)) {
         const result = generateLookDirectionSvg({ direction: direction as any });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

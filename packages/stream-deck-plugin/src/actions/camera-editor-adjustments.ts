@@ -7,9 +7,38 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import altitudeDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/altitude-decrease.svg";
+import altitudeIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/altitude-increase.svg";
+import autoSetMicGainDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/auto-set-mic-gain-decrease.svg";
+import autoSetMicGainIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/auto-set-mic-gain-increase.svg";
+import blimpRadiusDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/blimp-radius-decrease.svg";
+import blimpRadiusIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/blimp-radius-increase.svg";
+import blimpVelocityDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/blimp-velocity-decrease.svg";
+import blimpVelocityIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/blimp-velocity-increase.svg";
+import fNumberDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/f-number-decrease.svg";
+import fNumberIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/f-number-increase.svg";
+import focusDepthDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/focus-depth-decrease.svg";
+import focusDepthIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/focus-depth-increase.svg";
+import fovZoomDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/fov-zoom-decrease.svg";
+import fovZoomIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/fov-zoom-increase.svg";
+import keyStepDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/key-step-decrease.svg";
+import keyStepIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/key-step-increase.svg";
+import latitudeDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/latitude-decrease.svg";
+import latitudeIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/latitude-increase.svg";
+import longitudeDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/longitude-decrease.svg";
+import longitudeIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/longitude-increase.svg";
+import micGainDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/mic-gain-decrease.svg";
+import micGainIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/mic-gain-increase.svg";
+import pitchDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/pitch-decrease.svg";
+import pitchIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/pitch-increase.svg";
+import vanishXDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/vanish-x-decrease.svg";
+import vanishXIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/vanish-x-increase.svg";
+import vanishYDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/vanish-y-decrease.svg";
+import vanishYIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/vanish-y-increase.svg";
+import yawDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-decrease.svg";
+import yawIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-increase.svg";
 import z from "zod";
 
-import cameraEditorAdjustmentsTemplate from "../../icons/camera-editor-adjustments.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -25,9 +54,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GRAY = "#888888";
 
 const ADJUSTMENT_VALUES = [
   "latitude",
@@ -51,292 +77,105 @@ type AdjustmentType = (typeof ADJUSTMENT_VALUES)[number];
 type DirectionType = "increase" | "decrease";
 
 /**
- * Label configuration for each adjustment + direction combination.
- * Inverted layout: line1 = primary (bold, bottom), line2 = secondary (subdued, top).
+ * Icon SVG lookup for each adjustment + direction combination.
  */
-const CAMERA_EDITOR_LABELS: Record<AdjustmentType, Record<DirectionType, { line1: string; line2: string }>> = {
-  latitude: {
-    increase: { line1: "+", line2: "LATITUDE" },
-    decrease: { line1: "-", line2: "LATITUDE" },
-  },
-  longitude: {
-    increase: { line1: "+", line2: "LONGITUDE" },
-    decrease: { line1: "-", line2: "LONGITUDE" },
-  },
-  altitude: {
-    increase: { line1: "+", line2: "ALTITUDE" },
-    decrease: { line1: "-", line2: "ALTITUDE" },
-  },
-  yaw: {
-    increase: { line1: "+", line2: "YAW" },
-    decrease: { line1: "-", line2: "YAW" },
-  },
-  pitch: {
-    increase: { line1: "+", line2: "PITCH" },
-    decrease: { line1: "-", line2: "PITCH" },
-  },
-  "fov-zoom": {
-    increase: { line1: "+", line2: "FOV ZOOM" },
-    decrease: { line1: "-", line2: "FOV ZOOM" },
-  },
-  "key-step": {
-    increase: { line1: "+", line2: "KEY STEP" },
-    decrease: { line1: "-", line2: "KEY STEP" },
-  },
-  "vanish-x": {
-    increase: { line1: "+", line2: "VANISH X" },
-    decrease: { line1: "-", line2: "VANISH X" },
-  },
-  "vanish-y": {
-    increase: { line1: "+", line2: "VANISH Y" },
-    decrease: { line1: "-", line2: "VANISH Y" },
-  },
-  "blimp-radius": {
-    increase: { line1: "+", line2: "BLIMP RAD" },
-    decrease: { line1: "-", line2: "BLIMP RAD" },
-  },
-  "blimp-velocity": {
-    increase: { line1: "+", line2: "BLIMP VEL" },
-    decrease: { line1: "-", line2: "BLIMP VEL" },
-  },
-  "mic-gain": {
-    increase: { line1: "+", line2: "MIC GAIN" },
-    decrease: { line1: "-", line2: "MIC GAIN" },
-  },
-  "auto-set-mic-gain": {
-    increase: { line1: "AUTO", line2: "MIC GAIN" },
-    decrease: { line1: "AUTO", line2: "MIC GAIN" },
-  },
-  "f-number": {
-    increase: { line1: "+", line2: "F-NUMBER" },
-    decrease: { line1: "-", line2: "F-NUMBER" },
-  },
-  "focus-depth": {
-    increase: { line1: "+", line2: "FOCUS DEPTH" },
-    decrease: { line1: "-", line2: "FOCUS DEPTH" },
-  },
+const ADJUSTMENT_ICONS: Record<string, string> = {
+  "latitude-increase": latitudeIncreaseIconSvg,
+  "latitude-decrease": latitudeDecreaseIconSvg,
+  "longitude-increase": longitudeIncreaseIconSvg,
+  "longitude-decrease": longitudeDecreaseIconSvg,
+  "altitude-increase": altitudeIncreaseIconSvg,
+  "altitude-decrease": altitudeDecreaseIconSvg,
+  "yaw-increase": yawIncreaseIconSvg,
+  "yaw-decrease": yawDecreaseIconSvg,
+  "pitch-increase": pitchIncreaseIconSvg,
+  "pitch-decrease": pitchDecreaseIconSvg,
+  "fov-zoom-increase": fovZoomIncreaseIconSvg,
+  "fov-zoom-decrease": fovZoomDecreaseIconSvg,
+  "key-step-increase": keyStepIncreaseIconSvg,
+  "key-step-decrease": keyStepDecreaseIconSvg,
+  "vanish-x-increase": vanishXIncreaseIconSvg,
+  "vanish-x-decrease": vanishXDecreaseIconSvg,
+  "vanish-y-increase": vanishYIncreaseIconSvg,
+  "vanish-y-decrease": vanishYDecreaseIconSvg,
+  "blimp-radius-increase": blimpRadiusIncreaseIconSvg,
+  "blimp-radius-decrease": blimpRadiusDecreaseIconSvg,
+  "blimp-velocity-increase": blimpVelocityIncreaseIconSvg,
+  "blimp-velocity-decrease": blimpVelocityDecreaseIconSvg,
+  "mic-gain-increase": micGainIncreaseIconSvg,
+  "mic-gain-decrease": micGainDecreaseIconSvg,
+  "auto-set-mic-gain-increase": autoSetMicGainIncreaseIconSvg,
+  "auto-set-mic-gain-decrease": autoSetMicGainDecreaseIconSvg,
+  "f-number-increase": fNumberIncreaseIconSvg,
+  "f-number-decrease": fNumberDecreaseIconSvg,
+  "focus-depth-increase": focusDepthIncreaseIconSvg,
+  "focus-depth-decrease": focusDepthDecreaseIconSvg,
 };
 
 /**
- * SVG icon content for each adjustment type, grouped by concept.
+ * Label configuration for each adjustment + direction combination.
+ * mainLabel = primary (bold, bottom), subLabel = secondary (subdued, top).
  */
-const CAMERA_EDITOR_ICONS: Record<AdjustmentType, Record<DirectionType, string>> = {
-  // Position group: Camera with XYZ axis arrows
+const CAMERA_EDITOR_LABELS: Record<AdjustmentType, Record<DirectionType, { mainLabel: string; subLabel: string }>> = {
   latitude: {
-    increase: `
-    <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="30" y1="30" x2="40" y2="30" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="37,27 40,30 37,33" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="30" y1="30" x2="20" y2="30" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="23,27 20,30 23,33" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "LATITUDE" },
+    decrease: { mainLabel: "-", subLabel: "LATITUDE" },
   },
   longitude: {
-    increase: `
-    <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="30" y1="30" x2="30" y2="40" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="27,37 30,40 33,37" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="18" y="12" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,15 54,9 54,33 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="30" y1="40" x2="30" y2="30" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="27,33 30,30 33,33" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "LONGITUDE" },
+    decrease: { mainLabel: "-", subLabel: "LONGITUDE" },
   },
   altitude: {
-    increase: `
-    <rect x="18" y="14" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,17 54,11 54,35 42,29" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="14" y1="32" x2="14" y2="12" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="11,15 14,12 17,15" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="18" y="14" width="24" height="18" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,17 54,11 54,35 42,29" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <line x1="14" y1="12" x2="14" y2="32" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="11,29 14,32 17,29" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "ALTITUDE" },
+    decrease: { mainLabel: "-", subLabel: "ALTITUDE" },
   },
-  // Rotation group: Camera with rotation arcs
   yaw: {
-    increase: `
-    <rect x="22" y="14" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,17 52,12 52,32 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M24 38 A12 6 0 0 1 48 38" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polyline points="45,35 48,38 45,41" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="22" y="14" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,17 52,12 52,32 42,27" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M48 38 A12 6 0 0 1 24 38" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polyline points="27,35 24,38 27,41" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "YAW" },
+    decrease: { mainLabel: "-", subLabel: "YAW" },
   },
   pitch: {
-    increase: `
-    <rect x="22" y="16" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,19 52,14 52,34 42,29" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M56 34 A8 12 0 0 0 56 10" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polyline points="53,13 56,10 59,13" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="22" y="16" width="20" height="16" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polygon points="42,19 52,14 52,34 42,29" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M56 10 A8 12 0 0 1 56 34" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polyline points="53,31 56,34 59,31" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "PITCH" },
+    decrease: { mainLabel: "-", subLabel: "PITCH" },
   },
-  // Zoom/FOV group: Lens with zoom indicator
   "fov-zoom": {
-    increase: `
-    <circle cx="32" cy="22" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="32" cy="22" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="32" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="54" y1="18" x2="54" y2="26" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-    decrease: `
-    <circle cx="32" cy="22" r="12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="32" cy="22" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="32" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
+    increase: { mainLabel: "+", subLabel: "FOV ZOOM" },
+    decrease: { mainLabel: "-", subLabel: "FOV ZOOM" },
   },
   "key-step": {
-    increase: `
-    <rect x="14" y="12" width="44" height="4" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="14" y="12" width="28" height="4" rx="1" fill="${WHITE}" fill-opacity="0.3"/>
-    <line x1="20" y1="24" x2="20" y2="38" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>
-    <line x1="36" y1="24" x2="36" y2="38" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="52" y1="24" x2="52" y2="38" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>
-    <polyline points="33,28 36,24 39,28" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="14" y="12" width="44" height="4" rx="1" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="14" y="12" width="28" height="4" rx="1" fill="${WHITE}" fill-opacity="0.3"/>
-    <line x1="20" y1="24" x2="20" y2="38" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>
-    <line x1="36" y1="24" x2="36" y2="38" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="52" y1="24" x2="52" y2="38" stroke="${GRAY}" stroke-width="1" stroke-dasharray="2,2"/>
-    <polyline points="33,34 36,38 39,34" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "KEY STEP" },
+    decrease: { mainLabel: "-", subLabel: "KEY STEP" },
   },
-  // Vanish point group: Perspective grid lines
   "vanish-x": {
-    increase: `
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="36" y1="22" x2="14" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="14" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="40" y1="22" x2="54" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="51,19 54,22 51,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="36" y1="22" x2="14" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="14" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="32" y1="22" x2="18" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="21,19 18,22 21,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "VANISH X" },
+    decrease: { mainLabel: "-", subLabel: "VANISH X" },
   },
   "vanish-y": {
-    increase: `
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="36" y1="22" x2="14" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="14" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="18" x2="36" y2="10" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="33,13 36,10 39,13" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="36" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="36" y1="22" x2="14" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="14" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="10" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="22" x2="58" y2="34" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="26" x2="36" y2="38" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="33,35 36,38 39,35" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "VANISH Y" },
+    decrease: { mainLabel: "-", subLabel: "VANISH Y" },
   },
-  // Blimp group: Circular orbit path
   "blimp-radius": {
-    increase: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <circle cx="36" cy="22" r="3" fill="${WHITE}"/>
-    <circle cx="50" cy="22" r="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="52" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="55,19 58,22 55,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <circle cx="36" cy="22" r="3" fill="${WHITE}"/>
-    <circle cx="50" cy="22" r="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <line x1="48" y1="22" x2="42" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="45,19 42,22 45,25" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "BLIMP RAD" },
+    decrease: { mainLabel: "-", subLabel: "BLIMP RAD" },
   },
   "blimp-velocity": {
-    increase: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <circle cx="36" cy="22" r="3" fill="${WHITE}"/>
-    <circle cx="22" cy="22" r="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M20 20 A14 14 0 0 1 46 12" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="43,10 46,12 44,15" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,3"/>
-    <circle cx="36" cy="22" r="3" fill="${WHITE}"/>
-    <circle cx="22" cy="22" r="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M20 20 A14 14 0 0 1 46 12" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <path d="M20 24 A14 14 0 0 0 30 34" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="27,32 30,34 28,37" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "BLIMP VEL" },
+    decrease: { mainLabel: "-", subLabel: "BLIMP VEL" },
   },
-  // Audio group: Microphone icon
   "mic-gain": {
-    increase: `
-    <rect x="30" y="10" width="12" height="18" rx="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M24 24 A12 10 0 0 0 48 24" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="34" x2="36" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="54" y1="18" x2="54" y2="26" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-    decrease: `
-    <rect x="30" y="10" width="12" height="18" rx="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M24 24 A12 10 0 0 0 48 24" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="34" x2="36" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
+    increase: { mainLabel: "+", subLabel: "MIC GAIN" },
+    decrease: { mainLabel: "-", subLabel: "MIC GAIN" },
   },
   "auto-set-mic-gain": {
-    increase: `
-    <rect x="30" y="10" width="12" height="18" rx="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M24 24 A12 10 0 0 0 48 24" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="34" x2="36" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="54" y="22" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">A</text>`,
-    decrease: `
-    <rect x="30" y="10" width="12" height="18" rx="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <path d="M24 24 A12 10 0 0 0 48 24" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <line x1="36" y1="34" x2="36" y2="38" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <text x="54" y="22" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="8" font-weight="bold">A</text>`,
+    increase: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
+    decrease: { mainLabel: "AUTO", subLabel: "MIC GAIN" },
   },
-  // Depth-of-field group: Aperture/iris blades
   "f-number": {
-    increase: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polygon points="36,10 44,14 44,30 36,34 28,30 28,14" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="36" cy="22" r="5" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <line x1="54" y1="18" x2="54" y2="26" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
-    decrease: `
-    <circle cx="36" cy="22" r="14" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <polygon points="36,10 44,14 44,30 36,34 28,30 28,14" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="36" cy="22" r="5" fill="none" stroke="${WHITE}" stroke-width="1"/>
-    <line x1="50" y1="22" x2="58" y2="22" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>`,
+    increase: { mainLabel: "+", subLabel: "F-NUMBER" },
+    decrease: { mainLabel: "-", subLabel: "F-NUMBER" },
   },
   "focus-depth": {
-    increase: `
-    <circle cx="26" cy="22" r="8" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="26" cy="22" r="3" fill="${WHITE}"/>
-    <circle cx="48" cy="22" r="6" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="48" cy="22" r="2" fill="${GRAY}"/>
-    <line x1="36" y1="36" x2="46" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="43,33 46,36 43,39" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="26" cy="22" r="8" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <circle cx="26" cy="22" r="3" fill="${GRAY}"/>
-    <circle cx="48" cy="22" r="6" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="48" cy="22" r="2" fill="${WHITE}"/>
-    <line x1="36" y1="36" x2="26" y2="36" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="29,33 26,36 29,39" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: { mainLabel: "+", subLabel: "FOCUS DEPTH" },
+    decrease: { mainLabel: "-", subLabel: "FOCUS DEPTH" },
   },
 };
 
@@ -378,13 +217,13 @@ type CameraEditorAdjustmentsSettings = z.infer<typeof CameraEditorAdjustmentsSet
 export function generateCameraEditorAdjustmentsSvg(settings: CameraEditorAdjustmentsSettings): string {
   const { adjustment, direction } = settings;
 
-  const iconContent = CAMERA_EDITOR_ICONS[adjustment]?.[direction] || CAMERA_EDITOR_ICONS.latitude.increase;
+  const iconKey = `${adjustment}-${direction}`;
+  const iconSvg = ADJUSTMENT_ICONS[iconKey] || ADJUSTMENT_ICONS["latitude-increase"];
   const labels = CAMERA_EDITOR_LABELS[adjustment]?.[direction] || CAMERA_EDITOR_LABELS.latitude.increase;
 
-  const svg = renderIconTemplate(cameraEditorAdjustmentsTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

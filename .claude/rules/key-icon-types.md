@@ -1,61 +1,60 @@
 ---
 paths:
-  - "**/icons/*.svg"
+  - "**/icons/**/*.svg"
   - "**/imgs/actions/**/key.svg"
-  - "**/src/icons/*.ts"
 ---
 # Key Icon Types
 
-This document defines standardized icon types for Stream Deck key icons (72x72). When creating key icons, specify which type to use.
+This document defines standardized icon types for Stream Deck key icons. Most icons are now standalone 144x144 SVGs in `packages/icons/`. A few dynamic templates remain at 72x72 in `packages/stream-deck-plugin/icons/`.
 
 ## Default Key Icon Type
 
 The standard layout for most action icons.
 
-### Canvas Layout (72x72)
+### Canvas Layout (144x144 standalone)
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
 
-    <!-- Icon content area: y=8 to y=40 -->
+    <!-- Icon content area: y=18 to y=86 -->
     {icon content}
 
-    <!-- Two-line label area: y=48 to y=68 -->
-    <text x="36" y="52" ...>{line1}</text>
-    <text x="36" y="63" ...>{line2}</text>
+    <!-- Two-line label area -->
+    <text x="72" y="104" ...>{subLabel}</text>
+    <text x="72" y="126" ...>{mainLabel}</text>
   </g>
 </svg>
 ```
 
-- **Background**: Rounded corners (rx=8), color varies by category
-- **Icon area**: y=8 to y=40 (32px height)
-- **Text area**: y=48 to y=68
+- **Background**: Rounded corners (rx=16), color varies by category
+- **Icon area**: y=18 to y=86 (68px height)
+- **Text area**: y=100 to y=136
 
 ### Two-Line Label System
 
 Labels use two lines with primary (bold, prominent) and secondary (subdued) styling:
 
-| Label Type | Font Size | Weight | Color |
-|------------|-----------|--------|-------|
-| Primary | 10px | bold | #ffffff |
-| Secondary | 8px | normal | #aaaaaa |
+| Label Type | Font Size (144) | Font Size (72) | Weight | Color |
+|------------|-----------------|-----------------|--------|-------|
+| Primary (`{{mainLabel}}`) | 20px | 10px | bold | #ffffff |
+| Secondary (`{{subLabel}}`) | 16px | 8px | normal | #aaaaaa |
 
-Both lines are centered horizontally (text-anchor="middle", x=36).
+Both lines are centered horizontally (text-anchor="middle").
 
 There are two label layouts:
 
-**Standard** (line1 = primary on top, line2 = secondary on bottom):
-- Used when the category/name is the most important info (e.g., "STANDINGS" / "toggle")
-- Template: `{{labelLine1}}` at y=52 (primary), `{{labelLine2}}` at y=63 (secondary)
-- Reference: `packages/stream-deck-plugin/icons/black-box-selector.svg`
+**Standard** (mainLabel on top, subLabel on bottom):
+- Used when the category/name is the most important info (e.g., "STARTER" / "car control")
+- `{{mainLabel}}` at y=104 (primary), `{{subLabel}}` at y=126 (secondary)
+- Reference: `packages/icons/car-control/starter.svg`
 
-**Inverted** (line2 = secondary on top, line1 = primary on bottom):
+**Inverted** (subLabel on top, mainLabel on bottom):
 - Used when the action/direction word is more important than the category (e.g., "splits delta" / "NEXT")
-- Template: `{{labelLine2}}` at y=52 (secondary), `{{labelLine1}}` at y=63 (primary)
-- Reference: `packages/stream-deck-plugin/icons/splits-delta-cycle.svg`
+- `{{subLabel}}` at y=104 (secondary), `{{mainLabel}}` at y=126 (primary)
+- Reference: `packages/icons/splits-delta-cycle/next.svg`
 
 ### Background Colors
 
@@ -71,98 +70,70 @@ Choose a background color that fits the action's theme. New colors can be added 
 
 ### Standard Color Palette
 
-Use these colors consistently across all icons:
+Use these colors consistently across all icons (literal hex values in SVG, no constants):
 
-```typescript
-const WHITE  = "#ffffff";           // Text, primary elements
-const GRAY   = "#888888";           // Secondary elements, graphics
-const YELLOW = "#f39c12";           // Gold - values, position indicators
-const ORANGE = "#e67e22";           // Warnings, ahead indicators
-const GREEN  = "#2ecc71";           // Positive states, good values
-const BLUE   = "#3498db";           // Cold temperatures
-const RED    = "#e74c3c";           // Hot temperatures, errors
-```
+| Color | Hex | Usage |
+|-------|-----|-------|
+| White | #ffffff | Text, primary elements |
+| Gray | #888888 | Secondary elements, graphics |
+| Yellow | #f39c12 | Gold - values, position indicators |
+| Orange | #e67e22 | Warnings, ahead indicators |
+| Green | #2ecc71 | Positive states, good values |
+| Blue | #3498db | Cold temperatures |
+| Red | #e74c3c | Hot temperatures, errors |
 
-### Standard Template
+### Standard Template (144x144)
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
 
-    <!-- Icon content area: y=8 to y=40 -->
-    {{iconContent}}
+    <!-- Icon content area: y=18 to y=86 -->
+    <!-- ... artwork ... -->
 
-    <!-- Two-line label: line1 primary on top, line2 secondary on bottom -->
-    <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
-    <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
+    <!-- Two-line label: mainLabel primary on top, subLabel secondary on bottom -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>
 ```
 
-### Inverted Template
+### Inverted Template (144x144)
 
 Used when the action word (e.g., NEXT/PREVIOUS) should be more prominent than the category name.
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
 
-    <!-- Icon content area: y=9 to y=43 -->
-    {{iconContent}}
+    <!-- Icon content area: y=18 to y=86 -->
+    <!-- ... artwork ... -->
 
-    <!-- Inverted label: line2 secondary on top, line1 primary on bottom -->
-    <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{labelLine2}}</text>
-    <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{labelLine1}}</text>
+    <!-- Inverted label: subLabel secondary on top, mainLabel primary on bottom -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>
-```
-
-## Icon Content Separation
-
-When an action has multiple icon variants (like black box selector with 11+ icons), define icon content in separate files:
-
-```
-packages/stream-deck-plugin-{name}/
-├── src/
-│   ├── actions/
-│   │   └── my-action.ts          # Action logic only
-│   └── icons/
-│       └── my-action-icons.ts    # Icon SVG content definitions
-└── icons/
-    └── my-action.svg             # Template file
-```
-
-**Icon definition file pattern:**
-```typescript
-// src/icons/my-action-icons.ts
-export const MY_ACTION_ICONS: Record<string, string> = {
-  "variant-a": `<rect ... />`,
-  "variant-b": `<circle ... />`,
-};
-
-export const MY_ACTION_LABELS: Record<string, { primary: string; secondary: string }> = {
-  "variant-a": { primary: "ACTION", secondary: "description" },
-};
 ```
 
 ## Specialized Types
 
 ### Black Box Type
 
-Extends Default Key Icon Type (Standard label layout) with an inner frame. See [black-box-icons.md](black-box-icons.md) for details.
+Extends Default Key Icon Type (Standard label layout) with an inner black box frame. See [black-box-icons.md](black-box-icons.md) for details.
 
 - Adds inner black box frame (dark olive #2d2510, brown stroke #4a3728)
 - Uses Standard label layout (primary name on top, secondary action on bottom)
 - Background: #2a2a2a
-- Reference: `packages/stream-deck-plugin/src/actions/black-box-selector.ts`
+- Reference: `packages/icons/black-box-selector/`
 
 ### Inverted Type
 
@@ -170,28 +141,14 @@ Uses the Inverted label layout where the action word is prominent (bottom, bold)
 
 - Category/context label on top (secondary), action word on bottom (primary)
 - Background color varies per action
-- Reference: `packages/stream-deck-plugin/src/actions/splits-delta-cycle.ts`
+- Reference: `packages/icons/splits-delta-cycle/`
 
 ### Data Display Type
 
-Optimized for showing live telemetry values. Small title at top, large centered value. No icon content area — the value IS the content.
+Optimized for showing live telemetry values. Small title at top, large centered value. No icon content area — the value IS the content. Uses dynamic 72x72 template.
 
 - **Title**: Small gray label at y=16 (#aaaaaa, 9px)
 - **Value**: Large bold centered text at y=50 (#ffffff, dynamic font size)
 - **Background**: Dynamic — can change color for alert effects (e.g., flash red on incident)
 - **Placeholders**: `{{backgroundColor}}`, `{{titleLabel}}`, `{{value}}`, `{{valueFontSize}}`
-
-```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="{{backgroundColor}}"/>
-    <text x="36" y="16" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="9">{{titleLabel}}</text>
-    <text x="36" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="{{valueFontSize}}" font-weight="bold">{{value}}</text>
-  </g>
-</svg>
-```
-
-- Background: #2a3444 (dark blue-gray)
-- Reference: `packages/stream-deck-plugin/src/actions/session-info.ts`
+- Reference: `packages/stream-deck-plugin/icons/session-info.svg`

@@ -7,9 +7,17 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import dashPage1DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-decrease.svg";
+import dashPage1IncreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-increase.svg";
+import dashPage2DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-2-decrease.svg";
+import dashPage2IncreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-2-increase.svg";
+import ffbMaxForceDecreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-decrease.svg";
+import ffbMaxForceIncreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-increase.svg";
+import inLapModeSvg from "@iracedeck/icons/cockpit-misc/in-lap-mode.svg";
+import reportLatencySvg from "@iracedeck/icons/cockpit-misc/report-latency.svg";
+import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
 import z from "zod";
 
-import cockpitMiscTemplate from "../../icons/cockpit-misc.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -26,11 +34,6 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-const YELLOW = "#f1c40f";
-const GREEN = "#2ecc71";
-
 type CockpitMiscControl =
   | "trigger-wipers"
   | "ffb-max-force"
@@ -46,102 +49,49 @@ const DIRECTIONAL_CONTROLS: Set<CockpitMiscControl> = new Set(["ffb-max-force", 
 
 /**
  * Label configuration for each control + direction combination.
- * Standard layout: line1 = primary (bold, top), line2 = secondary (subdued, bottom).
+ * Standard layout: mainLabel = prominent (bold, bottom), subLabel = category/context (subdued, top).
  */
 const COCKPIT_MISC_LABELS: Record<
   CockpitMiscControl,
-  Record<DirectionType, { line1: string; line2: string }> | { line1: string; line2: string }
+  Record<DirectionType, { mainLabel: string; subLabel: string }> | { mainLabel: string; subLabel: string }
 > = {
-  "trigger-wipers": { line1: "WIPERS", line2: "TRIGGER" },
+  "trigger-wipers": { mainLabel: "WIPERS", subLabel: "TRIGGER" },
   "ffb-max-force": {
-    increase: { line1: "FFB FORCE", line2: "INCREASE" },
-    decrease: { line1: "FFB FORCE", line2: "DECREASE" },
+    increase: { mainLabel: "FFB FORCE", subLabel: "INCREASE" },
+    decrease: { mainLabel: "FFB FORCE", subLabel: "DECREASE" },
   },
-  "report-latency": { line1: "LATENCY", line2: "REPORT" },
+  "report-latency": { mainLabel: "LATENCY", subLabel: "REPORT" },
   "dash-page-1": {
-    increase: { line1: "DASH PG 1", line2: "NEXT" },
-    decrease: { line1: "DASH PG 1", line2: "PREVIOUS" },
+    increase: { mainLabel: "DASH PG 1", subLabel: "NEXT" },
+    decrease: { mainLabel: "DASH PG 1", subLabel: "PREVIOUS" },
   },
   "dash-page-2": {
-    increase: { line1: "DASH PG 2", line2: "NEXT" },
-    decrease: { line1: "DASH PG 2", line2: "PREVIOUS" },
+    increase: { mainLabel: "DASH PG 2", subLabel: "NEXT" },
+    decrease: { mainLabel: "DASH PG 2", subLabel: "PREVIOUS" },
   },
-  "in-lap-mode": { line1: "IN LAP", line2: "MODE" },
+  "in-lap-mode": { mainLabel: "IN LAP", subLabel: "MODE" },
 };
 
 /**
- * SVG icon content for each control.
- * Non-directional controls have a single icon; directional controls have per-direction variants.
+ * SVG templates for each control + direction combination.
+ * Non-directional controls use a single SVG for both directions.
  */
-const COCKPIT_MISC_ICONS: Record<CockpitMiscControl, Record<DirectionType, string> | string> = {
-  // Trigger Wipers: Windshield wiper arc with blade
-  "trigger-wipers": `
-    <path d="M16 34 A22 22 0 0 1 56 34" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="36" y1="34" x2="22" y2="14" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="36" cy="34" r="2.5" fill="${WHITE}"/>
-    <path d="M22 14 A20 20 0 0 1 44 12" fill="none" stroke="${WHITE}" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3,2"/>`,
-
-  // FFB Max Force: Steering wheel with directional arrow
+const COCKPIT_MISC_SVGS: Record<CockpitMiscControl, Record<DirectionType, string> | string> = {
+  "trigger-wipers": triggerWipersSvg,
   "ffb-max-force": {
-    increase: `
-    <circle cx="36" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="4" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="36" y1="20" x2="36" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="32" y1="26" x2="24" y2="28" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="40" y1="26" x2="48" y2="28" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="52,22 56,16 60,22" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <circle cx="36" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="4" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="36" y1="20" x2="36" y2="12" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="32" y1="26" x2="24" y2="28" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="40" y1="26" x2="48" y2="28" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <polyline points="52,16 56,22 60,16" fill="none" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: ffbMaxForceIncreaseSvg,
+    decrease: ffbMaxForceDecreaseSvg,
   },
-
-  // Report Latency: Signal bars / network icon
-  "report-latency": `
-    <rect x="20" y="30" width="6" height="6" rx="1" fill="${GRAY}"/>
-    <rect x="29" y="24" width="6" height="12" rx="1" fill="${GRAY}"/>
-    <rect x="38" y="18" width="6" height="18" rx="1" fill="${WHITE}"/>
-    <rect x="47" y="12" width="6" height="24" rx="1" fill="${WHITE}"/>`,
-
-  // Dash Page 1: Dashboard rectangle with "1"
+  "report-latency": reportLatencySvg,
   "dash-page-1": {
-    increase: `
-    <rect x="16" y="12" width="40" height="24" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">1</text>
-    <polyline points="53,30 58,24 53,18" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="12" width="40" height="24" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">1</text>
-    <polyline points="19,18 14,24 19,30" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: dashPage1IncreaseSvg,
+    decrease: dashPage1DecreaseSvg,
   },
-
-  // Dash Page 2: Dashboard rectangle with "2"
   "dash-page-2": {
-    increase: `
-    <rect x="16" y="12" width="40" height="24" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">2</text>
-    <polyline points="53,30 58,24 53,18" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    decrease: `
-    <rect x="16" y="12" width="40" height="24" rx="3" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">2</text>
-    <polyline points="19,18 14,24 19,30" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    increase: dashPage2IncreaseSvg,
+    decrease: dashPage2DecreaseSvg,
   },
-
-  // In Lap Mode: Pit lane entry arrow
-  "in-lap-mode": `
-    <rect x="14" y="16" width="44" height="20" rx="3" fill="none" stroke="${GRAY}" stroke-width="1.5"/>
-    <line x1="36" y1="16" x2="36" y2="36" stroke="${GRAY}" stroke-width="0.5"/>
-    <path d="M24 32 L24 22 L34 22" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="30,19 34,22 30,25" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="46" y="27" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="7" font-weight="bold">IN</text>`,
+  "in-lap-mode": inLapModeSvg,
 };
 
 /**
@@ -179,18 +129,17 @@ type CockpitMiscSettings = z.infer<typeof CockpitMiscSettings>;
 export function generateCockpitMiscSvg(settings: CockpitMiscSettings): string {
   const { control, direction } = settings;
 
-  const iconEntry = COCKPIT_MISC_ICONS[control];
-  const iconContent =
-    typeof iconEntry === "string" ? iconEntry : (iconEntry?.[direction] ?? COCKPIT_MISC_ICONS["trigger-wipers"]);
+  const svgEntry = COCKPIT_MISC_SVGS[control];
+  const iconSvg =
+    typeof svgEntry === "string" ? svgEntry : (svgEntry?.[direction] ?? COCKPIT_MISC_SVGS["trigger-wipers"]);
 
   const labelEntry = COCKPIT_MISC_LABELS[control];
-  const labels: { line1: string; line2: string } =
-    "line1" in labelEntry ? labelEntry : (labelEntry[direction] ?? { line1: "COCKPIT", line2: "MISC" });
+  const labels: { mainLabel: string; subLabel: string } =
+    "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "COCKPIT", subLabel: "MISC" });
 
-  const svg = renderIconTemplate(cockpitMiscTemplate, {
-    iconContent: iconContent as string,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg as string, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

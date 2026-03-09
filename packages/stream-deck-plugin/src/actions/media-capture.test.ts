@@ -2,6 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateMediaCaptureSvg, MEDIA_CAPTURE_GLOBAL_KEYS } from "./media-capture.js";
 
+vi.mock("@iracedeck/icons/media-capture/start-stop-video.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/video-timer.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/toggle-video-capture.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/take-screenshot.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/take-giant-screenshot.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/reload-all-textures.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/media-capture/reload-car-textures.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -57,8 +79,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -140,14 +168,14 @@ describe("MediaCapture", () => {
     });
 
     it("should include correct labels for all actions", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "start-stop-video": { line1: "START/STOP", line2: "VIDEO" },
-        "video-timer": { line1: "TIMER", line2: "VIDEO" },
-        "toggle-video-capture": { line1: "TOGGLE", line2: "VIDEO" },
-        "take-screenshot": { line1: "SCREENSHOT", line2: "CAPTURE" },
-        "take-giant-screenshot": { line1: "GIANT", line2: "SCREENSHOT" },
-        "reload-all-textures": { line1: "RELOAD ALL", line2: "TEXTURES" },
-        "reload-car-textures": { line1: "RELOAD CAR", line2: "TEXTURES" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "start-stop-video": { mainLabel: "START/STOP", subLabel: "VIDEO" },
+        "video-timer": { mainLabel: "TIMER", subLabel: "VIDEO" },
+        "toggle-video-capture": { mainLabel: "TOGGLE", subLabel: "VIDEO" },
+        "take-screenshot": { mainLabel: "SCREENSHOT", subLabel: "CAPTURE" },
+        "take-giant-screenshot": { mainLabel: "GIANT", subLabel: "SCREENSHOT" },
+        "reload-all-textures": { mainLabel: "RELOAD ALL", subLabel: "TEXTURES" },
+        "reload-car-textures": { mainLabel: "RELOAD CAR", subLabel: "TEXTURES" },
       };
 
       for (const [action, labels] of Object.entries(expectedLabels)) {
@@ -156,8 +184,8 @@ describe("MediaCapture", () => {
         });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

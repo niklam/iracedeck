@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateReplaySpeedSvg } from "./replay-speed.js";
 
+vi.mock("@iracedeck/icons/replay-speed/increase.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-speed/decrease.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -38,8 +45,14 @@ vi.mock("../shared/index.js", () => ({
     },
   })),
   LogLevel: { Info: 2 },
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#3a2a2a"/>
+
+    <!-- Icon content area: windshield shape with peel-away arrow -->
+    <path d="M36 60 Q72 16 108 60" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="52" y1="44" x2="92" y2="44" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <path d="M92 36 L108 20" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="100,20 108,20 108,28" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M40 64 Q72 28 104 64" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,4" stroke-linecap="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

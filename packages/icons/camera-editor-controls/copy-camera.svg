@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Camera + copy sheets -->
+    <rect x="28" y="28" width="36" height="28" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polygon points="64,34 80,26 80,60 64,52" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="88" y="36" width="20" height="24" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="96" y="28" width="20" height="24" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

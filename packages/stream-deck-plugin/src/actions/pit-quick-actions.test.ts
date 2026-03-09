@@ -15,6 +15,16 @@ const { mockPitClear, mockPitWindshield, mockPitFastRepair, mockGetCommands } = 
   })),
 }));
 
+vi.mock("@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/pit-quick-actions/windshield-tearoff.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/pit-quick-actions/request-fast-repair.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -46,8 +56,14 @@ vi.mock("../shared/index.js", () => ({
   })),
   getCommands: mockGetCommands,
   LogLevel: { Info: 2 },
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -95,18 +111,18 @@ describe("PitQuickActions", () => {
     });
 
     it("should include correct labels for all action types", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
-        "clear-all-checkboxes": { line1: "CLEAR ALL", line2: "PIT" },
-        "windshield-tearoff": { line1: "WINDSHIELD", line2: "TEAROFF" },
-        "request-fast-repair": { line1: "FAST", line2: "REPAIR" },
+      const expectedLabels: Record<string, { mainLabel: string; subLabel: string }> = {
+        "clear-all-checkboxes": { mainLabel: "CLEAR ALL", subLabel: "PIT" },
+        "windshield-tearoff": { mainLabel: "WINDSHIELD", subLabel: "TEAROFF" },
+        "request-fast-repair": { mainLabel: "FAST", subLabel: "REPAIR" },
       };
 
       for (const [actionType, labels] of Object.entries(expectedLabels)) {
         const result = generatePitQuickActionsSvg({ action: actionType as any });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+        expect(decoded).toContain(labels.mainLabel);
+        expect(decoded).toContain(labels.subLabel);
       }
     });
   });

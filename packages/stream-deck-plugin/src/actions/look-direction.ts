@@ -8,9 +8,12 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import lookDownIconSvg from "@iracedeck/icons/look-direction/look-down.svg";
+import lookLeftIconSvg from "@iracedeck/icons/look-direction/look-left.svg";
+import lookRightIconSvg from "@iracedeck/icons/look-direction/look-right.svg";
+import lookUpIconSvg from "@iracedeck/icons/look-direction/look-up.svg";
 import z from "zod";
 
-import lookDirectionTemplate from "../../icons/look-direction.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -27,56 +30,23 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const GRAY = "#888888";
-
 type LookDirectionType = "look-left" | "look-right" | "look-up" | "look-down";
 
-/**
- * Label configuration for each look direction (line1 bold, line2 subdued)
- */
-const LOOK_DIRECTION_LABELS: Record<LookDirectionType, { line1: string; line2: string }> = {
-  "look-left": { line1: "LOOK", line2: "LEFT" },
-  "look-right": { line1: "LOOK", line2: "RIGHT" },
-  "look-up": { line1: "LOOK", line2: "UP" },
-  "look-down": { line1: "LOOK", line2: "DOWN" },
+const DIRECTION_ICONS: Record<LookDirectionType, string> = {
+  "look-left": lookLeftIconSvg,
+  "look-right": lookRightIconSvg,
+  "look-up": lookUpIconSvg,
+  "look-down": lookDownIconSvg,
 };
 
 /**
- * SVG icon content for each look direction
+ * Label configuration for each look direction
  */
-const LOOK_DIRECTION_ICONS: Record<LookDirectionType, string> = {
-  // Look Left: Eye with left arrow
-  "look-left": `
-    <path d="M18 24 Q36 12 54 24 Q36 36 18 24 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="24" r="5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="34" cy="24" r="2" fill="${WHITE}"/>
-    <path d="M16 38 L10 38 L14 34" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M10 38 L14 42" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Look Right: Eye with right arrow
-  "look-right": `
-    <path d="M18 24 Q36 12 54 24 Q36 36 18 24 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="24" r="5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="38" cy="24" r="2" fill="${WHITE}"/>
-    <path d="M56 38 L62 38 L58 34" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M62 38 L58 42" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Look Up: Eye with up arrow
-  "look-up": `
-    <path d="M18 26 Q36 14 54 26 Q36 38 18 26 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="26" r="5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="24" r="2" fill="${WHITE}"/>
-    <path d="M54 14 L54 8 L50 12" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M54 8 L58 12" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Look Down: Eye with down arrow
-  "look-down": `
-    <path d="M18 22 Q36 10 54 22 Q36 34 18 22 Z" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="22" r="5" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <circle cx="36" cy="24" r="2" fill="${WHITE}"/>
-    <path d="M54 34 L54 40 L50 36" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M54 40 L58 36" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+const LOOK_DIRECTION_LABELS: Record<LookDirectionType, { mainLabel: string; subLabel: string }> = {
+  "look-left": { mainLabel: "LEFT", subLabel: "LOOK" },
+  "look-right": { mainLabel: "RIGHT", subLabel: "LOOK" },
+  "look-up": { mainLabel: "UP", subLabel: "LOOK" },
+  "look-down": { mainLabel: "DOWN", subLabel: "LOOK" },
 };
 
 /**
@@ -105,13 +75,12 @@ type LookDirectionSettings = z.infer<typeof LookDirectionSettings>;
 export function generateLookDirectionSvg(settings: LookDirectionSettings): string {
   const { direction } = settings;
 
-  const iconContent = LOOK_DIRECTION_ICONS[direction] || LOOK_DIRECTION_ICONS["look-left"];
+  const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS["look-left"];
   const labels = LOOK_DIRECTION_LABELS[direction] || LOOK_DIRECTION_LABELS["look-left"];
 
-  const svg = renderIconTemplate(lookDirectionTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

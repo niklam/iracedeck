@@ -74,6 +74,13 @@ Committing
 - Do not reference Claude or other AI tools in commit messages.
 - Do not add AI co-authors such as `Co-Authored-By: Claude Opus`.
 
+Pull Requests
+
+- When creating a PR, use the PR template at `.github/pull_request_template.md` as the body structure.
+- Fill in all sections: Related Issue, What changed?, How to test, and Checklist.
+- Mark checklist items as complete (`[x]`) or incomplete (`[ ]`) as appropriate.
+- Use `N/A` for sections that don't apply (e.g., "Related Issue" for infra work with no issue).
+
 Merging
 
 - PRs are squash-merged into `master` via `gh pr merge --squash`.

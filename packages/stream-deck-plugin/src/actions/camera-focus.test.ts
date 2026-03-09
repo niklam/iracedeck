@@ -17,6 +17,28 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
+vi.mock("@iracedeck/icons/camera-focus/focus-your-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/focus-on-leader.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/focus-on-incident.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/focus-on-exiting.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/switch-by-position.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/switch-by-car-number.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+
 vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
@@ -41,8 +63,14 @@ vi.mock("../shared/index.js", () => ({
     },
   })),
   LogLevel: { Info: 2 },
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    let result = template;
+
+    for (const [key, value] of Object.entries(data)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+    }
+
+    return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -76,60 +104,60 @@ describe("CameraFocus", () => {
       expect(uniqueResults.size).toBe(ALL_TARGETS.length);
     });
 
-    it("should include FOCUS YOUR CAR labels for focus-your-car", () => {
+    it("should include YOUR CAR and FOCUS labels for focus-your-car", () => {
       const result = generateCameraFocusSvg({ target: "focus-your-car" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("FOCUS");
       expect(decoded).toContain("YOUR CAR");
+      expect(decoded).toContain("FOCUS");
     });
 
-    it("should include FOCUS LEADER labels for focus-on-leader", () => {
+    it("should include LEADER and FOCUS labels for focus-on-leader", () => {
       const result = generateCameraFocusSvg({ target: "focus-on-leader" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("FOCUS");
       expect(decoded).toContain("LEADER");
+      expect(decoded).toContain("FOCUS");
     });
 
-    it("should include FOCUS INCIDENT labels for focus-on-incident", () => {
+    it("should include INCIDENT and FOCUS labels for focus-on-incident", () => {
       const result = generateCameraFocusSvg({ target: "focus-on-incident" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("FOCUS");
       expect(decoded).toContain("INCIDENT");
+      expect(decoded).toContain("FOCUS");
     });
 
-    it("should include FOCUS EXITING labels for focus-on-exiting", () => {
+    it("should include EXITING and FOCUS labels for focus-on-exiting", () => {
       const result = generateCameraFocusSvg({ target: "focus-on-exiting" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("FOCUS");
       expect(decoded).toContain("EXITING");
+      expect(decoded).toContain("FOCUS");
     });
 
-    it("should include SWITCH POSITION labels for switch-by-position", () => {
+    it("should include POSITION and SWITCH labels for switch-by-position", () => {
       const result = generateCameraFocusSvg({ target: "switch-by-position" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("SWITCH");
       expect(decoded).toContain("POSITION");
+      expect(decoded).toContain("SWITCH");
     });
 
-    it("should include SWITCH CAR # labels for switch-by-car-number", () => {
+    it("should include CAR # and SWITCH labels for switch-by-car-number", () => {
       const result = generateCameraFocusSvg({ target: "switch-by-car-number" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("SWITCH");
       expect(decoded).toContain("CAR #");
+      expect(decoded).toContain("SWITCH");
     });
 
-    it("should include SET CAM STATE labels for set-camera-state", () => {
+    it("should include CAM STATE and SET labels for set-camera-state", () => {
       const result = generateCameraFocusSvg({ target: "set-camera-state" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("SET");
       expect(decoded).toContain("CAM STATE");
+      expect(decoded).toContain("SET");
     });
   });
 });

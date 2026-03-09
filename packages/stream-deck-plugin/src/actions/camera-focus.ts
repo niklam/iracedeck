@@ -7,9 +7,15 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import focusOnExitingSvg from "@iracedeck/icons/camera-focus/focus-on-exiting.svg";
+import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
+import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
+import focusYourCarSvg from "@iracedeck/icons/camera-focus/focus-your-car.svg";
+import setCameraStateSvg from "@iracedeck/icons/camera-focus/set-camera-state.svg";
+import switchByCarNumberSvg from "@iracedeck/icons/camera-focus/switch-by-car-number.svg";
+import switchByPositionSvg from "@iracedeck/icons/camera-focus/switch-by-position.svg";
 import z from "zod";
 
-import cameraFocusTemplate from "../../icons/camera-focus.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -18,11 +24,6 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-
-const WHITE = "#ffffff";
-const GREEN = "#2ecc71";
-const YELLOW = "#f1c40f";
-const GRAY = "#888888";
 
 const FOCUS_TARGET_VALUES = [
   "focus-your-car",
@@ -45,91 +46,27 @@ const CameraFocusSettings = z.object({
 
 type CameraFocusSettings = z.infer<typeof CameraFocusSettings>;
 
-/**
- * Label configuration for each focus target (line1 bold, line2 subdued)
- */
-const CAMERA_FOCUS_LABELS: Record<FocusTarget, { line1: string; line2: string }> = {
-  "focus-your-car": { line1: "FOCUS", line2: "YOUR CAR" },
-  "focus-on-leader": { line1: "FOCUS", line2: "LEADER" },
-  "focus-on-incident": { line1: "FOCUS", line2: "INCIDENT" },
-  "focus-on-exiting": { line1: "FOCUS", line2: "EXITING" },
-  "switch-by-position": { line1: "SWITCH", line2: "POSITION" },
-  "switch-by-car-number": { line1: "SWITCH", line2: "CAR #" },
-  "set-camera-state": { line1: "SET", line2: "CAM STATE" },
+const CAMERA_FOCUS_ICONS: Record<FocusTarget, string> = {
+  "focus-your-car": focusYourCarSvg,
+  "focus-on-leader": focusOnLeaderSvg,
+  "focus-on-incident": focusOnIncidentSvg,
+  "focus-on-exiting": focusOnExitingSvg,
+  "switch-by-position": switchByPositionSvg,
+  "switch-by-car-number": switchByCarNumberSvg,
+  "set-camera-state": setCameraStateSvg,
 };
 
 /**
- * SVG icon content for each focus target
+ * Label configuration for each focus target (mainLabel prominent, subLabel subdued)
  */
-const CAMERA_FOCUS_ICONS: Record<FocusTarget, string> = {
-  // Focus Your Car: Crosshair + small driver/helmet silhouette
-  "focus-your-car": `
-    <circle cx="36" cy="24" r="12" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="3" fill="${WHITE}"/>
-    <line x1="36" y1="8" x2="36" y2="14" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="36" y1="34" x2="36" y2="40" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="20" y1="24" x2="26" y2="24" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="46" y1="24" x2="52" y2="24" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>`,
-
-  // Focus on Leader: Crosshair + "P1" text in green
-  "focus-on-leader": `
-    <circle cx="30" cy="24" r="10" fill="none" stroke="${GREEN}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="2.5" fill="${GREEN}"/>
-    <line x1="30" y1="10" x2="30" y2="16" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="30" y1="32" x2="30" y2="38" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="16" y1="24" x2="22" y2="24" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="38" y1="24" x2="44" y2="24" stroke="${GREEN}" stroke-width="2" stroke-linecap="round"/>
-    <text x="54" y="18" text-anchor="middle" dominant-baseline="central"
-          fill="${GREEN}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">P1</text>`,
-
-  // Focus on Incident: Crosshair + warning exclamation
-  "focus-on-incident": `
-    <circle cx="30" cy="24" r="10" fill="none" stroke="${YELLOW}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="2.5" fill="${YELLOW}"/>
-    <line x1="30" y1="10" x2="30" y2="16" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="30" y1="32" x2="30" y2="38" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="16" y1="24" x2="22" y2="24" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="38" y1="24" x2="44" y2="24" stroke="${YELLOW}" stroke-width="2" stroke-linecap="round"/>
-    <text x="54" y="24" text-anchor="middle" dominant-baseline="central"
-          fill="${YELLOW}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">!</text>`,
-
-  // Focus on Exiting: Crosshair + exit arrow
-  "focus-on-exiting": `
-    <circle cx="30" cy="24" r="10" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <circle cx="30" cy="24" r="2.5" fill="${WHITE}"/>
-    <line x1="30" y1="10" x2="30" y2="16" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="30" y1="32" x2="30" y2="38" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="16" y1="24" x2="22" y2="24" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="38" y1="24" x2="44" y2="24" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="50,18 56,24 50,30" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Switch by Position: Hash/number sign with position indicator
-  "switch-by-position": `
-    <text x="36" y="26" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">#</text>
-    <text x="36" y="40" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="9">POS</text>`,
-
-  // Switch by Car Number: Car badge with number
-  "switch-by-car-number": `
-    <rect x="20" y="14" width="32" height="20" rx="3" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <text x="36" y="25" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">00</text>
-    <text x="36" y="40" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="9">CAR</text>`,
-
-  // Set Camera State: Gear/settings icon
-  "set-camera-state": `
-    <circle cx="36" cy="24" r="8" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <circle cx="36" cy="24" r="3" fill="${GRAY}"/>
-    <line x1="36" y1="12" x2="36" y2="16" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="36" y1="32" x2="36" y2="36" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="24" y1="24" x2="28" y2="24" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="44" y1="24" x2="48" y2="24" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="27.5" y1="15.5" x2="30.3" y2="18.3" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="41.7" y1="29.7" x2="44.5" y2="32.5" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="44.5" y1="15.5" x2="41.7" y2="18.3" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="30.3" y1="29.7" x2="27.5" y2="32.5" stroke="${GRAY}" stroke-width="2.5" stroke-linecap="round"/>`,
+const CAMERA_FOCUS_LABELS: Record<FocusTarget, { mainLabel: string; subLabel: string }> = {
+  "focus-your-car": { mainLabel: "YOUR CAR", subLabel: "FOCUS" },
+  "focus-on-leader": { mainLabel: "LEADER", subLabel: "FOCUS" },
+  "focus-on-incident": { mainLabel: "INCIDENT", subLabel: "FOCUS" },
+  "focus-on-exiting": { mainLabel: "EXITING", subLabel: "FOCUS" },
+  "switch-by-position": { mainLabel: "POSITION", subLabel: "SWITCH" },
+  "switch-by-car-number": { mainLabel: "CAR #", subLabel: "SWITCH" },
+  "set-camera-state": { mainLabel: "CAM STATE", subLabel: "SET" },
 };
 
 /**
@@ -140,13 +77,12 @@ const CAMERA_FOCUS_ICONS: Record<FocusTarget, string> = {
 export function generateCameraFocusSvg(settings: { target: FocusTarget }): string {
   const { target } = settings;
 
-  const iconContent = CAMERA_FOCUS_ICONS[target] || CAMERA_FOCUS_ICONS["focus-your-car"];
+  const iconSvg = CAMERA_FOCUS_ICONS[target] || CAMERA_FOCUS_ICONS["focus-your-car"];
   const labels = CAMERA_FOCUS_LABELS[target] || CAMERA_FOCUS_LABELS["focus-your-car"];
 
-  const svg = renderIconTemplate(cameraFocusTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

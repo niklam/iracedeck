@@ -6,9 +6,11 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import clearAllCheckboxesIconSvg from "@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg";
+import requestFastRepairIconSvg from "@iracedeck/icons/pit-quick-actions/request-fast-repair.svg";
+import windshieldTearoffIconSvg from "@iracedeck/icons/pit-quick-actions/windshield-tearoff.svg";
 import z from "zod";
 
-import pitQuickActionsTemplate from "../../icons/pit-quick-actions.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -18,50 +20,21 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const WHITE = "#ffffff";
-const RED = "#e74c3c";
-const GRAY = "#888888";
-
 type PitQuickActionType = "clear-all-checkboxes" | "windshield-tearoff" | "request-fast-repair";
 
-/**
- * Label configuration for each pit quick action (line1 bold, line2 subdued)
- */
-const PIT_QUICK_ACTION_LABELS: Record<PitQuickActionType, { line1: string; line2: string }> = {
-  "clear-all-checkboxes": { line1: "CLEAR ALL", line2: "PIT" },
-  "windshield-tearoff": { line1: "WINDSHIELD", line2: "TEAROFF" },
-  "request-fast-repair": { line1: "FAST", line2: "REPAIR" },
+const ACTION_ICONS: Record<PitQuickActionType, string> = {
+  "clear-all-checkboxes": clearAllCheckboxesIconSvg,
+  "windshield-tearoff": windshieldTearoffIconSvg,
+  "request-fast-repair": requestFastRepairIconSvg,
 };
 
 /**
- * SVG icon content for each pit quick action
+ * Label configuration for each pit quick action
  */
-const PIT_QUICK_ACTION_ICONS: Record<PitQuickActionType, string> = {
-  // Clear All Checkboxes: Checklist with checkmarks and X overlay
-  "clear-all-checkboxes": `
-    <rect x="22" y="10" width="12" height="10" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="25,15 27,18 31,12" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="22" y="24" width="12" height="10" rx="2" fill="none" stroke="${WHITE}" stroke-width="1.5"/>
-    <polyline points="25,29 27,32 31,26" fill="none" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="38" y1="15" x2="50" y2="15" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="38" y1="29" x2="50" y2="29" stroke="${GRAY}" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="40" y1="20" x2="52" y2="32" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="52" y1="20" x2="40" y2="32" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`,
-
-  // Windshield Tearoff: Windshield shape with peel-away arrow
-  "windshield-tearoff": `
-    <path d="M18 30 Q36 8 54 30" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="26" y1="22" x2="46" y2="22" stroke="${GRAY}" stroke-width="1" stroke-linecap="round"/>
-    <path d="M46 18 L54 10" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="50,10 54,10 54,14" fill="none" stroke="${WHITE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M20 32 Q36 14 52 32" fill="none" stroke="${GRAY}" stroke-width="1" stroke-dasharray="3,2" stroke-linecap="round"/>`,
-
-  // Request Fast Repair: Wrench icon
-  "request-fast-repair": `
-    <path d="M24 34 L38 20" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M38 20 A6 6 0 1 1 46 14" fill="none" stroke="${WHITE}" stroke-width="2"/>
-    <path d="M46 14 L50 10" stroke="${WHITE}" stroke-width="2.5" stroke-linecap="round"/>
-    <rect x="20" y="34" width="8" height="4" rx="1" fill="${WHITE}" transform="rotate(-45 24 36)"/>`,
+const PIT_QUICK_ACTION_LABELS: Record<PitQuickActionType, { mainLabel: string; subLabel: string }> = {
+  "clear-all-checkboxes": { mainLabel: "CLEAR ALL", subLabel: "PIT" },
+  "windshield-tearoff": { mainLabel: "WINDSHIELD", subLabel: "TEAROFF" },
+  "request-fast-repair": { mainLabel: "FAST", subLabel: "REPAIR" },
 };
 
 const PitQuickActionsSettings = z.object({
@@ -78,13 +51,12 @@ type PitQuickActionsSettings = z.infer<typeof PitQuickActionsSettings>;
 export function generatePitQuickActionsSvg(settings: PitQuickActionsSettings): string {
   const { action: actionType } = settings;
 
-  const iconContent = PIT_QUICK_ACTION_ICONS[actionType] || PIT_QUICK_ACTION_ICONS["clear-all-checkboxes"];
+  const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["clear-all-checkboxes"];
   const labels = PIT_QUICK_ACTION_LABELS[actionType] || PIT_QUICK_ACTION_LABELS["clear-all-checkboxes"];
 
-  const svg = renderIconTemplate(pitQuickActionsTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

@@ -7,9 +7,10 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import decreaseIconSvg from "@iracedeck/icons/replay-speed/decrease.svg";
+import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
 import z from "zod";
 
-import replaySpeedTemplate from "../../icons/replay-speed.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
@@ -19,32 +20,19 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const GREEN = "#2ecc71";
-const RED = "#e74c3c";
-
 type SpeedDirection = "increase" | "decrease";
 
-/**
- * Label configuration for each speed direction (line1 bold, line2 subdued)
- */
-const REPLAY_SPEED_LABELS: Record<SpeedDirection, { line1: string; line2: string }> = {
-  increase: { line1: "SPEED UP", line2: "REPLAY" },
-  decrease: { line1: "SLOW DOWN", line2: "REPLAY" },
+const DIRECTION_ICONS: Record<SpeedDirection, string> = {
+  increase: increaseIconSvg,
+  decrease: decreaseIconSvg,
 };
 
 /**
- * SVG icon content for each speed direction
+ * Label configuration for each speed direction
  */
-const REPLAY_SPEED_ICONS: Record<SpeedDirection, string> = {
-  // Double right-pointing chevrons (green)
-  increase: `
-    <polyline points="22,14 36,26 22,38" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="36,14 50,26 36,38" fill="none" stroke="${GREEN}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
-
-  // Double left-pointing chevrons (red)
-  decrease: `
-    <polyline points="50,14 36,26 50,38" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="36,14 22,26 36,38" fill="none" stroke="${RED}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
+const REPLAY_SPEED_LABELS: Record<SpeedDirection, { mainLabel: string; subLabel: string }> = {
+  increase: { mainLabel: "SPEED UP", subLabel: "REPLAY" },
+  decrease: { mainLabel: "SLOW DOWN", subLabel: "REPLAY" },
 };
 
 const ReplaySpeedSettings = z.object({
@@ -61,13 +49,12 @@ type ReplaySpeedSettings = z.infer<typeof ReplaySpeedSettings>;
 export function generateReplaySpeedSvg(settings: ReplaySpeedSettings): string {
   const { direction } = settings;
 
-  const iconContent = REPLAY_SPEED_ICONS[direction] || REPLAY_SPEED_ICONS["increase"];
+  const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS["increase"];
   const labels = REPLAY_SPEED_LABELS[direction] || REPLAY_SPEED_LABELS["increase"];
 
-  const svg = renderIconTemplate(replaySpeedTemplate, {
-    iconContent,
-    labelLine1: labels.line1,
-    labelLine2: labels.line2,
+  const svg = renderIconTemplate(iconSvg, {
+    mainLabel: labels.mainLabel,
+    subLabel: labels.subLabel,
   });
 
   return svgToDataUri(svg);

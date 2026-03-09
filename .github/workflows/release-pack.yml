@@ -1,0 +1,39 @@
+name: Release - Build Stream Deck Plugin
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-pack:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack Stream Deck plugin
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
+          Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "iracedeck-v${version}.streamDeckPlugin"
+        shell: pwsh
+
+      - name: Attach plugin to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: iracedeck-v*.streamDeckPlugin

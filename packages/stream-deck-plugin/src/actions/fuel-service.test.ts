@@ -31,6 +31,28 @@ const {
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
+vi.mock("@iracedeck/icons/fuel-service/add-fuel.svg", () => ({
+  default: "<svg>add-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/reduce-fuel.svg", () => ({
+  default: "<svg>reduce-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/set-fuel-amount.svg", () => ({
+  default: "<svg>set-fuel-amount-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/clear-fuel.svg", () => ({
+  default: "<svg>clear-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/toggle-autofuel.svg", () => ({
+  default: "<svg>toggle-autofuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/lap-margin-increase.svg", () => ({
+  default: "<svg>lap-margin-increase-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/lap-margin-decrease.svg", () => ({
+  default: "<svg>lap-margin-decrease-icon</svg>",
+}));
+
 vi.mock("@elgato/streamdeck", () => ({
   default: {
     logger: {
@@ -77,7 +99,7 @@ vi.mock("../shared/index.js", () => ({
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.labelLine1 || ""}${data.labelLine2 || ""}</svg>`;
+    return `<svg>${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));

@@ -25,11 +25,8 @@ export {
 
 // Icon template utilities
 export {
-  clearTemplateCache,
   escapeXml,
   generateIconText,
-  loadIconTemplate,
-  renderIcon,
   renderIconTemplate,
   validateIconTemplate,
   type GenerateIconTextOptions,

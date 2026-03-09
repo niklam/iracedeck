@@ -110,15 +110,17 @@
 
 				const actionSelect = document.getElementById("action-select");
 				if (actionSelect) {
+					updateVisibility(actionSelect.value || "toggle-tires");
+
 					actionSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value);
+						updateVisibility(ev.target.value || "toggle-tires");
 					});
 					actionSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value);
+						updateVisibility(ev.target.value || "toggle-tires");
 					});
 
-					// Poll until value is populated, then keep polling for changes
-					let lastAction = "";
+					// Polling fallback for reliable detection
+					let lastAction = actionSelect.value || "toggle-tires";
 					setInterval(() => {
 						const currentAction = actionSelect.value;
 						if (currentAction && currentAction !== lastAction) {
