@@ -89,12 +89,14 @@
 			<sdpi-textfield setting="template" default="{{telemetry.Speed}}"></sdpi-textfield>
 		</sdpi-item>
 
-		<div style="padding: 0 16px 8px; font-size: 11px; color: #9e9e9e; line-height: 1.5;">
-			Use <b>{{telemetry.FieldName}}</b> placeholders.
-			<a href="https://iracedeck.com/docs/template-variables"
-			   style="color: #4a90d9;"
-			   target="_blank">Variable reference</a>
-		</div>
+		<sdpi-item>
+			<div style="font-size: 12px; color: #9e9e9e; line-height: 1.5;">
+				Use <b>{{telemetry.FieldName}}</b> placeholders.
+				<a href="https://iracedeck.com/docs/template-variables.html"
+				   style="color: #4a90d9;"
+				   target="_blank">Variable reference</a>
+			</div>
+		</sdpi-item>
 
 		<sdpi-item label="Background Color">
 			<sdpi-color setting="backgroundColor" default="#2a3444"></sdpi-color>
