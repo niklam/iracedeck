@@ -40,6 +40,11 @@
       padding-bottom: 4px;
       border-bottom: 1px solid #333;
     }
+    h3 {
+      font-size: 13px;
+      color: #e0e0e0;
+      margin: 12px 0 4px 0;
+    }
     p, .note {
       margin-bottom: 6px;
       font-size: 12px;
@@ -86,6 +91,10 @@
     <a href="#track">Track</a>
     <a href="#telemetry">Telemetry</a>
     <a href="#session-info">Session Info</a>
+    <a href="#si-weekend" style="font-size:10px; color:#888;">Weekend</a>
+    <a href="#si-session" style="font-size:10px; color:#888;">Session</a>
+    <a href="#si-driver" style="font-size:10px; color:#888;">Driver/Car</a>
+    <a href="#si-setup" style="font-size:10px; color:#888;">Car Setup</a>
   </nav>
 
   <h2 id="driver-info">Driver Info</h2>
@@ -874,14 +883,422 @@
   </dl>
 
   <h2 id="session-info">Session Info</h2>
-  <p>Session info uses dot-notation paths from iRacing's YAML session data. Arrays (like <code>DriverInfo.Drivers</code>) are excluded.</p>
+  <p>Raw session data from iRacing using dot-notation paths. Arrays (drivers list, session results, cameras) are excluded.</p>
+
+  <h3 id="si-weekend">Weekend Info</h3>
+  <p class="note">Track metadata, weather conditions, and session configuration.</p>
   <dl>
-    <dt><code>{{sessionInfo.WeekendInfo.TrackDisplayName}}</code></dt>
-    <dd>Track display name</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackName}}</code></dt>
+    <dd>Internal track name</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackID}}</code></dt>
+    <dd>Track ID number</dd>
     <dt><code>{{sessionInfo.WeekendInfo.TrackLength}}</code></dt>
-    <dd>Track length</dd>
-    <dt><code>{{sessionInfo.DriverInfo.DriverCarIdx}}</code></dt>
-    <dd>Player car index</dd>
+    <dd>Track length with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackLengthOfficial}}</code></dt>
+    <dd>Official track length</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackDisplayName}}</code></dt>
+    <dd>Full track display name</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackDisplayShortName}}</code></dt>
+    <dd>Short track name</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackConfigName}}</code></dt>
+    <dd>Track configuration name</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackCity}}</code></dt>
+    <dd>City</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackState}}</code></dt>
+    <dd>State or province</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackCountry}}</code></dt>
+    <dd>Country</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackAltitude}}</code></dt>
+    <dd>Elevation with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackLatitude}}</code></dt>
+    <dd>Latitude</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackLongitude}}</code></dt>
+    <dd>Longitude</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackNorthOffset}}</code></dt>
+    <dd>North offset (radians)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackNumTurns}}</code></dt>
+    <dd>Number of turns</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackPitSpeedLimit}}</code></dt>
+    <dd>Pit speed limit with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackPaceSpeed}}</code></dt>
+    <dd>Pace car speed with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackNumPitStalls}}</code></dt>
+    <dd>Number of pit stalls</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackType}}</code></dt>
+    <dd>Track type (road, oval, etc.)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackDirection}}</code></dt>
+    <dd>Direction (turns left/right/neutral)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackWeatherType}}</code></dt>
+    <dd>Weather type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackSkies}}</code></dt>
+    <dd>Sky conditions</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackSurfaceTemp}}</code></dt>
+    <dd>Surface temperature with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackSurfaceTempCrew}}</code></dt>
+    <dd>Surface temp at crew location</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackAirTemp}}</code></dt>
+    <dd>Air temperature with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackAirPressure}}</code></dt>
+    <dd>Air pressure with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackAirDensity}}</code></dt>
+    <dd>Air density with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackWindVel}}</code></dt>
+    <dd>Wind velocity with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackWindDir}}</code></dt>
+    <dd>Wind direction with units</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackRelativeHumidity}}</code></dt>
+    <dd>Relative humidity percentage</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackFogLevel}}</code></dt>
+    <dd>Fog level</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackPrecipitation}}</code></dt>
+    <dd>Precipitation level</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackCleanup}}</code></dt>
+    <dd>Track cleanup state</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackDynamicTrack}}</code></dt>
+    <dd>Dynamic track rubber enabled</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TrackVersion}}</code></dt>
+    <dd>Track version string</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.SeriesID}}</code></dt>
+    <dd>Series ID</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.SeasonID}}</code></dt>
+    <dd>Season ID</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.SessionID}}</code></dt>
+    <dd>Session ID</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.SubSessionID}}</code></dt>
+    <dd>Sub-session ID</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.LeagueID}}</code></dt>
+    <dd>League ID (0 if not league)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.Official}}</code></dt>
+    <dd>Official session (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.RaceWeek}}</code></dt>
+    <dd>Race week number</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.EventType}}</code></dt>
+    <dd>Event type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.Category}}</code></dt>
+    <dd>Category (Road, Oval, etc.)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.SimMode}}</code></dt>
+    <dd>Simulation mode</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TeamRacing}}</code></dt>
+    <dd>Team racing enabled (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.MinDrivers}}</code></dt>
+    <dd>Min drivers per team</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.MaxDrivers}}</code></dt>
+    <dd>Max drivers per team</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.DCRuleSet}}</code></dt>
+    <dd>Driver change rule set</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.QualifierMustStartRace}}</code></dt>
+    <dd>Qualifier must start race (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.NumCarClasses}}</code></dt>
+    <dd>Number of car classes</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.NumCarTypes}}</code></dt>
+    <dd>Number of car types</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.HeatRacing}}</code></dt>
+    <dd>Heat racing enabled (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.BuildType}}</code></dt>
+    <dd>Build type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.BuildTarget}}</code></dt>
+    <dd>Build target</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.BuildVersion}}</code></dt>
+    <dd>iRacing build version</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.RaceFarm}}</code></dt>
+    <dd>Race farm ID</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.NumStarters}}</code></dt>
+    <dd>Number of starters</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.StartingGrid}}</code></dt>
+    <dd>Starting grid type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.QualifyScoring}}</code></dt>
+    <dd>Qualifying scoring method</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.CourseCautions}}</code></dt>
+    <dd>Course cautions type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.StandingStart}}</code></dt>
+    <dd>Standing start (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.ShortParadeLap}}</code></dt>
+    <dd>Short parade lap (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.Restarts}}</code></dt>
+    <dd>Restart type</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.WeatherType}}</code></dt>
+    <dd>Weather type setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.Skies}}</code></dt>
+    <dd>Sky setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.WindDirection}}</code></dt>
+    <dd>Wind direction setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.WindSpeed}}</code></dt>
+    <dd>Wind speed setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.WeatherTemp}}</code></dt>
+    <dd>Weather temperature setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.RelativeHumidity}}</code></dt>
+    <dd>Relative humidity setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.FogLevel}}</code></dt>
+    <dd>Fog level setting</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.TimeOfDay}}</code></dt>
+    <dd>Time of day</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.Date}}</code></dt>
+    <dd>Session date</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.EarthRotationSpeedupFactor}}</code></dt>
+    <dd>Time speed multiplier</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.Unofficial}}</code></dt>
+    <dd>Unofficial session (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.CommercialMode}}</code></dt>
+    <dd>Commercial mode</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.NightMode}}</code></dt>
+    <dd>Night mode</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.IsFixedSetup}}</code></dt>
+    <dd>Fixed setup (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.StrictLapsChecking}}</code></dt>
+    <dd>Strict laps checking</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.HasOpenRegistration}}</code></dt>
+    <dd>Open registration (0/1)</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.HardcoreLevel}}</code></dt>
+    <dd>Hardcore level</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.NumJokerLaps}}</code></dt>
+    <dd>Number of joker laps</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.IncidentLimit}}</code></dt>
+    <dd>Incident limit</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.IncidentWarningInitialLimit}}</code></dt>
+    <dd>First incident warning limit</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.IncidentWarningSubsequentLimit}}</code></dt>
+    <dd>Subsequent incident warning limit</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.FastRepairsLimit}}</code></dt>
+    <dd>Fast repairs limit</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.WeekendOptions.GreenWhiteCheckeredLimit}}</code></dt>
+    <dd>GWC attempts limit</dd>
+    <dt><code>{{sessionInfo.WeekendInfo.TelemetryOptions.TelemetryDiskFile}}</code></dt>
+    <dd>Telemetry disk file path</dd>
   </dl>
+
+  <h3 id="si-session">Session</h3>
+  <p class="note">Current session index. Individual session entries (arrays) are not available.</p>
+  <dl>
+    <dt><code>{{sessionInfo.SessionInfo.CurrentSessionNum}}</code></dt>
+    <dd>Current session number index</dd>
+  </dl>
+
+  <h3 id="si-driver">Driver / Car Info</h3>
+  <p class="note">Your car specs and setup metadata. Per-driver entries (arrays) are not available.</p>
+  <dl>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarIdx}}</code></dt>
+    <dd>Your car index</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverUserID}}</code></dt>
+    <dd>Your user ID</dd>
+    <dt><code>{{sessionInfo.DriverInfo.PaceCarIdx}}</code></dt>
+    <dd>Pace car index</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverIsAdmin}}</code></dt>
+    <dd>You are admin (0/1)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverHeadPosX}}</code></dt>
+    <dd>Head position X</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverHeadPosY}}</code></dt>
+    <dd>Head position Y</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverHeadPosZ}}</code></dt>
+    <dd>Head position Z</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarIsElectric}}</code></dt>
+    <dd>Car is electric (0/1)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarIdleRPM}}</code></dt>
+    <dd>Idle RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarRedLine}}</code></dt>
+    <dd>Redline RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarEngCylinderCount}}</code></dt>
+    <dd>Engine cylinder count</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarFuelKgPerLtr}}</code></dt>
+    <dd>Fuel weight (kg per liter)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarFuelMaxLtr}}</code></dt>
+    <dd>Max fuel capacity (liters)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarMaxFuelPct}}</code></dt>
+    <dd>Max fuel fill percentage</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarGearNumForward}}</code></dt>
+    <dd>Number of forward gears</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarGearNeutral}}</code></dt>
+    <dd>Neutral gear index</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarGearReverse}}</code></dt>
+    <dd>Reverse gear index</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverGearboxType}}</code></dt>
+    <dd>Gearbox type</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverGearboxControlType}}</code></dt>
+    <dd>Gearbox control type</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarShiftAid}}</code></dt>
+    <dd>Shift aid enabled</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarSLFirstRPM}}</code></dt>
+    <dd>Shift light first RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarSLShiftRPM}}</code></dt>
+    <dd>Shift light shift RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarSLLastRPM}}</code></dt>
+    <dd>Shift light last RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarSLBlinkRPM}}</code></dt>
+    <dd>Shift light blink RPM</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarVersion}}</code></dt>
+    <dd>Car version string</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverPitTrkPct}}</code></dt>
+    <dd>Pit entry track percentage</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverCarEstLapTime}}</code></dt>
+    <dd>Estimated lap time (seconds)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverSetupName}}</code></dt>
+    <dd>Setup name</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverSetupIsModified}}</code></dt>
+    <dd>Setup modified (0/1)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverSetupLoadTypeName}}</code></dt>
+    <dd>Setup load type</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverSetupPassedTech}}</code></dt>
+    <dd>Setup passed tech (0/1)</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverIncidentCount}}</code></dt>
+    <dd>Your incident count</dd>
+    <dt><code>{{sessionInfo.DriverInfo.DriverBrakeCurvingFactor}}</code></dt>
+    <dd>Brake curving factor</dd>
+  </dl>
+
+  <h3 id="si-radio">Radio</h3>
+  <p class="note">Radio selection. Per-frequency entries (arrays) are not available.</p>
+  <dl>
+    <dt><code>{{sessionInfo.RadioInfo.SelectedRadioNum}}</code></dt>
+    <dd>Currently selected radio number</dd>
+  </dl>
+
+  <h3 id="si-setup">Car Setup</h3>
+  <p class="note">Current car setup values. Available fields vary by car.</p>
+  <dl>
+    <dt><code>{{sessionInfo.CarSetup.UpdateCount}}</code></dt>
+    <dd>Setup update count</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.TireType.TireType}}</code></dt>
+    <dd>Tire compound type</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftFront.ColdPressure}}</code></dt>
+    <dd>LF cold pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftFront.LastHotPressure}}</code></dt>
+    <dd>LF last hot pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftFront.LastTempsOMI}}</code></dt>
+    <dd>LF last temps (outside, middle, inside)</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftFront.TreadRemaining}}</code></dt>
+    <dd>LF tread remaining</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftRear.ColdPressure}}</code></dt>
+    <dd>LR cold pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftRear.LastHotPressure}}</code></dt>
+    <dd>LR last hot pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftRear.LastTempsOMI}}</code></dt>
+    <dd>LR last temps (outside, middle, inside)</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.LeftRear.TreadRemaining}}</code></dt>
+    <dd>LR tread remaining</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightFront.ColdPressure}}</code></dt>
+    <dd>RF cold pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightFront.LastHotPressure}}</code></dt>
+    <dd>RF last hot pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightFront.LastTempsIMO}}</code></dt>
+    <dd>RF last temps (inside, middle, outside)</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightFront.TreadRemaining}}</code></dt>
+    <dd>RF tread remaining</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightRear.ColdPressure}}</code></dt>
+    <dd>RR cold pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightRear.LastHotPressure}}</code></dt>
+    <dd>RR last hot pressure</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightRear.LastTempsIMO}}</code></dt>
+    <dd>RR last temps (inside, middle, outside)</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RightRear.TreadRemaining}}</code></dt>
+    <dd>RR tread remaining</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.FrontAero.FlapAngle}}</code></dt>
+    <dd>Front flap angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RearAero.WingAngle}}</code></dt>
+    <dd>Rear wing angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.RearAero.GurneyFlap}}</code></dt>
+    <dd>Gurney flap size</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.AeroCalculator.FrontRhAtSpeed}}</code></dt>
+    <dd>Front ride height at speed</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.AeroCalculator.RearRhAtSpeed}}</code></dt>
+    <dd>Rear ride height at speed</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.AeroCalculator.FrontDownforce}}</code></dt>
+    <dd>Front downforce percentage</dd>
+    <dt><code>{{sessionInfo.CarSetup.TiresAero.AeroCalculator.DownforceToDrag}}</code></dt>
+    <dd>Downforce to drag ratio</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.ArbDiameter}}</code></dt>
+    <dd>Front anti-roll bar diameter</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.ArbPosition}}</code></dt>
+    <dd>Front ARB position</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.HeaveSpringRate}}</code></dt>
+    <dd>Front heave spring rate</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.HeaveSpringGap}}</code></dt>
+    <dd>Front heave spring gap</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.BrakePressureBias}}</code></dt>
+    <dd>Brake pressure bias</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Front.DisplayPage}}</code></dt>
+    <dd>Steering wheel display page</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.CornerWeight}}</code></dt>
+    <dd>LF corner weight</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.RideHeight}}</code></dt>
+    <dd>LF ride height</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.PushrodLength}}</code></dt>
+    <dd>LF pushrod length</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.TorsionBar}}</code></dt>
+    <dd>LF torsion bar diameter</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.BumpStiffness}}</code></dt>
+    <dd>LF bump stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.ReboundStiffness}}</code></dt>
+    <dd>LF rebound stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.Camber}}</code></dt>
+    <dd>LF camber angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftFront.ToeIn}}</code></dt>
+    <dd>LF toe-in</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.CornerWeight}}</code></dt>
+    <dd>LR corner weight</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.RideHeight}}</code></dt>
+    <dd>LR ride height</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.PushrodLength}}</code></dt>
+    <dd>LR pushrod length</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.SpringRate}}</code></dt>
+    <dd>LR spring rate</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.BumpStiffness}}</code></dt>
+    <dd>LR bump stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.ReboundStiffness}}</code></dt>
+    <dd>LR rebound stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.Camber}}</code></dt>
+    <dd>LR camber angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.LeftRear.ToeIn}}</code></dt>
+    <dd>LR toe-in</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Rear.FuelLevel}}</code></dt>
+    <dd>Fuel level</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Rear.ArbDiameter}}</code></dt>
+    <dd>Rear anti-roll bar diameter</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Rear.ArbPosition}}</code></dt>
+    <dd>Rear ARB position</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Rear.RdSpringRate}}</code></dt>
+    <dd>Rear damper spring rate</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.Rear.RdSpringGap}}</code></dt>
+    <dd>Rear damper spring gap</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.CornerWeight}}</code></dt>
+    <dd>RF corner weight</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.PushrodLength}}</code></dt>
+    <dd>RF pushrod length</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.TorsionBar}}</code></dt>
+    <dd>RF torsion bar diameter</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.BumpStiffness}}</code></dt>
+    <dd>RF bump stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.ReboundStiffness}}</code></dt>
+    <dd>RF rebound stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.Camber}}</code></dt>
+    <dd>RF camber angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightFront.ToeIn}}</code></dt>
+    <dd>RF toe-in</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.CornerWeight}}</code></dt>
+    <dd>RR corner weight</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.PushrodLength}}</code></dt>
+    <dd>RR pushrod length</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.SpringRate}}</code></dt>
+    <dd>RR spring rate</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.BumpStiffness}}</code></dt>
+    <dd>RR bump stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.ReboundStiffness}}</code></dt>
+    <dd>RR rebound stiffness</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.Camber}}</code></dt>
+    <dd>RR camber angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Chassis.RightRear.ToeIn}}</code></dt>
+    <dd>RR toe-in</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.Differential.ClutchPlates}}</code></dt>
+    <dd>Clutch plate count</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.Differential.Preload}}</code></dt>
+    <dd>Differential preload</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.Differential.DriveAngle}}</code></dt>
+    <dd>Differential drive angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.Differential.CoastAngle}}</code></dt>
+    <dd>Differential coast angle</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.EngineInCarDials.ThrottleShaping}}</code></dt>
+    <dd>Throttle shaping / map</dd>
+    <dt><code>{{sessionInfo.CarSetup.Drivetrain.EngineInCarDials.LaunchControlRpm}}</code></dt>
+    <dd>Launch control RPM setting</dd>
+  </dl>
+
 </body>
 </html>
