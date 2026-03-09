@@ -102,4 +102,4 @@ Standalone page designed for Stream Deck's small fixed-size browser window.
 - [x] Update manifest if needed
 - [x] Create website template variables reference page
 - [x] Update `docs/reference/actions.json`
-- [ ] Build verification and lint/format pass
+- [x] Build verification and lint/format pass
