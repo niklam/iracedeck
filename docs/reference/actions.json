@@ -32,19 +32,7 @@
           "name": "Telemetry Display",
           "file": "telemetry-display.ts",
           "encoder": false,
-          "settingsKey": "mode",
-          "modes": [
-            { "value": "speed", "label": "Speed", "description": "Vehicle speed in km/h or mph" },
-            { "value": "oil-temp", "label": "Oil Temperature", "description": "Engine oil temperature" },
-            { "value": "water-temp", "label": "Water Temperature", "description": "Engine water temperature" },
-            { "value": "brake-bias", "label": "Brake Bias", "description": "Front/rear brake bias percentage" },
-            { "value": "gear", "label": "Gear", "description": "Current gear (R, N, 1-9)" },
-            {
-              "value": "custom",
-              "label": "Custom Template",
-              "description": "User-defined mustache template with telemetry variables"
-            }
-          ]
+          "description": "Custom mustache template display for any telemetry or session variable"
         }
       ]
     },

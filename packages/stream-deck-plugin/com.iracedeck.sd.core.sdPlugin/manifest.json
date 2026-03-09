@@ -713,7 +713,7 @@
       "Name": "Telemetry Display",
       "UUID": "com.iracedeck.sd.core.telemetry-display",
       "Icon": "imgs/actions/telemetry-display/icon",
-      "Tooltip": "Display live telemetry values (speed, temps, gear, or custom templates)",
+      "Tooltip": "Display live telemetry values using custom templates",
       "PropertyInspectorPath": "ui/telemetry-display.html",
       "Controllers": [
         "Keypad"
