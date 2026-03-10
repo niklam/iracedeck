@@ -10,7 +10,7 @@ import type { SessionInfo, TelemetryData } from "./types.js";
 /**
  * Shared fields available for all driver groups.
  */
-export interface DriverFields {
+interface DriverFields {
   name: string;
   first_name: string;
   last_name: string;
@@ -27,31 +27,14 @@ export interface DriverFields {
 /**
  * Self driver extends DriverFields with additional player-specific data.
  */
-export interface SelfDriverFields extends DriverFields {
+interface SelfDriverFields extends DriverFields {
   incidents: string;
 }
 
 /**
- * Full template context with all variable groups.
+ * Flat template context — all keys use dot-notation (e.g., "self.name", "telemetry.Speed").
  */
-export interface TemplateContext {
-  self: SelfDriverFields;
-  track_ahead: DriverFields;
-  track_behind: DriverFields;
-  race_ahead: DriverFields;
-  race_behind: DriverFields;
-  session: {
-    type: string;
-    laps_remaining: string;
-    time_remaining: string;
-  };
-  track: {
-    name: string;
-    short_name: string;
-  };
-  telemetry: Record<string, string>;
-  sessionInfo: Record<string, string>;
-}
+export type TemplateContext = Record<string, string>;
 
 interface DriverEntry {
   CarIdx: number;
@@ -167,7 +150,23 @@ export function buildTemplateContext(sdkController: SDKController): TemplateCont
 /**
  * @internal Exported for testing
  *
+ * Prefixes all keys in a record with a given prefix.
+ */
+export function prefixKeys(prefix: string, record: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(record)) {
+    result[`${prefix}.${key}`] = value;
+  }
+
+  return result;
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Builds template context from raw telemetry and session data.
+ * Returns a single flat Record<string, string> with dot-notation keys.
  */
 export function buildTemplateContextFromData(
   telemetry: TelemetryData | null,
@@ -184,18 +183,49 @@ export function buildTemplateContextFromData(
   const raceAhead = findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1);
   const raceBehind = findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1);
 
+  const sessionFields = buildSessionFields(sessionInfo, telemetry);
+  const trackFields = buildTrackFields(sessionInfo);
+
   return {
-    self: selfFields,
-    track_ahead: trackAhead ? buildDriverFields(trackAhead, telemetry) : { ...EMPTY_DRIVER_FIELDS },
-    track_behind: trackBehind ? buildDriverFields(trackBehind, telemetry) : { ...EMPTY_DRIVER_FIELDS },
-    race_ahead: raceAhead ? buildDriverFields(raceAhead, telemetry) : { ...EMPTY_DRIVER_FIELDS },
-    race_behind: raceBehind ? buildDriverFields(raceBehind, telemetry) : { ...EMPTY_DRIVER_FIELDS },
-    session: buildSessionFields(sessionInfo, telemetry),
-    track: buildTrackFields(sessionInfo),
-    telemetry: telemetry
-      ? flattenForDisplay(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" })
-      : {},
-    sessionInfo: sessionInfo ? flattenForDisplay(sessionInfo as unknown as Record<string, unknown>) : {},
+    ...prefixKeys("self", selfFields as unknown as Record<string, string>),
+    ...prefixKeys(
+      "track_ahead",
+      (trackAhead ? buildDriverFields(trackAhead, telemetry) : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<
+        string,
+        string
+      >,
+    ),
+    ...prefixKeys(
+      "track_behind",
+      (trackBehind ? buildDriverFields(trackBehind, telemetry) : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<
+        string,
+        string
+      >,
+    ),
+    ...prefixKeys(
+      "race_ahead",
+      (raceAhead ? buildDriverFields(raceAhead, telemetry) : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<
+        string,
+        string
+      >,
+    ),
+    ...prefixKeys(
+      "race_behind",
+      (raceBehind ? buildDriverFields(raceBehind, telemetry) : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<
+        string,
+        string
+      >,
+    ),
+    ...prefixKeys("session", sessionFields),
+    ...prefixKeys("track", trackFields),
+    ...prefixKeys(
+      "telemetry",
+      telemetry ? flattenForDisplay(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" }) : {},
+    ),
+    ...prefixKeys(
+      "sessionInfo",
+      sessionInfo ? flattenForDisplay(sessionInfo as unknown as Record<string, unknown>) : {},
+    ),
   };
 }
 
@@ -345,10 +375,7 @@ function buildSelfFields(
   };
 }
 
-function buildSessionFields(
-  sessionInfo: SessionInfo | null,
-  telemetry: TelemetryData | null,
-): TemplateContext["session"] {
+function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): Record<string, string> {
   if (!sessionInfo) return { type: "", laps_remaining: "", time_remaining: "" };
 
   const sessions = (sessionInfo as Record<string, unknown>).SessionInfo as Record<string, unknown> | undefined;
@@ -368,7 +395,7 @@ function buildSessionFields(
   };
 }
 
-function buildTrackFields(sessionInfo: SessionInfo | null): TemplateContext["track"] {
+function buildTrackFields(sessionInfo: SessionInfo | null): Record<string, string> {
   if (!sessionInfo) return { name: "", short_name: "" };
 
   const weekend = (sessionInfo as Record<string, unknown>).WeekendInfo as Record<string, unknown> | undefined;

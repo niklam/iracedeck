@@ -7,8 +7,8 @@ describe("resolveTemplate", () => {
     expect(resolveTemplate("Hello {{name}}", { name: "World" })).toBe("Hello World");
   });
 
-  it("should replace dot-notation variables", () => {
-    const context = { self: { first_name: "John", position: "3" } };
+  it("should replace dot-notation variables via flat key lookup", () => {
+    const context = { "self.first_name": "John", "self.position": "3" };
 
     expect(resolveTemplate("P{{self.position}} - {{self.first_name}}", context)).toBe("P3 - John");
   });
@@ -27,16 +27,22 @@ describe("resolveTemplate", () => {
     expect(resolveTemplate("Hello {{missing}}", {})).toBe("Hello ");
   });
 
-  it("should replace partially resolved paths with empty string", () => {
-    const context = { self: { name: "John" } };
+  it("should replace missing dot-notation key with empty string", () => {
+    const context = { "self.name": "John" };
 
     expect(resolveTemplate("{{self.nonexistent}}", context)).toBe("");
   });
 
-  it("should replace deeply nested missing path with empty string", () => {
-    const context = { a: { b: "value" } };
+  it("should replace deeply nested dot-notation key with empty string when missing", () => {
+    const context = { "a.b": "value" };
 
     expect(resolveTemplate("{{a.b.c.d}}", context)).toBe("");
+  });
+
+  it("should resolve deeply nested dot-notation keys", () => {
+    const context = { "sessionInfo.CarSetup.TiresAero.TireType.TireType": "Dry" };
+
+    expect(resolveTemplate("{{sessionInfo.CarSetup.TiresAero.TireType.TireType}}", context)).toBe("Dry");
   });
 
   it("should return template unchanged when no placeholders present", () => {
@@ -70,7 +76,7 @@ describe("resolveTemplate", () => {
   });
 
   it("should support underscores in variable names", () => {
-    const context = { self: { first_name: "John" } };
+    const context = { "self.first_name": "John" };
 
     expect(resolveTemplate("{{self.first_name}}", context)).toBe("John");
   });
@@ -81,19 +87,15 @@ describe("resolvePathValue", () => {
     expect(resolvePathValue({ name: "John" }, "name")).toBe("John");
   });
 
-  it("should resolve a nested path", () => {
-    expect(resolvePathValue({ a: { b: { c: "deep" } } }, "a.b.c")).toBe("deep");
+  it("should resolve a dot-notation flat key", () => {
+    expect(resolvePathValue({ "a.b.c": "deep" }, "a.b.c")).toBe("deep");
   });
 
   it("should return undefined for missing key", () => {
     expect(resolvePathValue({}, "missing")).toBeUndefined();
   });
 
-  it("should return undefined when path traverses a non-object", () => {
-    expect(resolvePathValue({ a: "string" }, "a.b")).toBeUndefined();
-  });
-
-  it("should return undefined when path traverses null", () => {
-    expect(resolvePathValue({ a: null }, "a.b")).toBeUndefined();
+  it("should return undefined for missing dot-notation key", () => {
+    expect(resolvePathValue({ "a.b": "value" }, "a.b.c")).toBeUndefined();
   });
 });

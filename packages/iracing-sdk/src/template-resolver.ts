@@ -25,19 +25,8 @@ export function resolveTemplate(template: string, context: object): string {
 /**
  * @internal Exported for testing
  *
- * Walks a dot-separated path through a nested object.
+ * Looks up a dot-notation key in a flat record.
  */
 export function resolvePathValue(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split(".");
-  let current: unknown = obj;
-
-  for (const part of parts) {
-    if (current === null || current === undefined || typeof current !== "object") {
-      return undefined;
-    }
-
-    current = (current as Record<string, unknown>)[part];
-  }
-
-  return current;
+  return obj[path];
 }

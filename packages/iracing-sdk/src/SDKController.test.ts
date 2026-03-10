@@ -206,8 +206,7 @@ describe("SDKController", () => {
       const ctx = controller.getCurrentTemplateContext();
 
       expect(ctx).not.toBeNull();
-      expect(ctx!.telemetry).toBeDefined();
-      expect(ctx!.telemetry.Speed).toBe("100");
+      expect(ctx!["telemetry.Speed"]).toBe("100");
     });
 
     it("should cache context within the same tick", () => {
@@ -237,7 +236,7 @@ describe("SDKController", () => {
       const ctx2 = controller.getCurrentTemplateContext();
 
       expect(ctx2).not.toBe(ctx1);
-      expect(ctx2!.telemetry.Speed).toBe("200");
+      expect(ctx2!["telemetry.Speed"]).toBe("200");
     });
 
     it("should return null when no telemetry has ever been received", () => {
@@ -257,7 +256,7 @@ describe("SDKController", () => {
 
       const ctxBefore = controller.getCurrentTemplateContext();
       expect(ctxBefore).not.toBeNull();
-      expect(ctxBefore!.telemetry.Speed).toBe("100");
+      expect(ctxBefore!["telemetry.Speed"]).toBe("100");
 
       // After new telemetry, context should be rebuilt (not the same object)
       vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 300 });
@@ -265,7 +264,7 @@ describe("SDKController", () => {
 
       const ctxAfter = controller.getCurrentTemplateContext();
       expect(ctxAfter).not.toBe(ctxBefore);
-      expect(ctxAfter!.telemetry.Speed).toBe("300");
+      expect(ctxAfter!["telemetry.Speed"]).toBe("300");
     });
   });
 
