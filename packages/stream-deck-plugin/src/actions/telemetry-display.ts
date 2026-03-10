@@ -2,18 +2,19 @@ import streamDeck, { action, DidReceiveSettingsEvent, WillAppearEvent, WillDisap
 import { resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import sessionInfoTemplate from "../../icons/session-info.svg";
+import telemetryDisplayTemplate from "../../icons/telemetry-display.svg";
 import {
   ConnectionStateAwareAction,
   createSDLogger,
+  escapeXml,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
 
 const TelemetryDisplaySettings = z.object({
-  template: z.string().default("{{telemetry.Speed}}"),
-  title: z.string().default("TELEMETRY"),
+  template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
+  title: z.string().default("CAR #"),
   backgroundColor: z.string().default("#2a3444"),
   textColor: z.string().default("#ffffff"),
   fontSize: z.coerce.number().default(18),
@@ -24,14 +25,40 @@ type TelemetryDisplaySettings = z.infer<typeof TelemetryDisplaySettings>;
 /**
  * @internal Exported for testing
  */
+export function generateValueContent(value: string, fontSize: number, textColor: string): string {
+  const lines = value.split("\n").filter((line) => line.length > 0);
+  const baseY = 51 + (fontSize - 22) / 3;
+  const lineHeight = fontSize * 1.2;
+
+  if (lines.length <= 1) {
+    const text = lines[0] ?? "";
+
+    return `<text x="36" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+  }
+
+  const totalBlockHeight = (lines.length - 1) * lineHeight;
+  const startY = baseY - totalBlockHeight / 2;
+
+  return lines
+    .map((line, i) => {
+      const y = startY + i * lineHeight;
+
+      return `<text x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(line)}</text>`;
+    })
+    .join("\n    ");
+}
+
+/**
+ * @internal Exported for testing
+ */
 export function generateTelemetryDisplaySvg(title: string, value: string, settings: TelemetryDisplaySettings): string {
-  const svg = renderIconTemplate(sessionInfoTemplate, {
+  const valueContent = generateValueContent(value, settings.fontSize, settings.textColor);
+
+  const svg = renderIconTemplate(telemetryDisplayTemplate, {
     backgroundColor: settings.backgroundColor,
+    titleColor: settings.textColor,
     titleLabel: title,
-    value,
-    valueFontSize: String(settings.fontSize),
-    valueY: "50",
-    textColor: settings.textColor,
+    valueContent,
   });
 
   return svgToDataUri(svg);
