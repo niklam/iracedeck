@@ -13,8 +13,8 @@ import {
 } from "../shared/index.js";
 
 const TelemetryDisplaySettings = z.object({
-  template: z.string().default("{{telemetry.Speed}}"),
-  title: z.string().default("TELEMETRY"),
+  template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
+  title: z.string().default("CAR #"),
   backgroundColor: z.string().default("#2a3444"),
   textColor: z.string().default("#ffffff"),
   fontSize: z.coerce.number().default(18),

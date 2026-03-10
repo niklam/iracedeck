@@ -66,9 +66,9 @@ describe("TelemetryDisplay", () => {
 
   describe("generateTelemetryDisplaySvg", () => {
     it("should produce a data URI", () => {
-      const result = generateTelemetryDisplaySvg("TELEMETRY", "100", {
-        template: "{{telemetry.Speed}}",
-        title: "TELEMETRY",
+      const result = generateTelemetryDisplaySvg("CAR #", "100", {
+        template: "{{sessionInfo.DriverInfo.DriverCarIdx}}",
+        title: "CAR #",
         backgroundColor: "#2a3444",
         textColor: "#ffffff",
         fontSize: 18,

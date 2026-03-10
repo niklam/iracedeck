@@ -5,11 +5,11 @@
 	</head>
 	<body>
 		<sdpi-item label="Title">
-			<sdpi-textfield setting="title" default="TELEMETRY"></sdpi-textfield>
+			<sdpi-textfield setting="title" default="CAR #"></sdpi-textfield>
 		</sdpi-item>
 
 		<sdpi-item label="Template">
-			<sdpi-textarea setting="template" rows="3" default="{{telemetry.Speed}}"></sdpi-textarea>
+			<sdpi-textarea setting="template" rows="3" default="{{sessionInfo.DriverInfo.DriverCarIdx}}"></sdpi-textarea>
 		</sdpi-item>
 
 		<sdpi-item>
