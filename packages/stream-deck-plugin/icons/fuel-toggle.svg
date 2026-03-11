@@ -1,48 +1,66 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
 <svg
    width="144"
    height="144"
    viewBox="0 0 144 144"
    version="1.1"
    id="svg1"
-   xmlns="http://www.w3.org/2000/svg">
-   <g id="layer1">
-      <!-- Bottom background -->
-      <rect
-         style="display:inline;fill:#00ff00;fill-opacity:1"
-         x="0"
-         y="100"
-         width="144"
-         height="44"
-         id="path1" />
-      <!-- Top background -->
-      <rect
-         style="display:inline;fill:#000064;fill-opacity:1"
-         x="0"
-         y="0"
-         width="144"
-         height="100"
-         id="path2" />
-
-      <!-- Section 1: 50x144. y=0 to 50, buffer=8px -> height=34. Center Y = 25 -->
-      <text
-         id="text-section-1"
-         style="font-weight:700;font-size:34px;text-anchor:middle;fill:#FFFFFF;"
-         x="72"
-         y="34">{{mainLabel}}</text>
-
-      <!-- Section 2: 50x144. y=50 to 100, buffer=8px -> height=34. Center Y = 75 -->
-      <text
-         id="text-section-2"
-         style="font-weight:700;font-size:34px;text-anchor:middle;fill:#FFFFFF;"
-         x="72"
-         y="84">{{amountLabel}}</text>
-
-      <!-- Section 3: 44x144. y=100 to 144, buffer=8px -> height=28. Math Center Y = 134 -->
-      <text
-         id="text-section-3"
-         style="font-weight:700;font-size:26px;text-anchor:middle;fill:#000000;"
-         x="72"
-         y="126">{{subLabel}}</text>
-   </g>
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <g
+     id="layer1">
+    <rect
+       style="fill:#00ff00;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       id="rect4"
+       width="144"
+       height="44"
+       x="0"
+       y="100" />
+    <text
+       xml:space="preserve"
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-8.9100904"
+       y="133.13802"
+       id="SubLabel"><tspan
+         id="tspan6"
+         x="-8.9100904"
+         y="133.13802">{{sub}}</tspan></text>
+    <rect
+       style="fill:#000064;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       id="rect3"
+       width="144"
+       height="50"
+       x="0"
+       y="50" />
+    <text
+       xml:space="preserve"
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-47.528545"
+       y="86.138008"
+       id="AmountText"><tspan
+         id="tspan5"
+         x="-47.528545"
+         y="86.138008">{{amount}}</tspan></text>
+    <rect
+       style="fill:#000064;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       id="rect2"
+       width="144"
+       height="50"
+       x="0"
+       y="0" />
+    <text
+       xml:space="preserve"
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-22.144449"
+       y="36.138012"
+       id="text4"><tspan
+         id="tspan4"
+         x="-22.144449"
+         y="36.138012"
+         style="font-size:37.3333px;fill:#ffffff;fill-opacity:1">{{main}}</tspan></text>
+  </g>
 </svg>

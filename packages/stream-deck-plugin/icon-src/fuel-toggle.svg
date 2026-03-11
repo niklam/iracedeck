@@ -7,9 +7,9 @@
    viewBox="0 0 144 144"
    version="1.1"
    id="svg1"
-   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
    sodipodi:docname="fuel-toggle.svg"
-   inkscape:export-filename="fuel-toggle.svg"
+   inkscape:export-filename="..\icons\fuel-toggle.svg"
    inkscape:export-xdpi="96"
    inkscape:export-ydpi="96"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -27,17 +27,17 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="px"
      showgrid="true"
-     inkscape:zoom="2.834231"
-     inkscape:cx="64.744193"
-     inkscape:cy="61.921557"
-     inkscape:window-width="1536"
-     inkscape:window-height="790"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:zoom="3.0680903"
+     inkscape:cx="55.246092"
+     inkscape:cy="70.565067"
+     inkscape:window-width="1920"
+     inkscape:window-height="991"
+     inkscape:window-x="-9"
+     inkscape:window-y="-9"
      inkscape:window-maximized="1"
      inkscape:current-layer="layer1">
     <inkscape:grid
-       id="grid1"
+       id="grid2"
        units="px"
        originx="0"
        originy="0"
@@ -50,72 +50,69 @@
        empspacing="5"
        enabled="true"
        visible="true"
-       dotted="false"
-       snapvisiblegridlinesonly="true" />
+       snapvisiblegridlinesonly="false" />
   </sodipodi:namedview>
   <defs
-     id="defs1">
-    <rect
-       x="8"
-       y="58"
-       width="129"
-       height="34"
-       id="rect5" />
-    <rect
-       x="8"
-       y="8"
-       width="129"
-       height="34"
-       id="rect4" />
-    <rect
-       x="8"
-       y="108"
-       width="128"
-       height="28"
-       id="rect2" />
-  </defs>
+     id="defs1" />
   <g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1">
-    <path
-       style="display:inline;fill:#00ff00;fill-opacity:1"
-       d="m 0,100 v 44 H 144 V 99.983466 Z"
-       id="path1" />
-    <path
-       style="fill:#000064;fill-opacity:1"
-       d="M 0,0 V 100 L 144,99.98347 V 0 Z"
-       id="path2" />
+    <rect
+       style="fill:#00ff00;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       id="rect4"
+       width="144"
+       height="44"
+       x="0"
+       y="100"
+       inkscape:label="LowBox" />
     <text
        xml:space="preserve"
-       id="text2"
-       style="font-size:24px;text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect2);display:inline;fill:#000064;fill-opacity:1"
-       x="64"
-       y="0"><tspan
-         x="34.271484"
-         y="129.23438"
-         id="tspan2"><tspan
-           style="fill:#000000"
-           id="tspan1">Refuel</tspan></tspan></text>
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-8.9100904"
+       y="133.13802"
+       id="SubLabel"><tspan
+         sodipodi:role="line"
+         id="tspan6"
+         x="-8.9100904"
+         y="133.13802">{{sub}}</tspan></text>
+    <rect
+       style="fill:#000064;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       id="rect3"
+       width="144"
+       height="50"
+       x="0"
+       y="50"
+       inkscape:label="MidBox" />
     <text
        xml:space="preserve"
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-47.528545"
+       y="86.138008"
+       id="AmountText"><tspan
+         sodipodi:role="line"
+         id="tspan5"
+         x="-47.528545"
+         y="86.138008">{{amount}}</tspan></text>
+    <rect
+       style="fill:#000064;stroke:none;stroke-width:3.26929;fill-opacity:1"
+       id="rect2"
+       width="144"
+       height="50"
+       x="0"
+       y="0"
+       inkscape:label="TopBox" />
+    <text
+       xml:space="preserve"
+       style="font-size:37.3333px;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';writing-mode:lr-tb;direction:ltr;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.26929"
+       x="-22.144449"
+       y="36.138012"
        id="text4"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect4);display:inline;fill:#000000;fill-opacity:1"
-       x="64.5"
-       y="0"><tspan
-         x="33.753906"
-         y="33.918079"
-         id="tspan4"><tspan
-           style="fill:#ffffff"
-           id="tspan3">Refuel</tspan></tspan></text>
-    <text
-       xml:space="preserve"
-       id="text5"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:28px;font-family:'Adwaita Sans';-inkscape-font-specification:'Adwaita Sans';text-align:center;letter-spacing:0px;writing-mode:lr-tb;direction:ltr;white-space:pre;shape-inside:url(#rect5);display:inline;fill:#ffffff;fill-opacity:1"
-       x="64.5"
-       y="0"><tspan
-         x="42.558594"
-         y="83.918079"
-         id="tspan5">+10L</tspan></text>
+       inkscape:label="MainText"><tspan
+         sodipodi:role="line"
+         id="tspan4"
+         x="-22.144449"
+         y="36.138012"
+         style="font-size:37.3333px;fill:#ffffff;fill-opacity:1">{{main}}</tspan></text>
   </g>
 </svg>
