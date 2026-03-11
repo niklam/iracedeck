@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="144"
+   height="144"
+   viewBox="0 0 144 144"
+   version="2"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg">
+   <g id="layer1">
+      <!-- Bottom background -->
+      <rect
+         style="fill:#00ff00;fill-opacity:1"
+         x="0"
+         y="100"
+         width="144"
+         height="44"
+         id="path1" />
+      <!-- Top background -->
+      <rect
+         style="fill:#000064;fill-opacity:1"
+         x="0"
+         y="0"
+         width="144"
+         height="100"
+         id="path2" />
+
+      <!-- Section 1: 50x144. y=0 to 50, buffer=8px -> height=34. Center Y = 25 -->
+      <text
+         id="text-section-1"
+         style="font-weight:700;font-size:26px;text-align:center;text-anchor:middle;fill:#ffffff;"
+         x="72"
+         y="32">Auto Fuel</text>
+
+      <!-- Section 2: 50x144. y=50 to 100, buffer=8px -> height=34. Center Y = 75 -->
+      <text
+         id="text-section-2"
+         style="font-weight:700;font-size:40px;text-align:center;text-anchor:middle;fill:#ffffff;"
+         x="72"
+         y="84">34L</text>
+
+      <!-- Section 3: 44x144. y=100 to 144, buffer=8px -> height=28. Center Y = 122 -->
+      <text
+         id="text-section-3"
+         style="font-weight:700;font-size:26px;text-align:center;text-anchor:middle;fill:#000000;"
+         x="72"
+         y="128">Refuel</text>
+   </g>
+</svg>
