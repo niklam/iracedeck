@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.13.0](https://github.com/niklam/iracedeck/compare/v0.12.0...v0.13.0) (2026-03-11)
+
+### Features
+
+* **website:** link to Elgato Marketplace instead of GitHub releases ([1dea507](https://github.com/niklam/iracedeck/commit/1dea50745d6ce10d4f73eb428528fe4347a8a97c))
+
+### Maintenance
+
+* add .sdignore, change build script to trim Stream Deck plugin ([#103](https://github.com/niklam/iracedeck/issues/103)) ([7f5ee0e](https://github.com/niklam/iracedeck/commit/7f5ee0ef9b4492b220594284388d5770568bca59))
+
 ## [0.12.0](https://github.com/niklam/iracedeck/compare/v0.11.0...v0.12.0) (2026-03-10)
 
 ### Features
