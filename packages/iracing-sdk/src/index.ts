@@ -104,11 +104,11 @@ export { resolveTemplate, resolvePathValue } from "./template-resolver.js";
 export {
   buildTemplateContext,
   buildTemplateContextFromData,
+  flattenForDisplay,
+  prefixKeys,
   splitDriverName,
   findNearestDriverOnTrack,
   findDriverByRacePosition,
   formatTimeRemaining,
   type TemplateContext,
-  type DriverFields,
-  type SelfDriverFields,
 } from "./template-context.js";

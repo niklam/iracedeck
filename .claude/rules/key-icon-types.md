@@ -40,7 +40,7 @@ Labels use two lines with primary (bold, prominent) and secondary (subdued) styl
 | Label Type | Font Size (144) | Font Size (72) | Weight | Color |
 |------------|-----------------|-----------------|--------|-------|
 | Primary (`{{mainLabel}}`) | 20px | 10px | bold | #ffffff |
-| Secondary (`{{subLabel}}`) | 16px | 8px | normal | #aaaaaa |
+| Secondary (`{{subLabel}}`) | 16px | 8px | normal | #ffffff |
 
 Both lines are centered horizontally (text-anchor="middle").
 
@@ -97,7 +97,7 @@ Use these colors consistently across all icons (literal hex values in SVG, no co
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>
 ```
@@ -117,7 +117,7 @@ Used when the action word (e.g., NEXT/PREVIOUS) should be more prominent than th
 
     <!-- Inverted label: subLabel secondary on top, mainLabel primary on bottom -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
@@ -147,7 +147,7 @@ Uses the Inverted label layout where the action word is prominent (bottom, bold)
 
 Optimized for showing live telemetry values. Small title at top, large centered value. No icon content area — the value IS the content. Uses dynamic 72x72 template.
 
-- **Title**: Small gray label at y=16 (#aaaaaa, 9px)
+- **Title**: Small white label at y=16 (#ffffff, 9px)
 - **Value**: Large bold centered text at y=50 (#ffffff, dynamic font size)
 - **Background**: Dynamic — can change color for alert effects (e.g., flash red on incident)
 - **Placeholders**: `{{backgroundColor}}`, `{{titleLabel}}`, `{{value}}`, `{{valueFontSize}}`

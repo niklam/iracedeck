@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.12.0](https://github.com/niklam/iracedeck/compare/v0.11.0...v0.12.0) (2026-03-10)
+
+### Features
+
+* **iracing-sdk:** add lazy template context caching to SDKController ([2157126](https://github.com/niklam/iracedeck/commit/21571266d3e99c65ae3a5910363a2706917db24f))
+* **iracing-sdk:** convert known 0/1 boolean telemetry fields to Yes/No ([4ec9673](https://github.com/niklam/iracedeck/commit/4ec9673f83c3eb14b4b02fdbbbc9b93ccb08d9a3))
+* **stream-deck-plugin:** add Telemetry Display action with custom template support ([38f10da](https://github.com/niklam/iracedeck/commit/38f10da6404d60248f2edab63c01b4a3d1cc6525))
+* **stream-deck-plugin:** support multiline templates in telemetry display ([3fc0121](https://github.com/niklam/iracedeck/commit/3fc01215c18a6bf2fba4967b3b4ac3723a830543))
+* **stream-deck-plugin:** use number input for telemetry display font size ([28d85b7](https://github.com/niklam/iracedeck/commit/28d85b79da2466ca1a8f4a6d330921326cd051d5))
+* **stream-deck-plugin:** use text color for telemetry display title ([cc40e6c](https://github.com/niklam/iracedeck/commit/cc40e6c66cd172240bbcdf996d4edc1e2d5db10a))
+* **website:** add template variables reference page ([bc8e616](https://github.com/niklam/iracedeck/commit/bc8e616eb48a82d0aff1d01325c3a09f9d49a53f))
+
+### Bug Fixes
+
+* **icons:** change subLabel text color from [#aaaaaa](https://github.com/niklam/iracedeck/issues/aaaaaa) to [#ffffff](https://github.com/niklam/iracedeck/issues/ffffff) for readability ([e02e5c8](https://github.com/niklam/iracedeck/commit/e02e5c8e8943d00062fd9002f5b73485d898ec4c))
+* **iracing-sdk:** flatten template context for correct dot-notation variable resolution ([aeec573](https://github.com/niklam/iracedeck/commit/aeec57323912da7b6525304e3d32a32325e0a1a9))
+* **stream-deck-plugin:** adjust telemetry display text vertical position by font size ([06fc659](https://github.com/niklam/iracedeck/commit/06fc6593a2a50574fbc12e4d7ad87c24493b30de))
+* **stream-deck-plugin:** apply defaults for sdpi-textfield and sdpi-textarea ([9ce9d03](https://github.com/niklam/iracedeck/commit/9ce9d03d5978fc5572ee11d28aa288281c621d65))
+* **stream-deck-plugin:** fix PI template link URLs and font sizes ([0b7f856](https://github.com/niklam/iracedeck/commit/0b7f85645c8ee7f8609b7e18a4af7cb2b18f72e4))
+* **stream-deck-plugin:** open PI links in new window with target="_blank" ([08ccfd8](https://github.com/niklam/iracedeck/commit/08ccfd86f8ead5caaef4294c32495cbf1712c605))
+* **stream-deck-plugin:** unify PI template help text across actions ([02af3ce](https://github.com/niklam/iracedeck/commit/02af3ce04ad43c009ac0d0602524c2ce463712e7))
+* **stream-deck-plugin:** update telemetry display defaults to CAR # template ([a478f2c](https://github.com/niklam/iracedeck/commit/a478f2cc7060f234cd816e7bba0887d380be570f))
+* **website:** complete template variables reference with all session info fields ([4e71a14](https://github.com/niklam/iracedeck/commit/4e71a14452674b302f6bb7c364df085569ffff32))
+
+### Refactoring
+
+* **stream-deck-plugin:** simplify Telemetry Display Property Inspector ([eae354b](https://github.com/niklam/iracedeck/commit/eae354b56835e5942f1c7a087a160de3dbdb86b8))
+* **stream-deck-plugin:** simplify Telemetry Display to custom template only ([c82636a](https://github.com/niklam/iracedeck/commit/c82636a0c0b3683209259cb2e3ae0a70d2139e86))
+
+### Documentation
+
+* mark all design doc progress items complete ([139d68b](https://github.com/niklam/iracedeck/commit/139d68bbd93bb4d54c436ecdaf09367ce11e4771))
+* update Telemetry Display manifest and actions reference ([703e878](https://github.com/niklam/iracedeck/commit/703e878a08aabe8d1db6036f9eaefbe06e946ebc))
+
+### Maintenance
+
+* remove superseded template-variables.md and add design docs ([2fc4456](https://github.com/niklam/iracedeck/commit/2fc4456d84a3236da6c6f1b39cf028ee9f80881c))
+* **website:** add Google Analytics tracking ([#97](https://github.com/niklam/iracedeck/issues/97)) ([bc0cd73](https://github.com/niklam/iracedeck/commit/bc0cd731d72c5d5d9bd1c142867ec3172aeb2687))
+* **website:** update download links to v0.11.0 ([3b23c41](https://github.com/niklam/iracedeck/commit/3b23c41eb0f9519a30783737c61d87881f3673a2))
+
 ## [0.11.0](https://github.com/niklam/iracedeck/compare/v0.10.1...v0.11.0) (2026-03-08)
 
 ### Features
