@@ -74,6 +74,24 @@ Committing
 - Do not reference Claude or other AI tools in commit messages.
 - Do not add AI co-authors such as `Co-Authored-By: Claude Opus`.
 
+### Logical Commits
+
+Split work into logical, self-contained commits. Each commit should represent one coherent change that builds and passes tests on its own. This keeps the history readable and makes regular (non-squash) merges practical.
+
+Guidelines:
+- **One concern per commit** — don't mix a refactor with a new feature or unrelated fixes.
+- **Commit as you go** — commit each logical step when it's complete, don't batch everything into one giant commit at the end.
+- **Commit message = what and why** — the diff shows *what* changed; the message should explain *why*.
+
+Examples of good commit splits for a new action:
+```
+feat(stream-deck-plugin): add FuelCalculator action skeleton
+feat(stream-deck-plugin): add FuelCalculator icon variants
+feat(stream-deck-plugin): add FuelCalculator Property Inspector
+test(stream-deck-plugin): add FuelCalculator unit tests
+docs: add FuelCalculator action documentation
+```
+
 Pull Requests
 
 - When creating a PR, use the PR template at `.github/pull_request_template.md` as the body structure.
@@ -83,8 +101,7 @@ Pull Requests
 
 Merging
 
-- PRs are squash-merged into `master` via `gh pr merge --squash`.
-- The squash commit subject is the PR title, which must follow conventional commit format (`<type>(<scope>): <description>`).
+- PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
+- Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
 - **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(stream-deck-plugin): add Camera Focus action (#42)`.
-- Ensure the PR title is a valid conventional commit message (with PR number suffix) before merging.
 - Merging is performed manually or by automation — never by a Claude review step.
