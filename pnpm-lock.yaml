@@ -161,8 +161,8 @@ importers:
         specifier: 16.0.3
         version: 16.0.3(rollup@4.59.0)
       '@rollup/plugin-terser':
-        specifier: 0.4.4
-        version: 0.4.4(rollup@4.59.0)
+        specifier: 1.0.0
+        version: 1.0.0(rollup@4.59.0)
       '@rollup/plugin-typescript':
         specifier: 12.3.0
         version: 12.3.0(rollup@4.59.0)(tslib@2.8.1)(typescript@5.9.3)
@@ -943,9 +943,9 @@ packages:
       rollup:
         optional: true
 
-  '@rollup/plugin-terser@0.4.4':
-    resolution: {integrity: sha512-XHeJC5Bgvs8LfukDwWZp7yeqin6ns8RTl2B9avbejt6tZqsqvVoWI7ZTQrcNsfKEDWBTnTxM8nMDkO2IFFbd0A==}
-    engines: {node: '>=14.0.0'}
+  '@rollup/plugin-terser@1.0.0':
+    resolution: {integrity: sha512-FnCxhTBx6bMOYQrar6C8h3scPt8/JwIzw3+AJ2K++6guogH5fYaIFia+zZuhqv0eo1RN7W1Pz630SyvLbDjhtQ==}
+    engines: {node: '>=20.0.0'}
     peerDependencies:
       rollup: ^2.0.0||^3.0.0||^4.0.0
     peerDependenciesMeta:
@@ -3725,9 +3725,6 @@ packages:
     resolution: {integrity: sha512-80WNmd9DA0tmZrw9qQa62GPPWfuXJknrmVmLcxvq4uZBdYqb1wYoKTmnlGUchvVWe0XiLupYkBoXVOxz3C8DYQ==}
     engines: {node: '>=0.12'}
 
-  randombytes@2.1.0:
-    resolution: {integrity: sha512-vYl3iOX+4CKUWuxGi9Ukhie6fsqXqS9FE2Zaic4tNFD2N2QQaXOMFbuKK4QmDHC0JO6B1Zp41J0LpT0oR68amQ==}
-
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
@@ -3893,8 +3890,9 @@ packages:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
 
-  serialize-javascript@6.0.2:
-    resolution: {integrity: sha512-Saa1xPByTTq2gdeFZYLLo+RFE35NHZkAbqZeWNd3BpzppeVisAqpDjcp8dyf6uIvEqJRd46jemmyA4iFIeVk8g==}
+  serialize-javascript@7.0.4:
+    resolution: {integrity: sha512-DuGdB+Po43Q5Jxwpzt1lhyFSYKryqoNjQSA9M92tyw0lyHIOur+XCalOUe0KTJpyqzT8+fQ5A0Jf7vCx/NKmIg==}
+    engines: {node: '>=20.0.0'}
 
   serve-static@1.16.3:
     resolution: {integrity: sha512-x0RTqQel6g5SY7Lg6ZreMmsOzncHFU7nhnRWkKgWuMTu5NN0DR5oruckMqRvacAN9d5w6ARnRBXl9xhDCgfMeA==}
@@ -5419,9 +5417,9 @@ snapshots:
     optionalDependencies:
       rollup: 4.59.0
 
-  '@rollup/plugin-terser@0.4.4(rollup@4.59.0)':
+  '@rollup/plugin-terser@1.0.0(rollup@4.59.0)':
     dependencies:
-      serialize-javascript: 6.0.2
+      serialize-javascript: 7.0.4
       smob: 1.6.1
       terser: 5.46.0
     optionalDependencies:
@@ -8418,10 +8416,6 @@ snapshots:
       discontinuous-range: 1.0.0
       ret: 0.1.15
 
-  randombytes@2.1.0:
-    dependencies:
-      safe-buffer: 5.2.1
-
   range-parser@1.2.1: {}
 
   raw-body@2.5.3:
@@ -8676,9 +8670,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  serialize-javascript@6.0.2:
-    dependencies:
-      randombytes: 2.1.0
+  serialize-javascript@7.0.4: {}
 
   serve-static@1.16.3:
     dependencies:
