@@ -4,6 +4,7 @@ import z from "zod";
 
 import telemetryDisplayTemplate from "../../icons/telemetry-display.svg";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   escapeXml,
@@ -12,7 +13,7 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-const TelemetryDisplaySettings = z.object({
+const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
   title: z.string().default("CAR #"),
   backgroundColor: z.string().default("#2a3444"),
@@ -76,6 +77,7 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   private lastState = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent<TelemetryDisplaySettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -99,6 +101,7 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<TelemetryDisplaySettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastState.delete(ev.action.id);

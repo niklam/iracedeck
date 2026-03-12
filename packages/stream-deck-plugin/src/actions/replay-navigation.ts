@@ -21,6 +21,7 @@ import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-pos
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -107,7 +108,7 @@ const NAVIGATION_VALUES = [
   "erase-tape",
 ] as const;
 
-const ReplayNavigationSettings = z.object({
+const ReplayNavigationSettings = CommonSettings.extend({
   navigation: z.enum(NAVIGATION_VALUES).default("next-session"),
   frameNumber: z.coerce.number().int().min(0).default(0),
   sessionNum: z.coerce.number().int().min(0).default(0),
@@ -145,6 +146,7 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
   protected override logger = createSDLogger(streamDeck.logger.createScope("ReplayNavigation"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ReplayNavigationSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -159,6 +161,7 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ReplayNavigationSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

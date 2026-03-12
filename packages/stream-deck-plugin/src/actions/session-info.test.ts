@@ -31,11 +31,33 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 });
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = { flagsOverlay: false, mode: "incidents", positionShowTotal: false, fuelFormat: "amount" };
+      const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags"];
+      const schema = {
+        parse: (data) => ({ ...defaults, ...data }),
+        safeParse: (data) => {
+          if (data?.mode && !validModes.includes(data.mode)) {
+            return { success: false, error: new Error("Invalid mode") };
+          }
+
+          return { success: true, data: { ...defaults, ...data } };
+        },
+      };
+
+      return schema;
+    },
+    parse: (data) => ({ flagsOverlay: false, ...data }),
+    safeParse: (data) => ({ success: true, data: { flagsOverlay: false, ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({

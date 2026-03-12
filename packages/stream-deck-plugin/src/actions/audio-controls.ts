@@ -19,6 +19,7 @@ import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -92,7 +93,7 @@ export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
   "master-volume-down": "audioMasterVolumeDown",
 };
 
-const AudioControlsSettings = z.object({
+const AudioControlsSettings = CommonSettings.extend({
   category: z.enum(["spotter", "voice-chat", "master"]).default("spotter"),
   action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
 });
@@ -129,6 +130,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   protected override logger = createSDLogger(streamDeck.logger.createScope("AudioControls"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<AudioControlsSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -143,6 +145,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<AudioControlsSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

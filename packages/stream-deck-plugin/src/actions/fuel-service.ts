@@ -17,6 +17,7 @@ import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.sv
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -93,7 +94,7 @@ export const FUEL_SERVICE_GLOBAL_KEYS: Record<string, string> = {
 const FuelUnit = z.enum(["l", "g", "k"]);
 type FuelUnit = z.infer<typeof FuelUnit>;
 
-const FuelServiceSettings = z.object({
+const FuelServiceSettings = CommonSettings.extend({
   mode: z
     .enum([
       "add-fuel",
@@ -201,6 +202,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("FuelService"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<FuelServiceSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -215,6 +217,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<FuelServiceSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

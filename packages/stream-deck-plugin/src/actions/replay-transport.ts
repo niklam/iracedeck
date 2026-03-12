@@ -18,6 +18,7 @@ import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -64,7 +65,7 @@ const REPLAY_TRANSPORT_ICONS: Record<TransportAction, string> = {
   "frame-backward": frameBackwardIconSvg,
 };
 
-const ReplayTransportSettings = z.object({
+const ReplayTransportSettings = CommonSettings.extend({
   transport: z
     .enum([
       "play",
@@ -110,6 +111,7 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
   protected override logger = createSDLogger(streamDeck.logger.createScope("ReplayTransport"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ReplayTransportSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -124,6 +126,7 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ReplayTransportSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

@@ -39,6 +39,7 @@ import zoomToggleIconSvg from "@iracedeck/icons/camera-editor-controls/zoom-togg
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -196,7 +197,7 @@ export const CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS: Record<ControlType, string> = {
   "load-car-camera": "camCtrlLoadCarCamera",
 };
 
-const CameraEditorControlsSettings = z.object({
+const CameraEditorControlsSettings = CommonSettings.extend({
   control: z.enum(CONTROL_VALUES).default("open-camera-tool"),
 });
 
@@ -230,6 +231,7 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
   protected override logger = createSDLogger(streamDeck.logger.createScope("CameraEditorControls"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CameraEditorControlsSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -244,6 +246,7 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CameraEditorControlsSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

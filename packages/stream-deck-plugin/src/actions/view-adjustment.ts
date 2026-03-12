@@ -19,6 +19,7 @@ import uiSizeIncreaseIconSvg from "@iracedeck/icons/view-adjustment/ui-size-incr
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -108,7 +109,7 @@ export const VIEW_ADJUSTMENT_GLOBAL_KEYS: Record<AdjustmentType, Record<Directio
   },
 };
 
-const ViewAdjustmentSettings = z.object({
+const ViewAdjustmentSettings = CommonSettings.extend({
   adjustment: z.enum(["fov", "horizon", "driver-height", "recenter-vr", "ui-size"]).default("fov"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -144,6 +145,7 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
   protected override logger = createSDLogger(streamDeck.logger.createScope("ViewAdjustment"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ViewAdjustmentSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -158,6 +160,7 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ViewAdjustmentSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

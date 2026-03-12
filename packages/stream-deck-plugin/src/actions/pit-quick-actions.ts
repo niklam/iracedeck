@@ -12,6 +12,7 @@ import windshieldTearoffIconSvg from "@iracedeck/icons/pit-quick-actions/windshi
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -37,7 +38,7 @@ const PIT_QUICK_ACTION_LABELS: Record<PitQuickActionType, { mainLabel: string; s
   "request-fast-repair": { mainLabel: "FAST", subLabel: "REPAIR" },
 };
 
-const PitQuickActionsSettings = z.object({
+const PitQuickActionsSettings = CommonSettings.extend({
   action: z.enum(["clear-all-checkboxes", "windshield-tearoff", "request-fast-repair"]).default("clear-all-checkboxes"),
 });
 
@@ -72,6 +73,7 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
   protected override logger = createSDLogger(streamDeck.logger.createScope("PitQuickActions"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<PitQuickActionsSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -86,6 +88,7 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<PitQuickActionsSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

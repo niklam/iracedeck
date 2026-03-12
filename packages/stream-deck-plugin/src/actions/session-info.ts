@@ -10,6 +10,7 @@ import z from "zod";
 
 import sessionInfoTemplate from "../../icons/session-info.svg";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   LogLevel,
@@ -33,7 +34,7 @@ const UNLIMITED_LAPS = 32767;
 
 const LITERS_PER_GALLON = 3.78541;
 
-const SessionInfoSettings = z.object({
+const SessionInfoSettings = CommonSettings.extend({
   mode: z.enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags"]).default("incidents"),
   positionShowTotal: z
     .union([z.boolean(), z.string()])
@@ -179,6 +180,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   private flagPulseTimers = new Map<string, ReturnType<typeof setInterval>>();
 
   override async onWillAppear(ev: WillAppearEvent<SessionInfoSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -207,6 +209,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SessionInfoSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.cancelFlash(ev.action.id);

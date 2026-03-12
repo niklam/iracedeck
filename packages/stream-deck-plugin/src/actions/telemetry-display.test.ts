@@ -27,6 +27,19 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data) => ({ flagsOverlay: false, ...data }),
+        safeParse: (data) => ({ success: true, data: { flagsOverlay: false, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data) => ({ flagsOverlay: false, ...data }),
+    safeParse: (data) => ({ success: true, data: { flagsOverlay: false, ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = {
       subscribe: vi.fn(),

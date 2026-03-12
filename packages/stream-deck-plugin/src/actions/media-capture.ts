@@ -16,6 +16,7 @@ import videoTimerIconSvg from "@iracedeck/icons/media-capture/video-timer.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -76,7 +77,7 @@ export const MEDIA_CAPTURE_GLOBAL_KEYS: Record<string, string> = {
   "take-giant-screenshot": "mediaCaptureGiantScreenshot",
 };
 
-const MediaCaptureSettings = z.object({
+const MediaCaptureSettings = CommonSettings.extend({
   action: z.enum(ACTION_VALUES).default("start-stop-video"),
 });
 
@@ -111,6 +112,7 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
   protected override logger = createSDLogger(streamDeck.logger.createScope("MediaCapture"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<MediaCaptureSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -125,6 +127,7 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<MediaCaptureSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

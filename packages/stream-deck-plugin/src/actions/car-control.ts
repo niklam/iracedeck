@@ -17,6 +17,7 @@ import z from "zod";
 
 import carControlTemplate from "../../icons/car-control.svg";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -137,7 +138,7 @@ export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
   return hasFlag(telemetry.EngineWarnings, EngineWarnings.PitSpeedLimiter);
 }
 
-const CarControlSettings = z.object({
+const CarControlSettings = CommonSettings.extend({
   control: z.enum(["starter", "ignition", "pit-speed-limiter", "enter-exit-tow", "pause-sim"]).default("starter"),
 });
 
@@ -203,6 +204,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   private lastState = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent<CarControlSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -227,6 +229,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CarControlSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);

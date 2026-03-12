@@ -20,6 +20,7 @@ import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -117,7 +118,7 @@ export const COCKPIT_MISC_GLOBAL_KEYS: Record<string, string> = {
   "in-lap-mode": "cockpitMiscInLapMode",
 };
 
-const CockpitMiscSettings = z.object({
+const CockpitMiscSettings = CommonSettings.extend({
   control: z
     .enum([
       "toggle-wipers",
@@ -168,6 +169,7 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("CockpitMisc"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CockpitMiscSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -182,6 +184,7 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CockpitMiscSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

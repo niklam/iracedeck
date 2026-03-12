@@ -40,6 +40,7 @@ import yawIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-i
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -202,7 +203,7 @@ export const CAMERA_EDITOR_GLOBAL_KEYS: Record<AdjustmentType, Record<DirectionT
   "focus-depth": { increase: "camEditFocusDepthIncrease", decrease: "camEditFocusDepthDecrease" },
 };
 
-const CameraEditorAdjustmentsSettings = z.object({
+const CameraEditorAdjustmentsSettings = CommonSettings.extend({
   adjustment: z.enum(ADJUSTMENT_VALUES).default("latitude"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -238,6 +239,7 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   protected override logger = createSDLogger(streamDeck.logger.createScope("CameraEditorAdjustments"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -252,6 +254,7 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

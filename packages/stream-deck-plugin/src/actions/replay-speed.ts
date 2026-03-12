@@ -12,6 +12,7 @@ import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -35,7 +36,7 @@ const REPLAY_SPEED_LABELS: Record<SpeedDirection, { mainLabel: string; subLabel:
   decrease: { mainLabel: "SLOW DOWN", subLabel: "REPLAY" },
 };
 
-const ReplaySpeedSettings = z.object({
+const ReplaySpeedSettings = CommonSettings.extend({
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
@@ -70,6 +71,7 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("ReplaySpeed"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ReplaySpeedSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -84,6 +86,7 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ReplaySpeedSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

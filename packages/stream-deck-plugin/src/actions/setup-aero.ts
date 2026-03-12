@@ -17,6 +17,7 @@ import rfBrakeAttachedIconSvg from "@iracedeck/icons/setup-aero/rf-brake-attache
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -95,7 +96,7 @@ export const SETUP_AERO_GLOBAL_KEYS: Record<string, string> = {
   "rf-brake-attached": "setupAeroRfBrakeAttached",
 };
 
-const SetupAeroSettings = z.object({
+const SetupAeroSettings = CommonSettings.extend({
   setting: z.enum(["front-wing", "rear-wing", "qualifying-tape", "rf-brake-attached"]).default("front-wing"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -135,6 +136,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupAero"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupAeroSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -149,6 +151,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupAeroSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

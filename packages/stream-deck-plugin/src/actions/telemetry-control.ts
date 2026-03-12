@@ -14,6 +14,7 @@ import toggleLoggingIconSvg from "@iracedeck/icons/telemetry-control/toggle-logg
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -69,7 +70,7 @@ export const TELEMETRY_CONTROL_GLOBAL_KEYS: Record<string, string> = {
   "mark-event": "telemetryControlMarkEvent",
 };
 
-const TelemetryControlSettings = z.object({
+const TelemetryControlSettings = CommonSettings.extend({
   action: z.enum(ACTION_VALUES).default("toggle-logging"),
 });
 
@@ -105,6 +106,7 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
   protected override logger = createSDLogger(streamDeck.logger.createScope("TelemetryControl"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<TelemetryControlSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -119,6 +121,7 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<TelemetryControlSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

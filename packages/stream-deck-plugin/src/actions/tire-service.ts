@@ -12,6 +12,7 @@ import z from "zod";
 
 import tireServiceTemplate from "../../icons/tire-service.svg";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   generateIconText,
@@ -42,7 +43,7 @@ const DEFAULT_TIRES: DriverTire[] = [{ TireIndex: 0, TireCompoundType: "Dry" }];
 
 type DriverTire = { TireIndex: number; TireCompoundType: string };
 
-const TireServiceSettings = z.object({
+const TireServiceSettings = CommonSettings.extend({
   action: z.enum(["toggle-tires", "change-compound", "clear-tires"]).default("toggle-tires"),
   lf: z.coerce.boolean().default(true),
   rf: z.coerce.boolean().default(true),
@@ -289,6 +290,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
   private lastState = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent<TireServiceSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
 
@@ -313,6 +315,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<TireServiceSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
 

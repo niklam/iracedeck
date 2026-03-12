@@ -19,6 +19,7 @@ import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -90,7 +91,7 @@ export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
   "display-ref-car": "toggleUiDisplayRefCar",
 };
 
-const ToggleUiElementsSettings = z.object({
+const ToggleUiElementsSettings = CommonSettings.extend({
   element: z
     .enum([
       "dash-box",
@@ -136,6 +137,7 @@ export class ToggleUiElements extends ConnectionStateAwareAction<ToggleUiElement
   protected override logger = createSDLogger(streamDeck.logger.createScope("ToggleUiElements"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ToggleUiElementsSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -150,6 +152,7 @@ export class ToggleUiElements extends ConnectionStateAwareAction<ToggleUiElement
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ToggleUiElementsSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

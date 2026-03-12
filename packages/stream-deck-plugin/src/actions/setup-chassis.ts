@@ -36,6 +36,7 @@ import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-incr
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -153,7 +154,7 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "power-steering-decrease": "setupChassisPowerSteeringDecrease",
 };
 
-const SetupChassisSettings = z.object({
+const SetupChassisSettings = CommonSettings.extend({
   setting: z
     .enum([
       "differential-preload",
@@ -206,6 +207,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupChassis"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupChassisSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -220,6 +222,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupChassisSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

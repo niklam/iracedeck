@@ -16,6 +16,7 @@ import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -96,7 +97,7 @@ export const CHAT_GLOBAL_KEYS: Record<string, string> = {
   whisper: "chatWhisper",
 };
 
-const ChatSettings = z.object({
+const ChatSettings = CommonSettings.extend({
   mode: z.enum(["open-chat", "reply", "whisper", "respond-pm", "cancel", "send-message", "macro"]).default("open-chat"),
   message: z.string().default(""),
   macroNumber: z.coerce.number().min(1).max(15).default(1),
@@ -236,6 +237,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
   private lastRenderedIcon = new Map<string, string>();
 
   override async onWillAppear(ev: WillAppearEvent<ChatSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -259,6 +261,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ChatSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedIcon.delete(ev.action.id);

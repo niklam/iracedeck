@@ -66,6 +66,19 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = { flagsOverlay: false, action: "toggle-tires", lf: true, rf: true, lr: true, rr: true };
+      const schema = {
+        parse: (data) => ({ ...defaults, ...data }),
+        safeParse: (data) => ({ success: true, data: { ...defaults, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data) => ({ flagsOverlay: false, ...data }),
+    safeParse: (data) => ({ success: true, data: { flagsOverlay: false, ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = {
       subscribe: vi.fn(),
@@ -76,6 +89,8 @@ vi.mock("../shared/index.js", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({

@@ -15,6 +15,7 @@ import lookUpIconSvg from "@iracedeck/icons/look-direction/look-up.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -61,7 +62,7 @@ export const LOOK_DIRECTION_GLOBAL_KEYS: Record<LookDirectionType, string> = {
   "look-down": "lookDirectionDown",
 };
 
-const LookDirectionSettings = z.object({
+const LookDirectionSettings = CommonSettings.extend({
   direction: z.enum(["look-left", "look-right", "look-up", "look-down"]).default("look-left"),
 });
 
@@ -99,6 +100,7 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   private heldCombinations = new Map<string, KeyCombination>();
 
   override async onWillAppear(ev: WillAppearEvent<LookDirectionSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -114,6 +116,7 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<LookDirectionSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }
