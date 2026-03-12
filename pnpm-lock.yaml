@@ -176,8 +176,8 @@ importers:
         specifier: 25.3.5
         version: 25.3.5
       ejs:
-        specifier: 4.0.1
-        version: 4.0.1
+        specifier: 5.0.1
+        version: 5.0.1
       rimraf:
         specifier: 6.1.3
         version: 6.1.3
@@ -2092,8 +2092,8 @@ packages:
     engines: {node: '>=0.10.0'}
     hasBin: true
 
-  ejs@4.0.1:
-    resolution: {integrity: sha512-krvQtxc0btwSm/nvnt1UpnaFDFVJpJ0fdckmALpCgShsr/iGYHTnJiUliZTgmzq/UxTX33TtOQVKaNigMQp/6Q==}
+  ejs@5.0.1:
+    resolution: {integrity: sha512-COqBPFMxuPTPspXl2DkVYaDS3HtrD1GpzOGkNTJ1IYkifq/r9h8SVEFrjA3D9/VJGOEoMQcrlhpntcSUrM8k6A==}
     engines: {node: '>=0.12.18'}
     hasBin: true
 
@@ -6548,9 +6548,7 @@ snapshots:
     dependencies:
       jake: 10.9.4
 
-  ejs@4.0.1:
-    dependencies:
-      jake: 10.9.4
+  ejs@5.0.1: {}
 
   emoji-regex@10.6.0: {}
 
