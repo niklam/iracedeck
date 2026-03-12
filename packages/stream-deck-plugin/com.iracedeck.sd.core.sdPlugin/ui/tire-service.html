@@ -78,6 +78,17 @@
     letter-spacing: 0.5px;
   }
 </style>
+<script>
+  // sdpi-textfield and sdpi-textarea don't reliably apply the default attribute
+  // for new action instances. Wait for settings to load, then fill empty fields.
+  setTimeout(() => {
+    document.querySelectorAll("sdpi-textfield[default][setting], sdpi-textarea[default][setting]").forEach((el) => {
+      if (!el.value) {
+        el.value = el.getAttribute("default");
+      }
+    });
+  }, 500);
+</script>
 
 	</head>
 	<body>

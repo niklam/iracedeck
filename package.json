@@ -1,6 +1,6 @@
 {
   "name": "iracedeck",
-  "version": "0.10.1",
+  "version": "0.13.0",
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "type": "module",
@@ -28,12 +28,12 @@
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",
-    "prepare": "husky"
+    "prepare": "husky || exit 0"
   },
   "devDependencies": {
     "@elgato/eslint-config": "0.3.2",
     "@elgato/prettier-config": "0.3.3",
-    "@eslint/js": "9.39.3",
+    "@eslint/js": "9.39.4",
     "@release-it/conventional-changelog": "10.0.5",
     "@stylistic/eslint-plugin": "5.10.0",
     "@tsconfig/node22": "22.0.5",
@@ -48,7 +48,7 @@
     "node-gyp": "12.2.0",
     "prettier": "3.8.1",
     "release-it": "19.2.4",
-    "turbo": "2.8.13",
+    "turbo": "2.8.14",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
   },
