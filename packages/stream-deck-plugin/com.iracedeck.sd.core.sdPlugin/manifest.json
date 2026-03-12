@@ -177,7 +177,7 @@
       "Name": "Cockpit Misc",
       "UUID": "com.iracedeck.sd.core.cockpit-misc",
       "Icon": "imgs/actions/cockpit-misc/icon",
-      "Tooltip": "Miscellaneous cockpit controls (wipers, FFB, latency, dash pages, in-lap mode)",
+      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
         "Keypad",
