@@ -192,6 +192,82 @@ describe("SDKController", () => {
     });
   });
 
+  describe("getCurrentTemplateContext", () => {
+    it("should return null when no telemetry available", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+
+      expect(controller.getCurrentTemplateContext()).toBeNull();
+    });
+
+    it("should return a template context when telemetry is available", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100, Gear: 3 });
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+
+      const ctx = controller.getCurrentTemplateContext();
+
+      expect(ctx).not.toBeNull();
+      expect(ctx!["telemetry.Speed"]).toBe("100");
+    });
+
+    it("should cache context within the same tick", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100, Gear: 3 });
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+
+      const ctx1 = controller.getCurrentTemplateContext();
+      const ctx2 = controller.getCurrentTemplateContext();
+
+      expect(ctx1).toBe(ctx2); // Same object reference
+    });
+
+    it("should rebuild context after telemetry update", () => {
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100, Gear: 3 });
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+
+      controller.subscribe("test", vi.fn());
+
+      const ctx1 = controller.getCurrentTemplateContext();
+
+      // Simulate new telemetry tick
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 200, Gear: 4 });
+      vi.advanceTimersByTime(250);
+
+      const ctx2 = controller.getCurrentTemplateContext();
+
+      expect(ctx2).not.toBe(ctx1);
+      expect(ctx2!["telemetry.Speed"]).toBe("200");
+    });
+
+    it("should return null when no telemetry has ever been received", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+
+      expect(controller.getCurrentTemplateContext()).toBeNull();
+    });
+
+    it("should invalidate cached context on disconnect and rebuild on reconnect", () => {
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100 });
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(null);
+
+      controller.subscribe("test", vi.fn());
+
+      const ctxBefore = controller.getCurrentTemplateContext();
+      expect(ctxBefore).not.toBeNull();
+      expect(ctxBefore!["telemetry.Speed"]).toBe("100");
+
+      // After new telemetry, context should be rebuilt (not the same object)
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 300 });
+      vi.advanceTimersByTime(250);
+
+      const ctxAfter = controller.getCurrentTemplateContext();
+      expect(ctxAfter).not.toBe(ctxBefore);
+      expect(ctxAfter!["telemetry.Speed"]).toBe("300");
+    });
+  });
+
   describe("reconnection", () => {
     it("should attempt reconnection when disconnected", () => {
       vi.mocked(mockSdk.connect).mockReturnValue(false);

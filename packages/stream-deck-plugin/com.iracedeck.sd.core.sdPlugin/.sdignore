@@ -1,0 +1,41 @@
+# Build intermediate objects
+**/build/Release/obj/
+
+# MSVC debug symbols
+*.pdb
+
+# MSVC incremental linking cache
+*.iobj
+*.ipdb
+
+# MSVC linker artifacts
+*.exp
+*.lib
+
+# MSBuild tracking logs
+*.tlog
+
+# Python bytecode cache (node-gyp)
+**/__pycache__/
+
+# Dev dependencies (nested in native modules)
+**/node_modules/typescript/
+**/node_modules/@types/
+**/node_modules/vitest/
+**/node_modules/node-gyp/
+**/node_modules/rimraf/
+
+# Source files (already compiled)
+*/node_modules//src/
+*/node_modules/@/*/src/
+
+# Dev/build config files
+**/tsconfig.json
+**/package-lock.json
+**/binding.gyp
+**/.gitignore
+**/.npmignore
+**/CLAUDE.md
+
+# Compiled object files
+*.obj
