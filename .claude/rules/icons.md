@@ -31,7 +31,7 @@ packages/icons/{action-name}/
 
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
@@ -49,7 +49,7 @@ The Rollup `svgPlugin` resolves `@iracedeck/icons/` to `packages/icons/`.
 ### Label placeholders
 
 - **`{{mainLabel}}`** — prominent label (larger, bold, white `#ffffff`)
-- **`{{subLabel}}`** — secondary label (smaller, subdued `#aaaaaa`)
+- **`{{subLabel}}`** — secondary label (smaller, white `#ffffff`)
 
 ## Dynamic Templates (for telemetry-driven content)
 

@@ -98,3 +98,17 @@ export {
   VideoCaptureMode,
   IRSDK_BROADCAST_MSG_NAME,
 } from "./commands/index.js";
+
+// Template variable system
+export { resolveTemplate, resolvePathValue } from "./template-resolver.js";
+export {
+  buildTemplateContext,
+  buildTemplateContextFromData,
+  flattenForDisplay,
+  prefixKeys,
+  splitDriverName,
+  findNearestDriverOnTrack,
+  findDriverByRacePosition,
+  formatTimeRemaining,
+  type TemplateContext,
+} from "./template-context.js";

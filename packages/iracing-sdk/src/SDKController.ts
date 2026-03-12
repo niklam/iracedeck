@@ -5,6 +5,7 @@
 import { ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
+import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
 
 export type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: boolean) => void;
@@ -18,6 +19,8 @@ export class SDKController {
   private isConnected = false;
   private lastValidTelemetry: TelemetryData | null = null;
   private reconnectEnabled = true;
+  private templateContextDirty = true;
+  private lastTemplateContext: TemplateContext | null = null;
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
     this.sdk = sdk;
@@ -99,6 +102,8 @@ export class SDKController {
 
     this.sdk.disconnect();
     this.isConnected = false;
+    this.lastTemplateContext = null;
+    this.templateContextDirty = true;
   }
 
   /**
@@ -136,6 +141,8 @@ export class SDKController {
         this.sdk.disconnect();
         this.isConnected = false;
         this.lastValidTelemetry = null;
+        this.lastTemplateContext = null;
+        this.templateContextDirty = true;
         this.notifySubscribers(null);
       }
 
@@ -157,6 +164,7 @@ export class SDKController {
 
     // Cache the valid telemetry
     this.lastValidTelemetry = telemetry;
+    this.templateContextDirty = true;
     this.notifySubscribers(telemetry);
   }
 
@@ -195,6 +203,8 @@ export class SDKController {
       this.sdk.disconnect();
       this.isConnected = false;
       this.lastValidTelemetry = null;
+      this.lastTemplateContext = null;
+      this.templateContextDirty = true;
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately
@@ -228,6 +238,24 @@ export class SDKController {
    */
   getSessionInfo(): SessionInfo | null {
     return this.sdk.getSessionInfo();
+  }
+
+  /**
+   * Get the current template context (lazy-built, cached per tick).
+   * Returns null when not connected or no telemetry available.
+   */
+  getCurrentTemplateContext(): TemplateContext | null {
+    const telemetry = this.getCurrentTelemetry();
+
+    if (!telemetry) return null;
+
+    if (this.templateContextDirty || !this.lastTemplateContext) {
+      const sessionInfo = this.getSessionInfo();
+      this.lastTemplateContext = buildTemplateContextFromData(telemetry, sessionInfo);
+      this.templateContextDirty = false;
+    }
+
+    return this.lastTemplateContext;
   }
 
   /**
