@@ -11,7 +11,7 @@
 
   <!-- Two-line label (inverted: secondary top, primary bottom) -->
   <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
-        fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">LATITUDE</text>
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">LATITUDE</text>
   <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
         fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">+</text>
 </svg>
