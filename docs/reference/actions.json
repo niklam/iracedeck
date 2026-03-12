@@ -26,6 +26,13 @@
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
             { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" }
           ]
+        },
+        {
+          "id": "com.iracedeck.sd.core.telemetry-display",
+          "name": "Telemetry Display",
+          "file": "telemetry-display.ts",
+          "encoder": false,
+          "description": "Custom mustache template display for any telemetry or session variable"
         }
       ]
     },

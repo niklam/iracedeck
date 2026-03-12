@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "iRaceDeck",
-  "Version": "0.10.1.0",
+  "Version": "0.13.0.0",
   "Author": "Niklas Lampén",
   "Actions": [
     {
@@ -704,6 +704,23 @@
       "States": [
         {
           "Image": "imgs/actions/session-info/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
+      "Name": "Telemetry Display",
+      "UUID": "com.iracedeck.sd.core.telemetry-display",
+      "Icon": "imgs/actions/telemetry-display/icon",
+      "Tooltip": "Display live telemetry values using custom templates",
+      "PropertyInspectorPath": "ui/telemetry-display.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/telemetry-display/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }

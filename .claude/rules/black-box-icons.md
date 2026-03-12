@@ -40,7 +40,7 @@ All icons use a consistent inner frame:
 
 Two-line labels at bottom:
 - **Line 1** (name): y=52, font-size 10px, white (#ffffff), bold, Arial
-- **Line 2** (action): y=63, font-size 8px, light gray (#aaaaaa), Arial
+- **Line 2** (action): y=63, font-size 8px, white (#ffffff), Arial
 
 Label configurations:
 | Black Box | Line 1 | Line 2 |
@@ -164,7 +164,7 @@ const RED = "#e74c3c";     // Hot temperatures
     <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">{{mainLabel}}</text>
     <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="8">{{subLabel}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="8">{{subLabel}}</text>
   </g>
 </svg>
 ```

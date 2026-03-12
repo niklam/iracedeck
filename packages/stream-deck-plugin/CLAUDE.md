@@ -135,7 +135,7 @@ Standalone 144x144 SVGs with Mustache label placeholders. One file per variant (
 
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#aaaaaa" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
@@ -145,7 +145,7 @@ Standalone 144x144 SVGs with Mustache label placeholders. One file per variant (
 - Background color must be unique per action (check existing actions to avoid duplicates)
 - All coordinates doubled from 72x72 (Stream Deck downscales as needed)
 - Use literal hex color values, not constants
-- Placeholders: `{{mainLabel}}` (bold, white), `{{subLabel}}` (subdued, gray)
+- Placeholders: `{{mainLabel}}` (bold, white), `{{subLabel}}` (white, smaller)
 
 #### 4. Category icon — `com.iracedeck.sd.core.sdPlugin/imgs/actions/{action-name}/icon.svg`
 
