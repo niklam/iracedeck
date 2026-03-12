@@ -119,6 +119,7 @@
           "encoder": true,
           "settingsKeys": ["control", "direction"],
           "modes": [
+            { "control": "toggle-wipers", "label": "Toggle Wipers" },
             { "control": "trigger-wipers", "label": "Trigger Wipers" },
             { "control": "ffb-max-force", "direction": "increase", "label": "FFB Max Force Up" },
             { "control": "ffb-max-force", "direction": "decrease", "label": "FFB Max Force Down" },
