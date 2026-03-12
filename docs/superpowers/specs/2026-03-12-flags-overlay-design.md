@@ -10,7 +10,7 @@ Add a per-action **Flags Overlay** setting that, when enabled, flashes the Strea
 ## Architecture Decisions
 
 - **Flag overlay logic lives in `BaseAction`** — alongside the existing grayscale overlay system, keeping all overlay concerns in one place.
-- **`BaseAction` subscribes to telemetry directly** via `getController()` (same singleton pattern `ConnectionStateAwareAction` uses). One shared subscription for all overlay-enabled contexts.
+- **`BaseAction` subscribes to telemetry directly** via `getController()` (same singleton pattern `ConnectionStateAwareAction` uses). One shared subscription for all overlay-enabled contexts. Trade-off: this gives `BaseAction` a telemetry dependency, making it no longer a lightweight base class. Acceptable because all 30 actions extend `ConnectionStateAwareAction` in practice, and the overlay system belongs alongside the existing grayscale overlay.
 - **Flag utility extracted to `@iracedeck/iracing-sdk`** — `FlagInfo`, `FLAG_DEFINITIONS`, `resolveActiveFlag`, and new `resolveAllActiveFlags` are pure iRacing domain logic, reusable by future plugins.
 - **CommonSettings schema** — shared Zod schema that all action settings extend, providing `flagsOverlay` (and future common settings) without per-action changes.
 
@@ -41,7 +41,7 @@ New function for multi-flag overlay:
 function resolveAllActiveFlags(sessionFlags: number | undefined): FlagInfo[];
 ```
 
-Returns all matching flags (not just highest priority) for multi-flag alternation (e.g., yellow + blue alternate each cycle).
+Returns all matching flags (not just highest priority) for multi-flag alternation (e.g., yellow + blue alternate each cycle). **Excludes Green** — green is the normal racing state and should not trigger an overlay.
 
 All exported from the SDK package barrel (`index.ts`).
 
@@ -91,16 +91,24 @@ This prevents telemetry-driven actions (e.g., speed display updating every 250ms
 - **`onWillDisappear`**: remove context from `flagOverlayContexts`; if set is empty, unsubscribe and stop timer
 - **`onDidReceiveSettings`** (new override in `BaseAction`): update `flagOverlayContexts` membership when user toggles the checkbox. Subclasses call `super.onDidReceiveSettings(ev)`.
 
+**IMPORTANT:** All actions must add `await super.onWillAppear(ev)` and `await super.onDidReceiveSettings(ev)` calls. Currently no actions chain to `super` for these methods. Without these calls, `BaseAction` lifecycle hooks will silently not fire.
+
 #### Flash cycle
 
 1. Telemetry callback calls `resolveAllActiveFlags(sessionFlags)`
-2. If flags changed from previous state: update `currentFlags`, reset `flagFlashIndex`, start/restart timer
-3. Timer fires every 500ms: for each context in `flagOverlayContexts`, set image to solid color SVG of `currentFlags[flagFlashIndex % length]`, increment index. Add context to `flagOverlayActive`.
+2. If flags changed from previous state: **clear existing timer with `clearInterval`** before starting a new one (prevents timer leaks during rapid flag transitions), update `currentFlags`, reset `flagFlashIndex`, start new timer
+3. Timer fires every 500ms: for each context in `flagOverlayContexts`, set image to solid color SVG of `currentFlags[flagFlashIndex % length]`, increment index. Add context to `flagOverlayActive`. (If many buttons have overlay enabled, this sends one `setImage` per context per tick — acceptable.)
 4. If `currentFlags` becomes empty: stop timer, restore original SVGs for all overlay contexts, remove from `flagOverlayActive`.
 
 #### Overlay priority
 
 Flag overlay takes priority over grayscale. When flags are active and overlay is enabled, show the flag color regardless of connection state. When flags clear, the normal overlay logic kicks in (grayscale if disconnected, original if connected).
+
+Button presses (`onKeyDown`, `onDialRotate`, etc.) continue to fire normally during active flag overlay — the overlay is purely visual and does not block action functionality.
+
+#### Session-info interaction
+
+`session-info.ts` continues to use `resolveActiveFlag` (singular) for its own flags mode display. Its own flash/pulse logic is separate from the BaseAction overlay. When session-info is in flags mode with overlay enabled, session-info's own flag visualization takes precedence (it already calls `updateKeyImage` with its flag-styled SVG, and the BaseAction overlay simply shows the same flag color).
 
 ### 4. Flag Overlay SVG
 
@@ -151,8 +159,10 @@ Collapsible "Common Settings" section (styled like "Related Key Bindings" accord
 | `packages/stream-deck-plugin/src/shared/index.ts` | Export CommonSettings |
 | `packages/stream-deck-plugin/src/shared/base-action.ts` | Flag overlay logic, image output gating |
 | `packages/stream-deck-plugin/src/actions/session-info.ts` | Import flag utils from SDK instead of local definitions |
-| All 32 action `.ts` files | Extend CommonSettings |
+| All 30 action `.ts` files | Extend CommonSettings, add `super.onWillAppear(ev)` and `super.onDidReceiveSettings(ev)` calls |
 | All action `.ejs` templates | Include common-settings partial |
+| `.claude/rules/stream-deck-actions.md` | Document CommonSettings pattern and super call requirements |
+| `packages/stream-deck-plugin/CLAUDE.md` | Document CommonSettings and common-settings partial conventions |
 
 ## Files NOT Modified
 
