@@ -1,3 +1,4 @@
+import type { FlagInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
@@ -23,7 +24,7 @@ function createMockEvent<T>(actionId: string, settings: T = {} as T) {
 }
 
 // Concrete implementation for testing
-class TestAction extends BaseAction<{ testSetting?: string }> {
+class TestAction extends BaseAction<{ testSetting?: string; flagsOverlay?: boolean }> {
   async setImage(ev: any, svg: string): Promise<void> {
     await this.setKeyImage(ev, svg);
   }
@@ -34,6 +35,22 @@ class TestAction extends BaseAction<{ testSetting?: string }> {
 
   getStoredImage(contextId: string): string | undefined {
     return this.getKeyImage(contextId);
+  }
+
+  simulateFlagOverlayActive(contextId: string): void {
+    this.flagOverlayActive.add(contextId);
+  }
+
+  simulateFlagOverlayInactive(contextId: string): void {
+    this.flagOverlayActive.delete(contextId);
+  }
+
+  isFlagOverlayEnabled(contextId: string): boolean {
+    return this.flagOverlayContexts.has(contextId);
+  }
+
+  generateFlagSvgPublic(flagInfo: FlagInfo): string {
+    return this.generateFlagOverlaySvg(flagInfo);
   }
 }
 
@@ -322,6 +339,111 @@ describe("BaseAction", () => {
 
       expect(action2.getStoredImage("context-2")).toBe("<svg>action2</svg>");
       expect(action2.getStoredImage("context-1")).toBeUndefined();
+    });
+  });
+
+  describe("flag overlay - image gating", () => {
+    it("should store SVG but skip setImage when flag overlay is active", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: true });
+
+      await testAction.setImage(ev, "<svg>original</svg>");
+      ev.action.setImage.mockClear();
+
+      // Simulate flag overlay being active
+      testAction.simulateFlagOverlayActive("context-1");
+
+      await testAction.updateImage("context-1", "<svg>updated-during-flag</svg>");
+
+      // SVG is stored (for later restore)
+      expect(testAction.getStoredImage("context-1")).toBe("<svg>updated-during-flag</svg>");
+      // But setImage was NOT called (flag overlay takes priority)
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+
+    it("should call setImage normally when flag overlay is not active", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: true });
+
+      await testAction.setImage(ev, "<svg>original</svg>");
+      ev.action.setImage.mockClear();
+
+      await testAction.updateImage("context-1", "<svg>updated</svg>");
+
+      expect(ev.action.setImage).toHaveBeenCalledWith("<svg>updated</svg>");
+    });
+
+    it("should gate setKeyImage as well during active flag overlay", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: true });
+
+      await testAction.setImage(ev, "<svg>original</svg>");
+
+      testAction.simulateFlagOverlayActive("context-1");
+      ev.action.setImage.mockClear();
+
+      await testAction.setImage(ev, "<svg>new-during-flag</svg>");
+
+      expect(testAction.getStoredImage("context-1")).toBe("<svg>new-during-flag</svg>");
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("flag overlay - lifecycle", () => {
+    it("should add context to flagOverlayContexts on onWillAppear with flagsOverlay=true", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: true }) as any;
+      ev.action.isKey = vi.fn().mockReturnValue(true);
+
+      await testAction.onWillAppear(ev);
+
+      expect(testAction.isFlagOverlayEnabled("context-1")).toBe(true);
+    });
+
+    it("should not add context when flagsOverlay is false", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: false }) as any;
+
+      await testAction.onWillAppear(ev);
+
+      expect(testAction.isFlagOverlayEnabled("context-1")).toBe(false);
+    });
+
+    it("should remove context from flagOverlayContexts on onWillDisappear", async () => {
+      const ev = createMockEvent("context-1", { flagsOverlay: true }) as any;
+      ev.action.isKey = vi.fn().mockReturnValue(true);
+
+      await testAction.onWillAppear(ev);
+      await testAction.onWillDisappear(ev);
+
+      expect(testAction.isFlagOverlayEnabled("context-1")).toBe(false);
+    });
+
+    it("should update context on onDidReceiveSettings", async () => {
+      const ev1 = createMockEvent("context-1", { flagsOverlay: false }) as any;
+      ev1.action.isKey = vi.fn().mockReturnValue(true);
+
+      await testAction.onWillAppear(ev1);
+      expect(testAction.isFlagOverlayEnabled("context-1")).toBe(false);
+
+      const ev2 = createMockEvent("context-1", { flagsOverlay: true }) as any;
+      ev2.action.isKey = vi.fn().mockReturnValue(true);
+
+      await testAction.onDidReceiveSettings(ev2);
+      expect(testAction.isFlagOverlayEnabled("context-1")).toBe(true);
+    });
+  });
+
+  describe("flag overlay - SVG generation", () => {
+    it("should generate a valid data URI for a flag", () => {
+      const svg = testAction.generateFlagSvgPublic({
+        label: "YELLOW",
+        color: "#f1c40f",
+        textColor: "#1a1a1a",
+        pulse: false,
+      });
+      expect(svg).toContain("data:image/svg+xml");
+      // Decode base64 to verify SVG content
+      const base64 = svg.replace("data:image/svg+xml;base64,", "");
+      const decoded = Buffer.from(base64, "base64").toString("utf-8");
+      expect(decoded).toContain("#f1c40f");
+      expect(decoded).toContain("72");
+      expect(decoded).toContain("svg");
     });
   });
 });
