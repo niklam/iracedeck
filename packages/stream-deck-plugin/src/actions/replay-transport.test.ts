@@ -140,10 +140,11 @@ describe("ReplayTransport", () => {
       expect(decodeURIComponent(result)).toContain("STOP");
     });
 
-    it("should include FWD label for fast-forward transport", () => {
-      const result = generateReplayTransportSvg({ transport: "fast-forward" });
+    it("should include FORWARD and FAST labels for fast-forward transport", () => {
+      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "fast-forward" }));
 
-      expect(decodeURIComponent(result)).toContain("FWD");
+      expect(decoded).toContain("FORWARD");
+      expect(decoded).toContain("FAST");
     });
 
     it("should include REWIND label for rewind transport", () => {
@@ -152,42 +153,23 @@ describe("ReplayTransport", () => {
       expect(decodeURIComponent(result)).toContain("REWIND");
     });
 
-    it("should include SLOW MO label for slow-motion transport", () => {
-      const result = generateReplayTransportSvg({ transport: "slow-motion" });
+    it("should include MOTION and SLOW labels for slow-motion transport", () => {
+      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "slow-motion" }));
 
-      expect(decodeURIComponent(result)).toContain("SLOW MO");
+      expect(decoded).toContain("MOTION");
+      expect(decoded).toContain("SLOW");
     });
 
-    it("should include REPLAY secondary label for play/pause/stop/fast-forward/rewind/slow-motion", () => {
-      const transports = [
-        "play",
-        "pause",
-        "stop",
-        "fast-forward",
-        "rewind",
-        "slow-motion",
-      ] as const;
+    it("should include FRAME FWD label for frame-forward", () => {
+      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "frame-forward" }));
 
-      for (const transport of transports) {
-        const result = generateReplayTransportSvg({ transport });
-        expect(decodeURIComponent(result)).toContain("REPLAY");
-      }
+      expect(decoded).toContain("FRAME FWD");
     });
 
-    it("should include FWD secondary label for frame-forward", () => {
-      const result = generateReplayTransportSvg({ transport: "frame-forward" });
-      const decoded = decodeURIComponent(result);
+    it("should include FRAME BACK label for frame-backward", () => {
+      const decoded = decodeURIComponent(generateReplayTransportSvg({ transport: "frame-backward" }));
 
-      expect(decoded).toContain("FRAME");
-      expect(decoded).toContain("FWD");
-    });
-
-    it("should include BACK secondary label for frame-backward", () => {
-      const result = generateReplayTransportSvg({ transport: "frame-backward" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("FRAME");
-      expect(decoded).toContain("BACK");
+      expect(decoded).toContain("FRAME BACK");
     });
   });
 });

@@ -171,63 +171,58 @@ describe("ReplayControl", () => {
       const result = generateReplayControlSvg({ mode: "play-pause" });
 
       expect(decodeURIComponent(result)).toContain("PLAY");
-      expect(decodeURIComponent(result)).toContain("REPLAY");
     });
 
     it("should include STOP label for stop mode", () => {
       const result = generateReplayControlSvg({ mode: "stop" });
 
       expect(decodeURIComponent(result)).toContain("STOP");
-      expect(decodeURIComponent(result)).toContain("REPLAY");
     });
 
-    it("should include FWD label for fast-forward mode", () => {
-      const result = generateReplayControlSvg({ mode: "fast-forward" });
+    it("should include FORWARD and FAST labels for fast-forward mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "fast-forward" }));
 
-      expect(decodeURIComponent(result)).toContain("FWD");
-      expect(decodeURIComponent(result)).toContain("REPLAY");
+      expect(decoded).toContain("FORWARD");
+      expect(decoded).toContain("FAST");
     });
 
     it("should include REWIND label for rewind mode", () => {
       const result = generateReplayControlSvg({ mode: "rewind" });
 
       expect(decodeURIComponent(result)).toContain("REWIND");
-      expect(decodeURIComponent(result)).toContain("REPLAY");
     });
 
-    it("should include SLOW MO label for slow-motion mode", () => {
-      const result = generateReplayControlSvg({ mode: "slow-motion" });
+    it("should include MOTION and SLOW labels for slow-motion mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "slow-motion" }));
 
-      expect(decodeURIComponent(result)).toContain("SLOW MO");
-      expect(decodeURIComponent(result)).toContain("REPLAY");
+      expect(decoded).toContain("MOTION");
+      expect(decoded).toContain("SLOW");
     });
 
-    it("should include FRAME FWD labels for frame-forward mode", () => {
+    it("should include FRAME FWD label for frame-forward mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "frame-forward" }));
 
       expect(decoded).toContain("FRAME FWD");
-      expect(decoded).toContain("REPLAY");
     });
 
-    it("should include FRAME BACK labels for frame-backward mode", () => {
+    it("should include FRAME BACK label for frame-backward mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "frame-backward" }));
 
       expect(decoded).toContain("FRAME BACK");
-      expect(decoded).toContain("REPLAY");
     });
 
     // Speed labels
-    it("should include SPEED UP label for speed-increase mode", () => {
+    it("should include FASTER and REPLAY labels for speed-increase mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "speed-increase" }));
 
-      expect(decoded).toContain("SPEED UP");
+      expect(decoded).toContain("FASTER");
       expect(decoded).toContain("REPLAY");
     });
 
-    it("should include SLOW DOWN label for speed-decrease mode", () => {
+    it("should include SLOWER and REPLAY labels for speed-decrease mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "speed-decrease" }));
 
-      expect(decoded).toContain("SLOW DOWN");
+      expect(decoded).toContain("SLOWER");
       expect(decoded).toContain("REPLAY");
     });
 
@@ -246,14 +241,14 @@ describe("ReplayControl", () => {
       expect(decoded).toContain("SESSION");
     });
 
-    it("should include NEXT and LAP labels for next-lap mode", () => {
+    it("should include LAP and NEXT labels for next-lap mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "next-lap" }));
 
       expect(decoded).toContain("NEXT");
       expect(decoded).toContain("LAP");
     });
 
-    it("should include PREVIOUS and LAP labels for prev-lap mode", () => {
+    it("should include LAP and PREVIOUS labels for prev-lap mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "prev-lap" }));
 
       expect(decoded).toContain("PREVIOUS");
@@ -274,18 +269,18 @@ describe("ReplayControl", () => {
       expect(decoded).toContain("INCIDENT");
     });
 
-    it("should include BEGINNING and REPLAY labels for jump-to-beginning mode", () => {
+    it("should include BEGINNING and JUMP TO labels for jump-to-beginning mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "jump-to-beginning" }));
 
       expect(decoded).toContain("BEGINNING");
-      expect(decoded).toContain("REPLAY");
+      expect(decoded).toContain("JUMP TO");
     });
 
-    it("should include LIVE and REPLAY labels for jump-to-live mode", () => {
+    it("should include LIVE and JUMP TO labels for jump-to-live mode", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "jump-to-live" }));
 
       expect(decoded).toContain("LIVE");
-      expect(decoded).toContain("REPLAY");
+      expect(decoded).toContain("JUMP TO");
     });
 
     // Play/pause telemetry-aware label toggle
