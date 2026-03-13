@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Chat, CHAT_GLOBAL_KEYS, generateChatSvg, generateMacroSvg, generateSendMessageSvg } from "./chat.js";
+import {
+  Chat,
+  CHAT_GLOBAL_KEYS,
+  generateChatSvg,
+  generateMacroSvg,
+  generateSendMessageSvg,
+  hasTemplateVars,
+} from "./chat.js";
 
 const {
   mockBeginChat,
@@ -146,6 +153,28 @@ describe("Chat", () => {
       expect(CHAT_GLOBAL_KEYS["cancel"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["send-message"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["macro"]).toBeUndefined();
+    });
+  });
+
+  describe("hasTemplateVars", () => {
+    it("should return true when keyText contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Speed: {{speed}}", message: "" })).toBe(true);
+    });
+
+    it("should return true when message contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "", message: "Going {{speed}} mph" })).toBe(true);
+    });
+
+    it("should return true when both contain template variables", () => {
+      expect(hasTemplateVars({ keyText: "{{gear}}", message: "{{speed}}" })).toBe(true);
+    });
+
+    it("should return false when neither contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Static", message: "Hello" })).toBe(false);
+    });
+
+    it("should return false for empty strings", () => {
+      expect(hasTemplateVars({ keyText: "", message: "" })).toBe(false);
     });
   });
 

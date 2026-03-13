@@ -112,6 +112,15 @@ type ChatSettings = z.infer<typeof ChatSettings>;
 /**
  * @internal Exported for testing
  *
+ * Checks whether chat settings contain mustache template variables in keyText or message.
+ */
+export function hasTemplateVars(settings: { keyText: string; message: string }): boolean {
+  return settings.keyText.includes("{{") || settings.message.includes("{{");
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Generates an SVG data URI icon for the chat action.
  * Supports user-configurable icon color and key text.
  *
@@ -249,7 +258,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
       const storedSettings = this.activeContexts.get(ev.action.id);
 
-      if (storedSettings && this.hasTemplateVars(storedSettings)) {
+      if (storedSettings && hasTemplateVars(storedSettings)) {
         this.updateIconFromTelemetry(ev.action.id, storedSettings);
       }
     });
@@ -409,17 +418,14 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     }
   }
 
-  private hasTemplateVars(settings: ChatSettings): boolean {
-    return settings.keyText.includes("{{");
-  }
-
   private resolveSettingsTemplates(settings: ChatSettings): ChatSettings {
-    if (!this.hasTemplateVars(settings)) return settings;
+    if (!hasTemplateVars(settings)) return settings;
 
     const context = buildTemplateContext(this.sdkController);
     const resolvedKeyText = resolveTemplate(settings.keyText, context);
+    const resolvedMessage = resolveTemplate(settings.message, context);
 
-    return { ...settings, keyText: resolvedKeyText };
+    return { ...settings, keyText: resolvedKeyText, message: resolvedMessage };
   }
 
   private async updateIconFromTelemetry(contextId: string, settings: ChatSettings): Promise<void> {
