@@ -32,8 +32,8 @@ const DIRECTION_ICONS: Record<SpeedDirection, string> = {
  * Label configuration for each speed direction
  */
 const REPLAY_SPEED_LABELS: Record<SpeedDirection, { mainLabel: string; subLabel: string }> = {
-  increase: { mainLabel: "SPEED UP", subLabel: "REPLAY" },
-  decrease: { mainLabel: "SLOW DOWN", subLabel: "REPLAY" },
+  increase: { mainLabel: "FASTER", subLabel: "REPLAY" },
+  decrease: { mainLabel: "SLOWER", subLabel: "REPLAY" },
 };
 
 const ReplaySpeedSettings = CommonSettings.extend({

@@ -41,14 +41,14 @@ type TransportAction =
  * Label configuration for each transport action (mainLabel prominent, subLabel subdued)
  */
 const REPLAY_TRANSPORT_LABELS: Record<TransportAction, { mainLabel: string; subLabel: string }> = {
-  play: { mainLabel: "PLAY", subLabel: "REPLAY" },
-  pause: { mainLabel: "PAUSE", subLabel: "REPLAY" },
-  stop: { mainLabel: "STOP", subLabel: "REPLAY" },
-  "fast-forward": { mainLabel: "FWD", subLabel: "REPLAY" },
-  rewind: { mainLabel: "REWIND", subLabel: "REPLAY" },
-  "slow-motion": { mainLabel: "SLOW MO", subLabel: "REPLAY" },
-  "frame-forward": { mainLabel: "FRAME", subLabel: "FWD" },
-  "frame-backward": { mainLabel: "FRAME", subLabel: "BACK" },
+  play: { mainLabel: "PLAY", subLabel: "" },
+  pause: { mainLabel: "PAUSE", subLabel: "" },
+  stop: { mainLabel: "STOP", subLabel: "" },
+  "fast-forward": { mainLabel: "FORWARD", subLabel: "FAST" },
+  rewind: { mainLabel: "REWIND", subLabel: "" },
+  "slow-motion": { mainLabel: "MOTION", subLabel: "SLOW" },
+  "frame-forward": { mainLabel: "FRAME FWD", subLabel: "" },
+  "frame-backward": { mainLabel: "FRAME BACK", subLabel: "" },
 };
 
 /**

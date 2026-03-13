@@ -80,23 +80,23 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
 };
 
 const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subLabel: string }> = {
-  "play-pause": { mainLabel: "PLAY", subLabel: "REPLAY" },
-  stop: { mainLabel: "STOP", subLabel: "REPLAY" },
-  "fast-forward": { mainLabel: "FWD", subLabel: "REPLAY" },
-  rewind: { mainLabel: "REWIND", subLabel: "REPLAY" },
-  "slow-motion": { mainLabel: "SLOW MO", subLabel: "REPLAY" },
-  "frame-forward": { mainLabel: "FRAME FWD", subLabel: "REPLAY" },
-  "frame-backward": { mainLabel: "FRAME BACK", subLabel: "REPLAY" },
-  "speed-increase": { mainLabel: "SPEED UP", subLabel: "REPLAY" },
-  "speed-decrease": { mainLabel: "SLOW DOWN", subLabel: "REPLAY" },
+  "play-pause": { mainLabel: "PLAY", subLabel: "" },
+  stop: { mainLabel: "STOP", subLabel: "" },
+  "fast-forward": { mainLabel: "FORWARD", subLabel: "FAST" },
+  rewind: { mainLabel: "REWIND", subLabel: "" },
+  "slow-motion": { mainLabel: "MOTION", subLabel: "SLOW" },
+  "frame-forward": { mainLabel: "FRAME FWD", subLabel: "" },
+  "frame-backward": { mainLabel: "FRAME BACK", subLabel: "" },
+  "speed-increase": { mainLabel: "FASTER", subLabel: "REPLAY" },
+  "speed-decrease": { mainLabel: "SLOWER", subLabel: "REPLAY" },
   "next-session": { mainLabel: "NEXT", subLabel: "SESSION" },
   "prev-session": { mainLabel: "PREVIOUS", subLabel: "SESSION" },
-  "next-lap": { mainLabel: "NEXT", subLabel: "LAP" },
-  "prev-lap": { mainLabel: "PREVIOUS", subLabel: "LAP" },
+  "next-lap": { mainLabel: "LAP", subLabel: "NEXT" },
+  "prev-lap": { mainLabel: "LAP", subLabel: "PREVIOUS" },
   "next-incident": { mainLabel: "NEXT", subLabel: "INCIDENT" },
   "prev-incident": { mainLabel: "PREVIOUS", subLabel: "INCIDENT" },
-  "jump-to-beginning": { mainLabel: "BEGINNING", subLabel: "REPLAY" },
-  "jump-to-live": { mainLabel: "LIVE", subLabel: "REPLAY" },
+  "jump-to-beginning": { mainLabel: "BEGINNING", subLabel: "JUMP TO" },
+  "jump-to-live": { mainLabel: "LIVE", subLabel: "JUMP TO" },
 };
 
 /**

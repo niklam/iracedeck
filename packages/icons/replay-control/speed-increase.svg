@@ -3,10 +3,10 @@
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
 
-    <!-- Icon content area: double right-pointing triangles + "+" badge -->
-    <polygon points="38,28 66,52 38,76" fill="#ffffff"/>
-    <polygon points="62,28 90,52 62,76" fill="#ffffff"/>
-    <text x="110" y="40" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="bold">+</text>
+    <!-- Icon content area: Vertical bar + double right-pointing triangles (faster) -->
+    <line x1="40" y1="28" x2="40" y2="76" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="52,28 78,52 52,76" fill="#ffffff"/>
+    <polygon points="74,28 100,52 74,76" fill="#ffffff"/>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
