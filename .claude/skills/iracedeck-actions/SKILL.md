@@ -57,7 +57,8 @@ When asked about actions or controls:
 
 | Action | Controls | Modes |
 |--------|----------|-------|
-| Audio Controls | 9 | 3 categories (spotter, voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
+| AI Spotter Controls | 7 | damage-report, weather-report, toggle-report-laps, announce-leader, louder, quieter, silence |
+| Audio Controls | 6 | 2 categories (voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
 | Black Box Selector | 13 | 11 direct selections + next/previous cycle |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (hold pattern) |
 | Car Control | 5 | starter, ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow, pause-sim |

@@ -108,7 +108,7 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
 
 /**
  * Audio Controls Action
- * Provides volume and mute controls for spotter, voice chat, and master audio
+ * Provides volume and mute controls for voice chat and master audio
  * categories via keyboard shortcuts.
  */
 @action({ UUID: "com.iracedeck.sd.core.audio-controls" })
