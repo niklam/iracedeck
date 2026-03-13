@@ -174,20 +174,20 @@ describe("AiSpotterControls", () => {
   });
 
   describe("SPOTTER_LABELS", () => {
-    it("should have SPOTTER as mainLabel for all controls", () => {
+    it("should have SPOTTER as subLabel for all controls", () => {
       for (const labels of Object.values(SPOTTER_LABELS)) {
-        expect(labels.mainLabel).toBe("SPOTTER");
+        expect(labels.subLabel).toBe("SPOTTER");
       }
     });
 
-    it("should have correct subLabels", () => {
-      expect(SPOTTER_LABELS["damage-report"].subLabel).toBe("DAMAGE");
-      expect(SPOTTER_LABELS["weather-report"].subLabel).toBe("WEATHER");
-      expect(SPOTTER_LABELS["toggle-report-laps"].subLabel).toBe("RPT LAPS");
-      expect(SPOTTER_LABELS["announce-leader"].subLabel).toBe("LEADER");
-      expect(SPOTTER_LABELS["louder"].subLabel).toBe("LOUDER");
-      expect(SPOTTER_LABELS["quieter"].subLabel).toBe("QUIETER");
-      expect(SPOTTER_LABELS["silence"].subLabel).toBe("SILENCE");
+    it("should have correct mainLabels", () => {
+      expect(SPOTTER_LABELS["damage-report"].mainLabel).toBe("DAMAGE");
+      expect(SPOTTER_LABELS["weather-report"].mainLabel).toBe("WEATHER");
+      expect(SPOTTER_LABELS["toggle-report-laps"].mainLabel).toBe("RPT LAPS");
+      expect(SPOTTER_LABELS["announce-leader"].mainLabel).toBe("LEADER");
+      expect(SPOTTER_LABELS["louder"].mainLabel).toBe("LOUDER");
+      expect(SPOTTER_LABELS["quieter"].mainLabel).toBe("QUIETER");
+      expect(SPOTTER_LABELS["silence"].mainLabel).toBe("SILENCE");
     });
   });
 

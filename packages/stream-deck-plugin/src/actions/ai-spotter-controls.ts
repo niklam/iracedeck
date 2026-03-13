@@ -61,13 +61,13 @@ export const SPOTTER_ICONS: Record<SpotterControl, string> = {
  * Label configuration for each spotter control.
  */
 export const SPOTTER_LABELS: Record<SpotterControl, { mainLabel: string; subLabel: string }> = {
-  "damage-report": { mainLabel: "SPOTTER", subLabel: "DAMAGE" },
-  "weather-report": { mainLabel: "SPOTTER", subLabel: "WEATHER" },
-  "toggle-report-laps": { mainLabel: "SPOTTER", subLabel: "RPT LAPS" },
-  "announce-leader": { mainLabel: "SPOTTER", subLabel: "LEADER" },
-  louder: { mainLabel: "SPOTTER", subLabel: "LOUDER" },
-  quieter: { mainLabel: "SPOTTER", subLabel: "QUIETER" },
-  silence: { mainLabel: "SPOTTER", subLabel: "SILENCE" },
+  "damage-report": { mainLabel: "DAMAGE", subLabel: "SPOTTER" },
+  "weather-report": { mainLabel: "WEATHER", subLabel: "SPOTTER" },
+  "toggle-report-laps": { mainLabel: "RPT LAPS", subLabel: "SPOTTER" },
+  "announce-leader": { mainLabel: "LEADER", subLabel: "SPOTTER" },
+  louder: { mainLabel: "LOUDER", subLabel: "SPOTTER" },
+  quieter: { mainLabel: "QUIETER", subLabel: "SPOTTER" },
+  silence: { mainLabel: "SILENCE", subLabel: "SPOTTER" },
 };
 
 /**
