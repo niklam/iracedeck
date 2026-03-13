@@ -473,17 +473,18 @@ static bool focusIRacingWindow()
         return true;
     }
 
-    DWORD foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), NULL);
+    HWND fg = GetForegroundWindow();
+    DWORD foregroundThreadId = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
     DWORD currentThreadId = GetCurrentThreadId();
 
-    if (foregroundThreadId != currentThreadId)
+    if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
     {
         AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
     }
 
     SetForegroundWindow(hwnd);
 
-    if (foregroundThreadId != currentThreadId)
+    if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
     {
         AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
     }
@@ -502,7 +503,7 @@ static bool focusIRacingWindow()
     }
 
     // Timed out (500ms) — focus may not have switched
-    return true;
+    return false;
 }
 
 /**

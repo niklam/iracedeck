@@ -97,7 +97,7 @@ describe("Window Focus Service", () => {
 
     focusIRacingIfEnabled();
 
-    expect(mockLogger.warn).toHaveBeenCalledWith("Failed to focus iRacing window (window not found)");
+    expect(mockLogger.warn).toHaveBeenCalledWith("Failed to focus iRacing window (window not found or timed out)");
   });
 
   it("should log debug when focuser succeeds", () => {

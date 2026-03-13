@@ -43,7 +43,7 @@ import {
   initWindowFocus,
 } from "./shared/index.js";
 
-// Enable trace logging
+// Enable debug logging
 streamDeck.logger.setLevel("debug");
 
 // Initialize the SDK singleton

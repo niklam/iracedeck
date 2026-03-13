@@ -52,10 +52,18 @@ export function focusIRacingIfEnabled(): void {
 
   if (!settings.focusIRacingWindow) return;
 
-  const success = focuser();
+  let success = false;
+
+  try {
+    success = focuser();
+  } catch (error) {
+    logger.warn(`Failed to focus iRacing window: ${error}`);
+
+    return;
+  }
 
   if (!success) {
-    logger.warn("Failed to focus iRacing window (window not found)");
+    logger.warn("Failed to focus iRacing window (window not found or timed out)");
   } else {
     logger.debug("Focused iRacing window before sending key");
   }
