@@ -122,15 +122,19 @@ type ReplayControlSettings = z.infer<typeof ReplayControlSettings>;
  * @internal Exported for testing
  *
  * Generates an SVG data URI icon for the replay control action.
+ * When mode is "play-pause", the label toggles based on isPlaying state.
  */
-export function generateReplayControlSvg(settings: { mode: ReplayControlMode }): string {
+export function generateReplayControlSvg(settings: { mode: ReplayControlMode }, isPlaying?: boolean): string {
   const { mode } = settings;
 
   const iconSvg = REPLAY_CONTROL_ICONS[mode] || REPLAY_CONTROL_ICONS["play-pause"];
   const labels = REPLAY_CONTROL_LABELS[mode] || REPLAY_CONTROL_LABELS["play-pause"];
 
+  // For play-pause mode, toggle label based on actual playback state
+  const mainLabel = mode === "play-pause" && isPlaying ? "PAUSE" : labels.mainLabel;
+
   const svg = renderIconTemplate(iconSvg, {
-    mainLabel: labels.mainLabel,
+    mainLabel,
     subLabel: labels.subLabel,
   });
 
@@ -150,14 +154,38 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   /** Cached telemetry for play/pause toggle, keyed by action context ID */
   private isReplayPlaying = new Map<string, boolean>();
 
+  /** Cached settings per context for telemetry-driven display updates */
+  private activeContexts = new Map<string, ReplayControlSettings>();
+
+  /** Last rendered state key per context (prevents redundant re-renders) */
+  private lastState = new Map<string, string>();
+
   override async onWillAppear(ev: WillAppearEvent<ReplayControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
+
+    // Seed initial play state from current telemetry
+    const current = this.sdkController.getCurrentTelemetry();
+
+    if (current?.IsReplayPlaying !== undefined) {
+      this.isReplayPlaying.set(ev.action.id, current.IsReplayPlaying as boolean);
+    }
+
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
       this.updateConnectionState();
+      const wasPlaying = this.isReplayPlaying.get(ev.action.id);
       this.updateTelemetryState(ev.action.id, telemetry);
+      const nowPlaying = this.isReplayPlaying.get(ev.action.id);
+
+      // Re-render when play state changes (for play-pause mode icon toggle)
+      const storedSettings = this.activeContexts.get(ev.action.id);
+
+      if (storedSettings && wasPlaying !== nowPlaying) {
+        this.updateDisplayFromTelemetry(ev.action.id, storedSettings);
+      }
     });
   }
 
@@ -165,11 +193,14 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.isReplayPlaying.delete(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastState.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ReplayControlSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
   }
 
@@ -182,7 +213,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   override async onDialDown(ev: DialDownEvent<ReplayControlSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeDialDown(settings.mode);
+    this.executeDialDown(ev.action.id, settings.mode);
   }
 
   override async onDialRotate(ev: DialRotateEvent<ReplayControlSettings>): Promise<void> {
@@ -215,6 +246,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         break;
       }
       case "stop": {
+        // iRacing SDK has no separate "stop" command; pause is the closest equivalent
         const success = replay.pause();
         this.logger.info("Stop executed");
         this.logger.debug(`Result: ${success}`);
@@ -313,7 +345,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     }
   }
 
-  private executeDialDown(mode: ReplayControlMode): void {
+  private executeDialDown(contextId: string, mode: ReplayControlMode): void {
     const replay = getCommands().replay;
 
     if (mode === "speed-increase" || mode === "speed-decrease") {
@@ -321,12 +353,15 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       const success = replay.play();
       this.logger.info("Speed reset to normal");
       this.logger.debug(`Result: ${success}`);
+    } else if (mode === "play-pause") {
+      // Play/pause toggle based on telemetry state
+      this.executeMode(contextId, mode);
     } else if (DIRECTIONAL_PAIRS[mode]) {
       // Navigation directional pairs: encoder push executes the selected action
-      this.executeMode("__dial__", mode);
+      this.executeMode(contextId, mode);
     } else if (mode === "jump-to-beginning" || mode === "jump-to-live") {
       // Navigation non-directional: encoder push executes the action
-      this.executeMode("__dial__", mode);
+      this.executeMode(contextId, mode);
     } else {
       // Transport modes: encoder push plays
       const success = replay.play();
@@ -379,8 +414,23 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   ): Promise<void> {
     this.updateConnectionState();
 
-    const svgDataUri = generateReplayControlSvg(settings);
+    const isPlaying = this.isReplayPlaying.get(ev.action.id) ?? false;
+    const svgDataUri = generateReplayControlSvg(settings, isPlaying);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+  }
+
+  private async updateDisplayFromTelemetry(contextId: string, settings: ReplayControlSettings): Promise<void> {
+    if (settings.mode !== "play-pause") return;
+
+    const isPlaying = this.isReplayPlaying.get(contextId) ?? false;
+    const stateKey = `${settings.mode}:${isPlaying}`;
+
+    if (this.lastState.get(contextId) === stateKey) return;
+
+    this.lastState.set(contextId, stateKey);
+
+    const svgDataUri = generateReplayControlSvg(settings, isPlaying);
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

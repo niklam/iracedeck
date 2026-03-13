@@ -287,5 +287,33 @@ describe("ReplayControl", () => {
       expect(decoded).toContain("LIVE");
       expect(decoded).toContain("REPLAY");
     });
+
+    // Play/pause telemetry-aware label toggle
+    it("should show PLAY label when isPlaying is false", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "play-pause" }, false));
+
+      expect(decoded).toContain("PLAY");
+      expect(decoded).not.toContain("PAUSE");
+    });
+
+    it("should show PAUSE label when isPlaying is true", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "play-pause" }, true));
+
+      expect(decoded).toContain("PAUSE");
+    });
+
+    it("should show PLAY label when isPlaying is undefined", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "play-pause" }));
+
+      expect(decoded).toContain("PLAY");
+      expect(decoded).not.toContain("PAUSE");
+    });
+
+    it("should not affect non-play-pause mode labels when isPlaying is true", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "stop" }, true));
+
+      expect(decoded).toContain("STOP");
+      expect(decoded).not.toContain("PAUSE");
+    });
   });
 });
