@@ -340,7 +340,6 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     try {
       const controller = getController();
       const subId = `${BaseAction.FLAG_SUBSCRIPTION_PREFIX}${Date.now()}`;
-      this.flagTelemetrySubId = subId;
 
       controller.subscribe(subId, (telemetry, isConnected) => {
         if (!isConnected) {
@@ -352,6 +351,7 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
         this.onFlagTelemetryUpdate(telemetry?.SessionFlags);
       });
 
+      this.flagTelemetrySubId = subId;
       this.logger.debug("Flag overlay telemetry subscription started");
     } catch (err) {
       this.logger.debug(`Flag overlay: skipping telemetry subscription: ${err}`);
