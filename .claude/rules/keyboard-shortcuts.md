@@ -138,7 +138,7 @@ override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> 
 When using `getKeyboard()` in a plugin, you MUST:
 1. Import `initializeKeyboard` in your plugin.ts
 2. Call `initializeKeyboard()` before registering actions
-3. Pass all four scan code callbacks for full functionality (tap, press, release)
+3. Pass all four scan code callbacks and the window focuser for full functionality
 
 ```typescript
 // plugin.ts
@@ -151,10 +151,13 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+  () => native.focusIRacingWindow(),                   // focus iRacing window (opt-in via global setting)
 );
 
 // Then register actions...
 ```
+
+When the `focusIRacingWindow` global setting is enabled, the keyboard service automatically calls the window focuser before `sendKey()`, `sendKeyCombination()`, and `pressKeyCombination()`. It is NOT called on `releaseKeyCombination()` since the window should already be focused from the press.
 
 ## Global Key Bindings (Shared Across Actions)
 

@@ -36,6 +36,16 @@ Located in `src/mock-data/`:
 
 In addition to the cross-package sync steps below, you must also add the method to `IRacingNativeMock` in `src/mock-impl.ts`.
 
+## Window Management Functions
+
+### `focusIRacingWindow(): boolean`
+Brings the iRacing simulator window (`"iRacing.com Simulator"`) to the foreground using the `AttachThreadInput` + `SetForegroundWindow` pattern. Returns `true` if the window was found and focused (or was already focused), `false` if the window was not found.
+
+Used by the keyboard service when the `focusIRacingWindow` global setting is enabled. The keyboard service calls this before sending keys to ensure they reach iRacing.
+
+### Internal helper: `focusIRacingWindow()` (static C++)
+Uses `FindWindowA(NULL, "iRacing.com Simulator")` to locate the window, checks if it is already focused via `GetForegroundWindow()`, and uses `AttachThreadInput` to temporarily attach the current thread to the foreground thread before calling `SetForegroundWindow`.
+
 ## Keyboard Input Functions
 
 The addon provides three keyboard functions using Windows `SendInput()` with `KEYEVENTF_SCANCODE` for layout-independent physical key sending.
