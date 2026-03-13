@@ -5,14 +5,14 @@
 	</head>
 	<body>
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="open-chat">
-				<option value="open-chat">Open Chat</option>
-				<option value="reply">Reply to Chat</option>
-				<option value="whisper">Whisper</option>
-				<option value="respond-pm">Respond to Last PM</option>
-				<option value="cancel">Cancel Chat</option>
+			<sdpi-select id="mode-select" setting="mode" default="send-message">
 				<option value="send-message">Send Message</option>
 				<option value="macro">Macro (1-15)</option>
+				<option value="reply">Reply to Chat</option>
+				<option value="respond-pm">Respond to Last PM</option>
+				<option value="whisper">Whisper</option>
+				<option value="open-chat">Open Chat</option>
+				<option value="cancel">Cancel Chat</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -74,18 +74,18 @@
 
 				const modeSelect = document.getElementById("mode-select");
 				if (modeSelect) {
-					const initialValue = modeSelect.value || "open-chat";
+					const initialValue = modeSelect.value || "send-message";
 					updateVisibility(initialValue);
 
 					modeSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 					modeSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 
 					// Polling fallback for reliable detection
-					let lastMode = modeSelect.value || "open-chat";
+					let lastMode = modeSelect.value || "send-message";
 					setInterval(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {

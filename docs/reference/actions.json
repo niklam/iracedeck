@@ -579,11 +579,6 @@
           "encoder": true,
           "settingsKey": "mode",
           "modes": [
-            { "value": "open-chat", "label": "Open Chat" },
-            { "value": "reply", "label": "Reply" },
-            { "value": "whisper", "label": "Whisper" },
-            { "value": "respond-pm", "label": "Respond to Last PM" },
-            { "value": "cancel", "label": "Cancel" },
             { "value": "send-message", "label": "Send Custom Message" },
             { "value": "macro", "macroNumber": 1, "label": "Chat Macro 1" },
             { "value": "macro", "macroNumber": 2, "label": "Chat Macro 2" },
@@ -599,7 +594,12 @@
             { "value": "macro", "macroNumber": 12, "label": "Chat Macro 12" },
             { "value": "macro", "macroNumber": 13, "label": "Chat Macro 13" },
             { "value": "macro", "macroNumber": 14, "label": "Chat Macro 14" },
-            { "value": "macro", "macroNumber": 15, "label": "Chat Macro 15" }
+            { "value": "macro", "macroNumber": 15, "label": "Chat Macro 15" },
+            { "value": "reply", "label": "Reply" },
+            { "value": "respond-pm", "label": "Respond to Last PM" },
+            { "value": "whisper", "label": "Whisper" },
+            { "value": "open-chat", "label": "Open Chat" },
+            { "value": "cancel", "label": "Cancel" }
           ]
         }
       ]

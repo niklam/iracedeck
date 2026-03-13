@@ -67,7 +67,7 @@ vi.mock("../shared/index.js", () => ({
   CommonSettings: {
     extend: () => {
       const defaults = {
-        mode: "open-chat",
+        mode: "send-message",
         message: "",
         macroNumber: 1,
         iconColor: "#4a90d9",
@@ -429,10 +429,14 @@ describe("Chat", () => {
       expect(mockMacro).toHaveBeenCalledWith(5);
     });
 
-    it("should default to open-chat when no mode is specified", async () => {
+    it("should default to send-message when no mode is specified", async () => {
       await action.onKeyDown(fakeEvent("action-1", {}) as any);
 
-      expect(mockBeginChat).toHaveBeenCalledOnce();
+      // Default mode is send-message with empty message, which warns and skips
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
     });
   });
 

@@ -60,7 +60,7 @@ const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 
   </g>
 </svg>`;
 
-type ChatMode = "open-chat" | "reply" | "whisper" | "respond-pm" | "cancel" | "send-message" | "macro";
+type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "open-chat" | "cancel";
 
 /**
  * Label configuration for each chat mode (line1 bold, line2 subdued)
@@ -98,7 +98,9 @@ export const CHAT_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const ChatSettings = CommonSettings.extend({
-  mode: z.enum(["open-chat", "reply", "whisper", "respond-pm", "cancel", "send-message", "macro"]).default("open-chat"),
+  mode: z
+    .enum(["send-message", "macro", "reply", "respond-pm", "whisper", "open-chat", "cancel"])
+    .default("send-message"),
   message: z.string().default(""),
   macroNumber: z.coerce.number().min(1).max(15).default(1),
   iconColor: z.string().default("#4a90d9"),
