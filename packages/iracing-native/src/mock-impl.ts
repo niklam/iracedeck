@@ -96,6 +96,12 @@ export class IRacingNativeMock {
     return true;
   }
 
+  focusIRacingWindow(): boolean {
+    console.debug("[IRacingNativeMock] focusIRacingWindow()");
+
+    return true;
+  }
+
   sendScanKeys(scanCodes: number[]): void {
     console.debug(`[IRacingNativeMock] sendScanKeys([${scanCodes.join(", ")}])`);
   }

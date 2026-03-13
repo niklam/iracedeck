@@ -449,6 +449,59 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 }
 
 // ============================================================================
+// Window Management Functions
+// ============================================================================
+
+/**
+ * Attempt to bring the iRacing simulator window to the foreground.
+ * Uses AttachThreadInput pattern for reliable focusing across
+ * Windows foreground window restrictions.
+ *
+ * @returns true if iRacing window was found and focused (or already focused)
+ */
+static bool focusIRacingWindow()
+{
+    HWND hwnd = FindWindowA(NULL, "iRacing.com Simulator");
+    if (!hwnd)
+    {
+        return false;
+    }
+
+    // Already focused — nothing to do
+    if (GetForegroundWindow() == hwnd)
+    {
+        return true;
+    }
+
+    DWORD foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), NULL);
+    DWORD currentThreadId = GetCurrentThreadId();
+
+    if (foregroundThreadId != currentThreadId)
+    {
+        AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+    }
+
+    SetForegroundWindow(hwnd);
+
+    if (foregroundThreadId != currentThreadId)
+    {
+        AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+    }
+
+    return true;
+}
+
+/**
+ * N-API wrapper: Focus the iRacing simulator window.
+ * @returns boolean - true if window was found and focused (or already focused)
+ */
+Napi::Value FocusIRacingWindow(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+    return Napi::Boolean::New(env, focusIRacingWindow());
+}
+
+// ============================================================================
 // Keyboard Input Functions
 // ============================================================================
 
@@ -628,6 +681,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Chat
     exports.Set("sendChatMessage", Napi::Function::New(env, SendChatMessage));
+
+    // Window Management
+    exports.Set("focusIRacingWindow", Napi::Function::New(env, FocusIRacingWindow));
 
     // Keyboard Input
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));

@@ -181,6 +181,20 @@ export class IRacingNative {
   }
 
   // ============================================================================
+  // Window Management
+  // ============================================================================
+
+  /**
+   * Attempt to bring the iRacing simulator window to the foreground.
+   * Uses AttachThreadInput pattern for reliable window focusing on Windows.
+   *
+   * @returns true if iRacing window was found and focused (or already focused)
+   */
+  focusIRacingWindow(): boolean {
+    return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
+  }
+
+  // ============================================================================
   // Keyboard Input
   // ============================================================================
 
