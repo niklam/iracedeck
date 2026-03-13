@@ -5,10 +5,27 @@
   "Author": "Niklas Lampén",
   "Actions": [
     {
+      "Name": "AI Spotter Controls",
+      "UUID": "com.iracedeck.sd.core.ai-spotter-controls",
+      "Icon": "imgs/actions/ai-spotter-controls/icon",
+      "Tooltip": "AI spotter controls (damage/weather reports, lap reporting, volume, silence)",
+      "PropertyInspectorPath": "ui/ai-spotter-controls.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/ai-spotter-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (spotter, voice chat, master volume)",
+      "Tooltip": "Audio volume and mute controls (voice chat, master volume)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
         "Keypad",

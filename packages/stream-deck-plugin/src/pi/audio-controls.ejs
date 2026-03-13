@@ -5,8 +5,7 @@
 	</head>
 	<body>
 		<sdpi-item label="Category">
-			<sdpi-select id="category-select" setting="category" default="spotter">
-				<option value="spotter">Spotter</option>
+			<sdpi-select id="category-select" setting="category" default="voice-chat">
 				<option value="voice-chat">Voice Chat</option>
 				<option value="master">Master</option>
 			</sdpi-select>
@@ -16,7 +15,7 @@
 			<sdpi-select id="action-select" setting="action" default="volume-up">
 				<option value="volume-up">Volume Up</option>
 				<option value="volume-down">Volume Down</option>
-				<option value="mute" id="mute-option">Mute / Silence</option>
+				<option value="mute" id="mute-option">Mute</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -50,18 +49,18 @@
 				const categorySelect = document.getElementById("category-select");
 
 				if (categorySelect) {
-					const initialValue = categorySelect.value || "spotter";
+					const initialValue = categorySelect.value || "voice-chat";
 					updateVisibility(initialValue);
 
 					categorySelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "spotter");
+						updateVisibility(ev.target.value || "voice-chat");
 					});
 					categorySelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "spotter");
+						updateVisibility(ev.target.value || "voice-chat");
 					});
 
 					// Polling fallback for reliable detection
-					let lastValue = categorySelect.value || "spotter";
+					let lastValue = categorySelect.value || "voice-chat";
 					setInterval(() => {
 						const currentValue = categorySelect.value;
 						if (currentValue && currentValue !== lastValue) {

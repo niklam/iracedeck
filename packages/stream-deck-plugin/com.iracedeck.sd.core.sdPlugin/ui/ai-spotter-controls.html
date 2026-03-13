@@ -92,18 +92,15 @@
 
 	</head>
 	<body>
-		<sdpi-item label="Category">
-			<sdpi-select id="category-select" setting="category" default="voice-chat">
-				<option value="voice-chat">Voice Chat</option>
-				<option value="master">Master</option>
-			</sdpi-select>
-		</sdpi-item>
-
-		<sdpi-item label="Action" id="action-item">
-			<sdpi-select id="action-select" setting="action" default="volume-up">
-				<option value="volume-up">Volume Up</option>
-				<option value="volume-down">Volume Down</option>
-				<option value="mute" id="mute-option">Mute / Silence</option>
+		<sdpi-item label="Control">
+			<sdpi-select setting="control" default="damage-report">
+				<option value="damage-report">Damage Report</option>
+				<option value="weather-report">Weather Report</option>
+				<option value="toggle-report-laps">Toggle Report Laps</option>
+				<option value="announce-leader">Announce Leader at S/F Line</option>
+				<option value="louder">Spotter Louder</option>
+				<option value="quieter">Spotter Quieter</option>
+				<option value="silence">Spotter Silence</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -127,83 +124,35 @@
 <div class="ird-key-bindings-section">
   <div class="ird-section-heading">Related Key Bindings</div>
   
-  <sdpi-item label="Voice Chat Volume Up">
-    <ird-key-binding setting="audioVoiceChatVolumeUp" default="Shift+Ctrl+Alt+numpad_add" global></ird-key-binding>
+  <sdpi-item label="Damage Report">
+    <ird-key-binding setting="spotterDamageReport" default="" global></ird-key-binding>
   </sdpi-item>
   
-  <sdpi-item label="Voice Chat Volume Down">
-    <ird-key-binding setting="audioVoiceChatVolumeDown" default="Shift+Ctrl+Alt+numpad_subtract" global></ird-key-binding>
+  <sdpi-item label="Weather Report">
+    <ird-key-binding setting="spotterWeatherReport" default="" global></ird-key-binding>
   </sdpi-item>
   
-  <sdpi-item label="Voice Chat Mute">
-    <ird-key-binding setting="audioVoiceChatMute" default="Shift+Ctrl+Alt+M" global></ird-key-binding>
+  <sdpi-item label="Toggle Report Laps">
+    <ird-key-binding setting="spotterToggleReportLaps" default="" global></ird-key-binding>
   </sdpi-item>
   
-  <sdpi-item label="Master Volume Up">
-    <ird-key-binding setting="audioMasterVolumeUp" default="Shift+Alt+numpad_add" global></ird-key-binding>
+  <sdpi-item label="Announce Leader at S/F Line">
+    <ird-key-binding setting="spotterAnnounceLeader" default="" global></ird-key-binding>
   </sdpi-item>
   
-  <sdpi-item label="Master Volume Down">
-    <ird-key-binding setting="audioMasterVolumeDown" default="Shift+Alt+numpad_subtract" global></ird-key-binding>
+  <sdpi-item label="Spotter Louder">
+    <ird-key-binding setting="spotterLouder" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Spotter Quieter">
+    <ird-key-binding setting="spotterQuieter" default="" global></ird-key-binding>
+  </sdpi-item>
+  
+  <sdpi-item label="Spotter Silence">
+    <ird-key-binding setting="spotterSilence" default="" global></ird-key-binding>
   </sdpi-item>
   
 </div>
 
-
-		<script>
-			function updateVisibility(category) {
-				const actionSelect = document.getElementById("action-select");
-				const muteOption = document.querySelector('#action-select option[value="mute"]');
-				if (!muteOption) return;
-
-				if (category === "master") {
-					muteOption.style.display = "none";
-					// If mute was selected, switch to volume-up
-					if (actionSelect && actionSelect.value === "mute") {
-						actionSelect.value = "volume-up";
-					}
-				} else {
-					muteOption.style.display = "";
-				}
-			}
-
-			async function initialize() {
-				await customElements.whenDefined("sdpi-select");
-
-				const categorySelect = document.getElementById("category-select");
-
-				if (categorySelect) {
-					const initialValue = categorySelect.value || "voice-chat";
-					updateVisibility(initialValue);
-
-					categorySelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "voice-chat");
-					});
-					categorySelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "voice-chat");
-					});
-
-					// Polling fallback for reliable detection
-					let lastValue = categorySelect.value || "voice-chat";
-					setInterval(() => {
-						const currentValue = categorySelect.value;
-						if (currentValue && currentValue !== lastValue) {
-							lastValue = currentValue;
-							updateVisibility(currentValue);
-						}
-					}, 100);
-				}
-			}
-
-			if (document.readyState === "loading") {
-				document.addEventListener("DOMContentLoaded", initialize);
-			} else {
-				initialize();
-			}
-		</script>
-
-		<style>
-			.hidden { display: none !important; }
-		</style>
 	</body>
 </html>

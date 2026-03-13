@@ -10,9 +10,6 @@ import streamDeck, {
 import masterMuteIconSvg from "@iracedeck/icons/audio-controls/master-mute.svg";
 import masterVolumeDownIconSvg from "@iracedeck/icons/audio-controls/master-volume-down.svg";
 import masterVolumeUpIconSvg from "@iracedeck/icons/audio-controls/master-volume-up.svg";
-import spotterMuteIconSvg from "@iracedeck/icons/audio-controls/spotter-mute.svg";
-import spotterVolumeDownIconSvg from "@iracedeck/icons/audio-controls/spotter-volume-down.svg";
-import spotterVolumeUpIconSvg from "@iracedeck/icons/audio-controls/spotter-volume-up.svg";
 import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
@@ -35,19 +32,16 @@ import {
   svgToDataUri,
 } from "../shared/index.js";
 
-type AudioCategory = "spotter" | "voice-chat" | "master";
+type AudioCategory = "voice-chat" | "master";
 type AudioAction = "volume-up" | "volume-down" | "mute";
 
-/** Categories that support mute/silence */
-const MUTE_CATEGORIES: Set<AudioCategory> = new Set(["spotter", "voice-chat"]);
+/** Categories that support mute */
+const MUTE_CATEGORIES: Set<AudioCategory> = new Set(["voice-chat"]);
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
  */
 const AUDIO_ICONS: Record<string, string> = {
-  "spotter-volume-up": spotterVolumeUpIconSvg,
-  "spotter-volume-down": spotterVolumeDownIconSvg,
-  "spotter-mute": spotterMuteIconSvg,
   "voice-chat-volume-up": voiceChatVolumeUpIconSvg,
   "voice-chat-volume-down": voiceChatVolumeDownIconSvg,
   "voice-chat-mute": voiceChatMuteIconSvg,
@@ -60,11 +54,6 @@ const AUDIO_ICONS: Record<string, string> = {
  * Label configuration for each category + action combination.
  */
 const AUDIO_CONTROLS_LABELS: Record<AudioCategory, Record<AudioAction, { mainLabel: string; subLabel: string }>> = {
-  spotter: {
-    "volume-up": { mainLabel: "SPOTTER", subLabel: "VOL UP" },
-    "volume-down": { mainLabel: "SPOTTER", subLabel: "VOL DOWN" },
-    mute: { mainLabel: "SPOTTER", subLabel: "SILENCE" },
-  },
   "voice-chat": {
     "volume-up": { mainLabel: "VOICE", subLabel: "VOL UP" },
     "volume-down": { mainLabel: "VOICE", subLabel: "VOL DOWN" },
@@ -83,9 +72,6 @@ const AUDIO_CONTROLS_LABELS: Record<AudioCategory, Record<AudioAction, { mainLab
  * Mapping from category + action to global settings keys.
  */
 export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
-  "spotter-volume-up": "audioSpotterVolumeUp",
-  "spotter-volume-down": "audioSpotterVolumeDown",
-  "spotter-mute": "audioSpotterSilence",
   "voice-chat-volume-up": "audioVoiceChatVolumeUp",
   "voice-chat-volume-down": "audioVoiceChatVolumeDown",
   "voice-chat-mute": "audioVoiceChatMute",
@@ -94,7 +80,7 @@ export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const AudioControlsSettings = CommonSettings.extend({
-  category: z.enum(["spotter", "voice-chat", "master"]).default("spotter"),
+  category: z.enum(["voice-chat", "master"]).default("voice-chat"),
   action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
 });
 
@@ -112,7 +98,7 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
   const effectiveAction = category === "master" && audioAction === "mute" ? "volume-up" : audioAction;
 
   const iconKey = `${category}-${effectiveAction}`;
-  const iconSvg = AUDIO_ICONS[iconKey] || AUDIO_ICONS["spotter-volume-up"];
+  const iconSvg = AUDIO_ICONS[iconKey] || AUDIO_ICONS["voice-chat-volume-up"];
   const labels = AUDIO_CONTROLS_LABELS[category][effectiveAction];
 
   const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel });
@@ -122,7 +108,7 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
 
 /**
  * Audio Controls Action
- * Provides volume and mute controls for spotter, voice chat, and master audio
+ * Provides volume and mute controls for voice chat and master audio
  * categories via keyboard shortcuts.
  */
 @action({ UUID: "com.iracedeck.sd.core.audio-controls" })

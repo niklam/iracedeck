@@ -40,15 +40,28 @@
       "name": "Driving Controls",
       "actions": [
         {
+          "id": "com.iracedeck.sd.core.ai-spotter-controls",
+          "name": "AI Spotter Controls",
+          "file": "ai-spotter-controls.ts",
+          "encoder": false,
+          "settingsKey": "control",
+          "modes": [
+            { "value": "damage-report", "label": "Damage Report" },
+            { "value": "weather-report", "label": "Weather Report" },
+            { "value": "toggle-report-laps", "label": "Toggle Report Laps" },
+            { "value": "announce-leader", "label": "Announce Leader at S/F Line" },
+            { "value": "louder", "label": "Spotter Louder" },
+            { "value": "quieter", "label": "Spotter Quieter" },
+            { "value": "silence", "label": "Spotter Silence" }
+          ]
+        },
+        {
           "id": "com.iracedeck.sd.core.audio-controls",
           "name": "Audio Controls",
           "file": "audio-controls.ts",
           "encoder": true,
           "settingsKeys": ["category", "action"],
           "modes": [
-            { "category": "spotter", "action": "volume-up", "label": "Spotter Volume Up" },
-            { "category": "spotter", "action": "volume-down", "label": "Spotter Volume Down" },
-            { "category": "spotter", "action": "mute", "label": "Spotter Silence" },
             { "category": "voice-chat", "action": "volume-up", "label": "Voice Chat Volume Up" },
             { "category": "voice-chat", "action": "volume-down", "label": "Voice Chat Volume Down" },
             { "category": "voice-chat", "action": "mute", "label": "Voice Chat Mute" },

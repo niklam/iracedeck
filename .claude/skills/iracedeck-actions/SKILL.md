@@ -36,14 +36,14 @@ When asked about actions or controls:
 | Category | Actions | Controls | Description |
 |----------|---------|----------|-------------|
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 4 | 31 | Audio, black boxes, look direction, car control |
+| Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
 | Cockpit & Interface | 4 | 25 | Wipers, FFB, delta splits, telemetry, UI toggles |
 | View & Camera | 8 | 102 | FOV, replay, camera cycle/focus, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 1 | 21 | Open chat, macros (15), whisper, reply |
-| **Total** | **29** | **284** | |
+| **Total** | **30** | **288** | |
 
 ## Actions by Category
 
@@ -57,7 +57,8 @@ When asked about actions or controls:
 
 | Action | Controls | Modes |
 |--------|----------|-------|
-| Audio Controls | 9 | 3 categories (spotter, voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
+| AI Spotter Controls | 7 | damage-report, weather-report, toggle-report-laps, announce-leader, louder, quieter, silence |
+| Audio Controls | 6 | 2 categories (voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
 | Black Box Selector | 13 | 11 direct selections + next/previous cycle |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (hold pattern) |
 | Car Control | 5 | starter, ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow, pause-sim |

@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
+import { AiSpotterControls } from "./actions/ai-spotter-controls.js";
 import { AudioControls } from "./actions/audio-controls.js";
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { CameraCycle } from "./actions/camera-cycle.js";
@@ -55,6 +56,7 @@ initializeKeyboard(
 );
 
 // Register core actions
+streamDeck.actions.registerAction(new AiSpotterControls());
 streamDeck.actions.registerAction(new AudioControls());
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new CameraCycle());
