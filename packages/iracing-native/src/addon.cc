@@ -342,17 +342,22 @@ static void sendPaste()
     SendInput(4, inputs, sizeof(INPUT));
 }
 
+static constexpr DWORD kChatStepDelayMs = 100;
+
 /**
  * Send a complete chat message to iRacing using clipboard paste.
  * This function handles the entire chat flow:
  * 1. Saves the current clipboard content (plain text only)
  * 2. Copies the message to the clipboard
- * 3. Cancels any existing chat (ensures clean state)
- * 4. Opens chat window via broadcast message
- * 5. Pastes the message with Ctrl+V
- * 6. Presses Enter to send
- * 7. Cancels chat broadcast to explicitly close the chat window
+ * 3. Cancels any existing chat to ensure clean state, then waits
+ * 4. Opens chat window via broadcast message, then waits
+ * 5. Pastes the message with Ctrl+V, then waits
+ * 6. Presses Enter to send the message, then waits
+ * 7. Cancels chat via broadcast to explicitly close the chat window
+ *    (Enter sends the message but leaves the input focused)
  * 8. Restores the original clipboard content
+ *
+ * Each wait is kChatStepDelayMs to give iRacing time to process.
  *
  * @param message - The message to send
  * @returns Success boolean
@@ -405,19 +410,19 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 
     // 3. Cancel any existing chat to ensure clean state
     irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
-    Sleep(100);
+    Sleep(kChatStepDelayMs);
 
     // 4. Open chat window via broadcast
     irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_BeginChat, 0);
 
     // 5. Wait for chat window to open
-    Sleep(100);
+    Sleep(kChatStepDelayMs);
 
     // 6. Paste the message with Ctrl+V
     sendPaste();
 
     // 7. Wait for paste to complete
-    Sleep(100);
+    Sleep(kChatStepDelayMs);
 
     // 8. Press Enter to send
     INPUT enterInputs[2] = {};
@@ -429,7 +434,7 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
     SendInput(2, enterInputs, sizeof(INPUT));
 
     // 9. Wait for Enter to be processed
-    Sleep(100);
+    Sleep(kChatStepDelayMs);
 
     // 10. Cancel chat to close the window
     irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
