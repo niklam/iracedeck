@@ -416,6 +416,11 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     }
 
     this.flagOverlayActive.clear();
+
+    // Reset state so flash restarts correctly if re-enabled
+    this.lastFlagStateKey = "";
+    this.currentFlags = [];
+    this.flagFlashTick = 0;
   }
 
   /**
