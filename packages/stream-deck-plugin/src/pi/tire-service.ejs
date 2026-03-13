@@ -5,10 +5,11 @@
 	</head>
 	<body>
 		<sdpi-item label="Action">
-			<sdpi-select id="action-select" setting="action" default="toggle-tires">
+			<sdpi-select id="action-select" setting="action" default="change-all-tires">
+				<option value="change-all-tires">Change All Tires</option>
+				<option value="clear-tires">Clear Tires</option>
 				<option value="toggle-tires">Toggle Tires</option>
 				<option value="change-compound">Change Compound</option>
-				<option value="clear-tires">Clear Tires</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -33,17 +34,17 @@
 
 				const actionSelect = document.getElementById("action-select");
 				if (actionSelect) {
-					updateVisibility(actionSelect.value || "toggle-tires");
+					updateVisibility(actionSelect.value || "change-all-tires");
 
 					actionSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "toggle-tires");
+						updateVisibility(ev.target.value || "change-all-tires");
 					});
 					actionSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "toggle-tires");
+						updateVisibility(ev.target.value || "change-all-tires");
 					});
 
 					// Polling fallback for reliable detection
-					let lastAction = actionSelect.value || "toggle-tires";
+					let lastAction = actionSelect.value || "change-all-tires";
 					setInterval(() => {
 						const currentAction = actionSelect.value;
 						if (currentAction && currentAction !== lastAction) {

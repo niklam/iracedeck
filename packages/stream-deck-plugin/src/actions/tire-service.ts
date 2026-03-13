@@ -6,6 +6,7 @@ import streamDeck, {
   WillAppearEvent,
   WillDisappearEvent,
 } from "@elgato/streamdeck";
+import changeAllTiresIconSvg from "@iracedeck/icons/tire-service/change-all-tires.svg";
 import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -44,7 +45,7 @@ const DEFAULT_TIRES: DriverTire[] = [{ TireIndex: 0, TireCompoundType: "Dry" }];
 type DriverTire = { TireIndex: number; TireCompoundType: string };
 
 const TireServiceSettings = CommonSettings.extend({
-  action: z.enum(["toggle-tires", "change-compound", "clear-tires"]).default("toggle-tires"),
+  action: z.enum(["change-all-tires", "clear-tires", "toggle-tires", "change-compound"]).default("change-all-tires"),
   lf: z.coerce.boolean().default(true),
   rf: z.coerce.boolean().default(true),
   lr: z.coerce.boolean().default(true),
@@ -223,6 +224,14 @@ export function generateTireServiceSvg(
   let textElement: string;
 
   switch (settings.action) {
+    case "change-all-tires": {
+      const svg = renderIconTemplate(changeAllTiresIconSvg, {
+        mainLabel: "CHANGE",
+        subLabel: "ALL TIRES",
+      });
+
+      return svgToDataUri(svg);
+    }
     case "change-compound": {
       const compoundType = getCompoundName(compoundState.pitSv);
       const isChanging = compoundState.player !== compoundState.pitSv;
@@ -389,6 +398,11 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     tireState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
     compound: { player: number; pitSv: number },
   ): string {
+    // Static-icon modes don't depend on telemetry — avoid unnecessary re-renders
+    if (settings.action === "change-all-tires" || settings.action === "clear-tires") {
+      return settings.action;
+    }
+
     const tires = getDriverTires();
     const compoundType = getCompoundName(compound.pitSv);
 
@@ -405,6 +419,18 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const settings = this.parseSettings(rawSettings);
 
     switch (settings.action) {
+      case "change-all-tires": {
+        this.logger.debug("Sending change all tires macro");
+        const success = getCommands().chat.sendMessage("#t");
+
+        if (success) {
+          this.logger.info("Change all tires sent");
+        } else {
+          this.logger.warn("Failed to send change all tires");
+        }
+
+        break;
+      }
       case "change-compound": {
         const telemetry = this.sdkController.getCurrentTelemetry();
         const { pitSv } = getCompoundState(telemetry);
