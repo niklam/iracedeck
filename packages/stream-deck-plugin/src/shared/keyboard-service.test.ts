@@ -15,6 +15,15 @@ vi.mock("keysender", () => ({
   },
 }));
 
+// Mock the global settings module
+const mockGetGlobalSettings = vi.fn(() => ({ focusIRacingWindow: false, disableWhenDisconnected: true }));
+const mockIsGlobalSettingsInitialized = vi.fn(() => true);
+
+vi.mock("./global-settings.js", () => ({
+  getGlobalSettings: () => mockGetGlobalSettings(),
+  isGlobalSettingsInitialized: () => mockIsGlobalSettingsInitialized(),
+}));
+
 // Mock the logger
 vi.mock("@iracedeck/logger", () => ({
   silentLogger: {
@@ -28,6 +37,8 @@ vi.mock("@iracedeck/logger", () => ({
 describe("Keyboard Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: false, disableWhenDisconnected: true });
+    mockIsGlobalSettingsInitialized.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -422,6 +433,91 @@ describe("Keyboard Service", () => {
       const result = await keyboard.releaseKeyCombination({ key: "a" });
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe("window focus before sending", () => {
+    it("should call windowFocuser when focusIRacingWindow is enabled", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => true);
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender, undefined, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.sendKeyCombination({ key: "f1", code: "F1" });
+
+      expect(mockFocuser).toHaveBeenCalledOnce();
+    });
+
+    it("should NOT call windowFocuser when focusIRacingWindow is disabled", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: false, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => true);
+      initializeKeyboard(undefined, vi.fn(), undefined, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.sendKeyCombination({ key: "f1", code: "F1" });
+
+      expect(mockFocuser).not.toHaveBeenCalled();
+    });
+
+    it("should still send keys when focuser returns false", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => false);
+      const mockScanSender = vi.fn();
+      initializeKeyboard(undefined, mockScanSender, undefined, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      const result = await keyboard.sendKeyCombination({ key: "f1", code: "F1" });
+
+      expect(result).toBe(true);
+      expect(mockScanSender).toHaveBeenCalled();
+    });
+
+    it("should NOT call windowFocuser on releaseKeyCombination", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => true);
+      const mockReleaser = vi.fn();
+      initializeKeyboard(undefined, undefined, undefined, mockReleaser, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.releaseKeyCombination({ key: "f1", code: "F1" });
+
+      expect(mockFocuser).not.toHaveBeenCalled();
+    });
+
+    it("should call windowFocuser on pressKeyCombination", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => true);
+      const mockPresser = vi.fn();
+      initializeKeyboard(undefined, undefined, mockPresser, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.pressKeyCombination({ key: "f1", code: "F1" });
+
+      expect(mockFocuser).toHaveBeenCalledOnce();
+    });
+
+    it("should NOT call windowFocuser when global settings not initialized", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      mockIsGlobalSettingsInitialized.mockReturnValue(false);
+      const mockFocuser = vi.fn(() => true);
+      initializeKeyboard(undefined, vi.fn(), undefined, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.sendKeyCombination({ key: "f1", code: "F1" });
+
+      expect(mockFocuser).not.toHaveBeenCalled();
+    });
+
+    it("should call windowFocuser on sendKey", async () => {
+      mockGetGlobalSettings.mockReturnValue({ focusIRacingWindow: true, disableWhenDisconnected: true });
+      const mockFocuser = vi.fn(() => true);
+      initializeKeyboard(undefined, undefined, undefined, undefined, mockFocuser);
+      const keyboard = getKeyboard();
+
+      await keyboard.sendKey("f3");
+
+      expect(mockFocuser).toHaveBeenCalledOnce();
     });
   });
 
