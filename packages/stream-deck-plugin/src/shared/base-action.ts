@@ -170,6 +170,12 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     this.logger.info(`Refreshing ${this.contexts.size} contexts with overlay=${applyOverlay}`);
 
     for (const [contextId, { action, svg }] of this.contexts) {
+      // Skip contexts with active flag overlay
+      if (this.flagOverlayActive.has(contextId)) {
+        this.logger.trace(`setActive: skipped context ${contextId} (flag overlay active)`);
+        continue;
+      }
+
       const finalImage = this.applyOverlayIfNeeded(svg);
       this.logger.trace(`Updating context ${contextId} image`);
       // Fire and forget - we don't want to block
