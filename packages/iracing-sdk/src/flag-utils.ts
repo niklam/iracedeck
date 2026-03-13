@@ -31,7 +31,11 @@ export const FLAG_DEFINITIONS: ReadonlyArray<{
     info: { label: "REPAIR", color: "#e67e22", textColor: "#ffffff", pulse: true },
   },
   {
-    check: (f) => hasFlag(f, Flags.Yellow) || hasFlag(f, Flags.Caution) || hasFlag(f, Flags.CautionWaving),
+    check: (f) =>
+      hasFlag(f, Flags.Yellow) ||
+      hasFlag(f, Flags.YellowWaving) ||
+      hasFlag(f, Flags.Caution) ||
+      hasFlag(f, Flags.CautionWaving),
     info: { label: "YELLOW", color: "#f1c40f", textColor: "#1a1a1a", pulse: false },
   },
   {

@@ -52,6 +52,11 @@ describe("flag-utils", () => {
       expect(result!.label).toBe("YELLOW");
     });
 
+    it("should return yellow for yellow waving flag", () => {
+      const result = resolveActiveFlag(Flags.YellowWaving);
+      expect(result!.label).toBe("YELLOW");
+    });
+
     it("should return black for disqualify flag", () => {
       const result = resolveActiveFlag(Flags.Disqualify);
       expect(result!.label).toBe("BLACK");
@@ -106,6 +111,12 @@ describe("flag-utils", () => {
 
     it("should return empty for only informational flags", () => {
       expect(resolveAllActiveFlags(Flags.Green | Flags.White | Flags.Checkered)).toEqual([]);
+    });
+
+    it("should detect yellow waving flag", () => {
+      const result = resolveAllActiveFlags(Flags.YellowWaving);
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("YELLOW");
     });
 
     it("should maintain priority order", () => {

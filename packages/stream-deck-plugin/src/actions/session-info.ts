@@ -389,7 +389,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       if (flagKey !== lastKey) {
         this.logger.info("Flag changed");
-        this.logger.debug(`Flag: ${lastKey} -> ${flagKey}`);
+        this.logger.debug(
+          `Flag: ${lastKey} -> ${flagKey}, SessionFlags=0x${telemetry?.SessionFlags?.toString(16) ?? "undefined"}`,
+        );
         this.lastFlagKey.set(contextId, flagKey);
         this.cancelFlagPulse(contextId);
         this.cancelFlash(contextId);

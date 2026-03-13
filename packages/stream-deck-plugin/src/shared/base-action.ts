@@ -368,9 +368,8 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
 
     if (stateKey === this.lastFlagStateKey) return;
 
-    this.logger.debug(
-      `Flag state changed: SessionFlags=0x${sessionFlags?.toString(16) ?? "undefined"}, resolved=[${stateKey || "none"}]`,
-    );
+    this.logger.info("Flag state changed");
+    this.logger.debug(`SessionFlags=0x${sessionFlags?.toString(16) ?? "undefined"}, resolved=[${stateKey || "none"}]`);
 
     this.lastFlagStateKey = stateKey;
     this.currentFlags = flags;
@@ -391,6 +390,10 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     if (this.flagFlashTimer) {
       clearInterval(this.flagFlashTimer);
     }
+
+    this.logger.debug(
+      `Starting flag flash: flags=[${this.currentFlags.map((f) => f.label).join(",")}], contexts=${this.flagOverlayContexts.size}`,
+    );
 
     // Immediately show first flag
     this.applyFlagOverlayToContexts();
@@ -415,6 +418,7 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
     if (this.flagFlashTimer) {
       clearInterval(this.flagFlashTimer);
       this.flagFlashTimer = null;
+      this.logger.debug("Flag flash stopped");
     }
 
     // Restore all overlay-active contexts
