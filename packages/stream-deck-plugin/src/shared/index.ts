@@ -93,6 +93,7 @@ export {
   type ScanKeySender,
   type ScanKeyPresser,
   type ScanKeyReleaser,
+  type WindowFocuser,
 } from "./keyboard-service.js";
 
 // App monitor for iRacing process detection
