@@ -1,4 +1,5 @@
 ---
+
 # Build & Commit Conventions
 
 Build
@@ -9,6 +10,9 @@ Build
 ```bash
 pnpm build:stream-deck
 pnpm watch:stream-deck
+pnpm link:stream-deck      # Register plugin with Stream Deck
+pnpm unlink:stream-deck    # Unregister plugin from Stream Deck
+pnpm relink:stream-deck    # Unlink + link (useful when switching worktrees)
 ```
 
 ### Build verification
@@ -79,11 +83,13 @@ Committing
 Split work into logical, self-contained commits. Each commit should represent one coherent change that builds and passes tests on its own. This keeps the history readable and makes regular (non-squash) merges practical.
 
 Guidelines:
+
 - **One concern per commit** — don't mix a refactor with a new feature or unrelated fixes.
 - **Commit as you go** — commit each logical step when it's complete, don't batch everything into one giant commit at the end.
-- **Commit message = what and why** — the diff shows *what* changed; the message should explain *why*.
+- **Commit message = what and why** — the diff shows _what_ changed; the message should explain _why_.
 
 Examples of good commit splits for a new action:
+
 ```
 feat(stream-deck-plugin): add FuelCalculator action skeleton
 feat(stream-deck-plugin): add FuelCalculator icon variants
