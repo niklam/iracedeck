@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.1.0](https://github.com/niklam/iracedeck/compare/v1.0.0...v1.1.0) (2026-03-14)
+
+### Features
+
+* **icons:** add set-speed and speed-display icons for replay control ([32a59b8](https://github.com/niklam/iracedeck/commit/32a59b84abf65b5ddc775cde5b915482aae0a7d4)), closes [#2a3a4a](https://github.com/niklam/iracedeck/issues/2a3a4a) [#127](https://github.com/niklam/iracedeck/issues/127)
+* **icons:** redesign frame forward/backward as film strip icons ([ca8f02a](https://github.com/niklam/iracedeck/commit/ca8f02a88100697933e3298706b6fa7d6fc4a668)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **icons:** redesign next/prev lap as oval race track icons ([d6ffc1f](https://github.com/niklam/iracedeck/commit/d6ffc1f72ec5f5d7359565e6e043007c1c4d4249)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** add long-press repeat for speed and transport controls ([a061e29](https://github.com/niklam/iracedeck/commit/a061e29700faaad61ae4dca61423758aad029813)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** add play backward mode and fix play/pause behavior ([76e942e](https://github.com/niklam/iracedeck/commit/76e942ed7d5086e94c3d766007eb1990fe1ed1ab)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** add progressive replay speed control ([7a216ee](https://github.com/niklam/iracedeck/commit/7a216eeb6472d67a1bd1b930af9d37a7d63c9178)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** direction-aware speed control and turtle/rabbit icons ([2166bdc](https://github.com/niklam/iracedeck/commit/2166bdcc3afe0286eabc7d020d8695ff5bb723d4)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** redesign set-speed gauge with dynamic needle angle ([0198f6e](https://github.com/niklam/iracedeck/commit/0198f6e3d629f01087dbcd18c3edb0b466d9d99f)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** redesign speed display icon and labels ([2db510c](https://github.com/niklam/iracedeck/commit/2db510c3311f7bb41a88b266c3aab11275eb81f2)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** speed increase/decrease spans full 1/16x to 16x range ([bd709b4](https://github.com/niklam/iracedeck/commit/bd709b467c896a55e341838ff17eccc0b5ccad64)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **website:** add iRating Gain stat and asterisk joke ([3cee986](https://github.com/niklam/iracedeck/commit/3cee986e38c28a0d59891fca5302a19ca06a6fea))
+* **website:** improve landing page, add social links and install options ([85150fa](https://github.com/niklam/iracedeck/commit/85150fa59ff2033676dc2621645aaaf3ce69f55d))
+* **website:** migrate from static HTML to Astro + Starlight ([322d206](https://github.com/niklam/iracedeck/commit/322d2062cd447a7141d4ce1f996e28630fa3263b)), closes [#ce2128](https://github.com/niklam/iracedeck/issues/ce2128)
+* **website:** polish landing page layout and styling ([93b4637](https://github.com/niklam/iracedeck/commit/93b4637a491ee34a4ee03bcc85be0c9a777a9692))
+* **website:** use proper logo variants with transparent backgrounds ([566bfd7](https://github.com/niklam/iracedeck/commit/566bfd7e379c7842f06ebdde97c3e18cc2eec5ad))
+
+### Bug Fixes
+
+* address review feedback and add fenced code block rule ([532a7b2](https://github.com/niklam/iracedeck/commit/532a7b2497d25539dc4044618f606c6532b6b1f2))
+* **icons:** adjust stop icon vertical position ([304ad7b](https://github.com/niklam/iracedeck/commit/304ad7b80582dad286d36ff844ec7f94cb3d905b)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **iracing-native:** add granular focus result codes and increase timeout ([c3d7770](https://github.com/niklam/iracedeck/commit/c3d7770c650c23ebbdd902f71054ac32dcc6ec19)), closes [#131](https://github.com/niklam/iracedeck/issues/131)
+* **iracing-native:** use ALT key workaround to bypass foreground lock ([1987f5d](https://github.com/niklam/iracedeck/commit/1987f5d3fd3cdca02fd9bb49da9dc9dc085c42eb)), closes [#131](https://github.com/niklam/iracedeck/issues/131)
+* **stream-deck-plugin:** address PR review feedback for replay control ([27495ca](https://github.com/niklam/iracedeck/commit/27495cae07e8eaf7449478bf07a3e2b738e47e93)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** address second round PR review feedback ([1eee311](https://github.com/niklam/iracedeck/commit/1eee3118d79951d6fe89c0365db6f5b3806e96b5)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** play buttons pause at any same-direction speed ([b5a2e8d](https://github.com/niklam/iracedeck/commit/b5a2e8dd5fe6a216bcc93435877a2959f69bc6a7)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **stream-deck-plugin:** play buttons reset FF/rewind to 1x and mirror slow-mo ([0fcb85e](https://github.com/niklam/iracedeck/commit/0fcb85ed1c9f96194a756b552ca3e095cd06050a)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **website:** address code review feedback ([e90e372](https://github.com/niklam/iracedeck/commit/e90e372767c7468b03c2f82998a286fc91924ce0))
+* **website:** fine-tune landing page spacing and theme toggle alignment ([350705f](https://github.com/niklam/iracedeck/commit/350705f5609fcd459dc139124db37629d6d7a297))
+
+### Refactoring
+
+* **website:** move docs under /docs/ prefix, add Features section ([ff29496](https://github.com/niklam/iracedeck/commit/ff29496511abb6aea972da03c1264b876b01c85a))
+
+### Documentation
+
+* update action references for progressive replay speed modes ([f71b8e8](https://github.com/niklam/iracedeck/commit/f71b8e879bb343927a79b911198fc890c2a2ff98)), closes [#127](https://github.com/niklam/iracedeck/issues/127)
+* **website:** add all documentation content pages ([fd886f7](https://github.com/niklam/iracedeck/commit/fd886f7f06d45d19bf3661fcb4987aff29a387b5))
+* **website:** add Development section and Reddit sidebar link ([91920a7](https://github.com/niklam/iracedeck/commit/91920a73b655eb0eb6e1fd97d72c5eb4c55f40e4))
+* **website:** update counts and replay control page for progressive speed ([a02c211](https://github.com/niklam/iracedeck/commit/a02c21186d6e31b062423c8bba36e85209ab598a))
+
+### Maintenance
+
+* update skills for /docs/ restructuring and template variables ([1add388](https://github.com/niklam/iracedeck/commit/1add388b2455109f90e22c6967e4e49b955cf90a))
+* update skills for Astro website migration ([b094d91](https://github.com/niklam/iracedeck/commit/b094d91473cd84149b7ca26357bebd8af0b976f5))
+
 ## [1.0.0](https://github.com/niklam/iracedeck/compare/v0.13.0...v1.0.0) (2026-03-13)
 
 ### ⚠ BREAKING CHANGES
