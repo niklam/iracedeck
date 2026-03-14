@@ -168,6 +168,21 @@ export function parseSpeedSetting(value: string): { speed: number; slowMotion: b
 /**
  * @internal Exported for testing
  *
+ * Calculates the gauge needle angle for a speed setting value.
+ * Scale: 1/16x = -90°, 1x = 0°, 16x = 90°.
+ */
+export function calculateNeedleAngle(speedSetting: string): number {
+  const { speed, slowMotion } = parseSpeedSetting(speedSetting);
+
+  // Map to position 0-30: slow-mo (0-14), 1x (15), fast (16-30)
+  const position = slowMotion ? 16 - speed : 14 + speed;
+
+  return ((position - 15) / 15) * 90;
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Formats a speed value for display.
  */
 export function formatSpeedDisplay(speed: number, slowMotion: boolean): string {
@@ -224,6 +239,7 @@ export function generateReplayControlSvg(
     templateData.speedText = formatSpeedDisplay(speed, slowMo);
   } else if (mode === "set-speed" && settings.speed) {
     mainLabel = formatSetSpeedLabel(settings.speed);
+    templateData.needleAngle = String(calculateNeedleAngle(settings.speed));
   }
 
   templateData.mainLabel = mainLabel;
