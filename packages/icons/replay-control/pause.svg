@@ -3,16 +3,11 @@
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
 
-    <!-- Oval race track (rounded rectangle = straights + semicircle ends) -->
-    <rect x="30" y="28" width="84" height="48" rx="24" fill="none" stroke="#ffffff" stroke-width="9"/>
+    <!-- Icon content area: Two vertical bars -->
+    <rect x="52" y="28" width="12" height="48" rx="2" fill="#ffffff"/>
+    <rect x="80" y="28" width="12" height="48" rx="2" fill="#ffffff"/>
 
-    <!-- Center line dashes -->
-    <rect x="30" y="28" width="84" height="48" rx="24" fill="none" stroke="#2a3a4a" stroke-width="2" stroke-dasharray="5,4"/>
-
-    <!-- Right arrow (next lap) centered in track -->
-    <polygon points="66,44 82,52 66,60" fill="#ffffff"/>
-
-    <!-- Two-line label -->
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"

@@ -5,9 +5,10 @@
 	</head>
 	<body>
 		<sdpi-item label="Control">
-			<sdpi-select setting="mode" default="play-pause">
+			<sdpi-select id="mode-select" setting="mode" default="play-pause">
 				<optgroup label="Transport">
 					<option value="play-pause">Play / Pause</option>
+					<option value="play-backward">Play / Pause Backward</option>
 					<option value="stop">Stop</option>
 					<option value="fast-forward">Fast Forward</option>
 					<option value="rewind">Rewind</option>
@@ -16,8 +17,10 @@
 					<option value="frame-backward">Frame Backward</option>
 				</optgroup>
 				<optgroup label="Speed">
-					<option value="speed-increase">Increase Speed</option>
-					<option value="speed-decrease">Decrease Speed</option>
+					<option value="speed-increase">Increase Speed (Slow-Mo)</option>
+					<option value="speed-decrease">Decrease Speed (Slow-Mo)</option>
+					<option value="set-speed">Set Speed</option>
+					<option value="speed-display">Speed Display</option>
 				</optgroup>
 				<optgroup label="Navigation">
 					<option value="next-session">Next Session</option>
@@ -32,8 +35,96 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="speed-setting" label="Speed" class="hidden">
+			<sdpi-select setting="speed" default="1">
+				<optgroup label="Slow Motion">
+					<option value="s16">1/16x</option>
+					<option value="s15">1/15x</option>
+					<option value="s14">1/14x</option>
+					<option value="s13">1/13x</option>
+					<option value="s12">1/12x</option>
+					<option value="s11">1/11x</option>
+					<option value="s10">1/10x</option>
+					<option value="s9">1/9x</option>
+					<option value="s8">1/8x</option>
+					<option value="s7">1/7x</option>
+					<option value="s6">1/6x</option>
+					<option value="s5">1/5x</option>
+					<option value="s4">1/4x</option>
+					<option value="s3">1/3x</option>
+					<option value="s2">1/2x</option>
+				</optgroup>
+				<optgroup label="Normal">
+					<option value="1">1x (Normal)</option>
+				</optgroup>
+				<optgroup label="Fast">
+					<option value="2">2x</option>
+					<option value="3">3x</option>
+					<option value="4">4x</option>
+					<option value="5">5x</option>
+					<option value="6">6x</option>
+					<option value="7">7x</option>
+					<option value="8">8x</option>
+					<option value="9">9x</option>
+					<option value="10">10x</option>
+					<option value="11">11x</option>
+					<option value="12">12x</option>
+					<option value="13">13x</option>
+					<option value="14">14x</option>
+					<option value="15">15x</option>
+					<option value="16">16x</option>
+				</optgroup>
+			</sdpi-select>
+		</sdpi-item>
+
 		<%- include('common-settings') %>
 
 		<%- include('global-settings') %>
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					updateVisibility(modeSelect.value || "play-pause");
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+
+					let lastMode = modeSelect.value || "play-pause";
+					setInterval(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					}, 100);
+				}
+			}
+
+			function updateVisibility(mode) {
+				const speedSetting = document.getElementById("speed-setting");
+				if (mode === "set-speed") {
+					speedSetting?.classList.remove("hidden");
+				} else {
+					speedSetting?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 	</body>
 </html>
