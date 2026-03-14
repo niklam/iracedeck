@@ -3,12 +3,9 @@
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
 
-    <!-- Icon content area: Speedometer display (tachometer-style) -->
-    <!-- Outer gauge arc -->
-    <path d="M 38 76 A 34 34 0 1 1 106 76" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <!-- Inner speed text area -->
-    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="28" font-weight="bold">{{speedText}}</text>
+    <!-- Speed text (large, centered in icon area) -->
+    <text x="72" y="62" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="32" font-weight="bold">{{speedText}}</text>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

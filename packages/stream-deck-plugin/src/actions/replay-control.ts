@@ -102,7 +102,7 @@ const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subL
   "speed-increase": { mainLabel: "FASTER", subLabel: "REPLAY" },
   "speed-decrease": { mainLabel: "SLOWER", subLabel: "REPLAY" },
   "set-speed": { mainLabel: "", subLabel: "SET SPEED" },
-  "speed-display": { mainLabel: "", subLabel: "SPEED" },
+  "speed-display": { mainLabel: "SPEED", subLabel: "REPLAY" },
   "next-session": { mainLabel: "NEXT", subLabel: "SESSION" },
   "prev-session": { mainLabel: "PREVIOUS", subLabel: "SESSION" },
   "next-lap": { mainLabel: "LAP", subLabel: "NEXT" },
@@ -221,9 +221,7 @@ export function generateReplayControlSvg(
   } else if (mode === "speed-display") {
     const speed = replaySpeed ?? 0;
     const slowMo = replaySlowMotion ?? false;
-    const speedText = formatSpeedDisplay(speed, slowMo);
-    templateData.speedText = speedText;
-    mainLabel = isPlaying === false ? "PAUSED" : speedText;
+    templateData.speedText = formatSpeedDisplay(speed, slowMo);
   } else if (mode === "set-speed" && settings.speed) {
     mainLabel = formatSetSpeedLabel(settings.speed);
   }
