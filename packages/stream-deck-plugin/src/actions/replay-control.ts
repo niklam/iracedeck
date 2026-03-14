@@ -13,12 +13,15 @@ import frameBackwardIconSvg from "@iracedeck/icons/replay-control/frame-backward
 import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.svg";
 import jumpToBeginningIconSvg from "@iracedeck/icons/replay-control/jump-to-beginning.svg";
 import jumpToLiveIconSvg from "@iracedeck/icons/replay-control/jump-to-live.svg";
+import jumpToMyCarIconSvg from "@iracedeck/icons/replay-control/jump-to-my-car.svg";
+import nextCarIconSvg from "@iracedeck/icons/replay-control/next-car.svg";
 import nextIncidentIconSvg from "@iracedeck/icons/replay-control/next-incident.svg";
 import nextLapIconSvg from "@iracedeck/icons/replay-control/next-lap.svg";
 import nextSessionIconSvg from "@iracedeck/icons/replay-control/next-session.svg";
 import pauseIconSvg from "@iracedeck/icons/replay-control/pause.svg";
 import playBackwardIconSvg from "@iracedeck/icons/replay-control/play-backward.svg";
 import playPauseIconSvg from "@iracedeck/icons/replay-control/play-pause.svg";
+import prevCarIconSvg from "@iracedeck/icons/replay-control/prev-car.svg";
 import prevIncidentIconSvg from "@iracedeck/icons/replay-control/prev-incident.svg";
 import prevLapIconSvg from "@iracedeck/icons/replay-control/prev-lap.svg";
 import prevSessionIconSvg from "@iracedeck/icons/replay-control/prev-session.svg";
@@ -63,6 +66,9 @@ const REPLAY_CONTROL_MODES = [
   "prev-incident",
   "jump-to-beginning",
   "jump-to-live",
+  "jump-to-my-car",
+  "next-car",
+  "prev-car",
 ] as const;
 
 type ReplayControlMode = (typeof REPLAY_CONTROL_MODES)[number];
@@ -88,6 +94,9 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "prev-incident": prevIncidentIconSvg,
   "jump-to-beginning": jumpToBeginningIconSvg,
   "jump-to-live": jumpToLiveIconSvg,
+  "jump-to-my-car": jumpToMyCarIconSvg,
+  "next-car": nextCarIconSvg,
+  "prev-car": prevCarIconSvg,
 };
 
 const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subLabel: string }> = {
@@ -111,6 +120,9 @@ const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subL
   "prev-incident": { mainLabel: "PREVIOUS", subLabel: "INCIDENT" },
   "jump-to-beginning": { mainLabel: "BEGINNING", subLabel: "JUMP TO" },
   "jump-to-live": { mainLabel: "LIVE", subLabel: "JUMP TO" },
+  "jump-to-my-car": { mainLabel: "MY CAR", subLabel: "JUMP TO" },
+  "next-car": { mainLabel: "NEXT", subLabel: "CAR" },
+  "prev-car": { mainLabel: "PREVIOUS", subLabel: "CAR" },
 };
 
 /**
@@ -124,6 +136,8 @@ const DIRECTIONAL_PAIRS: Partial<Record<ReplayControlMode, { next: ReplayControl
   "prev-lap": { next: "next-lap", prev: "prev-lap" },
   "next-incident": { next: "next-incident", prev: "prev-incident" },
   "prev-incident": { next: "next-incident", prev: "prev-incident" },
+  "next-car": { next: "next-car", prev: "prev-car" },
+  "prev-car": { next: "next-car", prev: "prev-car" },
 };
 
 /** Modes whose display changes based on telemetry state */
@@ -757,6 +771,53 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         this.logger.debug(`Result: ${success}`);
         break;
       }
+      case "jump-to-my-car": {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+
+        if (!telemetry) {
+          this.logger.warn("No telemetry available for camera");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const playerCarIdx = (telemetry.PlayerCarIdx as number) ?? 0;
+        const groupNum = (telemetry.CamGroupNumber as number) ?? 1;
+        const cameraNum = (telemetry.CamCameraNumber as number) ?? 1;
+        const success = camera.switchPos(playerCarIdx, groupNum, cameraNum);
+        this.logger.info("Jump to my car executed");
+        this.logger.debug(`Result: ${success}, playerCarIdx: ${playerCarIdx}`);
+        break;
+      }
+      case "next-car": {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+
+        if (!telemetry) {
+          this.logger.warn("No telemetry available for camera");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const carIdx = (telemetry.CamCarIdx as number) ?? 0;
+        const success = camera.cycleCar(carIdx, 1);
+        this.logger.info("Next car executed");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
+      case "prev-car": {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+
+        if (!telemetry) {
+          this.logger.warn("No telemetry available for camera");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const carIdx = (telemetry.CamCarIdx as number) ?? 0;
+        const success = camera.cycleCar(carIdx, -1);
+        this.logger.info("Previous car executed");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
     }
   }
 
@@ -778,6 +839,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     } else if (DIRECTIONAL_PAIRS[mode]) {
       this.executeMode(contextId, settings);
     } else if (mode === "jump-to-beginning" || mode === "jump-to-live") {
+      this.executeMode(contextId, settings);
+    } else if (mode === "jump-to-my-car") {
       this.executeMode(contextId, settings);
     } else {
       // Transport modes: encoder push plays
@@ -805,6 +868,15 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       } else {
         replay.prevIncident();
         this.logger.info("Previous incident (dial)");
+      }
+    } else if (mode === "jump-to-my-car") {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+
+      if (telemetry) {
+        const camera = getCommands().camera;
+        const carIdx = (telemetry.CamCarIdx as number) ?? 0;
+        camera.cycleCar(carIdx, ticks > 0 ? 1 : -1);
+        this.logger.info(ticks > 0 ? "Next car (dial)" : "Previous car (dial)");
       }
     } else {
       // Transport modes: rotate does frame step

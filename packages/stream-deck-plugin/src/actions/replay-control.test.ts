@@ -87,6 +87,15 @@ vi.mock("@iracedeck/icons/replay-control/jump-to-beginning.svg", () => ({
 vi.mock("@iracedeck/icons/replay-control/jump-to-live.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-live {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/replay-control/jump-to-my-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-my-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/next-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">next-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/prev-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">prev-car {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 vi.mock("../shared/index.js", () => ({
   CommonSettings: {
@@ -132,6 +141,10 @@ vi.mock("../shared/index.js", () => ({
       prevIncident: vi.fn(() => true),
       goToStart: vi.fn(() => true),
       goToEnd: vi.fn(() => true),
+    },
+    camera: {
+      switchPos: vi.fn(() => true),
+      cycleCar: vi.fn(() => true),
     },
   })),
   LogLevel: { Info: 2 },
@@ -270,6 +283,9 @@ describe("ReplayControl", () => {
       "prev-incident",
       "jump-to-beginning",
       "jump-to-live",
+      "jump-to-my-car",
+      "next-car",
+      "prev-car",
     ] as const;
 
     it.each(ALL_MODES)("should generate a valid data URI for %s", (mode) => {
@@ -458,6 +474,28 @@ describe("ReplayControl", () => {
 
       expect(decoded).toContain("LIVE");
       expect(decoded).toContain("JUMP TO");
+    });
+
+    // Camera labels
+    it("should include MY CAR and JUMP TO labels for jump-to-my-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "jump-to-my-car" }));
+
+      expect(decoded).toContain("MY CAR");
+      expect(decoded).toContain("JUMP TO");
+    });
+
+    it("should include NEXT and CAR labels for next-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "next-car" }));
+
+      expect(decoded).toContain("NEXT");
+      expect(decoded).toContain("CAR");
+    });
+
+    it("should include PREVIOUS and CAR labels for prev-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "prev-car" }));
+
+      expect(decoded).toContain("PREVIOUS");
+      expect(decoded).toContain("CAR");
     });
 
     // Play/pause telemetry-aware label toggle

@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "20 modes"
+    text: "23 modes"
     variant: tip
 ---
 
@@ -48,6 +48,14 @@ Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Na
 | Jump to Beginning | Jump to the start of the replay. |
 | Jump to Live | Jump to the live session. |
 
+## Camera
+
+| Mode | Description |
+|------|-------------|
+| Jump to My Car | Jump the replay camera to your own car. |
+| Next Car | Switch to the next car in the replay. |
+| Previous Car | Switch to the previous car in the replay. |
+
 ## Long-Press Repeat
 
 Fast Forward, Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically (500ms initial delay, then every 250ms).
@@ -57,4 +65,5 @@ Fast Forward, Rewind, Frame Forward, Frame Backward, Increase Speed, and Decreas
 Yes — rotation behavior depends on the selected mode:
 - **Speed modes**: rotate adjusts speed progressively
 - **Navigation modes**: rotate cycles next/previous
+- **Camera modes**: rotate cycles next/previous car; push executes the selected action
 - **Transport modes**: rotate steps forward/backward by one frame

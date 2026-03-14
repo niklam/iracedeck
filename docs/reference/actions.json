@@ -236,7 +236,10 @@
             { "value": "next-incident", "label": "Next Incident" },
             { "value": "prev-incident", "label": "Previous Incident" },
             { "value": "jump-to-beginning", "label": "Jump to Beginning" },
-            { "value": "jump-to-live", "label": "Jump to Live" }
+            { "value": "jump-to-live", "label": "Jump to Live" },
+            { "value": "jump-to-my-car", "label": "Jump to My Car" },
+            { "value": "next-car", "label": "Next Car" },
+            { "value": "prev-car", "label": "Previous Car" }
           ]
         },
         {
