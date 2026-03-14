@@ -38,7 +38,7 @@ When asked about actions or controls:
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
 | Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
 | Cockpit & Interface | 4 | 25 | Wipers, FFB, delta splits, telemetry, UI toggles |
-| View & Camera | 6 | 101 | FOV, replay, camera cycle/focus, broadcast tools |
+| View & Camera | 6 | 104 | FOV, replay, camera cycle/focus, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
