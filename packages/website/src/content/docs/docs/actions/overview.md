@@ -22,6 +22,6 @@ iRaceDeck provides 30 actions with 288 controls for iRacing, organized into 8 ca
 
 Most actions support multiple **modes** selectable via the Property Inspector. For example, the Session Info action can display incidents, time remaining, lap count, position, fuel level, or active flags — all from a single action type.
 
-Actions that support **encoder** can also be used with the Stream Deck+ dial for rotation-based input (e.g., cycling through black boxes or adjusting volume).
+Actions that support the **encoder** can also be used with the Stream Deck+ dial for rotation-based input (e.g., cycling through black boxes or adjusting volume).
 
 All keyboard shortcuts used by actions are **user-configurable** through the Property Inspector to match your iRacing key bindings.

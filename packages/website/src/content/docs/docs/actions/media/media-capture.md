@@ -13,9 +13,9 @@ Media Capture puts iRacing's recording and screenshot functions at your fingerti
 
 | Mode | Description |
 |------|-------------|
-| Start/Stop Video | Start or stop video recording |
+| Start/Stop Video | Start or stop a video recording session |
 | Video Timer | Display the current video recording timer |
-| Toggle Video Capture | Toggle the video capture state |
+| Toggle Video Capture | Enable or disable the video capture subsystem |
 | Take Screenshot | Capture a standard screenshot |
 | Take Giant Screenshot | Capture a high-resolution giant screenshot |
 | Reload All Textures | Reload all in-sim textures |

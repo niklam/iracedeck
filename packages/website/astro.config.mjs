@@ -189,22 +189,22 @@ export default defineConfig({
             {
               label: "Elgato Marketplace",
               link: "https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d",
-              attrs: { target: "_blank" },
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
             {
               label: "GitHub",
               link: "https://github.com/niklam/iracedeck",
-              attrs: { target: "_blank" },
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
             {
               label: "Discord",
               link: "https://discord.gg/c6nRYywpah",
-              attrs: { target: "_blank" },
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
             {
               label: "Reddit",
               link: "https://www.reddit.com/r/iRaceDeck/",
-              attrs: { target: "_blank" },
+              attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
           ],
         },

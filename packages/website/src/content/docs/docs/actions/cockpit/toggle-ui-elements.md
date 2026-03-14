@@ -25,4 +25,4 @@ The Toggle UI Elements action lets you quickly show or hide various iRacing on-s
 
 ## Encoder Support
 
-Yes.
+Yes — rotation cycles through the available UI elements.

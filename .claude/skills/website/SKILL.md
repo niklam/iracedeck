@@ -71,7 +71,7 @@ Defined in `astro.config.mjs` under `starlight.sidebar`. Uses `{ slug: "..." }` 
 
 ## Adding/Editing Pages
 
-1. Create or edit a `.md` file in `src/content/docs/`
+1. Create or edit a `.md` file in `src/content/docs/docs/`
 2. Add Starlight frontmatter (`title`, `description`, optional `sidebar` badge)
 3. If new, add the slug to the sidebar in `astro.config.mjs`
 4. Run `pnpm dev` to preview, `pnpm build` to verify
@@ -116,7 +116,7 @@ Domain: **iracedeck.com** (Firebase Hosting with custom domain).
 ## Common Changes
 
 **Update action count on landing page**: Edit `src/content/docs/index.mdx` CardGrid
-**Add an action page**: Create `.md` in the right category folder, add slug to sidebar in `astro.config.mjs`
+**Add an action page**: Create `.md` in the right category folder, add slug to sidebar in `astro.config.mjs`, update `docs/reference/actions.json`, and update `.claude/skills/iracedeck-actions/SKILL.md`
 **Change brand color**: Update `--sl-color-accent` in `src/styles/custom.css`
 **Update favicon**: Replace files in `public/`, source from `assets/favicon/`
 **Add sidebar section**: Edit `sidebar` array in `astro.config.mjs`
