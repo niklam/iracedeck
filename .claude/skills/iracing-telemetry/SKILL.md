@@ -30,6 +30,13 @@ When asked about telemetry variables:
 3. Check if the variable is already typed in `packages/iracing-native/src/defines.ts` (`TelemetryData` interface)
 4. If not typed yet, show how to add it to `TelemetryData` with the correct TypeScript type
 
+## Template Variables (User-Facing)
+
+The canonical user-facing list of template variables (for Telemetry Display and Chat > Send Message) is at:
+`packages/website/src/content/docs/docs/features/template-variables.md`
+
+This is the **source of truth** for which variables are available in Mustache templates. When adding or modifying template variable support, update this file in the same change.
+
 ## Length Values
 
 | Length | Meaning | TypeScript Type |
