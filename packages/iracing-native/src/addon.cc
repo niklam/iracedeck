@@ -496,6 +496,13 @@ static int focusIRacingWindow()
         AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
     }
 
+    // Simulate an ALT key press/release to satisfy Windows' foreground lock.
+    // Windows blocks SetForegroundWindow from background processes unless
+    // the caller received the last input event. This workaround is a
+    // well-known technique to bypass the restriction.
+    keybd_event(VK_MENU, 0, 0, 0);
+    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+
     SetForegroundWindow(hwnd);
 
     if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
