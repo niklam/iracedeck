@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplayControlSvg } from "./replay-control.js";
+import {
+  formatSetSpeedLabel,
+  formatSpeedDisplay,
+  generateReplayControlSvg,
+  parseSpeedSetting,
+} from "./replay-control.js";
 
 vi.mock("@elgato/streamdeck", () => ({
   default: {
@@ -17,7 +22,7 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
-// Mock all 17 replay-control icon SVGs
+// Mock all replay-control icon SVGs
 vi.mock("@iracedeck/icons/replay-control/play-pause.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">play-pause {{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -44,6 +49,12 @@ vi.mock("@iracedeck/icons/replay-control/speed-increase.svg", () => ({
 }));
 vi.mock("@iracedeck/icons/replay-control/speed-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">speed-decrease {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/set-speed.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">set-speed {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/speed-display.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">speed-display {{speedText}} {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/replay-control/next-session.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">next-session {{mainLabel}} {{subLabel}}</svg>',
@@ -87,6 +98,7 @@ vi.mock("../shared/index.js", () => ({
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(() => null) };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn();
   },
   createSDLogger: vi.fn(() => ({
     debug: vi.fn(),
@@ -99,6 +111,7 @@ vi.mock("../shared/index.js", () => ({
     replay: {
       play: vi.fn(() => true),
       pause: vi.fn(() => true),
+      setPlaySpeed: vi.fn(() => true),
       fastForward: vi.fn(() => true),
       rewind: vi.fn(() => true),
       slowMotion: vi.fn(() => true),
@@ -132,6 +145,70 @@ describe("ReplayControl", () => {
     vi.clearAllMocks();
   });
 
+  describe("parseSpeedSetting", () => {
+    it("should parse normal speed values", () => {
+      expect(parseSpeedSetting("1")).toEqual({ speed: 1, slowMotion: false });
+      expect(parseSpeedSetting("8")).toEqual({ speed: 8, slowMotion: false });
+      expect(parseSpeedSetting("16")).toEqual({ speed: 16, slowMotion: false });
+    });
+
+    it("should parse slow-motion speed values", () => {
+      expect(parseSpeedSetting("s2")).toEqual({ speed: 2, slowMotion: true });
+      expect(parseSpeedSetting("s8")).toEqual({ speed: 8, slowMotion: true });
+      expect(parseSpeedSetting("s16")).toEqual({ speed: 16, slowMotion: true });
+    });
+
+    it("should clamp normal speeds to valid range", () => {
+      expect(parseSpeedSetting("0")).toEqual({ speed: 1, slowMotion: false });
+      expect(parseSpeedSetting("20")).toEqual({ speed: 16, slowMotion: false });
+    });
+
+    it("should clamp slow-motion speeds to valid range", () => {
+      expect(parseSpeedSetting("s1")).toEqual({ speed: 2, slowMotion: true });
+      expect(parseSpeedSetting("s20")).toEqual({ speed: 16, slowMotion: true });
+    });
+
+    it("should handle invalid input gracefully", () => {
+      expect(parseSpeedSetting("abc")).toEqual({ speed: 1, slowMotion: false });
+      expect(parseSpeedSetting("sabc")).toEqual({ speed: 2, slowMotion: true });
+    });
+  });
+
+  describe("formatSpeedDisplay", () => {
+    it("should format paused state", () => {
+      expect(formatSpeedDisplay(0, false)).toBe("PAUSED");
+    });
+
+    it("should format normal forward speeds", () => {
+      expect(formatSpeedDisplay(1, false)).toBe("1x");
+      expect(formatSpeedDisplay(4, false)).toBe("4x");
+      expect(formatSpeedDisplay(16, false)).toBe("16x");
+    });
+
+    it("should format rewind speeds", () => {
+      expect(formatSpeedDisplay(-2, false)).toBe("-2x");
+      expect(formatSpeedDisplay(-16, false)).toBe("-16x");
+    });
+
+    it("should format slow-motion speeds", () => {
+      expect(formatSpeedDisplay(2, true)).toBe("1/2x");
+      expect(formatSpeedDisplay(4, true)).toBe("1/4x");
+      expect(formatSpeedDisplay(16, true)).toBe("1/16x");
+    });
+  });
+
+  describe("formatSetSpeedLabel", () => {
+    it("should format normal speed settings", () => {
+      expect(formatSetSpeedLabel("1")).toBe("1x");
+      expect(formatSetSpeedLabel("8")).toBe("8x");
+    });
+
+    it("should format slow-motion speed settings", () => {
+      expect(formatSetSpeedLabel("s2")).toBe("1/2x");
+      expect(formatSetSpeedLabel("s16")).toBe("1/16x");
+    });
+  });
+
   describe("generateReplayControlSvg", () => {
     const ALL_MODES = [
       "play-pause",
@@ -143,6 +220,8 @@ describe("ReplayControl", () => {
       "frame-backward",
       "speed-increase",
       "speed-decrease",
+      "set-speed",
+      "speed-display",
       "next-session",
       "prev-session",
       "next-lap",
@@ -224,6 +303,41 @@ describe("ReplayControl", () => {
 
       expect(decoded).toContain("SLOWER");
       expect(decoded).toContain("REPLAY");
+    });
+
+    // Set speed labels
+    it("should show configured speed label for set-speed mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "set-speed", speed: "4" }));
+
+      expect(decoded).toContain("4x");
+      expect(decoded).toContain("SET SPEED");
+    });
+
+    it("should show slow-motion speed label for set-speed mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "set-speed", speed: "s4" }));
+
+      expect(decoded).toContain("1/4x");
+      expect(decoded).toContain("SET SPEED");
+    });
+
+    // Speed display labels
+    it("should show current speed for speed-display mode when playing", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "speed-display" }, true, 4, false));
+
+      expect(decoded).toContain("4x");
+      expect(decoded).toContain("SPEED");
+    });
+
+    it("should show PAUSED for speed-display mode when not playing", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "speed-display" }, false, 0, false));
+
+      expect(decoded).toContain("PAUSED");
+    });
+
+    it("should show slow-motion speed for speed-display mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "speed-display" }, true, 4, true));
+
+      expect(decoded).toContain("1/4x");
     });
 
     // Navigation labels
