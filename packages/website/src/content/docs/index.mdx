@@ -2,6 +2,8 @@
 title: iRaceDeck
 description: Free, open-source Stream Deck plugin for iRacing. Control pit stops, cameras, replay, telemetry, chat and hundreds more — all one tap away.
 template: splash
+prev: false
+next: false
 hero:
   title: |
     Control <span class="accent">iRacing</span> From Your Deck
@@ -21,37 +23,92 @@ hero:
     - text: GitHub
       link: https://github.com/niklam/iracedeck
       icon: external
-      variant: minimal
+      variant: secondary
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import { LinkCard } from '@astrojs/starlight/components';
+
+<hr class="section-divider" />
 
 <div class="stats-row">
-  <div class="stat"><span class="stat-value">30</span><span class="stat-label">Actions</span></div>
-  <div class="stat"><span class="stat-value">288</span><span class="stat-label">Controls</span></div>
-  <div class="stat"><span class="stat-value">8</span><span class="stat-label">Categories</span></div>
-  <div class="stat"><span class="stat-value">100%</span><span class="stat-label">Free & Open Source</span></div>
+  <div class="stat">
+    <span class="stat-value">30</span>
+    <span class="stat-label">Actions</span>
+  </div>
+  <div class="stat-divider" />
+  <div class="stat">
+    <span class="stat-value">288</span>
+    <span class="stat-label">Controls</span>
+  </div>
+  <div class="stat-divider" />
+  <div class="stat">
+    <span class="stat-value">8</span>
+    <span class="stat-label">Categories</span>
+  </div>
+  <div class="stat-divider" />
+  <div class="stat">
+    <span class="stat-value">100%</span>
+    <span class="stat-label">Free & Open Source</span>
+  </div>
 </div>
 
-## Everything You Need
+<hr class="section-divider" />
 
-<CardGrid>
-  <LinkCard title="Display & Session" description="Live session data — incidents, laps, position, fuel, flags, and custom telemetry displays." href="/docs/actions/display-session/session-info/" />
-  <LinkCard title="Driving Controls" description="AI spotter, audio, black boxes, look direction, car control — starter, ignition, pit limiter." href="/docs/actions/driving/ai-spotter-controls/" />
-  <LinkCard title="Cockpit & Interface" description="Wipers, FFB, delta splits, telemetry logging, dash pages, UI element toggles." href="/docs/actions/cockpit/cockpit-misc/" />
-  <LinkCard title="View & Camera" description="FOV, replay transport and navigation, camera cycle/focus, full broadcast camera editor." href="/docs/actions/view-camera/view-adjustment/" />
-  <LinkCard title="Media" description="Video recording, screenshots, giant screenshots, texture management." href="/docs/actions/media/media-capture/" />
-  <LinkCard title="Pit Service" description="Fuel add/reduce/autofuel, tire changes and compounds, tearoff, fast repair." href="/docs/actions/pit-service/pit-quick-actions/" />
-  <LinkCard title="Car Setup" description="Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — all adjustable live." href="/docs/actions/car-setup/setup-aero/" />
-  <LinkCard title="Communication" description="Open chat, 15 macros, reply, whisper, and more." href="/docs/actions/communication/chat/" />
-</CardGrid>
+<div class="category-grid">
+  <a class="category-card" href="/docs/actions/display-session/session-info/">
+    <span class="category-title">Display & Session</span>
+    <span class="category-desc">Live session data — incidents, laps, position, fuel, flags, and custom telemetry displays.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/driving/ai-spotter-controls/">
+    <span class="category-title">Driving Controls</span>
+    <span class="category-desc">AI spotter, audio, black boxes, look direction, car control — starter, ignition, pit limiter.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/cockpit/cockpit-misc/">
+    <span class="category-title">Cockpit & Interface</span>
+    <span class="category-desc">Wipers, FFB, delta splits, telemetry logging, dash pages, UI element toggles.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/view-camera/view-adjustment/">
+    <span class="category-title">View & Camera</span>
+    <span class="category-desc">FOV, replay transport and navigation, camera cycle/focus, full broadcast camera editor.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/media/media-capture/">
+    <span class="category-title">Media</span>
+    <span class="category-desc">Video recording, screenshots, giant screenshots, texture management.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/pit-service/pit-quick-actions/">
+    <span class="category-title">Pit Service</span>
+    <span class="category-desc">Fuel add/reduce/autofuel, tire changes and compounds, tearoff, fast repair.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/car-setup/setup-aero/">
+    <span class="category-title">Car Setup</span>
+    <span class="category-desc">Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — all adjustable live.</span>
+  </a>
+  <a class="category-card" href="/docs/actions/communication/chat/">
+    <span class="category-title">Communication</span>
+    <span class="category-desc">Open chat, 15 macros, reply, whisper, and more.</span>
+  </a>
+</div>
+
+<hr class="section-divider" />
 
 ## Community
 
-<CardGrid>
-  <LinkCard title="Discord" description="Join the community for support, feedback, and feature requests." href="https://discord.gg/c6nRYywpah" />
-  <LinkCard title="Reddit" description="r/iRaceDeck — discussion, tips, and showcase." href="https://www.reddit.com/r/iRaceDeck/" />
-  <LinkCard title="GitHub" description="View source, report issues, and contribute." href="https://github.com/niklam/iracedeck" />
-</CardGrid>
+<div class="community-grid">
+  <a class="community-card" href="https://discord.gg/c6nRYywpah">
+    <span class="community-title">Discord</span>
+    <span class="community-desc">Join the community for support, feedback, and feature requests.</span>
+  </a>
+  <a class="community-card" href="https://www.reddit.com/r/iRaceDeck/">
+    <span class="community-title">Reddit</span>
+    <span class="community-desc">r/iRaceDeck — discussion, tips, and showcase.</span>
+  </a>
+  <a class="community-card" href="https://github.com/niklam/iracedeck">
+    <span class="community-title">GitHub</span>
+    <span class="community-desc">View source, report issues, and contribute.</span>
+  </a>
+</div>
 
-<p class="requirement">Works with Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+. Requires Stream Deck software 7.1 or newer.</p>
+<footer class="landing-footer">
+  <p>Works with Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+. Requires Stream Deck software 7.1 or newer.</p>
+  <p>iRaceDeck is not affiliated with or endorsed by iRacing.com or Elgato. All trademarks are property of their respective owners.</p>
+</footer>

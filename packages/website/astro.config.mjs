@@ -13,7 +13,7 @@ export default defineConfig({
       customCss: ["./src/styles/custom.css"],
       social: [
         {
-          icon: "external",
+          icon: "download",
           label: "Elgato Marketplace",
           href: "https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d",
         },
