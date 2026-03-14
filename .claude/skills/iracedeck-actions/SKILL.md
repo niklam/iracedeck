@@ -38,12 +38,12 @@ When asked about actions or controls:
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
 | Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
 | Cockpit & Interface | 4 | 25 | Wipers, FFB, delta splits, telemetry, UI toggles |
-| View & Camera | 8 | 102 | FOV, replay, camera cycle/focus, broadcast tools |
+| View & Camera | 8 | 104 | FOV, replay, camera cycle/focus, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 1 | 21 | Open chat, macros (15), whisper, reply |
-| **Total** | **30** | **288** | |
+| **Total** | **30** | **290** | |
 
 ## Actions by Category
 
@@ -78,7 +78,7 @@ When asked about actions or controls:
 |--------|----------|-------|
 | View Adjustment | 9 | FOV +/-, horizon +/-, driver height +/-, recenter VR, UI size +/- |
 | Replay Transport | 8 | play, pause, stop, FF, rewind, slow-mo, frame +/- |
-| Replay Speed | 2 | increase, decrease |
+| Replay Speed | 4 | increase (slow-mo), decrease (slow-mo), set speed, speed display |
 | Replay Navigation | 11 | session/lap/incident next/prev, jump start/end, set position, search time, erase |
 | Camera Cycle | 8 | 4 types (camera, sub-camera, car, driving) x 2 directions |
 | Camera Editor Adjustments | 29 | 14 parameters +/- plus auto-set mic gain |
