@@ -13,12 +13,15 @@ import frameBackwardIconSvg from "@iracedeck/icons/replay-control/frame-backward
 import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.svg";
 import jumpToBeginningIconSvg from "@iracedeck/icons/replay-control/jump-to-beginning.svg";
 import jumpToLiveIconSvg from "@iracedeck/icons/replay-control/jump-to-live.svg";
+import jumpToMyCarIconSvg from "@iracedeck/icons/replay-control/jump-to-my-car.svg";
+import nextCarIconSvg from "@iracedeck/icons/replay-control/next-car.svg";
 import nextIncidentIconSvg from "@iracedeck/icons/replay-control/next-incident.svg";
 import nextLapIconSvg from "@iracedeck/icons/replay-control/next-lap.svg";
 import nextSessionIconSvg from "@iracedeck/icons/replay-control/next-session.svg";
 import pauseIconSvg from "@iracedeck/icons/replay-control/pause.svg";
 import playBackwardIconSvg from "@iracedeck/icons/replay-control/play-backward.svg";
 import playPauseIconSvg from "@iracedeck/icons/replay-control/play-pause.svg";
+import prevCarIconSvg from "@iracedeck/icons/replay-control/prev-car.svg";
 import prevIncidentIconSvg from "@iracedeck/icons/replay-control/prev-incident.svg";
 import prevLapIconSvg from "@iracedeck/icons/replay-control/prev-lap.svg";
 import prevSessionIconSvg from "@iracedeck/icons/replay-control/prev-session.svg";
@@ -63,6 +66,9 @@ const REPLAY_CONTROL_MODES = [
   "prev-incident",
   "jump-to-beginning",
   "jump-to-live",
+  "jump-to-my-car",
+  "next-car",
+  "prev-car",
 ] as const;
 
 type ReplayControlMode = (typeof REPLAY_CONTROL_MODES)[number];
@@ -88,6 +94,9 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "prev-incident": prevIncidentIconSvg,
   "jump-to-beginning": jumpToBeginningIconSvg,
   "jump-to-live": jumpToLiveIconSvg,
+  "jump-to-my-car": jumpToMyCarIconSvg,
+  "next-car": nextCarIconSvg,
+  "prev-car": prevCarIconSvg,
 };
 
 const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subLabel: string }> = {
@@ -111,6 +120,9 @@ const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subL
   "prev-incident": { mainLabel: "PREVIOUS", subLabel: "INCIDENT" },
   "jump-to-beginning": { mainLabel: "BEGINNING", subLabel: "JUMP TO" },
   "jump-to-live": { mainLabel: "LIVE", subLabel: "JUMP TO" },
+  "jump-to-my-car": { mainLabel: "MY CAR", subLabel: "JUMP TO" },
+  "next-car": { mainLabel: "NEXT", subLabel: "CAR" },
+  "prev-car": { mainLabel: "PREVIOUS", subLabel: "CAR" },
 };
 
 /**
@@ -124,6 +136,8 @@ const DIRECTIONAL_PAIRS: Partial<Record<ReplayControlMode, { next: ReplayControl
   "prev-lap": { next: "next-lap", prev: "prev-lap" },
   "next-incident": { next: "next-incident", prev: "prev-incident" },
   "prev-incident": { next: "next-incident", prev: "prev-incident" },
+  "next-car": { next: "next-car", prev: "prev-car" },
+  "prev-car": { next: "next-car", prev: "prev-car" },
 };
 
 /** Modes whose display changes based on telemetry state */
@@ -249,6 +263,79 @@ export function generateReplayControlSvg(
   const svg = renderIconTemplate(iconSvg, templateData);
 
   return svgToDataUri(svg);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Look up a car number from session info by car index.
+ * Returns the numeric car number, or null if not found.
+ */
+export function getCarNumberFromSessionInfo(sessionInfo: unknown, carIdx: number): number | null {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as Array<{ CarIdx: number; CarNumber: string }> | undefined;
+
+  if (!drivers) return null;
+
+  const driver = drivers.find((d) => d.CarIdx === carIdx);
+
+  if (!driver) return null;
+
+  const num = parseInt(driver.CarNumber, 10);
+
+  return isNaN(num) ? null : num;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Find the nearest car on track ahead or behind the currently viewed car (CamCarIdx).
+ * Uses CarIdxLapCompleted + CarIdxLapDistPct for track progress.
+ * Skips inactive cars (lap < 0) and cars on pit road.
+ */
+export function findAdjacentCarOnTrack(telemetry: TelemetryData | null, direction: "ahead" | "behind"): number | null {
+  if (!telemetry?.CarIdxLapCompleted || !telemetry?.CarIdxLapDistPct) return null;
+
+  const camCarIdx = (telemetry.CamCarIdx as number) ?? -1;
+
+  if (camCarIdx < 0) return null;
+
+  const lapCompleted = telemetry.CarIdxLapCompleted as number[];
+  const lapDistPct = telemetry.CarIdxLapDistPct as number[];
+  const onPitRoad = telemetry.CarIdxOnPitRoad as boolean[] | undefined;
+
+  // Build sorted list of active on-track cars by track progress
+  const activeCars: Array<{ carIdx: number; progress: number }> = [];
+
+  for (let idx = 0; idx < lapCompleted.length; idx++) {
+    if (lapCompleted[idx] === undefined || lapCompleted[idx] < 0) continue;
+
+    if (onPitRoad?.[idx]) continue;
+
+    if (lapDistPct[idx] === undefined || lapDistPct[idx] < 0) continue;
+
+    const progress = lapCompleted[idx] + lapDistPct[idx];
+    activeCars.push({ carIdx: idx, progress });
+  }
+
+  // Sort by progress descending (highest first = most laps/distance)
+  activeCars.sort((a, b) => b.progress - a.progress);
+
+  const currentIndex = activeCars.findIndex((c) => c.carIdx === camCarIdx);
+
+  if (currentIndex === -1) return null;
+
+  if (direction === "ahead") {
+    // Car ahead = higher progress = lower index in sorted array (wraps around)
+    const aheadIndex = currentIndex === 0 ? activeCars.length - 1 : currentIndex - 1;
+
+    return activeCars[aheadIndex].carIdx;
+  } else {
+    // Car behind = lower progress = higher index in sorted array (wraps around)
+    const behindIndex = currentIndex === activeCars.length - 1 ? 0 : currentIndex + 1;
+
+    return activeCars[behindIndex].carIdx;
+  }
 }
 
 const ReplayControlSettings = CommonSettings.extend({
@@ -467,6 +554,18 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       this.replaySpeed.set(contextId, speed);
       this.replaySlowMotion.set(contextId, slowMotion);
     }
+  }
+
+  private getCarNumberByIdx(carIdx: number): number | null {
+    const sessionInfo = this.sdkController.getSessionInfo();
+
+    return getCarNumberFromSessionInfo(sessionInfo, carIdx);
+  }
+
+  private findAdjacentCarOnTrack(direction: "ahead" | "behind"): number | null {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    return findAdjacentCarOnTrack(telemetry, direction);
   }
 
   private executeMode(contextId: string, settings: ReplayControlSettings): void {
@@ -757,6 +856,71 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         this.logger.debug(`Result: ${success}`);
         break;
       }
+      case "jump-to-my-car": {
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+        const driverCarIdx = (driverInfo?.DriverCarIdx as number) ?? -1;
+
+        if (driverCarIdx < 0) {
+          this.logger.warn("No session info available for jump to my car");
+          break;
+        }
+
+        const carNum = this.getCarNumberByIdx(driverCarIdx);
+
+        if (carNum === null) {
+          this.logger.warn("Could not find car number for player");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const success = camera.switchNum(carNum, 0, 0);
+        this.logger.info("Jump to my car executed");
+        this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
+        break;
+      }
+      case "next-car": {
+        const nextCarIdx = this.findAdjacentCarOnTrack("ahead");
+
+        if (nextCarIdx === null) {
+          this.logger.warn("No car found ahead on track");
+          break;
+        }
+
+        const nextCarNum = this.getCarNumberByIdx(nextCarIdx);
+
+        if (nextCarNum === null) {
+          this.logger.warn("Could not find car number for next car");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const success = camera.switchNum(nextCarNum, 0, 0);
+        this.logger.info("Next car executed");
+        this.logger.debug(`Result: ${success}, carNum: ${nextCarNum}`);
+        break;
+      }
+      case "prev-car": {
+        const prevCarIdx = this.findAdjacentCarOnTrack("behind");
+
+        if (prevCarIdx === null) {
+          this.logger.warn("No car found behind on track");
+          break;
+        }
+
+        const prevCarNum = this.getCarNumberByIdx(prevCarIdx);
+
+        if (prevCarNum === null) {
+          this.logger.warn("Could not find car number for previous car");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const success = camera.switchNum(prevCarNum, 0, 0);
+        this.logger.info("Previous car executed");
+        this.logger.debug(`Result: ${success}, carNum: ${prevCarNum}`);
+        break;
+      }
     }
   }
 
@@ -778,6 +942,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     } else if (DIRECTIONAL_PAIRS[mode]) {
       this.executeMode(contextId, settings);
     } else if (mode === "jump-to-beginning" || mode === "jump-to-live") {
+      this.executeMode(contextId, settings);
+    } else if (mode === "jump-to-my-car") {
       this.executeMode(contextId, settings);
     } else {
       // Transport modes: encoder push plays
@@ -805,6 +971,24 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       } else {
         replay.prevIncident();
         this.logger.info("Previous incident (dial)");
+      }
+    } else if (mode === "jump-to-my-car") {
+      // Rotate cycles next/prev car on track
+      const direction = ticks > 0 ? "ahead" : "behind";
+      const carIdx = this.findAdjacentCarOnTrack(direction);
+
+      if (carIdx === null) {
+        this.logger.warn("No adjacent car found on track (dial)");
+      } else {
+        const carNum = this.getCarNumberByIdx(carIdx);
+
+        if (carNum === null) {
+          this.logger.warn("Could not find car number for adjacent car (dial)");
+        } else {
+          const camera = getCommands().camera;
+          camera.switchNum(carNum, 0, 0);
+          this.logger.info(ticks > 0 ? "Next car (dial)" : "Previous car (dial)");
+        }
       }
     } else {
       // Transport modes: rotate does frame step

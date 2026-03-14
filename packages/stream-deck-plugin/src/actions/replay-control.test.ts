@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   calculateNeedleAngle,
+  findAdjacentCarOnTrack,
   formatSetSpeedLabel,
   formatSpeedDisplay,
   generateReplayControlSvg,
+  getCarNumberFromSessionInfo,
   parseSpeedSetting,
 } from "./replay-control.js";
 
@@ -87,6 +89,15 @@ vi.mock("@iracedeck/icons/replay-control/jump-to-beginning.svg", () => ({
 vi.mock("@iracedeck/icons/replay-control/jump-to-live.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-live {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/replay-control/jump-to-my-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-my-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/next-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">next-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/prev-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">prev-car {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 vi.mock("../shared/index.js", () => ({
   CommonSettings: {
@@ -132,6 +143,9 @@ vi.mock("../shared/index.js", () => ({
       prevIncident: vi.fn(() => true),
       goToStart: vi.fn(() => true),
       goToEnd: vi.fn(() => true),
+    },
+    camera: {
+      switchNum: vi.fn(() => true),
     },
   })),
   LogLevel: { Info: 2 },
@@ -270,6 +284,9 @@ describe("ReplayControl", () => {
       "prev-incident",
       "jump-to-beginning",
       "jump-to-live",
+      "jump-to-my-car",
+      "next-car",
+      "prev-car",
     ] as const;
 
     it.each(ALL_MODES)("should generate a valid data URI for %s", (mode) => {
@@ -460,6 +477,28 @@ describe("ReplayControl", () => {
       expect(decoded).toContain("JUMP TO");
     });
 
+    // Camera labels
+    it("should include MY CAR and JUMP TO labels for jump-to-my-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "jump-to-my-car" }));
+
+      expect(decoded).toContain("MY CAR");
+      expect(decoded).toContain("JUMP TO");
+    });
+
+    it("should include NEXT and CAR labels for next-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "next-car" }));
+
+      expect(decoded).toContain("NEXT");
+      expect(decoded).toContain("CAR");
+    });
+
+    it("should include PREVIOUS and CAR labels for prev-car mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "prev-car" }));
+
+      expect(decoded).toContain("PREVIOUS");
+      expect(decoded).toContain("CAR");
+    });
+
     // Play/pause telemetry-aware label toggle
     it("should show PLAY label when isPlaying is false", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "play-pause" }, false));
@@ -488,6 +527,167 @@ describe("ReplayControl", () => {
 
       expect(decoded).toContain("STOP");
       expect(decoded).not.toContain("PAUSE");
+    });
+  });
+
+  describe("getCarNumberFromSessionInfo", () => {
+    const sessionInfo = {
+      DriverInfo: {
+        DriverCarIdx: 2,
+        Drivers: [
+          { CarIdx: 0, CarNumber: "0" },
+          { CarIdx: 1, CarNumber: "42" },
+          { CarIdx: 2, CarNumber: "4" },
+          { CarIdx: 3, CarNumber: "99" },
+        ],
+      },
+    };
+
+    it("should return car number for a valid car index", () => {
+      expect(getCarNumberFromSessionInfo(sessionInfo, 2)).toBe(4);
+      expect(getCarNumberFromSessionInfo(sessionInfo, 1)).toBe(42);
+      expect(getCarNumberFromSessionInfo(sessionInfo, 0)).toBe(0);
+    });
+
+    it("should return null for unknown car index", () => {
+      expect(getCarNumberFromSessionInfo(sessionInfo, 99)).toBeNull();
+    });
+
+    it("should return null when session info is null", () => {
+      expect(getCarNumberFromSessionInfo(null, 0)).toBeNull();
+    });
+
+    it("should return null when DriverInfo is missing", () => {
+      expect(getCarNumberFromSessionInfo({}, 0)).toBeNull();
+    });
+
+    it("should return null when Drivers array is missing", () => {
+      expect(getCarNumberFromSessionInfo({ DriverInfo: {} }, 0)).toBeNull();
+    });
+
+    it("should return null for non-numeric car number", () => {
+      const info = { DriverInfo: { Drivers: [{ CarIdx: 0, CarNumber: "ABC" }] } };
+
+      expect(getCarNumberFromSessionInfo(info, 0)).toBeNull();
+    });
+  });
+
+  describe("findAdjacentCarOnTrack", () => {
+    function makeTelemetry(camCarIdx: number, cars: Array<{ idx: number; laps: number; dist: number; pit?: boolean }>) {
+      const maxIdx = Math.max(...cars.map((c) => c.idx), 0);
+      const lapCompleted = new Array(maxIdx + 1).fill(-1);
+      const lapDistPct = new Array(maxIdx + 1).fill(-1);
+      const onPitRoad = new Array(maxIdx + 1).fill(false);
+
+      for (const car of cars) {
+        lapCompleted[car.idx] = car.laps;
+        lapDistPct[car.idx] = car.dist;
+        onPitRoad[car.idx] = car.pit ?? false;
+      }
+
+      return {
+        CamCarIdx: camCarIdx,
+        CarIdxLapCompleted: lapCompleted,
+        CarIdxLapDistPct: lapDistPct,
+        CarIdxOnPitRoad: onPitRoad,
+      };
+    }
+
+    it("should find the car ahead on track", () => {
+      const telemetry = makeTelemetry(2, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5 },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(1);
+    });
+
+    it("should find the car behind on track", () => {
+      const telemetry = makeTelemetry(2, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5 },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      expect(findAdjacentCarOnTrack(telemetry, "behind")).toBe(3);
+    });
+
+    it("should wrap around when ahead of the leader", () => {
+      const telemetry = makeTelemetry(1, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5 },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      // Car 1 is first in sorted order; ahead wraps to last car
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(3);
+    });
+
+    it("should wrap around when behind the last car", () => {
+      const telemetry = makeTelemetry(3, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5 },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      // Car 3 is last in sorted order; behind wraps to first car
+      expect(findAdjacentCarOnTrack(telemetry, "behind")).toBe(1);
+    });
+
+    it("should skip cars on pit road", () => {
+      const telemetry = makeTelemetry(3, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5, pit: true },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      // Car 2 is on pit road, so car ahead of 3 should be 1
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(1);
+    });
+
+    it("should skip inactive cars", () => {
+      const telemetry = makeTelemetry(3, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: -1, dist: 0.5 },
+        { idx: 3, laps: 5, dist: 0.2 },
+      ]);
+
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(1);
+    });
+
+    it("should return null when telemetry is null", () => {
+      expect(findAdjacentCarOnTrack(null, "ahead")).toBeNull();
+    });
+
+    it("should return null when CamCarIdx is missing", () => {
+      const telemetry = {
+        CarIdxLapCompleted: [5],
+        CarIdxLapDistPct: [0.5],
+      };
+
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBeNull();
+    });
+
+    it("should return null when current car is not in active list", () => {
+      const telemetry = makeTelemetry(99, [
+        { idx: 1, laps: 5, dist: 0.8 },
+        { idx: 2, laps: 5, dist: 0.5 },
+      ]);
+
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBeNull();
+    });
+
+    it("should handle cars on different laps", () => {
+      const telemetry = makeTelemetry(2, [
+        { idx: 1, laps: 6, dist: 0.2 },
+        { idx: 2, laps: 5, dist: 0.9 },
+        { idx: 3, laps: 5, dist: 0.1 },
+      ]);
+
+      // Progress: car1=6.2, car2=5.9, car3=5.1
+      expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(1);
+      expect(findAdjacentCarOnTrack(telemetry, "behind")).toBe(3);
     });
   });
 });
