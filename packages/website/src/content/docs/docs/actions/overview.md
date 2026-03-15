@@ -3,7 +3,7 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 31 actions with 317 controls for iRacing, organized into 8 categories.
+iRaceDeck provides 31 actions with 319 controls for iRacing, organized into 8 categories.
 
 ## Categories
 

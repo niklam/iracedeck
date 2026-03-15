@@ -71,7 +71,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   yellow: {
     command: "!yellow",
     needsDriver: false,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -83,7 +82,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "black-flag": {
     command: "!black",
     needsDriver: true,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: ["penalty-section"],
@@ -95,7 +93,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "dq-driver": {
     command: "!dq",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -129,7 +126,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "clear-penalties": {
     command: "!clear",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -141,7 +137,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "clear-all": {
     command: "!clearall",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -153,7 +148,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "wave-around": {
     command: "!waveby",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -165,7 +159,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   eol: {
     command: "!eol",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -177,7 +170,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "pit-close": {
     command: "!pitclose",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -189,7 +181,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "pit-open": {
     command: "!pitopen",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -201,7 +192,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "pace-laps": {
     command: "!pacelaps",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: ["pace-laps-section"],
@@ -213,7 +203,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "single-file-restart": {
     command: "!restart single",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -225,7 +214,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "double-file-restart": {
     command: "!restart double",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -239,7 +227,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "advance-session": {
     command: "!advance",
     needsDriver: false,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -251,7 +238,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "grid-set": {
     command: "!gridset",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: ["grid-set-section"],
@@ -263,7 +249,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "grid-start": {
     command: "!gridstart",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -275,7 +260,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "track-state": {
     command: "!trackstate",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: ["track-state-section"],
@@ -289,7 +273,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "grant-admin": {
     command: "!admin",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -301,7 +284,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "revoke-admin": {
     command: "!nadmin",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -313,7 +295,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "remove-driver": {
     command: "!remove",
     needsDriver: true,
-
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -325,7 +306,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "enable-chat-all": {
     command: "!chat",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -337,7 +317,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "enable-chat-driver": {
     command: "!chat",
     needsDriver: true,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -349,7 +328,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "disable-chat-all": {
     command: "!nchat",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -361,7 +339,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "disable-chat-driver": {
     command: "!nchat",
     needsDriver: true,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -373,7 +350,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "message-all": {
     command: "/all",
     needsDriver: false,
-
     hasMessage: true,
     messageRequired: true,
     extraSettings: [],
@@ -385,7 +361,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "rc-message": {
     command: "/rc",
     needsDriver: false,
-
     hasMessage: true,
     messageRequired: true,
     extraSettings: [],
@@ -399,7 +374,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "next-car-number": {
     command: "",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -411,7 +385,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "prev-car-number": {
     command: "",
     needsDriver: false,
-
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
