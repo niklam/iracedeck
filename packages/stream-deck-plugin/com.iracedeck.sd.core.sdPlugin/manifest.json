@@ -313,6 +313,31 @@
       ]
     },
     {
+      "Name": "Race Admin",
+      "UUID": "com.iracedeck.sd.core.race-admin",
+      "Icon": "imgs/actions/race-admin/icon",
+      "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
+      "PropertyInspectorPath": "ui/race-admin.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous car (car navigation modes)",
+          "Push": "Execute admin command"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/race-admin/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",

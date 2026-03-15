@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#8B1A1A"/>
+  <!-- Gavel icon -->
+  <rect x="26" y="10" width="22" height="10" rx="3" fill="none" stroke="#ffffff" stroke-width="2.5" transform="rotate(-35 37 15)"/>
+  <line x1="34" y1="24" x2="26" y2="38" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="18" y="38" width="20" height="5" rx="2" fill="#ffffff"/>
+  <!-- Text labels -->
+  <text x="36" y="52" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="8">RACE</text>
+  <text x="36" y="63" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">ADMIN</text>
+</svg>

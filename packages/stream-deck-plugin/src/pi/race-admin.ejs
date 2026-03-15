@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Command">
+			<sdpi-select id="mode-select" setting="mode" default="yellow">
+				<optgroup label="Race Control">
+					<option value="yellow">Throw Yellow Flag</option>
+					<option value="black-flag">Black Flag Driver</option>
+					<option value="dq-driver">Disqualify Driver</option>
+					<option value="show-dqs">Show Disqualifications</option>
+					<option value="clear-penalties">Clear Driver Penalties</option>
+					<option value="clear-all">Clear All Penalties</option>
+					<option value="wave-around">Wave Driver Around</option>
+					<option value="eol">End of Line Penalty</option>
+					<option value="pit-close">Close Pit Entrance</option>
+					<option value="pit-open">Open Pit Entrance</option>
+					<option value="pace-laps">Adjust Pace Laps</option>
+					<option value="single-file-restart">Single-File Restart</option>
+					<option value="double-file-restart">Double-File Restart</option>
+				</optgroup>
+				<optgroup label="Session Management">
+					<option value="advance-session">Advance Session</option>
+					<option value="grid-set">Delay Race Start</option>
+					<option value="grid-start">Start Race</option>
+					<option value="track-state">Track State (Rubber)</option>
+				</optgroup>
+				<optgroup label="Driver &amp; Chat Management">
+					<option value="grant-admin">Grant Admin</option>
+					<option value="revoke-admin">Revoke Admin</option>
+					<option value="remove-driver">Remove Driver</option>
+					<option value="enable-chat-all">Enable Chat (All)</option>
+					<option value="enable-chat-driver">Enable Chat (Driver)</option>
+					<option value="disable-chat-all">Disable Chat (All)</option>
+					<option value="disable-chat-driver">Mute Driver</option>
+					<option value="message-all">Message All Participants</option>
+					<option value="rc-message">Race Control Message</option>
+				</optgroup>
+				<optgroup label="Car Navigation">
+					<option value="next-car-number">Next Car (Number Order)</option>
+					<option value="prev-car-number">Previous Car (Number Order)</option>
+				</optgroup>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Driver targeting (shown for modes that accept a driver parameter) -->
+		<div id="driver-section" class="hidden">
+			<sdpi-item label="Use Viewed Car">
+				<sdpi-checkbox id="use-viewed-car" setting="useViewedCar" default="true"></sdpi-checkbox>
+			</sdpi-item>
+			<sdpi-item id="car-number-item" label="Car Number" class="hidden">
+				<sdpi-textfield setting="carNumber" placeholder="e.g. 42"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Black flag penalty settings -->
+		<div id="penalty-section" class="hidden">
+			<sdpi-item label="Penalty Type">
+				<sdpi-select setting="penaltyType" default="time">
+					<option value="time">Time (seconds)</option>
+					<option value="laps">Laps</option>
+					<option value="drivethrough">Drive-Through</option>
+				</sdpi-select>
+			</sdpi-item>
+			<sdpi-item id="penalty-value-item" label="Penalty Value">
+				<sdpi-textfield setting="penaltyValue" default="30" placeholder="e.g. 30"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Pace laps settings -->
+		<div id="pace-laps-section" class="hidden">
+			<sdpi-item label="Operation">
+				<sdpi-select setting="paceLapsOperation" default="+">
+					<option value="+">Add (+)</option>
+					<option value="-">Subtract (−)</option>
+					<option value="=">Set (=)</option>
+				</sdpi-select>
+			</sdpi-item>
+			<sdpi-item label="Laps">
+				<sdpi-textfield setting="paceLapsValue" default="1" placeholder="e.g. 2"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Grid set (delay start) settings -->
+		<div id="grid-set-section" class="hidden">
+			<sdpi-item label="Minutes">
+				<sdpi-textfield setting="gridSetMinutes" default="5" placeholder="1-10"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Track state settings -->
+		<div id="track-state-section" class="hidden">
+			<sdpi-item label="Track Usage %">
+				<sdpi-textfield setting="trackStatePercent" default="50" placeholder="-1 to 100"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<!-- Message field (for commands with optional/required message) -->
+		<div id="message-section" class="hidden">
+			<sdpi-item label="Message">
+				<sdpi-textarea setting="message" placeholder="Optional message (supports {{templates}})"></sdpi-textarea>
+			</sdpi-item>
+		</div>
+
+		<%- include('common-settings') %>
+
+		<%- include('global-settings') %>
+
+		<script>
+			// Mode metadata for conditional visibility
+			var MODE_META = {
+				"yellow": { driver: false, message: true, extra: [] },
+				"black-flag": { driver: true, message: false, extra: ["penalty-section"] },
+				"dq-driver": { driver: true, message: true, extra: [] },
+				"show-dqs": { driver: true, message: false, extra: [] },
+				"clear-penalties": { driver: true, message: true, extra: [] },
+				"clear-all": { driver: false, message: false, extra: [] },
+				"wave-around": { driver: true, message: true, extra: [] },
+				"eol": { driver: true, message: true, extra: [] },
+				"pit-close": { driver: false, message: false, extra: [] },
+				"pit-open": { driver: false, message: false, extra: [] },
+				"pace-laps": { driver: false, message: false, extra: ["pace-laps-section"] },
+				"single-file-restart": { driver: false, message: false, extra: [] },
+				"double-file-restart": { driver: false, message: false, extra: [] },
+				"advance-session": { driver: false, message: true, extra: [] },
+				"grid-set": { driver: false, message: false, extra: ["grid-set-section"] },
+				"grid-start": { driver: false, message: false, extra: [] },
+				"track-state": { driver: false, message: false, extra: ["track-state-section"] },
+				"grant-admin": { driver: true, message: true, extra: [] },
+				"revoke-admin": { driver: true, message: true, extra: [] },
+				"remove-driver": { driver: true, message: true, extra: [] },
+				"enable-chat-all": { driver: false, message: false, extra: [] },
+				"enable-chat-driver": { driver: true, message: false, extra: [] },
+				"disable-chat-all": { driver: false, message: false, extra: [] },
+				"disable-chat-driver": { driver: true, message: false, extra: [] },
+				"message-all": { driver: false, message: true, extra: [] },
+				"rc-message": { driver: false, message: true, extra: [] },
+				"next-car-number": { driver: false, message: false, extra: [] },
+				"prev-car-number": { driver: false, message: false, extra: [] }
+			};
+
+			var ALL_EXTRA_SECTIONS = ["penalty-section", "pace-laps-section", "grid-set-section", "track-state-section"];
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				var modeSelect = document.getElementById("mode-select");
+				var useViewedCarCheckbox = document.getElementById("use-viewed-car");
+
+				if (modeSelect) {
+					updateModeVisibility(modeSelect.value || "yellow");
+
+					modeSelect.addEventListener("change", function(ev) { updateModeVisibility(ev.target.value); });
+					modeSelect.addEventListener("input", function(ev) { updateModeVisibility(ev.target.value); });
+
+					var lastMode = modeSelect.value || "yellow";
+					setInterval(function() {
+						var currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateModeVisibility(currentMode);
+						}
+					}, 100);
+				}
+
+				if (useViewedCarCheckbox) {
+					useViewedCarCheckbox.addEventListener("change", function() { updateCarNumberVisibility(); });
+					useViewedCarCheckbox.addEventListener("input", function() { updateCarNumberVisibility(); });
+
+					var lastChecked = isCheckboxChecked(useViewedCarCheckbox);
+					setInterval(function() {
+						var current = isCheckboxChecked(useViewedCarCheckbox);
+						if (current !== lastChecked) {
+							lastChecked = current;
+							updateCarNumberVisibility();
+						}
+					}, 100);
+				}
+			}
+
+			function isCheckboxChecked(el) {
+				// sdpi-checkbox value can be boolean or string
+				var val = el.value;
+				return val === true || val === "true";
+			}
+
+			function updateModeVisibility(mode) {
+				var meta = MODE_META[mode] || { driver: false, message: false, extra: [] };
+
+				toggle("driver-section", meta.driver);
+				toggle("message-section", meta.message);
+
+				// Hide all extra sections first, then show the ones for this mode
+				for (var i = 0; i < ALL_EXTRA_SECTIONS.length; i++) {
+					toggle(ALL_EXTRA_SECTIONS[i], false);
+				}
+				for (var j = 0; j < meta.extra.length; j++) {
+					toggle(meta.extra[j], true);
+				}
+
+				// Update car number visibility based on checkbox state
+				if (meta.driver) {
+					updateCarNumberVisibility();
+				}
+			}
+
+			function updateCarNumberVisibility() {
+				var checkbox = document.getElementById("use-viewed-car");
+				var carNumberItem = document.getElementById("car-number-item");
+				if (checkbox && carNumberItem) {
+					var useViewed = isCheckboxChecked(checkbox);
+					carNumberItem.classList.toggle("hidden", useViewed);
+				}
+			}
+
+			function toggle(id, show) {
+				var el = document.getElementById(id);
+				if (el) {
+					el.classList.toggle("hidden", !show);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+	</body>
+</html>
