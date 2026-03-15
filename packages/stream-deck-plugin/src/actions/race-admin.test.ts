@@ -484,13 +484,12 @@ describe("RaceAdmin", () => {
       useViewedCar: true,
       carNumber: "",
       message: "",
-      penaltyType: "time",
+      penaltyType: "time" as const,
       penaltyValue: "30",
-      paceLapsOperation: "+",
+      paceLapsOperation: "+" as const,
       paceLapsValue: "1",
       gridSetMinutes: "5",
       trackStatePercent: "50",
-      flagsOverlay: false,
     };
 
     it("should generate a valid data URI", () => {
