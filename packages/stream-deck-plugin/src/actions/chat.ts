@@ -105,6 +105,7 @@ const ChatSettings = CommonSettings.extend({
   macroNumber: z.coerce.number().min(1).max(15).default(1),
   iconColor: z.string().default("#4a90d9"),
   keyText: z.string().default(""),
+  fontSize: z.coerce.number().min(5).max(36).default(11),
 });
 
 type ChatSettings = z.infer<typeof ChatSettings>;
@@ -128,16 +129,16 @@ export function hasTemplateVars(settings: { keyText: string; message: string }):
  * For other modes: renders icon with accent color and labels below.
  */
 export function generateChatSvg(settings: ChatSettings): string {
-  const { mode, iconColor, keyText, message } = settings;
+  const { mode, iconColor, keyText, message, fontSize } = settings;
 
   // Special handling for send-message mode: render text inside the bubble
   if (mode === "send-message") {
-    return generateSendMessageSvg(iconColor, keyText, message);
+    return generateSendMessageSvg(iconColor, keyText, message, fontSize);
   }
 
   // Special handling for macro mode: bubble with "Macro" + number or custom text
   if (mode === "macro") {
-    return generateMacroSvg(iconColor, keyText, settings.macroNumber);
+    return generateMacroSvg(iconColor, keyText, settings.macroNumber, fontSize);
   }
 
   // For other modes: use standalone SVG templates from @iracedeck/icons
@@ -183,7 +184,7 @@ export function generateChatSvg(settings: ChatSettings): string {
  *
  * Generates SVG for send-message mode: large chat bubble with text inside.
  */
-export function generateSendMessageSvg(iconColor: string, keyText: string, message: string): string {
+export function generateSendMessageSvg(iconColor: string, keyText: string, message: string, fontSize = 11): string {
   // Prefer keyText, fall back to message
   const displayText = keyText?.trim() || message?.trim() || "";
 
@@ -196,7 +197,7 @@ export function generateSendMessageSvg(iconColor: string, keyText: string, messa
 
   // Generate text element positioned inside the bubble (centered around y=40)
   const textElement = normalizedText
-    ? generateIconText({ text: normalizedText, fontSize: 11, baseY: 40, lineHeightMultiplier: 1.2 })
+    ? generateIconText({ text: normalizedText, fontSize, baseY: 40, lineHeightMultiplier: 1.2 })
     : "";
 
   const svg = renderIconTemplate(SEND_MESSAGE_TEMPLATE, { color: iconColor, textElement });
@@ -210,21 +211,21 @@ export function generateSendMessageSvg(iconColor: string, keyText: string, messa
  * Generates SVG for macro mode: chat bubble with "Macro" + number or custom text.
  * Matches the old do-chat-macro style.
  */
-export function generateMacroSvg(iconColor: string, keyText: string, macroNumber: number): string {
+export function generateMacroSvg(iconColor: string, keyText: string, macroNumber: number, fontSize = 10): string {
   const trimmedText = keyText?.trim();
   let textElement: string;
 
   if (trimmedText) {
-    // Custom text: normalize line endings and filter empty lines
+    // Custom text: normalize line endings and filter empty lines, use configurable font size
     const normalizedText = trimmedText
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .join("\n");
 
-    textElement = generateIconText({ text: normalizedText, fontSize: 10, baseY: 40, lineHeightMultiplier: 1.2 });
+    textElement = generateIconText({ text: normalizedText, fontSize, baseY: 40, lineHeightMultiplier: 1.2 });
   } else {
-    // Default: "Macro" text on top, large number below
+    // Default: "Macro" text on top, large number below (fixed font sizes)
     textElement = generateIconText({ text: "Macro", fontSize: 10, baseY: 30, lineHeightMultiplier: 1.2 });
     textElement += generateIconText({ text: String(macroNumber), fontSize: 25, baseY: 52, lineHeightMultiplier: 1.2 });
   }

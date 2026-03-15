@@ -45,6 +45,10 @@
 			<sdpi-textarea setting="keyText" rows="2" placeholder="Leave empty for default"></sdpi-textarea>
 		</sdpi-item>
 
+		<sdpi-item label="Font Size" id="font-size-item" class="hidden">
+			<sdpi-textfield setting="fontSize" type="number" min="5" max="36" default="11"></sdpi-textfield>
+		</sdpi-item>
+
 		<%- include('common-settings') %>
 
 		<%- include('global-key-bindings', {
@@ -57,6 +61,7 @@
 				const messageItem = document.getElementById("message-item");
 				const macroItem = document.getElementById("macro-item");
 				const templateHelp = document.getElementById("template-help");
+				const fontSizeItem = document.getElementById("font-size-item");
 
 				if (messageItem) {
 					messageItem.classList.toggle("hidden", mode !== "send-message");
@@ -66,6 +71,9 @@
 				}
 				if (macroItem) {
 					macroItem.classList.toggle("hidden", mode !== "macro");
+				}
+				if (fontSizeItem) {
+					fontSizeItem.classList.toggle("hidden", mode !== "send-message" && mode !== "macro");
 				}
 			}
 
