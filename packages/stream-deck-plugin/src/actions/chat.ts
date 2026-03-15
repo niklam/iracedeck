@@ -195,7 +195,7 @@ export function generateSendMessageSvg(iconColor: string, keyText: string, messa
     .filter((line) => line.length > 0)
     .join("\n");
 
-  // Adjust vertical position based on font size (larger text shifts up to stay centered in bubble)
+  // Adjust vertical position based on font size (larger text shifts down in SVG coordinates)
   const baseY = 40 + (fontSize - 11) / 3;
 
   // Generate text element positioned inside the bubble
@@ -226,7 +226,7 @@ export function generateMacroSvg(iconColor: string, keyText: string, macroNumber
       .filter((line) => line.length > 0)
       .join("\n");
 
-    // Adjust vertical position based on font size (larger text shifts up to stay centered in bubble)
+    // Adjust vertical position based on font size (larger text shifts down in SVG coordinates)
     const baseY = 40 + (fontSize - 10) / 3;
 
     textElement = generateIconText({ text: normalizedText, fontSize, baseY, lineHeightMultiplier: 1.2 });
