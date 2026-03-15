@@ -79,6 +79,7 @@ vi.mock("../shared/index.js", () => ({
         macroNumber: 1,
         iconColor: "#4a90d9",
         keyText: "",
+        fontSize: 11,
       };
       const schema = {
         parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
@@ -112,7 +113,9 @@ vi.mock("../shared/index.js", () => ({
 
     return b.key;
   }),
-  generateIconText: vi.fn(({ text }: { text: string }) => `<text>${text}</text>`),
+  generateIconText: vi.fn(
+    ({ text, fontSize }: { text: string; fontSize: number }) => `<text font-size="${fontSize}">${text}</text>`,
+  ),
   getCommands: mockGetCommands,
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
@@ -192,6 +195,7 @@ describe("Chat", () => {
         keyText: "",
         macroNumber: 1,
         iconColor: "#4a90d9",
+        fontSize: 11,
       });
       const decoded = decodeURIComponent(result);
 
@@ -211,7 +215,7 @@ describe("Chat", () => {
       "macro",
     ] as const;
 
-    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "" };
+    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "", fontSize: 11 };
 
     it.each(allModes)("should generate a valid data URI for %s", (mode) => {
       const result = generateChatSvg({ mode, ...defaultSettings });
@@ -255,6 +259,7 @@ describe("Chat", () => {
         macroNumber: 1,
         iconColor: "#4a90d9",
         keyText: "",
+        fontSize: 11,
       });
       const decoded = decodeURIComponent(result);
 
@@ -272,6 +277,7 @@ describe("Chat", () => {
         macroNumber: 1,
         iconColor: "#4a90d9",
         keyText: "Custom label",
+        fontSize: 11,
       });
       const decoded = decodeURIComponent(result);
 
@@ -372,6 +378,20 @@ describe("Chat", () => {
       const result = generateSendMessageSvg("#4a90d9", "", "");
       expect(result).toContain("data:image/svg+xml");
     });
+
+    it("should use default font size of 11", () => {
+      const result = generateSendMessageSvg("#4a90d9", "", "Hello");
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="11"');
+    });
+
+    it("should use custom font size when provided", () => {
+      const result = generateSendMessageSvg("#4a90d9", "", "Hello", 20);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="20"');
+    });
   });
 
   describe("generateMacroSvg", () => {
@@ -417,6 +437,23 @@ describe("Chat", () => {
 
       expect(decoded).toContain("Line1");
       expect(decoded).toContain("Line2");
+    });
+
+    it("should use default font sizes when no keyText is provided", () => {
+      const result = generateMacroSvg("#4a90d9", "", 5, 20);
+      const decoded = decodeURIComponent(result);
+
+      // Default layout uses fixed font sizes (10 for "Macro", 25 for number)
+      expect(decoded).toContain('font-size="10"');
+      expect(decoded).toContain('font-size="25"');
+      expect(decoded).not.toContain('font-size="20"');
+    });
+
+    it("should use custom font size when keyText is provided", () => {
+      const result = generateMacroSvg("#4a90d9", "Custom", 5, 20);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="20"');
     });
   });
 
