@@ -1,6 +1,6 @@
 ---
 title: Race Admin
-description: Session admin commands for league race directors — yellows, penalties, pit control, chat management, and car navigation.
+description: Session admin commands for league race directors — yellows, penalties, pit control, and chat management.
 sidebar:
   badge:
     text: "27 modes"

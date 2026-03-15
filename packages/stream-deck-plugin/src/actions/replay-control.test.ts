@@ -299,6 +299,8 @@ describe("ReplayControl", () => {
       "jump-to-my-car",
       "next-car",
       "prev-car",
+      "next-car-number",
+      "prev-car-number",
     ] as const;
 
     it.each(ALL_MODES)("should generate a valid data URI for %s", (mode) => {

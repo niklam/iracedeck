@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "23 modes"
+    text: "25 modes"
     variant: tip
 ---
 
@@ -55,6 +55,8 @@ Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Na
 | Jump to My Car | Jump the replay camera to your own car. |
 | Next Car | Switch to the next car ahead on track. Skips cars on pit road. |
 | Previous Car | Switch to the next car behind on track. Skips cars on pit road. |
+| Next Car (Number Order) | Switch to the next car by car number order. Includes all cars (even in pits), skips pace car. |
+| Previous Car (Number Order) | Switch to the previous car by car number order. Includes all cars (even in pits), skips pace car. |
 
 ## Long-Press Repeat
 

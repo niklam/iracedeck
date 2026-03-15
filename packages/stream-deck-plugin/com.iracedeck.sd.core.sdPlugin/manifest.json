@@ -325,7 +325,6 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
-          "Rotate": "Next/Previous car (car navigation modes)",
           "Push": "Execute admin command"
         }
       },

@@ -2,7 +2,7 @@
  * Race Admin Action
  *
  * Sends iRacing session admin chat commands from the Stream Deck.
- * Single action with 28 subcommands organized via optgroups.
+ * Single action with 27 subcommands organized via optgroups.
  */
 import streamDeck, {
   action,
