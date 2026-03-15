@@ -1,9 +1,9 @@
 ---
 title: Race Admin
-description: Session admin commands for league race directors — yellows, penalties, pit control, chat management, and car navigation.
+description: Session admin commands for league race directors — yellows, penalties, pit control, and chat management.
 sidebar:
   badge:
-    text: "29 modes"
+    text: "27 modes"
     variant: tip
 ---
 
@@ -53,17 +53,6 @@ All commands are sent as chat messages via the iRacing SDK. Commands that accept
 | Message All Participants | `/all <message>` | Send a message to all participants (bypasses chat disable) |
 | Race Control Message | `/rc <message>` | Send a message visible only to administrators |
 
-## Car Navigation
-
-| Mode | Description |
-|------|-------------|
-| Next Car (Number Order) | Switch camera to the next car by car number order (includes cars in pits) |
-| Previous Car (Number Order) | Switch camera to the previous car by car number order (includes cars in pits) |
-
-:::note
-Car navigation modes differ from Replay Control's Next/Previous Car — these navigate strictly by car number order and include all cars (even those in pits), while Replay Control skips cars not on track and uses track position order.
-:::
-
 ## Driver Targeting
 
 Commands that accept a `<driver>` parameter have two targeting methods:
@@ -96,7 +85,7 @@ The Black Flag mode supports three penalty types:
 
 ## Encoder Support
 
-Yes — dial rotation is supported for **Car Navigation** modes. Rotate the dial to cycle through cars by number order. Press the dial to execute the currently selected command.
+Yes — press the dial to execute the currently selected command.
 
 ## Common Workflows
 

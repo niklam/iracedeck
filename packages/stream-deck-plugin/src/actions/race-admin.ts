@@ -2,12 +2,11 @@
  * Race Admin Action
  *
  * Sends iRacing session admin chat commands from the Stream Deck.
- * Single action with 28 subcommands organized via optgroups.
+ * Single action with 27 subcommands organized via optgroups.
  */
 import streamDeck, {
   action,
   DialDownEvent,
-  DialRotateEvent,
   DidReceiveSettingsEvent,
   KeyDownEvent,
   WillAppearEvent,
@@ -30,11 +29,9 @@ import grantAdminIconSvg from "@iracedeck/icons/race-admin/grant-admin.svg";
 import gridSetIconSvg from "@iracedeck/icons/race-admin/grid-set.svg";
 import gridStartIconSvg from "@iracedeck/icons/race-admin/grid-start.svg";
 import messageAllIconSvg from "@iracedeck/icons/race-admin/message-all.svg";
-import nextCarNumberIconSvg from "@iracedeck/icons/race-admin/next-car-number.svg";
 import paceLapsIconSvg from "@iracedeck/icons/race-admin/pace-laps.svg";
 import pitCloseIconSvg from "@iracedeck/icons/race-admin/pit-close.svg";
 import pitOpenIconSvg from "@iracedeck/icons/race-admin/pit-open.svg";
-import prevCarNumberIconSvg from "@iracedeck/icons/race-admin/prev-car-number.svg";
 import rcMessageIconSvg from "@iracedeck/icons/race-admin/rc-message.svg";
 import removeDriverIconSvg from "@iracedeck/icons/race-admin/remove-driver.svg";
 import revokeAdminIconSvg from "@iracedeck/icons/race-admin/revoke-admin.svg";
@@ -56,7 +53,7 @@ import {
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
-import { buildAdminCommand, findAdjacentCarByNumber } from "./race-admin-commands.js";
+import { buildAdminCommand } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
 
 // ── Settings Schema ─────────────────────────────────────────────
@@ -110,8 +107,6 @@ export const RACE_ADMIN_ICONS: Record<RaceAdminMode, string> = {
   "disable-chat-driver": disableChatDriverIconSvg,
   "message-all": messageAllIconSvg,
   "rc-message": rcMessageIconSvg,
-  "next-car-number": nextCarNumberIconSvg,
-  "prev-car-number": prevCarNumberIconSvg,
 };
 
 // ── Icon Generation ─────────────────────────────────────────────
@@ -194,29 +189,10 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.executeMode(ev.action.id, settings);
   }
 
-  override async onDialRotate(ev: DialRotateEvent<RaceAdminSettings>): Promise<void> {
-    const settings = this.parseSettings(ev.payload.settings);
-    const { mode } = settings;
-
-    // Only car navigation modes respond to dial rotation
-    if (mode === "next-car-number" || mode === "prev-car-number") {
-      const direction = ev.payload.ticks > 0 ? "next" : "prev";
-      this.executeCarNavigation(ev.action.id, direction);
-    }
-  }
-
   // ── Command Execution ───────────────────────────────────────
 
   private executeMode(contextId: string, settings: RaceAdminSettings): void {
     const { mode } = settings;
-
-    // Car navigation modes use camera SDK, not chat
-    if (mode === "next-car-number" || mode === "prev-car-number") {
-      this.executeCarNavigation(contextId, mode === "next-car-number" ? "next" : "prev");
-
-      return;
-    }
-
     const viewedCarNumber = this.viewedCarNumbers.get(contextId) ?? null;
     const command = buildAdminCommand(mode, settings, viewedCarNumber, this.sdkController);
 
@@ -230,31 +206,6 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     const success = chat.sendMessage(command);
     this.logger.info("Admin command executed");
     this.logger.debug(`Command: "${command}", result: ${success}`);
-  }
-
-  private executeCarNavigation(contextId: string, direction: "next" | "prev"): void {
-    const telemetry = this.sdkController.getCurrentTelemetry();
-    const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
-
-    if (camCarIdx < 0) {
-      this.logger.warn("No camera target available for car navigation");
-
-      return;
-    }
-
-    const sessionInfo = this.sdkController.getSessionInfo();
-    const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, direction);
-
-    if (carNum === null) {
-      this.logger.warn("Could not find adjacent car by number");
-
-      return;
-    }
-
-    const camera = getCommands().camera;
-    const success = camera.switchNum(carNum, 0, 0);
-    this.logger.info("Car navigation executed");
-    this.logger.debug(`Direction: ${direction}, carNum: ${carNum}, result: ${success}`);
   }
 
   // ── Display ─────────────────────────────────────────────────

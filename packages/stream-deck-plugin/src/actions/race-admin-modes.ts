@@ -1,7 +1,7 @@
 /**
  * Race Admin Mode Definitions
  *
- * All 29 subcommands with metadata for command building, PI visibility, and icon rendering.
+ * All 27 subcommands with metadata for command building, PI visibility, and icon rendering.
  */
 
 export const RACE_ADMIN_MODES = [
@@ -35,9 +35,6 @@ export const RACE_ADMIN_MODES = [
   "disable-chat-driver",
   "message-all",
   "rc-message",
-  // Car Navigation
-  "next-car-number",
-  "prev-car-number",
 ] as const;
 
 export type RaceAdminMode = (typeof RACE_ADMIN_MODES)[number];
@@ -368,30 +365,6 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
     displayName: "Race Control Message",
     mainLabel: "MSG",
     subLabel: "RC",
-  },
-
-  // ── Car Navigation ────────────────────────────────────────────
-  "next-car-number": {
-    command: "",
-    needsDriver: false,
-    hasMessage: false,
-    messageRequired: false,
-    extraSettings: [],
-    optgroup: "Car Navigation",
-    displayName: "Next Car (Number Order)",
-    mainLabel: "NEXT",
-    subLabel: "CAR #",
-  },
-  "prev-car-number": {
-    command: "",
-    needsDriver: false,
-    hasMessage: false,
-    messageRequired: false,
-    extraSettings: [],
-    optgroup: "Car Navigation",
-    displayName: "Previous Car (Number Order)",
-    mainLabel: "PREV",
-    subLabel: "CAR #",
   },
 };
 

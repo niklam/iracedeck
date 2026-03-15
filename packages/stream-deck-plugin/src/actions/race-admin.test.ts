@@ -1,12 +1,7 @@
-import {
-  buildTemplateContext,
-  getAllCarNumbers,
-  getCarNumberFromSessionInfo,
-  resolveTemplate,
-} from "@iracedeck/iracing-sdk";
+import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildAdminCommand, findAdjacentCarByNumber, resolveDriverTarget } from "./race-admin-commands.js";
+import { buildAdminCommand, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
 import { generateRaceAdminSvg } from "./race-admin.js";
 
@@ -117,12 +112,6 @@ vi.mock("@iracedeck/icons/race-admin/message-all.svg", () => ({
 vi.mock("@iracedeck/icons/race-admin/rc-message.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/race-admin/next-car-number.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
-vi.mock("@iracedeck/icons/race-admin/prev-car-number.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
 
 // Mock shared utilities
 vi.mock("../shared/index.js", () => ({
@@ -178,8 +167,8 @@ describe("RaceAdmin", () => {
   // ── Mode Definitions ────────────────────────────────────────
 
   describe("RACE_ADMIN_MODES", () => {
-    it("should have 29 modes", () => {
-      expect(RACE_ADMIN_MODES).toHaveLength(29);
+    it("should have 27 modes", () => {
+      expect(RACE_ADMIN_MODES).toHaveLength(27);
     });
 
     it("should have metadata for every mode", () => {
@@ -192,13 +181,12 @@ describe("RaceAdmin", () => {
       }
     });
 
-    it("should have 4 optgroups", () => {
+    it("should have 3 optgroups", () => {
       const groups = getModesByOptgroup();
-      expect(groups.size).toBe(4);
+      expect(groups.size).toBe(3);
       expect(groups.has("Race Control")).toBe(true);
       expect(groups.has("Session Management")).toBe(true);
       expect(groups.has("Driver & Chat Management")).toBe(true);
-      expect(groups.has("Car Navigation")).toBe(true);
     });
 
     it("should have correct mode counts per optgroup", () => {
@@ -206,7 +194,6 @@ describe("RaceAdmin", () => {
       expect(groups.get("Race Control")).toHaveLength(14);
       expect(groups.get("Session Management")).toHaveLength(4);
       expect(groups.get("Driver & Chat Management")).toHaveLength(9);
-      expect(groups.get("Car Navigation")).toHaveLength(2);
     });
   });
 
@@ -381,11 +368,6 @@ describe("RaceAdmin", () => {
       expect(buildAdminCommand("rc-message", baseSettings, null, mockSdkController as never)).toBeNull();
     });
 
-    it("should return null for camera modes", () => {
-      expect(buildAdminCommand("next-car-number", baseSettings, null, mockSdkController as never)).toBeNull();
-      expect(buildAdminCommand("prev-car-number", baseSettings, null, mockSdkController as never)).toBeNull();
-    });
-
     it("should build show-dqs-field without driver", () => {
       const result = buildAdminCommand("show-dqs-field", baseSettings, null, mockSdkController as never);
       expect(result).toBe("!showdqs");
@@ -414,73 +396,6 @@ describe("RaceAdmin", () => {
       expect(buildTemplateContext).toHaveBeenCalled();
       expect(resolveTemplate).toHaveBeenCalled();
       expect(result).toBe("!yellow Driver 42 warned");
-    });
-  });
-
-  // ── Car Navigation ──────────────────────────────────────────
-
-  describe("findAdjacentCarByNumber", () => {
-    beforeEach(() => {
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
-      vi.mocked(getAllCarNumbers).mockReturnValue([]);
-    });
-
-    it("should return null when no cars available", () => {
-      expect(findAdjacentCarByNumber(null, 0, "next")).toBeNull();
-    });
-
-    it("should return next car by number order", () => {
-      vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: 4 },
-        { carIdx: 1, carNumber: 7 },
-        { carIdx: 2, carNumber: 42 },
-      ]);
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(7);
-
-      expect(findAdjacentCarByNumber({}, 1, "next")).toBe(42);
-    });
-
-    it("should return previous car by number order", () => {
-      vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: 4 },
-        { carIdx: 1, carNumber: 7 },
-        { carIdx: 2, carNumber: 42 },
-      ]);
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(7);
-
-      expect(findAdjacentCarByNumber({}, 1, "prev")).toBe(4);
-    });
-
-    it("should wrap around from last to first", () => {
-      vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: 4 },
-        { carIdx: 1, carNumber: 7 },
-        { carIdx: 2, carNumber: 42 },
-      ]);
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(42);
-
-      expect(findAdjacentCarByNumber({}, 2, "next")).toBe(4);
-    });
-
-    it("should wrap around from first to last", () => {
-      vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: 4 },
-        { carIdx: 1, carNumber: 7 },
-        { carIdx: 2, carNumber: 42 },
-      ]);
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(4);
-
-      expect(findAdjacentCarByNumber({}, 0, "prev")).toBe(42);
-    });
-
-    it("should return first car when current car not found", () => {
-      vi.mocked(getAllCarNumbers).mockReturnValue([
-        { carIdx: 0, carNumber: 4 },
-        { carIdx: 1, carNumber: 7 },
-      ]);
-      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
-
-      expect(findAdjacentCarByNumber({}, 99, "next")).toBe(4);
     });
   });
 

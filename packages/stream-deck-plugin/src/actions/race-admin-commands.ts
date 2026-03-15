@@ -1,15 +1,9 @@
 /**
  * Race Admin Command Building
  *
- * Pure functions for constructing admin chat command strings and car navigation.
+ * Pure functions for constructing admin chat command strings.
  */
-import {
-  buildTemplateContext,
-  getAllCarNumbers,
-  getCarNumberFromSessionInfo,
-  resolveTemplate,
-  type SDKController,
-} from "@iracedeck/iracing-sdk";
+import { buildTemplateContext, resolveTemplate, type SDKController } from "@iracedeck/iracing-sdk";
 
 import { RACE_ADMIN_MODE_META, type RaceAdminMode, type RaceAdminModeMeta } from "./race-admin-modes.js";
 
@@ -145,44 +139,4 @@ export function buildAdminCommand(
   }
 
   return cmd;
-}
-
-/**
- * Find the next or previous car by car number order.
- * Includes all cars (even in pits), skips the pace car.
- * Returns the car number to switch to, or null if not found.
- *
- * @internal Exported for testing
- */
-export function findAdjacentCarByNumber(
-  sessionInfo: unknown,
-  currentCarIdx: number,
-  direction: "next" | "prev",
-): number | null {
-  const allCars = getAllCarNumbers(sessionInfo, true);
-
-  if (allCars.length === 0) return null;
-
-  const currentCarNumber = getCarNumberFromSessionInfo(sessionInfo, currentCarIdx);
-
-  if (currentCarNumber === null) {
-    // If we can't determine the current car, return the first car
-    return allCars[0].carNumber;
-  }
-
-  const currentIndex = allCars.findIndex((c) => c.carNumber === currentCarNumber);
-
-  if (currentIndex === -1) {
-    return allCars[0].carNumber;
-  }
-
-  if (direction === "next") {
-    const nextIndex = (currentIndex + 1) % allCars.length;
-
-    return allCars[nextIndex].carNumber;
-  } else {
-    const prevIndex = (currentIndex - 1 + allCars.length) % allCars.length;
-
-    return allCars[prevIndex].carNumber;
-  }
 }

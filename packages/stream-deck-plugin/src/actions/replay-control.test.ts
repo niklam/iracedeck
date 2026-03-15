@@ -1,7 +1,9 @@
+import { getAllCarNumbers, getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   calculateNeedleAngle,
+  findAdjacentCarByNumber,
   findAdjacentCarOnTrack,
   formatSetSpeedLabel,
   formatSpeedDisplay,
@@ -96,6 +98,17 @@ vi.mock("@iracedeck/icons/replay-control/next-car.svg", () => ({
 }));
 vi.mock("@iracedeck/icons/replay-control/prev-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">prev-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/next-car-number.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">next-car-number {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/replay-control/prev-car-number.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">prev-car-number {{mainLabel}} {{subLabel}}</svg>',
+}));
+
+vi.mock("@iracedeck/iracing-sdk", () => ({
+  getCarNumberFromSessionInfo: vi.fn(),
+  getAllCarNumbers: vi.fn(() => []),
 }));
 
 vi.mock("../shared/index.js", () => ({
@@ -286,6 +299,8 @@ describe("ReplayControl", () => {
       "jump-to-my-car",
       "next-car",
       "prev-car",
+      "next-car-number",
+      "prev-car-number",
     ] as const;
 
     it.each(ALL_MODES)("should generate a valid data URI for %s", (mode) => {
@@ -645,6 +660,81 @@ describe("ReplayControl", () => {
       // Progress: car1=6.2, car2=5.9, car3=5.1
       expect(findAdjacentCarOnTrack(telemetry, "ahead")).toBe(1);
       expect(findAdjacentCarOnTrack(telemetry, "behind")).toBe(3);
+    });
+  });
+
+  describe("findAdjacentCarByNumber", () => {
+    beforeEach(() => {
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
+      vi.mocked(getAllCarNumbers).mockReturnValue([]);
+    });
+
+    it("should return null when no cars available", () => {
+      expect(findAdjacentCarByNumber(null, 0, "next")).toBeNull();
+    });
+
+    it("should return next car by number order", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+        { carIdx: 2, carNumber: 42 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(7);
+
+      expect(findAdjacentCarByNumber({}, 1, "next")).toBe(42);
+    });
+
+    it("should return previous car by number order", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+        { carIdx: 2, carNumber: 42 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(7);
+
+      expect(findAdjacentCarByNumber({}, 1, "prev")).toBe(4);
+    });
+
+    it("should wrap around from last to first", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+        { carIdx: 2, carNumber: 42 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(42);
+
+      expect(findAdjacentCarByNumber({}, 2, "next")).toBe(4);
+    });
+
+    it("should wrap around from first to last", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+        { carIdx: 2, carNumber: 42 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(4);
+
+      expect(findAdjacentCarByNumber({}, 0, "prev")).toBe(42);
+    });
+
+    it("should return first car when current car not found and direction is next", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
+
+      expect(findAdjacentCarByNumber({}, 99, "next")).toBe(4);
+    });
+
+    it("should return last car when current car not found and direction is prev", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
+
+      expect(findAdjacentCarByNumber({}, 99, "prev")).toBe(7);
     });
   });
 });

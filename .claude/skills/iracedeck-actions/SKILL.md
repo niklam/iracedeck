@@ -38,11 +38,11 @@ When asked about actions or controls:
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
 | Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
 | Cockpit & Interface | 4 | 25 | Wipers, FFB, delta splits, telemetry, UI toggles |
-| View & Camera | 6 | 104 | FOV, replay, camera cycle/focus, broadcast tools |
+| View & Camera | 6 | 106 | FOV, replay, camera cycle/focus, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
-| Chat | 2 | 50 | Chat, macros (15), whisper, reply, race admin commands |
+| Chat | 2 | 48 | Chat, macros (15), whisper, reply, race admin commands |
 | **Total** | **29** | **319** | |
 
 ## Actions by Category
@@ -77,7 +77,7 @@ When asked about actions or controls:
 | Action | Controls | Modes |
 |--------|----------|-------|
 | View Adjustment | 9 | FOV +/-, horizon +/-, driver height +/-, recenter VR, UI size +/- |
-| Replay Control | 23 | play/pause, play-backward, stop, FF, rewind, slow-mo, frame +/-, speed +/-, set speed, speed display, session next/prev, lap next/prev, incident next/prev, jump to beginning, jump to live, jump to my car, next/prev car |
+| Replay Control | 25 | play/pause, play-backward, stop, FF, rewind, slow-mo, frame +/-, speed +/-, set speed, speed display, session next/prev, lap next/prev, incident next/prev, jump to beginning, jump to live, jump to my car, next/prev car, next/prev-car-number |
 | Camera Cycle | 8 | 4 types (camera, sub-camera, car, driving) x 2 directions |
 | Camera Editor Adjustments | 29 | 14 parameters +/- plus auto-set mic gain |
 | Camera Editor Controls | 28 | Camera tool, origins, locks, states, undo/redo, grid, bookmarks |
@@ -114,7 +114,7 @@ When asked about actions or controls:
 | Action | Controls | Modes |
 |--------|----------|-------|
 | Chat | 21 | open, reply, whisper, respond PM, cancel, send message, 15 macros |
-| Race Admin | 29 | yellow, black-flag, dq-driver, show-dqs-field, show-dqs-driver, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message, next/prev-car-number |
+| Race Admin | 27 | yellow, black-flag, dq-driver, show-dqs-field, show-dqs-driver, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message |
 
 ## Control Patterns
 

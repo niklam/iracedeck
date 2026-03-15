@@ -239,7 +239,17 @@
             { "value": "jump-to-live", "label": "Jump to Live" },
             { "value": "jump-to-my-car", "label": "Jump to My Car" },
             { "value": "next-car", "label": "Next Car" },
-            { "value": "prev-car", "label": "Previous Car" }
+            { "value": "prev-car", "label": "Previous Car" },
+            {
+              "value": "next-car-number",
+              "label": "Next Car (Number Order)",
+              "description": "Switch camera to next car by number order (includes pit cars, excludes pace car)"
+            },
+            {
+              "value": "prev-car-number",
+              "label": "Previous Car (Number Order)",
+              "description": "Switch camera to previous car by number order (includes pit cars, excludes pace car)"
+            }
           ]
         },
         {
@@ -763,16 +773,6 @@
               "value": "rc-message",
               "label": "Race Control Message",
               "description": "Send a message visible only to admins"
-            },
-            {
-              "value": "next-car-number",
-              "label": "Next Car (Number Order)",
-              "description": "Switch camera to next car by number"
-            },
-            {
-              "value": "prev-car-number",
-              "label": "Previous Car (Number Order)",
-              "description": "Switch camera to previous car by number"
             }
           ]
         }

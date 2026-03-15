@@ -12,11 +12,11 @@ iRaceDeck provides 31 actions with 319 controls for iRacing, organized into 8 ca
 | [Display & Session](/docs/actions/display-session/session-info/) | 2 | 6 | Live session data: incidents, laps, position, fuel, flags |
 | [Driving Controls](/docs/actions/driving/ai-spotter-controls/) | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
 | [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 4 | 25 | Wipers, FFB, delta splits, telemetry, UI toggles |
-| [View & Camera](/docs/actions/view-camera/view-adjustment/) | 6 | 82 | FOV, replay, camera cycle/focus, broadcast tools |
+| [View & Camera](/docs/actions/view-camera/view-adjustment/) | 6 | 84 | FOV, replay, camera cycle/focus, broadcast tools |
 | [Media](/docs/actions/media/media-capture/) | 1 | 7 | Video recording, screenshots, texture management |
 | [Pit Service](/docs/actions/pit-service/pit-quick-actions/) | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | [Car Setup](/docs/actions/car-setup/setup-aero/) | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction |
-| [Communication](/docs/actions/communication/chat/) | 2 | 50 | Chat, macros, whisper, reply, race admin commands |
+| [Communication](/docs/actions/communication/chat/) | 2 | 48 | Chat, macros, whisper, reply, race admin commands |
 
 ## How Actions Work
 

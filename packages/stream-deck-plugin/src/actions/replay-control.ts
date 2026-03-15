@@ -14,6 +14,7 @@ import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.s
 import jumpToBeginningIconSvg from "@iracedeck/icons/replay-control/jump-to-beginning.svg";
 import jumpToLiveIconSvg from "@iracedeck/icons/replay-control/jump-to-live.svg";
 import jumpToMyCarIconSvg from "@iracedeck/icons/replay-control/jump-to-my-car.svg";
+import nextCarNumberIconSvg from "@iracedeck/icons/replay-control/next-car-number.svg";
 import nextCarIconSvg from "@iracedeck/icons/replay-control/next-car.svg";
 import nextIncidentIconSvg from "@iracedeck/icons/replay-control/next-incident.svg";
 import nextLapIconSvg from "@iracedeck/icons/replay-control/next-lap.svg";
@@ -21,6 +22,7 @@ import nextSessionIconSvg from "@iracedeck/icons/replay-control/next-session.svg
 import pauseIconSvg from "@iracedeck/icons/replay-control/pause.svg";
 import playBackwardIconSvg from "@iracedeck/icons/replay-control/play-backward.svg";
 import playPauseIconSvg from "@iracedeck/icons/replay-control/play-pause.svg";
+import prevCarNumberIconSvg from "@iracedeck/icons/replay-control/prev-car-number.svg";
 import prevCarIconSvg from "@iracedeck/icons/replay-control/prev-car.svg";
 import prevIncidentIconSvg from "@iracedeck/icons/replay-control/prev-incident.svg";
 import prevLapIconSvg from "@iracedeck/icons/replay-control/prev-lap.svg";
@@ -32,7 +34,7 @@ import speedDecreaseIconSvg from "@iracedeck/icons/replay-control/speed-decrease
 import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.svg";
 import speedIncreaseIconSvg from "@iracedeck/icons/replay-control/speed-increase.svg";
 import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
-import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getAllCarNumbers, getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import {
@@ -69,6 +71,8 @@ const REPLAY_CONTROL_MODES = [
   "jump-to-my-car",
   "next-car",
   "prev-car",
+  "next-car-number",
+  "prev-car-number",
 ] as const;
 
 type ReplayControlMode = (typeof REPLAY_CONTROL_MODES)[number];
@@ -97,6 +101,8 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "jump-to-my-car": jumpToMyCarIconSvg,
   "next-car": nextCarIconSvg,
   "prev-car": prevCarIconSvg,
+  "next-car-number": nextCarNumberIconSvg,
+  "prev-car-number": prevCarNumberIconSvg,
 };
 
 const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subLabel: string }> = {
@@ -123,6 +129,8 @@ const REPLAY_CONTROL_LABELS: Record<ReplayControlMode, { mainLabel: string; subL
   "jump-to-my-car": { mainLabel: "MY CAR", subLabel: "JUMP TO" },
   "next-car": { mainLabel: "NEXT", subLabel: "CAR" },
   "prev-car": { mainLabel: "PREVIOUS", subLabel: "CAR" },
+  "next-car-number": { mainLabel: "NEXT", subLabel: "CAR #" },
+  "prev-car-number": { mainLabel: "PREVIOUS", subLabel: "CAR #" },
 };
 
 /**
@@ -138,6 +146,8 @@ const DIRECTIONAL_PAIRS: Partial<Record<ReplayControlMode, { next: ReplayControl
   "prev-incident": { next: "next-incident", prev: "prev-incident" },
   "next-car": { next: "next-car", prev: "prev-car" },
   "prev-car": { next: "next-car", prev: "prev-car" },
+  "next-car-number": { next: "next-car-number", prev: "prev-car-number" },
+  "prev-car-number": { next: "next-car-number", prev: "prev-car-number" },
 };
 
 /** Modes whose display changes based on telemetry state */
@@ -314,6 +324,46 @@ export function findAdjacentCarOnTrack(telemetry: TelemetryData | null, directio
     const behindIndex = currentIndex === activeCars.length - 1 ? 0 : currentIndex + 1;
 
     return activeCars[behindIndex].carIdx;
+  }
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Find the next or previous car by car number order.
+ * Includes all cars (even in pits), skips the pace car.
+ * Returns the car number to switch to, or null if not found.
+ */
+export function findAdjacentCarByNumber(
+  sessionInfo: unknown,
+  currentCarIdx: number,
+  direction: "next" | "prev",
+): number | null {
+  const allCars = getAllCarNumbers(sessionInfo, true);
+
+  if (allCars.length === 0) return null;
+
+  const currentCarNumber = getCarNumberFromSessionInfo(sessionInfo, currentCarIdx);
+  const fallback = direction === "next" ? allCars[0].carNumber : allCars[allCars.length - 1].carNumber;
+
+  if (currentCarNumber === null) {
+    return fallback;
+  }
+
+  const currentIndex = allCars.findIndex((c) => c.carNumber === currentCarNumber);
+
+  if (currentIndex === -1) {
+    return fallback;
+  }
+
+  if (direction === "next") {
+    const nextIndex = (currentIndex + 1) % allCars.length;
+
+    return allCars[nextIndex].carNumber;
+  } else {
+    const prevIndex = (currentIndex - 1 + allCars.length) % allCars.length;
+
+    return allCars[prevIndex].carNumber;
   }
 }
 
@@ -898,6 +948,31 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const success = camera.switchNum(prevCarNum, 0, 0);
         this.logger.info("Previous car executed");
         this.logger.debug(`Result: ${success}, carNum: ${prevCarNum}`);
+        break;
+      }
+      case "next-car-number":
+      case "prev-car-number": {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+        const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
+
+        if (camCarIdx < 0) {
+          this.logger.warn("No camera target available for car number navigation");
+          break;
+        }
+
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const navDirection = mode === "next-car-number" ? "next" : "prev";
+        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection);
+
+        if (carNum === null) {
+          this.logger.warn("Could not find adjacent car by number");
+          break;
+        }
+
+        const camera = getCommands().camera;
+        const success = camera.switchNum(carNum, 0, 0);
+        this.logger.info("Car number navigation executed");
+        this.logger.debug(`Direction: ${navDirection}, carNum: ${carNum}, result: ${success}`);
         break;
       }
     }
