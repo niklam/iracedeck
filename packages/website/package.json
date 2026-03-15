@@ -11,11 +11,11 @@
     "deploy": "astro build && firebase deploy --only hosting"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.34.1",
+    "@astrojs/starlight": "0.38.1",
     "astro": "5.7.10",
-    "sharp": "0.33.5"
+    "sharp": "0.34.5"
   },
   "devDependencies": {
-    "firebase-tools": "15.9.0"
+    "firebase-tools": "15.10.0"
   }
 }
