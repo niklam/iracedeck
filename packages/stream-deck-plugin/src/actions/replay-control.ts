@@ -344,15 +344,16 @@ export function findAdjacentCarByNumber(
   if (allCars.length === 0) return null;
 
   const currentCarNumber = getCarNumberFromSessionInfo(sessionInfo, currentCarIdx);
+  const fallback = direction === "next" ? allCars[0].carNumber : allCars[allCars.length - 1].carNumber;
 
   if (currentCarNumber === null) {
-    return allCars[0].carNumber;
+    return fallback;
   }
 
   const currentIndex = allCars.findIndex((c) => c.carNumber === currentCarNumber);
 
   if (currentIndex === -1) {
-    return allCars[0].carNumber;
+    return fallback;
   }
 
   if (direction === "next") {

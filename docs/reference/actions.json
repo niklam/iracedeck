@@ -243,12 +243,12 @@
             {
               "value": "next-car-number",
               "label": "Next Car (Number Order)",
-              "description": "Switch camera to next car by number order (includes pit cars)"
+              "description": "Switch camera to next car by number order (includes pit cars, excludes pace car)"
             },
             {
               "value": "prev-car-number",
               "label": "Previous Car (Number Order)",
-              "description": "Switch camera to previous car by number order (includes pit cars)"
+              "description": "Switch camera to previous car by number order (includes pit cars, excludes pace car)"
             }
           ]
         },

@@ -717,7 +717,7 @@ describe("ReplayControl", () => {
       expect(findAdjacentCarByNumber({}, 0, "prev")).toBe(42);
     });
 
-    it("should return first car when current car not found", () => {
+    it("should return first car when current car not found and direction is next", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue([
         { carIdx: 0, carNumber: 4 },
         { carIdx: 1, carNumber: 7 },
@@ -725,6 +725,16 @@ describe("ReplayControl", () => {
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
 
       expect(findAdjacentCarByNumber({}, 99, "next")).toBe(4);
+    });
+
+    it("should return last car when current car not found and direction is prev", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue([
+        { carIdx: 0, carNumber: 4 },
+        { carIdx: 1, carNumber: 7 },
+      ]);
+      vi.mocked(getCarNumberFromSessionInfo).mockReturnValue(null);
+
+      expect(findAdjacentCarByNumber({}, 99, "prev")).toBe(7);
     });
   });
 });
