@@ -1,4 +1,9 @@
-import { getAllCarNumbers, getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
+import {
+  buildTemplateContext,
+  getAllCarNumbers,
+  getCarNumberFromSessionInfo,
+  resolveTemplate,
+} from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, findAdjacentCarByNumber, resolveDriverTarget } from "./race-admin-commands.js";
@@ -392,6 +397,15 @@ describe("RaceAdmin", () => {
       const settings = { ...baseSettings, message: "Line 1\nLine 2\r\nLine 3" };
       const result = buildAdminCommand("yellow", settings, null, mockSdkController as never);
       expect(result).toBe("!yellow Line 1 Line 2 Line 3");
+    });
+
+    it("should resolve template variables in messages", () => {
+      vi.mocked(resolveTemplate).mockReturnValueOnce("Driver 42 warned");
+      const settings = { ...baseSettings, message: "{{self.name}} warned" };
+      const result = buildAdminCommand("yellow", settings, null, mockSdkController as never);
+      expect(buildTemplateContext).toHaveBeenCalled();
+      expect(resolveTemplate).toHaveBeenCalled();
+      expect(result).toBe("!yellow Driver 42 warned");
     });
   });
 

@@ -6,6 +6,7 @@
  */
 import streamDeck, {
   action,
+  DialDownEvent,
   DialRotateEvent,
   DidReceiveSettingsEvent,
   KeyDownEvent,
@@ -182,7 +183,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.executeMode(ev.action.id, settings);
   }
 
-  override async onDialDown(ev: { action: { id: string }; payload: { settings: RaceAdminSettings } }): Promise<void> {
+  override async onDialDown(ev: DialDownEvent<RaceAdminSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
     this.executeMode(ev.action.id, settings);
@@ -247,8 +248,8 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     const camera = getCommands().camera;
     const success = camera.switchNum(carNum, 0, 0);
-    this.logger.info(`Car navigation: ${direction}`);
-    this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
+    this.logger.info("Car navigation executed");
+    this.logger.debug(`Direction: ${direction}, carNum: ${carNum}, result: ${success}`);
   }
 
   // ── Display ─────────────────────────────────────────────────

@@ -57,7 +57,7 @@ export function getAllCarNumbers(
 
     if (isNaN(num)) continue;
 
-    result.push({ carIdx: driver.carIdx ?? driver.CarIdx, carNumber: num });
+    result.push({ carIdx: driver.CarIdx, carNumber: num });
   }
 
   result.sort((a, b) => a.carNumber - b.carNumber);
