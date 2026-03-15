@@ -3,7 +3,7 @@ title: Race Admin
 description: Session admin commands for league race directors — yellows, penalties, pit control, chat management, and car navigation.
 sidebar:
   badge:
-    text: "28 modes"
+    text: "29 modes"
     variant: tip
 ---
 
@@ -18,7 +18,8 @@ All commands are sent as chat messages via the iRacing SDK. Commands that accept
 | Throw Yellow Flag | `!yellow [message]` | Throw a caution flag |
 | Black Flag Driver | `!black <driver> [time/laps/D]` | Issue a penalty — time (seconds), laps, or drive-through |
 | Disqualify Driver | `!dq <driver> [message]` | Disqualify a driver without removing them |
-| Show Disqualifications | `!showdqs [driver]` | Display disqualifications for the field or a driver |
+| Show Disqualifications (Field) | `!showdqs` | Display disqualifications for the entire field |
+| Show Disqualifications (Driver) | `!showdqs <driver>` | Display disqualifications for a specific driver |
 | Clear Driver Penalties | `!clear <driver> [message]` | Clear all penalties for a driver |
 | Clear All Penalties | `!clearall` | Clear all penalties for the entire field |
 | Wave Driver Around | `!waveby <driver> [message]` | Move car to next lap and end of pace line |

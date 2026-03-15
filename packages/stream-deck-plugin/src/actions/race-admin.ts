@@ -38,7 +38,8 @@ import prevCarNumberIconSvg from "@iracedeck/icons/race-admin/prev-car-number.sv
 import rcMessageIconSvg from "@iracedeck/icons/race-admin/rc-message.svg";
 import removeDriverIconSvg from "@iracedeck/icons/race-admin/remove-driver.svg";
 import revokeAdminIconSvg from "@iracedeck/icons/race-admin/revoke-admin.svg";
-import showDqsIconSvg from "@iracedeck/icons/race-admin/show-dqs.svg";
+import showDqsDriverIconSvg from "@iracedeck/icons/race-admin/show-dqs-driver.svg";
+import showDqsFieldIconSvg from "@iracedeck/icons/race-admin/show-dqs-field.svg";
 import singleFileRestartIconSvg from "@iracedeck/icons/race-admin/single-file-restart.svg";
 import trackStateIconSvg from "@iracedeck/icons/race-admin/track-state.svg";
 import waveAroundIconSvg from "@iracedeck/icons/race-admin/wave-around.svg";
@@ -78,11 +79,15 @@ const RaceAdminSettings = CommonSettings.extend({
 
 type RaceAdminSettings = z.infer<typeof RaceAdminSettings>;
 
-const RACE_ADMIN_ICONS: Record<RaceAdminMode, string> = {
+/**
+ * @internal Exported for testing
+ */
+export const RACE_ADMIN_ICONS: Record<RaceAdminMode, string> = {
   yellow: yellowIconSvg,
   "black-flag": blackFlagIconSvg,
   "dq-driver": dqDriverIconSvg,
-  "show-dqs": showDqsIconSvg,
+  "show-dqs-field": showDqsFieldIconSvg,
+  "show-dqs-driver": showDqsDriverIconSvg,
   "clear-penalties": clearPenaltiesIconSvg,
   "clear-all": clearAllIconSvg,
   "wave-around": waveAroundIconSvg,

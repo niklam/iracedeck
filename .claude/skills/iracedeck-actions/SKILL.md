@@ -7,7 +7,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 ## Data File
 
-Complete action definitions (29 actions, 318 controls): `docs/reference/actions.json`
+Complete action definitions (29 actions, 319 controls): `docs/reference/actions.json`
 
 Each action entry:
 ```json
@@ -42,8 +42,8 @@ When asked about actions or controls:
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
-| Chat | 2 | 49 | Chat, macros (15), whisper, reply, race admin commands |
-| **Total** | **29** | **318** | |
+| Chat | 2 | 50 | Chat, macros (15), whisper, reply, race admin commands |
+| **Total** | **29** | **319** | |
 
 ## Actions by Category
 
@@ -114,7 +114,7 @@ When asked about actions or controls:
 | Action | Controls | Modes |
 |--------|----------|-------|
 | Chat | 21 | open, reply, whisper, respond PM, cancel, send message, 15 macros |
-| Race Admin | 28 | yellow, black-flag, dq-driver, show-dqs, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message, next/prev-car-number |
+| Race Admin | 29 | yellow, black-flag, dq-driver, show-dqs-field, show-dqs-driver, clear-penalties, clear-all, wave-around, eol, pit-close, pit-open, pace-laps, single/double-file-restart, advance-session, grid-set, grid-start, track-state, grant/revoke-admin, remove-driver, enable/disable-chat (all/driver), message-all, rc-message, next/prev-car-number |
 
 ## Control Patterns
 

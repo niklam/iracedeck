@@ -45,7 +45,10 @@ vi.mock("@iracedeck/icons/race-admin/black-flag.svg", () => ({
 vi.mock("@iracedeck/icons/race-admin/dq-driver.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/race-admin/show-dqs.svg", () => ({
+vi.mock("@iracedeck/icons/race-admin/show-dqs-field.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/race-admin/show-dqs-driver.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/race-admin/clear-penalties.svg", () => ({
@@ -175,8 +178,8 @@ describe("RaceAdmin", () => {
   // ── Mode Definitions ────────────────────────────────────────
 
   describe("RACE_ADMIN_MODES", () => {
-    it("should have 28 modes", () => {
-      expect(RACE_ADMIN_MODES).toHaveLength(28);
+    it("should have 29 modes", () => {
+      expect(RACE_ADMIN_MODES).toHaveLength(29);
     });
 
     it("should have metadata for every mode", () => {
@@ -200,7 +203,7 @@ describe("RaceAdmin", () => {
 
     it("should have correct mode counts per optgroup", () => {
       const groups = getModesByOptgroup();
-      expect(groups.get("Race Control")).toHaveLength(13);
+      expect(groups.get("Race Control")).toHaveLength(14);
       expect(groups.get("Session Management")).toHaveLength(4);
       expect(groups.get("Driver & Chat Management")).toHaveLength(9);
       expect(groups.get("Car Navigation")).toHaveLength(2);
@@ -383,14 +386,19 @@ describe("RaceAdmin", () => {
       expect(buildAdminCommand("prev-car-number", baseSettings, null, mockSdkController as never)).toBeNull();
     });
 
-    it("should allow optional driver to be omitted for show-dqs", () => {
-      const result = buildAdminCommand("show-dqs", baseSettings, null, mockSdkController as never);
+    it("should build show-dqs-field without driver", () => {
+      const result = buildAdminCommand("show-dqs-field", baseSettings, null, mockSdkController as never);
       expect(result).toBe("!showdqs");
     });
 
-    it("should include optional driver when provided for show-dqs", () => {
-      const result = buildAdminCommand("show-dqs", baseSettings, "42", mockSdkController as never);
+    it("should build show-dqs-driver with viewed car", () => {
+      const result = buildAdminCommand("show-dqs-driver", baseSettings, "42", mockSdkController as never);
       expect(result).toBe("!showdqs #42");
+    });
+
+    it("should return null for show-dqs-driver without driver", () => {
+      const result = buildAdminCommand("show-dqs-driver", baseSettings, null, mockSdkController as never);
+      expect(result).toBeNull();
     });
 
     it("should collapse newlines in messages", () => {

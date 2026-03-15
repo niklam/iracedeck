@@ -116,9 +116,9 @@ export function buildAdminCommand(
   if (meta.needsDriver) {
     const target = resolveDriverTarget(settings, viewedCarNumber, meta);
 
-    if (!target && !meta.driverOptional) return null;
+    if (!target) return null;
 
-    if (target) cmd += ` #${target}`;
+    cmd += ` #${target}`;
   }
 
   // Append mode-specific parameters

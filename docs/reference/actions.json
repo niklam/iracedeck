@@ -668,7 +668,16 @@
             { "value": "yellow", "label": "Throw Yellow Flag", "description": "Throw a caution flag" },
             { "value": "black-flag", "label": "Black Flag Driver", "description": "Issue a penalty to a driver" },
             { "value": "dq-driver", "label": "Disqualify Driver", "description": "Disqualify a driver" },
-            { "value": "show-dqs", "label": "Show Disqualifications", "description": "Display disqualifications" },
+            {
+              "value": "show-dqs-field",
+              "label": "Show Disqualifications (Field)",
+              "description": "Display disqualifications for the entire field"
+            },
+            {
+              "value": "show-dqs-driver",
+              "label": "Show Disqualifications (Driver)",
+              "description": "Display disqualifications for a specific driver"
+            },
             {
               "value": "clear-penalties",
               "label": "Clear Driver Penalties",

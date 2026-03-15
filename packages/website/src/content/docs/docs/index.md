@@ -19,7 +19,7 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 
 ## Actions
 
-iRaceDeck provides **31 actions** with **316 controls** across 8 categories. See the [Actions Overview](/docs/actions/overview/) for a full breakdown, or jump to a category:
+iRaceDeck provides **31 actions** with **319 controls** across 8 categories. See the [Actions Overview](/docs/actions/overview/) for a full breakdown, or jump to a category:
 
 - [Display & Session](/docs/actions/display-session/session-info/) — Live session data and telemetry displays
 - [Driving Controls](/docs/actions/driving/ai-spotter-controls/) — AI spotter, audio, black boxes, look direction, car control
