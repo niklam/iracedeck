@@ -16,8 +16,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -53,9 +55,11 @@ export function generateReplaySpeedSvg(settings: ReplaySpeedSettings): string {
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS["increase"];
   const labels = REPLAY_SPEED_LABELS[direction] || REPLAY_SPEED_LABELS["increase"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

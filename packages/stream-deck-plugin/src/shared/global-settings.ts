@@ -177,11 +177,17 @@ export function getGlobalColors(): {
 } {
   const settings = currentSettings as Record<string, unknown>;
 
+  const color = (key: string): string | undefined => {
+    const val = settings[key];
+
+    return typeof val === "string" && val.length > 0 ? val : undefined;
+  };
+
   return {
-    backgroundColor: typeof settings.colorBackgroundColor === "string" ? settings.colorBackgroundColor : undefined,
-    textColor: typeof settings.colorTextColor === "string" ? settings.colorTextColor : undefined,
-    graphic1Color: typeof settings.colorGraphic1Color === "string" ? settings.colorGraphic1Color : undefined,
-    graphic2Color: typeof settings.colorGraphic2Color === "string" ? settings.colorGraphic2Color : undefined,
+    backgroundColor: color("colorBackgroundColor"),
+    textColor: color("colorTextColor"),
+    graphic1Color: color("colorGraphic1Color"),
+    graphic2Color: color("colorGraphic2Color"),
   };
 }
 

@@ -21,8 +21,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -75,15 +77,17 @@ const CAMERA_FOCUS_LABELS: Record<FocusTarget, { mainLabel: string; subLabel: st
  *
  * Generates an SVG data URI icon for the camera focus action.
  */
-export function generateCameraFocusSvg(settings: { target: FocusTarget }): string {
+export function generateCameraFocusSvg(settings: { target: FocusTarget } & Partial<CommonSettings>): string {
   const { target } = settings;
 
   const iconSvg = CAMERA_FOCUS_ICONS[target] || CAMERA_FOCUS_ICONS["focus-your-car"];
   const labels = CAMERA_FOCUS_LABELS[target] || CAMERA_FOCUS_LABELS["focus-your-car"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

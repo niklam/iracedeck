@@ -18,9 +18,11 @@ import {
   createSDLogger,
   generateIconText,
   getCommands,
+  getGlobalColors,
   getSDK,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -225,9 +227,11 @@ export function generateTireServiceSvg(
 
   switch (settings.action) {
     case "change-all-tires": {
+      const colors = resolveIconColors(changeAllTiresIconSvg, getGlobalColors(), settings.colorOverrides);
       const svg = renderIconTemplate(changeAllTiresIconSvg, {
         mainLabel: "CHANGE",
         subLabel: "ALL TIRES",
+        ...colors,
       });
 
       return svgToDataUri(svg);
@@ -253,9 +257,11 @@ export function generateTireServiceSvg(
       break;
     }
     case "clear-tires": {
+      const colors = resolveIconColors(clearTiresIconSvg, getGlobalColors(), settings.colorOverrides);
       const svg = renderIconTemplate(clearTiresIconSvg, {
         mainLabel: "CLEAR",
         subLabel: "TIRES",
+        ...colors,
       });
 
       return svgToDataUri(svg);

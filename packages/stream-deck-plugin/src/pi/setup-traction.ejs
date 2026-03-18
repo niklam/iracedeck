@@ -23,6 +23,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['setup-traction'] }) %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Traction Control Key Bindings',
 			keyBindings: require('./data/key-bindings.json').setupTraction

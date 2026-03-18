@@ -49,8 +49,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 import { buildAdminCommand } from "./race-admin-commands.js";
@@ -125,7 +127,8 @@ export function generateRaceAdminSvg(mode: RaceAdminMode, settings: RaceAdminSet
     subLabel = `#${settings.carNumber.trim()}`;
   }
 
-  const svg = renderIconTemplate(iconSvg, { mainLabel, subLabel });
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const svg = renderIconTemplate(iconSvg, { mainLabel, subLabel, ...colors });
 
   return svgToDataUri(svg);
 }

@@ -22,6 +22,7 @@ import {
   createSDLogger,
   formatKeyBinding,
   getCommands,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyboardKey,
@@ -30,6 +31,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -183,9 +185,11 @@ export function generateFuelServiceSvg(settings: FuelServiceSettings): string {
   const iconSvg = FUEL_SERVICE_ICONS[mode] || FUEL_SERVICE_ICONS["add-fuel"];
   const labels = getFuelServiceLabels(settings);
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.line1,
     subLabel: labels.line2,
+    ...colors,
   });
 
   return svgToDataUri(svg);

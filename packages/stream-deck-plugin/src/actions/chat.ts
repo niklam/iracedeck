@@ -22,6 +22,7 @@ import {
   formatKeyBinding,
   generateIconText,
   getCommands,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyboardKey,
@@ -30,6 +31,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -170,10 +172,12 @@ export function generateChatSvg(settings: ChatSettings): string {
     subLabel = labels.line2;
   }
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     color: iconColor,
     mainLabel,
     subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

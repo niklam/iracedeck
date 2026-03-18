@@ -35,6 +35,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['telemetry-display'] }) %>
+
 		<%- include('global-settings') %>
 	</body>
 </html>

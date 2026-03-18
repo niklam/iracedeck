@@ -57,7 +57,9 @@ vi.mock("../shared/index.js", () => ({
       rewind: vi.fn(() => true),
     },
   })),
+  getGlobalColors: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
     let result = template;
 

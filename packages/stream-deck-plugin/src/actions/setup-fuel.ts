@@ -21,6 +21,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -30,6 +31,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -119,9 +121,11 @@ export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
   const labels: { mainLabel: string; subLabel: string } =
     "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "FUEL", subLabel: "SETUP" });
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

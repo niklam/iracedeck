@@ -100,12 +100,14 @@ vi.mock("../shared/index.js", () => ({
 
     return b.key;
   }),
+  getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: mockSendKeyCombination,
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
     let result = template;
 

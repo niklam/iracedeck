@@ -67,7 +67,9 @@ vi.mock("../shared/index.js", () => ({
     error: vi.fn(),
     trace: vi.fn(),
   })),
+  getGlobalColors: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
     return `<svg>${data.backgroundColor || ""}|${data.titleLabel || ""}|${data.value || ""}|${data.valueFontSize || ""}|${data.valueY || ""}|${data.textColor || ""}</svg>`;
   }),

@@ -21,6 +21,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   getSDK,
@@ -31,6 +32,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -177,9 +179,11 @@ export function generateCarControlSvg(
   const iconSvg = STATIC_CAR_CONTROL_ICONS[control] || starterIcon;
   const labels = CAR_CONTROL_LABELS[control] || CAR_CONTROL_LABELS["starter"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.line1,
     subLabel: labels.line2,
+    ...colors,
   });
 
   return svgToDataUri(svg);

@@ -1,17 +1,9 @@
 <!--
   Color Overrides Component
 
-  Displays per-action color override controls in a collapsible section.
-  Colors are stored in per-action settings (unique to each button instance).
-
   Parameters:
-    - slots: Array of slot names to show. Options:
-        'backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'
-
-  Example usage:
-    <%- include('color-overrides', {
-      slots: ['backgroundColor', 'textColor', 'graphic1Color']
-    }) %>
+    - slots: Array of slot names to show
+    - defaults: Object mapping slot names to default hex colors
 -->
 <% const slotLabels = {
   backgroundColor: 'Background',
@@ -23,8 +15,29 @@
   title: 'Color Overrides',
   open: false,
   content: slots.map(function(slot) {
+    var defaultColor = (defaults && defaults[slot]) || '#000000';
+    var inputId = 'color-override-' + slot;
     return '<sdpi-item label="' + slotLabels[slot] + '">' +
-      '<sdpi-color setting="colorOverrides.' + slot + '"></sdpi-color>' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+      '<sdpi-color id="' + inputId + '" setting="colorOverrides.' + slot + '" default="' + defaultColor + '"></sdpi-color>' +
+      '<a href="#" class="ird-color-reset" data-input="' + inputId + '" data-default="' + defaultColor + '" ' +
+        'style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" ' +
+        'title="Reset to default">&#x21BA;</a>' +
+      '</div>' +
       '</sdpi-item>';
   }).join('\n')
 }) %>
+<script>
+  document.querySelectorAll('.ird-color-reset').forEach(function(link) {
+    link.addEventListener('click', function(ev) {
+      ev.preventDefault();
+      var inputId = this.getAttribute('data-input');
+      var defaultColor = this.getAttribute('data-default');
+      var colorEl = document.getElementById(inputId);
+      if (colorEl) {
+        colorEl.value = defaultColor;
+        colorEl.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  });
+</script>

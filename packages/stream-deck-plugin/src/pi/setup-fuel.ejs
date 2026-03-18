@@ -23,6 +23,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['setup-fuel'] }) %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Fuel Setup Key Bindings',
 			keyBindings: require('./data/key-bindings.json').setupFuel

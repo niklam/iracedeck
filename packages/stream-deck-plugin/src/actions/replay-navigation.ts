@@ -25,8 +25,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -122,15 +124,19 @@ type ReplayNavigationSettings = z.infer<typeof ReplayNavigationSettings>;
  *
  * Generates an SVG data URI icon for the replay navigation action.
  */
-export function generateReplayNavigationSvg(settings: { navigation: NavigationAction }): string {
+export function generateReplayNavigationSvg(
+  settings: { navigation: NavigationAction } & Partial<CommonSettings>,
+): string {
   const { navigation } = settings;
 
   const iconSvg = NAVIGATION_ICONS[navigation] || NAVIGATION_ICONS["next-session"];
   const labels = REPLAY_NAVIGATION_LABELS[navigation] || REPLAY_NAVIGATION_LABELS["next-session"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

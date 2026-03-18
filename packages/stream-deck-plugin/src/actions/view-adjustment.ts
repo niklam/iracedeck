@@ -23,6 +23,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -32,6 +33,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -128,9 +130,11 @@ export function generateViewAdjustmentSvg(settings: ViewAdjustmentSettings): str
   const iconSvg = VIEW_ADJUSTMENT_ICONS[iconKey] || VIEW_ADJUSTMENT_ICONS["fov-increase"];
   const labels = VIEW_ADJUSTMENT_LABELS[adjustment]?.[direction] || VIEW_ADJUSTMENT_LABELS.fov.increase;
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);

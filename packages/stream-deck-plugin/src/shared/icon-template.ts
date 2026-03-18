@@ -108,7 +108,7 @@ export function resolveIconColors(
       continue;
     }
 
-    result[key] = actionOverrides?.[key] ?? globalColors[key] ?? defaultValue;
+    result[key] = actionOverrides?.[key] || globalColors[key] || defaultValue;
   }
 
   return result;

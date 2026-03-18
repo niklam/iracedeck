@@ -25,6 +25,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['setup-brakes'] }) %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Brake Setup Key Bindings',
 			keyBindings: require('./data/key-bindings.json').setupBrakes

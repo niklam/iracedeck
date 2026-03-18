@@ -105,11 +105,13 @@ vi.mock("../shared/index.js", () => ({
     trace: vi.fn(),
   })),
   getCommands: mockGetCommands,
+  getGlobalColors: vi.fn(() => ({})),
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   LogLevel: { Info: 2 },
   generateIconText: vi.fn(
     (opts: { text: string; fontSize: number; fill: string }) => `<text fill="${opts.fill}">${opts.text}</text>`,
   ),
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
     const parts = [data.iconContent, data.textElement, data.mainLabel, data.subLabel].filter(Boolean).join("|");
 

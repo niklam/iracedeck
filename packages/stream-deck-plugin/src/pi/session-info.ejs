@@ -73,6 +73,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['session-info'] }) %>
+
 		<%- include('global-settings') %>
 	</body>
 </html>

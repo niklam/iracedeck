@@ -20,6 +20,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['toggle-ui-elements'] }) %>
+
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').toggleUi
 		}) %>

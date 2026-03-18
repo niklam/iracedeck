@@ -1,0 +1,126 @@
+{
+  "ai-spotter-controls": {
+    "backgroundColor": "#3a4a5a",
+    "textColor": "#ffffff"
+  },
+  "audio-controls": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "black-box-selector": {
+    "backgroundColor": "#2a2a2a",
+    "textColor": "#ffffff"
+  },
+  "camera-cycle": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "camera-editor-adjustments": {
+    "backgroundColor": "#1a2a3a",
+    "textColor": "#ffffff"
+  },
+  "camera-editor-controls": {
+    "backgroundColor": "#1a3a2a",
+    "textColor": "#ffffff"
+  },
+  "camera-focus": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "car-control": {
+    "backgroundColor": "#2a3a2a",
+    "textColor": "#ffffff"
+  },
+  "chat": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "cockpit-misc": {
+    "backgroundColor": "#2a2a3a",
+    "textColor": "#ffffff"
+  },
+  "fuel-service": {
+    "backgroundColor": "#3a2a2a",
+    "textColor": "#ffffff"
+  },
+  "look-direction": {
+    "backgroundColor": "#1a2a3a",
+    "textColor": "#ffffff"
+  },
+  "media-capture": {
+    "backgroundColor": "#2a1a3a",
+    "textColor": "#ffffff"
+  },
+  "pit-quick-actions": {
+    "backgroundColor": "#3a2a2a",
+    "textColor": "#ffffff"
+  },
+  "race-admin": {
+    "backgroundColor": "#8B1A1A",
+    "textColor": "#ffffff"
+  },
+  "replay-control": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "replay-navigation": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "replay-speed": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "replay-transport": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff"
+  },
+  "setup-aero": {
+    "backgroundColor": "#1a1a3a",
+    "textColor": "#ffffff"
+  },
+  "setup-brakes": {
+    "backgroundColor": "#3a2a1a",
+    "textColor": "#ffffff"
+  },
+  "setup-chassis": {
+    "backgroundColor": "#1a3a1a",
+    "textColor": "#ffffff"
+  },
+  "setup-engine": {
+    "backgroundColor": "#2a3a1a",
+    "textColor": "#ffffff"
+  },
+  "setup-fuel": {
+    "backgroundColor": "#3a3a1a",
+    "textColor": "#ffffff"
+  },
+  "setup-hybrid": {
+    "backgroundColor": "#1a3a1a",
+    "textColor": "#ffffff"
+  },
+  "setup-traction": {
+    "backgroundColor": "#1a2a1a",
+    "textColor": "#ffffff"
+  },
+  "splits-delta-cycle": {
+    "backgroundColor": "#412244",
+    "textColor": "#ffffff"
+  },
+  "telemetry-control": {
+    "backgroundColor": "#3a2a3a",
+    "textColor": "#ffffff"
+  },
+  "tire-service": {
+    "backgroundColor": "#3a2a2a",
+    "textColor": "#ffffff"
+  },
+  "toggle-ui-elements": {
+    "backgroundColor": "#1a3a3a",
+    "textColor": "#ffffff"
+  },
+  "view-adjustment": {
+    "backgroundColor": "#1a2a3a",
+    "textColor": "#ffffff"
+  }
+}

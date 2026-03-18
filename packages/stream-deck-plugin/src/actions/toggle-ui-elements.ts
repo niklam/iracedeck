@@ -24,6 +24,7 @@ import {
   createSDLogger,
   formatKeyBinding,
   getCommands,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -33,6 +34,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -120,9 +122,11 @@ export function generateToggleUiElementsSvg(settings: ToggleUiElementsSettings):
   const iconSvg = ELEMENT_ICONS[element] || ELEMENT_ICONS["dash-box"];
   const labels = UI_ELEMENT_LABELS[element] || UI_ELEMENT_LABELS["dash-box"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
