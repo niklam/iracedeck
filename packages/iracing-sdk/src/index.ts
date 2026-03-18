@@ -112,3 +112,9 @@ export {
   formatTimeRemaining,
   type TemplateContext,
 } from "./template-context.js";
+
+// Flag utilities
+export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
+
+// Session info utilities
+export { getCarNumberFromSessionInfo, getAllCarNumbers } from "./session-utils.js";

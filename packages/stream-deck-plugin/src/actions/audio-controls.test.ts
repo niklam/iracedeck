@@ -8,15 +8,6 @@ const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings } = v
   mockGetGlobalSettings: vi.fn(() => ({})),
 }));
 
-vi.mock("@iracedeck/icons/audio-controls/spotter-volume-up.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
-vi.mock("@iracedeck/icons/audio-controls/spotter-volume-down.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
-vi.mock("@iracedeck/icons/audio-controls/spotter-mute.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-up.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -52,10 +43,25 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -112,18 +118,6 @@ describe("AudioControls", () => {
   });
 
   describe("AUDIO_CONTROLS_GLOBAL_KEYS", () => {
-    it("should have correct mapping for spotter-volume-up", () => {
-      expect(AUDIO_CONTROLS_GLOBAL_KEYS["spotter-volume-up"]).toBe("audioSpotterVolumeUp");
-    });
-
-    it("should have correct mapping for spotter-volume-down", () => {
-      expect(AUDIO_CONTROLS_GLOBAL_KEYS["spotter-volume-down"]).toBe("audioSpotterVolumeDown");
-    });
-
-    it("should have correct mapping for spotter-mute", () => {
-      expect(AUDIO_CONTROLS_GLOBAL_KEYS["spotter-mute"]).toBe("audioSpotterSilence");
-    });
-
     it("should have correct mapping for voice-chat-volume-up", () => {
       expect(AUDIO_CONTROLS_GLOBAL_KEYS["voice-chat-volume-up"]).toBe("audioVoiceChatVolumeUp");
     });
@@ -144,8 +138,8 @@ describe("AudioControls", () => {
       expect(AUDIO_CONTROLS_GLOBAL_KEYS["master-volume-down"]).toBe("audioMasterVolumeDown");
     });
 
-    it("should have exactly 8 entries", () => {
-      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(8);
+    it("should have exactly 5 entries", () => {
+      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(5);
     });
 
     it("should not have a mapping for master-mute", () => {
@@ -154,12 +148,6 @@ describe("AudioControls", () => {
   });
 
   describe("generateAudioControlsSvg", () => {
-    it("should generate a valid data URI for spotter volume-up", () => {
-      const result = generateAudioControlsSvg({ category: "spotter", action: "volume-up" });
-
-      expect(result).toContain("data:image/svg+xml");
-    });
-
     it("should generate a valid data URI for voice-chat mute", () => {
       const result = generateAudioControlsSvg({ category: "voice-chat", action: "mute" });
 
@@ -173,7 +161,7 @@ describe("AudioControls", () => {
     });
 
     it("should generate valid data URIs for all category + action combinations", () => {
-      const categories = ["spotter", "voice-chat", "master"] as const;
+      const categories = ["voice-chat", "master"] as const;
       const actions = ["volume-up", "volume-down", "mute"] as const;
 
       for (const category of categories) {
@@ -185,19 +173,16 @@ describe("AudioControls", () => {
     });
 
     it("should produce different icons for different categories", () => {
-      const spotter = generateAudioControlsSvg({ category: "spotter", action: "volume-up" });
       const voiceChat = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
       const master = generateAudioControlsSvg({ category: "master", action: "volume-up" });
 
-      expect(spotter).not.toBe(voiceChat);
-      expect(spotter).not.toBe(master);
       expect(voiceChat).not.toBe(master);
     });
 
     it("should produce different icons for different actions within same category", () => {
-      const volumeUp = generateAudioControlsSvg({ category: "spotter", action: "volume-up" });
-      const volumeDown = generateAudioControlsSvg({ category: "spotter", action: "volume-down" });
-      const mute = generateAudioControlsSvg({ category: "spotter", action: "mute" });
+      const volumeUp = generateAudioControlsSvg({ category: "voice-chat", action: "volume-up" });
+      const volumeDown = generateAudioControlsSvg({ category: "voice-chat", action: "volume-down" });
+      const mute = generateAudioControlsSvg({ category: "voice-chat", action: "mute" });
 
       expect(volumeUp).not.toBe(volumeDown);
       expect(volumeUp).not.toBe(mute);
@@ -209,30 +194,6 @@ describe("AudioControls", () => {
       const masterVolumeUp = generateAudioControlsSvg({ category: "master", action: "volume-up" });
 
       expect(masterMute).toBe(masterVolumeUp);
-    });
-
-    it("should include correct labels for spotter volume-up", () => {
-      const result = generateAudioControlsSvg({ category: "spotter", action: "volume-up" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("SPOTTER");
-      expect(decoded).toContain("VOL UP");
-    });
-
-    it("should include correct labels for spotter volume-down", () => {
-      const result = generateAudioControlsSvg({ category: "spotter", action: "volume-down" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("SPOTTER");
-      expect(decoded).toContain("VOL DOWN");
-    });
-
-    it("should include correct labels for spotter mute", () => {
-      const result = generateAudioControlsSvg({ category: "spotter", action: "mute" });
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("SPOTTER");
-      expect(decoded).toContain("SILENCE");
     });
 
     it("should include correct labels for voice-chat volume-up", () => {
@@ -261,11 +222,6 @@ describe("AudioControls", () => {
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
-        spotter: {
-          "volume-up": { mainLabel: "SPOTTER", subLabel: "VOL UP" },
-          "volume-down": { mainLabel: "SPOTTER", subLabel: "VOL DOWN" },
-          mute: { mainLabel: "SPOTTER", subLabel: "SILENCE" },
-        },
         "voice-chat": {
           "volume-up": { mainLabel: "VOICE", subLabel: "VOL UP" },
           "volume-down": { mainLabel: "VOICE", subLabel: "VOL DOWN" },
@@ -301,19 +257,6 @@ describe("AudioControls", () => {
       action = new AudioControls();
     });
 
-    it("should call sendKeyCombination on keyDown for spotter volume-up", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterVolumeUp: "bound" });
-      mockParseKeyBinding.mockReturnValue({ key: "numpad_add", modifiers: ["shift", "ctrl"], code: "NumpadAdd" });
-
-      await action.onKeyDown(fakeEvent("action-1", { category: "spotter", action: "volume-up" }) as any);
-
-      expect(mockSendKeyCombination).toHaveBeenCalledWith({
-        key: "numpad_add",
-        modifiers: ["shift", "ctrl"],
-        code: "NumpadAdd",
-      });
-    });
-
     it("should call sendKeyCombination on keyDown for voice-chat mute", async () => {
       mockGetGlobalSettings.mockReturnValue({ audioVoiceChatMute: "bound" });
       mockParseKeyBinding.mockReturnValue({ key: "m", modifiers: ["shift", "ctrl", "alt"], code: "KeyM" });
@@ -345,10 +288,14 @@ describe("AudioControls", () => {
     });
 
     it("should call sendKeyCombination on dialDown", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterVolumeUp: "bound" });
-      mockParseKeyBinding.mockReturnValue({ key: "numpad_add", modifiers: ["shift", "ctrl"], code: "NumpadAdd" });
+      mockGetGlobalSettings.mockReturnValue({ audioVoiceChatVolumeUp: "bound" });
+      mockParseKeyBinding.mockReturnValue({
+        key: "numpad_add",
+        modifiers: ["shift", "ctrl", "alt"],
+        code: "NumpadAdd",
+      });
 
-      await action.onDialDown(fakeEvent("action-1", { category: "spotter", action: "volume-up" }) as any);
+      await action.onDialDown(fakeEvent("action-1", { category: "voice-chat", action: "volume-up" }) as any);
 
       expect(mockSendKeyCombination).toHaveBeenCalledOnce();
     });
@@ -357,7 +304,7 @@ describe("AudioControls", () => {
       mockGetGlobalSettings.mockReturnValue({});
       mockParseKeyBinding.mockReturnValue(undefined);
 
-      await action.onKeyDown(fakeEvent("action-1", { category: "spotter", action: "volume-up" }) as any);
+      await action.onKeyDown(fakeEvent("action-1", { category: "voice-chat", action: "volume-up" }) as any);
 
       expect(mockSendKeyCombination).not.toHaveBeenCalled();
     });
@@ -372,10 +319,10 @@ describe("AudioControls", () => {
     });
 
     it("should send key with empty modifiers as undefined", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterSilence: "bound" });
+      mockGetGlobalSettings.mockReturnValue({ audioVoiceChatMute: "bound" });
       mockParseKeyBinding.mockReturnValue({ key: "m", modifiers: [], code: "KeyM" });
 
-      await action.onKeyDown(fakeEvent("action-1", { category: "spotter", action: "mute" }) as any);
+      await action.onKeyDown(fakeEvent("action-1", { category: "voice-chat", action: "mute" }) as any);
 
       expect(mockSendKeyCombination).toHaveBeenCalledWith({
         key: "m",
@@ -393,31 +340,35 @@ describe("AudioControls", () => {
     });
 
     it("should send volume-up key on clockwise rotation", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterVolumeUp: "bound" });
-      mockParseKeyBinding.mockReturnValue({ key: "numpad_add", modifiers: ["shift", "ctrl"], code: "NumpadAdd" });
+      mockGetGlobalSettings.mockReturnValue({ audioVoiceChatVolumeUp: "bound" });
+      mockParseKeyBinding.mockReturnValue({
+        key: "numpad_add",
+        modifiers: ["shift", "ctrl", "alt"],
+        code: "NumpadAdd",
+      });
 
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "spotter", action: "mute" }, 1) as any);
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "voice-chat", action: "mute" }, 1) as any);
 
       expect(mockSendKeyCombination).toHaveBeenCalledWith({
         key: "numpad_add",
-        modifiers: ["shift", "ctrl"],
+        modifiers: ["shift", "ctrl", "alt"],
         code: "NumpadAdd",
       });
     });
 
     it("should send volume-down key on counter-clockwise rotation", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterVolumeDown: "bound" });
+      mockGetGlobalSettings.mockReturnValue({ audioVoiceChatVolumeDown: "bound" });
       mockParseKeyBinding.mockReturnValue({
         key: "numpad_subtract",
-        modifiers: ["shift", "ctrl"],
+        modifiers: ["shift", "ctrl", "alt"],
         code: "NumpadSubtract",
       });
 
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "spotter", action: "mute" }, -1) as any);
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "voice-chat", action: "mute" }, -1) as any);
 
       expect(mockSendKeyCombination).toHaveBeenCalledWith({
         key: "numpad_subtract",
-        modifiers: ["shift", "ctrl"],
+        modifiers: ["shift", "ctrl", "alt"],
         code: "NumpadSubtract",
       });
     });
@@ -430,17 +381,6 @@ describe("AudioControls", () => {
         fakeDialRotateEvent("action-1", { category: "master", action: "volume-down" }, 2) as any,
       );
 
-      expect(mockSendKeyCombination).toHaveBeenCalledOnce();
-    });
-
-    it("should send mute on dial press for spotter", async () => {
-      mockGetGlobalSettings.mockReturnValue({ audioSpotterSilence: "bound" });
-      mockParseKeyBinding.mockReturnValue({ key: "m", modifiers: ["shift", "ctrl"], code: "KeyM" });
-
-      await action.onDialDown(fakeEvent("action-1", { category: "spotter", action: "volume-up" }) as any);
-
-      // dialDown on spotter should send mute regardless of action setting
-      expect(mockParseKeyBinding).toHaveBeenCalled();
       expect(mockSendKeyCombination).toHaveBeenCalledOnce();
     });
 

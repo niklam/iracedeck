@@ -1,6 +1,6 @@
 {
   "name": "iracedeck",
-  "version": "0.12.0",
+  "version": "1.3.0",
   "private": true,
   "packageManager": "pnpm@10.0.0",
   "type": "module",
@@ -10,8 +10,7 @@
     ]
   },
   "scripts": {
-    "build": "turbo run build",
-    "build:win": "pnpm run stop:stream-deck-app && turbo run build && pnpm run start:stream-deck-app",
+    "build": "node scripts/build.mjs",
     "install:stream-deck": "pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/stream-deck-*\" install",
     "build:stream-deck": "pnpm install:stream-deck && pnpm --filter \"@iracedeck/iracing-sdk\" --filter \"@iracedeck/stream-deck-*\" build",
     "dev": "turbo run dev",
@@ -25,15 +24,18 @@
     "precommit": "pnpm lint:fix && pnpm format:fix && pnpm install && pnpm clean && pnpm build",
     "start:stream-deck-app": "start /B \"\" \"C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe",
     "stop:stream-deck-app": "taskkill /IM StreamDeck.exe /F || exit 0",
+    "link:stream-deck": "streamdeck link .\\packages\\stream-deck-plugin\\com.iracedeck.sd.core.sdPlugin",
+    "unlink:stream-deck": "streamdeck unlink com.iracedeck.sd.core",
+    "relink:stream-deck": "(streamdeck unlink --delete com.iracedeck.sd.core > /dev/null 2>&1 || true) && streamdeck link .\\packages\\stream-deck-plugin\\com.iracedeck.sd.core.sdPlugin",
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",
-    "prepare": "husky"
+    "prepare": "husky || exit 0"
   },
   "devDependencies": {
     "@elgato/eslint-config": "0.3.2",
     "@elgato/prettier-config": "0.3.3",
-    "@eslint/js": "9.39.3",
+    "@eslint/js": "9.39.4",
     "@release-it/conventional-changelog": "10.0.5",
     "@stylistic/eslint-plugin": "5.10.0",
     "@tsconfig/node22": "22.0.5",
@@ -48,7 +50,7 @@
     "node-gyp": "12.2.0",
     "prettier": "3.8.1",
     "release-it": "19.2.4",
-    "turbo": "2.8.13",
+    "turbo": "2.8.14",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
   },

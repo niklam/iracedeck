@@ -18,6 +18,7 @@ import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previ
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -67,7 +68,7 @@ export const CAMERA_CYCLE_ICONS: Record<CameraType, Record<Direction, string>> =
   driving: { next: drivingNextSvg, previous: drivingPreviousSvg },
 };
 
-const CameraCycleSettings = z.object({
+const CameraCycleSettings = CommonSettings.extend({
   cameraType: z.enum(CAMERA_TYPE_VALUES).default("camera"),
   direction: z.enum(["next", "previous"]).default("next"),
 });
@@ -103,6 +104,7 @@ export class CameraCycle extends ConnectionStateAwareAction<CameraCycleSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("CameraCycle"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CameraCycleSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -117,6 +119,7 @@ export class CameraCycle extends ConnectionStateAwareAction<CameraCycleSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CameraCycleSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

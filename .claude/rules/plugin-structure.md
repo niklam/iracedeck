@@ -132,6 +132,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
+  () => native.focusIRacingWindow(),                   // focus iRacing window (opt-in via global setting)
 );
 
 // 4. Register actions

@@ -21,6 +21,7 @@ import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-pos
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -50,13 +51,13 @@ type NavigationAction =
  */
 const REPLAY_NAVIGATION_LABELS: Record<NavigationAction, { mainLabel: string; subLabel: string }> = {
   "next-session": { mainLabel: "NEXT", subLabel: "SESSION" },
-  "prev-session": { mainLabel: "PREV", subLabel: "SESSION" },
-  "next-lap": { mainLabel: "NEXT", subLabel: "LAP" },
-  "prev-lap": { mainLabel: "PREV", subLabel: "LAP" },
+  "prev-session": { mainLabel: "PREVIOUS", subLabel: "SESSION" },
+  "next-lap": { mainLabel: "LAP", subLabel: "NEXT" },
+  "prev-lap": { mainLabel: "LAP", subLabel: "PREVIOUS" },
   "next-incident": { mainLabel: "NEXT", subLabel: "INCIDENT" },
-  "prev-incident": { mainLabel: "PREV", subLabel: "INCIDENT" },
-  "jump-to-start": { mainLabel: "GO TO", subLabel: "START" },
-  "jump-to-end": { mainLabel: "GO TO", subLabel: "END" },
+  "prev-incident": { mainLabel: "PREVIOUS", subLabel: "INCIDENT" },
+  "jump-to-start": { mainLabel: "START", subLabel: "JUMP TO" },
+  "jump-to-end": { mainLabel: "END", subLabel: "JUMP TO" },
   "set-play-position": { mainLabel: "SET", subLabel: "POSITION" },
   "search-session-time": { mainLabel: "SEARCH", subLabel: "TIME" },
   "erase-tape": { mainLabel: "ERASE", subLabel: "TAPE" },
@@ -107,7 +108,7 @@ const NAVIGATION_VALUES = [
   "erase-tape",
 ] as const;
 
-const ReplayNavigationSettings = z.object({
+const ReplayNavigationSettings = CommonSettings.extend({
   navigation: z.enum(NAVIGATION_VALUES).default("next-session"),
   frameNumber: z.coerce.number().int().min(0).default(0),
   sessionNum: z.coerce.number().int().min(0).default(0),
@@ -145,6 +146,7 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
   protected override logger = createSDLogger(streamDeck.logger.createScope("ReplayNavigation"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<ReplayNavigationSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -159,6 +161,7 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ReplayNavigationSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

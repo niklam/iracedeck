@@ -93,14 +93,14 @@
 	</head>
 	<body>
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="open-chat">
-				<option value="open-chat">Open Chat</option>
-				<option value="reply">Reply to Chat</option>
-				<option value="whisper">Whisper</option>
-				<option value="respond-pm">Respond to Last PM</option>
-				<option value="cancel">Cancel Chat</option>
+			<sdpi-select id="mode-select" setting="mode" default="send-message">
 				<option value="send-message">Send Message</option>
 				<option value="macro">Macro (1-15)</option>
+				<option value="reply">Reply to Chat</option>
+				<option value="respond-pm">Respond to Last PM</option>
+				<option value="whisper">Whisper</option>
+				<option value="open-chat">Open Chat</option>
+				<option value="cancel">Cancel Chat</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -161,6 +161,18 @@
 			<sdpi-textarea setting="keyText" rows="2" placeholder="Leave empty for default"></sdpi-textarea>
 		</sdpi-item>
 
+		<sdpi-item label="Font Size" id="font-size-item" class="hidden">
+			<sdpi-textfield setting="fontSize" type="number" min="5" max="36" default="11"></sdpi-textfield>
+		</sdpi-item>
+
+		<div class="ird-common-settings-section">
+  <div class="ird-section-heading">Common Settings</div>
+  <sdpi-item label="Flags Overlay">
+    <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
+  </sdpi-item>
+</div>
+
+
 		<!--
   Global Key Bindings Component
 
@@ -185,6 +197,7 @@
 				const messageItem = document.getElementById("message-item");
 				const macroItem = document.getElementById("macro-item");
 				const templateHelp = document.getElementById("template-help");
+				const fontSizeItem = document.getElementById("font-size-item");
 
 				if (messageItem) {
 					messageItem.classList.toggle("hidden", mode !== "send-message");
@@ -195,6 +208,9 @@
 				if (macroItem) {
 					macroItem.classList.toggle("hidden", mode !== "macro");
 				}
+				if (fontSizeItem) {
+					fontSizeItem.classList.toggle("hidden", mode !== "send-message" && mode !== "macro");
+				}
 			}
 
 			async function initialize() {
@@ -202,18 +218,18 @@
 
 				const modeSelect = document.getElementById("mode-select");
 				if (modeSelect) {
-					const initialValue = modeSelect.value || "open-chat";
+					const initialValue = modeSelect.value || "send-message";
 					updateVisibility(initialValue);
 
 					modeSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 					modeSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 
 					// Polling fallback for reliable detection
-					let lastMode = modeSelect.value || "open-chat";
+					let lastMode = modeSelect.value || "send-message";
 					setInterval(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
@@ -234,5 +250,40 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<!--
+  Global Plugin Settings Component
+
+  Displays plugin-wide settings in a collapsible "Global Settings" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default.
+-->
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+  
+  </div>
+</details>
+
+
 	</body>
 </html>

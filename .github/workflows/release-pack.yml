@@ -1,6 +1,7 @@
 name: Release - Build Stream Deck Plugin
 
 on:
+  workflow_dispatch:
   push:
     tags: ["v*"]
 
@@ -11,11 +12,11 @@ jobs:
   build-and-pack:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -26,14 +27,24 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Remove dev dependencies
+        run: pnpm install --prod --no-frozen-lockfile
+
       - name: Pack Stream Deck plugin
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = if ("${{ github.ref_name }}".StartsWith("v")) { "${{ github.ref_name }}".TrimStart("v") } else { "dev" }
           npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
           Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "iracedeck-v${version}.streamDeckPlugin"
         shell: pwsh
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamdeck-plugin
+          path: iracedeck-v*.streamDeckPlugin
+
       - name: Attach plugin to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: iracedeck-v*.streamDeckPlugin

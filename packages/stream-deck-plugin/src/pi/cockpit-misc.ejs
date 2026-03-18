@@ -5,7 +5,8 @@
 	</head>
 	<body>
 		<sdpi-item label="Control">
-			<sdpi-select id="control-select" setting="control" default="trigger-wipers">
+			<sdpi-select id="control-select" setting="control" default="toggle-wipers">
+				<option value="toggle-wipers">Toggle Wipers</option>
 				<option value="trigger-wipers">Trigger Wipers</option>
 				<option value="ffb-max-force">FFB Max Force</option>
 				<option value="report-latency">Report Latency</option>
@@ -21,6 +22,8 @@
 				<option value="decrease">Decrease</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<%- include('common-settings') %>
 
 		<%- include('global-key-bindings', {
 			subtitle: 'Cockpit Misc Key Bindings',
@@ -44,18 +47,18 @@
 				const controlSelect = document.getElementById("control-select");
 
 				if (controlSelect) {
-					const initialValue = controlSelect.value || "trigger-wipers";
+					const initialValue = controlSelect.value || "toggle-wipers";
 					updateVisibility(initialValue);
 
 					controlSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "trigger-wipers");
+						updateVisibility(ev.target.value || "toggle-wipers");
 					});
 					controlSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "trigger-wipers");
+						updateVisibility(ev.target.value || "toggle-wipers");
 					});
 
 					// Polling fallback for reliable detection
-					let lastValue = controlSelect.value || "trigger-wipers";
+					let lastValue = controlSelect.value || "toggle-wipers";
 					setInterval(() => {
 						const currentValue = controlSelect.value;
 						if (currentValue && currentValue !== lastValue) {
@@ -76,5 +79,7 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

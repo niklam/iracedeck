@@ -17,6 +17,7 @@ import lowFuelAcceptIconSvg from "@iracedeck/icons/setup-fuel/low-fuel-accept.sv
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -94,7 +95,7 @@ export const SETUP_FUEL_GLOBAL_KEYS: Record<string, string> = {
   "fcy-mode-toggle": "setupFuelFcyModeToggle",
 };
 
-const SetupFuelSettings = z.object({
+const SetupFuelSettings = CommonSettings.extend({
   setting: z
     .enum(["fuel-mixture", "fuel-cut-position", "disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"])
     .default("fuel-mixture"),
@@ -136,6 +137,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupFuel"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupFuelSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -150,6 +152,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupFuelSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

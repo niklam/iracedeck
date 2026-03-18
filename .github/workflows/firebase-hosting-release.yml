@@ -1,0 +1,29 @@
+name: Deploy to Firebase Hosting on release
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install
+
+      - run: pnpm --filter @iracedeck/website build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_IRACEDECK }}
+          channelId: live
+          projectId: iracedeck
+          entryPoint: packages/website

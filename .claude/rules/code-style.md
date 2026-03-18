@@ -12,3 +12,7 @@
 Formatting
 
 - Project formatter/linter configuration is authoritative. Don’t reformat unrelated files in a single change.
+
+Markdown
+
+- All fenced code blocks must include a language identifier (e.g., `bash`, `typescript`, `json`, `text`, `markdown`). Use `text` for directory trees and plain output. Never use bare ` ``` ` fences.

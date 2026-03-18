@@ -41,10 +41,25 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = { action: "clear-all-checkboxes" };
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({

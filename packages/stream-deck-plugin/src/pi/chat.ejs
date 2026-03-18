@@ -5,14 +5,14 @@
 	</head>
 	<body>
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="open-chat">
-				<option value="open-chat">Open Chat</option>
-				<option value="reply">Reply to Chat</option>
-				<option value="whisper">Whisper</option>
-				<option value="respond-pm">Respond to Last PM</option>
-				<option value="cancel">Cancel Chat</option>
+			<sdpi-select id="mode-select" setting="mode" default="send-message">
 				<option value="send-message">Send Message</option>
 				<option value="macro">Macro (1-15)</option>
+				<option value="reply">Reply to Chat</option>
+				<option value="respond-pm">Respond to Last PM</option>
+				<option value="whisper">Whisper</option>
+				<option value="open-chat">Open Chat</option>
+				<option value="cancel">Cancel Chat</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -45,6 +45,12 @@
 			<sdpi-textarea setting="keyText" rows="2" placeholder="Leave empty for default"></sdpi-textarea>
 		</sdpi-item>
 
+		<sdpi-item label="Font Size" id="font-size-item" class="hidden">
+			<sdpi-textfield setting="fontSize" type="number" min="5" max="36" default="11"></sdpi-textfield>
+		</sdpi-item>
+
+		<%- include('common-settings') %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Chat Key Bindings',
 			keyBindings: require('./data/key-bindings.json').chat
@@ -55,6 +61,7 @@
 				const messageItem = document.getElementById("message-item");
 				const macroItem = document.getElementById("macro-item");
 				const templateHelp = document.getElementById("template-help");
+				const fontSizeItem = document.getElementById("font-size-item");
 
 				if (messageItem) {
 					messageItem.classList.toggle("hidden", mode !== "send-message");
@@ -65,6 +72,9 @@
 				if (macroItem) {
 					macroItem.classList.toggle("hidden", mode !== "macro");
 				}
+				if (fontSizeItem) {
+					fontSizeItem.classList.toggle("hidden", mode !== "send-message" && mode !== "macro");
+				}
 			}
 
 			async function initialize() {
@@ -72,18 +82,18 @@
 
 				const modeSelect = document.getElementById("mode-select");
 				if (modeSelect) {
-					const initialValue = modeSelect.value || "open-chat";
+					const initialValue = modeSelect.value || "send-message";
 					updateVisibility(initialValue);
 
 					modeSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 					modeSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "open-chat");
+						updateVisibility(ev.target.value || "send-message");
 					});
 
 					// Polling fallback for reliable detection
-					let lastMode = modeSelect.value || "open-chat";
+					let lastMode = modeSelect.value || "send-message";
 					setInterval(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
@@ -104,5 +114,7 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

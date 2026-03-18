@@ -93,7 +93,8 @@
 	</head>
 	<body>
 		<sdpi-item label="Control">
-			<sdpi-select id="control-select" setting="control" default="trigger-wipers">
+			<sdpi-select id="control-select" setting="control" default="toggle-wipers">
+				<option value="toggle-wipers">Toggle Wipers</option>
 				<option value="trigger-wipers">Trigger Wipers</option>
 				<option value="ffb-max-force">FFB Max Force</option>
 				<option value="report-latency">Report Latency</option>
@@ -110,6 +111,14 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<div class="ird-common-settings-section">
+  <div class="ird-section-heading">Common Settings</div>
+  <sdpi-item label="Flags Overlay">
+    <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
+  </sdpi-item>
+</div>
+
+
 		<!--
   Global Key Bindings Component
 
@@ -121,6 +130,10 @@
 -->
 <div class="ird-key-bindings-section">
   <div class="ird-section-heading">Related Key Bindings</div>
+  
+  <sdpi-item label="Toggle Wipers">
+    <ird-key-binding setting="cockpitMiscToggleWipers" default="Shift+W" global></ird-key-binding>
+  </sdpi-item>
   
   <sdpi-item label="Trigger Wipers">
     <ird-key-binding setting="cockpitMiscTriggerWipers" default="Ctrl+Alt+W" global></ird-key-binding>
@@ -178,18 +191,18 @@
 				const controlSelect = document.getElementById("control-select");
 
 				if (controlSelect) {
-					const initialValue = controlSelect.value || "trigger-wipers";
+					const initialValue = controlSelect.value || "toggle-wipers";
 					updateVisibility(initialValue);
 
 					controlSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "trigger-wipers");
+						updateVisibility(ev.target.value || "toggle-wipers");
 					});
 					controlSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "trigger-wipers");
+						updateVisibility(ev.target.value || "toggle-wipers");
 					});
 
 					// Polling fallback for reliable detection
-					let lastValue = controlSelect.value || "trigger-wipers";
+					let lastValue = controlSelect.value || "toggle-wipers";
 					setInterval(() => {
 						const currentValue = controlSelect.value;
 						if (currentValue && currentValue !== lastValue) {
@@ -210,5 +223,40 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<!--
+  Global Plugin Settings Component
+
+  Displays plugin-wide settings in a collapsible "Global Settings" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default.
+-->
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+  
+  </div>
+</details>
+
+
 	</body>
 </html>

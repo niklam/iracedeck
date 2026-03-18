@@ -21,6 +21,7 @@ import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -91,7 +92,7 @@ export const BLACK_BOX_GLOBAL_KEYS: Record<string, string> = {
   weather: "blackBoxWeather",
 };
 
-const BlackBoxSelectorSettings = z.object({
+const BlackBoxSelectorSettings = CommonSettings.extend({
   mode: z.enum(["direct", "next", "previous"]).default("direct"),
   blackBox: z
     .enum([
@@ -162,6 +163,7 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
    * When the action appears on the Stream Deck
    */
   override async onWillAppear(ev: WillAppearEvent<BlackBoxSelectorSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const parsed = BlackBoxSelectorSettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
 
@@ -198,6 +200,7 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
    * When settings are received or updated
    */
   override async onDidReceiveSettings(ev: any): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const parsed = BlackBoxSelectorSettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
 

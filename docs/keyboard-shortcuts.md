@@ -71,7 +71,7 @@
 | Autofuel Toggle | Shift+Ctrl+A | No | Autofuel Toggle |
 | Adjust Autofuel Lap Margin | Shift+Alt+X / Shift+Alt+S | No | Autofuel Lap Margin Inc / Autofuel Lap Margin Dec |
 | Tear Off Visor | - | No | Tear Off Visor |
-| Toggle Windshield Wipers | - | No | Toggle Windshield Wipers |
+| Toggle Windshield Wipers | Shift+W | No | Toggle Windshield Wipers |
 | Trigger Windshield Wipers | Ctrl+Alt+W | No | Trigger Windshield Wipers |
 | Toggle Dash Box | D | No | Toggle Dash Box |
 
@@ -132,10 +132,10 @@
 
 | Action | Shortcut(s) | Available via SDK | iRacing Setting |
 |--------|-------------|-------------------|-----------------|
-| Adjust Spotter Volume | Shift+Ctrl+NUMPAD - / Shift+Ctrl+NUMPAD + | No | Spotter Louder / Spotter Quieter |
-| Spotter Silence | Shift+Ctrl+M | No | Spotter Silence |
+| Adjust Spotter Volume | - | No | Spotter Louder / Spotter Quieter |
+| Spotter Silence | - | No | Spotter Silence |
 | Spotter Damage Report | - | No | Spotter Damage Report |
-| Spotter Weather Report | Shift+Alt+R | No | Spotter Weather Report |
+| Spotter Weather Report | - | No | Spotter Weather Report |
 | Toggle Report Laps | - | No | Toggle Report Laps |
 | Announce Leader at S/F Line | - | No | Announce Leader at S/F Line |
 

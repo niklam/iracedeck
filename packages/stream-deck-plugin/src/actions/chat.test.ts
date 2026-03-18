@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Chat, CHAT_GLOBAL_KEYS, generateChatSvg, generateMacroSvg, generateSendMessageSvg } from "./chat.js";
+import {
+  Chat,
+  CHAT_GLOBAL_KEYS,
+  generateChatSvg,
+  generateMacroSvg,
+  generateSendMessageSvg,
+  hasTemplateVars,
+} from "./chat.js";
 
 const {
   mockBeginChat,
@@ -64,10 +71,32 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = {
+        mode: "send-message",
+        message: "",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        keyText: "",
+        fontSize: 11,
+      };
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -84,7 +113,9 @@ vi.mock("../shared/index.js", () => ({
 
     return b.key;
   }),
-  generateIconText: vi.fn(({ text }: { text: string }) => `<text>${text}</text>`),
+  generateIconText: vi.fn(
+    ({ text, fontSize }: { text: string; fontSize: number }) => `<text font-size="${fontSize}">${text}</text>`,
+  ),
   getCommands: mockGetCommands,
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
@@ -128,6 +159,51 @@ describe("Chat", () => {
     });
   });
 
+  describe("hasTemplateVars", () => {
+    it("should return true when keyText contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Speed: {{speed}}", message: "" })).toBe(true);
+    });
+
+    it("should return true when message contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "", message: "Going {{speed}} mph" })).toBe(true);
+    });
+
+    it("should return true when both contain template variables", () => {
+      expect(hasTemplateVars({ keyText: "{{gear}}", message: "{{speed}}" })).toBe(true);
+    });
+
+    it("should return false when neither contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Static", message: "Hello" })).toBe(false);
+    });
+
+    it("should return false for empty strings", () => {
+      expect(hasTemplateVars({ keyText: "", message: "" })).toBe(false);
+    });
+
+    it("should detect partial mustache syntax", () => {
+      expect(hasTemplateVars({ keyText: "", message: "Use {{ for templates" })).toBe(true);
+    });
+  });
+
+  describe("issue #114 regression", () => {
+    it("should display resolved message in send-message icon when keyText is empty", () => {
+      // When resolveSettingsTemplates resolves message, generateChatSvg should
+      // show the resolved value (not raw {{...}}) in the chat bubble
+      const result = generateChatSvg({
+        mode: "send-message",
+        message: "Going 95 mph",
+        keyText: "",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        fontSize: 11,
+      });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Going 95 mph");
+      expect(decoded).not.toContain("{{");
+    });
+  });
+
   describe("generateChatSvg", () => {
     const allModes = [
       "open-chat",
@@ -139,7 +215,7 @@ describe("Chat", () => {
       "macro",
     ] as const;
 
-    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "" };
+    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "", fontSize: 11 };
 
     it.each(allModes)("should generate a valid data URI for %s", (mode) => {
       const result = generateChatSvg({ mode, ...defaultSettings });
@@ -183,6 +259,7 @@ describe("Chat", () => {
         macroNumber: 1,
         iconColor: "#4a90d9",
         keyText: "",
+        fontSize: 11,
       });
       const decoded = decodeURIComponent(result);
 
@@ -200,6 +277,7 @@ describe("Chat", () => {
         macroNumber: 1,
         iconColor: "#4a90d9",
         keyText: "Custom label",
+        fontSize: 11,
       });
       const decoded = decodeURIComponent(result);
 
@@ -300,6 +378,20 @@ describe("Chat", () => {
       const result = generateSendMessageSvg("#4a90d9", "", "");
       expect(result).toContain("data:image/svg+xml");
     });
+
+    it("should use default font size of 11", () => {
+      const result = generateSendMessageSvg("#4a90d9", "", "Hello");
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="11"');
+    });
+
+    it("should use custom font size when provided", () => {
+      const result = generateSendMessageSvg("#4a90d9", "", "Hello", 20);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="20"');
+    });
   });
 
   describe("generateMacroSvg", () => {
@@ -345,6 +437,23 @@ describe("Chat", () => {
 
       expect(decoded).toContain("Line1");
       expect(decoded).toContain("Line2");
+    });
+
+    it("should use default font sizes when no keyText is provided", () => {
+      const result = generateMacroSvg("#4a90d9", "", 5, 20);
+      const decoded = decodeURIComponent(result);
+
+      // Default layout uses fixed font sizes (10 for "Macro", 25 for number)
+      expect(decoded).toContain('font-size="10"');
+      expect(decoded).toContain('font-size="25"');
+      expect(decoded).not.toContain('font-size="20"');
+    });
+
+    it("should use custom font size when keyText is provided", () => {
+      const result = generateMacroSvg("#4a90d9", "Custom", 5, 20);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="20"');
     });
   });
 
@@ -408,10 +517,14 @@ describe("Chat", () => {
       expect(mockMacro).toHaveBeenCalledWith(5);
     });
 
-    it("should default to open-chat when no mode is specified", async () => {
+    it("should default to send-message when no mode is specified", async () => {
       await action.onKeyDown(fakeEvent("action-1", {}) as any);
 
-      expect(mockBeginChat).toHaveBeenCalledOnce();
+      // Default mode is send-message with empty message, which warns and skips
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
     });
   });
 

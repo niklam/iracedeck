@@ -25,6 +25,19 @@ vi.mock("@elgato/streamdeck", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
@@ -78,16 +91,16 @@ describe("ReplaySpeed", () => {
       expect(uniqueResults.size).toBe(ALL_DIRECTIONS.length);
     });
 
-    it("should include SPEED UP label for increase direction", () => {
+    it("should include FASTER label for increase direction", () => {
       const result = generateReplaySpeedSvg({ direction: "increase" });
 
-      expect(decodeURIComponent(result)).toContain("SPEED UP");
+      expect(decodeURIComponent(result)).toContain("FASTER");
     });
 
-    it("should include SLOW DOWN label for decrease direction", () => {
+    it("should include SLOWER label for decrease direction", () => {
       const result = generateReplaySpeedSvg({ direction: "decrease" });
 
-      expect(decodeURIComponent(result)).toContain("SLOW DOWN");
+      expect(decodeURIComponent(result)).toContain("SLOWER");
     });
 
     it("should include REPLAY secondary label for both directions", () => {

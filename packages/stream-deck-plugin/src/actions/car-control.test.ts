@@ -61,11 +61,26 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -431,7 +446,7 @@ describe("CarControl", () => {
       await action.onWillAppear(fakeEvent("action-1", { control: "starter" }) as any);
       await action.onDidReceiveSettings(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
 
-      expect(action["activeContexts"].get("action-1")).toEqual({
+      expect(action["activeContexts"].get("action-1")).toMatchObject({
         control: "pit-speed-limiter",
       });
     });

@@ -1,15 +1,16 @@
 import streamDeck, { action, DidReceiveSettingsEvent, WillAppearEvent, WillDisappearEvent } from "@elgato/streamdeck";
 import {
   DisplayUnits,
-  Flags,
-  hasFlag,
+  type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
+  resolveActiveFlag,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import sessionInfoTemplate from "../../icons/session-info.svg";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   LogLevel,
@@ -33,7 +34,7 @@ const UNLIMITED_LAPS = 32767;
 
 const LITERS_PER_GALLON = 3.78541;
 
-const SessionInfoSettings = z.object({
+const SessionInfoSettings = CommonSettings.extend({
   mode: z.enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags"]).default("incidents"),
   positionShowTotal: z
     .union([z.boolean(), z.string()])
@@ -43,72 +44,6 @@ const SessionInfoSettings = z.object({
 });
 
 type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
-
-/**
- * @internal Exported for testing
- *
- * Describes a resolved race flag with its visual properties.
- */
-export interface FlagInfo {
-  label: string;
-  color: string;
-  textColor: string;
-  /** Whether this flag should pulse continuously (black, meatball) */
-  pulse: boolean;
-}
-
-/**
- * @internal Exported for testing
- *
- * Flag definitions in priority order (highest priority first).
- * When multiple flags are active, the first match wins.
- */
-export const FLAG_DEFINITIONS: ReadonlyArray<{ check: (flags: number) => boolean; info: FlagInfo }> = [
-  { check: (f) => hasFlag(f, Flags.Red), info: { label: "RED", color: "#e74c3c", textColor: "#ffffff", pulse: false } },
-  {
-    check: (f) => hasFlag(f, Flags.Black) || hasFlag(f, Flags.Disqualify),
-    info: { label: "BLACK", color: "#1a1a1a", textColor: "#ffffff", pulse: true },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.Repair),
-    info: { label: "REPAIR", color: "#e67e22", textColor: "#ffffff", pulse: true },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.Yellow) || hasFlag(f, Flags.Caution) || hasFlag(f, Flags.CautionWaving),
-    info: { label: "YELLOW", color: "#f1c40f", textColor: "#1a1a1a", pulse: false },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.Blue),
-    info: { label: "BLUE", color: "#3498db", textColor: "#ffffff", pulse: false },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.White),
-    info: { label: "WHITE", color: "#e8e8e8", textColor: "#1a1a1a", pulse: false },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.Checkered),
-    info: { label: "FINISH", color: "#1a1a1a", textColor: "#ffffff", pulse: false },
-  },
-  {
-    check: (f) => hasFlag(f, Flags.Green),
-    info: { label: "GREEN", color: "#2ecc71", textColor: "#ffffff", pulse: false },
-  },
-];
-
-/**
- * @internal Exported for testing
- *
- * Resolves the highest-priority active flag from the session flags bitfield.
- */
-export function resolveActiveFlag(sessionFlags: number | undefined): FlagInfo | null {
-  if (sessionFlags === undefined) return null;
-
-  for (const def of FLAG_DEFINITIONS) {
-    if (def.check(sessionFlags)) return def.info;
-  }
-
-  return null;
-}
 
 /**
  * @internal Exported for testing
@@ -245,6 +180,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   private flagPulseTimers = new Map<string, ReturnType<typeof setInterval>>();
 
   override async onWillAppear(ev: WillAppearEvent<SessionInfoSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -273,6 +209,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SessionInfoSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.cancelFlash(ev.action.id);
@@ -452,7 +389,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       if (flagKey !== lastKey) {
         this.logger.info("Flag changed");
-        this.logger.debug(`Flag: ${lastKey} -> ${flagKey}`);
+        this.logger.debug(
+          `Flag: ${lastKey} -> ${flagKey}, SessionFlags=0x${telemetry?.SessionFlags?.toString(16) ?? "undefined"}`,
+        );
         this.lastFlagKey.set(contextId, flagKey);
         this.cancelFlagPulse(contextId);
         this.cancelFlash(contextId);
@@ -462,7 +401,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
           return;
         } else if (lastKey !== undefined && flagInfo) {
-          this.startFlagFlash(contextId, settings, flagInfo);
+          this.startFlagColorFlash(contextId, settings, flagInfo);
 
           return;
         }
@@ -524,7 +463,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     doStep();
   }
 
-  private startFlagFlash(contextId: string, settings: SessionInfoSettings, flagInfo: FlagInfo): void {
+  private startFlagColorFlash(contextId: string, settings: SessionInfoSettings, flagInfo: FlagInfo): void {
     this.cancelFlash(contextId);
 
     let step = 0;

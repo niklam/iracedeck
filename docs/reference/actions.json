@@ -40,15 +40,28 @@
       "name": "Driving Controls",
       "actions": [
         {
+          "id": "com.iracedeck.sd.core.ai-spotter-controls",
+          "name": "AI Spotter Controls",
+          "file": "ai-spotter-controls.ts",
+          "encoder": false,
+          "settingsKey": "control",
+          "modes": [
+            { "value": "damage-report", "label": "Damage Report" },
+            { "value": "weather-report", "label": "Weather Report" },
+            { "value": "toggle-report-laps", "label": "Toggle Report Laps" },
+            { "value": "announce-leader", "label": "Announce Leader at S/F Line" },
+            { "value": "louder", "label": "Spotter Louder" },
+            { "value": "quieter", "label": "Spotter Quieter" },
+            { "value": "silence", "label": "Spotter Silence" }
+          ]
+        },
+        {
           "id": "com.iracedeck.sd.core.audio-controls",
           "name": "Audio Controls",
           "file": "audio-controls.ts",
           "encoder": true,
           "settingsKeys": ["category", "action"],
           "modes": [
-            { "category": "spotter", "action": "volume-up", "label": "Spotter Volume Up" },
-            { "category": "spotter", "action": "volume-down", "label": "Spotter Volume Down" },
-            { "category": "spotter", "action": "mute", "label": "Spotter Silence" },
             { "category": "voice-chat", "action": "volume-up", "label": "Voice Chat Volume Up" },
             { "category": "voice-chat", "action": "volume-down", "label": "Voice Chat Volume Down" },
             { "category": "voice-chat", "action": "mute", "label": "Voice Chat Mute" },
@@ -119,6 +132,7 @@
           "encoder": true,
           "settingsKeys": ["control", "direction"],
           "modes": [
+            { "control": "toggle-wipers", "label": "Toggle Wipers" },
             { "control": "trigger-wipers", "label": "Trigger Wipers" },
             { "control": "ffb-max-force", "direction": "increase", "label": "FFB Max Force Up" },
             { "control": "ffb-max-force", "direction": "decrease", "label": "FFB Max Force Down" },
@@ -197,10 +211,54 @@
           ]
         },
         {
+          "id": "com.iracedeck.sd.core.replay-control",
+          "name": "Replay Control",
+          "file": "replay-control.ts",
+          "encoder": true,
+          "settingsKey": "mode",
+          "modes": [
+            { "value": "play-pause", "label": "Play / Pause" },
+            { "value": "play-backward", "label": "Play / Pause Backward" },
+            { "value": "stop", "label": "Stop" },
+            { "value": "fast-forward", "label": "Fast Forward" },
+            { "value": "rewind", "label": "Rewind" },
+            { "value": "slow-motion", "label": "Slow Motion" },
+            { "value": "frame-forward", "label": "Frame Forward" },
+            { "value": "frame-backward", "label": "Frame Backward" },
+            { "value": "speed-increase", "label": "Increase Speed (Slow-Mo)" },
+            { "value": "speed-decrease", "label": "Decrease Speed (Slow-Mo)" },
+            { "value": "set-speed", "label": "Set Speed", "additionalSettings": ["speed"] },
+            { "value": "speed-display", "label": "Speed Display" },
+            { "value": "next-session", "label": "Next Session" },
+            { "value": "prev-session", "label": "Previous Session" },
+            { "value": "next-lap", "label": "Next Lap" },
+            { "value": "prev-lap", "label": "Previous Lap" },
+            { "value": "next-incident", "label": "Next Incident" },
+            { "value": "prev-incident", "label": "Previous Incident" },
+            { "value": "jump-to-beginning", "label": "Jump to Beginning" },
+            { "value": "jump-to-live", "label": "Jump to Live" },
+            { "value": "jump-to-my-car", "label": "Jump to My Car" },
+            { "value": "next-car", "label": "Next Car" },
+            { "value": "prev-car", "label": "Previous Car" },
+            {
+              "value": "next-car-number",
+              "label": "Next Car (Number Order)",
+              "description": "Switch camera to next car by number order (includes pit cars, excludes pace car)"
+            },
+            {
+              "value": "prev-car-number",
+              "label": "Previous Car (Number Order)",
+              "description": "Switch camera to previous car by number order (includes pit cars, excludes pace car)"
+            }
+          ]
+        },
+        {
           "id": "com.iracedeck.sd.core.replay-transport",
           "name": "Replay Transport",
           "file": "replay-transport.ts",
           "encoder": true,
+          "deprecated": true,
+          "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "transport",
           "modes": [
             { "value": "play", "label": "Play" },
@@ -218,6 +276,8 @@
           "name": "Replay Speed",
           "file": "replay-speed.ts",
           "encoder": true,
+          "deprecated": true,
+          "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "direction",
           "modes": [
             { "value": "increase", "label": "Speed Up" },
@@ -229,6 +289,8 @@
           "name": "Replay Navigation",
           "file": "replay-navigation.ts",
           "encoder": true,
+          "deprecated": true,
+          "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "navigation",
           "modes": [
             { "value": "next-session", "label": "Next Session" },
@@ -414,9 +476,14 @@
           "settingsKey": "action",
           "telemetryAware": true,
           "modes": [
+            {
+              "value": "change-all-tires",
+              "label": "Change All Tires",
+              "description": "Request all four tire changes using the iRacing #t pit chat macro"
+            },
+            { "value": "clear-tires", "label": "Clear Tires" },
             { "value": "toggle-tires", "label": "Toggle Tires", "description": "Per-wheel selection: LF, RF, LR, RR" },
-            { "value": "change-compound", "label": "Change Compound", "description": "Cycle tire compounds (DRY/WET)" },
-            { "value": "clear-tires", "label": "Clear Tires" }
+            { "value": "change-compound", "label": "Change Compound", "description": "Cycle tire compounds (DRY/WET)" }
           ]
         }
       ]
@@ -578,11 +645,6 @@
           "encoder": true,
           "settingsKey": "mode",
           "modes": [
-            { "value": "open-chat", "label": "Open Chat" },
-            { "value": "reply", "label": "Reply" },
-            { "value": "whisper", "label": "Whisper" },
-            { "value": "respond-pm", "label": "Respond to Last PM" },
-            { "value": "cancel", "label": "Cancel" },
             { "value": "send-message", "label": "Send Custom Message" },
             { "value": "macro", "macroNumber": 1, "label": "Chat Macro 1" },
             { "value": "macro", "macroNumber": 2, "label": "Chat Macro 2" },
@@ -598,7 +660,120 @@
             { "value": "macro", "macroNumber": 12, "label": "Chat Macro 12" },
             { "value": "macro", "macroNumber": 13, "label": "Chat Macro 13" },
             { "value": "macro", "macroNumber": 14, "label": "Chat Macro 14" },
-            { "value": "macro", "macroNumber": 15, "label": "Chat Macro 15" }
+            { "value": "macro", "macroNumber": 15, "label": "Chat Macro 15" },
+            { "value": "reply", "label": "Reply" },
+            { "value": "respond-pm", "label": "Respond to Last PM" },
+            { "value": "whisper", "label": "Whisper" },
+            { "value": "open-chat", "label": "Open Chat" },
+            { "value": "cancel", "label": "Cancel" }
+          ]
+        },
+        {
+          "id": "com.iracedeck.sd.core.race-admin",
+          "name": "Race Admin",
+          "file": "race-admin.ts",
+          "encoder": true,
+          "settingsKey": "mode",
+          "modes": [
+            { "value": "yellow", "label": "Throw Yellow Flag", "description": "Throw a caution flag" },
+            { "value": "black-flag", "label": "Black Flag Driver", "description": "Issue a penalty to a driver" },
+            { "value": "dq-driver", "label": "Disqualify Driver", "description": "Disqualify a driver" },
+            {
+              "value": "show-dqs-field",
+              "label": "Show Disqualifications (Field)",
+              "description": "Display disqualifications for the entire field"
+            },
+            {
+              "value": "show-dqs-driver",
+              "label": "Show Disqualifications (Driver)",
+              "description": "Display disqualifications for a specific driver"
+            },
+            {
+              "value": "clear-penalties",
+              "label": "Clear Driver Penalties",
+              "description": "Clear all penalties for a driver"
+            },
+            {
+              "value": "clear-all",
+              "label": "Clear All Penalties",
+              "description": "Clear all penalties for the field"
+            },
+            {
+              "value": "wave-around",
+              "label": "Wave Driver Around",
+              "description": "Move car to next lap and end of pace line"
+            },
+            { "value": "eol", "label": "End of Line Penalty", "description": "Move driver to end of pace line" },
+            {
+              "value": "pit-close",
+              "label": "Close Pit Entrance",
+              "description": "Close pit entrances during green flag"
+            },
+            {
+              "value": "pit-open",
+              "label": "Open Pit Entrance",
+              "description": "Open pit entrances during green flag"
+            },
+            {
+              "value": "pace-laps",
+              "label": "Adjust Pace Laps",
+              "description": "Add, subtract, or set pace laps until green"
+            },
+            {
+              "value": "single-file-restart",
+              "label": "Single-File Restart",
+              "description": "Switch to single-file restart rules"
+            },
+            {
+              "value": "double-file-restart",
+              "label": "Double-File Restart",
+              "description": "Switch to double-file restart rules"
+            },
+            { "value": "advance-session", "label": "Advance Session", "description": "Advance to the next session" },
+            {
+              "value": "grid-set",
+              "label": "Delay Race Start",
+              "description": "Disable auto-race start for specified minutes"
+            },
+            { "value": "grid-start", "label": "Start Race", "description": "Initiate pace car or standing start" },
+            {
+              "value": "track-state",
+              "label": "Track State (Rubber)",
+              "description": "Set track usage percentage for next session"
+            },
+            { "value": "grant-admin", "label": "Grant Admin", "description": "Grant admin privileges to a driver" },
+            {
+              "value": "revoke-admin",
+              "label": "Revoke Admin",
+              "description": "Revoke admin privileges from a driver"
+            },
+            { "value": "remove-driver", "label": "Remove Driver", "description": "Remove a driver from the session" },
+            {
+              "value": "enable-chat-all",
+              "label": "Enable Chat (All)",
+              "description": "Re-enable chat for all drivers"
+            },
+            {
+              "value": "enable-chat-driver",
+              "label": "Enable Chat (Driver)",
+              "description": "Re-enable chat for a specific driver"
+            },
+            {
+              "value": "disable-chat-all",
+              "label": "Disable Chat (All)",
+              "description": "Disable chat for all non-admin drivers"
+            },
+            { "value": "disable-chat-driver", "label": "Mute Driver", "description": "Mute a specific driver" },
+            {
+              "value": "message-all",
+              "label": "Message All Participants",
+              "description": "Send a message to all participants"
+            },
+            {
+              "value": "rc-message",
+              "label": "Race Control Message",
+              "description": "Send a message visible only to admins"
+            }
           ]
         }
       ]

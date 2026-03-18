@@ -10,6 +10,9 @@ export { createSDLogger, SDLoggerLike } from "./sd-logger.js";
 // Base action with inactive overlay support
 export { BaseAction } from "./base-action.js";
 
+// Common settings (shared by all actions)
+export { CommonSettings } from "./common-settings.js";
+
 // Connection state aware action (extends BaseAction with iRacing connection tracking)
 export { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
 
@@ -94,6 +97,9 @@ export {
 
 // App monitor for iRacing process detection
 export { initAppMonitor, isIRacingRunning, isAppMonitorInitialized, _resetAppMonitor } from "./app-monitor.js";
+
+// Window focus service
+export { initWindowFocus, focusIRacingIfEnabled } from "./window-focus.js";
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";

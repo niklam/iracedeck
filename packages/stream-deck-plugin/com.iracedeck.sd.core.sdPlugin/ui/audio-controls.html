@@ -93,8 +93,7 @@
 	</head>
 	<body>
 		<sdpi-item label="Category">
-			<sdpi-select id="category-select" setting="category" default="spotter">
-				<option value="spotter">Spotter</option>
+			<sdpi-select id="category-select" setting="category" default="voice-chat">
 				<option value="voice-chat">Voice Chat</option>
 				<option value="master">Master</option>
 			</sdpi-select>
@@ -104,9 +103,17 @@
 			<sdpi-select id="action-select" setting="action" default="volume-up">
 				<option value="volume-up">Volume Up</option>
 				<option value="volume-down">Volume Down</option>
-				<option value="mute" id="mute-option">Mute / Silence</option>
+				<option value="mute" id="mute-option">Mute</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<div class="ird-common-settings-section">
+  <div class="ird-section-heading">Common Settings</div>
+  <sdpi-item label="Flags Overlay">
+    <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
+  </sdpi-item>
+</div>
+
 
 		<!--
   Global Key Bindings Component
@@ -119,18 +126,6 @@
 -->
 <div class="ird-key-bindings-section">
   <div class="ird-section-heading">Related Key Bindings</div>
-  
-  <sdpi-item label="Spotter Volume Up">
-    <ird-key-binding setting="audioSpotterVolumeUp" default="Shift+Ctrl+numpad_add" global></ird-key-binding>
-  </sdpi-item>
-  
-  <sdpi-item label="Spotter Volume Down">
-    <ird-key-binding setting="audioSpotterVolumeDown" default="Shift+Ctrl+numpad_subtract" global></ird-key-binding>
-  </sdpi-item>
-  
-  <sdpi-item label="Spotter Silence">
-    <ird-key-binding setting="audioSpotterSilence" default="Shift+Ctrl+M" global></ird-key-binding>
-  </sdpi-item>
   
   <sdpi-item label="Voice Chat Volume Up">
     <ird-key-binding setting="audioVoiceChatVolumeUp" default="Shift+Ctrl+Alt+numpad_add" global></ird-key-binding>
@@ -178,18 +173,18 @@
 				const categorySelect = document.getElementById("category-select");
 
 				if (categorySelect) {
-					const initialValue = categorySelect.value || "spotter";
+					const initialValue = categorySelect.value || "voice-chat";
 					updateVisibility(initialValue);
 
 					categorySelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "spotter");
+						updateVisibility(ev.target.value || "voice-chat");
 					});
 					categorySelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "spotter");
+						updateVisibility(ev.target.value || "voice-chat");
 					});
 
 					// Polling fallback for reliable detection
-					let lastValue = categorySelect.value || "spotter";
+					let lastValue = categorySelect.value || "voice-chat";
 					setInterval(() => {
 						const currentValue = categorySelect.value;
 						if (currentValue && currentValue !== lastValue) {
@@ -210,5 +205,40 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<!--
+  Global Plugin Settings Component
+
+  Displays plugin-wide settings in a collapsible "Global Settings" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default.
+-->
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+  
+  </div>
+</details>
+
+
 	</body>
 </html>

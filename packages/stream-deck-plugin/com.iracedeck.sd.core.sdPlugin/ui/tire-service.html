@@ -93,10 +93,11 @@
 	</head>
 	<body>
 		<sdpi-item label="Action">
-			<sdpi-select id="action-select" setting="action" default="toggle-tires">
+			<sdpi-select id="action-select" setting="action" default="change-all-tires">
+				<option value="change-all-tires">Change All Tires</option>
+				<option value="clear-tires">Clear Tires</option>
 				<option value="toggle-tires">Toggle Tires</option>
 				<option value="change-compound">Change Compound</option>
-				<option value="clear-tires">Clear Tires</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -121,17 +122,17 @@
 
 				const actionSelect = document.getElementById("action-select");
 				if (actionSelect) {
-					updateVisibility(actionSelect.value || "toggle-tires");
+					updateVisibility(actionSelect.value || "change-all-tires");
 
 					actionSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "toggle-tires");
+						updateVisibility(ev.target.value || "change-all-tires");
 					});
 					actionSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "toggle-tires");
+						updateVisibility(ev.target.value || "change-all-tires");
 					});
 
 					// Polling fallback for reliable detection
-					let lastAction = actionSelect.value || "toggle-tires";
+					let lastAction = actionSelect.value || "change-all-tires";
 					setInterval(() => {
 						const currentAction = actionSelect.value;
 						if (currentAction && currentAction !== lastAction) {
@@ -161,5 +162,48 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<div class="ird-common-settings-section">
+  <div class="ird-section-heading">Common Settings</div>
+  <sdpi-item label="Flags Overlay">
+    <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
+  </sdpi-item>
+</div>
+
+
+		<!--
+  Global Plugin Settings Component
+
+  Displays plugin-wide settings in a collapsible "Global Settings" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default.
+-->
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+  
+  </div>
+</details>
+
+
 	</body>
 </html>

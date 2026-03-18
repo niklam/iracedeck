@@ -36,6 +36,10 @@ const {
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
 }));
 
+vi.mock("@iracedeck/icons/tire-service/change-all-tires.svg", () => ({
+  default: "<svg>change-all-tires-icon</svg>",
+}));
+
 vi.mock("@iracedeck/icons/tire-service/clear-tires.svg", () => ({
   default: "<svg>clear-tires-icon</svg>",
 }));
@@ -66,6 +70,19 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true };
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = {
       subscribe: vi.fn(),
@@ -76,6 +93,8 @@ vi.mock("../shared/index.js", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -291,6 +310,26 @@ describe("TireService", () => {
     const noTires = { lf: false, rf: false, lr: false, rr: false };
     const allTires = { lf: true, rf: true, lr: true, rr: true };
 
+    describe("change-all-tires mode", () => {
+      it("should generate a valid data URI", () => {
+        const result = generateTireServiceSvg(
+          { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true },
+          noTires,
+        );
+        expect(result).toContain("data:image/svg+xml");
+      });
+
+      it("should include CHANGE and ALL TIRES labels", () => {
+        const result = generateTireServiceSvg(
+          { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true },
+          noTires,
+        );
+        const decoded = decodeURIComponent(result);
+        expect(decoded).toContain("CHANGE");
+        expect(decoded).toContain("ALL TIRES");
+      });
+    });
+
     describe("toggle-tires mode", () => {
       it("should generate a valid data URI", () => {
         const result = generateTireServiceSvg(
@@ -443,6 +482,15 @@ describe("TireService", () => {
       action = new TireService();
     });
 
+    describe("change-all-tires mode", () => {
+      it("should send #t macro", async () => {
+        await action.onKeyDown(fakeEvent("a1", { action: "change-all-tires" }) as any);
+
+        expect(mockSendMessage).toHaveBeenCalledOnce();
+        expect(mockSendMessage).toHaveBeenCalledWith("#t");
+      });
+    });
+
     describe("toggle-tires mode", () => {
       it("should send toggle macro for all configured tires", async () => {
         await action.onKeyDown(
@@ -470,11 +518,11 @@ describe("TireService", () => {
         expect(mockSendMessage).not.toHaveBeenCalled();
       });
 
-      it("should default to toggle-tires with all tires when settings are empty", async () => {
+      it("should default to change-all-tires when settings are empty", async () => {
         await action.onKeyDown(fakeEvent("a1", {}) as any);
 
         expect(mockSendMessage).toHaveBeenCalledOnce();
-        expect(mockSendMessage).toHaveBeenCalledWith("#!lf !rf !lr !rr");
+        expect(mockSendMessage).toHaveBeenCalledWith("#t");
       });
     });
 
@@ -587,7 +635,17 @@ describe("TireService", () => {
       });
     });
 
-    it("should not execute when not connected", async () => {
+    it("should not execute change-all-tires when not connected", async () => {
+      mockGetConnectionStatus.mockReturnValue(false);
+
+      await action.onKeyDown(fakeEvent("a1", { action: "change-all-tires" }) as any);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockPitTireCompound).not.toHaveBeenCalled();
+      expect(mockPitClearTires).not.toHaveBeenCalled();
+    });
+
+    it("should not execute toggle-tires when not connected", async () => {
       mockGetConnectionStatus.mockReturnValue(false);
 
       await action.onKeyDown(
@@ -605,6 +663,13 @@ describe("TireService", () => {
 
     beforeEach(() => {
       action = new TireService();
+    });
+
+    it("should send #t macro on dial down for change-all-tires", async () => {
+      await action.onDialDown(fakeEvent("a1", { action: "change-all-tires" }) as any);
+
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+      expect(mockSendMessage).toHaveBeenCalledWith("#t");
     });
 
     it("should send toggle macro on dial down", async () => {

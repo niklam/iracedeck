@@ -21,6 +21,7 @@ import mgukRegenGainIncreaseIconSvg from "@iracedeck/icons/setup-hybrid/mguk-reg
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -104,7 +105,7 @@ export const SETUP_HYBRID_GLOBAL_KEYS: Record<string, string> = {
   "hys-no-boost": "setupHybridHysNoBoost",
 };
 
-const SetupHybridSettings = z.object({
+const SetupHybridSettings = CommonSettings.extend({
   setting: z
     .enum([
       "mguk-regen-gain",
@@ -164,6 +165,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
   private heldCombinations = new Map<string, KeyCombination>();
 
   override async onWillAppear(ev: WillAppearEvent<SetupHybridSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -179,6 +181,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupHybridSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

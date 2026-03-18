@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
+import { AiSpotterControls } from "./actions/ai-spotter-controls.js";
 import { AudioControls } from "./actions/audio-controls.js";
 import { BlackBoxSelector } from "./actions/black-box-selector.js";
 import { CameraCycle } from "./actions/camera-cycle.js";
@@ -14,6 +15,8 @@ import { FuelService } from "./actions/fuel-service.js";
 import { LookDirection } from "./actions/look-direction.js";
 import { MediaCapture } from "./actions/media-capture.js";
 import { PitQuickActions } from "./actions/pit-quick-actions.js";
+import { RaceAdmin } from "./actions/race-admin.js";
+import { ReplayControl } from "./actions/replay-control.js";
 import { ReplayNavigation } from "./actions/replay-navigation.js";
 import { ReplaySpeed } from "./actions/replay-speed.js";
 import { ReplayTransport } from "./actions/replay-transport.js";
@@ -33,14 +36,16 @@ import { ToggleUiElements } from "./actions/toggle-ui-elements.js";
 import { ViewAdjustment } from "./actions/view-adjustment.js";
 import {
   createSDLogger,
+  focusIRacingIfEnabled,
   initAppMonitor,
   initGlobalSettings,
   initializeKeyboard,
   initializeSDK,
+  initWindowFocus,
 } from "./shared/index.js";
 
-// Enable trace logging
-streamDeck.logger.setLevel("trace");
+// Enable debug logging
+streamDeck.logger.setLevel("debug");
 
 // Initialize the SDK singleton
 initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
@@ -54,7 +59,17 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
+// Initialize window focus service for focusing iRacing before any action
+initWindowFocus(createSDLogger(streamDeck.logger.createScope("WindowFocus")), () => native.focusIRacingWindow());
+
+// Focus iRacing window before any action executes (when enabled in global settings)
+// MUST be registered BEFORE actions so the listener fires first in the EventEmitter chain.
+streamDeck.actions.onKeyDown(() => focusIRacingIfEnabled());
+streamDeck.actions.onDialDown(() => focusIRacingIfEnabled());
+streamDeck.actions.onDialRotate(() => focusIRacingIfEnabled());
+
 // Register core actions
+streamDeck.actions.registerAction(new AiSpotterControls());
 streamDeck.actions.registerAction(new AudioControls());
 streamDeck.actions.registerAction(new BlackBoxSelector());
 streamDeck.actions.registerAction(new CameraCycle());
@@ -68,6 +83,8 @@ streamDeck.actions.registerAction(new FuelService());
 streamDeck.actions.registerAction(new LookDirection());
 streamDeck.actions.registerAction(new MediaCapture());
 streamDeck.actions.registerAction(new PitQuickActions());
+streamDeck.actions.registerAction(new RaceAdmin());
+streamDeck.actions.registerAction(new ReplayControl());
 streamDeck.actions.registerAction(new ReplayNavigation());
 streamDeck.actions.registerAction(new ReplaySpeed());
 streamDeck.actions.registerAction(new ReplayTransport());

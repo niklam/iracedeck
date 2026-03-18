@@ -342,15 +342,22 @@ static void sendPaste()
     SendInput(4, inputs, sizeof(INPUT));
 }
 
+static constexpr DWORD kChatStepDelayMs = 100;
+
 /**
  * Send a complete chat message to iRacing using clipboard paste.
  * This function handles the entire chat flow:
- * 1. Saves the current clipboard content
+ * 1. Saves the current clipboard content (plain text only)
  * 2. Copies the message to the clipboard
- * 3. Opens chat window via broadcast message
- * 4. Pastes the message with Ctrl+V
- * 5. Presses Enter to send (this also closes the chat window)
- * 6. Restores the original clipboard content
+ * 3. Cancels any existing chat to ensure clean state, then waits
+ * 4. Opens chat window via broadcast message, then waits
+ * 5. Pastes the message with Ctrl+V, then waits
+ * 6. Presses Enter to send the message, then waits
+ * 7. Cancels chat via broadcast to explicitly close the chat window
+ *    (Enter sends the message but leaves the input focused)
+ * 8. Restores the original clipboard content
+ *
+ * Each wait is kChatStepDelayMs to give iRacing time to process.
  *
  * @param message - The message to send
  * @returns Success boolean
@@ -401,19 +408,23 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, false);
     }
 
-    // 3. Open chat window via broadcast
+    // 3. Cancel any existing chat to ensure clean state
+    irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
+    Sleep(kChatStepDelayMs);
+
+    // 4. Open chat window via broadcast
     irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_BeginChat, 0);
 
-    // 4. Wait for chat window to open
-    Sleep(50);
+    // 5. Wait for chat window to open
+    Sleep(kChatStepDelayMs);
 
-    // 5. Paste the message with Ctrl+V
+    // 6. Paste the message with Ctrl+V
     sendPaste();
 
-    // 6. Wait for paste to complete
-    Sleep(50);
+    // 7. Wait for paste to complete
+    Sleep(kChatStepDelayMs);
 
-    // 7. Press Enter to send
+    // 8. Press Enter to send
     INPUT enterInputs[2] = {};
     enterInputs[0].type = INPUT_KEYBOARD;
     enterInputs[0].ki.wVk = VK_RETURN;
@@ -422,13 +433,108 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
     enterInputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
     SendInput(2, enterInputs, sizeof(INPUT));
 
-    // 8. Restore the original clipboard content
+    // 9. Wait for Enter to be processed
+    Sleep(kChatStepDelayMs);
+
+    // 10. Cancel chat to close the window
+    irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
+
+    // 11. Restore the original clipboard content
     if (hadClipboardText)
     {
         copyToClipboard(savedClipboard);
     }
 
     return Napi::Boolean::New(env, true);
+}
+
+// ============================================================================
+// Window Management Functions
+// ============================================================================
+
+/**
+ * Focus result codes returned by focusIRacingWindow().
+ *
+ * 0 = AlreadyFocused — window was already in the foreground
+ * 1 = Focused        — window was found and successfully focused
+ * 2 = WindowNotFound — no window with the expected title exists
+ * 3 = FocusTimedOut  — window was found but SetForegroundWindow
+ *                       did not take effect within 1000ms
+ */
+static const int FOCUS_ALREADY_FOCUSED = 0;
+static const int FOCUS_FOCUSED = 1;
+static const int FOCUS_WINDOW_NOT_FOUND = 2;
+static const int FOCUS_TIMED_OUT = 3;
+
+/**
+ * Attempt to bring the iRacing simulator window to the foreground.
+ * Uses AttachThreadInput pattern for reliable focusing across
+ * Windows foreground window restrictions.
+ *
+ * @returns int status code (see FOCUS_* constants above)
+ */
+static int focusIRacingWindow()
+{
+    HWND hwnd = FindWindowA(NULL, "iRacing.com Simulator");
+    if (!hwnd)
+    {
+        return FOCUS_WINDOW_NOT_FOUND;
+    }
+
+    // Already focused — nothing to do
+    if (GetForegroundWindow() == hwnd)
+    {
+        return FOCUS_ALREADY_FOCUSED;
+    }
+
+    HWND fg = GetForegroundWindow();
+    DWORD foregroundThreadId = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
+    DWORD currentThreadId = GetCurrentThreadId();
+
+    if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
+    {
+        AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+    }
+
+    // Simulate an ALT key press/release to satisfy Windows' foreground lock.
+    // Windows blocks SetForegroundWindow from background processes unless
+    // the caller received the last input event. This workaround is a
+    // well-known technique to bypass the restriction.
+    keybd_event(VK_MENU, 0, 0, 0);
+    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+
+    SetForegroundWindow(hwnd);
+
+    if (foregroundThreadId != 0 && foregroundThreadId != currentThreadId)
+    {
+        AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+    }
+
+    // Wait until Windows has actually moved focus to iRacing.
+    // SetForegroundWindow returns immediately but focus changes
+    // asynchronously. Without this, subsequent actions (e.g., chat
+    // commands) may fire before the target window has focus.
+    for (int i = 0; i < 100; i++)
+    {
+        if (GetForegroundWindow() == hwnd)
+        {
+            return FOCUS_FOCUSED;
+        }
+        Sleep(10);
+    }
+
+    // Timed out (1000ms) — focus may not have switched
+    return FOCUS_TIMED_OUT;
+}
+
+/**
+ * N-API wrapper: Focus the iRacing simulator window.
+ * @returns number - status code (0=already focused, 1=focused, 2=not found, 3=timed out)
+ */
+Napi::Value FocusIRacingWindow(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+    return Napi::Number::New(env, focusIRacingWindow());
 }
 
 // ============================================================================
@@ -611,6 +717,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Chat
     exports.Set("sendChatMessage", Napi::Function::New(env, SendChatMessage));
+
+    // Window Management
+    exports.Set("focusIRacingWindow", Napi::Function::New(env, FocusIRacingWindow));
 
     // Keyboard Input
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));

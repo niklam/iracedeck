@@ -1,12 +1,19 @@
 {
   "name": "@iracedeck/website",
-  "version": "0.12.0",
+  "version": "1.3.0",
   "private": true,
-  "description": "Promotional website for iRaceDeck Stream Deck plugins",
+  "description": "Documentation website for iRaceDeck Stream Deck plugins",
   "type": "module",
   "scripts": {
-    "deploy": "firebase deploy --only hosting",
-    "serve": "npx serve public_html"
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "deploy": "astro build && firebase deploy --only hosting"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.34.1",
+    "astro": "5.7.10",
+    "sharp": "0.33.5"
   },
   "devDependencies": {
     "firebase-tools": "15.9.0"

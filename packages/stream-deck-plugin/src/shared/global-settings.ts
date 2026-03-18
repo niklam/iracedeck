@@ -51,6 +51,15 @@ export const GlobalSettingsSchema = z
      * Default: true
      */
     disableWhenDisconnected: z.boolean().default(true),
+    /**
+     * When true, focus the iRacing window before sending keyboard inputs.
+     * Ensures key presses reach iRacing even when another window is in the foreground.
+     * Default: false (opt-in)
+     */
+    focusIRacingWindow: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
   })
   .passthrough();
 
@@ -100,8 +109,9 @@ export function initGlobalSettings(sd: typeof StreamDeck, log: ILogger): GlobalS
   // Listen for changes from Property Inspector
   sd.settings.onDidReceiveGlobalSettings((ev: { settings: unknown }) => {
     logger?.info("Settings received");
-    logger?.debug(`Settings data: ${JSON.stringify(ev.settings)}`);
+    logger?.debug(`Raw settings: ${JSON.stringify(ev.settings)}`);
     const newSettings = GlobalSettingsSchema.parse(ev.settings);
+    logger?.debug(`Parsed focusIRacingWindow: ${newSettings.focusIRacingWindow}`);
     currentSettings = newSettings;
 
     // Notify all listeners

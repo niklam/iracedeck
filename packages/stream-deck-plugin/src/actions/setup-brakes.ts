@@ -23,6 +23,7 @@ import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-bra
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -120,7 +121,7 @@ export const SETUP_BRAKES_GLOBAL_KEYS: Record<string, string> = {
   "engine-braking-decrease": "setupBrakesEngineBrakingDecrease",
 };
 
-const SetupBrakesSettings = z.object({
+const SetupBrakesSettings = CommonSettings.extend({
   setting: z
     .enum([
       "abs-toggle",
@@ -178,6 +179,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupBrakes"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupBrakesSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -192,6 +194,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupBrakesSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

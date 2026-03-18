@@ -26,6 +26,7 @@ import streamDeck, {
   WillDisappearEvent,
 } from "@elgato/streamdeck";
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -44,8 +45,8 @@ import z from "zod";
 
 import defaultIconSvg from "@iracedeck/icons/{action-name}/default.svg";
 
-// Settings schema (use z.object({}) if no action-specific settings)
-const {ActionName}Settings = z.object({
+// Settings schema (use CommonSettings directly if no action-specific settings)
+const {ActionName}Settings = CommonSettings.extend({
   direction: z.enum(["next", "previous"]).default("next"),
 });
 
@@ -76,6 +77,8 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
 
   // Required lifecycle handlers: onWillAppear, onWillDisappear,
   // onDidReceiveSettings, onKeyDown, onDialRotate
+  // IMPORTANT: Call super.onWillAppear(ev) and super.onDidReceiveSettings(ev)
+  // as the first line in those handlers (required for flag overlay and CommonSettings).
   // See splits-delta-cycle.ts for the full pattern.
 }
 ```
@@ -189,6 +192,12 @@ Property Inspector template. For actions with only global key bindings:
 ```
 
 For actions with per-action settings, add `sdpi-item` elements before the key bindings include. See `splits-delta-cycle.ejs` or `car-control.ejs` for examples.
+
+Every action PI template must include the common-settings partial before `</body>`:
+```ejs
+<%- include('common-settings') %>
+```
+This adds the "Flags Overlay" checkbox and any future common settings.
 
 ### Files to modify
 

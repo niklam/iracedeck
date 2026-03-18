@@ -29,6 +29,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('common-settings') %>
+
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').blackBox
 		}) %>
@@ -68,5 +70,7 @@
 				initialize();
 			}
 		</script>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

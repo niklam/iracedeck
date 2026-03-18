@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+<script src="sdpi-components.js"></script>
+<script src="pi-components.js"></script>
+<style>
+  .hidden {
+    display: none !important;
+  }
+
+  /* Collapsible section styles */
+  .ird-collapsible {
+    margin-top: 12px;
+  }
+
+  .ird-collapsible-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0 4px 0;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .ird-collapsible-header::-webkit-details-marker {
+    display: none;
+  }
+
+  .ird-collapsible-icon {
+    font-size: 8px;
+    color: #808080;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .ird-collapsible[open] .ird-collapsible-icon {
+    transform: rotate(90deg);
+  }
+
+  .ird-collapsible-title {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .ird-collapsible-content {
+    padding-top: 4px;
+  }
+
+  .ird-section-subtitle {
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    color: #d0d0d0;
+    margin: 8px 0 4px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key bindings section styles */
+  .ird-key-bindings-section {
+    margin-top: 12px;
+  }
+
+  .ird-section-heading {
+    padding: 8px 0 4px 0;
+    border-top: 1px solid #3a3a3a;
+    font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    font-size: 9pt;
+    font-weight: 600;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+<script>
+  // sdpi-textfield and sdpi-textarea don't reliably apply the default attribute
+  // for new action instances. Wait for settings to load, then fill empty fields.
+  setTimeout(() => {
+    document.querySelectorAll("sdpi-textfield[default][setting], sdpi-textarea[default][setting]").forEach((el) => {
+      if (!el.value) {
+        el.value = el.getAttribute("default");
+      }
+    });
+  }, 500);
+</script>
+
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select id="mode-select" setting="mode" default="play-pause">
+				<optgroup label="Transport">
+					<option value="play-pause">Play / Pause</option>
+					<option value="play-backward">Play / Pause Backward</option>
+					<option value="stop">Stop</option>
+					<option value="fast-forward">Fast Forward</option>
+					<option value="rewind">Rewind</option>
+					<option value="slow-motion">Slow Motion</option>
+					<option value="frame-forward">Frame Forward</option>
+					<option value="frame-backward">Frame Backward</option>
+				</optgroup>
+				<optgroup label="Speed">
+					<option value="speed-increase">Increase Speed (Slow-Mo)</option>
+					<option value="speed-decrease">Decrease Speed (Slow-Mo)</option>
+					<option value="set-speed">Set Speed</option>
+					<option value="speed-display">Speed Display</option>
+				</optgroup>
+				<optgroup label="Navigation">
+					<option value="next-session">Next Session</option>
+					<option value="prev-session">Previous Session</option>
+					<option value="next-lap">Next Lap</option>
+					<option value="prev-lap">Previous Lap</option>
+					<option value="next-incident">Next Incident</option>
+					<option value="prev-incident">Previous Incident</option>
+					<option value="jump-to-beginning">Jump to Beginning</option>
+					<option value="jump-to-live">Jump to Live</option>
+				</optgroup>
+				<optgroup label="Camera">
+					<option value="jump-to-my-car">Jump to My Car</option>
+					<option value="next-car">Next Car</option>
+					<option value="prev-car">Previous Car</option>
+					<option value="next-car-number">Next Car (Number Order)</option>
+					<option value="prev-car-number">Previous Car (Number Order)</option>
+				</optgroup>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="speed-setting" label="Speed" class="hidden">
+			<sdpi-select setting="speed" default="1">
+				<optgroup label="Slow Motion">
+					<option value="s16">1/16x</option>
+					<option value="s15">1/15x</option>
+					<option value="s14">1/14x</option>
+					<option value="s13">1/13x</option>
+					<option value="s12">1/12x</option>
+					<option value="s11">1/11x</option>
+					<option value="s10">1/10x</option>
+					<option value="s9">1/9x</option>
+					<option value="s8">1/8x</option>
+					<option value="s7">1/7x</option>
+					<option value="s6">1/6x</option>
+					<option value="s5">1/5x</option>
+					<option value="s4">1/4x</option>
+					<option value="s3">1/3x</option>
+					<option value="s2">1/2x</option>
+				</optgroup>
+				<optgroup label="Normal">
+					<option value="1">1x (Normal)</option>
+				</optgroup>
+				<optgroup label="Fast">
+					<option value="2">2x</option>
+					<option value="3">3x</option>
+					<option value="4">4x</option>
+					<option value="5">5x</option>
+					<option value="6">6x</option>
+					<option value="7">7x</option>
+					<option value="8">8x</option>
+					<option value="9">9x</option>
+					<option value="10">10x</option>
+					<option value="11">11x</option>
+					<option value="12">12x</option>
+					<option value="13">13x</option>
+					<option value="14">14x</option>
+					<option value="15">15x</option>
+					<option value="16">16x</option>
+				</optgroup>
+			</sdpi-select>
+		</sdpi-item>
+
+		<div class="ird-common-settings-section">
+  <div class="ird-section-heading">Common Settings</div>
+  <sdpi-item label="Flags Overlay">
+    <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
+  </sdpi-item>
+</div>
+
+
+		<!--
+  Global Plugin Settings Component
+
+  Displays plugin-wide settings in a collapsible "Global Settings" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default.
+-->
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Global Settings</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+  
+  </div>
+</details>
+
+
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					updateVisibility(modeSelect.value || "play-pause");
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+
+					let lastMode = modeSelect.value || "play-pause";
+					setInterval(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					}, 100);
+				}
+			}
+
+			function updateVisibility(mode) {
+				const speedSetting = document.getElementById("speed-setting");
+				if (mode === "set-speed") {
+					speedSetting?.classList.remove("hidden");
+				} else {
+					speedSetting?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+	</body>
+</html>

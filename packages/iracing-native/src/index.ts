@@ -7,6 +7,7 @@
  * On non-Windows platforms, a mock implementation is used automatically
  * to enable development and testing on macOS/Linux.
  */
+import { existsSync } from "fs";
 import { createRequire } from "module";
 import { platform } from "os";
 import { dirname, join } from "path";
@@ -19,10 +20,27 @@ import { IRacingNativeMock } from "./mock-impl.js";
 export * from "./defines.js";
 export { IRacingNativeMock } from "./mock-impl.js";
 
-// Try to load native addon (only on Windows, with safety catch)
-let addon: any = null;
+/**
+ * Result codes from focusIRacingWindow().
+ */
+export enum FocusResult {
+  /** Window was already in the foreground */
+  AlreadyFocused = 0,
+  /** Window was found and successfully focused */
+  Focused = 1,
+  /** No window with the expected title exists */
+  WindowNotFound = 2,
+  /** Window was found but focus did not transfer within timeout */
+  FocusTimedOut = 3,
+}
 
-if (platform() === "win32") {
+// Try to load native addon (only on Windows, with safety catch).
+// Force mock mode by creating a `.mock` file in the sdPlugin folder,
+// or by setting IRACEDECK_MOCK=1 in the environment.
+let addon: any = null;
+const forceMock = !!process.env.IRACEDECK_MOCK || existsSync(join(process.cwd(), ".mock"));
+
+if (platform() === "win32" && !forceMock) {
   try {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const require = createRequire(import.meta.url);
@@ -174,6 +192,20 @@ export class IRacingNative {
    */
   sendChatMessage(message: string): boolean {
     return addon ? addon.sendChatMessage(message) : this.getMock().sendChatMessage(message);
+  }
+
+  // ============================================================================
+  // Window Management
+  // ============================================================================
+
+  /**
+   * Attempt to bring the iRacing simulator window to the foreground.
+   * Uses AttachThreadInput pattern for reliable window focusing on Windows.
+   *
+   * @returns FocusResult status code (0=already focused, 1=focused, 2=not found, 3=timed out)
+   */
+  focusIRacingWindow(): number {
+    return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
   }
 
   // ============================================================================

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="16" fill="#8B1A1A"/>
+    <!-- Broom/sweep icon -->
+    <line x1="52" y1="78" x2="82" y2="28" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M78,32 Q100,38 96,60 L88,56 Q92,42 78,36" fill="#ffffff" stroke="none"/>
+    <line x1="44" y1="74" x2="60" y2="82" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="48" y1="68" x2="64" y2="76" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="40" y1="80" x2="56" y2="86" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

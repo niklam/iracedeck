@@ -23,6 +23,9 @@ vi.mock("@elgato/streamdeck", () => ({
   action: () => (target: unknown) => target,
 }));
 
+vi.mock("@iracedeck/icons/cockpit-misc/toggle-wipers.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">toggle-wipers {{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/cockpit-misc/trigger-wipers.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">trigger-wipers {{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -52,10 +55,25 @@ vi.mock("@iracedeck/icons/cockpit-misc/in-lap-mode.svg", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({
@@ -148,12 +166,40 @@ describe("CockpitMisc", () => {
       expect(COCKPIT_MISC_GLOBAL_KEYS["in-lap-mode"]).toBe("cockpitMiscInLapMode");
     });
 
-    it("should have exactly 9 entries", () => {
-      expect(Object.keys(COCKPIT_MISC_GLOBAL_KEYS)).toHaveLength(9);
+    it("should have correct mapping for toggle-wipers", () => {
+      expect(COCKPIT_MISC_GLOBAL_KEYS["toggle-wipers"]).toBe("cockpitMiscToggleWipers");
+    });
+
+    it("should have exactly 10 entries", () => {
+      expect(Object.keys(COCKPIT_MISC_GLOBAL_KEYS)).toHaveLength(10);
     });
   });
 
   describe("generateCockpitMiscSvg", () => {
+    it("should generate a valid data URI for toggle-wipers", () => {
+      const result = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should produce same icon for toggle-wipers regardless of direction", () => {
+      const increase = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      const decrease = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "decrease" });
+      expect(increase).toBe(decrease);
+    });
+
+    it("should include correct labels for toggle-wipers", () => {
+      const result = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("WIPERS");
+      expect(decoded).toContain("TOGGLE");
+    });
+
+    it("should produce different icons for toggle-wipers vs trigger-wipers", () => {
+      const toggle = generateCockpitMiscSvg({ control: "toggle-wipers", direction: "increase" });
+      const trigger = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
+      expect(toggle).not.toBe(trigger);
+    });
+
     it("should generate a valid data URI for trigger-wipers", () => {
       const result = generateCockpitMiscSvg({ control: "trigger-wipers", direction: "increase" });
 
@@ -174,6 +220,7 @@ describe("CockpitMisc", () => {
 
     it("should generate valid data URIs for all control + direction combinations", () => {
       const controls = [
+        "toggle-wipers",
         "trigger-wipers",
         "ffb-max-force",
         "report-latency",
@@ -262,6 +309,10 @@ describe("CockpitMisc", () => {
 
     it("should include correct labels for all combinations", () => {
       const expectedLabels: Record<string, Record<string, { mainLabel: string; subLabel: string }>> = {
+        "toggle-wipers": {
+          increase: { mainLabel: "WIPERS", subLabel: "TOGGLE" },
+          decrease: { mainLabel: "WIPERS", subLabel: "TOGGLE" },
+        },
         "trigger-wipers": {
           increase: { mainLabel: "WIPERS", subLabel: "TRIGGER" },
           decrease: { mainLabel: "WIPERS", subLabel: "TRIGGER" },
@@ -402,6 +453,19 @@ describe("CockpitMisc", () => {
       expect(mockSendKeyCombination).toHaveBeenCalledOnce();
     });
 
+    it("should call sendKeyCombination on keyDown for toggle-wipers", async () => {
+      mockGetGlobalSettings.mockReturnValue({ cockpitMiscToggleWipers: "bound" });
+      mockParseKeyBinding.mockReturnValue({ key: "w", modifiers: ["shift"], code: "KeyW" });
+
+      await action.onKeyDown(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+
+      expect(mockSendKeyCombination).toHaveBeenCalledWith({
+        key: "w",
+        modifiers: ["shift"],
+        code: "KeyW",
+      });
+    });
+
     it("should handle missing key binding gracefully", async () => {
       mockGetGlobalSettings.mockReturnValue({});
       mockParseKeyBinding.mockReturnValue(undefined);
@@ -467,6 +531,12 @@ describe("CockpitMisc", () => {
       );
 
       expect(mockSendKeyCombination).toHaveBeenCalledOnce();
+    });
+
+    it("should ignore rotation for non-directional controls (toggle-wipers)", async () => {
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "toggle-wipers" }, 1) as any);
+
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (trigger-wipers)", async () => {

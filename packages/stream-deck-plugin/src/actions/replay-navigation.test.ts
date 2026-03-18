@@ -52,6 +52,19 @@ vi.mock("@iracedeck/icons/replay-navigation/erase-tape.svg", () => ({
 }));
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      // Return a mock Zod-like schema
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
@@ -133,11 +146,11 @@ describe("ReplayNavigation", () => {
       expect(decoded).toContain("SESSION");
     });
 
-    it("should include PREV label for prev-session", () => {
+    it("should include PREVIOUS label for prev-session", () => {
       const result = generateReplayNavigationSvg({ navigation: "prev-session" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("PREV");
+      expect(decoded).toContain("PREVIOUS");
       expect(decoded).toContain("SESSION");
     });
 
@@ -149,11 +162,11 @@ describe("ReplayNavigation", () => {
       expect(decoded).toContain("LAP");
     });
 
-    it("should include PREV label for prev-lap", () => {
+    it("should include PREVIOUS label for prev-lap", () => {
       const result = generateReplayNavigationSvg({ navigation: "prev-lap" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("PREV");
+      expect(decoded).toContain("PREVIOUS");
       expect(decoded).toContain("LAP");
     });
 
@@ -165,27 +178,27 @@ describe("ReplayNavigation", () => {
       expect(decoded).toContain("INCIDENT");
     });
 
-    it("should include PREV label for prev-incident", () => {
+    it("should include PREVIOUS label for prev-incident", () => {
       const result = generateReplayNavigationSvg({ navigation: "prev-incident" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("PREV");
+      expect(decoded).toContain("PREVIOUS");
       expect(decoded).toContain("INCIDENT");
     });
 
-    it("should include GO TO label for jump-to-start", () => {
+    it("should include JUMP TO label for jump-to-start", () => {
       const result = generateReplayNavigationSvg({ navigation: "jump-to-start" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("GO TO");
+      expect(decoded).toContain("JUMP TO");
       expect(decoded).toContain("START");
     });
 
-    it("should include GO TO label for jump-to-end", () => {
+    it("should include JUMP TO label for jump-to-end", () => {
       const result = generateReplayNavigationSvg({ navigation: "jump-to-end" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("GO TO");
+      expect(decoded).toContain("JUMP TO");
       expect(decoded).toContain("END");
     });
 

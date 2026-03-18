@@ -39,12 +39,45 @@ Requirements
 - Actions must not implement their own global offline handling; offline behavior is handled centrally.
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
 
+### CommonSettings
+
+All action settings schemas must extend `CommonSettings` from `../shared/index.js`:
+
+```typescript
+import { CommonSettings } from "../shared/index.js";
+
+const MyActionSettings = CommonSettings.extend({
+  direction: z.enum(["next", "previous"]).default("next"),
+});
+```
+
+Actions with no custom settings use `CommonSettings` directly.
+
+### Super Calls
+
+All actions must call `super.onWillAppear(ev)` and `super.onDidReceiveSettings(ev)` in their lifecycle hooks:
+
+```typescript
+override async onWillAppear(ev: WillAppearEvent<MySettings>): Promise<void> {
+  await super.onWillAppear(ev);
+  // ... action-specific logic
+}
+
+override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<MySettings>): Promise<void> {
+  await super.onDidReceiveSettings(ev);
+  // ... action-specific logic
+}
+```
+
+This is required for BaseAction features (flag overlay, future common features) to work.
+
 ### Settings Update Handler Pattern
 
 Always implement `onDidReceiveSettings()` to respond to Property Inspector changes:
 
 ```typescript
 override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<MySettings>): Promise<void> {
+  await super.onDidReceiveSettings(ev);
   await this.updateDisplay(ev);
 }
 

@@ -1,12 +1,11 @@
+import { FLAG_DEFINITIONS, resolveActiveFlag } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   countActiveDrivers,
-  FLAG_DEFINITIONS,
   formatFuelAmount,
   formatSessionTime,
   generateSessionInfoSvg,
-  resolveActiveFlag,
   SessionInfo,
 } from "./session-info.js";
 
@@ -32,11 +31,33 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 });
 
 vi.mock("../shared/index.js", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount" };
+      const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags"];
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        safeParse: (data: Record<string, unknown>) => {
+          if (data?.mode && !validModes.includes(data.mode as string)) {
+            return { success: false, error: new Error("Invalid mode") };
+          }
+
+          return { success: true, data: { ...defaults, ...data } };
+        },
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
   createSDLogger: vi.fn(() => ({

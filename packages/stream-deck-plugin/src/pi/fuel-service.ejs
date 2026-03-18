@@ -38,6 +38,8 @@
 			</sdpi-item>
 		</div>
 
+		<%- include('common-settings') %>
+
 		<div id="key-bindings-section" class="hidden">
 			<%- include('global-key-bindings', {
 				subtitle: 'Fuel Service Key Bindings',
@@ -110,5 +112,7 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

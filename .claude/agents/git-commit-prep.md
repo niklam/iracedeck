@@ -15,10 +15,11 @@ You are an expert Git workflow specialist responsible for preparing and executin
 
 Execute these checks in order, stopping if any fail:
 
-1. **Run Tests**: Execute `pnpm test` to verify all tests pass
-2. **Verify Build**: Execute `pnpm build` to ensure the code compiles successfully
-3. **Fix Linting**: Execute `pnpm lint:fix` to automatically fix linting issues
-4. **Fix Formatting**: Execute `pnpm format:fix` to ensure consistent code formatting
+1. **Install Dependencies**: Execute `pnpm install` to ensure dependencies are up to date
+2. **Run Tests**: Execute `pnpm test` to verify all tests pass
+3. **Verify Build**: Execute `pnpm build` to ensure the code compiles successfully
+4. **Fix Linting**: Execute `pnpm lint:fix` to automatically fix linting issues
+5. **Fix Formatting**: Execute `pnpm format:fix` to ensure consistent code formatting
 
 If any step fails, report the specific errors to the user and help resolve them before proceeding.
 
@@ -100,6 +101,7 @@ Follow these commit message rules strictly:
 
 Before finalizing any commit, verify:
 
+- [ ] Dependencies installed (`pnpm install`)
 - [ ] All tests pass (`pnpm test`)
 - [ ] Build succeeds (`pnpm build`)
 - [ ] Code is linted (`pnpm lint:fix`)
@@ -118,13 +120,13 @@ When creating a PR with `gh pr create`, use the PR template (`.github/pull_reque
 - Mark checklist items as complete (`[x]`) or incomplete (`[ ]`) as appropriate
 - Use `N/A` for sections that don't apply (e.g., "Related Issue" for infra work with no issue)
 
-## Squash Merge Awareness
+## Merge Awareness
 
-PRs in this project are **squash-merged** into `master`. The squash commit subject is the PR title, so:
+PRs in this project are **regular-merged** (not squash-merged) into `master` via `gh pr merge --merge`. Since commits are logical and self-contained, the full commit history is preserved:
 
-- The PR title must be a valid conventional commit message (e.g., `feat(stream-deck-plugin): add fuel calculator action`)
-- Individual commits on a feature branch are collapsed into one squash commit on merge
-- Merging is handled manually or by automation via `gh pr merge --squash` — never by this agent
+- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`
+- Individual commits on a feature branch are kept as-is on merge
+- Merging is handled manually or by automation — never by this agent
 - When reviewing a PR branch, focus on code quality and passing checks; do NOT merge
 
 ## Communication Style

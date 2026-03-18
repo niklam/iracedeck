@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<sdpi-item label="Control">
+			<sdpi-select setting="control" default="damage-report">
+				<option value="damage-report">Damage Report</option>
+				<option value="weather-report">Weather Report</option>
+				<option value="toggle-report-laps">Toggle Report Laps</option>
+				<option value="announce-leader">Announce Leader at S/F Line</option>
+				<option value="louder">Spotter Louder</option>
+				<option value="quieter">Spotter Quieter</option>
+				<option value="silence">Spotter Silence</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('common-settings') %>
+
+		<%- include('global-key-bindings', {
+			subtitle: 'AI Spotter Key Bindings',
+			keyBindings: require('./data/key-bindings.json').aiSpotterControls
+		}) %>
+
+		<%- include('global-settings') %>
+	</body>
+</html>

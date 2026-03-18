@@ -188,10 +188,52 @@ export const SNAPSHOT_PIT_ENTRY: MockSnapshotValues = {
 };
 
 /**
+ * Snapshot 4: Yellow flag (full course caution)
+ */
+export const SNAPSHOT_YELLOW_FLAG: MockSnapshotValues = {
+  ...SNAPSHOT_MID_STRAIGHT,
+  SessionTime: 420.0,
+  SessionTick: 25200,
+  SessionFlags: Flags.Yellow | Flags.Caution,
+  Speed: 33.3, // ~120 km/h (slowing under caution)
+  Throttle: 0.4,
+};
+
+/**
+ * Snapshot 5: Blue flag (about to be lapped)
+ */
+export const SNAPSHOT_BLUE_FLAG: MockSnapshotValues = {
+  ...SNAPSHOT_MID_STRAIGHT,
+  SessionTime: 460.0,
+  SessionTick: 27600,
+  SessionFlags: Flags.Green | Flags.Blue,
+  PlayerCarPosition: 3,
+  PlayerCarClassPosition: 3,
+};
+
+/**
+ * Snapshot 6: Yellow + Blue flags (caution while being lapped)
+ */
+export const SNAPSHOT_YELLOW_BLUE_FLAG: MockSnapshotValues = {
+  ...SNAPSHOT_MID_STRAIGHT,
+  SessionTime: 500.0,
+  SessionTick: 30000,
+  SessionFlags: Flags.Yellow | Flags.Caution | Flags.Blue,
+  Speed: 33.3,
+  Throttle: 0.4,
+  PlayerCarPosition: 3,
+  PlayerCarClassPosition: 3,
+};
+
+/**
  * All snapshots in rotation order.
+ * Includes flag snapshots so the flag overlay can be tested on non-Windows platforms.
  */
 export const MOCK_SNAPSHOTS: MockSnapshotValues[] = [
   SNAPSHOT_MID_STRAIGHT,
   SNAPSHOT_BRAKING,
   SNAPSHOT_PIT_ENTRY,
+  SNAPSHOT_YELLOW_FLAG,
+  SNAPSHOT_BLUE_FLAG,
+  SNAPSHOT_YELLOW_BLUE_FLAG,
 ];

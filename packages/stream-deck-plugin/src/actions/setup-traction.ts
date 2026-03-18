@@ -19,6 +19,7 @@ import tcToggleIconSvg from "@iracedeck/icons/setup-traction/tc-toggle.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -94,7 +95,7 @@ export const SETUP_TRACTION_GLOBAL_KEYS: Record<string, string> = {
   "tc-slot-4-decrease": "setupTractionTcSlot4Decrease",
 };
 
-const SetupTractionSettings = z.object({
+const SetupTractionSettings = CommonSettings.extend({
   setting: z.enum(["tc-toggle", "tc-slot-1", "tc-slot-2", "tc-slot-3", "tc-slot-4"]).default("tc-toggle"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -141,6 +142,7 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupTraction"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupTractionSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -155,6 +157,7 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupTractionSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

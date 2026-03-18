@@ -1,14 +1,31 @@
 {
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "Name": "iRaceDeck",
-  "Version": "0.12.0.0",
+  "Version": "1.3.0.0",
   "Author": "Niklas Lampén",
   "Actions": [
+    {
+      "Name": "AI Spotter Controls",
+      "UUID": "com.iracedeck.sd.core.ai-spotter-controls",
+      "Icon": "imgs/actions/ai-spotter-controls/icon",
+      "Tooltip": "AI spotter controls (damage/weather reports, lap reporting, volume, silence)",
+      "PropertyInspectorPath": "ui/ai-spotter-controls.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/ai-spotter-controls/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
     {
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (spotter, voice chat, master volume)",
+      "Tooltip": "Audio volume and mute controls (voice chat, master volume)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
         "Keypad",
@@ -177,7 +194,7 @@
       "Name": "Cockpit Misc",
       "UUID": "com.iracedeck.sd.core.cockpit-misc",
       "Icon": "imgs/actions/cockpit-misc/icon",
-      "Tooltip": "Miscellaneous cockpit controls (wipers, FFB, latency, dash pages, in-lap mode)",
+      "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
         "Keypad",
@@ -296,6 +313,30 @@
       ]
     },
     {
+      "Name": "Race Admin",
+      "UUID": "com.iracedeck.sd.core.race-admin",
+      "Icon": "imgs/actions/race-admin/icon",
+      "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
+      "PropertyInspectorPath": "ui/race-admin.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Execute admin command"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/race-admin/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "View Adjustment",
       "UUID": "com.iracedeck.sd.core.view-adjustment",
       "Icon": "imgs/actions/view-adjustment/icon",
@@ -321,11 +362,37 @@
       ]
     },
     {
+      "Name": "Replay Control",
+      "UUID": "com.iracedeck.sd.core.replay-control",
+      "Icon": "imgs/actions/replay-control/icon",
+      "Tooltip": "Unified replay controls: transport, speed, and navigation",
+      "PropertyInspectorPath": "ui/replay-control.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Context-dependent (frame step, speed, navigation)",
+          "Push": "Context-dependent (play, reset speed, navigate)"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/replay-control/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Replay Transport",
       "UUID": "com.iracedeck.sd.core.replay-transport",
       "Icon": "imgs/actions/replay-transport/icon",
       "Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
       "PropertyInspectorPath": "ui/replay-transport.html",
+      "VisibleInActionsList": false,
       "Controllers": [
         "Keypad",
         "Encoder"
@@ -351,6 +418,7 @@
       "Icon": "imgs/actions/replay-speed/icon",
       "Tooltip": "Increase or decrease replay playback speed",
       "PropertyInspectorPath": "ui/replay-speed.html",
+      "VisibleInActionsList": false,
       "Controllers": [
         "Keypad",
         "Encoder"
@@ -498,6 +566,7 @@
       "Icon": "imgs/actions/replay-navigation/icon",
       "Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
       "PropertyInspectorPath": "ui/replay-navigation.html",
+      "VisibleInActionsList": false,
       "Controllers": [
         "Keypad",
         "Encoder"

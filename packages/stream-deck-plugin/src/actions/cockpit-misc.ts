@@ -15,10 +15,12 @@ import ffbMaxForceDecreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-
 import ffbMaxForceIncreaseSvg from "@iracedeck/icons/cockpit-misc/ffb-max-force-increase.svg";
 import inLapModeSvg from "@iracedeck/icons/cockpit-misc/in-lap-mode.svg";
 import reportLatencySvg from "@iracedeck/icons/cockpit-misc/report-latency.svg";
+import toggleWipersSvg from "@iracedeck/icons/cockpit-misc/toggle-wipers.svg";
 import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -35,6 +37,7 @@ import {
 } from "../shared/index.js";
 
 type CockpitMiscControl =
+  | "toggle-wipers"
   | "trigger-wipers"
   | "ffb-max-force"
   | "report-latency"
@@ -55,6 +58,7 @@ const COCKPIT_MISC_LABELS: Record<
   CockpitMiscControl,
   Record<DirectionType, { mainLabel: string; subLabel: string }> | { mainLabel: string; subLabel: string }
 > = {
+  "toggle-wipers": { mainLabel: "WIPERS", subLabel: "TOGGLE" },
   "trigger-wipers": { mainLabel: "WIPERS", subLabel: "TRIGGER" },
   "ffb-max-force": {
     increase: { mainLabel: "FFB FORCE", subLabel: "INCREASE" },
@@ -77,6 +81,7 @@ const COCKPIT_MISC_LABELS: Record<
  * Non-directional controls use a single SVG for both directions.
  */
 const COCKPIT_MISC_SVGS: Record<CockpitMiscControl, Record<DirectionType, string> | string> = {
+  "toggle-wipers": toggleWipersSvg,
   "trigger-wipers": triggerWipersSvg,
   "ffb-max-force": {
     increase: ffbMaxForceIncreaseSvg,
@@ -101,6 +106,7 @@ const COCKPIT_MISC_SVGS: Record<CockpitMiscControl, Record<DirectionType, string
  * Directional controls use composite keys (e.g., "ffb-max-force-increase").
  */
 export const COCKPIT_MISC_GLOBAL_KEYS: Record<string, string> = {
+  "toggle-wipers": "cockpitMiscToggleWipers",
   "trigger-wipers": "cockpitMiscTriggerWipers",
   "ffb-max-force-increase": "cockpitMiscFfbForceIncrease",
   "ffb-max-force-decrease": "cockpitMiscFfbForceDecrease",
@@ -112,10 +118,18 @@ export const COCKPIT_MISC_GLOBAL_KEYS: Record<string, string> = {
   "in-lap-mode": "cockpitMiscInLapMode",
 };
 
-const CockpitMiscSettings = z.object({
+const CockpitMiscSettings = CommonSettings.extend({
   control: z
-    .enum(["trigger-wipers", "ffb-max-force", "report-latency", "dash-page-1", "dash-page-2", "in-lap-mode"])
-    .default("trigger-wipers"),
+    .enum([
+      "toggle-wipers",
+      "trigger-wipers",
+      "ffb-max-force",
+      "report-latency",
+      "dash-page-1",
+      "dash-page-2",
+      "in-lap-mode",
+    ])
+    .default("toggle-wipers"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
@@ -155,6 +169,7 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("CockpitMisc"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CockpitMiscSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -169,6 +184,7 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CockpitMiscSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

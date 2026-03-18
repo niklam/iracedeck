@@ -13,10 +13,14 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('common-settings') %>
+
 		<!-- Global Key Bindings section -->
 		<%- include('global-key-bindings', {
 			subtitle: 'Look Direction Key Bindings',
 			keyBindings: require('./data/key-bindings.json').lookDirection
 		}) %>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

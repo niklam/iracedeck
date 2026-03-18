@@ -17,6 +17,7 @@ import switchByPositionSvg from "@iracedeck/icons/camera-focus/switch-by-positio
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
@@ -37,7 +38,7 @@ const FOCUS_TARGET_VALUES = [
 
 type FocusTarget = (typeof FOCUS_TARGET_VALUES)[number];
 
-const CameraFocusSettings = z.object({
+const CameraFocusSettings = CommonSettings.extend({
   target: z.enum(FOCUS_TARGET_VALUES).default("focus-your-car"),
   position: z.coerce.number().int().min(1).default(1),
   carNumber: z.coerce.number().int().min(0).default(0),
@@ -99,6 +100,7 @@ export class CameraFocus extends ConnectionStateAwareAction<CameraFocusSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("CameraFocus"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<CameraFocusSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -113,6 +115,7 @@ export class CameraFocus extends ConnectionStateAwareAction<CameraFocusSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<CameraFocusSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

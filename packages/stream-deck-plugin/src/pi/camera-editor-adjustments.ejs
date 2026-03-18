@@ -31,6 +31,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('common-settings') %>
+
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').cameraEditorAdjustments
 		}) %>
@@ -82,5 +84,7 @@
 		<style>
 			.hidden { display: none !important; }
 		</style>
+
+		<%- include('global-settings') %>
 	</body>
 </html>

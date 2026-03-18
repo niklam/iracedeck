@@ -18,6 +18,7 @@ import throttleShapingIncreaseIconSvg from "@iracedeck/icons/setup-engine/thrott
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -83,7 +84,7 @@ export const SETUP_ENGINE_GLOBAL_KEYS: Record<string, string> = {
   "launch-rpm-decrease": "setupEngineLaunchRpmDecrease",
 };
 
-const SetupEngineSettings = z.object({
+const SetupEngineSettings = CommonSettings.extend({
   setting: z.enum(["engine-power", "throttle-shaping", "boost-level", "launch-rpm"]).default("engine-power"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -120,6 +121,7 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
   protected override logger = createSDLogger(streamDeck.logger.createScope("SetupEngine"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SetupEngineSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
 
@@ -134,6 +136,7 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SetupEngineSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
   }

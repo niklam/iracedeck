@@ -103,8 +103,45 @@ pnpm run clean
 
 ## Platform Support
 
-- **Windows only** - Uses Win32 APIs (kernel32.dll, user32.dll)
-- **x64 architecture**
+- **Windows**: Uses the native C++ addon for real iRacing SDK access
+- **macOS/Linux**: Automatically uses `IRacingNativeMock` with simulated telemetry data
+
+The `IRacingNative` class handles this transparently — consumers don't need to check the platform.
+
+## Mock Mode
+
+On non-Windows platforms, the mock is used automatically. On Windows, you can force mock mode for development without iRacing running:
+
+### File-based (recommended for Stream Deck plugins)
+
+Create an empty `.mock` file in your application's working directory. For Stream Deck plugins, this is the sdPlugin folder:
+
+```text
+com.iracedeck.sd.core.sdPlugin/.mock
+```
+
+For other consumers, place the `.mock` file in whatever directory your process runs from (i.e., `process.cwd()`).
+
+Delete the file to return to native mode. The `.mock` file is gitignored.
+
+### Environment variable
+
+```bash
+IRACEDECK_MOCK=1
+```
+
+### Mock behavior
+
+The mock simulates a connected iRacing session with rotating telemetry snapshots (every 5 seconds):
+
+1. **Mid-straight** — high speed, full throttle, green flag
+2. **Braking zone** — heavy braking, low speed, green flag
+3. **Pit entry** — pit road, speed limiter active, green flag
+4. **Yellow flag** — full course caution (Yellow + Caution flags)
+5. **Blue flag** — about to be lapped (Green + Blue flags)
+6. **Yellow + Blue** — caution while being lapped (both flags active)
+
+Mock data is in `src/mock-data/`. To capture real telemetry snapshots, use the telemetry-snapshot CLI tool in `@iracedeck/iracing-sdk`.
 
 ## License
 

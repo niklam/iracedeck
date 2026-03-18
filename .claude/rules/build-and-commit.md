@@ -1,4 +1,5 @@
 ---
+
 # Build & Commit Conventions
 
 Build
@@ -9,6 +10,9 @@ Build
 ```bash
 pnpm build:stream-deck
 pnpm watch:stream-deck
+pnpm link:stream-deck      # Register plugin with Stream Deck
+pnpm unlink:stream-deck    # Unregister plugin from Stream Deck
+pnpm relink:stream-deck    # Unlink + link (useful when switching worktrees)
 ```
 
 ### Build verification
@@ -20,9 +24,19 @@ pnpm watch:stream-deck
 - Ignore `Circular dependency` warnings from `zod` internals and `npm warn Unknown env config` — these are known and harmless.
 - Common cause: `vi.fn(() => null)` in test files infers return type as `null`, making `mockReturnValue({...})` a type error. Fix by widening the return type: `vi.fn((): Record<string, unknown> | null => null)`.
 
-Branching
+Branching & Worktrees
 
-New features and changes must be developed in a new branch, not directly on `master`.
+All development must happen in a **git worktree** inside `.worktrees/`, never directly in the main working tree on `master`.
+
+### Worktree workflow
+
+1. Create a worktree with a new branch:
+   ```bash
+   git worktree add .worktrees/<branch-name> -b <branch-name>
+   ```
+2. Work inside the worktree directory.
+3. Open a PR, get it reviewed and merged.
+4. Delete the worktree after merge (see **Post-merge worktree cleanup** below).
 
 ### Format
 
@@ -74,6 +88,35 @@ Committing
 - Do not reference Claude or other AI tools in commit messages.
 - Do not add AI co-authors such as `Co-Authored-By: Claude Opus`.
 
+### Pre-commit checks
+
+Before every commit, the following must succeed:
+
+1. **Install**: `pnpm install` — ensures dependencies are up to date.
+2. **Build**: `pnpm build` — must complete without TypeScript errors (see **Build verification** above).
+
+Do not commit if either step fails. Fix the issue first.
+
+### Logical Commits
+
+Split work into logical, self-contained commits. Each commit should represent one coherent change that builds and passes tests on its own. This keeps the history readable and makes regular (non-squash) merges practical.
+
+Guidelines:
+
+- **One concern per commit** — don't mix a refactor with a new feature or unrelated fixes.
+- **Commit as you go** — commit each logical step when it's complete, don't batch everything into one giant commit at the end.
+- **Commit message = what and why** — the diff shows _what_ changed; the message should explain _why_.
+
+Examples of good commit splits for a new action:
+
+```
+feat(stream-deck-plugin): add FuelCalculator action skeleton
+feat(stream-deck-plugin): add FuelCalculator icon variants
+feat(stream-deck-plugin): add FuelCalculator Property Inspector
+test(stream-deck-plugin): add FuelCalculator unit tests
+docs: add FuelCalculator action documentation
+```
+
 Pull Requests
 
 - When creating a PR, use the PR template at `.github/pull_request_template.md` as the body structure.
@@ -83,8 +126,17 @@ Pull Requests
 
 Merging
 
-- PRs are squash-merged into `master` via `gh pr merge --squash`.
-- The squash commit subject is the PR title, which must follow conventional commit format (`<type>(<scope>): <description>`).
+- PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
+- Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
 - **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(stream-deck-plugin): add Camera Focus action (#42)`.
-- Ensure the PR title is a valid conventional commit message (with PR number suffix) before merging.
 - Merging is performed manually or by automation — never by a Claude review step.
+
+### Post-merge worktree cleanup
+
+After a PR is merged, the related worktree **must** be deleted:
+
+```bash
+git worktree remove .worktrees/<branch-name>
+```
+
+Confirm deletion by verifying it no longer appears in `git worktree list`.

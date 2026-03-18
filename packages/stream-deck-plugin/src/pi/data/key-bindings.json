@@ -89,6 +89,12 @@
   ],
   "cockpitMisc": [
     {
+      "id": "toggleWipers",
+      "label": "Toggle Wipers",
+      "default": "Shift+W",
+      "setting": "cockpitMiscToggleWipers"
+    },
+    {
       "id": "triggerWipers",
       "label": "Trigger Wipers",
       "default": "Ctrl+Alt+W",
@@ -818,25 +824,51 @@
       "setting": "camCtrlLoadCarCamera"
     }
   ],
-  "audioControls": [
+  "aiSpotterControls": [
     {
-      "id": "spotterVolumeUp",
-      "label": "Spotter Volume Up",
-      "default": "Shift+Ctrl+numpad_add",
-      "setting": "audioSpotterVolumeUp"
+      "id": "damageReport",
+      "label": "Damage Report",
+      "default": "",
+      "setting": "spotterDamageReport"
     },
     {
-      "id": "spotterVolumeDown",
-      "label": "Spotter Volume Down",
-      "default": "Shift+Ctrl+numpad_subtract",
-      "setting": "audioSpotterVolumeDown"
+      "id": "weatherReport",
+      "label": "Weather Report",
+      "default": "",
+      "setting": "spotterWeatherReport"
     },
     {
-      "id": "spotterSilence",
+      "id": "toggleReportLaps",
+      "label": "Toggle Report Laps",
+      "default": "",
+      "setting": "spotterToggleReportLaps"
+    },
+    {
+      "id": "announceLeader",
+      "label": "Announce Leader at S/F Line",
+      "default": "",
+      "setting": "spotterAnnounceLeader"
+    },
+    {
+      "id": "louder",
+      "label": "Spotter Louder",
+      "default": "",
+      "setting": "spotterLouder"
+    },
+    {
+      "id": "quieter",
+      "label": "Spotter Quieter",
+      "default": "",
+      "setting": "spotterQuieter"
+    },
+    {
+      "id": "silence",
       "label": "Spotter Silence",
-      "default": "Shift+Ctrl+M",
-      "setting": "audioSpotterSilence"
-    },
+      "default": "",
+      "setting": "spotterSilence"
+    }
+  ],
+  "audioControls": [
     {
       "id": "voiceChatVolumeUp",
       "label": "Voice Chat Volume Up",

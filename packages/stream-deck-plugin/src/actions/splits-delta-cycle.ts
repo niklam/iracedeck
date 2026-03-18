@@ -11,6 +11,7 @@ import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import z from "zod";
 
 import {
+  CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
@@ -31,7 +32,7 @@ const DIRECTION_ICONS: Record<string, string> = {
   previous: previousIconSvg,
 };
 
-const SplitsDeltaCycleSettings = z.object({
+const SplitsDeltaCycleSettings = CommonSettings.extend({
   direction: z.enum(["next", "previous"]).default("next"),
 });
 
@@ -68,6 +69,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   protected override logger = createSDLogger(streamDeck.logger.createScope("SplitsDeltaCycle"), LogLevel.Info);
 
   override async onWillAppear(ev: WillAppearEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    await super.onWillAppear(ev);
     const parsed = SplitsDeltaCycleSettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : SplitsDeltaCycleSettings.parse({});
 
@@ -84,6 +86,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
     const parsed = SplitsDeltaCycleSettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : SplitsDeltaCycleSettings.parse({});
 

@@ -29,6 +29,15 @@ platform() === "win32"?
 - No top-level await — synchronous module loading preserved
 - `IRacingNative` class delegates to either `addon` or `IRacingNativeMock` transparently
 
+### Forcing mock mode on Windows
+
+For development/testing without iRacing running, mock mode can be forced on Windows:
+
+1. **File-based** (recommended for Stream Deck): Create an empty `.mock` file in the sdPlugin folder (e.g., `com.iracedeck.sd.core.sdPlugin/.mock`). Delete it to return to native mode.
+2. **Environment variable**: Set `IRACEDECK_MOCK=1` before launching (useful for CLI/terminal testing).
+
+The `.mock` file is gitignored. The mock rotates through telemetry snapshots (including flag states) every 5 seconds.
+
 ### Native dependencies
 
 - `keysender` is in `optionalDependencies` — silently fails to install on macOS
@@ -52,7 +61,7 @@ Located in `packages/iracing-native/src/mock-data/`:
 |------|---------|
 | `session-info.ts` | YAML string — Spa practice, 3 drivers |
 | `telemetry.ts` | Variable headers with computed offsets, `buildTelemetryBuffer()` |
-| `snapshots.ts` | 3 rotating snapshots (mid-straight, braking, pit entry) |
+| `snapshots.ts` | 6 rotating snapshots (mid-straight, braking, pit entry, yellow flag, blue flag, yellow+blue) |
 
 Mock data is placeholder. To update with real telemetry, capture snapshots on Windows using the telemetry-snapshot CLI tool in `@iracedeck/iracing-sdk`.
 
@@ -60,8 +69,7 @@ Mock data is placeholder. To update with real telemetry, capture snapshots on Wi
 
 | Script | Behavior |
 |--------|----------|
-| `pnpm build` (root) | Cross-platform: `turbo run build` |
-| `pnpm build:win` (root) | Windows: stops Stream Deck, builds, restarts Stream Deck |
+| `pnpm build` (root) | Runs `turbo run build`. On Windows, automatically stops Stream Deck before building and restarts it after (only if it was running). |
 | `iracing-native build` | Runs `node-gyp rebuild` on Windows, skips on other platforms; always runs `tsc` |
 
 ## Design doc
