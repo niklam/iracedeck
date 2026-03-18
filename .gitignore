@@ -61,3 +61,6 @@ scripts/local/
 
 # Claude Code
 .claude/settings.local.json
+
+# Superpowers brainstorming artifacts
+.superpowers/
