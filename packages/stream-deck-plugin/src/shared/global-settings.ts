@@ -163,6 +163,29 @@ export function isGlobalSettingsInitialized(): boolean {
 }
 
 /**
+ * Get current global color preferences.
+ * Reads flat color keys (colorBackgroundColor, colorTextColor, etc.)
+ * from global settings and returns them as a ColorSlots object.
+ *
+ * @returns Color preferences, with undefined for unset slots
+ */
+export function getGlobalColors(): {
+  backgroundColor?: string;
+  textColor?: string;
+  graphic1Color?: string;
+  graphic2Color?: string;
+} {
+  const settings = currentSettings as Record<string, unknown>;
+
+  return {
+    backgroundColor: typeof settings.colorBackgroundColor === "string" ? settings.colorBackgroundColor : undefined,
+    textColor: typeof settings.colorTextColor === "string" ? settings.colorTextColor : undefined,
+    graphic1Color: typeof settings.colorGraphic1Color === "string" ? settings.colorGraphic1Color : undefined,
+    graphic2Color: typeof settings.colorGraphic2Color === "string" ? settings.colorGraphic2Color : undefined,
+  };
+}
+
+/**
  * Reset global settings state (for testing purposes only).
  * @internal
  */

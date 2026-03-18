@@ -11,7 +11,7 @@ export { createSDLogger, SDLoggerLike } from "./sd-logger.js";
 export { BaseAction } from "./base-action.js";
 
 // Common settings (shared by all actions)
-export { CommonSettings } from "./common-settings.js";
+export { CommonSettings, ColorOverridesSchema, type ColorOverrides } from "./common-settings.js";
 
 // Connection state aware action (extends BaseAction with iRacing connection tracking)
 export { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
@@ -30,8 +30,11 @@ export {
 export {
   escapeXml,
   generateIconText,
+  parseIconDefaults,
   renderIconTemplate,
+  resolveIconColors,
   validateIconTemplate,
+  type ColorSlots,
   type GenerateIconTextOptions,
 } from "./icon-template.js";
 
@@ -49,6 +52,7 @@ export {
   type KeyBindingValue,
   initGlobalSettings,
   getGlobalSettings,
+  getGlobalColors,
   onGlobalSettingsChange,
   isGlobalSettingsInitialized,
   _resetGlobalSettings,

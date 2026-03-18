@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { escapeXml, generateIconText, renderIconTemplate, validateIconTemplate } from "./icon-template.js";
+import {
+  escapeXml,
+  generateIconText,
+  parseIconDefaults,
+  renderIconTemplate,
+  resolveIconColors,
+  validateIconTemplate,
+} from "./icon-template.js";
 
 describe("icon-template", () => {
-  const validTemplate = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  const validTemplate72 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
   <g filter="url(#activity-state)">
-    <text x="36" y="65" class="title">{{text}}</text>
+    <text x="72" y="130" class="title">{{text}}</text>
+  </g>
+</svg>`;
+
+  const validTemplate144 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <g filter="url(#activity-state)">
+    <text x="72" y="126" class="title">{{text}}</text>
   </g>
 </svg>`;
 
@@ -84,8 +97,14 @@ describe("icon-template", () => {
   });
 
   describe("validateIconTemplate", () => {
-    it("should return empty array for valid template", () => {
-      const errors = validateIconTemplate(validTemplate);
+    it("should return empty array for valid 144x144 template", () => {
+      const errors = validateIconTemplate(validTemplate144);
+
+      expect(errors).toEqual([]);
+    });
+
+    it("should return empty array for valid 72x72 template (legacy)", () => {
+      const errors = validateIconTemplate(validTemplate72);
 
       expect(errors).toEqual([]);
     });
@@ -96,7 +115,7 @@ describe("icon-template", () => {
       </svg>`;
       const errors = validateIconTemplate(template);
 
-      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 72 72"');
+      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
     });
 
     it("should detect incorrect viewBox", () => {
@@ -105,11 +124,11 @@ describe("icon-template", () => {
       </svg>`;
       const errors = validateIconTemplate(template);
 
-      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 72 72"');
+      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
     });
 
     it("should detect missing activity-state filter", () => {
-      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
         <g></g>
       </svg>`;
       const errors = validateIconTemplate(template);
@@ -118,7 +137,7 @@ describe("icon-template", () => {
     });
 
     it("should detect missing namespace", () => {
-      const template = `<svg viewBox="0 0 72 72">
+      const template = `<svg viewBox="0 0 144 144">
         <g filter="url(#activity-state)"></g>
       </svg>`;
       const errors = validateIconTemplate(template);
@@ -135,13 +154,13 @@ describe("icon-template", () => {
   });
 
   describe("generateIconText", () => {
-    it("should generate single line text at y=62 by default", () => {
+    it("should generate single line text at y=124 by default", () => {
       const result = generateIconText({ text: "+5 L" });
 
-      expect(result).toContain('y="62"');
+      expect(result).toContain('y="124"');
       expect(result).toContain(">+5 L</text>");
       expect(result).toContain('class="title"');
-      expect(result).toContain('font-size="14"');
+      expect(result).toContain('font-size="28"');
     });
 
     it("should use custom font size", () => {
@@ -151,9 +170,9 @@ describe("icon-template", () => {
     });
 
     it("should use custom baseY", () => {
-      const result = generateIconText({ text: "Test", baseY: 50 });
+      const result = generateIconText({ text: "Test", baseY: 100 });
 
-      expect(result).toContain('y="50"');
+      expect(result).toContain('y="100"');
     });
 
     it("should escape XML characters in text", () => {
@@ -172,48 +191,48 @@ describe("icon-template", () => {
     });
 
     it("should center multi-line text around baseY", () => {
-      const result = generateIconText({ text: "Line 1\nLine 2", fontSize: 14, baseY: 62 });
+      const result = generateIconText({ text: "Line 1\nLine 2", fontSize: 28, baseY: 124 });
 
-      // 2 lines, lineHeight = 14 * 1 = 14
-      // totalBlockHeight = (2-1) * 14 = 14
-      // startY = 62 - 14/2 = 62 - 7 = 55
-      // Line 1 at y=55, Line 2 at y=55+14=69
-      expect(result).toContain('y="55"');
-      expect(result).toContain('y="69"');
+      // 2 lines, lineHeight = 28 * 1 = 28
+      // totalBlockHeight = (2-1) * 28 = 28
+      // startY = 124 - 28/2 = 124 - 14 = 110
+      // Line 1 at y=110, Line 2 at y=110+28=138
+      expect(result).toContain('y="110"');
+      expect(result).toContain('y="138"');
     });
 
     it("should handle three lines correctly", () => {
-      const result = generateIconText({ text: "A\nB\nC", fontSize: 10, baseY: 62 });
+      const result = generateIconText({ text: "A\nB\nC", fontSize: 20, baseY: 124 });
 
-      // 3 lines, lineHeight = 10 * 1 = 10
-      // totalBlockHeight = (3-1) * 10 = 20
-      // startY = 62 - 20/2 = 62 - 10 = 52
-      // A at y=52, B at y=62, C at y=72
-      expect(result).toContain('y="52"');
-      expect(result).toContain('y="62"');
-      expect(result).toContain('y="72"');
+      // 3 lines, lineHeight = 20 * 1 = 20
+      // totalBlockHeight = (3-1) * 20 = 40
+      // startY = 124 - 40/2 = 124 - 20 = 104
+      // A at y=104, B at y=124, C at y=144
+      expect(result).toContain('y="104"');
+      expect(result).toContain('y="124"');
+      expect(result).toContain('y="144"');
     });
 
     it("should respect custom lineHeightMultiplier", () => {
       const result = generateIconText({
         text: "Line 1\nLine 2",
-        fontSize: 10,
-        baseY: 62,
+        fontSize: 20,
+        baseY: 124,
         lineHeightMultiplier: 1.5,
       });
 
-      // lineHeight = 10 * 1.5 = 15
-      // totalBlockHeight = (2-1) * 15 = 15
-      // startY = 62 - 15/2 = 62 - 7.5 = 54.5
-      // Line 1 at y=54.5, Line 2 at y=54.5+15=69.5
-      expect(result).toContain('y="54.5"');
-      expect(result).toContain('y="69.5"');
+      // lineHeight = 20 * 1.5 = 30
+      // totalBlockHeight = (2-1) * 30 = 30
+      // startY = 124 - 30/2 = 124 - 15 = 109
+      // Line 1 at y=109, Line 2 at y=109+30=139
+      expect(result).toContain('y="109"');
+      expect(result).toContain('y="139"');
     });
 
     it("should include all required text attributes", () => {
       const result = generateIconText({ text: "Test" });
 
-      expect(result).toContain('x="36"');
+      expect(result).toContain('x="72"');
       expect(result).toContain('text-anchor="middle"');
       expect(result).toContain('dominant-baseline="central"');
       expect(result).toContain('fill="#ffffff"');
@@ -235,6 +254,128 @@ describe("icon-template", () => {
       const fillMatches = result.match(/fill="#00FF00"/g);
 
       expect(fillMatches?.length).toBe(2);
+    });
+  });
+
+  describe("parseIconDefaults", () => {
+    it("should parse color defaults from <desc> metadata", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+        <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+
+      const defaults = parseIconDefaults(svg);
+
+      expect(defaults).toEqual({
+        backgroundColor: "#412244",
+        textColor: "#ffffff",
+        graphic1Color: "#ffffff",
+      });
+    });
+
+    it("should return empty object when no <desc> element", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+
+      expect(parseIconDefaults(svg)).toEqual({});
+    });
+
+    it("should return empty object for invalid JSON in <desc>", () => {
+      const svg = `<svg><desc>not json</desc></svg>`;
+
+      expect(parseIconDefaults(svg)).toEqual({});
+    });
+
+    it("should return empty object when <desc> has no colors key", () => {
+      const svg = `<svg><desc>{"other":"data"}</desc></svg>`;
+
+      expect(parseIconDefaults(svg)).toEqual({});
+    });
+
+    it("should handle BG + Text only icons", () => {
+      const svg = `<svg><desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"}}</desc></svg>`;
+
+      const defaults = parseIconDefaults(svg);
+
+      expect(defaults).toEqual({
+        backgroundColor: "#2a2a2a",
+        textColor: "#ffffff",
+      });
+      expect(defaults.graphic1Color).toBeUndefined();
+    });
+  });
+
+  describe("resolveIconColors", () => {
+    const templateWithAllSlots = `<svg>
+      <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+    </svg>`;
+
+    const templateBgTextOnly = `<svg>
+      <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"}}</desc>
+    </svg>`;
+
+    it("should return icon defaults when no overrides provided", () => {
+      const colors = resolveIconColors(templateWithAllSlots, {});
+
+      expect(colors).toEqual({
+        backgroundColor: "#412244",
+        textColor: "#ffffff",
+        graphic1Color: "#ffffff",
+      });
+    });
+
+    it("should apply global colors over icon defaults", () => {
+      const colors = resolveIconColors(templateWithAllSlots, {
+        backgroundColor: "#1a1a3e",
+        textColor: "#d0d8ff",
+      });
+
+      expect(colors.backgroundColor).toBe("#1a1a3e");
+      expect(colors.textColor).toBe("#d0d8ff");
+      expect(colors.graphic1Color).toBe("#ffffff"); // falls back to icon default
+    });
+
+    it("should apply action overrides over global colors", () => {
+      const colors = resolveIconColors(
+        templateWithAllSlots,
+        { backgroundColor: "#1a1a3e" },
+        { backgroundColor: "#ff0000" },
+      );
+
+      expect(colors.backgroundColor).toBe("#ff0000"); // action override wins
+    });
+
+    it("should only return slots declared by the icon", () => {
+      const colors = resolveIconColors(templateBgTextOnly, {
+        backgroundColor: "#111111",
+        textColor: "#eeeeee",
+        graphic1Color: "#ff0000", // icon doesn't declare this slot
+      });
+
+      expect(colors).toEqual({
+        backgroundColor: "#111111",
+        textColor: "#eeeeee",
+      });
+      expect(colors).not.toHaveProperty("graphic1Color");
+    });
+
+    it("should return empty object for SVG without <desc>", () => {
+      const colors = resolveIconColors("<svg></svg>", { backgroundColor: "#111111" });
+
+      expect(colors).toEqual({});
+    });
+
+    it("should handle full chain: action > global > default", () => {
+      const colors = resolveIconColors(
+        templateWithAllSlots,
+        { backgroundColor: "#global", textColor: "#global-text" },
+        { textColor: "#action-text" },
+      );
+
+      expect(colors.backgroundColor).toBe("#global"); // global (no action override)
+      expect(colors.textColor).toBe("#action-text"); // action override
+      expect(colors.graphic1Color).toBe("#ffffff"); // icon default (no global or action)
     });
   });
 });
