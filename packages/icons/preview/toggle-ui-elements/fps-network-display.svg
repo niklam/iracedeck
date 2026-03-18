@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a3a"/>
+
+    <!-- Icon content area: monitor with stats -->
+    <rect x="28" y="20" width="88" height="52" rx="4" fill="#1a2a2a" stroke="#888888" stroke-width="3"/>
+    <text x="36" y="40" fill="#888888" font-family="Arial, sans-serif" font-size="10">FPS</text>
+    <text x="84" y="40" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">60</text>
+    <text x="36" y="56" fill="#888888" font-family="Arial, sans-serif" font-size="10">PING</text>
+    <text x="84" y="56" fill="#ffffff" font-family="Arial, sans-serif" font-size="12">42ms</text>
+    <text x="36" y="68" fill="#888888" font-family="Arial, sans-serif" font-size="10">Q</text>
+    <text x="84" y="68" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12">100%</text>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

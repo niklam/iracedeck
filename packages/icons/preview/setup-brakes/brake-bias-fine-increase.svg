@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#3a2a1a"/>
+
+    <!-- Icon content area: Brake bias bar with graduated marks + right arrow -->
+    <rect x="28" y="40" width="88" height="20" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <rect x="28" y="40" width="52" height="20" rx="6" fill="#e74c3c" opacity="0.4"/>
+    <line x1="80" y1="36" x2="80" y2="64" stroke="#ffffff" stroke-width="3"/>
+    <line x1="44" y1="40" x2="44" y2="60" stroke="#888888" stroke-width="1"/>
+    <line x1="60" y1="40" x2="60" y2="60" stroke="#888888" stroke-width="1"/>
+    <line x1="96" y1="40" x2="96" y2="60" stroke="#888888" stroke-width="1"/>
+    <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

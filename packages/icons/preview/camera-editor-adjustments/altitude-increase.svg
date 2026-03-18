@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#1a2a3a"/>
+
+    <!-- Camera with upward arrow on left -->
+    <rect x="36" y="28" width="48" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polygon points="84,34 108,22 108,70 84,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="28" y1="64" x2="28" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="22,30 28,24 34,30" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

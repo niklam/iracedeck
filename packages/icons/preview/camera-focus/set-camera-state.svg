@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Icon content area: gear/settings icon -->
+    <circle cx="72" cy="48" r="16" fill="none" stroke="#888888" stroke-width="4"/>
+    <circle cx="72" cy="48" r="6" fill="#888888"/>
+    <line x1="72" y1="24" x2="72" y2="32" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="72" y1="64" x2="72" y2="72" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="48" y1="48" x2="56" y2="48" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="88" y1="48" x2="96" y2="48" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="55" y1="31" x2="60.6" y2="36.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="83.4" y1="59.4" x2="89" y2="65" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="89" y1="31" x2="83.4" y2="36.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="60.6" y1="59.4" x2="55" y2="65" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

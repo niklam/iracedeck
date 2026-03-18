@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Mouse cursor with arrows -->
+    <polygon points="56,24 56,64 66,54 76,72 84,68 74,50 88,50" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="96" y1="36" x2="112" y2="36" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="106,30 112,36 106,42" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="96" y1="60" x2="112" y2="60" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="106,54 112,60 106,66" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

@@ -1,14 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#8B1A1A"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Chat bubble with X -->
     <path d="M36,30 L108,30 Q114,30 114,36 L114,64 Q114,70 108,70 L76,70 L60,84 L60,70 L36,70 Q30,70 30,64 L30,36 Q30,30 36,30 Z" fill="none" stroke="#ffffff" stroke-width="4"/>
     <line x1="56" y1="40" x2="88" y2="60" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
     <line x1="88" y1="40" x2="56" y2="60" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

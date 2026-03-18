@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a3a"/>
+
+    <!-- Icon content area: crosshair/move arrows -->
+    <rect x="32" y="24" width="80" height="44" rx="4" fill="none" stroke="#ffffff" stroke-width="3" stroke-dasharray="6 4"/>
+    <line x1="72" y1="20" x2="72" y2="72" stroke="#888888" stroke-width="2"/>
+    <line x1="28" y1="46" x2="116" y2="46" stroke="#888888" stroke-width="2"/>
+    <path d="M72 20 l-6 8 h12 z" fill="#ffffff"/>
+    <path d="M72 72 l-6 -8 h12 z" fill="#ffffff"/>
+    <path d="M28 46 l8 -6 v12 z" fill="#ffffff"/>
+    <path d="M116 46 l-8 -6 v12 z" fill="#ffffff"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

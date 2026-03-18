@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a1a3a"/>
+
+    <!-- Icon content area: circular reload arrows with grid pattern -->
+    <path d="M72 20 A28 28 0 1 1 44 48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="40,40 44,48 52,44" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M72 76 A28 28 0 1 1 100 48" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="104,56 100,48 92,52" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="60" y="36" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="74" y="36" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="60" y="50" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="74" y="50" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

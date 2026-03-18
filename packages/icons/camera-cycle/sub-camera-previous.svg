@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Small camera with inner frame + left chevron -->
     <rect x="44" y="28" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
@@ -9,8 +10,8 @@
 
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>

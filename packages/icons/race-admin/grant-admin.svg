@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#8B1A1A"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Person with shield+star badge -->
     <circle cx="60" cy="34" r="14" fill="none" stroke="#ffffff" stroke-width="4"/>
     <path d="M36,78 C36,58 60,50 60,50 C60,50 84,58 84,78" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
@@ -10,8 +11,8 @@
     <line x1="90" y1="66" x2="106" y2="66" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

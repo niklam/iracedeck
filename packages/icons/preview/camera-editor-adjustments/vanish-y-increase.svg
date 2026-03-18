@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#1a2a3a"/>
+
+    <!-- Vanish point with upward arrow -->
+    <circle cx="72" cy="44" r="4" fill="#ffffff"/>
+    <line x1="72" y1="44" x2="28" y2="20" stroke="#888888" stroke-width="2"/>
+    <line x1="72" y1="44" x2="28" y2="68" stroke="#888888" stroke-width="2"/>
+    <line x1="72" y1="44" x2="116" y2="20" stroke="#888888" stroke-width="2"/>
+    <line x1="72" y1="44" x2="116" y2="68" stroke="#888888" stroke-width="2"/>
+    <line x1="72" y1="36" x2="72" y2="20" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="66,26 72,20 78,26" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

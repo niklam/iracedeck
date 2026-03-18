@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#3a2a1a"/>
+
+    <!-- Icon content area: Brake disc with peak marker line + left arrow -->
+    <circle cx="64" cy="48" r="24" fill="none" stroke="#888888" stroke-width="3"/>
+    <circle cx="64" cy="48" r="10" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="64" y1="24" x2="64" y2="36" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="38,32 28,44 38,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

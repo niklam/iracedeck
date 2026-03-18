@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Floppy disk + down arrow + "C" -->
+    <rect x="36" y="20" width="44" height="48" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="44" y="20" width="28" height="16" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="104" y1="28" x2="104" y2="56" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="96,48 104,56 112,48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="104" y="76" text-anchor="middle" dominant-baseline="central"
+          fill="#888888" font-family="Arial, sans-serif" font-size="16" font-weight="bold">C</text>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

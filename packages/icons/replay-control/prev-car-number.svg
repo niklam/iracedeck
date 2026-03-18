@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Car silhouette (facing left) centered -->
     <g transform="translate(16, -3) scale(0.34)" fill="#ffffff">
@@ -20,8 +21,8 @@
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#8B1A1A"/>
+    <!-- Pit lane open gate -->
+    <rect x="38" y="28" width="68" height="44" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <text x="72" y="44" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">PIT</text>
+    <line x1="50" y1="60" x2="94" y2="60" stroke="#ffffff" stroke-width="3"/>
+    <polyline points="58,68 68,78 86,58" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Icon content area: Circular arrow clockwise + "L" -->
+    <path d="M 84,36 A 24,24 0 1,1 60,28" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="84,26 84,46 96,36" fill="#2ecc71"/>
+    <text x="72" y="60" text-anchor="middle" dominant-baseline="central"
+          fill="#2ecc71" font-family="Arial, sans-serif" font-size="20" font-weight="bold">L</text>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

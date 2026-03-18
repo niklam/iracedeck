@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#8B1A1A"/>
+    <!-- Chat bubble with person+X (mute) -->
+    <path d="M36,26 L108,26 Q114,26 114,32 L114,58 Q114,64 108,64 L76,64 L60,78 L60,64 L36,64 Q30,64 30,58 L30,32 Q30,26 36,26 Z" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <!-- Person inside -->
+    <circle cx="62" cy="40" r="8" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <path d="M50,58 C50,50 62,46 62,46 C62,46 74,50 74,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <!-- X badge -->
+    <line x1="86" y1="36" x2="102" y2="52" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="102" y1="36" x2="86" y2="52" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

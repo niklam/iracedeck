@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a2a2a"/>
+
+    <!-- Black box frame -->
+    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <text x="24" y="30" fill="#888888" font-family="Arial, sans-serif" font-size="10">LAP</text>
+    <text x="64" y="30" fill="#f39c12" font-family="Arial, sans-serif" font-size="12" font-weight="bold">1:23.456</text>
+    <text x="24" y="44" fill="#888888" font-family="Arial, sans-serif" font-size="10">LAST</text>
+    <text x="64" y="44" fill="#ffffff" font-family="Arial, sans-serif" font-size="12">1:24.012</text>
+    <text x="24" y="58" fill="#888888" font-family="Arial, sans-serif" font-size="10">BEST</text>
+    <text x="64" y="58" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">1:22.891</text>
+    <rect x="24" y="64" width="96" height="2" fill="#ffffff" opacity="0.3"/>
+
+    <!-- Labels (inverted layout: main on top, sub on bottom) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

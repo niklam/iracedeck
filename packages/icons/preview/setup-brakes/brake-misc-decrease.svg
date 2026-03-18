@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#3a2a1a"/>
+
+    <!-- Icon content area: Brake disc outline with wrench overlay + left arrow -->
+    <circle cx="60" cy="48" r="24" fill="none" stroke="#888888" stroke-width="3"/>
+    <circle cx="60" cy="48" r="10" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="76" y1="32" x2="92" y2="64" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="84" y1="32" x2="100" y2="64" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

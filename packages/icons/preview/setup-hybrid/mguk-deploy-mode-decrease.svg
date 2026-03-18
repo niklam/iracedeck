@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a1a"/>
+
+    <!-- Icon content area: Battery with outgoing deploy arrows + decrease arrow -->
+    <rect x="32" y="28" width="52" height="32" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="84" y="38" width="6" height="12" rx="2" fill="#ffffff"/>
+    <line x1="48" y1="44" x2="70" y2="44" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="64,38 70,44 64,50" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="34,32 24,44 34,56" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a2a3a"/>
+
+    <!-- Icon content area: eye shape with down-looking pupil -->
+    <path d="M36 44 Q72 20 108 44 Q72 68 36 44 Z" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="72" cy="44" r="10" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="72" cy="48" r="4" fill="#ffffff"/>
+    <!-- Down arrow indicator -->
+    <path d="M108 68 L108 80 L100 72" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M108 80 L116 72" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>
