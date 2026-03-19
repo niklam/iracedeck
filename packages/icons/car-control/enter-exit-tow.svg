@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Car body with bidirectional arrow -->
-    <rect x="40" y="32" width="64" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="40" y="32" width="64" height="28" rx="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <circle cx="56" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
     <circle cx="88" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
     <path d="M48 76 L96 76" stroke="#888888" stroke-width="3" stroke-linecap="round"/>

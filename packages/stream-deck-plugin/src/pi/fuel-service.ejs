@@ -40,7 +40,7 @@
 
 		<%- include('common-settings') %>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: require('./data/color-defaults.json')['fuel-service'] }) %>
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['fuel-service'] }) %>
 
 		<div id="key-bindings-section" class="hidden">
 			<%- include('global-key-bindings', {

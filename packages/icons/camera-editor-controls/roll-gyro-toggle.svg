@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Angled rotation arc -->
-    <path d="M40 60 A32 24 30 0 1 104 60" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M40 60 A32 24 30 0 1 104 60" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
     <path d="M104 60 A32 24 30 0 1 40 60" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
-    <polyline points="46,54 40,60 48,64" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="72" cy="44" r="4" fill="#ffffff"/>
+    <polyline points="46,54 40,60 48,64" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="72" cy="44" r="4" fill="{{graphic1Color}}"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

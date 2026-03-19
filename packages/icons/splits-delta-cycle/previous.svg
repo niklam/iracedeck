@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
@@ -8,7 +8,7 @@
     <rect x="26" y="20" width="28" height="20" rx="4" fill="#9b59b6"/>
     <rect x="58" y="20" width="28" height="20" rx="4" fill="#2ecc71"/>
     <rect x="90" y="20" width="28" height="20" rx="4" fill="#f1c40f"/>
-    <path d="M32 66 l28 -18 v10 h48 v16 h-48 v10 z" fill="#ffffff"/>
+    <path d="M32 66 l28 -18 v10 h48 v16 h-48 v10 z" fill="{{graphic1Color}}"/>
 
     <!-- Two-line label (line2 on top subdued, line1 on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

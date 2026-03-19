@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Steering wheel + left chevron -->
-    <circle cx="74" cy="48" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="74" cy="48" r="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="74" y1="56" x2="74" y2="72" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="50" y1="48" x2="66" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="82" y1="48" x2="98" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="74" cy="48" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="74" cy="48" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <line x1="74" y1="56" x2="74" y2="72" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="50" y1="48" x2="66" y2="48" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="82" y1="48" x2="98" y2="48" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
     <polyline points="32,40 20,48 32,56" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Labels -->

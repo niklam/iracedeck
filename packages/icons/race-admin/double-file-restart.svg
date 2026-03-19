@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Double column of cars/dots -->
-    <rect x="42" y="22" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="42" y="40" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="42" y="58" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="82" y="22" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="82" y="40" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="82" y="58" width="20" height="12" rx="4" fill="#ffffff"/>
-    <rect x="42" y="76" width="20" height="12" rx="4" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="4,2"/>
-    <rect x="82" y="76" width="20" height="12" rx="4" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="4,2"/>
+    <rect x="42" y="22" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="42" y="40" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="42" y="58" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="82" y="22" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="82" y="40" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="82" y="58" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="42" y="76" width="20" height="12" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="2" stroke-dasharray="4,2"/>
+    <rect x="82" y="76" width="20" height="12" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="2" stroke-dasharray="4,2"/>
     <!-- Double file indicator -->
     <text x="72" y="20" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="12" font-weight="bold">2</text>
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">2</text>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>

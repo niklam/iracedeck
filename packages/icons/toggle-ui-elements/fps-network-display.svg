@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
@@ -9,7 +9,7 @@
     <text x="36" y="40" fill="#888888" font-family="Arial, sans-serif" font-size="10">FPS</text>
     <text x="84" y="40" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">60</text>
     <text x="36" y="56" fill="#888888" font-family="Arial, sans-serif" font-size="10">PING</text>
-    <text x="84" y="56" fill="#ffffff" font-family="Arial, sans-serif" font-size="12">42ms</text>
+    <text x="84" y="56" fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="12">42ms</text>
     <text x="36" y="68" fill="#888888" font-family="Arial, sans-serif" font-size="10">Q</text>
     <text x="84" y="68" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12">100%</text>
 

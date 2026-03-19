@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Engine block with lightning bolt + right arrow -->
-    <rect x="32" y="28" width="56" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="32" y="28" width="56" height="40" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <line x1="44" y1="28" x2="44" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
     <line x1="60" y1="28" x2="60" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
     <line x1="76" y1="28" x2="76" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>

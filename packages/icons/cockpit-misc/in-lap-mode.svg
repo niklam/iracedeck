@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
@@ -7,10 +7,10 @@
     <!-- Icon content area: Pit lane entry arrow -->
     <rect x="28" y="32" width="88" height="40" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
     <line x1="72" y1="32" x2="72" y2="72" stroke="#888888" stroke-width="1"/>
-    <path d="M48 64 L48 44 L68 44" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="60,38 68,44 60,50" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M48 64 L48 44 L68 44" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="60,38 68,44 60,50" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <text x="92" y="54" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold">IN</text>
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">IN</text>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

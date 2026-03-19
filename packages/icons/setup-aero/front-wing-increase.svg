@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Front Wing increase: airfoil profile + right arrow -->
-    <path d="M24,56 Q40,28 80,36 Q100,40 112,48" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M24,56 Q40,28 80,36 Q100,40 112,48" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
     <line x1="100" y1="44" x2="100" y2="68" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
     <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 

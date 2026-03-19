@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Warning triangle + left arrow -->
-    <polygon points="84,28 104,68 64,68" fill="#ffffff"/>
+    <polygon points="84,28 104,68 64,68" fill="{{graphic1Color}}"/>
     <text x="84" y="60" text-anchor="middle" dominant-baseline="central"
           fill="#2a3a4a" font-family="Arial, sans-serif" font-size="24" font-weight="bold">!</text>
-    <polyline points="52,40 36,52 52,64" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="52,40 36,52 52,64" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

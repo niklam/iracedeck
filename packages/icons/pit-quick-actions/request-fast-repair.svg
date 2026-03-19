@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: wrench icon -->
-    <path d="M48 68 L76 40" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-    <path d="M76 40 A12 12 0 1 1 92 28" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <path d="M92 28 L100 20" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-    <rect x="40" y="68" width="16" height="8" rx="2" fill="#ffffff" transform="rotate(-45 48 72)"/>
+    <path d="M48 68 L76 40" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M76 40 A12 12 0 1 1 92 28" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <path d="M92 28 L100 20" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <rect x="40" y="68" width="16" height="8" rx="2" fill="{{graphic1Color}}" transform="rotate(-45 48 72)"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

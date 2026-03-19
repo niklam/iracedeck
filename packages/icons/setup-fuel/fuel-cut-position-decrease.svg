@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Fuel Cut Position decrease: fuel droplet with cut line + left arrow -->
     <path d="M60 20 C60 20 40 44 40 56 C40 68 48 76 60 76 C72 76 80 68 80 56 C80 44 60 20 60 20Z"
-          fill="none" stroke="#ffffff" stroke-width="4"/>
+          fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
     <line x1="36" y1="52" x2="84" y2="52" stroke="#e74c3c" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round"/>
     <polyline points="38,32 28,44 38,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 

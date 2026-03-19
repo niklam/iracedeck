@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: video camera with power symbol -->
-    <rect x="40" y="24" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="84,30 108,18 108,66 84,54" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="62" y1="32" x2="62" y2="40" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M54 36 A10 10 0 1 0 70 36" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="40" y="24" width="44" height="36" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="84,30 108,18 108,66 84,54" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="62" y1="32" x2="62" y2="40" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M54 36 A10 10 0 1 0 70 36" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

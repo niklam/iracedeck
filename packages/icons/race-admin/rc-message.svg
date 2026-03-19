@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Shield with chat bubble -->
-    <path d="M72,22 L100,34 L100,56 C100,72 72,86 72,86 C72,86 44,72 44,56 L44,34 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M72,22 L100,34 L100,56 C100,72 72,86 72,86 C72,86 44,72 44,56 L44,34 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
     <!-- Chat bubble inside shield -->
-    <rect x="56" y="40" width="32" height="18" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="64,58 60,66 70,58" fill="#ffffff"/>
+    <rect x="56" y="40" width="32" height="18" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="64,58 60,66 70,58" fill="{{graphic1Color}}"/>
     <!-- RC text -->
     <text x="72" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="12" font-weight="bold">RC</text>
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">RC</text>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>

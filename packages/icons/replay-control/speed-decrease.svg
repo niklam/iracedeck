@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Turtle silhouette (slower) -->
-    <g fill="#ffffff" transform="translate(22, 20) scale(0.7)">
+    <g fill="{{graphic1Color}}" transform="translate(22, 20) scale(0.7)">
       <!-- Shell -->
       <ellipse cx="68" cy="48" rx="32" ry="24"/>
       <!-- Shell pattern lines -->
@@ -21,7 +21,7 @@
       <!-- Back leg -->
       <ellipse cx="42" cy="68" rx="6" ry="10" transform="rotate(15, 42, 68)"/>
       <!-- Tail -->
-      <path d="M36,54 Q26,50 30,58" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <path d="M36,54 Q26,50 30,58" stroke="{{graphic1Color}}" stroke-width="3" fill="none" stroke-linecap="round"/>
     </g>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->

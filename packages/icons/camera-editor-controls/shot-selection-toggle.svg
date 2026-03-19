@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Film frame selection -->
-    <rect x="36" y="24" width="72" height="48" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="36" y="24" width="72" height="48" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <line x1="36" y1="36" x2="108" y2="36" stroke="#888888" stroke-width="2"/>
     <line x1="36" y1="60" x2="108" y2="60" stroke="#888888" stroke-width="2"/>
     <line x1="52" y1="24" x2="52" y2="72" stroke="#888888" stroke-width="2"/>
     <line x1="92" y1="24" x2="92" y2="72" stroke="#888888" stroke-width="2"/>
-    <rect x="56" y="38" width="32" height="20" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="56" y="38" width="32" height="20" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

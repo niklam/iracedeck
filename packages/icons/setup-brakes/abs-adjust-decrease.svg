@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Brake disc with "ABS" + down arrow indicator -->
-    <circle cx="68" cy="48" r="24" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="68" cy="48" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <circle cx="68" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
     <text x="68" y="50" text-anchor="middle" dominant-baseline="central"
           fill="#e74c3c" font-family="Arial, sans-serif" font-size="14" font-weight="bold">ABS</text>

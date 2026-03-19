@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Eye/visibility icon -->
-    <path d="M28 44 Q72 16 116 44 Q72 72 28 44 Z" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="72" cy="44" r="12" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="72" cy="44" r="4" fill="#ffffff"/>
+    <path d="M28 44 Q72 16 116 44 Q72 72 28 44 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="72" cy="44" r="12" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="72" cy="44" r="4" fill="{{graphic1Color}}"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area -->
-    <path d="M32 40v24h16l20 20V20L48 40h-16z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M80 30a24 24 0 0 1 0 44" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <path d="M88 20a36 36 0 0 1 0 64" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M32 40v24h16l20 20V20L48 40h-16z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M80 30a24 24 0 0 1 0 44" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M88 20a36 36 0 0 1 0 64" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
     <polyline points="108,32 116,44 124,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Two-line label (inverted layout: main on top, sub on bottom) -->

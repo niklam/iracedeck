@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Magnifying glass with DQ text -->
-    <circle cx="56" cy="48" r="20" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <line x1="70" y1="62" x2="88" y2="78" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="56" cy="48" r="20" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <line x1="70" y1="62" x2="88" y2="78" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
     <text x="56" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold">DQ</text>
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">DQ</text>
     <!-- Person icon -->
-    <circle cx="104" cy="36" r="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <path d="M92 62 a12 12 0 0 1 24 0" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="104" cy="36" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <path d="M92 62 a12 12 0 0 1 24 0" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>

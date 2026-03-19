@@ -85,4 +85,18 @@
       }
     });
   }, 500);
+
+  // Color picker reset buttons — event delegation for all .ird-color-reset links
+  document.addEventListener('click', function(ev) {
+    var link = ev.target.closest('.ird-color-reset');
+    if (!link) return;
+    ev.preventDefault();
+    var inputId = link.getAttribute('data-input');
+    var defaultColor = link.getAttribute('data-default');
+    var colorEl = document.getElementById(inputId);
+    if (colorEl) {
+      colorEl.value = defaultColor;
+      colorEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
 </script>

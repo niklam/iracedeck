@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: tire circle with "2" label + increase arrow -->
-    <circle cx="60" cy="48" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="60" cy="48" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
     <circle cx="60" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
     <text x="60" y="50" text-anchor="middle" dominant-baseline="central"
           fill="#2ecc71" font-family="Arial, sans-serif" font-size="16" font-weight="bold">2</text>

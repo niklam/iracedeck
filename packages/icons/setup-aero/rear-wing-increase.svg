@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Rear Wing increase: steeper wing profile + right arrow -->
-    <path d="M32,60 Q40,20 72,28 Q92,32 104,44" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M32,60 Q40,20 72,28 Q92,32 104,44" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
     <line x1="96" y1="40" x2="96" y2="72" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
     <line x1="96" y1="72" x2="72" y2="72" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
     <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>

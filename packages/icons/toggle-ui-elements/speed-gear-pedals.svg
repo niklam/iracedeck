@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: speedometer + gear indicator -->
-    <circle cx="72" cy="40" r="24" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="72" y1="40" x2="84" y2="26" stroke="#ffffff" stroke-width="4"/>
-    <text x="72" y="52" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="16" font-weight="bold">3</text>
+    <circle cx="72" cy="40" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <line x1="72" y1="40" x2="84" y2="26" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <text x="72" y="52" text-anchor="middle" fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">3</text>
     <rect x="36" y="68" width="12" height="16" rx="2" fill="#2ecc71" opacity="0.8"/>
     <rect x="52" y="72" width="12" height="12" rx="2" fill="#888888" opacity="0.6"/>
-    <rect x="84" y="70" width="12" height="14" rx="2" fill="#ffffff" opacity="0.5"/>
+    <rect x="84" y="70" width="12" height="14" rx="2" fill="{{graphic1Color}}" opacity="0.5"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"

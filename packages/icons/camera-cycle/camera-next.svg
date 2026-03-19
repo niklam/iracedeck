@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Movie camera + right chevron -->
-    <rect x="36" y="28" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <polygon points="80,34 104,24 104,72 80,62" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="36" y="28" width="44" height="36" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <polygon points="80,34 104,24 104,72 80,62" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
     <polyline points="112,40 124,48 112,56" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Labels -->

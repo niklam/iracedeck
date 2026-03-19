@@ -27,17 +27,3 @@
       '</sdpi-item>';
   }).join('\n')
 }) %>
-<script>
-  document.querySelectorAll('.ird-color-reset').forEach(function(link) {
-    link.addEventListener('click', function(ev) {
-      ev.preventDefault();
-      var inputId = this.getAttribute('data-input');
-      var defaultColor = this.getAttribute('data-default');
-      var colorEl = document.getElementById(inputId);
-      if (colorEl) {
-        colorEl.value = defaultColor;
-        colorEl.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-  });
-</script>
