@@ -231,6 +231,6 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     const sessionInfo = this.sdkController.getSessionInfo();
     const carNum = getCarNumberFromSessionInfo(sessionInfo, camCarIdx);
-    this.viewedCarNumbers.set(contextId, carNum !== null ? String(carNum) : null);
+    this.viewedCarNumbers.set(contextId, carNum);
   }
 }

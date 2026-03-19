@@ -136,7 +136,7 @@
 				<sdpi-checkbox id="use-viewed-car" setting="useViewedCar" default="true"></sdpi-checkbox>
 			</sdpi-item>
 			<sdpi-item id="car-number-item" label="Car Number" class="hidden">
-				<sdpi-textfield setting="carNumber" placeholder="e.g. 42"></sdpi-textfield>
+				<sdpi-textfield id="car-number-field" setting="carNumber" placeholder="e.g. 070" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
 			</sdpi-item>
 		</div>
 
@@ -271,6 +271,19 @@
 
 				var modeSelect = document.getElementById("mode-select");
 				var useViewedCarCheckbox = document.getElementById("use-viewed-car");
+
+				// Restrict car number input to digits only (preserve leading zeros)
+				var carNumberField = document.getElementById("car-number-field");
+				if (carNumberField) {
+					carNumberField.addEventListener("input", function() {
+						var input = carNumberField.shadowRoot
+							? carNumberField.shadowRoot.querySelector("input")
+							: carNumberField.querySelector("input");
+						if (input && input.value !== input.value.replace(/[^0-9]/g, "")) {
+							input.value = input.value.replace(/[^0-9]/g, "");
+						}
+					});
+				}
 
 				if (modeSelect) {
 					updateModeVisibility(modeSelect.value || "yellow");
