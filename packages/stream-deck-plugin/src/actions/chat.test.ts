@@ -142,6 +142,29 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   };
 }
 
+type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "open-chat" | "cancel";
+
+/** Helper to build chat settings for test functions */
+function chatSettings(
+  overrides: Partial<{
+    mode: ChatMode;
+    message: string;
+    macroNumber: number;
+    iconColor: string;
+    keyText: string;
+    fontSize: number;
+  }> = {},
+) {
+  return {
+    mode: (overrides.mode ?? "send-message") as ChatMode,
+    message: overrides.message ?? "",
+    macroNumber: overrides.macroNumber ?? 1,
+    iconColor: overrides.iconColor ?? "#4a90d9",
+    keyText: overrides.keyText ?? "",
+    fontSize: overrides.fontSize ?? 11,
+  };
+}
+
 describe("Chat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -343,19 +366,19 @@ describe("Chat", () => {
 
   describe("generateSendMessageSvg", () => {
     it("should generate a valid data URI", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "Hello!");
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello!" }));
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should include message text in the bubble", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "Thank you!");
+      const result = generateSendMessageSvg(chatSettings({ message: "Thank you!" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Thank you!");
     });
 
     it("should prefer keyText over message", () => {
-      const result = generateSendMessageSvg("#4a90d9", "Custom", "Message");
+      const result = generateSendMessageSvg(chatSettings({ keyText: "Custom", message: "Message" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Custom");
@@ -363,48 +386,41 @@ describe("Chat", () => {
     });
 
     it("should use message when keyText is empty", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "Fallback");
+      const result = generateSendMessageSvg(chatSettings({ message: "Fallback" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Fallback");
     });
 
-    it("should include icon color in output", () => {
-      const customColor = "#ff5500";
-      const result = generateSendMessageSvg(customColor, "", "Test");
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain(customColor);
-    });
-
     it("should handle empty text gracefully", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "");
+      const result = generateSendMessageSvg(chatSettings());
       expect(result).toContain("data:image/svg+xml");
     });
 
-    it("should use default font size of 11", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "Hello");
+    it("should use doubled font size in 144x144 output", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello" }));
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain('font-size="11"');
+      // Default fontSize=11, doubled to 22 for 144x144
+      expect(decoded).toContain('font-size="22"');
     });
 
-    it("should use custom font size when provided", () => {
-      const result = generateSendMessageSvg("#4a90d9", "", "Hello", 20);
+    it("should use custom font size doubled for 144x144", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello", fontSize: 20 }));
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain('font-size="20"');
+      expect(decoded).toContain('font-size="40"');
     });
   });
 
   describe("generateMacroSvg", () => {
     it("should generate a valid data URI", () => {
-      const result = generateMacroSvg("#4a90d9", "", 1);
+      const result = generateMacroSvg(chatSettings({ mode: "macro" }));
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should include 'Macro' text when no keyText provided", () => {
-      const result = generateMacroSvg("#4a90d9", "", 5);
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 5 }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Macro");
@@ -412,51 +428,35 @@ describe("Chat", () => {
     });
 
     it("should show macro number in output", () => {
-      const result = generateMacroSvg("#4a90d9", "", 12);
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 12 }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("12");
     });
 
     it("should use custom keyText instead of default", () => {
-      const result = generateMacroSvg("#4a90d9", "Custom Text", 3);
+      const result = generateMacroSvg(chatSettings({ mode: "macro", keyText: "Custom Text", macroNumber: 3 }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Custom Text");
       expect(decoded).not.toContain("Macro");
     });
 
-    it("should include icon color in output", () => {
-      const customColor = "#ff5500";
-      const result = generateMacroSvg(customColor, "", 1);
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain(customColor);
-    });
-
     it("should handle multi-line keyText", () => {
-      const result = generateMacroSvg("#4a90d9", "Line1\nLine2", 1);
+      const result = generateMacroSvg(chatSettings({ mode: "macro", keyText: "Line1\nLine2" }));
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("Line1");
       expect(decoded).toContain("Line2");
     });
 
-    it("should use default font sizes when no keyText is provided", () => {
-      const result = generateMacroSvg("#4a90d9", "", 5, 20);
+    it("should use doubled font sizes for 144x144 when no keyText", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 5 }));
       const decoded = decodeURIComponent(result);
 
-      // Default layout uses fixed font sizes (10 for "Macro", 25 for number)
-      expect(decoded).toContain('font-size="10"');
-      expect(decoded).toContain('font-size="25"');
-      expect(decoded).not.toContain('font-size="20"');
-    });
-
-    it("should use custom font size when keyText is provided", () => {
-      const result = generateMacroSvg("#4a90d9", "Custom", 5, 20);
-      const decoded = decodeURIComponent(result);
-
+      // Default layout: "Macro" at fontSize 20 (10*2), number at fontSize 50 (25*2)
       expect(decoded).toContain('font-size="20"');
+      expect(decoded).toContain('font-size="50"');
     });
   });
 

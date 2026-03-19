@@ -407,32 +407,32 @@ describe("SessionInfo", () => {
       expect(decoded).toContain("TIME LEFT");
     });
 
-    it("should use font size 24 for incidents mode", () => {
+    it("should use font size 48 for incidents mode (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings(), "0x", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("24");
+      expect(decoded).toContain("48");
     });
 
-    it("should use font size 18 for short time values", () => {
+    it("should use font size 36 for short time values (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "time-remaining" }), "12:34", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("18");
+      expect(decoded).toContain("36");
     });
 
-    it("should use font size 14 for long time values (H:MM:SS)", () => {
+    it("should use font size 28 for long time values (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "time-remaining" }), "1:23:45", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("14");
+      expect(decoded).toContain("28");
     });
 
-    it("should use font size 18 for UNLIM", () => {
+    it("should use font size 36 for UNLIM (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "time-remaining" }), "UNLIM", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("18");
+      expect(decoded).toContain("36");
     });
 
     it("should use default background when not flashing", () => {
@@ -470,18 +470,18 @@ describe("SessionInfo", () => {
       expect(decoded).toContain("LAPS");
     });
 
-    it("should use font size 18 for short lap values", () => {
+    it("should use font size 36 for short lap values (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "laps" }), "5/20", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("18");
+      expect(decoded).toContain("36");
     });
 
-    it("should use font size 14 for long lap values", () => {
+    it("should use font size 28 for long lap values (144x144)", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "laps" }), "100/200", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("14");
+      expect(decoded).toContain("28");
     });
 
     it("should include infinity symbol for unlimited laps", () => {

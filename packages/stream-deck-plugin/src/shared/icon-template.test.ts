@@ -229,6 +229,12 @@ describe("icon-template", () => {
       expect(result).toContain('y="139"');
     });
 
+    it("should use custom centerX", () => {
+      const result = generateIconText({ text: "Test", centerX: 36 });
+
+      expect(result).toContain('x="36"');
+    });
+
     it("should include all required text attributes", () => {
       const result = generateIconText({ text: "Test" });
 

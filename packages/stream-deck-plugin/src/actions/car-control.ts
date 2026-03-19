@@ -88,9 +88,9 @@ export function getPitSpeedLimit(): number {
  */
 export function pitLimiterActiveIcon(speed: number): string {
   return `
-    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${BLUE}" stroke-width="4"/>
-    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${BLUE}" stroke-width="8"/>
+    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
 }
 
 /**
@@ -100,10 +100,10 @@ export function pitLimiterActiveIcon(speed: number): string {
  */
 export function pitLimiterInactiveIcon(speed: number): string {
   return `
-    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${RED}" stroke-width="4"/>
-    <circle cx="36" cy="23" r="15" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${RED}" stroke-width="8"/>
+    <circle cx="72" cy="46" r="30" fill="none" stroke="${GRAY}" stroke-width="2"/>
+    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
 }
 
 /**

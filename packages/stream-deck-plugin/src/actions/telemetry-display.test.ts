@@ -140,8 +140,8 @@ describe("TelemetryDisplay", () => {
 
       expect(result).toContain("<text");
       expect(result).toContain("150");
-      // baseY = 51 + (18 - 22) / 3
-      expect(result).toMatch(/y="49\.6+/);
+      // baseY = 102 + (18 - 44) / 3 = 93.33 (144x144 coordinates)
+      expect(result).toMatch(/y="93\.3+/);
       expect(result).toContain('font-size="18"');
       expect(result).toContain('fill="#ffffff"');
       expect(result.match(/<text /g)?.length).toBe(1);

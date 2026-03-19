@@ -114,7 +114,10 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   constructor() {
     super();
 
-    // Subscribe to global settings changes to refresh overlays and re-render colors
+    // Subscribe to global settings changes to refresh overlays and re-render colors.
+    // Constructor side-effect: needed because SingletonAction instances are created once
+    // at plugin startup and must react to settings changes throughout their lifetime.
+    // Order matters: regenerate SVGs first, then push updated images to Stream Deck.
     onGlobalSettingsChange(() => {
       this.onGlobalSettingsUpdated();
       this.refreshAllImages();

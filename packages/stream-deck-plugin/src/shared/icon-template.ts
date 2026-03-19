@@ -108,7 +108,10 @@ export function resolveIconColors(
       continue;
     }
 
-    result[key] = actionOverrides?.[key] || globalColors[key] || defaultValue;
+    // Filter empty strings and #000001 sentinel (means "not set" — used by reset buttons)
+    const pick = (v: string | undefined) => (v && v.length > 0 && v !== "#000001" ? v : undefined);
+
+    result[key] = pick(actionOverrides?.[key]) ?? pick(globalColors[key]) ?? defaultValue;
   }
 
   return result;
@@ -130,6 +133,10 @@ export interface GenerateIconTextOptions {
    * Base Y position for single line or bottom line of multi-line text. Default: 124
    */
   baseY?: number;
+  /**
+   * Horizontal center position. Default: 72 (for 144x144 icons). Use 36 for 72x72 templates.
+   */
+  centerX?: number;
   /**
    * Line height multiplier relative to font size. Default: 1
    */
@@ -162,13 +169,13 @@ export interface GenerateIconTextOptions {
  * // Returns two <text> elements centered around baseY
  */
 export function generateIconText(options: GenerateIconTextOptions): string {
-  const { text, fontSize = 28, baseY = 124, lineHeightMultiplier = 1, fill = "#ffffff" } = options;
+  const { text, fontSize = 28, baseY = 124, centerX = 72, lineHeightMultiplier = 1, fill = "#ffffff" } = options;
 
   const lines = text.split("\n");
   const lineHeight = fontSize * lineHeightMultiplier;
 
   if (lines.length === 1) {
-    return `<text class="title" x="72" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text class="title" x="${centerX}" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   // For multiple lines, center the text block around baseY
@@ -182,7 +189,7 @@ export function generateIconText(options: GenerateIconTextOptions): string {
   for (let i = 0; i < lines.length; i++) {
     const y = startY + i * lineHeight;
     textElements.push(
-      `<text class="title" x="72" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
+      `<text class="title" x="${centerX}" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${fill}" font-family="sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(lines[i])}</text>`,
     );
   }
 
