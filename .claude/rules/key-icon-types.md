@@ -5,7 +5,7 @@ paths:
 ---
 # Key Icon Types
 
-This document defines standardized icon types for Stream Deck key icons. Most icons are now standalone 144x144 SVGs in `packages/icons/`. A few dynamic templates remain at 72x72 in `packages/stream-deck-plugin/icons/`.
+This document defines standardized icon types for Stream Deck key icons. All icons are 144x144 SVGs with Mustache color placeholders and `<desc>` metadata. No `rx` on background rects — Stream Deck controls corner radius.
 
 ## Default Key Icon Type
 
@@ -17,19 +17,19 @@ The standard layout for most action icons.
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: y=18 to y=86 -->
-    {icon content}
+    {icon content using {{graphic1Color}} for eligible artwork}
 
     <!-- Two-line label area -->
-    <text x="72" y="104" ...>{subLabel}</text>
-    <text x="72" y="126" ...>{mainLabel}</text>
+    <text x="72" y="104" fill="{{textColor}}" ...>{subLabel}</text>
+    <text x="72" y="126" fill="{{textColor}}" ...>{mainLabel}</text>
   </g>
 </svg>
 ```
 
-- **Background**: Rounded corners (rx=16), color varies by category
+- **Background**: No rounded corners, color varies by category (declared in `<desc>` metadata)
 - **Icon area**: y=18 to y=86 (68px height)
 - **Text area**: y=100 to y=136
 
@@ -39,8 +39,8 @@ Labels use two lines with primary (bold, prominent) and secondary (subdued) styl
 
 | Label Type | Font Size (144) | Font Size (72) | Weight | Color |
 |------------|-----------------|-----------------|--------|-------|
-| Primary (`{{mainLabel}}`) | 20px | 10px | bold | #ffffff |
-| Secondary (`{{subLabel}}`) | 16px | 8px | normal | #ffffff |
+| Primary (`{{mainLabel}}`) | 20px | 10px | bold | `{{textColor}}` |
+| Secondary (`{{subLabel}}`) | 16px | 8px | normal | `{{textColor}}` |
 
 Both lines are centered horizontally (text-anchor="middle").
 
@@ -86,18 +86,18 @@ Use these colors consistently across all icons (literal hex values in SVG, no co
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: y=18 to y=86 -->
-    <!-- ... artwork ... -->
+    <!-- ... artwork using {{graphic1Color}} ... -->
 
     <!-- Two-line label: mainLabel primary on top, subLabel secondary on bottom -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>
 ```
@@ -108,18 +108,18 @@ Used when the action word (e.g., NEXT/PREVIOUS) should be more prominent than th
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="{background-color}"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: y=18 to y=86 -->
-    <!-- ... artwork ... -->
+    <!-- ... artwork using {{graphic1Color}} ... -->
 
     <!-- Inverted label: subLabel secondary on top, mainLabel primary on bottom -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>
 ```
@@ -145,10 +145,10 @@ Uses the Inverted label layout where the action word is prominent (bottom, bold)
 
 ### Data Display Type
 
-Optimized for showing live telemetry values. Small title at top, large centered value. No icon content area — the value IS the content. Uses dynamic 72x72 template.
+Optimized for showing live telemetry values. Small title at top, large centered value. No icon content area — the value IS the content. Uses dynamic 144x144 template.
 
-- **Title**: Small white label at y=16 (#ffffff, 9px)
-- **Value**: Large bold centered text at y=50 (#ffffff, dynamic font size)
-- **Background**: Dynamic — can change color for alert effects (e.g., flash red on incident)
-- **Placeholders**: `{{backgroundColor}}`, `{{titleLabel}}`, `{{value}}`, `{{valueFontSize}}`
+- **Title**: Small label at y=32 (18px, uses `{{textColor}}`)
+- **Value**: Large bold centered text at dynamic y (~100, uses `{{textColor}}`, dynamic font size)
+- **Background**: Dynamic — can change color for alert effects (e.g., flash red on incident), defaults to `{{backgroundColor}}`
+- **Placeholders**: `{{backgroundColor}}`, `{{textColor}}`, `{{titleLabel}}`, `{{value}}`, `{{valueFontSize}}`
 - Reference: `packages/stream-deck-plugin/icons/session-info.svg`

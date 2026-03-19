@@ -30,6 +30,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -39,6 +40,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 import z from "zod";
@@ -61,9 +63,11 @@ export const GLOBAL_KEY_NAME = "{camelCaseCategory}{CamelCaseBinding}";
  * @internal Exported for testing
  */
 export function generate{ActionName}Svg(settings: {ActionName}Settings): string {
+  const colors = resolveIconColors(defaultIconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(defaultIconSvg, {
     mainLabel: "LABEL",
     subLabel: "SUBLABEL",
+    ...colors,
   });
   return svgToDataUri(svg);
 }
@@ -80,6 +84,10 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
   // IMPORTANT: Call super.onWillAppear(ev) and super.onDidReceiveSettings(ev)
   // as the first line in those handlers (required for flag overlay and CommonSettings).
   // See splits-delta-cycle.ts for the full pattern.
+  //
+  // In updateDisplay, after setKeyImage, register the regenerate callback:
+  //   await this.setKeyImage(ev, svgDataUri);
+  //   this.setRegenerateCallback(ev.action.id, () => generate{ActionName}Svg(settings));
 }
 ```
 
@@ -126,29 +134,33 @@ See `splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
-Standalone 144x144 SVGs with Mustache label placeholders. One file per variant (e.g., `next.svg`, `previous.svg`, `default.svg`):
+Standalone 144x144 SVGs with Mustache label placeholders and `<desc>` color metadata. One file per variant (e.g., `next.svg`, `previous.svg`, `default.svg`):
 
 ```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#BACKGROUND","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#BACKGROUND"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: y=18 to y=86 -->
-    <!-- ... artwork ... -->
+    <!-- ... artwork using {{graphic1Color}} for strokes/fills ... -->
 
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>
 ```
 
+- The `<desc>` element contains a JSON object mapping color slot names to their default hex values. This metadata is used by `resolveIconColors()` and by `scripts/generate-color-defaults.mjs`.
+- Background rect uses `{{backgroundColor}}` (no `rx` attribute — corners are handled by Stream Deck)
+- Text elements use `{{textColor}}` instead of hardcoded `#ffffff`
+- Graphic elements use `{{graphic1Color}}` (or `{{graphic2Color}}` if needed)
 - Background color must be unique per action (check existing actions to avoid duplicates)
 - All coordinates doubled from 72x72 (Stream Deck downscales as needed)
-- Use literal hex color values, not constants
-- Placeholders: `{{mainLabel}}` (bold, white), `{{subLabel}}` (white, smaller)
+- Placeholders: `{{mainLabel}}` (bold), `{{subLabel}}` (smaller)
 
 #### 4. Category icon — `com.iracedeck.sd.core.sdPlugin/imgs/actions/{action-name}/icon.svg`
 
@@ -193,11 +205,12 @@ Property Inspector template. For actions with only global key bindings:
 
 For actions with per-action settings, add `sdpi-item` elements before the key bindings include. See `splits-delta-cycle.ejs` or `car-control.ejs` for examples.
 
-Every action PI template must include the common-settings partial before `</body>`:
+Every action PI template must include the color-overrides and common-settings partials. Place them between action-specific settings and global sections:
 ```ejs
+<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['{action-name}'] }) %>
 <%- include('common-settings') %>
 ```
-This adds the "Flags Overlay" checkbox and any future common settings.
+The color-overrides partial adds per-action color customization controls. The common-settings partial adds the "Flags Overlay" checkbox and any future common settings.
 
 ### Files to modify
 
@@ -274,6 +287,12 @@ pnpm lint:fix    # Auto-fix lint issues
 pnpm format:fix  # Auto-fix formatting
 pnpm test        # All tests pass
 pnpm build       # Build succeeds (skip if watch mode is running)
+```
+
+If icons were added or modified, also run:
+```bash
+node scripts/generate-icon-previews.mjs
+node scripts/generate-color-defaults.mjs
 ```
 
 **Also update the actions reference** when adding, removing, or modifying actions:
