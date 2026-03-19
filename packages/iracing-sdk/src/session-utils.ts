@@ -7,29 +7,46 @@
 interface DriverEntry {
   CarIdx: number;
   CarNumber: string;
+  CarNumberRaw: number;
   CarIsPaceCar?: number;
 }
 
 /**
- * Get the car number for a given car index from session info.
+ * Get the display car number for a given car index from session info.
+ *
+ * Returns the string representation (e.g., "042") preserving leading zeros.
+ * Use this for chat commands where the exact string matters.
  *
  * @param sessionInfo - The iRacing session info object
  * @param carIdx - The car index to look up
- * @returns The numeric car number, or null if not found
+ * @returns The car number string (preserving leading zeros), or null if not found
  */
-export function getCarNumberFromSessionInfo(sessionInfo: unknown, carIdx: number): number | null {
-  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
-  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
-
-  if (!drivers) return null;
-
-  const driver = drivers.find((d) => d.CarIdx === carIdx);
+export function getCarNumberFromSessionInfo(sessionInfo: unknown, carIdx: number): string | null {
+  const driver = findDriver(sessionInfo, carIdx);
 
   if (!driver) return null;
 
-  const num = parseInt(driver.CarNumber, 10);
+  const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
 
-  return isNaN(num) ? null : num;
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+/**
+ * Get the raw car number for a given car index from session info.
+ *
+ * Returns the CarNumberRaw value used by iRacing's camera API
+ * (e.g., 3042 for display number "042").
+ *
+ * @param sessionInfo - The iRacing session info object
+ * @param carIdx - The car index to look up
+ * @returns The raw car number for camera API calls, or null if not found
+ */
+export function getCarNumberRawFromSessionInfo(sessionInfo: unknown, carIdx: number): number | null {
+  const driver = findDriver(sessionInfo, carIdx);
+
+  if (!driver) return null;
+
+  return driver.CarNumberRaw ?? null;
 }
 
 /**
@@ -37,30 +54,42 @@ export function getCarNumberFromSessionInfo(sessionInfo: unknown, carIdx: number
  *
  * @param sessionInfo - The iRacing session info object
  * @param excludePaceCar - Whether to exclude the pace car (default: false)
- * @returns Array of { carIdx, carNumber } sorted by car number ascending
+ * @returns Array of { carIdx, carNumber, carNumberRaw } sorted by car number ascending
  */
 export function getAllCarNumbers(
   sessionInfo: unknown,
   excludePaceCar = false,
-): Array<{ carIdx: number; carNumber: number }> {
+): Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> {
   const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
   const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
 
   if (!drivers) return [];
 
-  const result: Array<{ carIdx: number; carNumber: number }> = [];
+  const result: Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> = [];
 
   for (const driver of drivers) {
     if (excludePaceCar && driver.CarIsPaceCar === 1) continue;
 
-    const num = parseInt(driver.CarNumber, 10);
+    const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
 
-    if (isNaN(num)) continue;
+    if (cleaned.length === 0) continue;
 
-    result.push({ carIdx: driver.CarIdx, carNumber: num });
+    result.push({ carIdx: driver.CarIdx, carNumber: cleaned, carNumberRaw: driver.CarNumberRaw });
   }
 
-  result.sort((a, b) => a.carNumber - b.carNumber);
+  result.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));
 
   return result;
+}
+
+/**
+ * Find a driver entry by car index from session info.
+ */
+function findDriver(sessionInfo: unknown, carIdx: number): DriverEntry | null {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
+
+  if (!drivers) return null;
+
+  return drivers.find((d) => d.CarIdx === carIdx) ?? null;
 }
