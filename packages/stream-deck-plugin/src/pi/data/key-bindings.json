@@ -16,7 +16,8 @@
   ],
   "splitsDelta": [
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },
-    { "id": "previous", "label": "Previous", "default": "Shift+Tab", "setting": "splitsDeltaPrevious" }
+    { "id": "previous", "label": "Previous", "default": "Shift+Tab", "setting": "splitsDeltaPrevious" },
+    { "id": "displayRefCar", "label": "Display Reference Car", "default": "Ctrl+C", "setting": "toggleUiDisplayRefCar" }
   ],
   "toggleUi": [
     { "id": "dashBox", "label": "Dash Box", "default": "D", "setting": "toggleUiDashBox" },
@@ -30,8 +31,7 @@
     },
     { "id": "weatherRadar", "label": "Weather Radar", "default": "Shift+Alt+R", "setting": "toggleUiWeatherRadar" },
     { "id": "virtualMirror", "label": "Virtual Mirror", "default": "Alt+M", "setting": "toggleUiVirtualMirror" },
-    { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" },
-    { "id": "displayRefCar", "label": "Display Reference Car", "default": "Ctrl+C", "setting": "toggleUiDisplayRefCar" }
+    { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" }
   ],
   "lookDirection": [
     { "id": "left", "label": "Look Left", "default": "Z", "setting": "lookDirectionLeft" },

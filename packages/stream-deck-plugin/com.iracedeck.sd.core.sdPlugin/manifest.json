@@ -71,10 +71,10 @@
       ]
     },
     {
-      "Name": "Splits Delta Cycle",
+      "Name": "Splits & Reference",
       "UUID": "com.iracedeck.sd.core.splits-delta-cycle",
       "Icon": "imgs/actions/splits-delta-cycle/icon",
-      "Tooltip": "Cycle through iRacing split-time delta display modes",
+      "Tooltip": "Cycle splits delta display modes or toggle reference car",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
         "Keypad",
@@ -83,7 +83,8 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
-          "Rotate": "Next/Previous splits delta"
+          "Rotate": "Next/Previous splits delta",
+          "Push": "Toggle reference car"
         }
       },
       "States": [

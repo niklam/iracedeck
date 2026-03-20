@@ -4,7 +4,14 @@
 		<%- include('head-common') %>
 	</head>
 	<body>
-		<sdpi-item label="Direction">
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="cycle">
+				<option value="cycle">Cycle Splits Delta</option>
+				<option value="toggle-ref-car">Toggle Reference Car</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="direction-item" label="Direction">
 			<sdpi-select setting="direction" default="next">
 				<option value="next">Next</option>
 				<option value="previous">Previous</option>
@@ -20,5 +27,51 @@
 		}) %>
 
 		<%- include('global-settings') %>
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					updateVisibility(modeSelect.value || "cycle");
+
+					modeSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+					modeSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value);
+					});
+
+					let lastMode = modeSelect.value || "cycle";
+					setInterval(() => {
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
+						}
+					}, 100);
+				}
+			}
+
+			function updateVisibility(mode) {
+				const directionItem = document.getElementById("direction-item");
+				if (mode === "cycle") {
+					directionItem?.classList.remove("hidden");
+				} else {
+					directionItem?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 	</body>
 </html>
