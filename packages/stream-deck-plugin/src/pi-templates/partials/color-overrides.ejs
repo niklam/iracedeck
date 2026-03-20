@@ -33,14 +33,13 @@ var defaultG2 = (defaults && defaults.graphic2Color) || '#ffffff';
     '</div>' +
     '</sdpi-item>' +
     slots.map(function(slot) {
-      var defaultColor = (defaults && defaults[slot]) || '#000000';
       var inputId = 'color-override-' + slot;
       return '<sdpi-item label="' + slotLabels[slot] + '">' +
         '<div style="display:flex;align-items:center;gap:6px;">' +
         '<sdpi-color id="' + inputId + '" setting="colorOverrides.' + slot + '" default="#000001"></sdpi-color>' +
         '<a href="#" class="ird-color-reset" data-input="' + inputId + '" data-default="#000001" ' +
           'style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" ' +
-          'title="Reset to default">&#x21BA;</a>' +
+          'title="Reset to global">&#x21BA;</a>' +
         '</div>' +
         '</sdpi-item>';
     }).join('\n')
