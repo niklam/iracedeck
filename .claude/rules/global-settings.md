@@ -33,7 +33,6 @@ For multiple key bindings, use the template partial:
 
 ```ejs
 <%- include('global-key-bindings', {
-  subtitle: 'Black Box Key Bindings',
   keyBindings: require('./data/key-bindings.json').blackBox
 }) %>
 ```

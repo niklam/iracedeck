@@ -41,7 +41,6 @@ packages/stream-deck-plugin-{name}/
 
     <!-- Global settings section (if needed) -->
     <%- include('global-key-bindings', {
-      subtitle: 'Category Name',
       keyBindings: require('./data/key-bindings.json').category
     }) %>
 
