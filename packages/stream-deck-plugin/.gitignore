@@ -5,3 +5,6 @@ node_modules/
 *.sdPlugin/bin
 *.sdPlugin/logs
 *.sdPlugin/.mock
+
+# Generated PI HTML (built from src/pi/*.ejs templates)
+*.sdPlugin/ui/*.html
