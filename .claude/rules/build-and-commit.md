@@ -8,11 +8,14 @@ Build
 - Useful shortcuts:
 
 ```bash
-pnpm build:stream-deck
-pnpm watch:stream-deck
-pnpm link:stream-deck      # Register plugin with Stream Deck
-pnpm unlink:stream-deck    # Unregister plugin from Stream Deck
-pnpm relink:stream-deck    # Unlink + link (useful when switching worktrees)
+pnpm build:ts               # Build all TypeScript (excludes native addon)
+pnpm build:native           # Build native addon only
+pnpm build:stream-deck      # Build TS + restart Stream Deck plugin
+pnpm restart:stream-deck    # Restart Stream Deck plugin
+pnpm watch:stream-deck      # Watch mode with auto-restart
+pnpm link:stream-deck       # Register plugin with Stream Deck
+pnpm unlink:stream-deck     # Unregister plugin from Stream Deck
+pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 ```
 
 ### Build verification
