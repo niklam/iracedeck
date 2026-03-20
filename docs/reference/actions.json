@@ -146,13 +146,22 @@
         },
         {
           "id": "com.iracedeck.sd.core.splits-delta-cycle",
-          "name": "Splits Delta Cycle",
+          "name": "Splits & Reference",
           "file": "splits-delta-cycle.ts",
           "encoder": true,
-          "settingsKey": "direction",
+          "settingsKey": "mode",
           "modes": [
-            { "value": "next", "label": "Next Delta Mode" },
-            { "value": "previous", "label": "Previous Delta Mode" }
+            {
+              "value": "cycle",
+              "label": "Cycle Delta Mode",
+              "description": "Cycles through splits delta display modes (next/previous via direction setting)",
+              "subSettings": { "direction": ["next", "previous"] }
+            },
+            {
+              "value": "toggle-ref-car",
+              "label": "Toggle Reference Car",
+              "description": "Toggles the reference car display on/off"
+            }
           ]
         },
         {
@@ -183,7 +192,12 @@
             { "value": "weather-radar", "label": "Weather Radar" },
             { "value": "virtual-mirror", "label": "Virtual Mirror" },
             { "value": "ui-edit-mode", "label": "UI Edit Mode" },
-            { "value": "display-ref-car", "label": "Display Reference Car" },
+            {
+              "value": "display-ref-car",
+              "label": "Display Reference Car",
+              "deprecated": true,
+              "movedTo": "com.iracedeck.sd.core.splits-delta-cycle (toggle-ref-car mode)"
+            },
             { "value": "replay-ui", "label": "Replay UI" }
           ]
         }

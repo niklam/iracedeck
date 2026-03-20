@@ -17,7 +17,7 @@ See [Action Types](../action-types.md) for type definitions.
 | # | Action | Type | Documentation |
 |---|--------|------|---------------|
 | 1 | Black Box Selector | Multi-toggle | [Details](actions/black-box-selector.md) |
-| 2 | Splits Delta Cycle | Multi-toggle | [Details](actions/splits-delta-cycle.md) |
+| 2 | Splits & Reference | Multi-toggle | [Details](actions/splits-delta-cycle.md) |
 | 3 | Toggle Display Reference Car | Toggle | [Details](actions/toggle-display-reference-car.md) |
 | 4 | Starter | Button | [Details](actions/starter.md) |
 | 5 | Ignition | Button | [Details](actions/ignition.md) |

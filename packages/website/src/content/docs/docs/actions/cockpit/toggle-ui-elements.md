@@ -3,7 +3,7 @@ title: Toggle UI Elements
 description: Show or hide iRacing's on-screen UI elements
 sidebar:
   badge:
-    text: "9 modes"
+    text: "8 modes"
     variant: tip
 ---
 
@@ -20,7 +20,7 @@ The Toggle UI Elements action lets you quickly show or hide various iRacing on-s
 | Weather Radar | Toggles the weather radar overlay. |
 | Virtual Mirror | Toggles the virtual mirror. |
 | UI Edit Mode | Enters or exits UI edit mode for repositioning overlays. |
-| Display Reference Car | Toggles the reference car display. |
+| Display Reference Car | Toggles the reference car display. *(Deprecated — use the [Splits & Reference](/docs/actions/cockpit/splits-delta-cycle/) action instead.)* |
 | Replay UI | Toggles the replay user interface controls. |
 
 ## Encoder Support
