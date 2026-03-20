@@ -78,7 +78,7 @@ Colors resolve at render time via `resolveIconColors()`:
 
 ### What stays fixed (never colorizable)
 
-- Semantic data colors: green (`#2ecc71`), red (`#e74c3c`), yellow (`#f1c40f`), blue (`#3498db`)
+- Semantic data colors: green (`#2ecc71`), red (`#e74c3c`), yellow (`#f39c12`), blue (`#3498db`)
 - Black box inner artwork (frame, data labels, data values)
 - Text inside graphics (e.g., "START" on the starter button)
 - Multi-color artwork (colored blocks in splits-delta icons)

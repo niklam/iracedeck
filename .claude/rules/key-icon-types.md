@@ -5,7 +5,7 @@ paths:
 ---
 # Key Icon Types
 
-This document defines standardized icon types for Stream Deck key icons. All icons are 144x144 SVGs with Mustache color placeholders and `<desc>` metadata. No `rx` on background rects — Stream Deck controls corner radius.
+This document defines standardized key icon type layouts. Standalone icon templates (`packages/icons/**/*.svg`) are 144x144 SVGs with Mustache color placeholders and `<desc>` metadata, no `rx` on background rects. Key icons (`**/imgs/actions/**/key.svg`) are 72x72 static full-color SVGs with no Mustache placeholders and no `activity-state` filter.
 
 ## Default Key Icon Type
 
@@ -23,8 +23,8 @@ The standard layout for most action icons.
     {icon content using {{graphic1Color}} for eligible artwork}
 
     <!-- Two-line label area -->
-    <text x="72" y="104" fill="{{textColor}}" ...>{subLabel}</text>
-    <text x="72" y="126" fill="{{textColor}}" ...>{mainLabel}</text>
+    <text x="72" y="104" fill="{{textColor}}" ...>{{subLabel}}</text>
+    <text x="72" y="126" fill="{{textColor}}" ...>{{mainLabel}}</text>
   </g>
 </svg>
 ```

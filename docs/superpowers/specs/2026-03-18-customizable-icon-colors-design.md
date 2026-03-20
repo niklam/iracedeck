@@ -305,9 +305,9 @@ Each action's PI template gains the Color Overrides section. This can use a shar
 
 ### Integration tests
 
-- Action renders icon with default colors when no overrides set.
-- Action renders icon with global colors when set.
-- Action renders icon with per-action overrides taking priority over global.
+- Icon uses default colors when no overrides exist.
+- When global colors are set, the icon uses them.
+- Per-action color overrides take precedence over global settings.
 - Dynamic templates render correctly at 144x144.
 
 ### Manual testing
