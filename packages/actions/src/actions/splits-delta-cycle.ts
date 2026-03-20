@@ -152,6 +152,11 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SplitsDeltaCycleSettings>): Promise<void> {
+    const parsed = SplitsDeltaCycleSettings.safeParse(ev.payload.settings);
+    const settings = parsed.success ? parsed.data : SplitsDeltaCycleSettings.parse({});
+
+    if (settings.mode !== "cycle") return;
+
     this.logger.info(`Dial rotated: ${ev.payload.ticks} ticks`);
 
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
