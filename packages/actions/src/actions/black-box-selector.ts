@@ -6,6 +6,7 @@ import {
   getGlobalSettings,
   getKeyboard,
   type IDeckDialRotateEvent,
+  type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,

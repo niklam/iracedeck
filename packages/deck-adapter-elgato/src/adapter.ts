@@ -7,7 +7,6 @@
  */
 import type StreamDeck from "@elgato/streamdeck";
 import {
-  action,
   type DialDownEvent,
   type DialRotateEvent,
   type DialUpEvent,
@@ -161,10 +160,12 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
-    // Dynamically create a SingletonAction subclass that delegates to the handler.
-    // The @action decorator registers the UUID with the Elgato SDK.
-    @action({ UUID: uuid })
+    // Create a SingletonAction subclass that delegates to the handler.
+    // Set manifestId directly instead of using the @action decorator to avoid
+    // the __esDecorate helper which emits `(this && ...)` — invalid in ESM.
     class BridgeAction extends SingletonAction<T & JsonObject> {
+      override manifestId = uuid;
+
       override async onWillAppear(ev: WillAppearEvent<T & JsonObject>): Promise<void> {
         await handler.onWillAppear?.(wrapEvent(ev) as IDeckWillAppearEvent<T>);
       }
