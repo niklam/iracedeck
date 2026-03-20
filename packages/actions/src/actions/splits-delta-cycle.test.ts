@@ -111,12 +111,12 @@ describe("SplitsDeltaCycle", () => {
       expect(decodeURIComponent(result)).toContain("PREVIOUS");
     });
 
-    it("should include SPLITS & REF label for cycle mode", () => {
+    it("should include SPLITS DELTA label for cycle mode", () => {
       const next = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "next" });
       const previous = generateSplitsDeltaCycleSvg({ mode: "cycle", direction: "previous" });
 
-      expect(decodeURIComponent(next)).toContain("SPLITS & REF");
-      expect(decodeURIComponent(previous)).toContain("SPLITS & REF");
+      expect(decodeURIComponent(next)).toContain("SPLITS DELTA");
+      expect(decodeURIComponent(previous)).toContain("SPLITS DELTA");
     });
 
     it("should generate ref car icon for toggle-ref-car mode", () => {

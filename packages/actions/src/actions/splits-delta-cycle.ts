@@ -67,7 +67,7 @@ export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings):
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: direction === "next" ? "NEXT" : "PREVIOUS",
-    subLabel: "SPLITS & REF",
+    subLabel: "SPLITS DELTA",
     ...colors,
   });
 
