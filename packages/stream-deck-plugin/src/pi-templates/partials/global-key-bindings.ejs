@@ -1,17 +1,20 @@
 <!--
   Global Key Bindings Component
 
-  Displays key binding inputs in a "Related Key Bindings" section.
+  Displays key binding inputs in a collapsible "Related Key Bindings" accordion.
   Key bindings are stored in global settings (shared across all action instances).
+  Collapsed by default.
 
   Parameters:
     - keyBindings: Array with objects containing id, label, default, setting
 -->
-<div class="ird-key-bindings-section">
-  <div class="ird-section-heading">Related Key Bindings</div>
-  <% keyBindings.forEach(function(binding) { %>
-  <sdpi-item label="<%= binding.label %>">
-    <ird-key-binding setting="<%= binding.setting %>" default="<%= binding.default %>" global></ird-key-binding>
-  </sdpi-item>
-  <% }); %>
-</div>
+<%- include('accordion', {
+  title: 'Related Key Bindings',
+  open: false,
+  content: keyBindings.map(function(binding) {
+    return `
+    <sdpi-item label="${binding.label}">
+      <ird-key-binding setting="${binding.setting}" default="${binding.default}" global></ird-key-binding>
+    </sdpi-item>`;
+  }).join('')
+}) %>
