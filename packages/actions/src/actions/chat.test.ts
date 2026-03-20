@@ -1,0 +1,582 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  Chat,
+  CHAT_GLOBAL_KEYS,
+  generateChatSvg,
+  generateMacroSvg,
+  generateSendMessageSvg,
+  hasTemplateVars,
+} from "./chat.js";
+
+const {
+  mockBeginChat,
+  mockReply,
+  mockCancel,
+  mockSendMessage,
+  mockMacro,
+  mockGetCommands,
+  mockSendKeyCombination,
+  mockParseKeyBinding,
+  mockGetGlobalSettings,
+} = vi.hoisted(() => ({
+  mockBeginChat: vi.fn(() => true),
+  mockReply: vi.fn(() => true),
+  mockCancel: vi.fn(() => true),
+  mockSendMessage: vi.fn(() => true),
+  mockMacro: vi.fn(() => true),
+  mockGetCommands: vi.fn(() => ({
+    chat: {
+      beginChat: mockBeginChat,
+      reply: mockReply,
+      cancel: mockCancel,
+      sendMessage: mockSendMessage,
+      macro: mockMacro,
+    },
+  })),
+  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
+  mockParseKeyBinding: vi.fn(),
+  mockGetGlobalSettings: vi.fn(() => ({})),
+}));
+
+vi.mock("@iracedeck/icons/chat/open-chat.svg", () => ({
+  default: "<svg>open-chat-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/chat/reply.svg", () => ({
+  default: "<svg>reply-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/chat/whisper.svg", () => ({
+  default: "<svg>whisper-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/chat/respond-pm.svg", () => ({
+  default: "<svg>respond-pm-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/chat/cancel.svg", () => ({
+  default: "<svg>cancel-icon</svg>",
+}));
+
+vi.mock("@iracedeck/deck-core", () => ({
+  CommonSettings: {
+    extend: () => {
+      const defaults = {
+        mode: "send-message",
+        message: "",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        keyText: "",
+        fontSize: 11,
+      };
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
+      };
+
+      return schema;
+    },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+  },
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    updateConnectionState = vi.fn();
+    setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
+    async onWillDisappear() {}
+  },
+  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
+    if (b.modifiers?.length) {
+      return `${b.modifiers.join("+")}+${b.key}`;
+    }
+
+    return b.key;
+  }),
+  generateIconText: vi.fn(
+    ({ text, fontSize }: { text: string; fontSize: number }) => `<text font-size="${fontSize}">${text}</text>`,
+  ),
+  getCommands: mockGetCommands,
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: mockGetGlobalSettings,
+  getKeyboard: vi.fn(() => ({
+    sendKeyCombination: mockSendKeyCombination,
+    pressKeyCombination: vi.fn().mockResolvedValue(true),
+    releaseKeyCombination: vi.fn().mockResolvedValue(true),
+  })),
+  LogLevel: { Info: 2 },
+  parseKeyBinding: mockParseKeyBinding,
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.iconContent || ""}${data.color || ""}${data.textElement || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+/** Create a minimal fake event with the given action ID and settings. */
+function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
+  return {
+    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    payload: { settings },
+  };
+}
+
+type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "open-chat" | "cancel";
+
+/** Helper to build chat settings for test functions */
+function chatSettings(
+  overrides: Partial<{
+    mode: ChatMode;
+    message: string;
+    macroNumber: number;
+    iconColor: string;
+    keyText: string;
+    fontSize: number;
+  }> = {},
+) {
+  return {
+    mode: (overrides.mode ?? "send-message") as ChatMode,
+    message: overrides.message ?? "",
+    macroNumber: overrides.macroNumber ?? 1,
+    iconColor: overrides.iconColor ?? "#4a90d9",
+    keyText: overrides.keyText ?? "",
+    fontSize: overrides.fontSize ?? 11,
+  };
+}
+
+describe("Chat", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("constants", () => {
+    it("should map keyboard modes to correct global settings keys", () => {
+      expect(CHAT_GLOBAL_KEYS["whisper"]).toBe("chatWhisper");
+    });
+
+    it("should not contain SDK-based modes", () => {
+      expect(CHAT_GLOBAL_KEYS["open-chat"]).toBeUndefined();
+      expect(CHAT_GLOBAL_KEYS["reply"]).toBeUndefined();
+      expect(CHAT_GLOBAL_KEYS["respond-pm"]).toBeUndefined();
+      expect(CHAT_GLOBAL_KEYS["cancel"]).toBeUndefined();
+      expect(CHAT_GLOBAL_KEYS["send-message"]).toBeUndefined();
+      expect(CHAT_GLOBAL_KEYS["macro"]).toBeUndefined();
+    });
+  });
+
+  describe("hasTemplateVars", () => {
+    it("should return true when keyText contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Speed: {{speed}}", message: "" })).toBe(true);
+    });
+
+    it("should return true when message contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "", message: "Going {{speed}} mph" })).toBe(true);
+    });
+
+    it("should return true when both contain template variables", () => {
+      expect(hasTemplateVars({ keyText: "{{gear}}", message: "{{speed}}" })).toBe(true);
+    });
+
+    it("should return false when neither contains template variables", () => {
+      expect(hasTemplateVars({ keyText: "Static", message: "Hello" })).toBe(false);
+    });
+
+    it("should return false for empty strings", () => {
+      expect(hasTemplateVars({ keyText: "", message: "" })).toBe(false);
+    });
+
+    it("should detect partial mustache syntax", () => {
+      expect(hasTemplateVars({ keyText: "", message: "Use {{ for templates" })).toBe(true);
+    });
+  });
+
+  describe("issue #114 regression", () => {
+    it("should display resolved message in send-message icon when keyText is empty", () => {
+      // When resolveSettingsTemplates resolves message, generateChatSvg should
+      // show the resolved value (not raw {{...}}) in the chat bubble
+      const result = generateChatSvg({
+        mode: "send-message",
+        message: "Going 95 mph",
+        keyText: "",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        fontSize: 11,
+      });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Going 95 mph");
+      expect(decoded).not.toContain("{{");
+    });
+  });
+
+  describe("generateChatSvg", () => {
+    const allModes = [
+      "open-chat",
+      "reply",
+      "whisper",
+      "respond-pm",
+      "cancel",
+      "send-message",
+      "macro",
+    ] as const;
+
+    const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "", fontSize: 11 };
+
+    it.each(allModes)("should generate a valid data URI for %s", (mode) => {
+      const result = generateChatSvg({ mode, ...defaultSettings });
+
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should produce different icons for different modes", () => {
+      const icons = allModes.map((mode) => generateChatSvg({ mode, ...defaultSettings }));
+
+      for (let i = 0; i < icons.length; i++) {
+        for (let j = i + 1; j < icons.length; j++) {
+          expect(icons[i]).not.toBe(icons[j]);
+        }
+      }
+    });
+
+    it("should include correct labels for icon-based modes", () => {
+      // Note: send-message and macro modes use text inside bubble, not labels
+      const expectedLabels: Record<string, { line1: string; line2: string }> = {
+        "open-chat": { line1: "OPEN", line2: "CHAT" },
+        reply: { line1: "REPLY", line2: "CHAT" },
+        whisper: { line1: "WHISPER", line2: "CHAT" },
+        "respond-pm": { line1: "RESPOND", line2: "LAST PM" },
+        cancel: { line1: "CANCEL", line2: "CHAT" },
+      };
+
+      for (const [mode, labels] of Object.entries(expectedLabels)) {
+        const result = generateChatSvg({ mode: mode as any, ...defaultSettings });
+        const decoded = decodeURIComponent(result);
+
+        expect(decoded).toContain(labels.line1);
+        expect(decoded).toContain(labels.line2);
+      }
+    });
+
+    it("should render send-message mode with message text inside bubble", () => {
+      const result = generateChatSvg({
+        mode: "send-message",
+        message: "Thank you!",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        keyText: "",
+        fontSize: 11,
+      });
+      const decoded = decodeURIComponent(result);
+
+      // Should contain the message text
+      expect(decoded).toContain("Thank you!");
+      // Should NOT contain "SEND" or "MESSAGE" labels
+      expect(decoded).not.toContain("SEND");
+      expect(decoded).not.toContain("MESSAGE");
+    });
+
+    it("should prefer keyText over message for send-message mode", () => {
+      const result = generateChatSvg({
+        mode: "send-message",
+        message: "Original message",
+        macroNumber: 1,
+        iconColor: "#4a90d9",
+        keyText: "Custom label",
+        fontSize: 11,
+      });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Custom label");
+      expect(decoded).not.toContain("Original message");
+    });
+
+    it("should fall back to open-chat defaults for unspecified settings", () => {
+      const result = generateChatSvg({} as any);
+      const decoded = decodeURIComponent(result);
+
+      expect(result).toContain("data:image/svg+xml");
+      expect(decoded).toContain("OPEN");
+    });
+
+    it("should use custom icon color", () => {
+      const customColor = "#ff5500";
+      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, iconColor: customColor });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(customColor);
+    });
+
+    it("should use custom key text when provided", () => {
+      const customText = "CUSTOM";
+      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: customText });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("CUSTOM");
+      // Should NOT contain default labels
+      expect(decoded).not.toContain("OPEN");
+      expect(decoded).not.toContain("CHAT");
+    });
+
+    it("should use default labels when keyText is empty", () => {
+      const result = generateChatSvg({ mode: "reply", ...defaultSettings, keyText: "" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("REPLY");
+      expect(decoded).toContain("CHAT");
+    });
+
+    it("should support two-line custom key text", () => {
+      const twoLineText = "LINE1\nLINE2";
+      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: twoLineText });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("LINE1");
+      expect(decoded).toContain("LINE2");
+    });
+
+    it("should trim whitespace from custom key text", () => {
+      const textWithWhitespace = "  TRIMMED  ";
+      const result = generateChatSvg({ mode: "open-chat", ...defaultSettings, keyText: textWithWhitespace });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("TRIMMED");
+    });
+  });
+
+  describe("generateSendMessageSvg", () => {
+    it("should generate a valid data URI", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello!" }));
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should include message text in the bubble", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Thank you!" }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Thank you!");
+    });
+
+    it("should prefer keyText over message", () => {
+      const result = generateSendMessageSvg(chatSettings({ keyText: "Custom", message: "Message" }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Custom");
+      expect(decoded).not.toContain("Message");
+    });
+
+    it("should use message when keyText is empty", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Fallback" }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Fallback");
+    });
+
+    it("should handle empty text gracefully", () => {
+      const result = generateSendMessageSvg(chatSettings());
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should use doubled font size in 144x144 output", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello" }));
+      const decoded = decodeURIComponent(result);
+
+      // Default fontSize=11, doubled to 22 for 144x144
+      expect(decoded).toContain('font-size="22"');
+    });
+
+    it("should use custom font size doubled for 144x144", () => {
+      const result = generateSendMessageSvg(chatSettings({ message: "Hello", fontSize: 20 }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('font-size="40"');
+    });
+  });
+
+  describe("generateMacroSvg", () => {
+    it("should generate a valid data URI", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro" }));
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should include 'Macro' text when no keyText provided", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 5 }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Macro");
+      expect(decoded).toContain("5");
+    });
+
+    it("should show macro number in output", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 12 }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("12");
+    });
+
+    it("should use custom keyText instead of default", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", keyText: "Custom Text", macroNumber: 3 }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Custom Text");
+      expect(decoded).not.toContain("Macro");
+    });
+
+    it("should handle multi-line keyText", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", keyText: "Line1\nLine2" }));
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("Line1");
+      expect(decoded).toContain("Line2");
+    });
+
+    it("should use doubled font sizes for 144x144 when no keyText", () => {
+      const result = generateMacroSvg(chatSettings({ mode: "macro", macroNumber: 5 }));
+      const decoded = decodeURIComponent(result);
+
+      // Default layout: "Macro" at fontSize 20 (10*2), number at fontSize 50 (25*2)
+      expect(decoded).toContain('font-size="20"');
+      expect(decoded).toContain('font-size="50"');
+    });
+  });
+
+  describe("key press behavior (SDK modes)", () => {
+    let action: Chat;
+
+    beforeEach(() => {
+      action = new Chat();
+    });
+
+    it("should call chat.beginChat() on keyDown for open-chat", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "open-chat" }) as any);
+
+      expect(mockBeginChat).toHaveBeenCalledOnce();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
+    });
+
+    it("should call chat.reply() on keyDown for reply", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "reply" }) as any);
+
+      expect(mockReply).toHaveBeenCalledOnce();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+    });
+
+    it("should call chat.reply() on keyDown for respond-pm", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "respond-pm" }) as any);
+
+      expect(mockReply).toHaveBeenCalledOnce();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+    });
+
+    it("should call chat.cancel() on keyDown for cancel", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "cancel" }) as any);
+
+      expect(mockCancel).toHaveBeenCalledOnce();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+    });
+
+    it("should call chat.sendMessage() on keyDown for send-message", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
+
+      expect(mockSendMessage).toHaveBeenCalledWith("Hello!");
+    });
+
+    it("should not call chat.sendMessage() when message is empty", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "" }) as any);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("should not call chat.sendMessage() when message is whitespace only", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "   " }) as any);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("should call chat.macro() on keyDown for macro", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "macro", macroNumber: 5 }) as any);
+
+      expect(mockMacro).toHaveBeenCalledWith(5);
+    });
+
+    it("should default to send-message when no mode is specified", async () => {
+      await action.onKeyDown(fakeEvent("action-1", {}) as any);
+
+      // Default mode is send-message with empty message, which warns and skips
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("key press behavior (keyboard modes)", () => {
+    let action: Chat;
+
+    beforeEach(() => {
+      action = new Chat();
+      mockParseKeyBinding.mockReturnValue({ key: "slash", modifiers: [], code: 53 });
+      mockGetGlobalSettings.mockReturnValue({
+        chatWhisper: '{"key":"slash","modifiers":[],"code":53}',
+      });
+    });
+
+    it("should call sendKeyCombination for whisper", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
+
+      expect(mockSendKeyCombination).toHaveBeenCalledOnce();
+    });
+
+    it("should warn when no key binding configured for whisper", async () => {
+      mockParseKeyBinding.mockReturnValue(null);
+
+      await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
+
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should not call SDK commands for keyboard modes", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
+
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockMacro).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("encoder behavior", () => {
+    let action: Chat;
+
+    beforeEach(() => {
+      action = new Chat();
+    });
+
+    it("should trigger same action as keyDown on dialDown", async () => {
+      await action.onDialDown(fakeEvent("action-1", { mode: "open-chat" }) as any);
+
+      expect(mockBeginChat).toHaveBeenCalledOnce();
+    });
+
+    it("should trigger macro on dialDown for macro mode", async () => {
+      await action.onDialDown(fakeEvent("action-1", { mode: "macro", macroNumber: 3 }) as any);
+
+      expect(mockMacro).toHaveBeenCalledWith(3);
+    });
+
+    it("should not trigger any action on dialRotate", async () => {
+      await action.onDialRotate({
+        action: { id: "action-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "open-chat" }, ticks: 1 },
+      } as any);
+
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockReply).not.toHaveBeenCalled();
+      expect(mockCancel).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockMacro).not.toHaveBeenCalled();
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+  });
+});
