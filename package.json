@@ -27,7 +27,7 @@
     "link:stream-deck": "streamdeck link .\\packages\\stream-deck-plugin\\com.iracedeck.sd.core.sdPlugin",
     "unlink:stream-deck": "streamdeck unlink -d com.iracedeck.sd.core",
     "relink:stream-deck": "streamdeck unlink -d com.iracedeck.sd.core 2>NUL & streamdeck link .\\packages\\stream-deck-plugin\\com.iracedeck.sd.core.sdPlugin",
-    "telemetry-snapshot": "pnpm --filter @iracedeck/iracing-sdk telemetry-snapshot -- --output-dir=local",
+    "telemetry-snapshot": "pnpm --filter @iracedeck/iracing-sdk telemetry-snapshot -- --include-session --output-dir=local",
     "watch:stream-deck": "pnpm --filter \"@iracedeck/stream-deck-plugin\" run watch",
     "release": "node scripts/release.mjs",
     "release:dry": "node scripts/release.mjs --dry-run",
