@@ -15,7 +15,7 @@ pnpm test:watch
 
 ## Testing Stream Deck Actions
 
-Stream Deck actions require mocking the SDK and shared utilities. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:
+Stream Deck actions require mocking `@iracedeck/deck-core`. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:
 
 ```typescript
 /**
@@ -36,29 +36,39 @@ export function generateIconSvg(): string {
 ```typescript
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock SDK before importing
-vi.mock("@elgato/streamdeck", () => ({
-  default: {
-    logger: {
-      createScope: vi.fn(() => ({
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      })),
+// Mock deck-core before importing
+vi.mock("@iracedeck/deck-core", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+      return schema;
     },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
   },
-  action: () => (target: unknown) => target,
-}));
-
-// Mock shared utilities
-vi.mock("../shared/index.js", () => ({
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
   },
-  // ... other mocks
+  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) =>
+    b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  getKeyboard: vi.fn(() => ({
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
+  })),
+  LogLevel: { Info: 2 },
+  parseKeyBinding: vi.fn(),
+  resolveIconColors: vi.fn((_svg: string, _global: unknown, _overrides: unknown) => ({})),
+  renderIconTemplate: vi.fn((_t: string, data: Record<string, string>) =>
+    `<svg>${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
 
 import { GLOBAL_KEY_NAME, generateIconSvg } from "./my-action.js";
@@ -85,4 +95,4 @@ describe("MyAction", () => {
 
 ### Reference Implementation
 
-See `packages/stream-deck-plugin/src/actions/splits-delta-cycle.test.ts` for a complete example.
+See `packages/actions/src/actions/splits-delta-cycle.test.ts` for a complete example.

@@ -7,7 +7,10 @@ Packages
 - `@iracedeck/logger`
 - `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions
 - `@iracedeck/iracing-sdk`
-- `@iracedeck/stream-deck-plugin` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions. Shared utilities (base actions, keyboard service, global settings, etc.) live in `src/shared/` within this package.
+- `@iracedeck/deck-core` — Platform-agnostic base classes, types, and shared utilities (base actions, keyboard service, global settings, icon templates, etc.)
+- `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter bridging the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface; also provides `createSDLogger`
+- `@iracedeck/actions` — All action implementations; import from `@iracedeck/deck-core` (not `@elgato/streamdeck`)
+- `@iracedeck/stream-deck-plugin` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions. Registers actions from `@iracedeck/actions` via `ElgatoPlatformAdapter`. The `src/shared/index.ts` re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
 - `@iracedeck/website`
 
 High-level guidance

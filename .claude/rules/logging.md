@@ -3,7 +3,7 @@
 
 ## Overview
 
-Stream Deck plugins use a scoped logging system built on the Stream Deck SDK's logger. The `createSDLogger` adapter in `src/shared/` wraps the SDK logger to provide an `ILogger`-compatible interface.
+Stream Deck plugins use a scoped logging system built on the Stream Deck SDK's logger. The `createSDLogger` adapter in `@iracedeck/deck-adapter-elgato` wraps the SDK logger to provide an `ILogger`-compatible interface. Actions receive their logger via constructor injection from the platform adapter.
 
 ## Core Concepts
 
@@ -19,32 +19,41 @@ logger.info("Connected"); // Output: [iRacingSDK] Connected
 
 ### The createSDLogger Adapter
 
-`createSDLogger` wraps a Stream Deck logger to provide:
+`createSDLogger` (from `@iracedeck/deck-adapter-elgato`) wraps a Stream Deck logger to provide:
 - `ILogger` interface compatibility (for use with `@iracedeck/logger`)
 - Log level filtering
 - Scope chaining via `createScope()`
 
-```typescript
-import { createSDLogger } from "./shared/index.js";
+The `ElgatoPlatformAdapter` exposes `createLogger(scope)` which wraps `createSDLogger` internally:
 
-const logger = createSDLogger(streamDeck.logger.createScope("MyModule"));
+```typescript
+// In plugin.ts — use adapter.createLogger() for scoped loggers
+const logger = adapter.createLogger("MyModule");
 logger.info("Hello"); // Uses proper scope prefix
+```
+
+Actions receive their logger via constructor injection:
+```typescript
+// plugin.ts
+adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 ```
 
 ## Correct Patterns
 
 ### Plugin Initialization
 
-Create scoped loggers in `plugin.ts` and pass them to modules that need logging:
+Create scoped loggers in `plugin.ts` via the platform adapter and pass them to modules that need logging:
 
 ```typescript
 // plugin.ts
-import streamDeck from "@elgato/streamdeck";
-import { createSDLogger, initializeSDK } from "./shared/index.js";
+import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { initializeSDK, initializeKeyboard } from "@iracedeck/deck-core";
 
-// Good: Create scoped logger and pass to module
-initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
-initializeKeyboard(createSDLogger(streamDeck.logger.createScope("Keyboard")));
+const adapter = new ElgatoPlatformAdapter(streamDeck);
+
+// Good: Create scoped logger via adapter and pass to module
+initializeSDK(adapter.createLogger("iRacingSDK"));
+initializeKeyboard(adapter.createLogger("Keyboard"), ...);
 ```
 
 ### Module Design
@@ -95,12 +104,12 @@ sd.logger.warn("[AppMonitor] Already initialized");
 
 ```typescript
 // GOOD: Use scoped logger
-export function initGlobalSettings(sd: StreamDeck, logger: ILogger): void {
+export function initGlobalSettings(adapter: IDeckPlatformAdapter, logger: ILogger): void {
   logger.info("initGlobalSettings called");
 }
 
 // In plugin.ts
-initGlobalSettings(streamDeck, createSDLogger(streamDeck.logger.createScope("GlobalSettings")));
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 ```
 
 ### Do NOT Use SDK Logger Directly in Modules
@@ -109,8 +118,8 @@ initGlobalSettings(streamDeck, createSDLogger(streamDeck.logger.createScope("Glo
 
 ```typescript
 // BAD: Direct SDK logger usage
-export function initAppMonitor(sd: typeof StreamDeck): void {
-  sd.logger.info("[AppMonitor] Initializing...");
+export function initAppMonitor(adapter: IDeckPlatformAdapter): void {
+  // No way to log here!
 }
 ```
 
@@ -118,7 +127,7 @@ export function initAppMonitor(sd: typeof StreamDeck): void {
 
 ```typescript
 // GOOD: Accept logger parameter
-export function initAppMonitor(sd: typeof StreamDeck, logger: ILogger): void {
+export function initAppMonitor(adapter: IDeckPlatformAdapter, logger: ILogger): void {
   logger.info("Initializing...");
 }
 ```
@@ -201,4 +210,4 @@ const quietLogger = logger.withLevel(LogLevel.Warn);
 2. Pass loggers as parameters to modules (dependency injection)
 3. Never use manual string prefixes like `[ModuleName]`
 4. Never use `sd.logger` directly in shared modules
-5. Use `createSDLogger()` to wrap SDK loggers for ILogger compatibility
+5. Use `createSDLogger()` from `@iracedeck/deck-adapter-elgato` (or `adapter.createLogger()`) to wrap SDK loggers for ILogger compatibility

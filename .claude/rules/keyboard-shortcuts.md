@@ -67,7 +67,7 @@ const MyActionSettings = z.object({
 ## Sending Key Combinations
 
 ```typescript
-import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "../shared/index.js";
+import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "@iracedeck/deck-core";
 
 // In action handler
 if (settings.keyBinding?.key) {
@@ -104,7 +104,7 @@ await getKeyboard().releaseKeyCombination(combination);
 ```typescript
 private heldCombinations = new Map<string, KeyCombination>();
 
-override async onKeyDown(ev: KeyDownEvent<Settings>): Promise<void> {
+override async onKeyDown(ev: IDeckKeyDownEvent<Settings>): Promise<void> {
   const combination = this.resolveCombination(ev.payload.settings);
   if (!combination) return;
 
@@ -112,7 +112,7 @@ override async onKeyDown(ev: KeyDownEvent<Settings>): Promise<void> {
   if (success) this.heldCombinations.set(ev.action.id, combination);
 }
 
-override async onKeyUp(ev: KeyUpEvent<Settings>): Promise<void> {
+override async onKeyUp(ev: IDeckKeyUpEvent<Settings>): Promise<void> {
   const combination = this.heldCombinations.get(ev.action.id);
   if (!combination) return;
   this.heldCombinations.delete(ev.action.id);
@@ -120,7 +120,7 @@ override async onKeyUp(ev: KeyUpEvent<Settings>): Promise<void> {
 }
 
 // SAFETY: always release held keys when action disappears
-override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> {
+override async onWillDisappear(ev: IDeckWillDisappearEvent<Settings>): Promise<void> {
   const combination = this.heldCombinations.get(ev.action.id);
   if (combination) {
     this.heldCombinations.delete(ev.action.id);
@@ -131,33 +131,43 @@ override async onWillDisappear(ev: WillDisappearEvent<Settings>): Promise<void> 
 ```
 
 ### Reference implementation
-- Long-press action: `packages/stream-deck-plugin/src/actions/look-direction.ts`
+- Long-press action: `packages/actions/src/actions/look-direction.ts`
 
 ## Plugin Setup for Keyboard Support
 
 When using `getKeyboard()` in a plugin, you MUST:
-1. Import `initializeKeyboard` in your plugin.ts
+1. Import `initializeKeyboard` and `initWindowFocus` from `@iracedeck/deck-core`
 2. Call `initializeKeyboard()` before registering actions
-3. Pass all four scan code callbacks and the window focuser for full functionality
+3. Call `initWindowFocus()` to set up window focusing
+4. Register `focusIRacingIfEnabled()` listeners on the adapter before registering actions
 
 ```typescript
 // plugin.ts
-import { initializeKeyboard } from "./shared/index.js";
+import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { focusIRacingIfEnabled, initializeKeyboard, initWindowFocus } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
+const adapter = new ElgatoPlatformAdapter(streamDeck);
 const native = new IRacingNative();
+
 initializeKeyboard(
-  logger,
+  adapter.createLogger("Keyboard"),
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
-  () => native.focusIRacingWindow(),                   // focus iRacing window (opt-in via global setting)
 );
+
+initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
+
+// Focus iRacing before any action (BEFORE registering actions)
+adapter.onKeyDown(() => focusIRacingIfEnabled());
+adapter.onDialDown(() => focusIRacingIfEnabled());
+adapter.onDialRotate(() => focusIRacingIfEnabled());
 
 // Then register actions...
 ```
 
-When the `focusIRacingWindow` global setting is enabled, the keyboard service automatically calls the window focuser before `sendKey()`, `sendKeyCombination()`, and `pressKeyCombination()`. It is NOT called on `releaseKeyCombination()` since the window should already be focused from the press.
+When the `focusIRacingWindow` global setting is enabled, `focusIRacingIfEnabled()` is called before any action handler fires. This is registered as a listener on the adapter's key/dial events.
 
 ## Global Key Bindings (Shared Across Actions)
 
@@ -171,12 +181,11 @@ When key bindings should be shared across all instances of an action type (e.g.,
 
 ### Plugin Setup
 ```typescript
-// plugin.ts - MUST pass SDK instance and call BEFORE connect()
-import streamDeck from "@elgato/streamdeck";
-import { initGlobalSettings } from "./shared/index.js";
+// plugin.ts - MUST pass adapter and call BEFORE connect()
+import { initGlobalSettings } from "@iracedeck/deck-core";
 
-initGlobalSettings(streamDeck);
-streamDeck.connect();
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+adapter.connect();
 ```
 
 ### Reading Global Key Bindings
@@ -190,7 +199,7 @@ import {
   parseKeyBinding,
   type KeyboardKey,
   type KeyboardModifier,
-} from "../shared/index.js";
+} from "@iracedeck/deck-core";
 
 const globalSettings = getGlobalSettings() as Record<string, unknown>;
 const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
@@ -210,7 +219,7 @@ if (binding?.key) {
 Use the shared `formatKeyBinding` utility for human-readable log output:
 
 ```typescript
-import { formatKeyBinding, parseKeyBinding } from "../shared/index.js";
+import { formatKeyBinding, parseKeyBinding } from "@iracedeck/deck-core";
 
 const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
 if (binding?.key) {
@@ -221,9 +230,9 @@ if (binding?.key) {
 ```
 
 ## Reference Implementation
-- Global key bindings: `packages/stream-deck-plugin/src/actions/black-box-selector.ts`
-- Cycle action with global key bindings: `packages/stream-deck-plugin/src/actions/splits-delta-cycle.ts`
-- Long-press (key hold): `packages/stream-deck-plugin/src/actions/look-direction.ts`
+- Global key bindings: `packages/actions/src/actions/black-box-selector.ts`
+- Cycle action with global key bindings: `packages/actions/src/actions/splits-delta-cycle.ts`
+- Long-press (key hold): `packages/actions/src/actions/look-direction.ts`
 
 ## Do NOT Use
 - Hardcoded key mappings in action code
@@ -234,7 +243,7 @@ When modifying keyboard functionality, changes must be synchronized across all l
 
 1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
 2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
-3. **Keyboard service** (`stream-deck-plugin/src/shared/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
+3. **Keyboard service** (`deck-core/src/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
 4. **Plugin init** (`stream-deck-plugin/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
 5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
 6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API

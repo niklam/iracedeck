@@ -58,7 +58,7 @@ For non-key-binding global settings, use the `global` attribute on sdpi componen
 ### Reading Global Settings
 
 ```typescript
-import { getGlobalSettings } from "../shared/index.js";
+import { getGlobalSettings } from "@iracedeck/deck-core";
 
 // In your action handler
 const globalSettings = getGlobalSettings();
@@ -74,7 +74,7 @@ if (keyBinding?.key) {
 
 ### GlobalSettingsSchema
 
-Global settings are validated with Zod. The schema is in `stream-deck-plugin/src/shared/global-settings.ts`:
+Global settings are validated with Zod. The schema is in `deck-core/src/global-settings.ts`:
 
 ```typescript
 const GlobalSettingsSchema = z.object({

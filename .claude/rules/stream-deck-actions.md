@@ -4,7 +4,7 @@
 ## SDK-First Principle
 
 **ALWAYS use iRacing SDK commands when available** instead of keyboard shortcuts:
-- Use `getCommands()` from `../shared/index.js` (in action code) for SDK operations
+- Use `getCommands()` from `@iracedeck/deck-core` (in action code) for SDK operations
 - Check `docs/keyboard-shortcuts.md` "Available via SDK" column before implementing
 - Only fall back to `getKeyboard().sendKeyCombination()` when SDK doesn't support the feature
 
@@ -30,21 +30,25 @@ The `bin/` folder contains build output and must not be committed to git.
 
 ## Action Locations
 
-- Stream Deck actions live under each plugin: `{package}/src/actions/**`.
+- Action implementations live in `packages/actions/src/actions/`.
+- Actions import from `@iracedeck/deck-core` (NOT from `@elgato/streamdeck` or `../shared/index.js`).
 
 Requirements
 
-- All actions must extend `ConnectionStateAwareAction` from `../shared/index.js`.
+- All actions must extend `ConnectionStateAwareAction` from `@iracedeck/deck-core`.
+- Actions export a UUID constant (e.g., `MY_ACTION_UUID`) — no `@action` decorator.
+- Logger is injected via constructor, not created in the action class.
+- Event types use `IDeck` prefix: `IDeckWillAppearEvent<T>`, `IDeckKeyDownEvent<T>`, etc.
 - Action settings should use Zod schemas when the action has settings.
 - Actions must not implement their own global offline handling; offline behavior is handled centrally.
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
 
 ### CommonSettings
 
-All action settings schemas must extend `CommonSettings` from `../shared/index.js`:
+All action settings schemas must extend `CommonSettings` from `@iracedeck/deck-core`:
 
 ```typescript
-import { CommonSettings } from "../shared/index.js";
+import { CommonSettings } from "@iracedeck/deck-core";
 
 const MyActionSettings = CommonSettings.extend({
   direction: z.enum(["next", "previous"]).default("next"),
@@ -60,12 +64,12 @@ Actions with no custom settings use `CommonSettings` directly.
 All actions must call `super.onWillAppear(ev)` and `super.onDidReceiveSettings(ev)` in their lifecycle hooks:
 
 ```typescript
-override async onWillAppear(ev: WillAppearEvent<MySettings>): Promise<void> {
+override async onWillAppear(ev: IDeckWillAppearEvent<MySettings>): Promise<void> {
   await super.onWillAppear(ev);
   // ... action-specific logic
 }
 
-override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<MySettings>): Promise<void> {
+override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<MySettings>): Promise<void> {
   await super.onDidReceiveSettings(ev);
   // ... action-specific logic
 }
@@ -78,13 +82,13 @@ This is required for BaseAction features (flag overlay, future common features) 
 Always implement `onDidReceiveSettings()` to respond to Property Inspector changes:
 
 ```typescript
-override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<MySettings>): Promise<void> {
+override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<MySettings>): Promise<void> {
   await super.onDidReceiveSettings(ev);
   await this.updateDisplay(ev);
 }
 
 private async updateDisplay(
-  ev: WillAppearEvent<MySettings> | DidReceiveSettingsEvent<MySettings>,
+  ev: IDeckWillAppearEvent<MySettings> | IDeckDidReceiveSettingsEvent<MySettings>,
 ): Promise<void> {
   // Update icon, state, etc.
 }
@@ -264,18 +268,18 @@ Global settings are plugin-level settings shared across all action instances. Us
 
 ### Plugin Setup (CRITICAL)
 
-**IMPORTANT**: Due to module bundling, you MUST pass the SDK instance to `initGlobalSettings()`:
+**IMPORTANT**: You MUST pass the platform adapter to `initGlobalSettings()`:
 
 ```typescript
 // plugin.ts
-import streamDeck from "@elgato/streamdeck";
-import { initGlobalSettings } from "./shared/index.js";
+import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import { initGlobalSettings } from "@iracedeck/deck-core";
 
-// MUST call BEFORE streamDeck.connect() - handlers must be registered first
-// MUST pass the SDK instance
-initGlobalSettings(streamDeck);
+// MUST call BEFORE adapter.connect() - handlers must be registered first
+// MUST pass the adapter (IDeckPlatformAdapter)
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
-streamDeck.connect();
+adapter.connect();
 ```
 
 ### Accessing Global Settings in Actions
@@ -290,7 +294,7 @@ import {
   formatKeyBinding,
   type KeyboardKey,
   type KeyboardModifier,
-} from "../shared/index.js";
+} from "@iracedeck/deck-core";
 
 // Parse key binding from global settings (handles JSON strings automatically)
 const globalSettings = getGlobalSettings() as Record<string, unknown>;
@@ -314,9 +318,9 @@ if (binding?.key) {
 
 ### Common Pitfalls
 
-1. **Settings cache empty on startup**: `initGlobalSettings()` must call `sd.settings.getGlobalSettings()` after registering the listener to fetch initial values
-2. **Callback never fires**: Handlers must be registered BEFORE `connect()`
-3. **Wrong SDK instance**: Always pass `streamDeck` to `initGlobalSettings(streamDeck)`
+1. **Settings cache empty on startup**: `initGlobalSettings()` must call `adapter.getGlobalSettings()` after registering the listener to fetch initial values
+2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
+3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
 
 ## Encoder Support
 
@@ -342,7 +346,7 @@ For Stream Deck+ encoder (dial) support:
 
 ### Rotation Pattern
 ```typescript
-override async onDialRotate(ev: DialRotateEvent<Settings>): Promise<void> {
+override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
   const settings = MySettings.parse(ev.payload.settings);
   // Clockwise (ticks > 0) = next/increase
   // Counter-clockwise (ticks < 0) = previous/decrease
