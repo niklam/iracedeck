@@ -1,6 +1,5 @@
+import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized } from "./keyboard-service.js";
 
 // Mock the keysender module
 const mockSendKey = vi.fn().mockResolvedValue(undefined);

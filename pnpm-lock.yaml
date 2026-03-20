@@ -69,6 +69,90 @@ importers:
         specifier: 4.0.18
         version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@25.3.5)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.2)
 
+  packages/actions:
+    dependencies:
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/icons':
+        specifier: workspace:*
+        version: link:../icons
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.3.5
+        version: 25.3.5
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.0.18
+        version: 4.0.18(@opentelemetry/api@1.9.0)(@types/node@25.3.5)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.2)
+
+  packages/deck-adapter-elgato:
+    dependencies:
+      '@elgato/streamdeck':
+        specifier: 2.0.2
+        version: 2.0.2
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@elgato/utils':
+        specifier: 0.4.4
+        version: 0.4.4
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.3.5
+        version: 25.3.5
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/deck-core:
+    dependencies:
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.3.5
+        version: 25.3.5
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/icons: {}
 
   packages/iracing-native:
@@ -135,6 +219,15 @@ importers:
       '@elgato/streamdeck':
         specifier: 2.0.2
         version: 2.0.2
+      '@iracedeck/actions':
+        specifier: workspace:*
+        version: link:../actions
+      '@iracedeck/deck-adapter-elgato':
+        specifier: workspace:*
+        version: link:../deck-adapter-elgato
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
       '@iracedeck/iracing-native':
         specifier: workspace:*
         version: link:../iracing-native

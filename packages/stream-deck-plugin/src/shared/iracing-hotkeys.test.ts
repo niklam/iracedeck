@@ -1,6 +1,5 @@
+import { getHotkeyPreset, getHotkeysByCategory, IRACING_HOTKEY_PRESETS } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
-
-import { getHotkeyPreset, getHotkeysByCategory, IRACING_HOTKEY_PRESETS } from "./iracing-hotkeys.js";
 
 describe("iRacing Hotkeys", () => {
   describe("IRACING_HOTKEY_PRESETS", () => {

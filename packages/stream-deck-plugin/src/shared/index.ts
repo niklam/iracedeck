@@ -2,32 +2,39 @@
  * @iracedeck/stream-deck-utils
  *
  * Shared utilities for Stream Deck plugins.
+ * Re-exports from @iracedeck/deck-core and @iracedeck/deck-adapter-elgato
+ * for backward compatibility.
  */
 
-// Logger adapter
-export { createSDLogger, SDLoggerLike } from "./sd-logger.js";
-
-// Base action with inactive overlay support
-export { BaseAction } from "./base-action.js";
-
-// Common settings (shared by all actions)
-export { CommonSettings, ColorOverridesSchema, type ColorOverrides } from "./common-settings.js";
-
-// Connection state aware action (extends BaseAction with iRacing connection tracking)
-export { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
-
-// Overlay utilities
+// Re-export everything from deck-core
 export {
+  // Platform abstraction types
+  type IDeckActionContext,
+  type IDeckActionHandler,
+  type IDeckDialDownEvent,
+  type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
+  type IDeckDidReceiveSettingsEvent,
+  type IDeckEvent,
+  type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
+  type IDeckPlatformAdapter,
+  type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  // Base actions
+  BaseAction,
+  CommonSettings,
+  ColorOverridesSchema,
+  type ColorOverrides,
+  ConnectionStateAwareAction,
+  // Overlay utilities
   applyInactiveOverlay,
   hexToGrayscale,
   isDataUri,
   isRawSvg,
   svgToDataUri,
   dataUriToSvg,
-} from "./overlay-utils.js";
-
-// Icon template utilities
-export {
+  // Icon template utilities
   escapeXml,
   generateIconText,
   parseIconDefaults,
@@ -36,16 +43,16 @@ export {
   validateIconTemplate,
   type ColorSlots,
   type GenerateIconTextOptions,
-} from "./icon-template.js";
-
-// Re-export LogLevel for convenience
-export { LogLevel } from "@iracedeck/logger";
-
-// SDK singleton for lazy initialization
-export { initializeSDK, getSDK, getController, getCommands, isSDKInitialized, _resetSDK } from "./sdk-singleton.js";
-
-// Global settings
-export {
+  // Logger
+  LogLevel,
+  // SDK singleton
+  initializeSDK,
+  getSDK,
+  getController,
+  getCommands,
+  isSDKInitialized,
+  _resetSDK,
+  // Global settings
   GlobalSettingsSchema,
   type GlobalSettings,
   KeyBindingValueSchema,
@@ -56,10 +63,7 @@ export {
   onGlobalSettingsChange,
   isGlobalSettingsInitialized,
   _resetGlobalSettings,
-} from "./global-settings.js";
-
-// Unit conversion utilities
-export {
+  // Unit conversion
   LITERS_TO_GALLONS,
   GALLONS_TO_LITERS,
   FUEL_UNIT_METRIC,
@@ -73,22 +77,17 @@ export {
   formatFuelAmount,
   formatFuelAmountWithPrefix,
   formatFuelSettingWithUnit,
-} from "./unit-conversion.js";
-
-// Keyboard types
-export {
+  // Keyboard types
   KEYBOARD_KEYS,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
   type IRacingHotkeyPreset,
-} from "./keyboard-types.js";
-
-// iRacing hotkey presets
-export { IRACING_HOTKEY_PRESETS, getHotkeyPreset, getHotkeysByCategory } from "./iracing-hotkeys.js";
-
-// Keyboard service singleton
-export {
+  // iRacing hotkeys
+  IRACING_HOTKEY_PRESETS,
+  getHotkeyPreset,
+  getHotkeysByCategory,
+  // Keyboard service
   initializeKeyboard,
   getKeyboard,
   isKeyboardInitialized,
@@ -97,13 +96,18 @@ export {
   type ScanKeySender,
   type ScanKeyPresser,
   type ScanKeyReleaser,
-} from "./keyboard-service.js";
+  // App monitor
+  initAppMonitor,
+  isIRacingRunning,
+  isAppMonitorInitialized,
+  _resetAppMonitor,
+  // Key binding utilities
+  formatKeyBinding,
+  parseKeyBinding,
+} from "@iracedeck/deck-core";
 
-// App monitor for iRacing process detection
-export { initAppMonitor, isIRacingRunning, isAppMonitorInitialized, _resetAppMonitor } from "./app-monitor.js";
+// Re-export from deck-adapter-elgato
+export { createSDLogger, type SDLoggerLike } from "@iracedeck/deck-adapter-elgato";
 
-// Window focus service
+// Window focus service (Elgato-specific, depends on @iracedeck/iracing-native)
 export { initWindowFocus, focusIRacingIfEnabled } from "./window-focus.js";
-
-// Key binding utilities
-export { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";

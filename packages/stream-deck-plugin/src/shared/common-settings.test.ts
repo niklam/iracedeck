@@ -1,7 +1,6 @@
+import { CommonSettings } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
 import z from "zod";
-
-import { CommonSettings } from "./common-settings.js";
 
 describe("CommonSettings", () => {
   it("should default flagsOverlay to undefined when omitted", () => {

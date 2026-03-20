@@ -1,6 +1,3 @@
-import { DisplayUnits } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
-
 import {
   formatFuelAmount,
   formatFuelAmountWithPrefix,
@@ -15,7 +12,9 @@ import {
   isMetricUnits,
   LITERS_TO_GALLONS,
   litersToGallons,
-} from "./unit-conversion.js";
+} from "@iracedeck/deck-core";
+import { DisplayUnits } from "@iracedeck/iracing-sdk";
+import { describe, expect, it } from "vitest";
 
 describe("unit-conversion", () => {
   describe("litersToGallons", () => {

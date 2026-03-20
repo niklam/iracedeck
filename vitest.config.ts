@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineConfig, Plugin } from "vitest/config";
 
 /**
@@ -35,6 +36,11 @@ function svgPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [svgPlugin()],
+  resolve: {
+    alias: {
+      "@iracedeck/deck-core": resolve(__dirname, "packages/deck-core/src/index.ts"),
+    },
+  },
   test: {
     globals: true,
     include: ["packages/*/src/**/*.test.ts"],

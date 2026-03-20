@@ -1,12 +1,21 @@
+import { ConnectionStateAwareAction, overlayConfig } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
-import { overlayConfig } from "./overlay-utils.js";
-import * as sdkSingleton from "./sdk-singleton.js";
+// Mock sdk-singleton before importing deck-core (same approach as app-monitor.test.ts)
+const mockGetConnectionStatus = vi.fn();
+const mockSetReconnectEnabled = vi.fn();
+const mockGetController = vi.fn(() => ({
+  getConnectionStatus: mockGetConnectionStatus,
+  setReconnectEnabled: mockSetReconnectEnabled,
+}));
 
-// Mock the SDK singleton module
-vi.mock("./sdk-singleton.js", () => ({
-  getController: vi.fn(),
+vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
+  getController: () => mockGetController(),
+  getSDK: vi.fn(),
+  getCommands: vi.fn(),
+  initializeSDK: vi.fn(),
+  isSDKInitialized: vi.fn(() => true),
+  _resetSDK: vi.fn(),
 }));
 
 // Mock KeyAction
@@ -25,18 +34,6 @@ function createMockEvent<T>(actionId: string, settings: T = {} as T) {
   return {
     action,
     payload: { settings },
-  };
-}
-
-// Mock SDKController
-function createMockSDKController(initialConnected: boolean = false) {
-  let isConnected = initialConnected;
-
-  return {
-    getConnectionStatus: vi.fn(() => isConnected),
-    setConnectionStatus: (status: boolean) => {
-      isConnected = status;
-    },
   };
 }
 
@@ -61,12 +58,14 @@ class TestConnectionAction extends ConnectionStateAwareAction<{ testSetting?: st
 }
 
 describe("ConnectionStateAwareAction", () => {
-  let mockController: ReturnType<typeof createMockSDKController>;
   let testAction: TestConnectionAction;
 
   beforeEach(() => {
-    mockController = createMockSDKController(false);
-    vi.mocked(sdkSingleton.getController).mockReturnValue(mockController as any);
+    mockGetConnectionStatus.mockReturnValue(false);
+    mockGetController.mockReturnValue({
+      getConnectionStatus: mockGetConnectionStatus,
+      setReconnectEnabled: mockSetReconnectEnabled,
+    });
     testAction = new TestConnectionAction();
     // Enable overlay for tests (disabled by default in production)
     overlayConfig.inactiveOverlayEnabled = true;
@@ -81,7 +80,7 @@ describe("ConnectionStateAwareAction", () => {
     it("should get controller from SDK singleton", () => {
       testAction.callGetConnectionStatus();
 
-      expect(sdkSingleton.getController).toHaveBeenCalled();
+      expect(mockGetController).toHaveBeenCalled();
     });
   });
 
@@ -89,7 +88,7 @@ describe("ConnectionStateAwareAction", () => {
     it("should return the controller's connection status", () => {
       expect(testAction.callGetConnectionStatus()).toBe(false);
 
-      mockController.setConnectionStatus(true);
+      mockGetConnectionStatus.mockReturnValue(true);
 
       expect(testAction.callGetConnectionStatus()).toBe(true);
     });
@@ -97,7 +96,7 @@ describe("ConnectionStateAwareAction", () => {
     it("should call the controller's getConnectionStatus method", () => {
       testAction.callGetConnectionStatus();
 
-      expect(mockController.getConnectionStatus).toHaveBeenCalled();
+      expect(mockGetConnectionStatus).toHaveBeenCalled();
     });
   });
 
@@ -125,7 +124,7 @@ describe("ConnectionStateAwareAction", () => {
 
       // Initially disconnected, then connect
       testAction.callUpdateConnectionState(); // null -> false (inactive)
-      mockController.setConnectionStatus(true);
+      mockGetConnectionStatus.mockReturnValue(true);
       testAction.callUpdateConnectionState(); // false -> true (active)
 
       // Last call should set original image (active)
@@ -134,7 +133,7 @@ describe("ConnectionStateAwareAction", () => {
 
     it("should set active to false when disconnected", async () => {
       // Start connected
-      mockController.setConnectionStatus(true);
+      mockGetConnectionStatus.mockReturnValue(true);
       testAction.callUpdateConnectionState(); // null -> true
 
       const ev = createMockEvent("context-1");
@@ -144,7 +143,7 @@ describe("ConnectionStateAwareAction", () => {
       ev.action.setImage.mockClear();
 
       // Disconnect
-      mockController.setConnectionStatus(false);
+      mockGetConnectionStatus.mockReturnValue(false);
       testAction.callUpdateConnectionState(); // true -> false
 
       // Should apply inactive overlay
@@ -170,13 +169,13 @@ describe("ConnectionStateAwareAction", () => {
       expect(testAction.getIsActive()).toBe(false);
 
       // Connect: false -> true
-      mockController.setConnectionStatus(true);
+      mockGetConnectionStatus.mockReturnValue(true);
       testAction.callUpdateConnectionState();
 
       expect(testAction.getIsActive()).toBe(true);
 
       // Disconnect: true -> false
-      mockController.setConnectionStatus(false);
+      mockGetConnectionStatus.mockReturnValue(false);
       testAction.callUpdateConnectionState();
 
       expect(testAction.getIsActive()).toBe(false);
@@ -224,7 +223,7 @@ describe("ConnectionStateAwareAction", () => {
       action2.callGetConnectionStatus();
 
       // Both should use the same singleton controller
-      expect(sdkSingleton.getController).toHaveBeenCalledTimes(2);
+      expect(mockGetController).toHaveBeenCalledTimes(2);
     });
 
     it("should have independent active state tracking", () => {

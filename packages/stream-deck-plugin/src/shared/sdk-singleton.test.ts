@@ -1,6 +1,5 @@
+import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "./sdk-singleton.js";
 
 // Mock the iracing-sdk createSDK function
 vi.mock("@iracedeck/iracing-sdk", () => ({

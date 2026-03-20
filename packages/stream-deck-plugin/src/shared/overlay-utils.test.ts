@@ -1,5 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import {
   applyInactiveOverlay,
   dataUriToSvg,
@@ -8,7 +6,8 @@ import {
   isRawSvg,
   overlayConfig,
   svgToDataUri,
-} from "./overlay-utils.js";
+} from "@iracedeck/deck-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("overlay-utils", () => {
   const simpleSvg =

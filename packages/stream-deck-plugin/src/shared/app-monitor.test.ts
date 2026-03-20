@@ -1,18 +1,21 @@
+import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
+import { _resetAppMonitor, initAppMonitor, isAppMonitorInitialized, isIRacingRunning } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetAppMonitor, initAppMonitor, isAppMonitorInitialized, isIRacingRunning } from "./app-monitor.js";
-import { getController } from "./sdk-singleton.js";
-
-// Mock the sdk-singleton module
+// Mock the sdk-singleton module used internally by app-monitor
 const mockSetReconnectEnabled = vi.fn();
 const mockGetConnectionStatus = vi.fn();
+const mockGetController = vi.fn(() => ({
+  setReconnectEnabled: mockSetReconnectEnabled,
+  getConnectionStatus: mockGetConnectionStatus,
+}));
 
-vi.mock("./sdk-singleton.js", () => ({
-  getController: vi.fn(() => ({
-    setReconnectEnabled: mockSetReconnectEnabled,
-    getConnectionStatus: mockGetConnectionStatus,
-  })),
+// Mock sdk-singleton that app-monitor.ts imports internally.
+// The path is relative from this test file to the deck-core source module.
+// vitest resolves relative paths from the test file location.
+vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
+  getController: () => mockGetController(),
 }));
 
 // Helper to create mock logger
@@ -28,51 +31,52 @@ function createMockLogger(): ILogger {
   };
 }
 
-// Helper to create mock Stream Deck SDK
-function createMockStreamDeck() {
-  const launchCallbacks: ((ev: { application: string }) => void)[] = [];
-  const terminateCallbacks: ((ev: { application: string }) => void)[] = [];
+// Helper to create a mock adapter matching IDeckPlatformAdapter
+function createMockAdapter() {
+  const launchCallbacks: ((application: string) => void)[] = [];
+  const terminateCallbacks: ((application: string) => void)[] = [];
 
   return {
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    },
-    system: {
-      onApplicationDidLaunch: vi.fn((cb) => {
-        launchCallbacks.push(cb);
-      }),
-      onApplicationDidTerminate: vi.fn((cb) => {
-        terminateCallbacks.push(cb);
-      }),
-    },
+    onDidReceiveGlobalSettings: vi.fn(),
+    getGlobalSettings: vi.fn(),
+    onApplicationDidLaunch: vi.fn((cb: (application: string) => void) => {
+      launchCallbacks.push(cb);
+    }),
+    onApplicationDidTerminate: vi.fn((cb: (application: string) => void) => {
+      terminateCallbacks.push(cb);
+    }),
+    createLogger: vi.fn(() => createMockLogger()),
+    registerAction: vi.fn(),
+    onKeyDown: vi.fn(),
+    onDialDown: vi.fn(),
+    onDialRotate: vi.fn(),
+    connect: vi.fn(),
     // Helpers for testing
     _simulateLaunch: (app: string) => {
-      launchCallbacks.forEach((cb) => cb({ application: app }));
+      launchCallbacks.forEach((cb) => cb(app));
     },
     _simulateTerminate: (app: string) => {
-      terminateCallbacks.forEach((cb) => cb({ application: app }));
+      terminateCallbacks.forEach((cb) => cb(app));
     },
+  } satisfies IDeckPlatformAdapter & {
+    _simulateLaunch: (app: string) => void;
+    _simulateTerminate: (app: string) => void;
   };
 }
 
 // Helper to reset mock to default behavior
 function resetGetControllerMock() {
-  vi.mocked(getController).mockImplementation(
-    () =>
-      ({
-        setReconnectEnabled: mockSetReconnectEnabled,
-        getConnectionStatus: mockGetConnectionStatus,
-      }) as unknown as ReturnType<typeof getController>,
-  );
+  mockGetController.mockImplementation(() => ({
+    setReconnectEnabled: mockSetReconnectEnabled,
+    getConnectionStatus: mockGetConnectionStatus,
+  }));
 }
 
 describe("App Monitor", () => {
-  let mockSD: ReturnType<typeof createMockStreamDeck>;
+  let mockAdapter: ReturnType<typeof createMockAdapter>;
 
   beforeEach(() => {
-    mockSD = createMockStreamDeck();
+    mockAdapter = createMockAdapter();
     mockSetReconnectEnabled.mockClear();
     mockGetConnectionStatus.mockClear();
     // Default to not connected
@@ -92,7 +96,7 @@ describe("App Monitor", () => {
     });
 
     it("should return true after initialization", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
       expect(isAppMonitorInitialized()).toBe(true);
     });
@@ -104,18 +108,18 @@ describe("App Monitor", () => {
     });
 
     it("should return true after iRacing launches", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
-      mockSD._simulateLaunch("iRacingSim64DX11.exe");
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
 
       expect(isIRacingRunning()).toBe(true);
     });
 
     it("should return false after iRacing terminates", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
-      mockSD._simulateLaunch("iRacingSim64DX11.exe");
-      mockSD._simulateTerminate("iRacingSim64DX11.exe");
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
 
       expect(isIRacingRunning()).toBe(false);
     });
@@ -123,16 +127,16 @@ describe("App Monitor", () => {
 
   describe("initAppMonitor", () => {
     it("should register event handlers", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
-      expect(mockSD.system.onApplicationDidLaunch).toHaveBeenCalledOnce();
-      expect(mockSD.system.onApplicationDidTerminate).toHaveBeenCalledOnce();
+      expect(mockAdapter.onApplicationDidLaunch).toHaveBeenCalledOnce();
+      expect(mockAdapter.onApplicationDidTerminate).toHaveBeenCalledOnce();
     });
 
     it("should disable reconnect initially when not connected", () => {
       mockGetConnectionStatus.mockReturnValue(false);
 
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
       expect(mockSetReconnectEnabled).toHaveBeenCalledWith(false);
     });
@@ -140,7 +144,7 @@ describe("App Monitor", () => {
     it("should keep reconnect enabled when already connected (race condition fix)", () => {
       mockGetConnectionStatus.mockReturnValue(true);
 
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
 
       // Should NOT call setReconnectEnabled(false) when already connected
       expect(mockSetReconnectEnabled).not.toHaveBeenCalledWith(false);
@@ -149,23 +153,23 @@ describe("App Monitor", () => {
     });
 
     it("should return early if called twice", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
       const secondLogger = createMockLogger();
-      initAppMonitor(mockSD as never, secondLogger);
+      initAppMonitor(mockAdapter, secondLogger);
 
       // Second call should log at debug level and return early
       expect(secondLogger.debug).toHaveBeenCalledWith("Already initialized");
       // Event handlers should only be registered once
-      expect(mockSD.system.onApplicationDidLaunch).toHaveBeenCalledOnce();
+      expect(mockAdapter.onApplicationDidLaunch).toHaveBeenCalledOnce();
     });
 
     it("should throw if SDK is not initialized", () => {
       // Override mock to throw
-      vi.mocked(getController).mockImplementation(() => {
+      mockGetController.mockImplementation(() => {
         throw new Error("SDK not initialized");
       });
 
-      expect(() => initAppMonitor(mockSD as never, createMockLogger())).toThrow(
+      expect(() => initAppMonitor(mockAdapter, createMockLogger())).toThrow(
         "initAppMonitor requires SDK to be initialized first",
       );
 
@@ -176,42 +180,42 @@ describe("App Monitor", () => {
 
   describe("event handling", () => {
     it("should enable reconnect when iRacing launches", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
       mockSetReconnectEnabled.mockClear();
 
-      mockSD._simulateLaunch("iRacingSim64DX11.exe");
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
 
       expect(mockSetReconnectEnabled).toHaveBeenCalledWith(true);
       expect(isIRacingRunning()).toBe(true);
     });
 
     it("should disable reconnect when iRacing terminates", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
-      mockSD._simulateLaunch("iRacingSim64DX11.exe");
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
       mockSetReconnectEnabled.mockClear();
 
-      mockSD._simulateTerminate("iRacingSim64DX11.exe");
+      mockAdapter._simulateTerminate("iRacingSim64DX11.exe");
 
       expect(mockSetReconnectEnabled).toHaveBeenCalledWith(false);
       expect(isIRacingRunning()).toBe(false);
     });
 
     it("should handle case-insensitive executable name matching", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
       mockSetReconnectEnabled.mockClear();
 
       // Test with different cases
-      mockSD._simulateLaunch("IRACINGSIM64DX11.EXE");
+      mockAdapter._simulateLaunch("IRACINGSIM64DX11.EXE");
 
       expect(mockSetReconnectEnabled).toHaveBeenCalledWith(true);
       expect(isIRacingRunning()).toBe(true);
     });
 
     it("should ignore other applications", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
       mockSetReconnectEnabled.mockClear();
 
-      mockSD._simulateLaunch("SomeOtherApp.exe");
+      mockAdapter._simulateLaunch("SomeOtherApp.exe");
 
       expect(mockSetReconnectEnabled).not.toHaveBeenCalled();
       expect(isIRacingRunning()).toBe(false);
@@ -220,8 +224,8 @@ describe("App Monitor", () => {
 
   describe("_resetAppMonitor", () => {
     it("should reset all state", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
-      mockSD._simulateLaunch("iRacingSim64DX11.exe");
+      initAppMonitor(mockAdapter, createMockLogger());
+      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
 
       expect(isAppMonitorInitialized()).toBe(true);
       expect(isIRacingRunning()).toBe(true);
@@ -233,10 +237,10 @@ describe("App Monitor", () => {
     });
 
     it("should allow re-initialization after reset", () => {
-      initAppMonitor(mockSD as never, createMockLogger());
+      initAppMonitor(mockAdapter, createMockLogger());
       _resetAppMonitor();
 
-      expect(() => initAppMonitor(mockSD as never, createMockLogger())).not.toThrow();
+      expect(() => initAppMonitor(mockAdapter, createMockLogger())).not.toThrow();
       expect(isAppMonitorInitialized()).toBe(true);
     });
   });

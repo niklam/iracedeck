@@ -1,6 +1,16 @@
 ---
 # Stream Deck Plugin Structure
 
+## Architecture
+
+The plugin system uses a platform abstraction architecture with three key packages:
+
+- `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities
+- `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
+- `@iracedeck/actions` — All action implementations (import from `@iracedeck/deck-core`, not `@elgato/streamdeck`)
+
+Actions do NOT import from `@elgato/streamdeck`. They import from `@iracedeck/deck-core` and are registered via the platform adapter.
+
 ## Active Plugins
 - `stream-deck-plugin` (com.iracedeck.sd.core) - Core driving/interface actions
 
@@ -113,42 +123,64 @@ This allows the plugin to receive `applicationDidLaunch` and `applicationDidTerm
 
 ### Plugin Initialization Order (plugin.ts)
 
-The initialization order in `plugin.ts` is critical:
+The initialization order in `plugin.ts` is critical. The plugin uses `ElgatoPlatformAdapter` to bridge the Elgato SDK to the platform-agnostic `IDeckPlatformAdapter` interface:
 
 ```typescript
 import streamDeck from "@elgato/streamdeck";
-import { initializeSDK, initializeKeyboard, initGlobalSettings, initAppMonitor } from "./shared/index.js";
+import { MY_ACTION_UUID, MyAction } from "@iracedeck/actions";
+import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
+import {
+  focusIRacingIfEnabled,
+  initAppMonitor,
+  initGlobalSettings,
+  initializeKeyboard,
+  initializeSDK,
+  initWindowFocus,
+} from "@iracedeck/deck-core";
+import { IRacingNative } from "@iracedeck/iracing-native";
 
-// 1. Enable logging
-streamDeck.logger.setLevel("trace");
+// 1. Create the Elgato platform adapter
+const adapter = new ElgatoPlatformAdapter(streamDeck);
 
-// 2. Initialize SDK singleton
-initializeSDK(createSDLogger(streamDeck.logger.createScope("iRacingSDK")));
+// 2. Enable logging
+streamDeck.logger.setLevel("debug");
 
-// 3. Initialize keyboard (if using keyboard shortcuts)
+// 3. Initialize SDK singleton
+initializeSDK(adapter.createLogger("iRacingSDK"));
+
+// 4. Initialize keyboard (if using keyboard shortcuts)
 const native = new IRacingNative();
 initializeKeyboard(
-  createSDLogger(streamDeck.logger.createScope("Keyboard")),
+  adapter.createLogger("Keyboard"),
   (scanCodes) => native.sendScanKeys(scanCodes),      // tap (press + release)
   (scanCodes) => native.sendScanKeyDown(scanCodes),    // press only (key hold)
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
-  () => native.focusIRacingWindow(),                   // focus iRacing window (opt-in via global setting)
 );
 
-// 4. Register actions
-streamDeck.actions.registerAction(new MyAction());
+// 5. Initialize window focus service
+initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
 
-// 5. Initialize global settings BEFORE connect() - pass SDK instance!
-initGlobalSettings(streamDeck);
+// 6. Register focus-before-action listeners (BEFORE registering actions)
+adapter.onKeyDown(() => focusIRacingIfEnabled());
+adapter.onDialDown(() => focusIRacingIfEnabled());
+adapter.onDialRotate(() => focusIRacingIfEnabled());
 
-// 6. Initialize app monitor BEFORE connect() - pass SDK instance!
-initAppMonitor(streamDeck);
+// 7. Register actions via the adapter (logger injected via constructor)
+adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 
-// 7. Connect LAST
-streamDeck.connect();
+// 8. Initialize global settings BEFORE connect() - pass adapter!
+initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+
+// 9. Initialize app monitor BEFORE connect() - pass adapter!
+initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
+
+// 10. Connect LAST
+adapter.connect();
 ```
 
-**CRITICAL**: Both `initGlobalSettings(streamDeck)` and `initAppMonitor(streamDeck)` MUST:
-- Be called BEFORE `streamDeck.connect()` (handlers must register first)
-- Receive the SDK instance as parameter (bundling creates separate instances otherwise)
+**CRITICAL**:
+- Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
+- Both must be called BEFORE `adapter.connect()` (handlers must register first)
+- Actions are imported from `@iracedeck/actions` and registered via `adapter.registerAction(UUID, handler)`
+- Logger is injected into each action via constructor: `new MyAction(adapter.createLogger("MyAction"))`
 - `initAppMonitor` requires `initializeSDK()` to be called first

@@ -9,11 +9,10 @@
  * The focuser callback is provided during initialization and typically
  * wraps the native focusIRacingWindow() function.
  */
+import { getGlobalSettings, isGlobalSettingsInitialized } from "@iracedeck/deck-core";
 import { FocusResult } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
-
-import { getGlobalSettings, isGlobalSettingsInitialized } from "./global-settings.js";
 
 /**
  * Function type for focusing the iRacing window.

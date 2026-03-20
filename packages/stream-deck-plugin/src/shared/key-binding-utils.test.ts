@@ -1,6 +1,5 @@
+import { formatKeyBinding, parseKeyBinding } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
-
-import { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";
 
 describe("Key Binding Utils", () => {
   describe("formatKeyBinding", () => {

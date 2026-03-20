@@ -1,8 +1,8 @@
 # @iracedeck/stream-deck-plugin
 
-Core Stream Deck plugin for iRaceDeck. Contains all iRacing-related actions and shared utilities.
+Core Stream Deck plugin for iRaceDeck. Registers actions from `@iracedeck/actions` with the Elgato Stream Deck via `@iracedeck/deck-adapter-elgato`.
 
-Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `src/shared/` with a barrel export at `src/shared/index.ts`. Actions import from `../shared/index.js` and `plugin.ts` imports from `./shared/index.js`.
+Action implementations live in `packages/actions/src/actions/`. Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `packages/deck-core/src/`. Actions import from `@iracedeck/deck-core`. The `src/shared/index.ts` in this package re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
 
 PI components (browser-side web components for Property Inspector) live in `src/pi-components/` and are built separately via `rollup.pi.config.mjs`. PI template partials (EJS) live in `src/pi-templates/`. The build plugin for EJS templates is at `src/build/pi-template-plugin.mjs`.
 
@@ -14,35 +14,30 @@ Every action requires **6 new files** and **3 modified files**. Use `splits-delt
 
 Replace `{action-name}` with the kebab-case name (e.g., `my-action`) and `{ActionName}` with the PascalCase name (e.g., `MyAction`).
 
-#### 1. Action source — `src/actions/{action-name}.ts`
+#### 1. Action source — `packages/actions/src/actions/{action-name}.ts`
 
 ```typescript
-import streamDeck, {
-  action,
-  DialRotateEvent,
-  DidReceiveSettingsEvent,
-  KeyDownEvent,
-  WillAppearEvent,
-  WillDisappearEvent,
-} from "@elgato/streamdeck";
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  createSDLogger,
   formatKeyBinding,
   getGlobalColors,
   getGlobalSettings,
   getKeyboard,
+  type IDeckDialRotateEvent,
+  type IDeckDidReceiveSettingsEvent,
+  type IDeckKeyDownEvent,
+  type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
-  LogLevel,
   parseKeyBinding,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
-} from "../shared/index.js";
+} from "@iracedeck/deck-core";
 import z from "zod";
 
 import defaultIconSvg from "@iracedeck/icons/{action-name}/default.svg";
@@ -72,12 +67,15 @@ export function generate{ActionName}Svg(settings: {ActionName}Settings): string 
   return svgToDataUri(svg);
 }
 
-@action({ UUID: "com.iracedeck.sd.core.{action-name}" })
+/**
+ * {ActionName} Action
+ * Description of what this action does.
+ */
+export const {ACTION_NAME}_UUID = "com.iracedeck.sd.core.{action-name}" as const;
+
 export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Settings> {
-  protected override logger = createSDLogger(
-    streamDeck.logger.createScope("{ActionName}"),
-    LogLevel.Info,
-  );
+  // Logger is injected via constructor — no need to declare a logger field.
+  // The base class receives it: constructor(logger: ILogger)
 
   // Required lifecycle handlers: onWillAppear, onWillDisappear,
   // onDidReceiveSettings, onKeyDown, onDialRotate
@@ -92,45 +90,58 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
 ```
 
 Key requirements:
+- Import from `@iracedeck/deck-core` (NOT `@elgato/streamdeck` or `../shared/index.js`)
 - Extend `ConnectionStateAwareAction`
-- Use `@action({ UUID: "com.iracedeck.sd.core.{action-name}" })` decorator
+- Export a UUID constant (e.g., `{ACTION_NAME}_UUID`) — no `@action` decorator
+- Logger is injected via constructor (from `plugin.ts`), not created in the action
+- Event types use `IDeck` prefix: `IDeckWillAppearEvent<T>`, `IDeckKeyDownEvent<T>`, etc.
 - Parse settings with Zod's `safeParse` (never throw on invalid settings)
 - Export constants and icon generation functions with `@internal` JSDoc for testing
-- Use `parseKeyBinding()` / `formatKeyBinding()` from shared utilities
+- Use `parseKeyBinding()` / `formatKeyBinding()` from `@iracedeck/deck-core`
 - Subscribe to SDK controller in `onWillAppear`, unsubscribe in `onWillDisappear`
 - Implement `onDidReceiveSettings` to respond to PI changes
 - Logging: `info` for events (no params), `debug` for details (with params)
 
-#### 2. Unit tests — `src/actions/{action-name}.test.ts`
+#### 2. Unit tests — `packages/actions/src/actions/{action-name}.test.ts`
 
-Must mock both SDK and shared modules before importing. Test exported constants and SVG generation:
+Must mock `@iracedeck/deck-core` before importing. Test exported constants and SVG generation:
 
 ```typescript
-vi.mock("@elgato/streamdeck", () => ({
-  default: {
-    logger: {
-      createScope: vi.fn(() => ({
-        debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn(),
-      })),
+vi.mock("@iracedeck/deck-core", () => ({
+  CommonSettings: {
+    extend: (_fields: unknown) => {
+      const schema = {
+        parse: (data: Record<string, unknown>) => ({ ...data }),
+        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
+      };
+      return schema;
     },
+    parse: (data: Record<string, unknown>) => ({ ...data }),
+    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
   },
-  action: () => (target: unknown) => target,
-}));
-
-vi.mock("../shared/index.js", () => ({
-  ConnectionStateAwareAction: class { /* mock fields */ },
-  createSDLogger: vi.fn(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() })),
-  formatKeyBinding: vi.fn((b) => b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
+    updateConnectionState = vi.fn();
+    setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
+  },
+  formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) =>
+    b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),
+  getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({})),
-  getKeyboard: vi.fn(() => ({ sendKeyCombination: vi.fn().mockResolvedValue(true) })),
+  getKeyboard: vi.fn(() => ({
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
+  })),
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
-  renderIconTemplate: vi.fn((_t, data) => `<svg>${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
+  renderIconTemplate: vi.fn((_t, data) => `<svg>${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
   svgToDataUri: vi.fn((svg) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
 ```
 
-See `splits-delta-cycle.test.ts` for the full pattern.
+See `packages/actions/src/actions/splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 
@@ -214,14 +225,22 @@ The color-overrides partial adds per-action color customization controls. The co
 
 ### Files to modify
 
-#### 7. Register in plugin — `src/plugin.ts`
+#### 7. Register in plugin — `packages/stream-deck-plugin/src/plugin.ts`
 
-Add import and registration. **Maintain alphabetical order** in both the import block and the registration block:
+Add import and registration. **Maintain alphabetical order** in both the import block and the registration block.
+
+First, export the UUID and class from `packages/actions/src/index.ts`:
 
 ```typescript
-import { {ActionName} } from "./actions/{action-name}.js";
+export { {ACTION_NAME}_UUID, {ActionName} } from "./actions/{action-name}.js";
+```
+
+Then in `plugin.ts`, import from `@iracedeck/actions` and register via the adapter:
+
+```typescript
+import { {ACTION_NAME}_UUID, {ActionName} } from "@iracedeck/actions";
 // ...
-streamDeck.actions.registerAction(new {ActionName}());
+adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger("{ActionName}")));
 ```
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
@@ -363,12 +382,16 @@ Key points:
 
 ### Reference implementations
 
+All action source files are in `packages/actions/src/actions/`.
+
 | Pattern | Example |
 |---------|---------|
 | Telemetry-aware icon (single control) | `car-control.ts` (pit-speed-limiter) |
 | Telemetry-aware icon (full action) | `tire-service.ts` |
 
 ### Reference implementations
+
+All action source files are in `packages/actions/src/actions/`.
 
 | Pattern | Example |
 |---------|---------|

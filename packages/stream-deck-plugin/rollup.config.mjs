@@ -8,10 +8,9 @@ import process from "node:process";
 import { readFileSync, readdirSync } from "node:fs";
 import { piTemplatePlugin } from "./src/build/pi-template-plugin.mjs";
 
-const iconsPackagePath = path.resolve(
-	path.dirname(url.fileURLToPath(import.meta.url)),
-	"../icons",
-);
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+const iconsPackagePath = path.resolve(__dirname, "../icons");
+const actionsPackagePath = path.resolve(__dirname, "../actions/src");
 
 /**
  * Rollup plugin to import SVG files as strings.
@@ -58,6 +57,19 @@ const config = {
 	},
 	external: ["@iracedeck/iracing-native", "yaml", "keysender"],
 	plugins: [
+		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
+		// Only applies to relative imports (starting with ".") within the actions package.
+		{
+			name: "resolve-actions-ts",
+			resolveId(source, importer) {
+				if (!importer || !source.startsWith(".") || !source.endsWith(".js")) return null;
+				// Only handle imports from the actions package
+				const normalizedImporter = importer.replace(/\\/g, "/");
+				if (!normalizedImporter.includes("/actions/src/")) return null;
+				const tsPath = path.resolve(path.dirname(importer), source.replace(/\.js$/, ".ts"));
+				return tsPath;
+			},
+		},
 		svgPlugin(),
 		piTemplatePlugin({
 			templatesDir: "src/pi",
@@ -86,7 +98,9 @@ const config = {
 			},
 		},
 		typescript({
-			mapRoot: isWatching ? "./" : undefined
+			mapRoot: isWatching ? "./" : undefined,
+			// Include both the plugin source and the raw-TypeScript actions package
+			include: ["src/**/*.ts", "../actions/src/**/*.ts"],
 		}),
 		nodeResolve({
 			browser: false,

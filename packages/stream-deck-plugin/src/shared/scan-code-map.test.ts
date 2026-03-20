@@ -1,6 +1,5 @@
+import { getModifierScanCode, getScanCode } from "@iracedeck/deck-core";
 import { describe, expect, it } from "vitest";
-
-import { getModifierScanCode, getScanCode } from "./scan-code-map.js";
 
 describe("scan-code-map", () => {
   describe("getScanCode", () => {

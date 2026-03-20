@@ -1,8 +1,6 @@
+import { applyInactiveOverlay, BaseAction, overlayConfig } from "@iracedeck/deck-core";
 import type { FlagInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { BaseAction } from "./base-action.js";
-import { applyInactiveOverlay, overlayConfig } from "./overlay-utils.js";
 
 // Mock KeyAction
 function createMockKeyAction(id: string) {
