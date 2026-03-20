@@ -21,6 +21,7 @@ import {
   createSDLogger,
   formatKeyBinding,
   getCommands,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyboardKey,
@@ -29,6 +30,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -94,9 +96,11 @@ export function generateMediaCaptureSvg(settings: MediaCaptureSettings): string 
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["start-stop-video"];
   const labels = MEDIA_CAPTURE_LABELS[actionType] || MEDIA_CAPTURE_LABELS["start-stop-video"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -229,5 +233,6 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
     const svgDataUri = generateMediaCaptureSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateMediaCaptureSvg(settings));
   }
 }

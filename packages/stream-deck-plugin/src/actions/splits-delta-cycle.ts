@@ -15,6 +15,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -24,6 +25,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -52,9 +54,11 @@ export const GLOBAL_KEY_NAMES = {
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
   const { direction } = settings;
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: direction === "next" ? "NEXT" : "PREVIOUS",
     subLabel: "SPLITS DELTA",
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -140,6 +144,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const svgDataUri = generateSplitsDeltaCycleSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateSplitsDeltaCycleSvg(settings));
   }
 
   private async sendKeyBinding(binding: KeyBindingValue): Promise<void> {

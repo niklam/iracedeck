@@ -1,18 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a1a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Turbo gauge with needle + right arrow -->
-    <path d="M36,68 A32,32 0 0,1 100,68" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36,68 A32,32 0 0,1 100,68" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
     <line x1="68" y1="68" x2="52" y2="40" stroke="#f1c40f" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="68" cy="68" r="4" fill="#ffffff"/>
+    <circle cx="68" cy="68" r="4" fill="{{graphic1Color}}"/>
     <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>

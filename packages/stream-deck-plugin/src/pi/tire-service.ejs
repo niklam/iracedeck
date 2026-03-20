@@ -77,6 +77,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['tire-service'] }) %>
+
 		<%- include('global-settings') %>
 	</body>
 </html>

@@ -37,10 +37,6 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item label="Icon Color">
-			<sdpi-color setting="iconColor" default="#4a90d9"></sdpi-color>
-		</sdpi-item>
-
 		<sdpi-item label="Key Text">
 			<sdpi-textarea setting="keyText" rows="2" placeholder="Leave empty for default"></sdpi-textarea>
 		</sdpi-item>
@@ -50,6 +46,8 @@
 		</sdpi-item>
 
 		<%- include('common-settings') %>
+
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/color-defaults.json')['chat'] }) %>
 
 		<%- include('global-key-bindings', {
 			subtitle: 'Chat Key Bindings',

@@ -21,6 +21,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -30,6 +31,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -118,9 +120,11 @@ export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
   const labels: { mainLabel: string; subLabel: string } =
     "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "AERO", subLabel: "SETUP" });
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -253,5 +257,6 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     const svgDataUri = generateSetupAeroSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateSetupAeroSvg(settings));
   }
 }

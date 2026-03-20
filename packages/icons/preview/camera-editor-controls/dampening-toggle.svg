@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Damped sine wave -->
+    <path d="M32 44 Q44 20 56 44 Q68 68 80 44 Q88 32 96 44 Q100 52 104 44 Q108 40 112 44"
+          fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="32" y1="72" x2="112" y2="72" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

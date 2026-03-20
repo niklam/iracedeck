@@ -57,6 +57,7 @@ vi.mock("../shared/index.js", () => ({
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
   },
   createSDLogger: vi.fn(() => ({
     debug: vi.fn(),
@@ -75,7 +76,9 @@ vi.mock("../shared/index.js", () => ({
       focusOnExiting: vi.fn(() => true),
     },
   })),
+  getGlobalColors: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
     let result = template;
 

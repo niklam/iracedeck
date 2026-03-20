@@ -24,6 +24,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -33,6 +34,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -151,9 +153,11 @@ export function generateCockpitMiscSvg(settings: CockpitMiscSettings): string {
   const labels: { mainLabel: string; subLabel: string } =
     "mainLabel" in labelEntry ? labelEntry : (labelEntry[direction] ?? { mainLabel: "COCKPIT", subLabel: "MISC" });
 
+  const colors = resolveIconColors(iconSvg as string, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg as string, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -286,5 +290,6 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     const svgDataUri = generateCockpitMiscSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateCockpitMiscSvg(settings));
   }
 }

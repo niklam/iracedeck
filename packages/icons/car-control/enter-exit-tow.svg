@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a2a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Car body with bidirectional arrow -->
-    <rect x="40" y="32" width="64" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="40" y="32" width="64" height="28" rx="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
     <circle cx="56" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
     <circle cx="88" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
     <path d="M48 76 L96 76" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
@@ -13,8 +14,8 @@
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
   </g>
 </svg>

@@ -24,6 +24,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['setup-hybrid'] }) %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Hybrid Setup Key Bindings',
 			keyBindings: require('./data/key-bindings.json').setupHybrid

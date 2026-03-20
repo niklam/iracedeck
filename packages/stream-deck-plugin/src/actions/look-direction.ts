@@ -19,6 +19,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -28,6 +29,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -79,9 +81,11 @@ export function generateLookDirectionSvg(settings: LookDirectionSettings): strin
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS["look-left"];
   const labels = LOOK_DIRECTION_LABELS[direction] || LOOK_DIRECTION_LABELS["look-left"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -224,5 +228,6 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     const svgDataUri = generateLookDirectionSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateLookDirectionSvg(settings));
   }
 }

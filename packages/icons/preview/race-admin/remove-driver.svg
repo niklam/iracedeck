@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#8B1A1A"/>
+    <!-- Person with X -->
+    <circle cx="60" cy="34" r="14" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <path d="M36,78 C36,58 60,50 60,50 C60,50 84,58 84,78" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <!-- X badge -->
+    <circle cx="98" cy="66" r="14" fill="#8B1A1A" stroke="#ffffff" stroke-width="3"/>
+    <line x1="90" y1="58" x2="106" y2="74" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="106" y1="58" x2="90" y2="74" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

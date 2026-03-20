@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#3a2a2a"/>
+
+    <!-- Checkered flag with up arrow (green) -->
+    <path d="M36 28 L72 28 L72 68 L36 68 Z" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="36" y1="28" x2="36" y2="76" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <rect x="44" y="36" width="10" height="8" fill="#888888"/>
+    <rect x="54" y="36" width="10" height="8" fill="#ffffff"/>
+    <rect x="44" y="52" width="10" height="8" fill="#ffffff"/>
+    <rect x="54" y="52" width="10" height="8" fill="#888888"/>
+    <polyline points="96,56 108,40 120,56" fill="none" stroke="#2ecc71" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

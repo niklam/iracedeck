@@ -88,6 +88,61 @@
       }
     });
   }, 500);
+
+  // Per-action override preset buttons
+  document.addEventListener('click', function(ev) {
+    var btn = ev.target.closest('.ird-override-preset');
+    if (!btn) return;
+    var mapping = {
+      bg: 'color-override-backgroundColor',
+      text: 'color-override-textColor',
+      g1: 'color-override-graphic1Color',
+      g2: 'color-override-graphic2Color'
+    };
+    ['bg', 'text', 'g1', 'g2'].forEach(function(key) {
+      var color = btn.getAttribute('data-' + key);
+      var el = document.getElementById(mapping[key]);
+      if (el && color) {
+        el.value = color;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  });
+
+  // Global color preset buttons — apply a full set of global colors at once
+  document.addEventListener('click', function(ev) {
+    var btn = ev.target.closest('.ird-color-preset');
+    if (!btn) return;
+    var mapping = {
+      bg: 'global-color-bg',
+      text: 'global-color-text',
+      g1: 'global-color-g1',
+      g2: 'global-color-g2'
+    };
+    ['bg', 'text', 'g1', 'g2'].forEach(function(key) {
+      var color = btn.getAttribute('data-' + key);
+      var el = document.getElementById(mapping[key]);
+      if (el && color) {
+        el.value = color;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  });
+
+  // Color picker reset buttons — event delegation for all .ird-color-reset links
+  // Per-action: resets to icon default color. Global: resets to #000001 (treated as "not set").
+  document.addEventListener('click', function(ev) {
+    var link = ev.target.closest('.ird-color-reset');
+    if (!link) return;
+    ev.preventDefault();
+    var inputId = link.getAttribute('data-input');
+    var defaultColor = link.getAttribute('data-default') || '#000000';
+    var colorEl = document.getElementById(inputId);
+    if (colorEl) {
+      colorEl.value = defaultColor;
+      colorEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
 </script>
 
 	</head>
@@ -133,6 +188,32 @@
     <sdpi-checkbox setting="flagsOverlay" label="Flash flag colors on button"></sdpi-checkbox>
   </sdpi-item>
 </div>
+
+
+		<!--
+  Color Overrides Component
+
+  Parameters:
+    - slots: Array of slot names to show
+    - defaults: Object mapping slot names to default hex colors
+-->
+
+<!--
+  Collapsible Component - A collapsible section with divider and arrow.
+  Parameters: title (String), content (HTML String), open (Boolean, optional)
+-->
+<details class="ird-collapsible" >
+  <summary class="ird-collapsible-header">
+    <span class="ird-collapsible-icon">&#9654;</span>
+    <span class="ird-collapsible-title">Color Overrides</span>
+  </summary>
+  <div class="ird-collapsible-content">
+    <sdpi-item label="Presets"><div style="display:flex;gap:6px;"><button class="ird-override-preset" data-bg="#000001" data-text="#000001" data-g1="#000001" data-g2="#000001" style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;">Default</button><button class="ird-override-preset" data-bg="#ffffff" data-text="#000000" data-g1="#000000" data-g2="#000000" style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#ffffff;color:#000000;">White</button><button class="ird-override-preset" data-bg="#000000" data-text="#ffffff" data-g1="#ffffff" data-g2="#ffffff" style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#000000;color:#ffffff;">Black</button></div></sdpi-item><sdpi-item label="Background"><div style="display:flex;align-items:center;gap:6px;"><sdpi-color id="color-override-backgroundColor" setting="colorOverrides.backgroundColor" default="#1a3a2a"></sdpi-color><a href="#" class="ird-color-reset" data-input="color-override-backgroundColor" data-default="#1a3a2a" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Reset to default">&#x21BA;</a></div></sdpi-item>
+<sdpi-item label="Text"><div style="display:flex;align-items:center;gap:6px;"><sdpi-color id="color-override-textColor" setting="colorOverrides.textColor" default="#ffffff"></sdpi-color><a href="#" class="ird-color-reset" data-input="color-override-textColor" data-default="#ffffff" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Reset to default">&#x21BA;</a></div></sdpi-item>
+<sdpi-item label="Graphic 1"><div style="display:flex;align-items:center;gap:6px;"><sdpi-color id="color-override-graphic1Color" setting="colorOverrides.graphic1Color" default="#ffffff"></sdpi-color><a href="#" class="ird-color-reset" data-input="color-override-graphic1Color" data-default="#ffffff" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Reset to default">&#x21BA;</a></div></sdpi-item>
+  </div>
+</details>
+
 
 
 		<!--
@@ -299,6 +380,41 @@
       Automatically focuses the iRacing window before sending key inputs.
       Enable if actions aren't working when iRacing is in the background.
     </div>
+    <div class="ird-section-subtitle">Icon Colors</div>
+    <sdpi-item label="Presets">
+      <div style="display:flex;gap:6px;">
+        <button class="ird-color-preset" data-bg="#000001" data-text="#000001" data-g1="#000001" data-g2="#000001"
+          style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;">Default</button>
+        <button class="ird-color-preset" data-bg="#ffffff" data-text="#000000" data-g1="#000000" data-g2="#000000"
+          style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#ffffff;color:#000000;">White</button>
+        <button class="ird-color-preset" data-bg="#000000" data-text="#ffffff" data-g1="#ffffff" data-g2="#ffffff"
+          style="padding:4px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#000000;color:#ffffff;">Black</button>
+      </div>
+    </sdpi-item>
+    <sdpi-item label="Background">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <sdpi-color id="global-color-bg" setting="colorBackgroundColor" global></sdpi-color>
+        <a href="#" class="ird-color-reset" data-input="global-color-bg" data-default="#000001" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Clear global override">&#x21BA;</a>
+      </div>
+    </sdpi-item>
+    <sdpi-item label="Text">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <sdpi-color id="global-color-text" setting="colorTextColor" global></sdpi-color>
+        <a href="#" class="ird-color-reset" data-input="global-color-text" data-default="#000001" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Clear global override">&#x21BA;</a>
+      </div>
+    </sdpi-item>
+    <sdpi-item label="Graphic 1">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <sdpi-color id="global-color-g1" setting="colorGraphic1Color" global></sdpi-color>
+        <a href="#" class="ird-color-reset" data-input="global-color-g1" data-default="#000001" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Clear global override">&#x21BA;</a>
+      </div>
+    </sdpi-item>
+    <sdpi-item label="Graphic 2">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <sdpi-color id="global-color-g2" setting="colorGraphic2Color" global></sdpi-color>
+        <a href="#" class="ird-color-reset" data-input="global-color-g2" data-default="#000001" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Clear global override">&#x21BA;</a>
+      </div>
+    </sdpi-item>
   
   </div>
 </details>

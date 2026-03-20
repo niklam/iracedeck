@@ -43,6 +43,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -52,6 +53,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -214,9 +216,11 @@ export function generateCameraEditorControlsSvg(settings: CameraEditorControlsSe
   const iconSvg = CONTROL_ICONS[control] || CONTROL_ICONS["open-camera-tool"];
   const labels = CAMERA_EDITOR_CONTROLS_LABELS[control] || CAMERA_EDITOR_CONTROLS_LABELS["open-camera-tool"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -322,5 +326,6 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
     const svgDataUri = generateCameraEditorControlsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateCameraEditorControlsSvg(settings));
   }
 }

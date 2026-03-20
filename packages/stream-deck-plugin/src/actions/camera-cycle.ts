@@ -22,8 +22,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -80,15 +82,19 @@ type CameraCycleSettings = z.infer<typeof CameraCycleSettings>;
  *
  * Generates an SVG data URI icon for the camera cycle action.
  */
-export function generateCameraCycleSvg(settings: { cameraType: CameraType; direction: Direction }): string {
+export function generateCameraCycleSvg(
+  settings: { cameraType: CameraType; direction: Direction } & Partial<CommonSettings>,
+): string {
   const { cameraType, direction } = settings;
 
   const iconSvg = CAMERA_CYCLE_ICONS[cameraType]?.[direction] || CAMERA_CYCLE_ICONS["camera"]["next"];
   const labels = CAMERA_CYCLE_LABELS[cameraType]?.[direction] || CAMERA_CYCLE_LABELS["camera"]["next"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -201,5 +207,6 @@ export class CameraCycle extends ConnectionStateAwareAction<CameraCycleSettings>
     const svgDataUri = generateCameraCycleSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateCameraCycleSvg(settings));
   }
 }

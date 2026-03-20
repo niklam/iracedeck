@@ -53,6 +53,8 @@ const MyActionSettings = CommonSettings.extend({
 
 Actions with no custom settings use `CommonSettings` directly.
 
+`CommonSettings` includes `flagsOverlay` (boolean) and `colorOverrides` (optional object with `backgroundColor`, `textColor`, `graphic1Color`, `graphic2Color`). Both are automatically available in all action settings schemas.
+
 ### Super Calls
 
 All actions must call `super.onWillAppear(ev)` and `super.onDidReceiveSettings(ev)` in their lifecycle hooks:

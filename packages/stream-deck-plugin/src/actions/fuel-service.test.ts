@@ -86,6 +86,7 @@ vi.mock("../shared/index.js", () => ({
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -105,6 +106,7 @@ vi.mock("../shared/index.js", () => ({
     return b.key;
   }),
   getCommands: mockGetCommands,
+  getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: mockSendKeyCombination,
@@ -113,6 +115,7 @@ vi.mock("../shared/index.js", () => ({
   })),
   LogLevel: { Info: 2 },
   parseKeyBinding: mockParseKeyBinding,
+  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
     return `<svg>${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),

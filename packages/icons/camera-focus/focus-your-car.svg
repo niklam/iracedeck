@@ -1,20 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: crosshair + target -->
-    <circle cx="72" cy="48" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="72" cy="48" r="6" fill="#ffffff"/>
-    <line x1="72" y1="16" x2="72" y2="28" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="72" y1="68" x2="72" y2="80" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="40" y1="48" x2="52" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="92" y1="48" x2="104" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="72" cy="48" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="72" cy="48" r="6" fill="{{graphic1Color}}"/>
+    <line x1="72" y1="16" x2="72" y2="28" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="72" y1="68" x2="72" y2="80" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="40" y1="48" x2="52" y2="48" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="92" y1="48" x2="104" y2="48" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

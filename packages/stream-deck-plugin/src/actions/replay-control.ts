@@ -47,8 +47,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -245,7 +247,7 @@ export function formatSetSpeedLabel(speedSetting: string): string {
  * When mode is "set-speed", the label shows the configured speed.
  */
 export function generateReplayControlSvg(
-  settings: { mode: ReplayControlMode; speed?: string },
+  settings: { mode: ReplayControlMode; speed?: string } & Partial<CommonSettings>,
   isPlaying?: boolean,
   replaySpeed?: number,
   replaySlowMotion?: boolean,
@@ -275,7 +277,8 @@ export function generateReplayControlSvg(
   templateData.mainLabel = mainLabel;
   templateData.subLabel = subLabel;
 
-  const svg = renderIconTemplate(iconSvg, templateData);
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const svg = renderIconTemplate(iconSvg, { ...templateData, ...colors });
 
   return svgToDataUri(svg);
 }
@@ -1073,6 +1076,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateReplayControlSvg(settings, isPlaying, speed, slowMo));
   }
 
   private async updateDisplayFromTelemetry(contextId: string, settings: ReplayControlSettings): Promise<void> {
@@ -1089,5 +1093,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
     const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo);
     await this.updateKeyImage(contextId, svgDataUri);
+    this.setRegenerateCallback(contextId, () => generateReplayControlSvg(settings, isPlaying, speed, slowMo));
   }
 }

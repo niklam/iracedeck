@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#8B1A1A"/>
+    <!-- Pace car outline -->
+    <path d="M38,62 L46,42 L98,42 L106,62" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="34" y="62" width="76" height="20" rx="4" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="52" cy="82" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="92" cy="82" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="54" y="48" width="14" height="12" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="74" y="48" width="14" height="12" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

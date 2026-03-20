@@ -19,6 +19,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -28,6 +29,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -111,7 +113,8 @@ export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings
   const iconSvg = SPOTTER_ICONS[control] || SPOTTER_ICONS["damage-report"];
   const labels = SPOTTER_LABELS[control] || SPOTTER_LABELS["damage-report"];
 
-  const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel });
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel, ...colors });
 
   return svgToDataUri(svg);
 }
@@ -211,5 +214,6 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     const svgDataUri = generateAiSpotterControlsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateAiSpotterControlsSvg(settings));
   }
 }

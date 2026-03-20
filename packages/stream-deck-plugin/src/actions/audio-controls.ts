@@ -20,6 +20,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -29,6 +30,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -101,7 +103,8 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
   const iconSvg = AUDIO_ICONS[iconKey] || AUDIO_ICONS["voice-chat-volume-up"];
   const labels = AUDIO_CONTROLS_LABELS[category][effectiveAction];
 
-  const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel });
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+  const svg = renderIconTemplate(iconSvg, { mainLabel: labels.mainLabel, subLabel: labels.subLabel, ...colors });
 
   return svgToDataUri(svg);
 }
@@ -225,5 +228,6 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     const svgDataUri = generateAudioControlsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateAudioControlsSvg(settings));
   }
 }

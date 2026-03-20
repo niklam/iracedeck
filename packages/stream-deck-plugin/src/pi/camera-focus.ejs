@@ -81,6 +81,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['camera-focus'] }) %>
+
 		<%- include('global-settings') %>
 	</body>
 </html>

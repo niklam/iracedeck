@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a2a2a"/>
+
+    <!-- Black box frame -->
+    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <circle cx="56" cy="44" r="20" fill="none" stroke="#888888" stroke-width="3"/>
+    <circle cx="56" cy="44" r="10" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M36 44 A20 20 0 0 1 42 28" fill="none" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>
+    <path d="M42 28 A20 20 0 0 1 56 24" fill="none" stroke="#2ecc71" stroke-width="6" stroke-linecap="round"/>
+    <path d="M56 24 A20 20 0 0 1 70 28" fill="none" stroke="#f39c12" stroke-width="6" stroke-linecap="round"/>
+    <path d="M70 28 A20 20 0 0 1 76 44" fill="none" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+    <text x="96" y="36" fill="#ffffff" font-family="Arial, sans-serif" font-size="10">TEMP</text>
+    <text x="96" y="54" fill="#2ecc71" font-family="Arial, sans-serif" font-size="14" font-weight="bold">85°</text>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

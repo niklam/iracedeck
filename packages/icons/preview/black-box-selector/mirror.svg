@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a2a2a"/>
+
+    <!-- Black box frame -->
+    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <rect x="68" y="22" width="8" height="8" fill="#888888"/>
+    <rect x="28" y="30" width="88" height="28" rx="4" fill="none" stroke="#888888" stroke-width="3"/>
+    <rect x="32" y="34" width="80" height="20" rx="2" fill="#888888" opacity="0.2"/>
+    <line x1="40" y1="36" x2="52" y2="48" stroke="#ffffff" stroke-width="3" opacity="0.5"/>
+    <line x1="48" y1="36" x2="60" y2="48" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
+    <line x1="84" y1="36" x2="96" y2="48" stroke="#ffffff" stroke-width="3" opacity="0.5"/>
+    <line x1="92" y1="36" x2="104" y2="48" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Icon content area: Rabbit silhouette (faster) -->
+    <g fill="#ffffff" transform="translate(24, 14) scale(0.75)">
+      <!-- Body -->
+      <ellipse cx="60" cy="62" rx="28" ry="20"/>
+      <!-- Head -->
+      <circle cx="94" cy="50" r="14"/>
+      <!-- Left ear -->
+      <ellipse cx="84" cy="22" rx="5" ry="18" transform="rotate(-10, 84, 22)"/>
+      <!-- Right ear -->
+      <ellipse cx="98" cy="18" rx="5" ry="20" transform="rotate(10, 98, 18)"/>
+      <!-- Eye -->
+      <circle cx="100" cy="47" r="2.5" fill="#2a3a4a"/>
+      <!-- Front leg -->
+      <ellipse cx="82" cy="78" rx="5" ry="10"/>
+      <!-- Back leg (powerful haunches) -->
+      <ellipse cx="38" cy="72" rx="10" ry="12" transform="rotate(15, 38, 72)"/>
+      <!-- Tail -->
+      <circle cx="30" cy="54" r="6"/>
+    </g>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

@@ -1,16 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a3a4a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Speed text (large, centered in icon area) -->
     <text x="72" y="62" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="32" font-weight="bold">{{speedText}}</text>
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="32" font-weight="bold">{{speedText}}</text>
 
     <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

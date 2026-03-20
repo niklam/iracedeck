@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Timeline with right bracket -->
+    <line x1="32" y1="44" x2="112" y2="44" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="88" y1="28" x2="88" y2="60" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="76" y1="28" x2="88" y2="28" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="76" y1="60" x2="88" y2="60" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="68,36 60,44 68,52" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

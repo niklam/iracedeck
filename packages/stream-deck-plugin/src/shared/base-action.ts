@@ -39,6 +39,8 @@ type KeyCompatibleEvent<T extends JsonObject> =
 interface ContextEntry<T extends JsonObject> {
   action: KeyAction<T>;
   svg: string;
+  /** Optional callback to regenerate the SVG (for global color updates) */
+  regenerate?: () => string;
 }
 
 /**
@@ -112,10 +114,46 @@ export abstract class BaseAction<T extends JsonObject = JsonObject> extends Sing
   constructor() {
     super();
 
-    // Subscribe to global settings changes to refresh overlays
+    // Subscribe to global settings changes to refresh overlays and re-render colors.
+    // Constructor side-effect: needed because SingletonAction instances are created once
+    // at plugin startup and must react to settings changes throughout their lifetime.
+    // Order matters: regenerate SVGs first, then push updated images to Stream Deck.
     onGlobalSettingsChange(() => {
+      this.onGlobalSettingsUpdated();
       this.refreshAllImages();
     });
+  }
+
+  /**
+   * Called when global settings change. Re-generates icons for contexts
+   * that have a regenerate callback registered.
+   */
+  protected onGlobalSettingsUpdated(): void {
+    for (const [_contextId, entry] of this.contexts) {
+      if (!entry.regenerate) continue;
+
+      try {
+        const newSvg = entry.regenerate();
+        entry.svg = newSvg;
+      } catch {
+        // regenerate failed, keep existing svg
+      }
+    }
+  }
+
+  /**
+   * Register a callback to regenerate the SVG for a context when global colors change.
+   * Call this after setKeyImage() in your updateDisplay method.
+   *
+   * @param contextId - The action context ID
+   * @param regenerate - Function that returns the new SVG data URI
+   */
+  protected setRegenerateCallback(contextId: string, regenerate: () => string): void {
+    const entry = this.contexts.get(contextId);
+
+    if (entry) {
+      entry.regenerate = regenerate;
+    }
   }
 
   /**

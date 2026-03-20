@@ -1,28 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background (same as trigger-wipers) -->
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#2a2a3a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: Two wiper positions showing continuous motion -->
     <!-- Sweep arc (continuous, not dashed — indicates ongoing toggle) -->
     <path d="M32 68 A44 44 0 0 1 112 68" fill="none" stroke="#888888" stroke-width="3"/>
 
     <!-- Wiper blade position 1 (left) -->
-    <line x1="72" y1="68" x2="44" y2="28" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <line x1="72" y1="68" x2="44" y2="28" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
     <!-- Wiper blade position 2 (right, ghosted) -->
-    <line x1="72" y1="68" x2="100" y2="28" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+    <line x1="72" y1="68" x2="100" y2="28" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
 
     <!-- Pivot point -->
-    <circle cx="72" cy="68" r="5" fill="#ffffff"/>
+    <circle cx="72" cy="68" r="5" fill="{{graphic1Color}}"/>
 
     <!-- Continuous sweep indicator (solid arc between blade positions) -->
     <path d="M44 28 A40 40 0 0 1 100 28" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

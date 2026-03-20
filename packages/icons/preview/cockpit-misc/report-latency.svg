@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a2a3a"/>
+
+    <!-- Icon content area: Signal bars / network icon -->
+    <rect x="40" y="60" width="12" height="12" rx="2" fill="#888888"/>
+    <rect x="58" y="48" width="12" height="24" rx="2" fill="#888888"/>
+    <rect x="76" y="36" width="12" height="36" rx="2" fill="#ffffff"/>
+    <rect x="94" y="24" width="12" height="48" rx="2" fill="#ffffff"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

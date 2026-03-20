@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a1a3a"/>
+
+    <!-- Icon content area: car silhouette with reload arrow -->
+    <path d="M36 56 L44 40 L64 36 L80 36 L100 40 L108 56 Z" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="32" y1="56" x2="112" y2="56" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="52" cy="56" r="6" fill="none" stroke="#888888" stroke-width="2"/>
+    <circle cx="92" cy="56" r="6" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M72 20 A12 12 0 1 1 60 32" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="56,28 60,32 64,28" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

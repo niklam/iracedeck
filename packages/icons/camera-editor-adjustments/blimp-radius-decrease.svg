@@ -1,18 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a2a3a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Orbit with inward arrow -->
     <circle cx="72" cy="44" r="28" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
-    <circle cx="72" cy="44" r="6" fill="#ffffff"/>
-    <circle cx="100" cy="44" r="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="96" y1="44" x2="84" y2="44" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="90,38 84,44 90,50" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="72" cy="44" r="6" fill="{{graphic1Color}}"/>
+    <circle cx="100" cy="44" r="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <line x1="96" y1="44" x2="84" y2="44" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="90,38 84,44 90,50" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

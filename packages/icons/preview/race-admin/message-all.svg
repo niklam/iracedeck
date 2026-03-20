@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#8B1A1A"/>
+    <!-- Megaphone/broadcast icon -->
+    <path d="M46,42 L66,36 L66,68 L46,62 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="34" y="42" width="14" height="20" rx="3" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <path d="M66,36 L100,24 L100,80 L66,68" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <!-- Sound waves -->
+    <path d="M106,40 C112,46 112,58 106,64" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

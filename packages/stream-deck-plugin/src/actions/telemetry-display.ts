@@ -8,16 +8,20 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   escapeXml,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
 } from "../shared/index.js";
 
+const TELEMETRY_DISPLAY_DEFAULT_BG = "#2a3444";
+const TELEMETRY_DISPLAY_DEFAULT_TEXT = "#ffffff";
+
 const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
   title: z.string().default("CAR #"),
-  backgroundColor: z.string().default("#2a3444"),
-  textColor: z.string().default("#ffffff"),
+  backgroundColor: z.string().default(TELEMETRY_DISPLAY_DEFAULT_BG),
+  textColor: z.string().default(TELEMETRY_DISPLAY_DEFAULT_TEXT),
   fontSize: z.coerce.number().default(18),
 });
 
@@ -28,13 +32,13 @@ type TelemetryDisplaySettings = z.infer<typeof TelemetryDisplaySettings>;
  */
 export function generateValueContent(value: string, fontSize: number, textColor: string): string {
   const lines = value.split("\n").filter((line) => line.length > 0);
-  const baseY = 51 + (fontSize - 22) / 3;
+  const baseY = 102 + (fontSize - 44) / 3;
   const lineHeight = fontSize * 1.2;
 
   if (lines.length <= 1) {
     const text = lines[0] ?? "";
 
-    return `<text x="36" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
+    return `<text x="72" y="${baseY}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(text)}</text>`;
   }
 
   const totalBlockHeight = (lines.length - 1) * lineHeight;
@@ -44,7 +48,7 @@ export function generateValueContent(value: string, fontSize: number, textColor:
     .map((line, i) => {
       const y = startY + i * lineHeight;
 
-      return `<text x="36" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(line)}</text>`;
+      return `<text x="72" y="${y}" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(line)}</text>`;
     })
     .join("\n    ");
 }
@@ -53,11 +57,23 @@ export function generateValueContent(value: string, fontSize: number, textColor:
  * @internal Exported for testing
  */
 export function generateTelemetryDisplaySvg(title: string, value: string, settings: TelemetryDisplaySettings): string {
-  const valueContent = generateValueContent(value, settings.fontSize, settings.textColor);
+  const globalColors = getGlobalColors();
+
+  // Use per-action color if user changed it from default, otherwise fall through to global → default
+  const bgColor =
+    settings.backgroundColor !== TELEMETRY_DISPLAY_DEFAULT_BG
+      ? settings.backgroundColor
+      : globalColors.backgroundColor || TELEMETRY_DISPLAY_DEFAULT_BG;
+  const txtColor =
+    settings.textColor !== TELEMETRY_DISPLAY_DEFAULT_TEXT
+      ? settings.textColor
+      : globalColors.textColor || TELEMETRY_DISPLAY_DEFAULT_TEXT;
+
+  const valueContent = generateValueContent(value, settings.fontSize * 2, txtColor);
 
   const svg = renderIconTemplate(telemetryDisplayTemplate, {
-    backgroundColor: settings.backgroundColor,
-    titleColor: settings.textColor,
+    backgroundColor: bgColor,
+    titleColor: txtColor,
     titleLabel: title,
     valueContent,
   });
@@ -125,6 +141,11 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     const svgDataUri = generateTelemetryDisplaySvg(title, value, settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => {
+      const display = this.resolveDisplay(settings);
+
+      return generateTelemetryDisplaySvg(display.title, display.value, settings);
+    });
 
     const stateKey = this.buildStateKey(title, value, settings);
     this.lastState.set(ev.action.id, stateKey);

@@ -1,17 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#1a2a3a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Camera with downward arrow on left -->
-    <rect x="36" y="28" width="48" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="84,34 108,22 108,70 84,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="28" y1="24" x2="28" y2="64" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="22,58 28,64 34,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="36" y="28" width="48" height="36" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="84,34 108,22 108,70 84,58" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="28" y1="24" x2="28" y2="64" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="22,58 28,64 34,58" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Two-line label -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

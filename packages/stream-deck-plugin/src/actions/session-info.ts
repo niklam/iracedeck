@@ -13,6 +13,7 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   createSDLogger,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
   svgToDataUri,
@@ -121,18 +122,20 @@ export function generateSessionInfoSvg(
     flags: "FLAGS",
   };
   const titleLabel = titleLabels[settings.mode] ?? "INCIDENTS";
-  const valueFontSize = settings.mode === "incidents" ? "24" : value.length > 5 ? "14" : "18";
-  const valueY = settings.mode === "incidents" ? "52" : "50";
+  const valueFontSize = settings.mode === "incidents" ? "48" : value.length > 5 ? "28" : "36";
+  const valueY = settings.mode === "incidents" ? "104" : "100";
 
   let backgroundColor: string;
   let textColor: string;
 
   if (colorOverride) {
+    // Flag/flash override takes priority over all color settings
     backgroundColor = colorOverride.background;
     textColor = colorOverride.text;
   } else {
-    backgroundColor = isFlashing ? BACKGROUND_FLASH : BACKGROUND_DEFAULT;
-    textColor = "#ffffff";
+    const globalColors = getGlobalColors();
+    backgroundColor = isFlashing ? BACKGROUND_FLASH : globalColors.backgroundColor || BACKGROUND_DEFAULT;
+    textColor = globalColors.textColor || "#ffffff";
   }
 
   const svg = renderIconTemplate(sessionInfoTemplate, {

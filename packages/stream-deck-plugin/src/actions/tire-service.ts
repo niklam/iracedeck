@@ -18,9 +18,11 @@ import {
   createSDLogger,
   generateIconText,
   getCommands,
+  getGlobalColors,
   getSDK,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -115,8 +117,8 @@ export function generateTireIcon(compoundType: string): string {
   const color = getCompoundColor(compoundType);
 
   return `
-    <circle cx="36" cy="22" r="12" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="2"/>
-    <circle cx="36" cy="22" r="5" fill="${GRAY}" stroke="${GRAY}" stroke-width="1"/>`;
+    <circle cx="72" cy="44" r="24" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="4"/>
+    <circle cx="72" cy="44" r="10" fill="${GRAY}" stroke="${GRAY}" stroke-width="2"/>`;
 }
 
 /**
@@ -203,11 +205,11 @@ function generateToggleTiresIconContent(
   const rrColor = getTireColor(settings.rr ?? false, currentState.rr);
 
   return `
-    <rect x="26" y="6" width="20" height="32" rx="3" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <rect x="14" y="8" width="8" height="10" rx="1.5" fill="${lfColor}" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="50" y="8" width="8" height="10" rx="1.5" fill="${rfColor}" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="14" y="26" width="8" height="10" rx="1.5" fill="${lrColor}" stroke="${GRAY}" stroke-width="1"/>
-    <rect x="50" y="26" width="8" height="10" rx="1.5" fill="${rrColor}" stroke="${GRAY}" stroke-width="1"/>`;
+    <rect x="52" y="12" width="40" height="64" rx="6" fill="none" stroke="${GRAY}" stroke-width="4"/>
+    <rect x="28" y="16" width="16" height="20" rx="3" fill="${lfColor}" stroke="${GRAY}" stroke-width="2"/>
+    <rect x="100" y="16" width="16" height="20" rx="3" fill="${rfColor}" stroke="${GRAY}" stroke-width="2"/>
+    <rect x="28" y="52" width="16" height="20" rx="3" fill="${lrColor}" stroke="${GRAY}" stroke-width="2"/>
+    <rect x="100" y="52" width="16" height="20" rx="3" fill="${rrColor}" stroke="${GRAY}" stroke-width="2"/>`;
 }
 
 /**
@@ -225,9 +227,11 @@ export function generateTireServiceSvg(
 
   switch (settings.action) {
     case "change-all-tires": {
+      const colors = resolveIconColors(changeAllTiresIconSvg, getGlobalColors(), settings.colorOverrides);
       const svg = renderIconTemplate(changeAllTiresIconSvg, {
         mainLabel: "CHANGE",
         subLabel: "ALL TIRES",
+        ...colors,
       });
 
       return svgToDataUri(svg);
@@ -240,22 +244,24 @@ export function generateTireServiceSvg(
 
       if (isChanging) {
         textElement = [
-          generateIconText({ text: `Change to`, fontSize: 9, fill: YELLOW, baseY: 50 }),
-          generateIconText({ text: compoundType, fontSize: 12, fill: YELLOW, baseY: 63 }),
+          generateIconText({ text: `Change to`, fontSize: 18, fill: YELLOW, baseY: 100, centerX: 72 }),
+          generateIconText({ text: compoundType, fontSize: 24, fill: YELLOW, baseY: 126, centerX: 72 }),
         ].join("\n");
       } else {
         textElement = [
-          generateIconText({ text: `Stay on`, fontSize: 9, fill: "#ffffff", baseY: 50 }),
-          generateIconText({ text: compoundType, fontSize: 12, fill: "#ffffff", baseY: 63 }),
+          generateIconText({ text: `Stay on`, fontSize: 18, fill: "#ffffff", baseY: 100, centerX: 72 }),
+          generateIconText({ text: compoundType, fontSize: 24, fill: "#ffffff", baseY: 126, centerX: 72 }),
         ].join("\n");
       }
 
       break;
     }
     case "clear-tires": {
+      const colors = resolveIconColors(clearTiresIconSvg, getGlobalColors(), settings.colorOverrides);
       const svg = renderIconTemplate(clearTiresIconSvg, {
         mainLabel: "CLEAR",
         subLabel: "TIRES",
+        ...colors,
       });
 
       return svgToDataUri(svg);
@@ -272,7 +278,7 @@ export function generateTireServiceSvg(
       const titleText = anyTireOn ? "Change" : "No Change";
       const titleColor = anyTireOn ? "#FFFFFF" : "#FF4444";
 
-      textElement = generateIconText({ text: titleText, fontSize: 12, fill: titleColor });
+      textElement = generateIconText({ text: titleText, fontSize: 24, fill: titleColor, centerX: 72 });
       break;
     }
   }
@@ -337,6 +343,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound));
 
     const stateKey = this.buildStateKey(settings, tireState, compound);
     this.lastState.set(ev.action.id, stateKey);
@@ -371,6 +378,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateTireServiceSvg(settings, tireState, compound));
 
     const stateKey = this.buildStateKey(settings, tireState, compound);
     this.lastState.set(ev.action.id, stateKey);
@@ -390,6 +398,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
       this.lastState.set(contextId, stateKey);
       const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
       await this.updateKeyImage(contextId, svgDataUri);
+      this.setRegenerateCallback(contextId, () => generateTireServiceSvg(settings, tireState, compound));
     }
   }
 

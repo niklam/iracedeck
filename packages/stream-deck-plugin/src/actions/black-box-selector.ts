@@ -25,6 +25,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -34,6 +35,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -143,9 +145,11 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings):
     labels = BLACK_BOX_LABELS[blackBox] || { mainLabel: "BLACK BOX", subLabel: "TOGGLE" };
   }
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -194,6 +198,7 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     const svgDataUri = generateBlackBoxSelectorSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateBlackBoxSelectorSvg(settings));
   }
 
   /**

@@ -16,8 +16,10 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   getCommands,
+  getGlobalColors,
   LogLevel,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -55,9 +57,11 @@ export function generatePitQuickActionsSvg(settings: PitQuickActionsSettings): s
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["clear-all-checkboxes"];
   const labels = PIT_QUICK_ACTION_LABELS[actionType] || PIT_QUICK_ACTION_LABELS["clear-all-checkboxes"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -145,5 +149,6 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
     const svgDataUri = generatePitQuickActionsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generatePitQuickActionsSvg(settings));
   }
 }

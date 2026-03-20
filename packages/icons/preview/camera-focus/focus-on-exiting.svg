@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Icon content area: crosshair + exit arrow -->
+    <circle cx="60" cy="48" r="20" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="60" cy="48" r="5" fill="#ffffff"/>
+    <line x1="60" y1="20" x2="60" y2="32" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="60" y1="64" x2="60" y2="76" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="32" y1="48" x2="44" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="76" y1="48" x2="88" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="100,36 112,48 100,60" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

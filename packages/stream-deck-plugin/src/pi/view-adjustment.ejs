@@ -23,6 +23,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['view-adjustment'] }) %>
+
 		<%- include('global-key-bindings', {
 			keyBindings: require('./data/key-bindings.json').viewAdjustment
 		}) %>

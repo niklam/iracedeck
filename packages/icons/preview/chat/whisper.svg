@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Chat bubble with ear/wave icon -->
+    <path d="M32 20 h80 a8 8 0 0 1 8 8 v40 a8 8 0 0 1-8 8 H76 l-6 10 l-6-10 H32 a8 8 0 0 1-8-8 V28 a8 8 0 0 1 8-8 z"
+          fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M60 36 A8 8 0 0 1 60 56" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M68 30 A16 16 0 0 1 68 62" fill="none" stroke="{{color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M76 24 A24 24 0 0 1 76 68" fill="none" stroke="{{color}}" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

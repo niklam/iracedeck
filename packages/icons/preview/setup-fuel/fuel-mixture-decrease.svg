@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#3a3a1a"/>
+
+    <!-- Fuel Mixture decrease: fuel droplet with fill level + left arrow -->
+    <path d="M60 20 C60 20 40 44 40 56 C40 68 48 76 60 76 C72 76 80 68 80 56 C80 44 60 20 60 20Z"
+          fill="none" stroke="#ffffff" stroke-width="4"/>
+    <path d="M46 60 Q60 52 74 60" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="38,32 28,44 38,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+  </g>
+</svg>

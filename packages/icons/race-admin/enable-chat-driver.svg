@@ -1,17 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#8B1A1A"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
     <!-- Chat bubble with person+checkmark -->
-    <path d="M36,26 L108,26 Q114,26 114,32 L114,58 Q114,64 108,64 L76,64 L60,78 L60,64 L36,64 Q30,64 30,58 L30,32 Q30,26 36,26 Z" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <path d="M36,26 L108,26 Q114,26 114,32 L114,58 Q114,64 108,64 L76,64 L60,78 L60,64 L36,64 Q30,64 30,58 L30,32 Q30,26 36,26 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
     <!-- Person inside -->
-    <circle cx="62" cy="40" r="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <path d="M50,58 C50,50 62,46 62,46 C62,46 74,50 74,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="62" cy="40" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <path d="M50,58 C50,50 62,46 62,46 C62,46 74,50 74,58" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
     <!-- Checkmark badge -->
-    <polyline points="84,42 90,50 102,34" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="84,42 90,50 102,34" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

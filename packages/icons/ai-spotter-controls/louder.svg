@@ -1,17 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
-    <rect x="0" y="0" width="144" height="144" rx="16" fill="#3a4a5a"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
 
     <!-- Icon content area: speaker with 3 sound waves (louder) -->
-    <path d="M32 40v24h12l16 16V24l-16 16h-12z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M72 40 Q80 52 72 64" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <path d="M80 30 Q94 52 80 74" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
-    <path d="M88 20 Q108 52 88 84" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M32 40v24h12l16 16V24l-16 16h-12z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M72 40 Q80 52 72 64" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M80 30 Q94 52 80 74" fill="none" stroke="{{graphic1Color}}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M88 20 Q108 52 88 84" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
 
     <!-- Labels -->
     <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

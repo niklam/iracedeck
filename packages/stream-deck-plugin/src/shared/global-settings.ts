@@ -163,6 +163,42 @@ export function isGlobalSettingsInitialized(): boolean {
 }
 
 /**
+ * Get current global color preferences.
+ * Reads flat color keys (colorBackgroundColor, colorTextColor, etc.)
+ * from global settings and returns them as a ColorSlots object.
+ *
+ * @returns Color preferences, with undefined for unset slots
+ */
+export function getGlobalColors(): {
+  backgroundColor?: string;
+  textColor?: string;
+  graphic1Color?: string;
+  graphic2Color?: string;
+} {
+  const settings = currentSettings as Record<string, unknown>;
+
+  const color = (key: string): string | undefined => {
+    const val = settings[key];
+
+    // Ignore empty strings and #000001 (sentinel for "not set" — HTML color inputs
+    // can't be empty, so reset buttons set to #000001 which is visually indistinguishable
+    // from black but signals "no override")
+    if (typeof val !== "string" || val.length === 0 || val === "#000001") {
+      return undefined;
+    }
+
+    return val;
+  };
+
+  return {
+    backgroundColor: color("colorBackgroundColor"),
+    textColor: color("colorTextColor"),
+    graphic1Color: color("colorGraphic1Color"),
+    graphic2Color: color("colorGraphic2Color"),
+  };
+}
+
+/**
  * Reset global settings state (for testing purposes only).
  * @internal
  */

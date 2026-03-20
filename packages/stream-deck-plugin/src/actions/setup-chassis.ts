@@ -40,6 +40,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -49,6 +50,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -189,9 +191,11 @@ export function generateSetupChassisSvg(settings: SetupChassisSettings): string 
   const iconSvg = SETUP_CHASSIS_ICONS[key] || SETUP_CHASSIS_ICONS["differential-preload-increase"];
   const labels = SETUP_CHASSIS_LABELS[key] || { mainLabel: "CHASSIS", subLabel: "SETUP" };
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -307,5 +311,6 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     const svgDataUri = generateSetupChassisSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateSetupChassisSvg(settings));
   }
 }

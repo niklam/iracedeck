@@ -22,6 +22,7 @@ import {
   formatKeyBinding,
   generateIconText,
   getCommands,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyboardKey,
@@ -30,6 +31,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -37,13 +39,12 @@ import {
  * SVG template for send-message mode: large chat bubble with text inside.
  * Has the same background as other chat modes, with a black-filled bubble for contrast.
  */
-const SEND_MESSAGE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+const SEND_MESSAGE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#4a90d9","graphic2Color":"#000000"}}</desc>
   <g filter="url(#activity-state)">
-    <!-- Main background (matches other chat modes) -->
-    <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3a4a"/>
-    <!-- Chat bubble with black fill for text contrast -->
-    <path d="M14 14 h45 a6 6 0 0 1 6 6 v34 a6 6 0 0 1-6 6 H29 l-4 8 l-4 -8 H13 a6 6 0 0 1-6-6 V20 a6 6 0 0 1 6-6 z"
-          fill="#000000" stroke="{{color}}" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+    <path d="M28 28 h90 a12 12 0 0 1 12 12 v68 a12 12 0 0 1-12 12 H58 l-8 16 l-8 -16 H26 a12 12 0 0 1-12-12 V40 a12 12 0 0 1 12-12 z"
+          fill="{{graphic2Color}}" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>
     {{textElement}}
   </g>
 </svg>`;
@@ -52,10 +53,12 @@ const SEND_MESSAGE_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="
  * SVG template for macro mode: large chat bubble with text inside (no background).
  * Matches the old do-chat-macro.svg style.
  */
-const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#4a90d9","graphic2Color":"none"}}</desc>
   <g filter="url(#activity-state)">
-    <path d="M14 14 h45 a6 6 0 0 1 6 6 v34 a6 6 0 0 1-6 6 H29 l-4 8 l-4 -8 H13 a6 6 0 0 1-6-6 V20 a6 6 0 0 1 6-6 z"
-          fill="none" stroke="{{color}}" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+    <path d="M28 28 h90 a12 12 0 0 1 12 12 v68 a12 12 0 0 1-12 12 H58 l-8 16 l-8 -16 H26 a12 12 0 0 1-12-12 V40 a12 12 0 0 1 12-12 z"
+          fill="{{graphic2Color}}" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>
     {{textElement}}
   </g>
 </svg>`;
@@ -129,16 +132,16 @@ export function hasTemplateVars(settings: { keyText: string; message: string }):
  * For other modes: renders icon with accent color and labels below.
  */
 export function generateChatSvg(settings: ChatSettings): string {
-  const { mode, iconColor, keyText, message, fontSize } = settings;
+  const { mode, iconColor, keyText } = settings;
 
   // Special handling for send-message mode: render text inside the bubble
   if (mode === "send-message") {
-    return generateSendMessageSvg(iconColor, keyText, message, fontSize);
+    return generateSendMessageSvg(settings);
   }
 
   // Special handling for macro mode: bubble with "Macro" + number or custom text
   if (mode === "macro") {
-    return generateMacroSvg(iconColor, keyText, settings.macroNumber, fontSize);
+    return generateMacroSvg(settings);
   }
 
   // For other modes: use standalone SVG templates from @iracedeck/icons
@@ -170,10 +173,12 @@ export function generateChatSvg(settings: ChatSettings): string {
     subLabel = labels.line2;
   }
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     color: iconColor,
     mainLabel,
     subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -184,7 +189,8 @@ export function generateChatSvg(settings: ChatSettings): string {
  *
  * Generates SVG for send-message mode: large chat bubble with text inside.
  */
-export function generateSendMessageSvg(iconColor: string, keyText: string, message: string, fontSize = 11): string {
+export function generateSendMessageSvg(settings: ChatSettings): string {
+  const { keyText, message, fontSize, iconColor } = settings;
   // Prefer keyText, fall back to message
   const displayText = keyText?.trim() || message?.trim() || "";
 
@@ -195,15 +201,29 @@ export function generateSendMessageSvg(iconColor: string, keyText: string, messa
     .filter((line) => line.length > 0)
     .join("\n");
 
-  // Adjust vertical position based on font size (larger text shifts down in SVG coordinates)
-  const baseY = 40 + (fontSize - 11) / 3;
+  // Resolve colors: map legacy iconColor to graphic1Color if no override set
+  const colors = resolveIconColors(SEND_MESSAGE_TEMPLATE, getGlobalColors(), {
+    ...settings.colorOverrides,
+    graphic1Color: settings.colorOverrides?.graphic1Color || iconColor,
+  });
+
+  // Adjust vertical position based on font size (144x144 coordinates)
+  const scaledFontSize = fontSize * 2;
+  const baseY = 80 + ((fontSize - 11) / 3) * 2;
 
   // Generate text element positioned inside the bubble
   const textElement = normalizedText
-    ? generateIconText({ text: normalizedText, fontSize, baseY, lineHeightMultiplier: 1.2 })
+    ? generateIconText({
+        text: normalizedText,
+        fontSize: scaledFontSize,
+        baseY,
+        centerX: 72,
+        lineHeightMultiplier: 1.2,
+        fill: colors.textColor,
+      })
     : "";
 
-  const svg = renderIconTemplate(SEND_MESSAGE_TEMPLATE, { color: iconColor, textElement });
+  const svg = renderIconTemplate(SEND_MESSAGE_TEMPLATE, { ...colors, textElement });
 
   return svgToDataUri(svg);
 }
@@ -214,29 +234,58 @@ export function generateSendMessageSvg(iconColor: string, keyText: string, messa
  * Generates SVG for macro mode: chat bubble with "Macro" + number or custom text.
  * Matches the old do-chat-macro style.
  */
-export function generateMacroSvg(iconColor: string, keyText: string, macroNumber: number, fontSize = 10): string {
+export function generateMacroSvg(settings: ChatSettings): string {
+  const { keyText, macroNumber, fontSize, iconColor } = settings;
   const trimmedText = keyText?.trim();
   let textElement: string;
 
+  // Resolve colors: map legacy iconColor to graphic1Color if no override set
+  const colors = resolveIconColors(MACRO_TEMPLATE, getGlobalColors(), {
+    ...settings.colorOverrides,
+    graphic1Color: settings.colorOverrides?.graphic1Color || iconColor,
+  });
+
   if (trimmedText) {
-    // Custom text: normalize line endings and filter empty lines, use configurable font size
+    // Custom text: normalize line endings and filter empty lines
     const normalizedText = trimmedText
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .join("\n");
 
-    // Adjust vertical position based on font size (larger text shifts down in SVG coordinates)
-    const baseY = 40 + (fontSize - 10) / 3;
+    // Adjust vertical position based on font size (144x144 coordinates)
+    const scaledFontSize = fontSize * 2;
+    const baseY = 80 + ((fontSize - 10) / 3) * 2;
 
-    textElement = generateIconText({ text: normalizedText, fontSize, baseY, lineHeightMultiplier: 1.2 });
+    textElement = generateIconText({
+      text: normalizedText,
+      fontSize: scaledFontSize,
+      baseY,
+      centerX: 72,
+      lineHeightMultiplier: 1.2,
+      fill: colors.textColor,
+    });
   } else {
-    // Default: "Macro" text on top, large number below (fixed font sizes)
-    textElement = generateIconText({ text: "Macro", fontSize: 10, baseY: 30, lineHeightMultiplier: 1.2 });
-    textElement += generateIconText({ text: String(macroNumber), fontSize: 25, baseY: 52, lineHeightMultiplier: 1.2 });
+    // Default: "Macro" text on top, large number below (144x144 coordinates)
+    textElement = generateIconText({
+      text: "Macro",
+      fontSize: 20,
+      baseY: 60,
+      centerX: 72,
+      lineHeightMultiplier: 1.2,
+      fill: colors.textColor,
+    });
+    textElement += generateIconText({
+      text: String(macroNumber),
+      fontSize: 50,
+      baseY: 104,
+      centerX: 72,
+      lineHeightMultiplier: 1.2,
+      fill: colors.textColor,
+    });
   }
 
-  const svg = renderIconTemplate(MACRO_TEMPLATE, { color: iconColor, textElement });
+  const svg = renderIconTemplate(MACRO_TEMPLATE, { ...colors, textElement });
 
   return svgToDataUri(svg);
 }
@@ -444,6 +493,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     if (this.lastRenderedIcon.get(contextId) !== svgDataUri) {
       this.lastRenderedIcon.set(contextId, svgDataUri);
       await this.updateKeyImage(contextId, svgDataUri);
+      this.setRegenerateCallback(contextId, () => generateChatSvg(resolved));
     }
   }
 
@@ -458,5 +508,6 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     this.lastRenderedIcon.set(ev.action.id, svgDataUri);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateChatSvg(resolved));
   }
 }

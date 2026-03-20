@@ -25,6 +25,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   type KeyBindingValue,
@@ -34,6 +35,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -143,9 +145,11 @@ export function generateSetupHybridSvg(settings: SetupHybridSettings): string {
   const iconSvg = SETUP_HYBRID_ICONS[iconKey] || SETUP_HYBRID_ICONS["hys-boost"];
   const labels = SETUP_HYBRID_LABELS[iconKey] || { mainLabel: "HYBRID", subLabel: "SETUP" };
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.mainLabel,
     subLabel: labels.subLabel,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -353,5 +357,6 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
     const svgDataUri = generateSetupHybridSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateSetupHybridSvg(settings));
   }
 }

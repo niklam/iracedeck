@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#3a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#3a4a5a"/>
+
+    <!-- Icon content area: cloud with rain -->
+    <path d="M48 44a20 20 0 0 1 38-6 16 16 0 0 1 14 16 14 14 0 0 1-14 14H50a14 14 0 0 1-2-28z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <line x1="58" y1="72" x2="54" y2="80" stroke="#3498db" stroke-width="3" stroke-linecap="round"/>
+    <line x1="72" y1="72" x2="68" y2="80" stroke="#3498db" stroke-width="3" stroke-linecap="round"/>
+    <line x1="86" y1="72" x2="82" y2="80" stroke="#3498db" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Labels -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

@@ -21,6 +21,7 @@ import {
   ConnectionStateAwareAction,
   createSDLogger,
   formatKeyBinding,
+  getGlobalColors,
   getGlobalSettings,
   getKeyboard,
   getSDK,
@@ -31,6 +32,7 @@ import {
   LogLevel,
   parseKeyBinding,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "../shared/index.js";
 
@@ -86,9 +88,9 @@ export function getPitSpeedLimit(): number {
  */
 export function pitLimiterActiveIcon(speed: number): string {
   return `
-    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${BLUE}" stroke-width="4"/>
-    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${BLUE}" stroke-width="8"/>
+    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
 }
 
 /**
@@ -98,10 +100,10 @@ export function pitLimiterActiveIcon(speed: number): string {
  */
 export function pitLimiterInactiveIcon(speed: number): string {
   return `
-    <circle cx="36" cy="23" r="15" fill="${WHITE}" stroke="${RED}" stroke-width="4"/>
-    <circle cx="36" cy="23" r="15" fill="none" stroke="${GRAY}" stroke-width="1"/>
-    <text x="36" y="28" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="14" font-weight="bold">${speed}</text>`;
+    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${RED}" stroke-width="8"/>
+    <circle cx="72" cy="46" r="30" fill="none" stroke="${GRAY}" stroke-width="2"/>
+    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
 }
 
 /**
@@ -164,10 +166,12 @@ export function generateCarControlSvg(
 
     const labels = CAR_CONTROL_LABELS["pit-speed-limiter"];
 
+    const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides);
     const svg = renderIconTemplate(carControlTemplate, {
       iconContent,
       mainLabel: labels.line1,
       subLabel: labels.line2,
+      ...colors,
     });
 
     return svgToDataUri(svg);
@@ -177,9 +181,11 @@ export function generateCarControlSvg(
   const iconSvg = STATIC_CAR_CONTROL_ICONS[control] || starterIcon;
   const labels = CAR_CONTROL_LABELS[control] || CAR_CONTROL_LABELS["starter"];
 
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(iconSvg, {
     mainLabel: labels.line1,
     subLabel: labels.line2,
+    ...colors,
   });
 
   return svgToDataUri(svg);
@@ -372,6 +378,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     const svgDataUri = generateCarControlSvg(settings, pitLimiterState, pitSpeedLimit);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
+    this.setRegenerateCallback(ev.action.id, () => generateCarControlSvg(settings, pitLimiterState, pitSpeedLimit));
 
     // Initialize state cache
     const stateKey = this.buildStateKey(settings, pitLimiterState ?? false, pitSpeedLimit);
@@ -402,6 +409,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       this.lastState.set(contextId, stateKey);
       const svgDataUri = generateCarControlSvg(settings, active, pitSpeedLimit);
       await this.updateKeyImage(contextId, svgDataUri);
+      this.setRegenerateCallback(contextId, () => generateCarControlSvg(settings, active, pitSpeedLimit));
     }
   }
 }

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#2a3a4a"/>
+
+    <!-- Gauge arc (semicircle from left to right, pivot at bottom center) -->
+    <path d="M 36 72 A 36 36 0 1 1 108 72" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Tick marks (at -90°, -45°, 0°, 45°, 90° from center) -->
+    <!-- Left (-90°): 1/16x -->
+    <line x1="36" y1="72" x2="42" y2="72" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Upper-left (-45°) -->
+    <line x1="46.5" y1="46.5" x2="50.7" y2="50.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Top (0°): 1x -->
+    <line x1="72" y1="36" x2="72" y2="42" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Upper-right (45°) -->
+    <line x1="97.5" y1="46.5" x2="93.3" y2="50.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Right (90°): 16x -->
+    <line x1="108" y1="72" x2="102" y2="72" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+
+    <!-- Needle (rotated by needleAngle degrees around pivot 72,72) -->
+    <g transform="rotate({{needleAngle}}, 72, 72)">
+      <line x1="72" y1="72" x2="72" y2="44" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    </g>
+
+    <!-- Center dot (pivot) -->
+    <circle cx="72" cy="72" r="4" fill="#ffffff"/>
+
+    <!-- Two-line label (subLabel on top subdued, mainLabel on bottom prominent) -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

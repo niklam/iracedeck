@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <!-- Main background -->
+    <rect x="0" y="0" width="144" height="144" fill="#1a3a2a"/>
+
+    <!-- Icon content area: Key shape with speed lines -->
+    <rect x="48" y="24" width="48" height="36" rx="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <text x="72" y="44" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16" font-weight="bold">KEY</text>
+    <line x1="36" y1="36" x2="44" y2="36" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="32" y1="44" x2="44" y2="44" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="36" y1="52" x2="44" y2="52" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- Two-line label -->
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

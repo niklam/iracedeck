@@ -21,6 +21,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['audio-controls'] }) %>
+
 		<%- include('global-key-bindings', {
 			subtitle: 'Audio Control Key Bindings',
 			keyBindings: require('./data/key-bindings.json').audioControls
