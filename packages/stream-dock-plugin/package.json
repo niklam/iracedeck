@@ -1,0 +1,39 @@
+{
+  "name": "@iracedeck/stream-dock-plugin",
+  "version": "0.1.0",
+  "description": "VSDinside Stream Dock plugin for iRacing - Core driving and interface controls",
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "rollup -c && npm run postbuild",
+    "postbuild": "cd com.iracedeck.dock.core.sdPlugin/bin && npm install",
+    "watch": "rollup -c -w",
+    "clean": "rimraf com.iracedeck.dock.core.sdPlugin/bin/plugin.js com.iracedeck.dock.core.sdPlugin/bin/plugin.js.map",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@iracedeck/actions": "workspace:*",
+    "@iracedeck/deck-adapter-vsd": "workspace:*",
+    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/iracing-native": "workspace:*",
+    "@iracedeck/iracing-sdk": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "ws": "8.18.2",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "29.0.2",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-terser": "1.0.0",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@tsconfig/node22": "22.0.5",
+    "@types/node": "25.3.5",
+    "rimraf": "6.1.3",
+    "rollup": "4.59.0",
+    "tslib": "2.8.1",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  },
+  "license": "MIT"
+}
