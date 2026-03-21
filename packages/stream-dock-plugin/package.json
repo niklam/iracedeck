@@ -6,10 +6,10 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "build": "rollup -c && npm run postbuild",
-    "postbuild": "cd com.iracedeck.dock.core.sdPlugin/bin && npm install",
+    "postbuild": "cd com.iracedeck.sd.core.sdPlugin/bin && npm install",
     "watch": "rollup -c -w",
-    "clean": "rimraf com.iracedeck.dock.core.sdPlugin/bin/plugin.js com.iracedeck.dock.core.sdPlugin/bin/plugin.js.map",
-    "pack:plugin": "streamdeck pack com.iracedeck.dock.core.sdPlugin --force --ignore-validation -o ../../local && mv ../../local/com.iracedeck.dock.core.streamDeckPlugin ../../local/iracedeck-dev.mirabox.sdPlugin",
+    "clean": "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js com.iracedeck.sd.core.sdPlugin/bin/plugin.js.map",
+    "pack:plugin": "streamdeck pack com.iracedeck.sd.core.sdPlugin --force --ignore-validation -o ../../local && mv ../../local/com.iracedeck.sd.core.streamDeckPlugin ../../local/iracedeck-dev.mirabox.sdPlugin",
     "test": "vitest run",
     "test:watch": "vitest"
   },

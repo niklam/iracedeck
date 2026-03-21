@@ -33,8 +33,8 @@ jobs:
       - name: Pack Stream Dock plugin
         run: |
           $version = if ("${{ github.ref_name }}".StartsWith("v")) { "${{ github.ref_name }}".TrimStart("v") } else { "dev" }
-          npx @elgato/cli@latest pack packages/stream-dock-plugin/com.iracedeck.dock.core.sdPlugin --force --ignore-validation
-          Rename-Item "com.iracedeck.dock.core.streamDeckPlugin" "iracedeck-mirabox-v${version}.sdPlugin"
+          npx @elgato/cli@latest pack packages/stream-dock-plugin/com.iracedeck.sd.core.sdPlugin --force --ignore-validation
+          Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "iracedeck-mirabox-v${version}.sdPlugin"
           Copy-Item "iracedeck-mirabox-v${version}.sdPlugin" "iracedeck-mirabox-latest.sdPlugin"
         shell: pwsh
 

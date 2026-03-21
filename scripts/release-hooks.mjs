@@ -36,7 +36,7 @@ for (const rel of packageJsonPaths) {
 // Bump Version in manifest.json files (4-part format: x.y.z.0)
 const manifestPaths = [
   "packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json",
-  "packages/stream-dock-plugin/com.iracedeck.dock.core.sdPlugin/manifest.json",
+  "packages/stream-dock-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json",
 ];
 
 for (const rel of manifestPaths) {

@@ -8,8 +8,7 @@
         "build/**",
         "bin/**",
         "com.iracedeck.sd.sdPlugin/**",
-        "com.iracedeck.sd.*.sdPlugin/**",
-        "com.iracedeck.dock.*.sdPlugin/**"
+        "com.iracedeck.sd.*.sdPlugin/**"
       ]
     },
     "dev": {

@@ -97,7 +97,7 @@ function stripHtmlLangPlugin(outputDir) {
 }
 
 const isWatching = !!process.env.ROLLUP_WATCH;
-const sdPlugin = "com.iracedeck.dock.core.sdPlugin";
+const sdPlugin = "com.iracedeck.sd.core.sdPlugin";
 
 /**
  * @type {import('rollup').RollupOptions}
