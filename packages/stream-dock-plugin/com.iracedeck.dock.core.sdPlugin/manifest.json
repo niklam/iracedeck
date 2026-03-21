@@ -802,7 +802,7 @@
   "Description": "Complete iRacing controls for VSDinside Stream Dock.",
   "PropertyInspectorPath": "ui/settings.html",
   "Icon": "imgs/plugin/marketplace",
-  "SDKVersion": 1,
+  "SDKVersion": 2,
   "Software": {
     "MinimumVersion": "3.10.188.226"
   },
