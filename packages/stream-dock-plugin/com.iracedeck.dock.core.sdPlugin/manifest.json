@@ -30,19 +30,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Volume up/down",
-          "Push": "Mute/silence"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/audio-controls/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Volume up/down",
+          "Push": "Mute/silence"
+        }
+      }
     },
     {
       "Name": "Black Box Selector",
@@ -54,18 +55,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Next/Previous black box"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/black-box-selector/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous black box"
+        }
+      }
     },
     {
       "Name": "Splits & Reference",
@@ -77,19 +79,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Next/Previous splits delta",
-          "Push": "Toggle reference car"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/splits-delta-cycle/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous splits delta",
+          "Push": "Toggle reference car"
+        }
+      }
     },
     {
       "Name": "Telemetry Control",
@@ -101,18 +104,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate telemetry action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/telemetry-control/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate telemetry action"
+        }
+      }
     },
     {
       "Name": "Toggle UI Elements",
@@ -124,18 +128,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Toggle UI element"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/toggle-ui-elements/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Toggle UI element"
+        }
+      }
     },
     {
       "Name": "Look Direction",
@@ -147,18 +152,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate look direction"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/look-direction/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate look direction"
+        }
+      }
     },
     {
       "Name": "Car Control",
@@ -170,18 +176,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate car control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/car-control/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate car control"
+        }
+      }
     },
     {
       "Name": "Cockpit Misc",
@@ -193,19 +200,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/cockpit-misc/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate control"
+        }
+      }
     },
     {
       "Name": "Pit Quick Actions",
@@ -217,18 +225,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate pit action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/pit-quick-actions/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate pit action"
+        }
+      }
     },
     {
       "Name": "Fuel Service",
@@ -240,19 +249,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel",
-          "Push": "Activate fuel action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/fuel-service/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel",
+          "Push": "Activate fuel action"
+        }
+      }
     },
     {
       "Name": "Tire Service",
@@ -264,18 +274,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate tire action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/tire-service/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate tire action"
+        }
+      }
     },
     {
       "Name": "Chat",
@@ -287,18 +298,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate chat action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/chat/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate chat action"
+        }
+      }
     },
     {
       "Name": "Race Admin",
@@ -310,18 +322,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Execute admin command"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/race-admin/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Execute admin command"
+        }
+      }
     },
     {
       "Name": "View Adjustment",
@@ -333,19 +346,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/view-adjustment/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate adjustment"
+        }
+      }
     },
     {
       "Name": "Replay Control",
@@ -357,19 +371,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Context-dependent (frame step, speed, navigation)",
-          "Push": "Context-dependent (play, reset speed, navigate)"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-control/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Context-dependent (frame step, speed, navigation)",
+          "Push": "Context-dependent (play, reset speed, navigate)"
+        }
+      }
     },
     {
       "Name": "Replay Transport",
@@ -382,19 +397,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Frame forward/backward",
-          "Push": "Play/Pause"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-transport/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Frame forward/backward",
+          "Push": "Play/Pause"
+        }
+      }
     },
     {
       "Name": "Replay Speed",
@@ -407,19 +423,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease speed",
-          "Push": "Reset to normal speed"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-speed/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease speed",
+          "Push": "Reset to normal speed"
+        }
+      }
     },
     {
       "Name": "Camera Cycle",
@@ -431,19 +448,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Next/Previous camera",
-          "Push": "Activate camera cycle"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-cycle/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous camera",
+          "Push": "Activate camera cycle"
+        }
+      }
     },
     {
       "Name": "Camera Focus",
@@ -455,18 +473,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Focus on selected target"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Focus on selected target"
+        }
+      }
     },
     {
       "Name": "Camera Editor Adjustments",
@@ -478,19 +497,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease adjustment",
-          "Push": "Activate selected adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-adjustments/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease adjustment",
+          "Push": "Activate selected adjustment"
+        }
+      }
     },
     {
       "Name": "Camera Editor Controls",
@@ -502,18 +522,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate selected control"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/camera-editor-controls/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate selected control"
+        }
+      }
     },
     {
       "Name": "Media Capture",
@@ -525,18 +546,19 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Push": "Activate selected capture action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/media-capture/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Push": "Activate selected capture action"
+        }
+      }
     },
     {
       "Name": "Replay Navigation",
@@ -549,19 +571,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Next/Previous (session, lap, or incident)",
-          "Push": "Activate navigation action"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/replay-navigation/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous (session, lap, or incident)",
+          "Push": "Activate navigation action"
+        }
+      }
     },
     {
       "Name": "Setup Brakes",
@@ -573,19 +596,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease brake setting",
-          "Push": "Activate brake adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-brakes/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease brake setting",
+          "Push": "Activate brake adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Chassis",
@@ -597,19 +621,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease chassis setting",
-          "Push": "Activate chassis adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-chassis/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease chassis setting",
+          "Push": "Activate chassis adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Aero",
@@ -621,19 +646,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease aero setting",
-          "Push": "Activate aero adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-aero/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease aero setting",
+          "Push": "Activate aero adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Engine",
@@ -645,19 +671,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease engine setting",
-          "Push": "Activate engine adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-engine/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease engine setting",
+          "Push": "Activate engine adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Fuel",
@@ -669,19 +696,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease fuel setting",
-          "Push": "Activate fuel adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-fuel/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease fuel setting",
+          "Push": "Activate fuel adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Hybrid",
@@ -693,19 +721,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease hybrid setting",
-          "Push": "Activate hybrid adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-hybrid/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease hybrid setting",
+          "Push": "Activate hybrid adjustment"
+        }
+      }
     },
     {
       "Name": "Setup Traction",
@@ -717,19 +746,20 @@
         "Keypad",
         "Knob"
       ],
-      "Encoder": {
-        "TriggerDescription": {
-          "Rotate": "Increase/Decrease TC setting",
-          "Push": "Activate TC adjustment"
-        }
-      },
       "States": [
         {
           "Image": "imgs/actions/setup-traction/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
-      ]
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Increase/Decrease TC setting",
+          "Push": "Activate TC adjustment"
+        }
+      }
     },
     {
       "Name": "Session Info",
