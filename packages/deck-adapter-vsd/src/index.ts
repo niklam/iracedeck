@@ -5,4 +5,10 @@
  */
 
 export { VSDPlatformAdapter } from "./adapter.js";
-export { VSDClient, type VSDEvent, type VSDEventHandler } from "./vsd-client.js";
+export {
+  VSDClient,
+  parseConnectionParams,
+  type VSDConnectionParams,
+  type VSDEvent,
+  type VSDEventHandler,
+} from "./vsd-client.js";

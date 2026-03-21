@@ -8,6 +8,7 @@ const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 
 // Mock VSDClient — factory must not reference variables defined after vi.mock
 vi.mock("./vsd-client.js", () => ({
+  parseConnectionParams: () => ({ port: "12345", pluginUuid: "com.test", registerEvent: "register" }),
   VSDClient: class {
     onActionEvent = vi.fn();
     onGlobalEvent = vi.fn();

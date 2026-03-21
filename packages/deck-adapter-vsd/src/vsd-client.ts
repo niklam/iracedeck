@@ -37,6 +37,15 @@ export interface VSDEvent {
 export type VSDEventHandler = (data: VSDEvent) => void;
 
 /**
+ * Connection parameters for VSD Craft.
+ */
+export interface VSDConnectionParams {
+  port: string;
+  pluginUuid: string;
+  registerEvent: string;
+}
+
+/**
  * Registration for a per-action event handler.
  */
 interface ActionEventRegistration {
@@ -45,25 +54,40 @@ interface ActionEventRegistration {
   handler: VSDEventHandler;
 }
 
+/** WebSocket OPEN readyState constant */
+const WS_OPEN = 1;
+
+/**
+ * Parse VSD Craft connection parameters from process.argv.
+ */
+export function parseConnectionParams(): VSDConnectionParams {
+  return {
+    port: process.argv[3] ?? "",
+    pluginUuid: process.argv[5] ?? "",
+    registerEvent: process.argv[7] ?? "",
+  };
+}
+
 /**
  * Low-level WebSocket client for the VSD Craft plugin protocol.
  * Handles connection, registration, event routing, and outbound commands.
  */
 export class VSDClient {
   private ws: WSType | null = null;
-  private readonly port: string;
-  private readonly pluginUuid: string;
-  private readonly registerEvent: string;
+  private readonly params: VSDConnectionParams;
   private readonly actionHandlers: ActionEventRegistration[] = [];
   private readonly globalHandlers = new Map<string, VSDEventHandler[]>();
-  private logger: ILogger;
-  private globalSettingsRequested = false;
+  private readonly logger: ILogger;
+  private readonly onClose: () => void;
 
-  constructor(logger: ILogger = silentLogger) {
+  constructor(
+    params: VSDConnectionParams,
+    logger: ILogger = silentLogger,
+    onClose: () => void = () => process.exit(0),
+  ) {
+    this.params = params;
     this.logger = logger;
-    this.port = process.argv[3] ?? "";
-    this.pluginUuid = process.argv[5] ?? "";
-    this.registerEvent = process.argv[7] ?? "";
+    this.onClose = onClose;
   }
 
   /**
@@ -86,28 +110,23 @@ export class VSDClient {
    * Connect to VSD Craft and start receiving events.
    */
   async connect(): Promise<void> {
-    if (!this.port) {
-      this.logger.error("No port provided in process.argv[3] — cannot connect to VSD Craft");
+    if (!this.params.port) {
+      this.logger.error("No port provided — cannot connect to VSD Craft");
 
       return;
     }
 
     this.logger.info("Connecting to VSD Craft");
-    this.logger.debug(`WebSocket port: ${this.port}, UUID: ${this.pluginUuid}`);
+    this.logger.debug(`WebSocket port: ${this.params.port}, UUID: ${this.params.pluginUuid}`);
 
     // Dynamic import to avoid bundling issues with native CommonJS module
     const { WebSocket } = await import("ws");
-    this.ws = new WebSocket(`ws://127.0.0.1:${this.port}`);
+    this.ws = new WebSocket(`ws://127.0.0.1:${this.params.port}`);
 
     this.ws.on("open", () => {
       this.logger.info("Connected to VSD Craft");
-      this.send({ uuid: this.pluginUuid, event: this.registerEvent });
-
-      // Request global settings once on first connection
-      if (!this.globalSettingsRequested) {
-        this.globalSettingsRequested = true;
-        this.requestGlobalSettings();
-      }
+      this.send({ uuid: this.params.pluginUuid, event: this.params.registerEvent });
+      this.requestGlobalSettings();
     });
 
     this.ws.on("message", (raw: Buffer | string) => {
@@ -121,7 +140,7 @@ export class VSDClient {
 
     this.ws.on("close", () => {
       this.logger.info("Disconnected from VSD Craft");
-      process.exit(0);
+      this.onClose();
     });
 
     this.ws.on("error", (error: Error) => {
@@ -158,7 +177,7 @@ export class VSDClient {
    * Send a JSON message to VSD Craft.
    */
   private send(message: Record<string, unknown>): void {
-    if (this.ws?.readyState === 1 /* WebSocket.OPEN */) {
+    if (this.ws?.readyState === WS_OPEN) {
       this.ws.send(JSON.stringify(message));
     }
   }
@@ -181,41 +200,10 @@ export class VSDClient {
     });
   }
 
-  setSettings(context: string, payload: Record<string, unknown>): void {
-    this.send({
-      event: "setSettings",
-      context,
-      payload,
-    });
-  }
-
-  setGlobalSettings(payload: Record<string, unknown>): void {
-    this.send({
-      event: "setGlobalSettings",
-      context: this.pluginUuid,
-      payload,
-    });
-  }
-
   requestGlobalSettings(): void {
     this.send({
       event: "getGlobalSettings",
-      context: this.pluginUuid,
-    });
-  }
-
-  showAlert(context: string): void {
-    this.send({ event: "showAlert", context });
-  }
-
-  showOk(context: string): void {
-    this.send({ event: "showOk", context });
-  }
-
-  openUrl(url: string): void {
-    this.send({
-      event: "openUrl",
-      payload: { url },
+      context: this.params.pluginUuid,
     });
   }
 }

@@ -9,13 +9,17 @@ import type {
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialRotateEvent,
+  IDeckEvent,
   IDeckPlatformAdapter,
   IDeckWillDisappearEvent,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { createConsoleLogger } from "@iracedeck/logger";
 
-import { VSDClient, type VSDEvent } from "./vsd-client.js";
+import { parseConnectionParams, VSDClient, type VSDEvent } from "./vsd-client.js";
+
+/** Valid controller types for VSD/Elgato devices. */
+type ControllerType = "Keypad" | "Encoder" | "Knob";
 
 /**
  * Wraps a VSD action context (identified by context string) into
@@ -25,7 +29,7 @@ class VSDActionContext implements IDeckActionContext {
   constructor(
     private readonly client: VSDClient,
     readonly id: string,
-    private readonly controllerType: string,
+    private readonly controllerType: ControllerType,
   ) {}
 
   async setImage(dataUri: string): Promise<void> {
@@ -37,16 +41,20 @@ class VSDActionContext implements IDeckActionContext {
   }
 
   isKey(): boolean {
-    return this.controllerType !== "Encoder" && this.controllerType !== "Knob";
+    return this.controllerType === "Keypad";
   }
 }
 
 /**
  * Create a deck-core event from a VSD event with full action context.
  */
-function wrapEvent<T>(client: VSDClient, data: VSDEvent, controllerType: string) {
+function wrapEvent<T>(
+  client: VSDClient,
+  data: VSDEvent & { context: string },
+  controllerType: ControllerType,
+): IDeckEvent<T> {
   return {
-    action: new VSDActionContext(client, data.context!, controllerType),
+    action: new VSDActionContext(client, data.context, controllerType),
     payload: { settings: (data.payload?.settings ?? {}) as T },
   };
 }
@@ -55,11 +63,11 @@ function wrapEvent<T>(client: VSDClient, data: VSDEvent, controllerType: string)
  * Create a deck-core disappear event with no-op stubs.
  * Similar to Elgato adapter: disappearing actions don't need setImage/setTitle.
  */
-function wrapDisappearEvent<T>(data: VSDEvent): IDeckWillDisappearEvent<T> {
+function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillDisappearEvent<T> {
   return {
     action: {
       get id() {
-        return data.context!;
+        return data.context;
       },
       async setImage() {
         /* no-op: action is disappearing */
@@ -78,9 +86,13 @@ function wrapDisappearEvent<T>(data: VSDEvent): IDeckWillDisappearEvent<T> {
 /**
  * Create a deck-core dial rotate event (includes ticks in payload).
  */
-function wrapDialRotateEvent<T>(client: VSDClient, data: VSDEvent, controllerType: string): IDeckDialRotateEvent<T> {
+function wrapDialRotateEvent<T>(
+  client: VSDClient,
+  data: VSDEvent & { context: string },
+  controllerType: ControllerType,
+): IDeckDialRotateEvent<T> {
   return {
-    action: new VSDActionContext(client, data.context!, controllerType),
+    action: new VSDActionContext(client, data.context, controllerType),
     payload: {
       settings: (data.payload?.settings ?? {}) as T,
       ticks: data.payload?.ticks ?? 0,
@@ -99,11 +111,11 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   private readonly dialRotateCallbacks: (() => void)[] = [];
 
   /** Track controller type per context from willAppear events */
-  private readonly contextControllers = new Map<string, string>();
+  private readonly contextControllers = new Map<string, ControllerType>();
 
   constructor(logger?: ILogger) {
     const log = logger ?? createConsoleLogger("VSD");
-    this.client = new VSDClient(log.createScope("WebSocket"));
+    this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
@@ -141,63 +153,88 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
-    const getControllerType = (data: VSDEvent): string => {
-      return this.contextControllers.get(data.context!) ?? "Keypad";
+    const getControllerType = (context: string): ControllerType => {
+      return this.contextControllers.get(context) ?? "Keypad";
     };
 
     // willAppear — track controller type and delegate
     this.client.onActionEvent(uuid, "willAppear", async (data) => {
-      if (data.context) {
-        const controller = (data.payload?.controller as string) ?? "Keypad";
-        this.contextControllers.set(data.context, controller);
-      }
+      if (!data.context) return;
 
-      await handler.onWillAppear?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      const controller = ((data.payload?.controller as string) ?? "Keypad") as ControllerType;
+      this.contextControllers.set(data.context, controller);
+
+      await handler.onWillAppear?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // willDisappear — clean up controller tracking
     this.client.onActionEvent(uuid, "willDisappear", async (data) => {
-      await handler.onWillDisappear?.(wrapDisappearEvent<T>(data));
+      if (!data.context) return;
 
-      if (data.context) {
-        this.contextControllers.delete(data.context);
-      }
+      await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as VSDEvent & { context: string }));
+      this.contextControllers.delete(data.context);
     });
 
     // didReceiveSettings
     this.client.onActionEvent(uuid, "didReceiveSettings", async (data) => {
-      await handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      if (!data.context) return;
+
+      await handler.onDidReceiveSettings?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // keyDown — fire broadcast callbacks first (for window focus), then handler
     this.client.onActionEvent(uuid, "keyDown", async (data) => {
+      if (!data.context) return;
+
       for (const cb of this.keyDownCallbacks) cb();
 
-      await handler.onKeyDown?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      await handler.onKeyDown?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // keyUp
     this.client.onActionEvent(uuid, "keyUp", async (data) => {
-      await handler.onKeyUp?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      if (!data.context) return;
+
+      await handler.onKeyUp?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // dialRotate — fire broadcast callbacks first, then handler
     this.client.onActionEvent(uuid, "dialRotate", async (data) => {
+      if (!data.context) return;
+
       for (const cb of this.dialRotateCallbacks) cb();
 
-      await handler.onDialRotate?.(wrapDialRotateEvent<T>(this.client, data, getControllerType(data)));
+      await handler.onDialRotate?.(
+        wrapDialRotateEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // dialDown — fire broadcast callbacks first, then handler
     this.client.onActionEvent(uuid, "dialDown", async (data) => {
+      if (!data.context) return;
+
       for (const cb of this.dialDownCallbacks) cb();
 
-      await handler.onDialDown?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      await handler.onDialDown?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
 
     // dialUp
     this.client.onActionEvent(uuid, "dialUp", async (data) => {
-      await handler.onDialUp?.(wrapEvent<T>(this.client, data, getControllerType(data)));
+      if (!data.context) return;
+
+      await handler.onDialUp?.(
+        wrapEvent<T>(this.client, data as VSDEvent & { context: string }, getControllerType(data.context)),
+      );
     });
   }
 
