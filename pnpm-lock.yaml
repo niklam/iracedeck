@@ -345,6 +345,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@elgato/cli':
+        specifier: 1.7.1
+        version: 1.7.1(@types/node@25.3.5)
       '@rollup/plugin-commonjs':
         specifier: 29.0.2
         version: 29.0.2(rollup@4.59.0)
@@ -577,9 +580,6 @@ packages:
     resolution: {integrity: sha512-SjRNvSCAPPfbUMlFryAW28vLm+vqpadvtoncUr4SqvI2gVCp3T3cnOwWgFswX8NdUMMtTdEvh42p9wxGzLzzKg==}
     peerDependencies:
       prettier: ^3.7.4
-
-  '@elgato/schemas@0.4.13':
-    resolution: {integrity: sha512-96tinjod0P4OHAcosIm5X5915Y0zqfevTC9T8R1gCmSNcCEgIiDVzEdeAS54WgLrlnhQtXgrdIb2DtDol6FAjQ==}
 
   '@elgato/schemas@0.4.14':
     resolution: {integrity: sha512-kwfYJ30qAxJW9AMkSSjTEY/VARW+xzuc3tW7CinB7ja+liGHaNUx20CRwLCD9xrbZ/7V1cDolPvNhNWmWvihZg==}
@@ -6531,7 +6531,7 @@ snapshots:
 
   '@elgato/cli@1.7.1(@types/node@25.3.5)':
     dependencies:
-      '@elgato/schemas': 0.4.13
+      '@elgato/schemas': 0.4.14
       '@humanwhocodes/momoa': 3.3.10
       '@zip.js/zip.js': 2.8.21
       ajv: 8.18.0
@@ -6568,8 +6568,6 @@ snapshots:
       - prettier-plugin-svelte
       - supports-color
       - svelte
-
-  '@elgato/schemas@0.4.13': {}
 
   '@elgato/schemas@0.4.14': {}
 
