@@ -248,7 +248,15 @@ export function generateTireServiceSvg(
         ].join("\n");
       }
 
-      break;
+      const compoundColors = resolveIconColors(tireServiceTemplate, getGlobalColors(), settings.colorOverrides);
+
+      const compoundSvg = renderIconTemplate(tireServiceTemplate, {
+        iconContent,
+        textElement,
+        ...compoundColors,
+      });
+
+      return svgToDataUri(compoundSvg);
     }
     case "clear-tires": {
       const colors = resolveIconColors(clearTiresIconSvg, getGlobalColors(), settings.colorOverrides);
@@ -269,20 +277,21 @@ export function generateTireServiceSvg(
         (settings.lr && currentState.lr) ||
         (settings.rr && currentState.rr);
 
+      const toggleColors = resolveIconColors(tireServiceTemplate, getGlobalColors(), settings.colorOverrides);
       const titleText = anyTireOn ? "Change" : "No Change";
-      const titleColor = anyTireOn ? "#FFFFFF" : "#FF4444";
+      const titleColor = anyTireOn ? "#FFFFFF" : toggleColors.textColor;
 
       textElement = generateIconText({ text: titleText, fontSize: 24, fill: titleColor, centerX: 72 });
-      break;
+
+      const toggleSvg = renderIconTemplate(tireServiceTemplate, {
+        iconContent,
+        textElement,
+        ...toggleColors,
+      });
+
+      return svgToDataUri(toggleSvg);
     }
   }
-
-  const svg = renderIconTemplate(tireServiceTemplate, {
-    iconContent,
-    textElement,
-  });
-
-  return svgToDataUri(svg);
 }
 
 /**
