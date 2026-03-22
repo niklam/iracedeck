@@ -73,6 +73,8 @@
 
 		<%- include('common-settings') %>
 
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: { backgroundColor: '#2a3444', textColor: '#ffffff' } }) %>
+
 		<%- include('global-settings') %>
 	</body>
 </html>

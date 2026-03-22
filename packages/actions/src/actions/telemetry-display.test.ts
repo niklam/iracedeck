@@ -41,7 +41,10 @@ vi.mock("@iracedeck/deck-core", () => ({
   escapeXml: vi.fn((str: string) => str),
   getGlobalColors: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
-  resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
+  resolveIconColors: vi.fn((_svg: string, _global: unknown, overrides: Record<string, string> | undefined) => ({
+    backgroundColor: overrides?.backgroundColor || "#2a3444",
+    textColor: overrides?.textColor || "#ffffff",
+  })),
   renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
     let result = template;
 
@@ -64,21 +67,21 @@ describe("TelemetryDisplay", () => {
       const result = generateTelemetryDisplaySvg("CAR #", "100", {
         template: "{{sessionInfo.DriverInfo.DriverCarIdx}}",
         title: "CAR #",
-        backgroundColor: "#2a3444",
-        textColor: "#ffffff",
         fontSize: 18,
       });
 
       expect(result).toContain("data:image/svg+xml");
     });
 
-    it("should use custom colors", () => {
+    it("should use custom colors via colorOverrides", () => {
       const result = generateTelemetryDisplaySvg("TEST", "42", {
         template: "42",
         title: "TEST",
-        backgroundColor: "#ff0000",
-        textColor: "#00ff00",
         fontSize: 24,
+        colorOverrides: {
+          backgroundColor: "#ff0000",
+          textColor: "#00ff00",
+        },
       });
 
       expect(result).toContain(encodeURIComponent("#ff0000"));
@@ -89,9 +92,10 @@ describe("TelemetryDisplay", () => {
       const result = generateTelemetryDisplaySvg("SPEED", "150", {
         template: "",
         title: "SPEED",
-        backgroundColor: "#2a3444",
-        textColor: "#ff0000",
         fontSize: 18,
+        colorOverrides: {
+          textColor: "#ff0000",
+        },
       });
 
       const decoded = decodeURIComponent(result);
@@ -103,8 +107,6 @@ describe("TelemetryDisplay", () => {
       const result = generateTelemetryDisplaySvg("SPEED", "150", {
         template: "",
         title: "SPEED",
-        backgroundColor: "#2a3444",
-        textColor: "#ffffff",
         fontSize: 18,
       });
 

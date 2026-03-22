@@ -6,6 +6,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
@@ -19,7 +20,6 @@ import z from "zod";
 
 import sessionInfoTemplate from "../../icons/session-info.svg";
 
-const BACKGROUND_DEFAULT = "#2a3444";
 const BACKGROUND_FLASH = "#e74c3c";
 
 const FLASH_INTERVAL_MS = 250;
@@ -133,9 +133,9 @@ export function generateSessionInfoSvg(
     backgroundColor = colorOverride.background;
     textColor = colorOverride.text;
   } else {
-    const globalColors = getGlobalColors();
-    backgroundColor = isFlashing ? BACKGROUND_FLASH : globalColors.backgroundColor || BACKGROUND_DEFAULT;
-    textColor = globalColors.textColor || "#ffffff";
+    const colors = resolveIconColors(sessionInfoTemplate, getGlobalColors(), settings.colorOverrides);
+    backgroundColor = isFlashing ? BACKGROUND_FLASH : colors.backgroundColor;
+    textColor = colors.textColor;
   }
 
   const svg = renderIconTemplate(sessionInfoTemplate, {

@@ -7,6 +7,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   renderIconTemplate,
+  resolveIconColors,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { resolveTemplate } from "@iracedeck/iracing-sdk";
@@ -14,14 +15,9 @@ import z from "zod";
 
 import telemetryDisplayTemplate from "../../icons/telemetry-display.svg";
 
-const TELEMETRY_DISPLAY_DEFAULT_BG = "#2a3444";
-const TELEMETRY_DISPLAY_DEFAULT_TEXT = "#ffffff";
-
 const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
   title: z.string().default("CAR #"),
-  backgroundColor: z.string().default(TELEMETRY_DISPLAY_DEFAULT_BG),
-  textColor: z.string().default(TELEMETRY_DISPLAY_DEFAULT_TEXT),
   fontSize: z.coerce.number().default(18),
 });
 
@@ -57,23 +53,14 @@ export function generateValueContent(value: string, fontSize: number, textColor:
  * @internal Exported for testing
  */
 export function generateTelemetryDisplaySvg(title: string, value: string, settings: TelemetryDisplaySettings): string {
-  const globalColors = getGlobalColors();
+  const colors = resolveIconColors(telemetryDisplayTemplate, getGlobalColors(), settings.colorOverrides);
+  const textColor = colors.textColor;
 
-  // Use per-action color if user changed it from default, otherwise fall through to global → default
-  const bgColor =
-    settings.backgroundColor !== TELEMETRY_DISPLAY_DEFAULT_BG
-      ? settings.backgroundColor
-      : globalColors.backgroundColor || TELEMETRY_DISPLAY_DEFAULT_BG;
-  const txtColor =
-    settings.textColor !== TELEMETRY_DISPLAY_DEFAULT_TEXT
-      ? settings.textColor
-      : globalColors.textColor || TELEMETRY_DISPLAY_DEFAULT_TEXT;
-
-  const valueContent = generateValueContent(value, settings.fontSize * 2, txtColor);
+  const valueContent = generateValueContent(value, settings.fontSize * 2, textColor);
 
   const svg = renderIconTemplate(telemetryDisplayTemplate, {
-    backgroundColor: bgColor,
-    titleColor: txtColor,
+    ...colors,
+    titleColor: textColor,
     titleLabel: title,
     valueContent,
   });
@@ -161,7 +148,9 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   }
 
   private buildStateKey(title: string, value: string, settings: TelemetryDisplaySettings): string {
-    return `${title}|${value}|${settings.backgroundColor}|${settings.textColor}|${settings.fontSize}`;
+    const co = settings.colorOverrides;
+
+    return `${title}|${value}|${co?.backgroundColor || ""}|${co?.textColor || ""}|${settings.fontSize}`;
   }
 
   private async updateDisplayFromTelemetry(contextId: string, settings: TelemetryDisplaySettings): Promise<void> {
