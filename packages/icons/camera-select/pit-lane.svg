@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+
+    <!-- Pit lane with stalls -->
+    <g stroke="{{graphic1Color}}" fill="none">
+      <line x1="20" y1="76" x2="124" y2="76" stroke-width="3"/>
+      <line x1="20" y1="52" x2="124" y2="52" stroke-width="2.5"/>
+      <line x1="40" y1="52" x2="40" y2="76" stroke-width="2" opacity="0.5"/>
+      <line x1="64" y1="52" x2="64" y2="76" stroke-width="2" opacity="0.5"/>
+      <line x1="88" y1="52" x2="88" y2="76" stroke-width="2" opacity="0.5"/>
+      <line x1="112" y1="52" x2="112" y2="76" stroke-width="2" opacity="0.5"/>
+      <rect x="68" y="56" width="16" height="10" stroke-width="2"/>
+    </g>
+    <circle cx="52" cy="42" r="4" fill="{{graphic1Color}}"/>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

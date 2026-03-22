@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a4a5a"/>
+
+    <!-- Blimp with gondola -->
+    <g stroke="#ffffff" fill="none">
+      <ellipse cx="72" cy="48" rx="40" ry="18" stroke-width="3.5"/>
+      <rect x="60" y="68" width="24" height="10" stroke-width="2.5"/>
+      <line x1="66" y1="66" x2="68" y2="68" stroke-width="2"/>
+      <line x1="78" y1="66" x2="76" y2="68" stroke-width="2"/>
+      <path d="M 108,40 L 118,34 L 118,48 L 112,48" stroke-width="2.5"/>
+      <path d="M 108,56 L 118,62 L 118,48" stroke-width="2.5"/>
+    </g>
+    <circle cx="72" cy="80" r="4" fill="#ffffff"/>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

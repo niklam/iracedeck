@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a4a5a"/>
+
+    <!-- Steering wheel -->
+    <g stroke="#ffffff" fill="none">
+      <circle cx="72" cy="50" r="30" stroke-width="3.5"/>
+      <circle cx="72" cy="50" r="8" stroke-width="3"/>
+      <line x1="42" y1="50" x2="64" y2="50" stroke-width="3"/>
+      <line x1="80" y1="50" x2="102" y2="50" stroke-width="3"/>
+      <line x1="72" y1="58" x2="72" y2="80" stroke-width="3"/>
+    </g>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

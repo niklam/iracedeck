@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#2a4a5a"/>
+
+    <!-- Top-down car with RF corner highlighted -->
+    <g stroke="#ffffff" stroke-width="3" fill="none">
+      <rect x="46" y="28" width="52" height="56"/>
+      <rect x="34" y="28" width="8" height="22" opacity="0.4"/>
+      <rect x="102" y="28" width="8" height="22" opacity="0.4"/>
+      <rect x="34" y="62" width="8" height="22" opacity="0.4"/>
+      <rect x="102" y="62" width="8" height="22" opacity="0.4"/>
+    </g>
+    <rect x="102" y="28" width="8" height="22" stroke="#ffffff" stroke-width="3.5" fill="none"/>
+    <circle cx="106" cy="39" r="4" fill="#ffffff"/>
+    <text x="106" y="20" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="11" font-weight="bold">RF</text>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

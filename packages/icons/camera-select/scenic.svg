@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+
+    <!-- Mountain landscape -->
+    <polygon points="60,80 88,44 124,80" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="16,80 56,28 96,80" fill="{{backgroundColor}}" stroke="{{graphic1Color}}" stroke-width="3"/>
+
+    <!-- Sun with 8 rays -->
+    <g stroke="{{graphic1Color}}" fill="none">
+      <circle cx="108" cy="28" r="10" stroke-width="2.5"/>
+      <line x1="108" y1="14" x2="108" y2="8" stroke-width="2"/>
+      <line x1="108" y1="42" x2="108" y2="48" stroke-width="2"/>
+      <line x1="94" y1="28" x2="88" y2="28" stroke-width="2"/>
+      <line x1="122" y1="28" x2="128" y2="28" stroke-width="2"/>
+      <line x1="118" y1="18" x2="122" y2="14" stroke-width="2"/>
+      <line x1="98" y1="18" x2="94" y2="14" stroke-width="2"/>
+      <line x1="118" y1="38" x2="122" y2="42" stroke-width="2"/>
+      <line x1="98" y1="38" x2="94" y2="42" stroke-width="2"/>
+    </g>
+
+    <!-- Horizon -->
+    <line x1="16" y1="80" x2="128" y2="80" stroke="{{graphic1Color}}" stroke-width="2.5"/>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

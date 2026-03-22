@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+
+    <!-- Car front view -->
+    <g stroke="{{graphic1Color}}" fill="none">
+      <path d="M 44,42 L 44,66 L 100,66 L 100,42 L 88,28 L 56,28 Z" stroke-width="3"/>
+      <path d="M 58,30 L 86,30 L 94,42 L 50,42 Z" stroke-width="2" opacity="0.5"/>
+      <circle cx="54" cy="54" r="3" stroke-width="2"/>
+      <circle cx="90" cy="54" r="3" stroke-width="2"/>
+    </g>
+    <!-- Filled tires -->
+    <rect x="42" y="64" width="10" height="18" fill="{{graphic1Color}}"/>
+    <rect x="92" y="64" width="10" height="18" fill="{{graphic1Color}}"/>
+    <line x1="28" y1="84" x2="116" y2="84" stroke="{{graphic1Color}}" stroke-width="2" opacity="0.4"/>
+    <circle cx="72" cy="90" r="4" fill="{{graphic1Color}}"/>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

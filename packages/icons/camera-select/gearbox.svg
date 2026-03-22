@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+
+    <!-- Top-down car with camera at rear/gearbox -->
+    <g stroke="{{graphic1Color}}" stroke-width="3.5" fill="none">
+      <path d="M 52,32 L 52,72 Q 52,80 72,84 Q 92,80 92,72 L 92,32"/>
+      <line x1="52" y1="32" x2="92" y2="32"/>
+      <rect x="38" y="34" width="8" height="22"/>
+      <rect x="98" y="34" width="8" height="22"/>
+    </g>
+    <circle cx="72" cy="80" r="5" fill="{{graphic1Color}}"/>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>

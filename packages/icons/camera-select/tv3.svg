@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+
+    <!-- TV camera on tripod with number inside -->
+    <g stroke="{{graphic1Color}}" fill="none">
+      <rect x="36" y="28" width="52" height="32" stroke-width="3.5"/>
+      <path d="M 88,34 L 108,26 L 108,54 L 88,46" stroke-width="3"/>
+      <rect x="46" y="20" width="14" height="10" stroke-width="2.5"/>
+      <line x1="62" y1="60" x2="40" y2="86" stroke-width="2.5"/>
+      <line x1="62" y1="60" x2="62" y2="86" stroke-width="2.5"/>
+      <line x1="62" y1="60" x2="84" y2="86" stroke-width="2.5"/>
+    </g>
+    <text x="62" y="44" text-anchor="middle" dominant-baseline="central" fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">3</text>
+
+    <!-- Label -->
+    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+          fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>
