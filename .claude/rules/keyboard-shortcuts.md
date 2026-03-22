@@ -244,7 +244,7 @@ When modifying keyboard functionality, changes must be synchronized across all l
 1. **Native addon** (`iracing-native/src/addon.cc`) — C++ implementation + register in `Init()`
 2. **TS wrapper** (`iracing-native/src/index.ts`) — must mirror every native export
 3. **Keyboard service** (`deck-core/src/keyboard-service.ts`) — callback types, `IKeyboardService` interface, `KeyboardService` implementation, `initializeKeyboard()` signature
-4. **Plugin init** (`stream-deck-plugin/src/plugin.ts`) — `initializeKeyboard()` call must pass all callbacks
+4. **Plugin init** (all plugin `plugin.ts` files: `stream-deck-plugin`, `stream-dock-plugin`) — `initializeKeyboard()` call must pass all callbacks
 5. **Tests** (`keyboard-service.test.ts`) — must cover all paths (scan code + keysender fallback)
 6. **Rules** (`.claude/rules/keyboard-shortcuts.md`, `.claude/rules/plugin-structure.md`) — must reflect the current API
 7. **Package CLAUDE.md** (`iracing-native/CLAUDE.md`) — must document all native keyboard functions

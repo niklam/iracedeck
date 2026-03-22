@@ -14,4 +14,5 @@ Fixes #
 
 - [ ] Linked to an approved issue
 - [ ] New code has unit tests
+- [ ] Changes registered in all applicable plugins (Stream Deck, Stream Dock)
 - [ ] No unrelated changes included

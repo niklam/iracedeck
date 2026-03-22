@@ -23,8 +23,10 @@ body:
     attributes:
       label: Area
       options:
-        - Stream Deck action (new)
-        - Stream Deck action (existing)
+        - Action (new)
+        - Action (existing)
+        - Stream Deck plugin
+        - Stream Dock plugin
         - iRacing SDK
         - Website
         - Other

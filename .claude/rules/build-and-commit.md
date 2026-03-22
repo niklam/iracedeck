@@ -113,10 +113,10 @@ Guidelines:
 Examples of good commit splits for a new action:
 
 ```
-feat(stream-deck-plugin): add FuelCalculator action skeleton
-feat(stream-deck-plugin): add FuelCalculator icon variants
-feat(stream-deck-plugin): add FuelCalculator Property Inspector
-test(stream-deck-plugin): add FuelCalculator unit tests
+feat(actions): add FuelCalculator action and icons
+feat(stream-deck-plugin): register FuelCalculator action and PI
+feat(stream-dock-plugin): register FuelCalculator action
+test(actions): add FuelCalculator unit tests
 docs: add FuelCalculator action documentation
 ```
 
@@ -132,6 +132,7 @@ Issues
 
 When creating issues, always include requirements for updating all affected artifacts beyond the code itself. If the change affects actions, features, or behavior described in any of these, the issue must list them:
 
+- **All plugin packages** — registration in `plugin.ts`, manifest entries, and PI templates for every applicable plugin (`stream-deck-plugin`, `stream-dock-plugin`)
 - **Website** (`@iracedeck/website`) — action descriptions, feature lists, action counts
 - **Action documentation** (`docs/`) — action docs, keyboard shortcut tables
 - **Skills** (`iracedeck-actions`, `iracing-telemetry`, etc.) — action/mode/sub-action listings
@@ -141,7 +142,7 @@ Merging
 
 - PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
 - Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
-- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(stream-deck-plugin): add Camera Focus action (#42)`.
+- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(actions): add Camera Focus action (#42)`.
 - Merging is performed manually or by automation — never by a Claude review step.
 
 ### Post-merge worktree cleanup
