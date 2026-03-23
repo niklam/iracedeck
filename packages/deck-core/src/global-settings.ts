@@ -31,6 +31,29 @@ export const KeyBindingValueSchema = z.object({
 export type KeyBindingValue = z.infer<typeof KeyBindingValueSchema>;
 
 /**
+ * Schema for SimHub Control Mapper role bindings.
+ * Stored by the ird-key-binding component when in SimHub mode.
+ */
+export const SimHubBindingValueSchema = z.object({
+  type: z.literal("simhub"),
+  role: z.string(),
+});
+
+export type SimHubBindingValue = z.infer<typeof SimHubBindingValueSchema>;
+
+/**
+ * Union type for all binding values (keyboard shortcut or SimHub role).
+ */
+export type BindingValue = KeyBindingValue | SimHubBindingValue;
+
+/**
+ * Type guard to check if a binding value is a SimHub role binding.
+ */
+export function isSimHubBinding(value: BindingValue | undefined): value is SimHubBindingValue {
+  return value !== undefined && "type" in value && value.type === "simhub";
+}
+
+/**
  * Schema for global plugin settings.
  * Uses passthrough to allow dynamic key binding properties (e.g., blackBoxLapTiming, blackBoxFuel).
  */
@@ -50,6 +73,16 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(false),
+    /**
+     * Hostname or IP address of the SimHub instance for Control Mapper integration.
+     * Default: "127.0.0.1"
+     */
+    simHubHost: z.string().default("127.0.0.1"),
+    /**
+     * HTTP port for SimHub's REST API (Control Mapper).
+     * Default: 8888
+     */
+    simHubPort: z.coerce.number().default(8888),
   })
   .passthrough();
 

@@ -6,6 +6,7 @@ import {
   getGlobalSettings,
   getKeyboard,
   getSDK,
+  getSimHub,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -13,11 +14,13 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isSimHubBinding,
+  isSimHubInitialized,
   type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
-  parseKeyBinding,
+  parseBinding,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -373,6 +376,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CarControlSettings>): Promise<void> {
     await this.releaseHeldKey(ev.action.id);
+    this.heldSimHubRoles.delete(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -414,23 +418,63 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     return parsed.success ? parsed.data : CarControlSettings.parse({});
   }
 
+  /** Currently held SimHub roles per action context */
+  private heldSimHubRoles = new Map<string, string>();
+
   private async executeControl(actionId: string, settings: CarControlSettings): Promise<void> {
-    if (HOLD_CONTROLS.has(settings.control)) {
-      await this.pressAndHold(actionId, settings.control);
-    } else {
-      await this.tapControl(settings.control);
-    }
-  }
+    const settingKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
 
-  private async pressAndHold(actionId: string, control: CarControlType): Promise<void> {
-    const resolved = this.resolveCombination(control);
+    if (!settingKey) {
+      this.logger.warn(`No global key mapping for control: ${settings.control}`);
 
-    if (!resolved) {
       return;
     }
 
-    const { combination, binding } = resolved;
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const binding = parseBinding(globalSettings[settingKey]);
 
+    if (!binding) {
+      this.logger.warn(`No binding configured for ${settingKey}`);
+
+      return;
+    }
+
+    // SimHub path
+    if (isSimHubBinding(binding)) {
+      this.logger.info("Triggering SimHub role");
+      this.logger.debug(`SimHub role: ${binding.role}`);
+
+      if (!isSimHubInitialized()) {
+        this.logger.warn("SimHub service not initialized");
+
+        return;
+      }
+
+      const simHub = getSimHub();
+
+      if (HOLD_CONTROLS.has(settings.control)) {
+        // Hold: start on key-down, stop on key-up
+        await simHub.startRole(binding.role);
+        this.heldSimHubRoles.set(actionId, binding.role);
+      } else {
+        // Tap: start + stop immediately
+        await simHub.startRole(binding.role);
+        await simHub.stopRole(binding.role);
+      }
+
+      return;
+    }
+
+    // Keyboard path
+    if (HOLD_CONTROLS.has(settings.control)) {
+      await this.pressAndHold(actionId, binding);
+    } else {
+      await this.tapControl(binding);
+    }
+  }
+
+  private async pressAndHold(actionId: string, binding: KeyBindingValue): Promise<void> {
+    const combination = this.buildCombination(binding);
     const success = await getKeyboard().pressKeyCombination(combination);
 
     if (success) {
@@ -442,15 +486,8 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
   }
 
-  private async tapControl(control: CarControlType): Promise<void> {
-    const resolved = this.resolveCombination(control);
-
-    if (!resolved) {
-      return;
-    }
-
-    const { combination, binding } = resolved;
-
+  private async tapControl(binding: KeyBindingValue): Promise<void> {
+    const combination = this.buildCombination(binding);
     const success = await getKeyboard().sendKeyCombination(combination);
 
     if (success) {
@@ -463,6 +500,21 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   private async releaseHeldKey(actionId: string): Promise<void> {
+    // Release SimHub role if held
+    const heldRole = this.heldSimHubRoles.get(actionId);
+
+    if (heldRole) {
+      this.heldSimHubRoles.delete(actionId);
+
+      if (isSimHubInitialized()) {
+        await getSimHub().stopRole(heldRole);
+        this.logger.info("SimHub role released");
+      }
+
+      return;
+    }
+
+    // Release keyboard key if held
     const combination = this.heldCombinations.get(actionId);
 
     if (!combination) {
@@ -480,33 +532,11 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
   }
 
-  private resolveCombination(
-    control: CarControlType,
-  ): { combination: KeyCombination; binding: KeyBindingValue } | null {
-    const settingKey = CAR_CONTROL_GLOBAL_KEYS[control];
-
-    if (!settingKey) {
-      this.logger.warn(`No global key mapping for control: ${control}`);
-
-      return null;
-    }
-
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseKeyBinding(globalSettings[settingKey]);
-
-    if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${settingKey}`);
-
-      return null;
-    }
-
+  private buildCombination(binding: KeyBindingValue): KeyCombination {
     return {
-      combination: {
-        key: binding.key as KeyboardKey,
-        modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
-        code: binding.code,
-      },
-      binding,
+      key: binding.key as KeyboardKey,
+      modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
     };
   }
 

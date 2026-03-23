@@ -2,8 +2,10 @@
 /**
  * Key Binding Input Web Component for Stream Deck Property Inspector
  *
- * A custom input component that captures keyboard shortcuts.
- * Click to start recording, press a key combination, and it saves automatically.
+ * A custom input component that captures keyboard shortcuts or SimHub role names.
+ * A custom dropdown selector before the main input lets users choose between
+ * Keyboard and SimHub modes. The dropdown shows icons when collapsed and
+ * icons + labels when expanded.
  *
  * Usage in HTML:
  * ```html
@@ -23,8 +25,9 @@
  * - default: Default key (e.g., "F1", "Ctrl+Shift+A")
  * - global: When present, uses plugin-level global settings (shared across all actions)
  *
- * The stored value is a JSON string with format:
- * { "key": "f1", "modifiers": ["ctrl", "shift"] }
+ * Stored values:
+ * - Keyboard: { "key": "f1", "modifiers": ["ctrl", "shift"] }
+ * - SimHub:   { "type": "simhub", "role": "My Role Name" }
  */
 import {
   formatKeyBinding,
@@ -37,8 +40,71 @@ import {
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
 
 /**
+ * SimHub role binding value.
+ */
+export interface SimHubBindingValue {
+  type: "simhub";
+  role: string;
+}
+
+/**
+ * Union type for all binding values stored by this component.
+ */
+export type BindingValue = KeyBindingValue | SimHubBindingValue;
+
+/**
+ * Type guard for SimHub binding values.
+ */
+export function isSimHubBinding(value: BindingValue | null): value is SimHubBindingValue {
+  return value !== null && "type" in value && value.type === "simhub";
+}
+
+/**
+ * Parse a stored JSON string into a BindingValue (keyboard or SimHub).
+ */
+function parseBindingValue(json: string | null): BindingValue | null {
+  if (!json) return null;
+
+  try {
+    const parsed = JSON.parse(json);
+
+    // SimHub binding
+    if (parsed.type === "simhub" && typeof parsed.role === "string") {
+      return { type: "simhub", role: parsed.role };
+    }
+
+    // Keyboard binding (existing format)
+    return parseKeyBinding(json);
+  } catch {
+    return null;
+  }
+}
+
+// Inline SVG icons (14x14) for the mode dropdown
+const KEYBOARD_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14" fill="none">
+  <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="#ccc" stroke-width="1.2"/>
+  <rect x="3" y="5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="6" y="5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="9" y="5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="12" y="5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="3" y="7.5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="6" y="7.5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="9" y="7.5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="12" y="7.5" width="2" height="1.5" rx="0.3" fill="#ccc"/>
+  <rect x="5" y="10" width="6" height="1.5" rx="0.3" fill="#ccc"/>
+</svg>`;
+
+// SimHub logo: blue hexagon with white gamepad
+const SIMHUB_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14">
+  <polygon points="8,1 14.5,4.5 14.5,11.5 8,15 1.5,11.5 1.5,4.5" fill="#2980d9"/>
+  <rect x="4.5" y="5.5" width="7" height="5" rx="1.2" fill="white"/>
+  <circle cx="6" cy="8" r="0.9" fill="#2980d9"/>
+  <circle cx="10" cy="7" r="0.6" fill="#2980d9"/>
+  <circle cx="10" cy="9" r="0.6" fill="#2980d9"/>
+</svg>`;
+
+/**
  * Minimal type for the Keyboard Layout Map API.
- * Provides locale-aware key mappings without modifier influence.
  */
 interface KeyboardLayoutMapLike {
   get(code: string): string | undefined;
@@ -47,30 +113,8 @@ interface KeyboardLayoutMapLike {
 // Re-export for backwards compatibility and public API
 export { formatKeyBinding, parseKeyBinding, parseSimpleDefault, type KeyBindingValue };
 
-/**
- * Settings hook return type.
- * First element is a getter function, second is a setter function.
- */
 type SettingsHook = [() => Promise<string>, (value: string) => void];
 
-/**
- * SDPIComponents global type declaration.
- *
- * This component integrates with Elgato's sdpi-components library (sdpi-components.js)
- * which exposes window.SDPIComponents as its public API.
- *
- * Settings hooks provide:
- * - Automatic settings loading when PI connects to Stream Deck
- * - Settings persistence via Stream Deck's setSettings API
- * - Change notifications when settings update externally
- *
- * Two types of settings:
- * - useSettings: Action-specific settings (different per action instance)
- * - useGlobalSettings: Plugin-level settings (shared across all actions in the plugin)
- *
- * This global dependency is intentional - it's the standard integration pattern
- * for custom PI components that need to persist settings to Stream Deck.
- */
 declare global {
   interface Window {
     SDPIComponents?: {
@@ -81,39 +125,61 @@ declare global {
 }
 
 /**
+ * Mode option configuration for the custom dropdown.
+ */
+interface ModeOption {
+  value: string;
+  label: string;
+  icon: string;
+}
+
+const MODE_OPTIONS: ModeOption[] = [
+  { value: "keyboard", label: "Keyboard", icon: KEYBOARD_ICON_SVG },
+  { value: "simhub", label: "SimHub", icon: SIMHUB_ICON_SVG },
+];
+
+/**
  * KeyBindingInput - Custom element that integrates with sdpi-components
  * via SDPIComponents.useSettings() for proper settings persistence.
+ *
+ * Supports two modes via a custom dropdown:
+ * - Keyboard: captures keyboard shortcuts (click to record)
+ * - SimHub: text input for SimHub Control Mapper role names
  */
 class KeyBindingInput extends HTMLElement {
+  private container: HTMLDivElement | null = null;
+  private dropdownTrigger: HTMLDivElement | null = null;
+  private dropdownPanel: HTMLDivElement | null = null;
+  private dropdownIcon: HTMLSpanElement | null = null;
   private displayInput: HTMLInputElement | null = null;
+  private simhubInput: HTMLInputElement | null = null;
   private isRecording = false;
-  private currentValue: KeyBindingValue | null = null;
+  private isDropdownOpen = false;
+  private currentValue: BindingValue | null = null;
+  private isSimHubMode = false;
   private saveToStreamDeck: ((value: string) => void) | null = null;
-  /** Cached keyboard layout map for resolving base (unshifted) characters */
   private layoutMap: KeyboardLayoutMapLike | null = null;
+  private datalist: HTMLDataListElement | null = null;
+  private rolesFetched = false;
+  private boundCloseDropdown: ((e: MouseEvent) => void) | null = null;
 
   constructor() {
     super();
 
-    // Bind event handlers
     this.handleClick = this.handleClick.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleBlur = this.handleBlur.bind(this);
+    this.handleSimHubInput = this.handleSimHubInput.bind(this);
   }
 
-  /**
-   * Value getter - returns JSON string for sdpi-components
-   */
   get value(): string {
     return this.currentValue ? JSON.stringify(this.currentValue) : "";
   }
 
-  /**
-   * Value setter - accepts JSON string from sdpi-components
-   */
   set value(val: string) {
     if (val) {
-      this.currentValue = parseKeyBinding(val);
+      this.currentValue = parseBindingValue(val);
+      this.isSimHubMode = isSimHubBinding(this.currentValue);
     } else {
       this.currentValue = null;
     }
@@ -122,60 +188,154 @@ class KeyBindingInput extends HTMLElement {
   }
 
   connectedCallback(): void {
-    // Create visible input for user interaction
+    // Outer container
+    this.container = document.createElement("div");
+    Object.assign(this.container.style, {
+      display: "flex",
+      alignItems: "center",
+      width: "100%",
+      backgroundColor: SDPI_THEME.background,
+      position: "relative",
+    });
+
+    // Custom dropdown trigger (shows current mode icon)
+    this.dropdownTrigger = document.createElement("div");
+    Object.assign(this.dropdownTrigger.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "28px",
+      height: SDPI_THEME.height,
+      backgroundColor: "#333",
+      borderRight: "1px solid #555",
+      cursor: "pointer",
+      flexShrink: "0",
+    });
+
+    this.dropdownIcon = document.createElement("span");
+    this.dropdownIcon.innerHTML = KEYBOARD_ICON_SVG;
+    Object.assign(this.dropdownIcon.style, {
+      display: "flex",
+      alignItems: "center",
+    });
+    this.dropdownTrigger.appendChild(this.dropdownIcon);
+
+    // Dropdown panel (hidden by default)
+    this.dropdownPanel = document.createElement("div");
+    Object.assign(this.dropdownPanel.style, {
+      display: "none",
+      position: "absolute",
+      top: "100%",
+      left: "0",
+      zIndex: "1000",
+      backgroundColor: "#2a2a2a",
+      border: "1px solid #555",
+      borderRadius: "4px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+      minWidth: "130px",
+      marginTop: "2px",
+    });
+
+    for (const option of MODE_OPTIONS) {
+      const row = document.createElement("div");
+      Object.assign(row.style, {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "6px 10px",
+        cursor: "pointer",
+        fontSize: "11px",
+        color: SDPI_THEME.text,
+        whiteSpace: "nowrap",
+      });
+      row.innerHTML = `<span style="display:flex;align-items:center;">${option.icon}</span><span>${option.label}</span>`;
+      row.addEventListener("mouseenter", () => {
+        row.style.backgroundColor = "#444";
+      });
+      row.addEventListener("mouseleave", () => {
+        row.style.backgroundColor = "transparent";
+      });
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.selectMode(option.value);
+      });
+      this.dropdownPanel.appendChild(row);
+    }
+
+    // Keyboard mode input
     this.displayInput = document.createElement("input");
     this.displayInput.type = "text";
     this.displayInput.readOnly = true;
     this.displayInput.placeholder = UI_TEXT.PLACEHOLDER;
-
-    // Apply SDPI-matching styles directly (SDPI uses Shadow DOM so CSS vars aren't inherited)
     Object.assign(this.displayInput.style, {
-      backgroundColor: SDPI_THEME.background,
+      backgroundColor: "transparent",
       color: SDPI_THEME.text,
       fontFamily: SDPI_THEME.fontFamily,
       fontSize: SDPI_THEME.fontSize,
       height: SDPI_THEME.height,
       padding: SDPI_THEME.padding,
       border: "none",
-      borderRadius: "0",
       boxSizing: "border-box",
-      width: "100%",
+      flex: "1",
+      minWidth: "0",
       cursor: "pointer",
     });
 
-    this.appendChild(this.displayInput);
+    // SimHub mode input
+    this.simhubInput = document.createElement("input");
+    this.simhubInput.type = "text";
+    this.simhubInput.placeholder = "Type or select a role...";
+    Object.assign(this.simhubInput.style, {
+      backgroundColor: "transparent",
+      color: SDPI_THEME.text,
+      fontFamily: SDPI_THEME.fontFamily,
+      fontSize: SDPI_THEME.fontSize,
+      height: SDPI_THEME.height,
+      padding: SDPI_THEME.padding,
+      border: "none",
+      boxSizing: "border-box",
+      flex: "1",
+      minWidth: "0",
+      display: "none",
+    });
 
-    // Get setting name and integrate with SDPIComponents
+    // Datalist for SimHub autocomplete
+    this.datalist = document.createElement("datalist");
+    this.datalist.id = `simhub-roles-${Math.random().toString(36).slice(2, 8)}`;
+    this.simhubInput.setAttribute("list", this.datalist.id);
+
+    this.container.appendChild(this.dropdownTrigger);
+    this.container.appendChild(this.displayInput);
+    this.container.appendChild(this.simhubInput);
+    this.container.appendChild(this.datalist);
+    this.container.appendChild(this.dropdownPanel);
+    this.appendChild(this.container);
+
+    // Settings integration
     const settingName = this.getAttribute("setting");
     const defaultValue = this.getAttribute("default");
     const useGlobal = this.hasAttribute("global");
 
     if (settingName && window.SDPIComponents) {
-      // Choose settings hook based on 'global' attribute
-      // Global settings are shared across all action instances in the plugin
-      // Regular settings are specific to each action instance
       const useSettingsHook = useGlobal ? window.SDPIComponents.useGlobalSettings : window.SDPIComponents.useSettings;
 
       const [, save] = useSettingsHook(
         settingName,
         (value: string) => {
-          // Called when settings are loaded or changed externally
           if (value) {
             this.value = value;
           } else if (defaultValue) {
-            // No saved value - apply default and save it
             this.currentValue = parseSimpleDefault(defaultValue);
+            this.isSimHubMode = false;
             this.updateDisplay();
-            // Save the default to settings so it persists
             save(this.value);
           }
         },
-        null, // No debounce
+        null,
       );
       this.saveToStreamDeck = save;
     }
 
-    // Apply default if no SDPIComponents integration (standalone usage)
     if (!window.SDPIComponents && defaultValue && !this.currentValue) {
       this.currentValue = parseSimpleDefault(defaultValue);
     }
@@ -183,15 +343,26 @@ class KeyBindingInput extends HTMLElement {
     this.updateDisplay();
     this.initLayoutMap();
 
+    // Event listeners
+    this.dropdownTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleDropdown();
+    });
     this.displayInput.addEventListener("click", this.handleClick);
     this.displayInput.addEventListener("keydown", this.handleKeyDown);
     this.displayInput.addEventListener("blur", this.handleBlur);
+    this.simhubInput.addEventListener("change", this.handleSimHubInput);
+    this.simhubInput.addEventListener("blur", this.handleSimHubInput);
+
+    // Close dropdown on outside click
+    this.boundCloseDropdown = (e: MouseEvent) => {
+      if (this.isDropdownOpen && !this.container?.contains(e.target as Node)) {
+        this.closeDropdown();
+      }
+    };
+    document.addEventListener("click", this.boundCloseDropdown);
   }
 
-  /**
-   * Try to load the keyboard layout map for locale-correct base characters.
-   * Falls back gracefully if the API is unavailable (e.g., insecure context).
-   */
   private async initLayoutMap(): Promise<void> {
     try {
       const kbd = (navigator as unknown as Record<string, unknown>).keyboard as
@@ -202,26 +373,25 @@ class KeyBindingInput extends HTMLElement {
         this.layoutMap = await kbd.getLayoutMap();
       }
     } catch {
-      // Keyboard Layout Map API not available - will fall back to event.key
+      // Keyboard Layout Map API not available
     }
   }
 
   disconnectedCallback(): void {
-    if (this.displayInput) {
-      this.displayInput.removeEventListener("click", this.handleClick);
-      this.displayInput.removeEventListener("keydown", this.handleKeyDown);
-      this.displayInput.removeEventListener("blur", this.handleBlur);
+    this.displayInput?.removeEventListener("click", this.handleClick);
+    this.displayInput?.removeEventListener("keydown", this.handleKeyDown);
+    this.displayInput?.removeEventListener("blur", this.handleBlur);
+    this.simhubInput?.removeEventListener("change", this.handleSimHubInput);
+    this.simhubInput?.removeEventListener("blur", this.handleSimHubInput);
+
+    if (this.boundCloseDropdown) {
+      document.removeEventListener("click", this.boundCloseDropdown);
     }
   }
 
-  /**
-   * Programmatically set the key binding value and optionally save to settings.
-   * Part of the custom element public API for external/programmatic access.
-   * @param value - The key binding value to set
-   * @param saveToSettings - Whether to save the value to Stream Deck settings (default: true)
-   */
   setValue(value: KeyBindingValue | null, saveToSettings = true): void {
     this.currentValue = value;
+    this.isSimHubMode = isSimHubBinding(value);
     this.updateDisplay();
 
     if (saveToSettings) {
@@ -229,16 +399,77 @@ class KeyBindingInput extends HTMLElement {
     }
   }
 
-  /**
-   * Programmatically get the current key binding value.
-   * Part of the custom element public API for external/programmatic access.
-   */
-  getValue(): KeyBindingValue | null {
+  getValue(): BindingValue | null {
     return this.currentValue;
   }
 
+  // --- Dropdown ---
+
+  private toggleDropdown(): void {
+    if (this.isDropdownOpen) {
+      this.closeDropdown();
+    } else {
+      this.openDropdown();
+    }
+  }
+
+  private openDropdown(): void {
+    if (!this.dropdownPanel) return;
+
+    this.isDropdownOpen = true;
+    this.dropdownPanel.style.display = "block";
+  }
+
+  private closeDropdown(): void {
+    if (!this.dropdownPanel) return;
+
+    this.isDropdownOpen = false;
+    this.dropdownPanel.style.display = "none";
+  }
+
+  private selectMode(mode: string): void {
+    this.closeDropdown();
+
+    if (mode === "simhub") {
+      this.isSimHubMode = true;
+
+      if (this.isRecording) {
+        this.stopRecording();
+      }
+
+      if (this.currentValue && !isSimHubBinding(this.currentValue)) {
+        this.currentValue = null;
+      }
+
+      if (!this.rolesFetched) {
+        this.fetchSimHubRoles();
+      }
+    } else {
+      this.isSimHubMode = false;
+
+      // Reset to default keyboard binding
+      const defaultValue = this.getAttribute("default");
+
+      if (defaultValue) {
+        this.currentValue = parseSimpleDefault(defaultValue);
+      } else {
+        this.currentValue = null;
+      }
+
+      this.notifyChange();
+    }
+
+    this.updateDisplay();
+
+    if (this.isSimHubMode && this.simhubInput) {
+      this.simhubInput.focus();
+    }
+  }
+
+  // --- Keyboard recording ---
+
   private handleClick(): void {
-    if (!this.isRecording) {
+    if (!this.isRecording && !this.isSimHubMode) {
       this.startRecording();
     }
   }
@@ -249,7 +480,11 @@ class KeyBindingInput extends HTMLElement {
     this.isRecording = true;
     this.displayInput.value = UI_TEXT.RECORDING;
     this.displayInput.style.backgroundColor = SDPI_THEME.recordingBackground;
-    this.displayInput.style.borderColor = SDPI_THEME.recordingBorder;
+
+    if (this.container) {
+      this.container.style.backgroundColor = SDPI_THEME.recordingBackground;
+    }
+
     this.displayInput.focus();
   }
 
@@ -257,9 +492,12 @@ class KeyBindingInput extends HTMLElement {
     if (!this.displayInput) return;
 
     this.isRecording = false;
-    // Restore SDPI theme colors
-    this.displayInput.style.backgroundColor = SDPI_THEME.background;
-    this.displayInput.style.borderColor = "";
+    this.displayInput.style.backgroundColor = "transparent";
+
+    if (this.container) {
+      this.container.style.backgroundColor = SDPI_THEME.background;
+    }
+
     this.displayInput.blur();
     this.updateDisplay();
   }
@@ -270,14 +508,12 @@ class KeyBindingInput extends HTMLElement {
     e.preventDefault();
     e.stopPropagation();
 
-    // Escape cancels recording
     if (e.code === "Escape") {
       this.stopRecording();
 
       return;
     }
 
-    // Ignore modifier-only keys
     if (
       e.code === "ControlLeft" ||
       e.code === "ControlRight" ||
@@ -291,18 +527,11 @@ class KeyBindingInput extends HTMLElement {
       return;
     }
 
-    // Resolve numpad-to-navigation mismatches (e.g., Ctrl+Numpad9 → Ctrl+PageUp)
     const code = resolveEventCode(e.code, e.key);
-
-    // Get the key from our map
     const key = KEY_CODE_MAP[code];
 
-    if (!key) {
-      // Unknown key, ignore
-      return;
-    }
+    if (!key) return;
 
-    // Build modifiers array
     const modifiers: Modifier[] = [];
 
     if (e.ctrlKey) modifiers.push("ctrl");
@@ -311,20 +540,13 @@ class KeyBindingInput extends HTMLElement {
 
     if (e.altKey) modifiers.push("alt");
 
-    // Get the locale-correct base character for display.
-    // Modifiers (Shift, Ctrl, Alt) can alter e.key (e.g., Shift turns "+" into "?",
-    // Ctrl can change "-" into "_" on some layouts). Use layoutMap when any modifier
-    // is held to get the unmodified base character. Fall back to e.key otherwise.
     const hasModifiers = e.ctrlKey || e.shiftKey || e.altKey;
     const displayKey = hasModifiers ? (this.layoutMap?.get(code) ?? e.key) : e.key;
 
-    // Set the new value with physical key code and locale-aware display key
     this.currentValue = { key, modifiers, code, displayKey };
+    this.isSimHubMode = false;
 
-    // Stop recording and update display
     this.stopRecording();
-
-    // Notify Stream Deck of the change
     this.notifyChange();
   }
 
@@ -334,37 +556,102 @@ class KeyBindingInput extends HTMLElement {
     }
   }
 
+  // --- SimHub input ---
+
+  private handleSimHubInput(): void {
+    if (!this.simhubInput) return;
+
+    const role = this.simhubInput.value.trim();
+
+    if (role) {
+      this.currentValue = { type: "simhub", role };
+    } else {
+      this.currentValue = null;
+    }
+
+    this.notifyChange();
+  }
+
+  private async fetchSimHubRoles(): Promise<void> {
+    if (!this.datalist) return;
+
+    this.rolesFetched = true;
+
+    try {
+      let host = "127.0.0.1";
+      let port = 8888;
+
+      const hostInput = document.querySelector('[setting="simHubHost"]') as HTMLInputElement | null;
+      const portInput = document.querySelector('[setting="simHubPort"]') as HTMLInputElement | null;
+
+      if (hostInput?.value) host = hostInput.value;
+
+      if (portInput?.value) port = parseInt(portInput.value, 10) || 8888;
+
+      const url = `http://${host}:${port}/api/ControlMapper/GetRoles/`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
+
+      if (!response.ok) return;
+
+      const roles = (await response.json()) as string[];
+      this.datalist.innerHTML = "";
+
+      for (const role of roles) {
+        const option = document.createElement("option");
+        option.value = role;
+        this.datalist.appendChild(option);
+      }
+    } catch {
+      // SimHub not running — user can type manually
+    }
+  }
+
+  // --- Display ---
+
   private updateDisplay(): void {
-    if (this.displayInput) {
-      this.displayInput.value = formatKeyBinding(this.currentValue);
+    if (!this.displayInput || !this.simhubInput || !this.dropdownIcon) return;
+
+    // Update dropdown icon to reflect current mode
+    const currentOption = MODE_OPTIONS.find((o) => o.value === (this.isSimHubMode ? "simhub" : "keyboard"));
+
+    if (currentOption) {
+      this.dropdownIcon.innerHTML = currentOption.icon;
+    }
+
+    if (this.isSimHubMode) {
+      this.displayInput.style.display = "none";
+      this.simhubInput.style.display = "block";
+
+      if (isSimHubBinding(this.currentValue)) {
+        this.simhubInput.value = this.currentValue.role;
+      } else {
+        this.simhubInput.value = "";
+      }
+    } else {
+      this.displayInput.style.display = "block";
+      this.simhubInput.style.display = "none";
+      this.displayInput.value = formatKeyBinding(this.currentValue as KeyBindingValue | null);
     }
   }
 
   private notifyChange(): void {
-    // Save to Stream Deck via SDPIComponents settings hook
     if (this.saveToStreamDeck) {
       this.saveToStreamDeck(this.value);
     }
   }
 
-  /**
-   * Observed attributes for the custom element.
-   * - "value": Allows setting the key binding via HTML attribute (JSON string format).
-   *   Part of the standard custom element API contract.
-   * - "default": Initial default value if no setting exists.
-   * - "global": When present, uses global settings (shared across all actions in the plugin).
-   */
   static get observedAttributes(): string[] {
     return ["value", "default", "global"];
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
     if (name === "value" && newValue) {
-      this.currentValue = parseKeyBinding(newValue);
+      this.currentValue = parseBindingValue(newValue);
+      this.isSimHubMode = isSimHubBinding(this.currentValue);
       this.updateDisplay();
     } else if (name === "default" && newValue && newValue !== oldValue) {
-      // When default changes (e.g., black box selection changed), apply the new default and save it
       this.currentValue = parseSimpleDefault(newValue);
+      this.isSimHubMode = false;
       this.updateDisplay();
       this.notifyChange();
     }

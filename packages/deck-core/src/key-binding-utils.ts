@@ -2,9 +2,20 @@
  * Key Binding Utilities
  *
  * Shared utility functions for parsing and formatting key bindings
- * from global settings.
+ * from global settings. Supports both keyboard shortcuts and SimHub
+ * Control Mapper role bindings.
  */
-import { type KeyBindingValue, KeyBindingValueSchema } from "./global-settings.js";
+import {
+  type BindingValue,
+  type KeyBindingValue,
+  KeyBindingValueSchema,
+  type SimHubBindingValue,
+  SimHubBindingValueSchema,
+} from "./global-settings.js";
+
+// Re-export types for convenience
+export type { BindingValue, SimHubBindingValue };
+export { isSimHubBinding } from "./global-settings.js";
 
 /**
  * Format a key binding for display in logs.
@@ -31,8 +42,56 @@ export function formatKeyBinding(binding: KeyBindingValue | undefined): string {
 }
 
 /**
- * Parse a key binding from global settings.
- * Handles both JSON strings (from Property Inspector) and already-parsed objects.
+ * Parse a binding value from global settings.
+ * Handles both keyboard shortcuts and SimHub role bindings.
+ * Accepts JSON strings (from Property Inspector) and already-parsed objects.
+ *
+ * @param rawValue - The raw value from global settings
+ * @returns Parsed BindingValue (keyboard or SimHub), or undefined if parsing fails
+ */
+export function parseBinding(rawValue: unknown): BindingValue | undefined {
+  if (typeof rawValue === "string" && rawValue) {
+    try {
+      const obj = JSON.parse(rawValue);
+
+      return parseBindingObject(obj);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (rawValue && typeof rawValue === "object") {
+    return parseBindingObject(rawValue);
+  }
+
+  return undefined;
+}
+
+/**
+ * Parse a raw object into a BindingValue.
+ */
+function parseBindingObject(obj: unknown): BindingValue | undefined {
+  // Try SimHub binding first (has "type": "simhub")
+  const simhub = SimHubBindingValueSchema.safeParse(obj);
+
+  if (simhub.success) {
+    return simhub.data;
+  }
+
+  // Try keyboard binding
+  const keyboard = KeyBindingValueSchema.safeParse(obj);
+
+  if (keyboard.success) {
+    return keyboard.data;
+  }
+
+  return undefined;
+}
+
+/**
+ * Parse a key binding from global settings (keyboard shortcuts only).
+ * For backward compatibility — use parseBinding() for new code that
+ * needs to handle both keyboard and SimHub bindings.
  *
  * @param rawValue - The raw value from global settings
  * @returns Parsed KeyBindingValue, or undefined if parsing fails

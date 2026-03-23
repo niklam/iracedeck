@@ -5,16 +5,19 @@ import {
   getGlobalColors,
   getGlobalSettings,
   getKeyboard,
+  getSimHub,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isSimHubBinding,
+  isSimHubInitialized,
   type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
-  parseKeyBinding,
+  parseBinding,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -279,10 +282,25 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
     }
 
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseKeyBinding(globalSettings[settingKey]);
+    const binding = parseBinding(globalSettings[settingKey]);
 
-    if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${settingKey}`);
+    if (!binding) {
+      this.logger.warn(`No binding configured for ${settingKey}`);
+
+      return;
+    }
+
+    if (isSimHubBinding(binding)) {
+      this.logger.info("Triggering SimHub role");
+      this.logger.debug(`SimHub role: ${binding.role}`);
+
+      if (isSimHubInitialized()) {
+        const simHub = getSimHub();
+        await simHub.startRole(binding.role);
+        await simHub.stopRole(binding.role);
+      } else {
+        this.logger.warn("SimHub service not initialized");
+      }
 
       return;
     }

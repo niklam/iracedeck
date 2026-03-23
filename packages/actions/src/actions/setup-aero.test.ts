@@ -67,7 +67,16 @@ vi.mock("@iracedeck/deck-core", () => ({
     sendKeyCombination: mockSendKeyCombination,
   })),
   LogLevel: { Info: 2 },
+  parseBinding: mockParseKeyBinding,
   parseKeyBinding: mockParseKeyBinding,
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
+  isSimHubInitialized: vi.fn(() => false),
+  getSimHub: vi.fn(() => ({
+    startRole: vi.fn().mockResolvedValue(true),
+    stopRole: vi.fn().mockResolvedValue(true),
+  })),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
     let result = template;

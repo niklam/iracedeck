@@ -5,16 +5,19 @@ import {
   getGlobalColors,
   getGlobalSettings,
   getKeyboard,
+  getSimHub,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isSimHubBinding,
+  isSimHubInitialized,
   type KeyBindingValue,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
-  parseKeyBinding,
+  parseBinding,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -216,24 +219,40 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
 
     const { mode, blackBox } = settings;
+    const settingKey =
+      mode === "direct"
+        ? BLACK_BOX_GLOBAL_KEYS[blackBox]
+        : mode === "next"
+          ? GLOBAL_KEYS.CYCLE_NEXT
+          : GLOBAL_KEYS.CYCLE_PREVIOUS;
+
+    await this.executeBinding(settingKey);
+  }
+
+  /**
+   * Resolve and execute a binding (keyboard shortcut or SimHub role) from global settings.
+   */
+  private async executeBinding(settingKey: string): Promise<void> {
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const binding = parseBinding(globalSettings[settingKey]);
 
-    let settingKey: string;
+    if (!binding) {
+      this.logger.warn(`No binding configured for ${settingKey}`);
 
-    if (mode === "direct") {
-      settingKey = BLACK_BOX_GLOBAL_KEYS[blackBox];
-    } else if (mode === "next") {
-      settingKey = GLOBAL_KEYS.CYCLE_NEXT;
-    } else {
-      settingKey = GLOBAL_KEYS.CYCLE_PREVIOUS;
+      return;
     }
 
-    const binding = parseKeyBinding(globalSettings[settingKey]);
+    if (isSimHubBinding(binding)) {
+      this.logger.info("Triggering SimHub role");
+      this.logger.debug(`SimHub role: ${binding.role}`);
 
-    this.logger.info(`Looking for key: ${settingKey}, found: ${JSON.stringify(binding)}`);
-
-    if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${settingKey}`);
+      if (isSimHubInitialized()) {
+        const simHub = getSimHub();
+        await simHub.startRole(binding.role);
+        await simHub.stopRole(binding.role);
+      } else {
+        this.logger.warn("SimHub service not initialized");
+      }
 
       return;
     }
@@ -278,19 +297,9 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
   override async onDialRotate(ev: IDeckDialRotateEvent<BlackBoxSelectorSettings>): Promise<void> {
     this.logger.info(`Dial rotated: ${ev.payload.ticks} ticks`);
 
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-
     // Clockwise (ticks > 0) = next, Counter-clockwise (ticks < 0) = previous
     const settingKey = ev.payload.ticks > 0 ? GLOBAL_KEYS.CYCLE_NEXT : GLOBAL_KEYS.CYCLE_PREVIOUS;
 
-    const binding = parseKeyBinding(globalSettings[settingKey]);
-
-    if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${settingKey}`);
-
-      return;
-    }
-
-    await this.sendKeyBinding(binding);
+    await this.executeBinding(settingKey);
   }
 }

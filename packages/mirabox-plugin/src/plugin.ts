@@ -73,7 +73,13 @@ import {
   ViewAdjustment,
 } from "@iracedeck/actions";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
-import { initAppMonitor, initGlobalSettings, initializeKeyboard, initializeSDK } from "@iracedeck/deck-core";
+import {
+  initAppMonitor,
+  initGlobalSettings,
+  initializeKeyboard,
+  initializeSDK,
+  initializeSimHub,
+} from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
 import { focusIRacingIfEnabled, initWindowFocus } from "./shared/window-focus.js";
@@ -92,6 +98,9 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyDown(scanCodes),
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
+
+// Initialize SimHub Control Mapper service for optional SimHub role triggering
+initializeSimHub(adapter.createLogger("SimHub"));
 
 // Initialize window focus service for focusing iRacing before any action
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());

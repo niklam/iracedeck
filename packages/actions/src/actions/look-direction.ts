@@ -5,6 +5,7 @@ import {
   getGlobalColors,
   getGlobalSettings,
   getKeyboard,
+  getSimHub,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -12,11 +13,12 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  type KeyBindingValue,
+  isSimHubBinding,
+  isSimHubInitialized,
   type KeyboardKey,
   type KeyboardModifier,
   type KeyCombination,
-  parseKeyBinding,
+  parseBinding,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -96,6 +98,9 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   /** Currently held key combinations per action context, tracked for cleanup on release/disappear */
   private heldCombinations = new Map<string, KeyCombination>();
 
+  /** Currently held SimHub roles per action context */
+  private heldSimHubRoles = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<LookDirectionSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -108,6 +113,7 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<LookDirectionSettings>): Promise<void> {
     await this.releaseHeldKey(ev.action.id);
+    this.heldSimHubRoles.delete(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
   }
@@ -147,11 +153,45 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   }
 
   private async pressLook(actionId: string, direction: LookDirectionType): Promise<void> {
-    const { combination, binding } = this.resolveCombination(direction) ?? {};
+    const settingKey = LOOK_DIRECTION_GLOBAL_KEYS[direction];
 
-    if (!combination || !binding) {
+    if (!settingKey) {
+      this.logger.warn(`No global key mapping for direction: ${direction}`);
+
       return;
     }
+
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const binding = parseBinding(globalSettings[settingKey]);
+
+    if (!binding) {
+      this.logger.warn(`No binding configured for ${settingKey}`);
+
+      return;
+    }
+
+    if (isSimHubBinding(binding)) {
+      this.logger.info("Triggering SimHub role (hold)");
+      this.logger.debug(`SimHub role: ${binding.role}`);
+
+      if (!isSimHubInitialized()) {
+        this.logger.warn("SimHub service not initialized");
+
+        return;
+      }
+
+      const simHub = getSimHub();
+      await simHub.startRole(binding.role);
+      this.heldSimHubRoles.set(actionId, binding.role);
+
+      return;
+    }
+
+    const combination: KeyCombination = {
+      key: binding.key as KeyboardKey,
+      modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
+      code: binding.code,
+    };
 
     const success = await getKeyboard().pressKeyCombination(combination);
 
@@ -165,6 +205,21 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   }
 
   private async releaseHeldKey(actionId: string): Promise<void> {
+    // Release SimHub role if held
+    const heldRole = this.heldSimHubRoles.get(actionId);
+
+    if (heldRole) {
+      this.heldSimHubRoles.delete(actionId);
+
+      if (isSimHubInitialized()) {
+        await getSimHub().stopRole(heldRole);
+        this.logger.info("SimHub role released");
+      }
+
+      return;
+    }
+
+    // Release keyboard key if held
     const combination = this.heldCombinations.get(actionId);
 
     if (!combination) {
@@ -180,36 +235,6 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     } else {
       this.logger.warn("Failed to release key");
     }
-  }
-
-  private resolveCombination(
-    direction: LookDirectionType,
-  ): { combination: KeyCombination; binding: KeyBindingValue } | null {
-    const settingKey = LOOK_DIRECTION_GLOBAL_KEYS[direction];
-
-    if (!settingKey) {
-      this.logger.warn(`No global key mapping for direction: ${direction}`);
-
-      return null;
-    }
-
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseKeyBinding(globalSettings[settingKey]);
-
-    if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${settingKey}`);
-
-      return null;
-    }
-
-    return {
-      combination: {
-        key: binding.key as KeyboardKey,
-        modifiers: binding.modifiers.length > 0 ? (binding.modifiers as KeyboardModifier[]) : undefined,
-        code: binding.code,
-      },
-      binding,
-    };
   }
 
   private async updateDisplay(
