@@ -103,6 +103,11 @@ adapter.registerAction(AI_SPOTTER_CONTROLS_UUID, new AiSpotterControls(adapter.c
 adapter.registerAction(AUDIO_CONTROLS_UUID, new AudioControls(adapter.createLogger("AudioControls")));
 adapter.registerAction(BLACK_BOX_SELECTOR_UUID, new BlackBoxSelector(adapter.createLogger("BlackBoxSelector")));
 adapter.registerAction(CAMERA_CONTROLS_UUID, new CameraControls(adapter.createLogger("CameraControls")));
+// Legacy UUID — existing Camera Cycle buttons continue to work after merge into Camera Controls
+adapter.registerAction(
+  "com.iracedeck.sd.core.camera-cycle",
+  new CameraControls(adapter.createLogger("CameraControls")),
+);
 adapter.registerAction(
   CAMERA_EDITOR_ADJUSTMENTS_UUID,
   new CameraEditorAdjustments(adapter.createLogger("CameraEditorAdjustments")),

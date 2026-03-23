@@ -103,7 +103,9 @@
 
 		<script>
 			(function () {
-				// Camera group subset constants
+				// Camera group subset constants — duplicated from camera-controls.ts
+				// (DEFAULT_CAMERA_GROUPS and DEFAULT_ENABLED_GROUPS). PI runs in a
+				// separate browser context and cannot import action code.
 				var ALL_GROUPS = [
 					"Nose", "Gearbox", "Roll Bar", "LF Susp", "LR Susp", "Gyro",
 					"RF Susp", "RR Susp", "Cockpit", "Scenic",

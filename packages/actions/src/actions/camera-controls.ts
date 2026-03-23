@@ -325,29 +325,7 @@ export function getNextSelectedGroup(
   sessionGroups: CameraGroup[],
   direction: 1 | -1,
 ): number | null {
-  const enabled = sessionGroups
-    .filter((g) => enabledGroupNames.includes(g.groupName))
-    .sort((a, b) => a.groupNum - b.groupNum);
-
-  if (enabled.length === 0) return null;
-
-  const currentIndex = enabled.findIndex((g) => g.groupNum === currentGroupNum);
-
-  if (currentIndex === -1) {
-    if (direction === 1) {
-      const next = enabled.find((g) => g.groupNum > currentGroupNum);
-
-      return (next ?? enabled[0]).groupNum;
-    } else {
-      const prev = [...enabled].reverse().find((g) => g.groupNum < currentGroupNum);
-
-      return (prev ?? enabled[enabled.length - 1]).groupNum;
-    }
-  }
-
-  const nextIndex = (currentIndex + direction + enabled.length) % enabled.length;
-
-  return enabled[nextIndex].groupNum;
+  return getNextSelectedGroupEntry(currentGroupNum, enabledGroupNames, sessionGroups, direction)?.groupNum ?? null;
 }
 
 /**
@@ -555,9 +533,19 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     switch (settings.target) {
       case "focus-your-car": {
         const playerCarIdx = telemetry.PlayerCarIdx ?? 0;
-        const success = camera.switchPos(playerCarIdx, groupNum, cameraNum);
-        this.logger.info("Focus on your car executed");
-        this.logger.debug(`Result: ${success}, playerCarIdx: ${playerCarIdx}`);
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
+
+        if (carNumberRaw !== null) {
+          const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
+          this.logger.info("Focus on your car executed");
+          this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
+        } else {
+          const success = camera.switchPos(playerCarIdx, groupNum, cameraNum);
+          this.logger.info("Focus on your car executed (fallback)");
+          this.logger.debug(`Result: ${success}, playerCarIdx: ${playerCarIdx}`);
+        }
+
         break;
       }
       case "focus-on-leader": {
