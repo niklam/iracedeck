@@ -79,6 +79,8 @@ export interface IDeckPlatformAdapter {
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void;
   /** Request current global settings (triggers onDidReceiveGlobalSettings callback) */
   getGlobalSettings(): void;
+  /** Write/update global settings */
+  setGlobalSettings(settings: Record<string, unknown>): void;
   /** Subscribe to application launch events */
   onApplicationDidLaunch(callback: (application: string) => void): void;
   /** Subscribe to application termination events */

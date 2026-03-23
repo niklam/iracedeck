@@ -69,6 +69,7 @@ export {
   getGlobalSettings,
   getGlobalColors,
   onGlobalSettingsChange,
+  updateGlobalSettings,
   isGlobalSettingsInitialized,
   _resetGlobalSettings,
 } from "./global-settings.js";

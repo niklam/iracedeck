@@ -214,4 +214,12 @@ export class VSDClient {
       context: this.params.pluginUuid,
     });
   }
+
+  setGlobalSettings(settings: Record<string, unknown>): void {
+    this.send({
+      event: "setGlobalSettings",
+      context: this.params.pluginUuid,
+      payload: settings,
+    });
+  }
 }

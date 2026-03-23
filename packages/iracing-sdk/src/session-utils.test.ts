@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getAllCarNumbers, getCarNumberFromSessionInfo, getCarNumberRawFromSessionInfo } from "./session-utils.js";
+import {
+  getAllCarNumbers,
+  getCameraGroupsFromSessionInfo,
+  getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+} from "./session-utils.js";
 
 describe("getCarNumberFromSessionInfo", () => {
   const sessionInfo = {
@@ -181,5 +186,39 @@ describe("getAllCarNumbers", () => {
       { carIdx: 2, carNumber: "5", carNumberRaw: 5 },
       { carIdx: 0, carNumber: "10", carNumberRaw: 10 },
     ]);
+  });
+});
+
+describe("getCameraGroupsFromSessionInfo", () => {
+  it("should extract camera groups from valid session info", () => {
+    const sessionInfo = {
+      CameraInfo: {
+        Groups: [
+          { GroupNum: 1, GroupName: "Nose", Cameras: [] },
+          { GroupNum: 2, GroupName: "Gearbox", Cameras: [] },
+          { GroupNum: 3, GroupName: "Cockpit", Cameras: [] },
+        ],
+      },
+    };
+
+    expect(getCameraGroupsFromSessionInfo(sessionInfo)).toEqual([
+      { groupNum: 1, groupName: "Nose" },
+      { groupNum: 2, groupName: "Gearbox" },
+      { groupNum: 3, groupName: "Cockpit" },
+    ]);
+  });
+
+  it("should return empty array when CameraInfo is missing", () => {
+    expect(getCameraGroupsFromSessionInfo({})).toEqual([]);
+    expect(getCameraGroupsFromSessionInfo(null)).toEqual([]);
+    expect(getCameraGroupsFromSessionInfo(undefined)).toEqual([]);
+  });
+
+  it("should return empty array when Groups is missing", () => {
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: {} })).toEqual([]);
+  });
+
+  it("should return empty array when Groups is empty", () => {
+    expect(getCameraGroupsFromSessionInfo({ CameraInfo: { Groups: [] } })).toEqual([]);
   });
 });

@@ -128,6 +128,10 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     this.client.requestGlobalSettings();
   }
 
+  setGlobalSettings(settings: Record<string, unknown>): void {
+    this.client.setGlobalSettings(settings);
+  }
+
   onApplicationDidLaunch(callback: (application: string) => void): void {
     this.client.onGlobalEvent("applicationDidLaunch", (data) => {
       const app = (data.payload as Record<string, unknown>)?.application;

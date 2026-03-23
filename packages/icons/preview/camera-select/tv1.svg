@@ -12,10 +12,10 @@
       <line x1="62" y1="60" x2="62" y2="86" stroke-width="2.5"/>
       <line x1="62" y1="60" x2="84" y2="86" stroke-width="2.5"/>
     </g>
-    <text x="62" y="44" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="bold">1</text>
+    <text x="62" y="51" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="bold">1</text>
 
     <!-- Label -->
-    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

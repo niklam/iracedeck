@@ -24,7 +24,7 @@
     <line x1="16" y1="80" x2="128" y2="80" stroke="#ffffff" stroke-width="2.5"/>
 
     <!-- Label -->
-    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

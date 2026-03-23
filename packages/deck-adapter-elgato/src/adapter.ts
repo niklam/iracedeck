@@ -143,6 +143,10 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     this.sd.settings.getGlobalSettings();
   }
 
+  setGlobalSettings(settings: Record<string, unknown>): void {
+    this.sd.settings.setGlobalSettings(settings as JsonObject);
+  }
+
   onApplicationDidLaunch(callback: (application: string) => void): void {
     this.sd.system.onApplicationDidLaunch((ev) => {
       callback(ev.application);

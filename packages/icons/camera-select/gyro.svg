@@ -12,7 +12,7 @@
     <circle cx="72" cy="52" r="5" fill="{{graphic1Color}}"/>
 
     <!-- Label -->
-    <text x="72" y="122" text-anchor="middle" dominant-baseline="central"
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
   </g>
 </svg>

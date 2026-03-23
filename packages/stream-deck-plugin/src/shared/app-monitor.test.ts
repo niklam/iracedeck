@@ -39,6 +39,7 @@ function createMockAdapter() {
   return {
     onDidReceiveGlobalSettings: vi.fn(),
     getGlobalSettings: vi.fn(),
+    setGlobalSettings: vi.fn(),
     onApplicationDidLaunch: vi.fn((cb: (application: string) => void) => {
       launchCallbacks.push(cb);
     }),

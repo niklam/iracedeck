@@ -82,6 +82,28 @@ export function getAllCarNumbers(
   return result;
 }
 
+export interface CameraGroup {
+  groupNum: number;
+  groupName: string;
+}
+
+/**
+ * Get camera groups from iRacing session info.
+ *
+ * Extracts the list of available camera groups from CameraInfo.Groups[].
+ *
+ * @param sessionInfo - The iRacing session info object
+ * @returns Array of camera groups with group number and name
+ */
+export function getCameraGroupsFromSessionInfo(sessionInfo: unknown): CameraGroup[] {
+  const cameraInfo = (sessionInfo as Record<string, unknown>)?.CameraInfo as Record<string, unknown> | undefined;
+  const groups = cameraInfo?.Groups as Array<{ GroupNum: number; GroupName: string }> | undefined;
+
+  if (!groups) return [];
+
+  return groups.map((g) => ({ groupNum: g.GroupNum, groupName: g.GroupName }));
+}
+
 /**
  * Find a driver entry by car index from session info.
  */

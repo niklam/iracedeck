@@ -2,10 +2,61 @@
 <html lang="en">
 	<head>
 		<%- include('head-common') %>
+		<style>
+			.camera-groups-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 4px 16px;
+				padding: 4px 14px;
+			}
+
+			.camera-groups-grid label {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-family: "Segoe UI", Arial, sans-serif;
+				font-size: 9pt;
+				color: #d0d0d0;
+				cursor: pointer;
+				padding: 2px 0;
+			}
+
+			.camera-groups-grid input[type="checkbox"] {
+				accent-color: #007bff;
+				cursor: pointer;
+			}
+
+			.camera-groups-buttons {
+				display: flex;
+				gap: 6px;
+				padding: 6px 14px 2px 14px;
+				flex-wrap: wrap;
+			}
+
+			.camera-groups-buttons button {
+				background: #3a3a3a;
+				border: 1px solid #555;
+				color: #d0d0d0;
+				padding: 3px 10px;
+				font-size: 8pt;
+				border-radius: 3px;
+				cursor: pointer;
+				font-family: "Segoe UI", Arial, sans-serif;
+			}
+
+			.camera-groups-buttons button:hover {
+				background: #505050;
+				color: #ffffff;
+			}
+		</style>
 	</head>
 	<body>
 		<sdpi-item label="Target">
 			<sdpi-select id="target-select" setting="target" default="focus-your-car">
+				<option value="cycle-camera">Cycle Camera</option>
+				<option value="cycle-sub-camera">Cycle Sub-Camera</option>
+				<option value="cycle-car">Cycle Car</option>
+				<option value="cycle-driving">Cycle Driving Camera</option>
 				<option value="focus-your-car">Focus Your Car</option>
 				<option value="focus-on-leader">Focus on Leader</option>
 				<option value="focus-on-incident">Focus on Incident</option>
@@ -15,6 +66,22 @@
 				<option value="set-camera-state">Set Camera State</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<sdpi-item label="Direction" id="direction-item" class="hidden">
+			<sdpi-select setting="direction" default="next">
+				<option value="next">Next</option>
+				<option value="previous">Previous</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<div id="camera-groups-section" class="hidden">
+			<div class="ird-section-heading">Camera Groups</div>
+			<div id="camera-groups-grid" class="camera-groups-grid"></div>
+			<div class="camera-groups-buttons">
+				<button id="btn-select-all" type="button">Select All</button>
+				<button id="btn-clear" type="button">Clear Selection</button>
+			</div>
+		</div>
 
 		<sdpi-item label="Position" id="position-item" class="hidden">
 			<sdpi-textfield setting="position" placeholder="1" type="number"></sdpi-textfield>
@@ -28,61 +95,208 @@
 			<sdpi-textfield setting="cameraState" placeholder="0" type="number"></sdpi-textfield>
 		</sdpi-item>
 
-		<script>
-			function updateVisibility(target) {
-				const positionItem = document.getElementById("position-item");
-				const carNumberItem = document.getElementById("car-number-item");
-				const cameraStateItem = document.getElementById("camera-state-item");
-
-				if (positionItem) {
-					positionItem.classList.toggle("hidden", target !== "switch-by-position");
-				}
-				if (carNumberItem) {
-					carNumberItem.classList.toggle("hidden", target !== "switch-by-car-number");
-				}
-				if (cameraStateItem) {
-					cameraStateItem.classList.toggle("hidden", target !== "set-camera-state");
-				}
-			}
-
-			async function initialize() {
-				await customElements.whenDefined("sdpi-select");
-
-				const targetSelect = document.getElementById("target-select");
-				if (targetSelect) {
-					const initialValue = targetSelect.value || "focus-your-car";
-					updateVisibility(initialValue);
-
-					targetSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "focus-your-car");
-					});
-					targetSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "focus-your-car");
-					});
-
-					// Polling fallback for reliable detection
-					let lastTarget = targetSelect.value || "focus-your-car";
-					setInterval(() => {
-						const currentTarget = targetSelect.value;
-						if (currentTarget && currentTarget !== lastTarget) {
-							lastTarget = currentTarget;
-							updateVisibility(currentTarget);
-						}
-					}, 100);
-				}
-			}
-
-			if (document.readyState === "loading") {
-				document.addEventListener("DOMContentLoaded", initialize);
-			} else {
-				initialize();
-			}
-		</script>
-
 		<%- include('common-settings') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['camera-focus'] }) %>
 
 		<%- include('global-settings') %>
+
+		<script>
+			(function () {
+				// Camera group subset constants — duplicated from camera-controls.ts
+				// (DEFAULT_CAMERA_GROUPS and DEFAULT_ENABLED_GROUPS). PI runs in a
+				// separate browser context and cannot import action code.
+				var ALL_GROUPS = [
+					"Nose", "Gearbox", "Roll Bar", "LF Susp", "LR Susp", "Gyro",
+					"RF Susp", "RR Susp", "Cockpit", "Scenic",
+					"TV1", "TV2", "TV3",
+					"Pit Lane", "Pit Lane2", "Chopper",
+					"Blimp", "Chase", "Far Chase", "Rear Chase"
+				];
+				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+				var GLOBAL_KEY = "cameraGroupSubset";
+				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"];
+
+				var currentGroups = {};
+				var saveSubset = null;
+				var initialized = false;
+
+				function isCycleTarget(target) {
+					return CYCLE_TARGETS.indexOf(target) !== -1;
+				}
+
+				function getGroupNames() {
+					var names = Object.keys(currentGroups);
+					return names.length > 0 ? names : ALL_GROUPS;
+				}
+
+				// Ensure currentGroups has entries for ALL visible groups
+				// so saving doesn't lose groups that weren't explicitly toggled
+				function ensureAllGroupsTracked() {
+					var names = getGroupNames();
+					var changed = false;
+					for (var i = 0; i < names.length; i++) {
+						if (!(names[i] in currentGroups)) {
+							currentGroups[names[i]] = DEFAULT_ENABLED.indexOf(names[i]) !== -1;
+							changed = true;
+						}
+					}
+					return changed;
+				}
+
+				function isGroupEnabled(name) {
+					if (name in currentGroups) {
+						return currentGroups[name] === true;
+					}
+					return DEFAULT_ENABLED.indexOf(name) !== -1;
+				}
+
+				function renderCheckboxes() {
+					var grid = document.getElementById("camera-groups-grid");
+					if (!grid) return;
+
+					var names = getGroupNames();
+					grid.innerHTML = "";
+
+					for (var i = 0; i < names.length; i++) {
+						var name = names[i];
+						var label = document.createElement("label");
+						var checkbox = document.createElement("input");
+						checkbox.type = "checkbox";
+						checkbox.checked = isGroupEnabled(name);
+						checkbox.dataset.group = name;
+						checkbox.addEventListener("change", onCheckboxChange);
+						label.appendChild(checkbox);
+						label.appendChild(document.createTextNode(name));
+						grid.appendChild(label);
+					}
+				}
+
+				function onCheckboxChange(ev) {
+					// On first change, populate all groups so save includes everything
+					ensureAllGroupsTracked();
+					var name = ev.target.dataset.group;
+					currentGroups[name] = ev.target.checked;
+					saveCurrentGroups();
+				}
+
+				function saveCurrentGroups() {
+					if (!saveSubset) return;
+					saveSubset(JSON.stringify({ groups: currentGroups }));
+				}
+
+				function selectAll() {
+					ensureAllGroupsTracked();
+					var names = getGroupNames();
+					for (var i = 0; i < names.length; i++) {
+						currentGroups[names[i]] = true;
+					}
+					renderCheckboxes();
+					saveCurrentGroups();
+				}
+
+				function clearSelection() {
+					ensureAllGroupsTracked();
+					var names = getGroupNames();
+					for (var i = 0; i < names.length; i++) {
+						currentGroups[names[i]] = false;
+					}
+					renderCheckboxes();
+					saveCurrentGroups();
+				}
+
+				// Conditional visibility
+				function updateVisibility(target) {
+					var directionItem = document.getElementById("direction-item");
+					var cameraGroupsSection = document.getElementById("camera-groups-section");
+					var positionItem = document.getElementById("position-item");
+					var carNumberItem = document.getElementById("car-number-item");
+					var cameraStateItem = document.getElementById("camera-state-item");
+
+					var isCycle = isCycleTarget(target);
+
+					if (directionItem) {
+						directionItem.classList.toggle("hidden", !isCycle);
+					}
+					if (cameraGroupsSection) {
+						cameraGroupsSection.classList.toggle("hidden", target !== "cycle-camera");
+					}
+					if (positionItem) {
+						positionItem.classList.toggle("hidden", target !== "switch-by-position");
+					}
+					if (carNumberItem) {
+						carNumberItem.classList.toggle("hidden", target !== "switch-by-car-number");
+					}
+					if (cameraStateItem) {
+						cameraStateItem.classList.toggle("hidden", target !== "set-camera-state");
+					}
+				}
+
+				async function initializePI() {
+					if (initialized) return;
+					initialized = true;
+
+					await customElements.whenDefined("sdpi-select");
+
+					// Set up global settings hooks for camera groups
+					if (window.SDPIComponents) {
+						var subsetHook = window.SDPIComponents.useGlobalSettings(GLOBAL_KEY, function (value) {
+							if (value) {
+								try {
+									var parsed = JSON.parse(value);
+									if (parsed && parsed.groups) {
+										currentGroups = parsed.groups;
+									} else {
+										currentGroups = {};
+									}
+								} catch (e) {
+									currentGroups = {};
+								}
+							} else {
+								currentGroups = {};
+							}
+							renderCheckboxes();
+						});
+						saveSubset = subsetHook[1];
+
+					}
+
+					// Button handlers
+					document.getElementById("btn-select-all").addEventListener("click", selectAll);
+					document.getElementById("btn-clear").addEventListener("click", clearSelection);
+
+					// Target visibility
+					var targetSelect = document.getElementById("target-select");
+					if (targetSelect) {
+						var initialValue = targetSelect.value || "focus-your-car";
+						updateVisibility(initialValue);
+
+						targetSelect.addEventListener("change", function (ev) {
+							updateVisibility(ev.target.value || "focus-your-car");
+						});
+						targetSelect.addEventListener("input", function (ev) {
+							updateVisibility(ev.target.value || "focus-your-car");
+						});
+
+						var lastTarget = targetSelect.value || "focus-your-car";
+						setInterval(function () {
+							var currentTarget = targetSelect.value;
+							if (currentTarget && currentTarget !== lastTarget) {
+								lastTarget = currentTarget;
+								updateVisibility(currentTarget);
+							}
+						}, 100);
+					}
+
+					renderCheckboxes();
+				}
+
+				if (document.readyState === "loading") {
+					document.addEventListener("DOMContentLoaded", initializePI);
+				} else {
+					initializePI();
+				}
+			})();
+		</script>
 	</body>
 </html>

@@ -77,6 +77,11 @@ let initialized = false;
 let logger: ILogger | null = null;
 
 /**
+ * Stored adapter reference for writing settings back
+ */
+let adapterRef: IDeckPlatformAdapter | null = null;
+
+/**
  * Initialize global settings manager.
  * Sets up the listener for global settings changes.
  * The platform adapter will send current settings via the onDidReceiveGlobalSettings callback.
@@ -88,6 +93,7 @@ let logger: ILogger | null = null;
  */
 export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger): GlobalSettings {
   logger = log;
+  adapterRef = adapter;
   logger.info("Initializing");
 
   if (initialized) {
@@ -144,6 +150,25 @@ export function onGlobalSettingsChange(listener: GlobalSettingsListener): () => 
 }
 
 /**
+ * Update global settings by merging partial values into current settings.
+ * Writes the merged result back to the platform adapter.
+ *
+ * @param partial - Partial settings to merge into current settings
+ */
+export function updateGlobalSettings(partial: Record<string, unknown>): void {
+  if (!adapterRef) {
+    logger?.warn("Cannot update global settings: adapter not initialized");
+
+    return;
+  }
+
+  const merged = { ...currentSettings, ...partial };
+  logger?.info("Updating global settings");
+  logger?.debug(`Partial update: ${JSON.stringify(partial)}`);
+  adapterRef.setGlobalSettings(merged);
+}
+
+/**
  * Check if global settings have been initialized.
  *
  * @returns true if initialized, false otherwise
@@ -196,4 +221,5 @@ export function _resetGlobalSettings(): void {
   currentSettings = GlobalSettingsSchema.parse({});
   listeners.clear();
   initialized = false;
+  adapterRef = null;
 }

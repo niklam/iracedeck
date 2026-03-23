@@ -13,14 +13,12 @@ import {
   AudioControls,
   BLACK_BOX_SELECTOR_UUID,
   BlackBoxSelector,
-  CAMERA_CYCLE_UUID,
+  CAMERA_CONTROLS_UUID,
   CAMERA_EDITOR_ADJUSTMENTS_UUID,
   CAMERA_EDITOR_CONTROLS_UUID,
-  CAMERA_FOCUS_UUID,
-  CameraCycle,
+  CameraControls,
   CameraEditorAdjustments,
   CameraEditorControls,
-  CameraFocus,
   CAR_CONTROL_UUID,
   CarControl,
   Chat,
@@ -108,7 +106,12 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 adapter.registerAction(AI_SPOTTER_CONTROLS_UUID, new AiSpotterControls(adapter.createLogger("AiSpotterControls")));
 adapter.registerAction(AUDIO_CONTROLS_UUID, new AudioControls(adapter.createLogger("AudioControls")));
 adapter.registerAction(BLACK_BOX_SELECTOR_UUID, new BlackBoxSelector(adapter.createLogger("BlackBoxSelector")));
-adapter.registerAction(CAMERA_CYCLE_UUID, new CameraCycle(adapter.createLogger("CameraCycle")));
+adapter.registerAction(CAMERA_CONTROLS_UUID, new CameraControls(adapter.createLogger("CameraControls")));
+// Legacy UUID — existing Camera Cycle buttons continue to work after merge into Camera Controls
+adapter.registerAction(
+  "com.iracedeck.sd.core.camera-cycle",
+  new CameraControls(adapter.createLogger("CameraControls")),
+);
 adapter.registerAction(
   CAMERA_EDITOR_ADJUSTMENTS_UUID,
   new CameraEditorAdjustments(adapter.createLogger("CameraEditorAdjustments")),
@@ -117,7 +120,6 @@ adapter.registerAction(
   CAMERA_EDITOR_CONTROLS_UUID,
   new CameraEditorControls(adapter.createLogger("CameraEditorControls")),
 );
-adapter.registerAction(CAMERA_FOCUS_UUID, new CameraFocus(adapter.createLogger("CameraFocus")));
 adapter.registerAction(CAR_CONTROL_UUID, new CarControl(adapter.createLogger("CarControl")));
 adapter.registerAction(CHAT_UUID, new Chat(adapter.createLogger("Chat")));
 adapter.registerAction(COCKPIT_MISC_UUID, new CockpitMisc(adapter.createLogger("CockpitMisc")));

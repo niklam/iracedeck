@@ -117,4 +117,10 @@ export {
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 
 // Session info utilities
-export { getCarNumberFromSessionInfo, getCarNumberRawFromSessionInfo, getAllCarNumbers } from "./session-utils.js";
+export {
+  type CameraGroup,
+  getCameraGroupsFromSessionInfo,
+  getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+  getAllCarNumbers,
+} from "./session-utils.js";

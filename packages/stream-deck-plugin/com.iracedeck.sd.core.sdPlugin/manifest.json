@@ -440,35 +440,10 @@
       ]
     },
     {
-      "Name": "Camera Cycle",
-      "UUID": "com.iracedeck.sd.core.camera-cycle",
-      "Icon": "imgs/actions/camera-cycle/icon",
-      "Tooltip": "Cycle through cameras, sub-cameras, cars, and driving cameras",
-      "PropertyInspectorPath": "ui/camera-cycle.html",
-      "Controllers": [
-        "Keypad",
-        "Encoder"
-      ],
-      "Encoder": {
-        "layout": "$B1",
-        "TriggerDescription": {
-          "Rotate": "Next/Previous camera",
-          "Push": "Activate camera cycle"
-        }
-      },
-      "States": [
-        {
-          "Image": "imgs/actions/camera-cycle/key",
-          "TitleAlignment": "bottom",
-          "FontSize": 14
-        }
-      ]
-    },
-    {
-      "Name": "Camera Focus",
+      "Name": "Camera Controls",
       "UUID": "com.iracedeck.sd.core.camera-focus",
       "Icon": "imgs/actions/camera-focus/icon",
-      "Tooltip": "Focus the camera on specific targets (your car, leader, incidents, positions)",
+      "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
         "Keypad",
@@ -477,7 +452,8 @@
       "Encoder": {
         "layout": "$B1",
         "TriggerDescription": {
-          "Push": "Focus on selected target"
+          "Rotate": "Next/Previous (cycle modes)",
+          "Push": "Activate selected target"
         }
       },
       "States": [

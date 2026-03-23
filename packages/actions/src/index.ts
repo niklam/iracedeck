@@ -8,10 +8,9 @@
 export { AI_SPOTTER_CONTROLS_UUID, AiSpotterControls } from "./actions/ai-spotter-controls.js";
 export { AUDIO_CONTROLS_UUID, AudioControls } from "./actions/audio-controls.js";
 export { BLACK_BOX_SELECTOR_UUID, BlackBoxSelector } from "./actions/black-box-selector.js";
-export { CAMERA_CYCLE_UUID, CameraCycle } from "./actions/camera-cycle.js";
+export { CAMERA_CONTROLS_UUID, CAMERA_FOCUS_UUID, CameraControls, CameraFocus } from "./actions/camera-controls.js";
 export { CAMERA_EDITOR_ADJUSTMENTS_UUID, CameraEditorAdjustments } from "./actions/camera-editor-adjustments.js";
 export { CAMERA_EDITOR_CONTROLS_UUID, CameraEditorControls } from "./actions/camera-editor-controls.js";
-export { CAMERA_FOCUS_UUID, CameraFocus } from "./actions/camera-focus.js";
 export { CAR_CONTROL_UUID, CarControl } from "./actions/car-control.js";
 export { CHAT_UUID, Chat } from "./actions/chat.js";
 export { COCKPIT_MISC_UUID, CockpitMisc } from "./actions/cockpit-misc.js";
