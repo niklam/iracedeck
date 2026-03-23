@@ -14,6 +14,7 @@ vi.mock("./vsd-client.js", () => ({
     onGlobalEvent = vi.fn();
     connect = vi.fn();
     requestGlobalSettings = vi.fn();
+    setGlobalSettings = vi.fn();
     setImage = vi.fn();
     setTitle = vi.fn();
 
@@ -45,6 +46,14 @@ describe("VSDPlatformAdapter", () => {
     it("should delegate to VSDClient.requestGlobalSettings", () => {
       adapter.getGlobalSettings();
       expect(client.requestGlobalSettings).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("setGlobalSettings", () => {
+    it("should delegate to VSDClient.setGlobalSettings", () => {
+      const settings = { foo: "bar" };
+      adapter.setGlobalSettings(settings);
+      expect(client.setGlobalSettings).toHaveBeenCalledWith(settings);
     });
   });
 
