@@ -1,15 +1,34 @@
 ---
-title: Camera Focus
-description: Quickly focus the camera on your car, the leader, incidents, or a specific car number or position.
+title: Camera Controls
+description: Cycle through cameras and focus on specific targets with a single button or dial.
 sidebar:
   badge:
-    text: "7 modes"
+    text: "11 modes"
     variant: tip
 ---
 
-Camera Focus provides instant camera targeting so you can snap to the action that matters most during a broadcast or replay review.
+Camera Controls combines camera cycling and focus targeting into one action, giving you full camera control during broadcasts and replay reviews.
 
-## Modes
+## Cycle Modes
+
+| Mode | Description |
+|------|-------------|
+| Cycle Camera | Cycle through camera groups (with subset selection) |
+| Cycle Sub-Camera | Cycle sub-cameras within the current group |
+| Cycle Car | Switch focus to the next/previous car |
+| Cycle Driving Camera | Cycle through driving-style cameras |
+
+Each cycle mode has a Direction setting (Next / Previous).
+
+### Camera Group Selection
+
+When using Cycle Camera mode, you can select which camera groups to cycle through. By default, Nose, Cockpit, Chase, TV1, TV2, and TV3 are enabled.
+
+The Property Inspector shows a checkbox grid with all available camera groups. Use **Select All** and **Clear Selection** to quickly manage the selection.
+
+Camera group selection is a global setting shared across all Camera Controls instances.
+
+## Focus Modes
 
 | Mode | Description |
 |------|-------------|
@@ -23,4 +42,4 @@ Camera Focus provides instant camera targeting so you can snap to the action tha
 
 ## Encoder Support
 
-Yes — rotation steps through positions or car numbers depending on the selected mode.
+Yes — rotation cycles through cameras in cycle modes (no-op for focus modes). Press activates the selected target.

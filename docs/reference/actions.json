@@ -321,23 +321,6 @@
           ]
         },
         {
-          "id": "com.iracedeck.sd.core.camera-cycle",
-          "name": "Camera Cycle",
-          "file": "camera-cycle.ts",
-          "encoder": true,
-          "settingsKeys": ["cameraType", "direction"],
-          "modes": [
-            { "cameraType": "camera", "direction": "next", "label": "Next Camera" },
-            { "cameraType": "camera", "direction": "previous", "label": "Previous Camera" },
-            { "cameraType": "sub-camera", "direction": "next", "label": "Next Sub-Camera" },
-            { "cameraType": "sub-camera", "direction": "previous", "label": "Previous Sub-Camera" },
-            { "cameraType": "car", "direction": "next", "label": "Next Car" },
-            { "cameraType": "car", "direction": "previous", "label": "Previous Car" },
-            { "cameraType": "driving", "direction": "next", "label": "Next Driving Camera" },
-            { "cameraType": "driving", "direction": "previous", "label": "Previous Driving Camera" }
-          ]
-        },
-        {
           "id": "com.iracedeck.sd.core.camera-editor-adjustments",
           "name": "Camera Editor Adjustments",
           "file": "camera-editor-adjustments.ts",
@@ -414,11 +397,15 @@
         },
         {
           "id": "com.iracedeck.sd.core.camera-focus",
-          "name": "Camera Focus",
-          "file": "camera-focus.ts",
+          "name": "Camera Controls",
+          "file": "camera-controls.ts",
           "encoder": true,
           "settingsKey": "target",
           "modes": [
+            { "value": "cycle-camera", "label": "Cycle Camera" },
+            { "value": "cycle-sub-camera", "label": "Cycle Sub-Camera" },
+            { "value": "cycle-car", "label": "Cycle Car" },
+            { "value": "cycle-driving", "label": "Cycle Driving Camera" },
             { "value": "focus-your-car", "label": "Focus Your Car" },
             { "value": "focus-on-leader", "label": "Focus on Leader" },
             { "value": "focus-on-incident", "label": "Focus on Incident" },
