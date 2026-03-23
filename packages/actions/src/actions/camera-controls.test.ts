@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CAMERA_GROUP_MAP,
   CAMERA_GROUPS_GLOBAL_KEY,
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
@@ -36,26 +37,52 @@ vi.mock("@iracedeck/icons/camera-cycle/driving-previous.svg", () => ({
 }));
 
 // Camera select icon mocks
-vi.mock("@iracedeck/icons/camera-select/blimp.svg", () => ({ default: "<svg>blimp {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/chase.svg", () => ({ default: "<svg>chase {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/chopper.svg", () => ({ default: "<svg>chopper {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/cockpit.svg", () => ({ default: "<svg>cockpit {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/far-chase.svg", () => ({ default: "<svg>far-chase {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/gearbox.svg", () => ({ default: "<svg>gearbox {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/gyro.svg", () => ({ default: "<svg>gyro {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/lf-susp.svg", () => ({ default: "<svg>lf-susp {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/lr-susp.svg", () => ({ default: "<svg>lr-susp {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/nose.svg", () => ({ default: "<svg>nose {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/pit-lane-2.svg", () => ({ default: "<svg>pit-lane-2 {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/pit-lane.svg", () => ({ default: "<svg>pit-lane {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/rear-chase.svg", () => ({ default: "<svg>rear-chase {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/rf-susp.svg", () => ({ default: "<svg>rf-susp {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/roll-bar.svg", () => ({ default: "<svg>roll-bar {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/rr-susp.svg", () => ({ default: "<svg>rr-susp {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/scenic.svg", () => ({ default: "<svg>scenic {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/tv1.svg", () => ({ default: "<svg>tv1 {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/tv2.svg", () => ({ default: "<svg>tv2 {{mainLabel}}</svg>" }));
-vi.mock("@iracedeck/icons/camera-select/tv3.svg", () => ({ default: "<svg>tv3 {{mainLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/blimp.svg", () => ({ default: "<svg>blimp {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/chase.svg", () => ({ default: "<svg>chase {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/chopper.svg", () => ({
+  default: "<svg>chopper {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/cockpit.svg", () => ({
+  default: "<svg>cockpit {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/far-chase.svg", () => ({
+  default: "<svg>far-chase {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/gearbox.svg", () => ({
+  default: "<svg>gearbox {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/gyro.svg", () => ({ default: "<svg>gyro {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/lf-susp.svg", () => ({
+  default: "<svg>lf-susp {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/lr-susp.svg", () => ({
+  default: "<svg>lr-susp {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/nose.svg", () => ({ default: "<svg>nose {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/pit-lane-2.svg", () => ({
+  default: "<svg>pit-lane-2 {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/pit-lane.svg", () => ({
+  default: "<svg>pit-lane {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/rear-chase.svg", () => ({
+  default: "<svg>rear-chase {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/rf-susp.svg", () => ({
+  default: "<svg>rf-susp {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/roll-bar.svg", () => ({
+  default: "<svg>roll-bar {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/rr-susp.svg", () => ({
+  default: "<svg>rr-susp {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/scenic.svg", () => ({
+  default: "<svg>scenic {{mainLabel}} {{subLabel}}</svg>",
+}));
+vi.mock("@iracedeck/icons/camera-select/tv1.svg", () => ({ default: "<svg>tv1 {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/tv2.svg", () => ({ default: "<svg>tv2 {{mainLabel}} {{subLabel}}</svg>" }));
+vi.mock("@iracedeck/icons/camera-select/tv3.svg", () => ({ default: "<svg>tv3 {{mainLabel}} {{subLabel}}</svg>" }));
 
 // Focus icon mocks
 vi.mock("@iracedeck/icons/camera-focus/focus-your-car.svg", () => ({
@@ -160,6 +187,23 @@ describe("CameraControls", () => {
     it("should have default enabled groups as subset of all groups", () => {
       for (const group of DEFAULT_ENABLED_GROUPS) {
         expect(DEFAULT_CAMERA_GROUPS).toContain(group);
+      }
+    });
+
+    it("should have all 20 camera groups in CAMERA_GROUP_MAP", () => {
+      expect(Object.keys(CAMERA_GROUP_MAP)).toHaveLength(20);
+    });
+
+    it("should have correct names for known groups", () => {
+      expect(CAMERA_GROUP_MAP[1].name).toBe("Nose");
+      expect(CAMERA_GROUP_MAP[9].name).toBe("Cockpit");
+      expect(CAMERA_GROUP_MAP[17].name).toBe("TV1");
+      expect(CAMERA_GROUP_MAP[20].name).toBe("Scenic");
+    });
+
+    it("should have icon SVGs for all groups", () => {
+      for (const [, group] of Object.entries(CAMERA_GROUP_MAP)) {
+        expect(group.icon).toBeTruthy();
       }
     });
   });
@@ -325,6 +369,48 @@ describe("CameraControls", () => {
           generateCameraControlsSvg({ target: "cycle-driving", direction: "previous" }),
         );
         expect(decoded).toContain("driving-previous");
+      });
+    });
+
+    describe("change-camera target", () => {
+      it("should generate a valid data URI for change-camera with default group", () => {
+        const result = generateCameraControlsSvg({ target: "change-camera" });
+        expect(result).toContain("data:image/svg+xml");
+      });
+
+      it("should use Cockpit icon for default cameraGroup (9)", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 9 }));
+        expect(decoded).toContain("cockpit");
+        expect(decoded).toContain("COCKPIT");
+      });
+
+      it("should use Nose icon for cameraGroup 1", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 1 }));
+        expect(decoded).toContain("nose");
+        expect(decoded).toContain("NOSE");
+      });
+
+      it("should use TV1 icon for cameraGroup 17", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 17 }));
+        expect(decoded).toContain("tv1");
+        expect(decoded).toContain("TV1");
+      });
+
+      it("should include CAMERA sublabel", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 1 }));
+        expect(decoded).toContain("CAMERA");
+      });
+
+      it("should fall back to Cockpit for invalid cameraGroup", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "change-camera", cameraGroup: 99 }));
+        expect(decoded).toContain("cockpit");
+      });
+
+      it("should produce different icons for different camera groups", () => {
+        const groups = [1, 9, 12, 17];
+        const results = groups.map((g) => generateCameraControlsSvg({ target: "change-camera", cameraGroup: g }));
+        const uniqueResults = new Set(results);
+        expect(uniqueResults.size).toBe(groups.length);
       });
     });
 
