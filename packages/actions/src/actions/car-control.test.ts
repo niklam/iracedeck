@@ -163,7 +163,7 @@ describe("CarControl", () => {
     });
 
     it("should include correct labels for all controls", () => {
-      const expectedLabels: Record<string, { line1: string; line2: string }> = {
+      const expectedLabels: Record<string, { line1: string; line2?: string }> = {
         starter: { line1: "START", line2: "ENGINE" },
         ignition: { line1: "IGNITION", line2: "ON/OFF" },
         "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
@@ -171,7 +171,7 @@ describe("CarControl", () => {
         "pause-sim": { line1: "PAUSE", line2: "SIM" },
         "headlight-flash": { line1: "HEADLIGHT", line2: "FLASH" },
         "push-to-pass": { line1: "PUSH TO", line2: "PASS" },
-        drs: { line1: "DRS", line2: "TOGGLE" },
+        drs: { line1: "DRS" },
         "tear-off-visor": { line1: "TEAR OFF", line2: "VISOR" },
       };
 
@@ -180,7 +180,10 @@ describe("CarControl", () => {
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain(labels.line1);
-        expect(decoded).toContain(labels.line2);
+
+        if (labels.line2) {
+          expect(decoded).toContain(labels.line2);
+        }
       }
     });
   });
@@ -313,16 +316,16 @@ describe("CarControl", () => {
       expect(isPushToPassActive(null)).toBe(false);
     });
 
-    it("should return false when dcPushToPass is undefined", () => {
+    it("should return false when P2P_Status is undefined", () => {
       expect(isPushToPassActive({} as any)).toBe(false);
     });
 
-    it("should return false when dcPushToPass is false", () => {
-      expect(isPushToPassActive({ dcPushToPass: false } as any)).toBe(false);
+    it("should return false when P2P_Status is false", () => {
+      expect(isPushToPassActive({ P2P_Status: false } as any)).toBe(false);
     });
 
-    it("should return true when dcPushToPass is true", () => {
-      expect(isPushToPassActive({ dcPushToPass: true } as any)).toBe(true);
+    it("should return true when P2P_Status is true", () => {
+      expect(isPushToPassActive({ P2P_Status: true } as any)).toBe(true);
     });
   });
 
@@ -331,16 +334,16 @@ describe("CarControl", () => {
       expect(isDrsActive(null)).toBe(false);
     });
 
-    it("should return false when dcDRSToggle is undefined", () => {
+    it("should return false when DRS_Status is undefined", () => {
       expect(isDrsActive({} as any)).toBe(false);
     });
 
-    it("should return false when dcDRSToggle is false", () => {
-      expect(isDrsActive({ dcDRSToggle: false } as any)).toBe(false);
+    it("should return false when DRS_Status is 0", () => {
+      expect(isDrsActive({ DRS_Status: 0 } as any)).toBe(false);
     });
 
-    it("should return true when dcDRSToggle is true", () => {
-      expect(isDrsActive({ dcDRSToggle: true } as any)).toBe(true);
+    it("should return true when DRS_Status is > 0", () => {
+      expect(isDrsActive({ DRS_Status: 1 } as any)).toBe(true);
     });
   });
 
@@ -425,8 +428,8 @@ describe("CarControl", () => {
       expect(statusBarOn()).toContain("#2ecc71");
     });
 
-    it("OFF icon should contain gray color", () => {
-      expect(statusBarOff()).toContain("#888888");
+    it("OFF icon should contain red color", () => {
+      expect(statusBarOff()).toContain("#e74c3c");
     });
 
     it("ON icon should contain 'ON' text", () => {
