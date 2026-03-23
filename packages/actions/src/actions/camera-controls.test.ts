@@ -201,13 +201,13 @@ describe("CameraControls", () => {
       expect(getEnabledGroupNames()).toEqual(DEFAULT_ENABLED_GROUPS);
     });
 
-    it("should fall back to defaults when all groups disabled", () => {
+    it("should return empty array when all groups explicitly disabled", () => {
       mockGetGlobalSettings.mockReturnValue({
         [CAMERA_GROUPS_GLOBAL_KEY]: {
           groups: { Nose: false, TV1: false },
         },
       });
-      expect(getEnabledGroupNames()).toEqual(DEFAULT_ENABLED_GROUPS);
+      expect(getEnabledGroupNames()).toEqual([]);
     });
   });
 

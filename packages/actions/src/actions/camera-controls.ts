@@ -307,11 +307,10 @@ export function getEnabledGroupNames(): string[] {
   }
 
   const groups = subset.groups as Record<string, boolean>;
-  const enabled = Object.entries(groups)
+
+  return Object.entries(groups)
     .filter(([, isEnabled]) => isEnabled)
     .map(([name]) => name);
-
-  return enabled.length > 0 ? enabled : DEFAULT_ENABLED_GROUPS;
 }
 
 /**
@@ -388,6 +387,9 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
       this.updateConnectionState();
       this.updateCycleIcon(ev.action.id);
     });
+
+    // Seed cycle icon immediately if telemetry is already available
+    this.updateCycleIcon(ev.action.id);
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
@@ -403,6 +405,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
     this.activeContexts.set(ev.action.id, settings);
     this.lastDisplayedGroup.delete(ev.action.id);
     await this.updateDisplay(ev, settings);
+    this.updateCycleIcon(ev.action.id);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<CameraControlsSettings>): Promise<void> {
@@ -536,15 +539,14 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         const sessionInfo = this.sdkController.getSessionInfo();
         const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, playerCarIdx) : null;
 
-        if (carNumberRaw !== null) {
-          const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
-          this.logger.info("Focus on your car executed");
-          this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
-        } else {
-          const success = camera.switchPos(playerCarIdx, groupNum, cameraNum);
-          this.logger.info("Focus on your car executed (fallback)");
-          this.logger.debug(`Result: ${success}, playerCarIdx: ${playerCarIdx}`);
+        if (carNumberRaw === null) {
+          this.logger.warn("Cannot focus on your car: car number not found in session info");
+          break;
         }
+
+        const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
+        this.logger.info("Focus on your car executed");
+        this.logger.debug(`Result: ${success}, carNumberRaw: ${carNumberRaw}`);
 
         break;
       }
