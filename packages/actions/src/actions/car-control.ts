@@ -129,27 +129,55 @@ export function pitLimiterInactiveIcon(speed: number): string {
 /**
  * @internal Exported for testing
  *
- * Status bar showing ON state — green bar with "ON" text.
- * Used for telemetry-aware toggle controls (Push To Pass, DRS).
+ * Status bar showing ON state — full-width green bar with "ON" text at the bottom.
  */
 export function statusBarOn(): string {
   return `
-    <rect x="16" y="52" width="112" height="36" rx="6" fill="${GREEN}"/>
-    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">ON</text>`;
+    <rect x="0" y="100" width="144" height="44" fill="${GREEN}"/>
+    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">ON</text>`;
 }
 
 /**
  * @internal Exported for testing
  *
- * Status bar showing OFF state — dark gray bar with "OFF" text.
- * Used for telemetry-aware toggle controls (Push To Pass, DRS).
+ * Status bar showing OFF state — full-width dark gray bar with "OFF" text at the bottom.
  */
 export function statusBarOff(): string {
   return `
-    <rect x="16" y="52" width="112" height="36" rx="6" fill="${GRAY}" opacity="0.5"/>
-    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">OFF</text>`;
+    <rect x="0" y="100" width="144" height="44" fill="${RED}"/>
+    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">OFF</text>`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * DRS icon — large centered "DRS" text with ON/OFF status bar at the bottom.
+ */
+export function drsIcon(active: boolean, graphic1Color = WHITE): string {
+  const statusBar = active ? statusBarOn() : statusBarOff();
+
+  return `
+    <text x="72" y="68" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="50" font-weight="bold">DRS</text>
+    ${statusBar}`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Push To Pass icon — "PUSH TO" / "PASS" on two lines with ON/OFF status bar at the bottom.
+ */
+export function pushToPassIcon(active: boolean, graphic1Color = WHITE): string {
+  const statusBar = active ? statusBarOn() : statusBarOff();
+
+  return `
+    <text x="72" y="44" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">PUSH TO</text>
+    <text x="72" y="74" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">PASS</text>
+    ${statusBar}`;
 }
 
 /**
@@ -198,9 +226,9 @@ export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
  * Check if Push To Pass is active from telemetry.
  */
 export function isPushToPassActive(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.dcPushToPass === undefined) return false;
+  if (!telemetry || telemetry.P2P_Status === undefined) return false;
 
-  return telemetry.dcPushToPass === true;
+  return telemetry.P2P_Status === true;
 }
 
 /**
@@ -209,9 +237,9 @@ export function isPushToPassActive(telemetry: TelemetryData | null): boolean {
  * Check if DRS is active from telemetry.
  */
 export function isDrsActive(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.dcDRSToggle === undefined) return false;
+  if (!telemetry || telemetry.DRS_Status === undefined) return false;
 
-  return telemetry.dcDRSToggle === true;
+  return telemetry.DRS_Status > 0;
 }
 
 /**
@@ -263,17 +291,19 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
     return renderDynamicIcon(settings, iconContent);
   }
 
-  // Push To Pass and DRS use status bar icons
-  if (control === "push-to-pass") {
-    const iconContent = telemetryState?.pushToPassActive ? statusBarOn() : statusBarOff();
+  // Push To Pass and DRS use dedicated full-icon layouts (no mainLabel/subLabel)
+  if (control === "push-to-pass" || control === "drs") {
+    const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+      string,
+      string
+    >;
+    const graphic1 = colors.graphic1Color || settings.colorOverrides?.graphic1Color || WHITE;
+    const iconContent =
+      control === "push-to-pass"
+        ? pushToPassIcon(telemetryState?.pushToPassActive ?? false, graphic1)
+        : drsIcon(telemetryState?.drsActive ?? false, graphic1);
 
-    return renderDynamicIcon(settings, iconContent);
-  }
-
-  if (control === "drs") {
-    const iconContent = telemetryState?.drsActive ? statusBarOn() : statusBarOff();
-
-    return renderDynamicIcon(settings, iconContent);
+    return renderDynamicIcon(settings, iconContent, false);
   }
 
   // Static modes use standalone SVGs from @iracedeck/icons
@@ -290,8 +320,10 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
   return svgToDataUri(svg);
 }
 
-function renderDynamicIcon(settings: CarControlSettings, iconContent: string): string {
-  const labels = CAR_CONTROL_LABELS[settings.control] || CAR_CONTROL_LABELS["starter"];
+function renderDynamicIcon(settings: CarControlSettings, iconContent: string, showLabels = true): string {
+  const labels = showLabels
+    ? CAR_CONTROL_LABELS[settings.control] || CAR_CONTROL_LABELS["starter"]
+    : { line1: "", line2: "" };
 
   const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides);
   const svg = renderIconTemplate(carControlTemplate, {
@@ -548,7 +580,12 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       this.lastState.set(contextId, stateKey);
       const svgDataUri = generateCarControlSvg(settings, telemetryState);
       await this.updateKeyImage(contextId, svgDataUri);
-      this.setRegenerateCallback(contextId, () => generateCarControlSvg(settings, telemetryState));
+      this.setRegenerateCallback(contextId, () => {
+        const currentTelemetry = this.sdkController.getCurrentTelemetry();
+        const currentState = this.getTelemetryState(currentTelemetry, settings.control);
+
+        return generateCarControlSvg(settings, currentState);
+      });
     }
   }
 }

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
   <g filter="url(#activity-state)">
     <!-- Main background -->
     <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
