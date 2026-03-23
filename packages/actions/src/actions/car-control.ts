@@ -23,9 +23,11 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import enterExitTowIcon from "@iracedeck/icons/car-control/enter-exit-tow.svg";
+import headlightFlashIcon from "@iracedeck/icons/car-control/headlight-flash.svg";
 import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
 import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
+import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -34,9 +36,19 @@ import carControlTemplate from "../../icons/car-control.svg";
 const WHITE = "#ffffff";
 const GRAY = "#888888";
 const RED = "#e74c3c";
+const GREEN = "#2ecc71";
 const BLUE = "#3498db";
 
-type CarControlType = "starter" | "ignition" | "pit-speed-limiter" | "enter-exit-tow" | "pause-sim";
+type CarControlType =
+  | "starter"
+  | "ignition"
+  | "pit-speed-limiter"
+  | "enter-exit-tow"
+  | "pause-sim"
+  | "headlight-flash"
+  | "push-to-pass"
+  | "drs"
+  | "tear-off-visor";
 
 /**
  * Label configuration for each car control (line1 bold, line2 subdued)
@@ -47,9 +59,19 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
   "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
   "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
   "pause-sim": { line1: "PAUSE", line2: "SIM" },
+  "headlight-flash": { line1: "HEADLIGHT", line2: "FLASH" },
+  "push-to-pass": { line1: "PUSH TO", line2: "PASS" },
+  drs: { line1: "DRS", line2: "TOGGLE" },
+  "tear-off-visor": { line1: "TEAR OFF", line2: "VISOR" },
 };
 
 const DEFAULT_PIT_SPEED = 80;
+
+/** Controls that use telemetry-driven dynamic icons */
+const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>(["pit-speed-limiter", "push-to-pass", "drs"]);
+
+/** Controls that use hold pattern (press on keyDown, release on keyUp) */
+const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash"]);
 
 /**
  * @internal Exported for testing
@@ -102,6 +124,32 @@ export function pitLimiterInactiveIcon(speed: number): string {
 }
 
 /**
+ * @internal Exported for testing
+ *
+ * Status bar showing ON state — green bar with "ON" text.
+ * Used for telemetry-aware toggle controls (Push To Pass, DRS).
+ */
+export function statusBarOn(): string {
+  return `
+    <rect x="16" y="52" width="112" height="36" rx="6" fill="${GREEN}"/>
+    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">ON</text>`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Status bar showing OFF state — dark gray bar with "OFF" text.
+ * Used for telemetry-aware toggle controls (Push To Pass, DRS).
+ */
+export function statusBarOff(): string {
+  return `
+    <rect x="16" y="52" width="112" height="36" rx="6" fill="${GRAY}" opacity="0.5"/>
+    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">OFF</text>`;
+}
+
+/**
  * Standalone SVG templates for static car control modes (imported from @iracedeck/icons)
  */
 const STATIC_CAR_CONTROL_ICONS: Partial<Record<CarControlType, string>> = {
@@ -109,6 +157,8 @@ const STATIC_CAR_CONTROL_ICONS: Partial<Record<CarControlType, string>> = {
   ignition: ignitionIcon,
   "enter-exit-tow": enterExitTowIcon,
   "pause-sim": pauseSimIcon,
+  "headlight-flash": headlightFlashIcon,
+  "tear-off-visor": tearOffVisorIcon,
 };
 
 /**
@@ -122,6 +172,10 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "pit-speed-limiter": "carControlPitSpeedLimiter",
   "enter-exit-tow": "carControlEnterExitTow",
   "pause-sim": "carControlPauseSim",
+  "headlight-flash": "carControlHeadlightFlash",
+  "push-to-pass": "carControlPushToPass",
+  drs: "carControlDrs",
+  "tear-off-visor": "carControlTearOffVisor",
 };
 
 /**
@@ -135,8 +189,54 @@ export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
   return hasFlag(telemetry.EngineWarnings, EngineWarnings.PitSpeedLimiter);
 }
 
+/**
+ * @internal Exported for testing
+ *
+ * Check if Push To Pass is active from telemetry.
+ */
+export function isPushToPassActive(telemetry: TelemetryData | null): boolean {
+  if (!telemetry || telemetry.dcPushToPass === undefined) return false;
+
+  return telemetry.dcPushToPass === true;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Check if DRS is active from telemetry.
+ */
+export function isDrsActive(telemetry: TelemetryData | null): boolean {
+  if (!telemetry || telemetry.dcDRSToggle === undefined) return false;
+
+  return telemetry.dcDRSToggle === true;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Telemetry state for dynamic car control icons.
+ */
+export interface CarControlTelemetryState {
+  pitLimiterActive?: boolean;
+  pitSpeedLimit?: number;
+  pushToPassActive?: boolean;
+  drsActive?: boolean;
+}
+
 const CarControlSettings = CommonSettings.extend({
-  control: z.enum(["starter", "ignition", "pit-speed-limiter", "enter-exit-tow", "pause-sim"]).default("starter"),
+  control: z
+    .enum([
+      "starter",
+      "ignition",
+      "pit-speed-limiter",
+      "enter-exit-tow",
+      "pause-sim",
+      "headlight-flash",
+      "push-to-pass",
+      "drs",
+      "tear-off-visor",
+    ])
+    .default("starter"),
 });
 
 type CarControlSettings = z.infer<typeof CarControlSettings>;
@@ -146,30 +246,31 @@ type CarControlSettings = z.infer<typeof CarControlSettings>;
  *
  * Generates an SVG data URI icon for the car control action.
  */
-export function generateCarControlSvg(
-  settings: CarControlSettings,
-  pitLimiterActive?: boolean,
-  pitSpeedLimit?: number,
-): string {
+export function generateCarControlSvg(settings: CarControlSettings, telemetryState?: CarControlTelemetryState): string {
   const { control } = settings;
 
   // Pit-speed-limiter uses the template approach (dynamic speed number)
   if (control === "pit-speed-limiter") {
-    const speed = pitSpeedLimit ?? DEFAULT_PIT_SPEED;
+    const speed = telemetryState?.pitSpeedLimit ?? DEFAULT_PIT_SPEED;
     const iconContent =
-      pitLimiterActive !== undefined && pitLimiterActive ? pitLimiterActiveIcon(speed) : pitLimiterInactiveIcon(speed);
+      telemetryState?.pitLimiterActive !== undefined && telemetryState.pitLimiterActive
+        ? pitLimiterActiveIcon(speed)
+        : pitLimiterInactiveIcon(speed);
 
-    const labels = CAR_CONTROL_LABELS["pit-speed-limiter"];
+    return renderDynamicIcon(settings, iconContent);
+  }
 
-    const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides);
-    const svg = renderIconTemplate(carControlTemplate, {
-      iconContent,
-      mainLabel: labels.line1,
-      subLabel: labels.line2,
-      ...colors,
-    });
+  // Push To Pass and DRS use status bar icons
+  if (control === "push-to-pass") {
+    const iconContent = telemetryState?.pushToPassActive ? statusBarOn() : statusBarOff();
 
-    return svgToDataUri(svg);
+    return renderDynamicIcon(settings, iconContent);
+  }
+
+  if (control === "drs") {
+    const iconContent = telemetryState?.drsActive ? statusBarOn() : statusBarOff();
+
+    return renderDynamicIcon(settings, iconContent);
   }
 
   // Static modes use standalone SVGs from @iracedeck/icons
@@ -186,10 +287,25 @@ export function generateCarControlSvg(
   return svgToDataUri(svg);
 }
 
+function renderDynamicIcon(settings: CarControlSettings, iconContent: string): string {
+  const labels = CAR_CONTROL_LABELS[settings.control] || CAR_CONTROL_LABELS["starter"];
+
+  const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides);
+  const svg = renderIconTemplate(carControlTemplate, {
+    iconContent,
+    mainLabel: labels.line1,
+    subLabel: labels.line2,
+    ...colors,
+  });
+
+  return svgToDataUri(svg);
+}
+
 /**
  * Car Control Action
- * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause).
- * Starter uses long-press (hold to crank); all others use tap.
+ * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause,
+ * headlight flash, push to pass, DRS, tear off visor).
+ * Starter and headlight flash use long-press (hold while pressed); all others use tap.
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
 
@@ -264,7 +380,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   private async executeControl(actionId: string, settings: CarControlSettings): Promise<void> {
-    if (settings.control === "starter") {
+    if (HOLD_CONTROLS.has(settings.control)) {
       await this.pressAndHold(actionId, settings.control);
     } else {
       await this.tapControl(settings.control);
@@ -359,6 +475,21 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     };
   }
 
+  private getTelemetryState(telemetry: TelemetryData | null, control: CarControlType): CarControlTelemetryState {
+    const state: CarControlTelemetryState = {};
+
+    if (control === "pit-speed-limiter") {
+      state.pitLimiterActive = isPitLimiterActive(telemetry);
+      state.pitSpeedLimit = getPitSpeedLimit();
+    } else if (control === "push-to-pass") {
+      state.pushToPassActive = isPushToPassActive(telemetry);
+    } else if (control === "drs") {
+      state.drsActive = isDrsActive(telemetry);
+    }
+
+    return state;
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<CarControlSettings> | IDeckDidReceiveSettingsEvent<CarControlSettings>,
     settings: CarControlSettings,
@@ -366,22 +497,29 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     this.updateConnectionState();
 
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const pitLimiterState = settings.control === "pit-speed-limiter" ? isPitLimiterActive(telemetry) : undefined;
-    const pitSpeedLimit = settings.control === "pit-speed-limiter" ? getPitSpeedLimit() : undefined;
+    const telemetryState = this.getTelemetryState(telemetry, settings.control);
 
-    const svgDataUri = generateCarControlSvg(settings, pitLimiterState, pitSpeedLimit);
+    const svgDataUri = generateCarControlSvg(settings, telemetryState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateCarControlSvg(settings, pitLimiterState, pitSpeedLimit));
+    this.setRegenerateCallback(ev.action.id, () => generateCarControlSvg(settings, telemetryState));
 
     // Initialize state cache
-    const stateKey = this.buildStateKey(settings, pitLimiterState ?? false, pitSpeedLimit);
+    const stateKey = this.buildStateKey(settings, telemetryState);
     this.lastState.set(ev.action.id, stateKey);
   }
 
-  private buildStateKey(settings: CarControlSettings, pitLimiterActive: boolean, pitSpeedLimit?: number): string {
+  private buildStateKey(settings: CarControlSettings, telemetryState: CarControlTelemetryState): string {
     if (settings.control === "pit-speed-limiter") {
-      return `pit-speed-limiter|${pitLimiterActive}|${pitSpeedLimit ?? DEFAULT_PIT_SPEED}`;
+      return `pit-speed-limiter|${telemetryState.pitLimiterActive ?? false}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}`;
+    }
+
+    if (settings.control === "push-to-pass") {
+      return `push-to-pass|${telemetryState.pushToPassActive ?? false}`;
+    }
+
+    if (settings.control === "drs") {
+      return `drs|${telemetryState.drsActive ?? false}`;
     }
 
     return settings.control;
@@ -392,18 +530,17 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     telemetry: TelemetryData | null,
     settings: CarControlSettings,
   ): Promise<void> {
-    if (settings.control !== "pit-speed-limiter") return;
+    if (!TELEMETRY_AWARE_CONTROLS.has(settings.control)) return;
 
-    const active = isPitLimiterActive(telemetry);
-    const pitSpeedLimit = getPitSpeedLimit();
-    const stateKey = this.buildStateKey(settings, active, pitSpeedLimit);
+    const telemetryState = this.getTelemetryState(telemetry, settings.control);
+    const stateKey = this.buildStateKey(settings, telemetryState);
     const lastStateKey = this.lastState.get(contextId);
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateCarControlSvg(settings, active, pitSpeedLimit);
+      const svgDataUri = generateCarControlSvg(settings, telemetryState);
       await this.updateKeyImage(contextId, svgDataUri);
-      this.setRegenerateCallback(contextId, () => generateCarControlSvg(settings, active, pitSpeedLimit));
+      this.setRegenerateCallback(contextId, () => generateCarControlSvg(settings, telemetryState));
     }
   }
 }
