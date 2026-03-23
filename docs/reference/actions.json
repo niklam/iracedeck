@@ -117,7 +117,11 @@
             { "value": "ignition", "label": "Ignition" },
             { "value": "pit-speed-limiter", "label": "Pit Speed Limiter", "telemetryAware": true },
             { "value": "enter-exit-tow", "label": "Enter/Exit/Tow" },
-            { "value": "pause-sim", "label": "Pause Sim" }
+            { "value": "pause-sim", "label": "Pause Sim" },
+            { "value": "headlight-flash", "label": "Headlight Flash" },
+            { "value": "push-to-pass", "label": "Push To Pass", "telemetryAware": true },
+            { "value": "drs", "label": "DRS", "telemetryAware": true },
+            { "value": "tear-off-visor", "label": "Tear Off Visor" }
           ]
         }
       ]

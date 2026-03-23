@@ -36,14 +36,14 @@ When asked about actions or controls:
 | Category | Actions | Controls | Description |
 |----------|---------|----------|-------------|
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
+| Driving Controls | 5 | 39 | AI spotter, audio, black boxes, look direction, car control |
 | Cockpit & Interface | 4 | 26 | Wipers, FFB, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 102 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 2 | 48 | Chat, macros (15), whisper, reply, race admin commands |
-| **Total** | **28** | **316** | |
+| **Total** | **28** | **320** | |
 
 ## Actions by Category
 
@@ -61,7 +61,7 @@ When asked about actions or controls:
 | Audio Controls | 6 | 2 categories (voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
 | Black Box Selector | 13 | 11 direct selections + next/previous cycle |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (hold pattern) |
-| Car Control | 5 | starter, ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow, pause-sim |
+| Car Control | 9 | starter, ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow, pause-sim, headlight-flash (hold), push-to-pass (telemetry-aware), drs (telemetry-aware), tear-off-visor |
 
 ### Cockpit & Interface
 
