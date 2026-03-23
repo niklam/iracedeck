@@ -1,7 +1,7 @@
 {
-  "name": "@iracedeck/stream-dock-plugin",
+  "name": "@iracedeck/mirabox-plugin",
   "version": "1.5.0",
-  "description": "VSDinside Stream Dock plugin for iRacing - Core driving and interface controls",
+  "description": "Mirabox plugin for iRacing - Core driving and interface controls",
   "type": "module",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@iracedeck/actions": "workspace:*",
-    "@iracedeck/deck-adapter-vsd": "workspace:*",
+    "@iracedeck/deck-adapter-mirabox": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-native": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",

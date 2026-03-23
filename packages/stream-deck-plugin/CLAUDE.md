@@ -243,9 +243,9 @@ import { {ACTION_NAME}_UUID, {ActionName} } from "@iracedeck/actions";
 adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger("{ActionName}")));
 ```
 
-#### 7b. Register in Stream Dock plugin — `packages/stream-dock-plugin/src/plugin.ts`
+#### 7b. Register in Mirabox plugin — `packages/mirabox-plugin/src/plugin.ts`
 
-Same pattern as above — import from `@iracedeck/actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/stream-dock-plugin/com.iracedeck.dock.core.sdPlugin/manifest.json` must also be updated (note: uses `"Knob"` instead of `"Encoder"` for dial actions).
+Same pattern as above — import from `@iracedeck/actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/mirabox-plugin/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated (note: uses `"Knob"` instead of `"Encoder"` for dial actions).
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
@@ -321,7 +321,7 @@ node scripts/generate-color-defaults.mjs
 **Also update the actions reference** when adding, removing, or modifying actions:
 - `docs/reference/actions.json` — add/update the action entry with all modes
 - `.claude/skills/iracedeck-actions/SKILL.md` — update category overview and per-category tables
-- All plugin packages — registration in `plugin.ts` and manifest for both `stream-deck-plugin` and `stream-dock-plugin`
+- All plugin packages — registration in `plugin.ts` and manifest for both `stream-deck-plugin` and `mirabox-plugin`
 
 ## Telemetry-Aware Icons
 

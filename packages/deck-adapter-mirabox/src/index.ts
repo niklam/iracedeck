@@ -1,7 +1,7 @@
 /**
- * @iracedeck/deck-adapter-vsd
+ * @iracedeck/deck-adapter-mirabox
  *
- * VSDinside Stream Dock adapter for the deck-core platform abstraction.
+ * Mirabox adapter for the deck-core platform abstraction.
  */
 
 export { VSDPlatformAdapter } from "./adapter.js";

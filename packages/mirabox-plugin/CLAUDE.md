@@ -1,8 +1,8 @@
-# @iracedeck/stream-dock-plugin
+# @iracedeck/mirabox-plugin
 
-VSDinside Stream Dock plugin for iRaceDeck. Registers actions from `@iracedeck/actions` with VSD Craft via `@iracedeck/deck-adapter-vsd`.
+Mirabox plugin for iRaceDeck. Registers actions from `@iracedeck/actions` with VSD Craft via `@iracedeck/deck-adapter-mirabox`.
 
-Mirrors the structure of `@iracedeck/stream-deck-plugin` but targets VSDinside devices instead of Elgato Stream Deck.
+Mirrors the structure of `@iracedeck/stream-deck-plugin` but targets Mirabox devices instead of Elgato Stream Deck.
 
 ## Key Differences from stream-deck-plugin
 
@@ -16,7 +16,7 @@ Mirrors the structure of `@iracedeck/stream-deck-plugin` but targets VSDinside d
 ## Build
 
 ```bash
-pnpm build  # Rollup → com.iracedeck.dock.core.sdPlugin/bin/plugin.js
+pnpm build  # Rollup → com.iracedeck.sd.core.sdPlugin/bin/plugin.js
 ```
 
 ## Window Focus
