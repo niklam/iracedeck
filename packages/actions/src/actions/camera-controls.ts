@@ -73,7 +73,9 @@ const FOCUS_TARGET_VALUES = [
   "set-camera-state",
 ] as const;
 
-const TARGET_VALUES = [...CYCLE_TARGET_VALUES, ...FOCUS_TARGET_VALUES] as const;
+const CHANGE_CAMERA_TARGET_VALUES = ["change-camera"] as const;
+
+const TARGET_VALUES = [...CYCLE_TARGET_VALUES, ...FOCUS_TARGET_VALUES, ...CHANGE_CAMERA_TARGET_VALUES] as const;
 
 type CycleTarget = (typeof CYCLE_TARGET_VALUES)[number];
 type Target = (typeof TARGET_VALUES)[number];
@@ -137,6 +139,8 @@ const CameraControlsSettings = CommonSettings.extend({
   position: z.coerce.number().int().min(1).default(1),
   carNumber: z.coerce.number().int().min(0).default(0),
   cameraState: z.coerce.number().int().min(0).default(0),
+  // Change-camera-specific
+  cameraGroup: z.coerce.number().int().min(1).max(20).default(9),
 });
 
 type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
@@ -206,6 +210,34 @@ const CAMERA_SELECT_ICONS: Record<string, string> = {
   "Rear Chase": rearChaseSvg,
 };
 
+/**
+ * @internal Exported for testing
+ *
+ * Camera group number → name and icon SVG for change-camera target
+ */
+export const CAMERA_GROUP_MAP: Record<number, { name: string; icon: string }> = {
+  1: { name: "Nose", icon: noseSvg },
+  2: { name: "Gearbox", icon: gearboxSvg },
+  3: { name: "Roll Bar", icon: rollBarSvg },
+  4: { name: "LF Susp", icon: lfSuspSvg },
+  5: { name: "LR Susp", icon: lrSuspSvg },
+  6: { name: "Gyro", icon: gyroSvg },
+  7: { name: "RF Susp", icon: rfSuspSvg },
+  8: { name: "RR Susp", icon: rrSuspSvg },
+  9: { name: "Cockpit", icon: cockpitSvg },
+  10: { name: "Blimp", icon: blimpSvg },
+  11: { name: "Chopper", icon: chopperSvg },
+  12: { name: "Chase", icon: chaseSvg },
+  13: { name: "Far Chase", icon: farChaseSvg },
+  14: { name: "Rear Chase", icon: rearChaseSvg },
+  15: { name: "Pit Lane", icon: pitLaneSvg },
+  16: { name: "Pit Lane 2", icon: pitLane2Svg },
+  17: { name: "TV1", icon: tv1Svg },
+  18: { name: "TV2", icon: tv2Svg },
+  19: { name: "TV3", icon: tv3Svg },
+  20: { name: "Scenic", icon: scenicSvg },
+};
+
 const FOCUS_ICONS: Record<string, string> = {
   "focus-your-car": focusYourCarSvg,
   "focus-on-leader": focusOnLeaderSvg,
@@ -234,7 +266,7 @@ const FOCUS_LABELS: Record<string, { mainLabel: string; subLabel: string }> = {
  * Generates an SVG data URI icon for the camera controls action.
  */
 export function generateCameraControlsSvg(
-  settings: { target: Target; direction?: Direction } & Partial<CommonSettings>,
+  settings: { target: Target; direction?: Direction; cameraGroup?: number } & Partial<CommonSettings>,
 ): string {
   const { target, direction = "next" } = settings;
 
@@ -244,6 +276,10 @@ export function generateCameraControlsSvg(
   if (isCycleTarget(target)) {
     iconSvg = CYCLE_ICONS[target]?.[direction] || CYCLE_ICONS["cycle-camera"]["next"];
     labels = CYCLE_LABELS[target]?.[direction] || CYCLE_LABELS["cycle-camera"]["next"];
+  } else if (target === "change-camera") {
+    const group = CAMERA_GROUP_MAP[settings.cameraGroup ?? 9] ?? CAMERA_GROUP_MAP[9];
+    iconSvg = group.icon;
+    labels = { mainLabel: group.name.toUpperCase(), subLabel: "CAMERA" };
   } else {
     iconSvg = FOCUS_ICONS[target] || FOCUS_ICONS["focus-your-car"];
     labels = FOCUS_LABELS[target] || FOCUS_LABELS["focus-your-car"];
@@ -414,6 +450,8 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
     if (isCycleTarget(settings.target)) {
       this.executeCycle(settings.target, settings.direction);
+    } else if (settings.target === "change-camera") {
+      this.executeChangeCamera(settings.cameraGroup);
     } else {
       this.executeFocus(settings);
     }
@@ -425,6 +463,8 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
     if (isCycleTarget(settings.target)) {
       this.executeCycle(settings.target, settings.direction);
+    } else if (settings.target === "change-camera") {
+      this.executeChangeCamera(settings.cameraGroup);
     } else {
       this.executeFocus(settings);
     }
@@ -586,6 +626,29 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         this.logger.debug(`Result: ${success}, state: ${settings.cameraState}`);
         break;
       }
+    }
+  }
+
+  private executeChangeCamera(cameraGroup: number): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for change camera");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const carIdx = telemetry.CamCarIdx ?? 0;
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+
+    if (carNumberRaw !== null) {
+      const success = camera.switchNum(carNumberRaw, cameraGroup, 0);
+      this.logger.info("Camera changed");
+      this.logger.debug(`Result: ${success}, cameraGroup: ${cameraGroup}`);
+    } else {
+      this.logger.warn("Cannot change camera: car number not found in session info");
     }
   }
 
