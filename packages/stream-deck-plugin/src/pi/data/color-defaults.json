@@ -13,6 +13,11 @@
     "backgroundColor": "#2a2a2a",
     "textColor": "#ffffff"
   },
+  "camera-cycle": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff"
+  },
   "camera-editor-adjustments": {
     "backgroundColor": "#1a2a3a",
     "textColor": "#ffffff",

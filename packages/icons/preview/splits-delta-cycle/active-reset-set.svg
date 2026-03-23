@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"}}</desc>
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" fill="#412244"/>
+
+    <!-- Set reset point: location pin -->
+    <path d="M72 14 C52 14 40 28 40 44 C40 64 72 82 72 82 C72 82 104 64 104 44 C104 28 92 14 72 14 Z"
+          fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="72" cy="42" r="12" fill="#f39c12"/>
+
+    <text x="72" y="104" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="16">{{subLabel}}</text>
+    <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="bold">{{mainLabel}}</text>
+  </g>
+</svg>
