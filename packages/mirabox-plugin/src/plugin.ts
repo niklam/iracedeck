@@ -1,8 +1,8 @@
 /**
- * iRaceDeck VSDinside Stream Dock Plugin
+ * iRaceDeck Mirabox Plugin
  *
  * Entry point for the VSD Craft plugin. Registers all iRaceDeck actions
- * via the VSDPlatformAdapter, enabling them on VSDinside Stream Dock devices.
+ * via the VSDPlatformAdapter, enabling them on Mirabox devices.
  *
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
@@ -72,7 +72,7 @@ import {
   VIEW_ADJUSTMENT_UUID,
   ViewAdjustment,
 } from "@iracedeck/actions";
-import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-vsd";
+import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import { initAppMonitor, initGlobalSettings, initializeKeyboard, initializeSDK } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
 

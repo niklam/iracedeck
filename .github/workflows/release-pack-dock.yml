@@ -1,4 +1,4 @@
-name: Release - Build Stream Dock Plugin
+name: Release - Build Mirabox Plugin
 
 on:
   workflow_dispatch:
@@ -30,10 +30,10 @@ jobs:
       - name: Remove dev dependencies
         run: pnpm install --prod --no-frozen-lockfile
 
-      - name: Pack Stream Dock plugin
+      - name: Pack Mirabox plugin
         run: |
           $version = if ("${{ github.ref_name }}".StartsWith("v")) { "${{ github.ref_name }}".TrimStart("v") } else { "dev" }
-          npx @elgato/cli@latest pack packages/stream-dock-plugin/com.iracedeck.sd.core.sdPlugin --force --ignore-validation
+          npx @elgato/cli@latest pack packages/mirabox-plugin/com.iracedeck.sd.core.sdPlugin --force --ignore-validation
           Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "com.iracedeck.sd.core.v${version}.sdPlugin"
           Copy-Item "com.iracedeck.sd.core.v${version}.sdPlugin" "com.iracedeck.sd.core.sdPlugin"
         shell: pwsh
@@ -41,7 +41,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: streamdock-plugin
+          name: mirabox-plugin
           path: com.iracedeck.sd.core*.sdPlugin
 
       - name: Attach plugin to GitHub Release
