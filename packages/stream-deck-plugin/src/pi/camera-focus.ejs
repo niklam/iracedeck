@@ -52,7 +52,8 @@
 	</head>
 	<body>
 		<sdpi-item label="Target">
-			<sdpi-select id="target-select" setting="target" default="focus-your-car">
+			<sdpi-select id="target-select" setting="target" default="change-camera">
+				<option value="change-camera">Change Camera</option>
 				<option value="cycle-camera">Cycle Camera</option>
 				<option value="cycle-sub-camera">Cycle Sub-Camera</option>
 				<option value="cycle-car">Cycle Car</option>
@@ -64,7 +65,6 @@
 				<option value="switch-by-position">Switch by Position</option>
 				<option value="switch-by-car-number">Switch by Car Number</option>
 				<option value="set-camera-state">Set Camera State</option>
-				<option value="change-camera">Change Camera</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -298,17 +298,17 @@
 					// Target visibility
 					var targetSelect = document.getElementById("target-select");
 					if (targetSelect) {
-						var initialValue = targetSelect.value || "focus-your-car";
+						var initialValue = targetSelect.value || "change-camera";
 						updateVisibility(initialValue);
 
 						targetSelect.addEventListener("change", function (ev) {
-							updateVisibility(ev.target.value || "focus-your-car");
+							updateVisibility(ev.target.value || "change-camera");
 						});
 						targetSelect.addEventListener("input", function (ev) {
-							updateVisibility(ev.target.value || "focus-your-car");
+							updateVisibility(ev.target.value || "change-camera");
 						});
 
-						var lastTarget = targetSelect.value || "focus-your-car";
+						var lastTarget = targetSelect.value || "change-camera";
 						setInterval(function () {
 							var currentTarget = targetSelect.value;
 							if (currentTarget && currentTarget !== lastTarget) {

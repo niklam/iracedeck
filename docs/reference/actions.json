@@ -426,6 +426,7 @@
           "encoder": true,
           "settingsKey": "target",
           "modes": [
+            { "value": "change-camera", "label": "Change Camera" },
             { "value": "cycle-camera", "label": "Cycle Camera" },
             { "value": "cycle-sub-camera", "label": "Cycle Sub-Camera" },
             { "value": "cycle-car", "label": "Cycle Car" },
@@ -436,8 +437,7 @@
             { "value": "focus-on-exiting", "label": "Focus on Exiting" },
             { "value": "switch-by-position", "label": "Switch by Position" },
             { "value": "switch-by-car-number", "label": "Switch by Car Number" },
-            { "value": "set-camera-state", "label": "Set Camera State" },
-            { "value": "change-camera", "label": "Change Camera" }
+            { "value": "set-camera-state", "label": "Set Camera State" }
           ]
         }
       ]

@@ -75,7 +75,7 @@ const FOCUS_TARGET_VALUES = [
 
 const CHANGE_CAMERA_TARGET_VALUES = ["change-camera"] as const;
 
-const TARGET_VALUES = [...CYCLE_TARGET_VALUES, ...FOCUS_TARGET_VALUES, ...CHANGE_CAMERA_TARGET_VALUES] as const;
+const TARGET_VALUES = [...CHANGE_CAMERA_TARGET_VALUES, ...CYCLE_TARGET_VALUES, ...FOCUS_TARGET_VALUES] as const;
 
 type CycleTarget = (typeof CYCLE_TARGET_VALUES)[number];
 type Target = (typeof TARGET_VALUES)[number];
@@ -132,7 +132,7 @@ export const DEFAULT_ENABLED_GROUPS = ["Nose", "Cockpit", "Chase", "TV1", "TV2",
 // --- Settings schema ---
 
 const CameraControlsSettings = CommonSettings.extend({
-  target: z.enum(TARGET_VALUES).default("focus-your-car"),
+  target: z.enum(TARGET_VALUES).default("change-camera"),
   // Cycle-specific
   direction: z.enum(["next", "previous"]).default("next"),
   // Focus-specific
