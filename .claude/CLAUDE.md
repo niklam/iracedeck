@@ -9,10 +9,10 @@ Packages
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types, and shared utilities (base actions, keyboard service, global settings, icon templates, etc.)
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter bridging the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface; also provides `createSDLogger`
-- `@iracedeck/deck-adapter-vsd` — VSDinside Stream Dock adapter bridging the VSD Craft WebSocket protocol to deck-core's `IDeckPlatformAdapter` interface
+- `@iracedeck/deck-adapter-mirabox` — Mirabox adapter bridging the VSD Craft WebSocket protocol to deck-core's `IDeckPlatformAdapter` interface
 - `@iracedeck/actions` — All action implementations; import from `@iracedeck/deck-core` (not `@elgato/streamdeck`)
 - `@iracedeck/stream-deck-plugin` — has its own `CLAUDE.md` with step-by-step instructions for adding new actions. Registers actions from `@iracedeck/actions` via `ElgatoPlatformAdapter`. The `src/shared/index.ts` re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
-- `@iracedeck/stream-dock-plugin` — Registers actions from `@iracedeck/actions` via `VSDPlatformAdapter` for VSDinside/Mirabox Stream Dock devices. Has its own `CLAUDE.md` documenting differences from the Elgato plugin.
+- `@iracedeck/mirabox-plugin` — Registers actions from `@iracedeck/actions` via `VSDPlatformAdapter` for Mirabox devices. Has its own `CLAUDE.md` documenting differences from the Elgato plugin.
 - `@iracedeck/website`
 
 High-level guidance

@@ -7,20 +7,20 @@ The plugin system uses a platform abstraction architecture with these key packag
 
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
-- `@iracedeck/deck-adapter-vsd` — VSDinside Stream Dock adapter implementing `IDeckPlatformAdapter` via WebSocket
+- `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
 - `@iracedeck/actions` — All action implementations (import from `@iracedeck/deck-core`, not platform-specific SDKs)
 
 Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import from `@iracedeck/deck-core` and are registered via the platform adapter in each plugin.
 
 ## Active Plugins
 - `stream-deck-plugin` (com.iracedeck.sd.core) — Elgato Stream Deck, uses `@iracedeck/deck-adapter-elgato`
-- `stream-dock-plugin` (com.iracedeck.dock.core) — VSDinside Stream Dock, uses `@iracedeck/deck-adapter-vsd`
+- `mirabox-plugin` (com.iracedeck.sd.core) — Mirabox, uses `@iracedeck/deck-adapter-mirabox`
 
 Both plugins register the same actions from `@iracedeck/actions`. When adding or modifying actions, changes must be applied to **all** plugin packages (registration in `plugin.ts`, manifest entries, PI templates where applicable).
 
 ## Creating New Plugins
 
-Use `stream-deck-plugin` as the reference implementation for Elgato plugins, and `stream-dock-plugin` for VSD plugins. Create the following structure:
+Use `stream-deck-plugin` as the reference implementation for Elgato plugins, and `mirabox-plugin` for Mirabox/VSD plugins. Create the following structure:
 
 ```
 packages/stream-deck-plugin-{name}/

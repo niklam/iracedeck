@@ -1,6 +1,6 @@
-# @iracedeck/deck-adapter-vsd
+# @iracedeck/deck-adapter-mirabox
 
-VSDinside Stream Dock adapter that implements `IDeckPlatformAdapter` from `@iracedeck/deck-core`. Bridges the VSD Craft WebSocket protocol to the platform-agnostic interfaces.
+Mirabox adapter that implements `IDeckPlatformAdapter` from `@iracedeck/deck-core`. Bridges the VSD Craft WebSocket protocol to the platform-agnostic interfaces.
 
 ## How It Works
 

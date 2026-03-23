@@ -464,6 +464,32 @@
       }
     },
     {
+      "Name": "Camera Cycle (Legacy)",
+      "UUID": "com.iracedeck.sd.core.camera-cycle",
+      "Icon": "imgs/actions/camera-focus/icon",
+      "Tooltip": "Legacy action — use Camera Controls instead",
+      "PropertyInspectorPath": "ui/camera-focus.html",
+      "VisibleInActionsList": false,
+      "Controllers": [
+        "Keypad",
+        "Knob"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/camera-focus/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ],
+      "Knob": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Next/Previous (cycle modes)",
+          "Push": "Activate selected target"
+        }
+      }
+    },
+    {
       "Name": "Camera Editor Adjustments",
       "UUID": "com.iracedeck.sd.core.camera-editor-adjustments",
       "Icon": "imgs/actions/camera-editor-adjustments/icon",

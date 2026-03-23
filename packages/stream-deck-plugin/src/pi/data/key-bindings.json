@@ -17,7 +17,26 @@
   "splitsDelta": [
     { "id": "next", "label": "Next", "default": "Tab", "setting": "splitsDeltaNext" },
     { "id": "previous", "label": "Previous", "default": "Shift+Tab", "setting": "splitsDeltaPrevious" },
-    { "id": "displayRefCar", "label": "Display Reference Car", "default": "Ctrl+C", "setting": "toggleUiDisplayRefCar" }
+    {
+      "id": "displayRefCar",
+      "label": "Display Reference Car",
+      "default": "Ctrl+C",
+      "setting": "toggleUiDisplayRefCar"
+    },
+    {
+      "id": "customSectorStart",
+      "label": "Custom Sector Start",
+      "default": "",
+      "setting": "splitsDeltaCustomSectorStart"
+    },
+    { "id": "customSectorEnd", "label": "Custom Sector End", "default": "", "setting": "splitsDeltaCustomSectorEnd" },
+    {
+      "id": "activeResetSet",
+      "label": "Set Active Reset Point",
+      "default": "",
+      "setting": "splitsDeltaActiveResetSet"
+    },
+    { "id": "activeResetRun", "label": "Reset to Start Point", "default": "", "setting": "splitsDeltaActiveResetRun" }
   ],
   "toggleUi": [
     { "id": "dashBox", "label": "Dash Box", "default": "D", "setting": "toggleUiDashBox" },

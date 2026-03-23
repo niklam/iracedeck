@@ -7,7 +7,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 ## Data File
 
-Complete action definitions (29 actions, 320 controls): `docs/reference/actions.json`
+Complete action definitions (29 actions, 324 controls): `docs/reference/actions.json`
 
 Each action entry:
 ```json
@@ -68,7 +68,7 @@ When asked about actions or controls:
 | Action | Controls | Modes |
 |--------|----------|-------|
 | Cockpit Misc | 10 | toggle/trigger wipers, FFB +/-, latency, dash pages +/-, in-lap mode |
-| Splits & Reference | 3 | cycle (next/previous), toggle-ref-car |
+| Splits & Reference | 7 | cycle (next/previous), toggle-ref-car, custom-sector-start, custom-sector-end, active-reset-set, active-reset-run |
 | Telemetry Control | 5 | toggle-logging, mark-event, start/stop/restart recording |
 | Toggle UI Elements | 8 | dash-box, speed/gear, radio, FPS, weather, mirror, edit mode, replay UI |
 

@@ -165,6 +165,26 @@
               "value": "toggle-ref-car",
               "label": "Toggle Reference Car",
               "description": "Toggles the reference car display on/off"
+            },
+            {
+              "value": "custom-sector-start",
+              "label": "Custom Sector Start",
+              "description": "Marks the start point for a custom sector"
+            },
+            {
+              "value": "custom-sector-end",
+              "label": "Custom Sector End",
+              "description": "Marks the end point for a custom sector"
+            },
+            {
+              "value": "active-reset-set",
+              "label": "Set Active Reset Point",
+              "description": "Saves the current car state as a reset snapshot (solo practice only)"
+            },
+            {
+              "value": "active-reset-run",
+              "label": "Reset to Start Point",
+              "description": "Teleports the car back to the saved active reset snapshot (solo practice only)"
             }
           ]
         },
