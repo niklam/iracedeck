@@ -67,7 +67,10 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
 
 const DEFAULT_PIT_SPEED = 80;
 
-/** Controls that use telemetry-driven dynamic icons */
+/**
+ * Controls that use telemetry-driven dynamic icons.
+ * Keep in sync with getTelemetryState() and buildStateKey().
+ */
 const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>(["pit-speed-limiter", "push-to-pass", "drs"]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
@@ -216,12 +219,12 @@ export function isDrsActive(telemetry: TelemetryData | null): boolean {
  *
  * Telemetry state for dynamic car control icons.
  */
-export interface CarControlTelemetryState {
+export type CarControlTelemetryState = {
   pitLimiterActive?: boolean;
   pitSpeedLimit?: number;
   pushToPassActive?: boolean;
   drsActive?: boolean;
-}
+};
 
 const CarControlSettings = CommonSettings.extend({
   control: z
@@ -502,7 +505,12 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     const svgDataUri = generateCarControlSvg(settings, telemetryState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateCarControlSvg(settings, telemetryState));
+    this.setRegenerateCallback(ev.action.id, () => {
+      const currentTelemetry = this.sdkController.getCurrentTelemetry();
+      const currentState = this.getTelemetryState(currentTelemetry, settings.control);
+
+      return generateCarControlSvg(settings, currentState);
+    });
 
     // Initialize state cache
     const stateKey = this.buildStateKey(settings, telemetryState);
