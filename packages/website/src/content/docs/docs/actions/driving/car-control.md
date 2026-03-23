@@ -19,8 +19,8 @@ The Car Control action provides quick access to essential car functions. Toggle 
 | Enter/Exit/Tow | Enters or exits the car, or requests a tow to pit lane. |
 | Pause Sim | Pauses the simulation. |
 | Headlight Flash | Flashes headlights while held. Useful for multi-class racing communication. |
-| Push To Pass | Activates Push To Pass (IndyCar, Super Formula). Icon shows ON/OFF status from telemetry. |
-| DRS | Toggles DRS (Formula cars). Icon shows ON/OFF status from telemetry. |
+| Push To Pass | Activates Push To Pass / Overtake (IndyCar, Super Formula, LMDh, and other cars with OTP). Icon shows ON/OFF status from telemetry (`P2P_Status`). |
+| DRS | Toggles DRS (Formula cars). Icon shows ON/OFF status from telemetry (`DRS_Status`). |
 | Tear Off Visor | Tears off visor film in open-wheel cars, clearing the view. |
 
 ## Encoder Support
@@ -28,7 +28,7 @@ The Car Control action provides quick access to essential car functions. Toggle 
 Yes.
 
 :::note
-Pit Speed Limiter, Push To Pass, and DRS modes feature telemetry-aware icons that reflect the current state in real time. Headlight Flash and Starter use a hold pattern — the action is active while the button is pressed.
+Pit Speed Limiter, Push To Pass, and DRS modes feature telemetry-aware icons that reflect the current state in real time. Push To Pass reads the `P2P_Status` variable (not the momentary button press), so it accurately shows whether overtake power is currently active. Headlight Flash and Starter use a hold pattern — the action is active while the button is pressed.
 :::
 
 :::caution

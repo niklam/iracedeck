@@ -147,7 +147,7 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.Speed}}` | GPS vehicle speed (m/s) |
 | `{{telemetry.Shifter}}` | Log inputs from the players shifter control |
 | `{{telemetry.DriverMarker}}` | Driver activated flag |
-| `{{telemetry.PushToPass}}` | Push to pass button state |
+| `{{telemetry.PushToPass}}` | Push to pass button state (momentary — only true while the button is held; use `P2P_Status` for whether overtake power is currently active) |
 | `{{telemetry.ManualBoost}}` | Hybrid manual boost state |
 | `{{telemetry.ManualNoBoost}}` | Hybrid manual no boost state |
 | `{{telemetry.EnterExitReset}}` | Indicate action the reset key will take (0=enter, 1=exit, 2=reset) |
@@ -415,8 +415,8 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.EnergyMGU_KLapDeployPct}}` | Electrical energy available to MGU-K per lap (%) |
 | `{{telemetry.DRS_Status}}` | Drag Reduction System Status |
 | `{{telemetry.DRS_Count}}` | Drag Reduction System count of usage |
-| `{{telemetry.P2P_Status}}` | Push2Pass active or not on your car |
-| `{{telemetry.P2P_Count}}` | Push2Pass count of usage (or remaining in Race) |
+| `{{telemetry.P2P_Status}}` | Push to Pass / Overtake currently active on your car (true/false — this is the active state, not the button press) |
+| `{{telemetry.P2P_Count}}` | Push to Pass / Overtake usage count (or remaining in Race) |
 
 ### Replay & Camera
 
@@ -470,8 +470,8 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 | `{{telemetry.dcToggleWindshieldWipers}}` | Turn wipers on or off |
 | `{{telemetry.dcTriggerWindshieldWipers}}` | Momentarily turn on wipers |
 | `{{telemetry.dcTearOffVisor}}` | Tear off visor film |
-| `{{telemetry.dcDRSToggle}}` | Toggle DRS |
-| `{{telemetry.dcPushToPass}}` | Trigger push to pass |
+| `{{telemetry.dcDRSToggle}}` | DRS toggle trigger (use `DRS_Status` for current state) |
+| `{{telemetry.dcPushToPass}}` | Push to pass trigger (use `P2P_Status` for current active state) |
 | `{{telemetry.dcRFBrakeAttachedToggle}}` | Right front brake attached (1) or detached (0) |
 | `{{telemetry.dcMGUKDeployMode}}` | MGU-K deployment mode adjustment |
 | `{{telemetry.dcMGUKRegenGain}}` | MGU-K regen gain adjustment |
