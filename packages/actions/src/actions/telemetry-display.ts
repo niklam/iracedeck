@@ -16,9 +16,9 @@ import z from "zod";
 import telemetryDisplayTemplate from "../../icons/telemetry-display.svg";
 
 const TelemetryDisplaySettings = CommonSettings.extend({
-  template: z.string().default("{{sessionInfo.DriverInfo.DriverCarIdx}}"),
-  title: z.string().default("CAR #"),
-  fontSize: z.coerce.number().default(18),
+  template: z.string().default("#{{self.car_number}}\n{{self.first_name}}"),
+  title: z.string().default("I AM"),
+  fontSize: z.coerce.number().default(15),
 });
 
 type TelemetryDisplaySettings = z.infer<typeof TelemetryDisplaySettings>;
