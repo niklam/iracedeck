@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/deck-core",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Platform-agnostic core interfaces and base classes for deck device plugins",
   "type": "module",
   "main": "dist/index.js",

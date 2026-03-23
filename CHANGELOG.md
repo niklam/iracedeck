@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.6.0](https://github.com/niklam/iracedeck/compare/v1.5.0...v1.6.0) (2026-03-23)
+
+### Features
+
+* **actions:** add change-camera sub-action to CameraControls ([13ef016](https://github.com/niklam/iracedeck/commit/13ef0160f8988d583d3af226693bb1d490a60d73)), closes [#173](https://github.com/niklam/iracedeck/issues/173)
+* **actions:** add custom sector and active reset modes to splits-delta-cycle ([67c54b6](https://github.com/niklam/iracedeck/commit/67c54b60df51e43574ef5ec36f4ead690a71e033))
+* **actions:** add headlight-flash, push-to-pass, drs, tear-off-visor car control modes ([3a7c63a](https://github.com/niklam/iracedeck/commit/3a7c63a12deac2313ee4076d5e684e8fae4673fd)), closes [#179](https://github.com/niklam/iracedeck/issues/179)
+* **actions:** merge Camera Cycle into Camera Controls with group subset cycling ([b62ce48](https://github.com/niklam/iracedeck/commit/b62ce489c9baa99094a2da62efa6409fc90bccb0)), closes [#135](https://github.com/niklam/iracedeck/issues/135)
+* **deck-core:** add setGlobalSettings and camera group session utils ([2778b95](https://github.com/niklam/iracedeck/commit/2778b95c66a429220d25c9b6ef497aa83dc41a73))
+* **icons:** add 20 camera group icons for camera select action ([2776386](https://github.com/niklam/iracedeck/commit/2776386b3b2ab5a3c193389685b81994176d0b00)), closes [#2a4a5a](https://github.com/niklam/iracedeck/issues/2a4a5a) [#171](https://github.com/niklam/iracedeck/issues/171)
+* **icons:** add custom sector and active reset icons for splits-delta-cycle ([82466b5](https://github.com/niklam/iracedeck/commit/82466b58c3e0d5a5cd8a3f89a8672b3800220bcf))
+* **icons:** add headlight-flash and tear-off-visor car control icons ([cb1c3ec](https://github.com/niklam/iracedeck/commit/cb1c3ec936239b223d3903c7cc70d10f7291fdd8))
+* **iracing-native:** add dcPushToPass and dcDRSToggle to TelemetryData ([10e72e6](https://github.com/niklam/iracedeck/commit/10e72e65a3cc71a38e06be105f0d06421fdf040c))
+* **iracing-native:** add P2P_Status and DRS_Status to TelemetryData, update mock data ([548d0f6](https://github.com/niklam/iracedeck/commit/548d0f6932cc62d61af14b4ba0eda8d1bcc31528))
+* **stream-deck-plugin:** add Change Camera dropdown to Camera Controls PI ([d352e83](https://github.com/niklam/iracedeck/commit/d352e83f1f6aa4b964b07360540b63025a4826c8))
+* **stream-deck-plugin:** add custom sector and active reset to PI ([3918f9f](https://github.com/niklam/iracedeck/commit/3918f9fbe28c7160e78a6defb44fad75264de423))
+* **stream-deck-plugin:** register 4 new car control PI options and key bindings ([a5c51c6](https://github.com/niklam/iracedeck/commit/a5c51c615741369216a2836a3da3b5fe6a860e50))
+
+### Bug Fixes
+
+* **actions:** add legacy camera-cycle UUID to plugin manifests ([54757d9](https://github.com/niklam/iracedeck/commit/54757d982b8be56ee554e167f5304c4da2e49be8))
+* **actions:** address code review findings ([f4d83ef](https://github.com/niklam/iracedeck/commit/f4d83ef64f7747de28bde9bfa63c922f9db3f3c0))
+* **actions:** address code review findings ([cbbdb03](https://github.com/niklam/iracedeck/commit/cbbdb03d97aec429dda3d2fcb89e8f96b0ed7664))
+* **actions:** address second round of review findings ([6d06589](https://github.com/niklam/iracedeck/commit/6d06589925b48e41aa828a4fead7a04dada39d0e))
+* **actions:** fix stale telemetry in regenerate callback and redesign P2P/DRS icons ([258c854](https://github.com/niklam/iracedeck/commit/258c8542702b56fa7b708efffe33cc58ae1ead36))
+* **actions:** resolve camera group from session info and fix Pit Lane2 naming ([adda6d5](https://github.com/niklam/iracedeck/commit/adda6d56102839250b5afe76960c110b0161d201))
+* **actions:** update Telemetry Display default template, title, and font size ([1dc5f1b](https://github.com/niklam/iracedeck/commit/1dc5f1bb1d1abbb9dc1bf9f9f6c40d8186bd04fc)), closes [#175](https://github.com/niklam/iracedeck/issues/175)
+* **actions:** use resolveIconColors for dynamic template actions ([c2ed18d](https://github.com/niklam/iracedeck/commit/c2ed18ddcd44cc9e0c85d55a6ebb0011a4972c45)), closes [#169](https://github.com/niklam/iracedeck/issues/169)
+* **stream-deck-plugin:** update PI templates for color override support ([fb90310](https://github.com/niklam/iracedeck/commit/fb90310b7071a43fa89986bbaf30214a07eecf53))
+
+### Refactoring
+
+* **actions:** make Change Camera the first and default Camera Controls sub-action ([4173437](https://github.com/niklam/iracedeck/commit/4173437711518b7823a52d964ee57e32113196e2))
+* **actions:** simplify splits-delta-cycle key mapping with MODE_KEY_MAP ([28b7b15](https://github.com/niklam/iracedeck/commit/28b7b150adffb7b64edd30e9b390a3627116f231))
+* rename stream-dock-plugin to mirabox-plugin ([4d33f32](https://github.com/niklam/iracedeck/commit/4d33f32649d2ea3b1904ff99acd8b0ff18a1dce1))
+* split build script into plain build and build-with-restart ([6963b53](https://github.com/niklam/iracedeck/commit/6963b53954aa76cd0a40c76c3f8e484415f09542))
+* update package descriptions to reflect Mirabox rename ([590e3f9](https://github.com/niklam/iracedeck/commit/590e3f95abe8805460cd1c61a9d898328ec77828))
+
+### Documentation
+
+* add change camera sub-action implementation plan ([7742023](https://github.com/niklam/iracedeck/commit/77420239125b060b570db525dea8db87d8c531cd))
+* add Change Camera sub-action to actions reference and skills ([8f63c75](https://github.com/niklam/iracedeck/commit/8f63c7524f5108da4c1ba4a12d50457ac96a3106))
+* add custom sector and active reset modes to splits-delta-cycle documentation ([4dd8eb9](https://github.com/niklam/iracedeck/commit/4dd8eb92a1abae38111b58e1d043f73ace87c25a))
+* **rules:** require code review agent before creating PRs ([e58c4d4](https://github.com/niklam/iracedeck/commit/e58c4d4cf5afabe826d288f8473c9b154b91952c))
+* update car control documentation for 4 new modes ([3424bc0](https://github.com/niklam/iracedeck/commit/3424bc06970457832bad86680447efb83d9b3692))
+* update documentation for Camera Controls ([b2add02](https://github.com/niklam/iracedeck/commit/b2add0240ccc76999639f5735772f668d63566c8))
+* update encoder behavior description for all one-shot modes ([9b348e9](https://github.com/niklam/iracedeck/commit/9b348e95c099c81945cb99e86d72f402b0618b56))
+* update guidelines for multi-plugin awareness ([c479b9f](https://github.com/niklam/iracedeck/commit/c479b9ffc82da5c09395e7e662a932d3ec0fe314))
+* update iracedeck-actions skill control counts for new modes ([e8c63b9](https://github.com/niklam/iracedeck/commit/e8c63b9c98680631888e9aeb6321138416f8ce81))
+* **website:** clarify P2P/DRS telemetry variables and OTP car support ([cc98764](https://github.com/niklam/iracedeck/commit/cc98764b1645ed835560b323b6d353292951a9e5))
+
 ## [1.5.0](https://github.com/niklam/iracedeck/compare/v1.4.0...v1.5.0) (2026-03-21)
 
 ### Features
