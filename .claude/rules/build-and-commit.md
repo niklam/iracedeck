@@ -10,6 +10,7 @@ Build
 ```bash
 pnpm build:ts               # Build all TypeScript (excludes native addon)
 pnpm build:native           # Build native addon only
+pnpm build:with-restart     # Build all packages, stop/restart Stream Deck around it
 pnpm build:stream-deck      # Build TS + restart Stream Deck plugin
 pnpm restart:stream-deck    # Restart Stream Deck plugin
 pnpm watch:stream-deck      # Watch mode with auto-restart
