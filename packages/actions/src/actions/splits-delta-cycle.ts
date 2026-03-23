@@ -20,6 +20,10 @@ import {
   resolveIconColors,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import activeResetRunIconSvg from "@iracedeck/icons/splits-delta-cycle/active-reset-run.svg";
+import activeResetSetIconSvg from "@iracedeck/icons/splits-delta-cycle/active-reset-set.svg";
+import customSectorEndIconSvg from "@iracedeck/icons/splits-delta-cycle/custom-sector-end.svg";
+import customSectorStartIconSvg from "@iracedeck/icons/splits-delta-cycle/custom-sector-start.svg";
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import displayRefCarIconSvg from "@iracedeck/icons/toggle-ui-elements/display-ref-car.svg";
@@ -30,8 +34,24 @@ const DIRECTION_ICONS: Record<string, string> = {
   previous: previousIconSvg,
 };
 
+const MODE_ICONS: Record<string, { svg: string; mainLabel: string; subLabel: string }> = {
+  "custom-sector-start": { svg: customSectorStartIconSvg, mainLabel: "START", subLabel: "SECTOR" },
+  "custom-sector-end": { svg: customSectorEndIconSvg, mainLabel: "END", subLabel: "SECTOR" },
+  "active-reset-set": { svg: activeResetSetIconSvg, mainLabel: "SET", subLabel: "RESET POINT" },
+  "active-reset-run": { svg: activeResetRunIconSvg, mainLabel: "RESET", subLabel: "TO START" },
+};
+
 const SplitsDeltaCycleSettings = CommonSettings.extend({
-  mode: z.enum(["cycle", "toggle-ref-car"]).default("cycle"),
+  mode: z
+    .enum([
+      "cycle",
+      "toggle-ref-car",
+      "custom-sector-start",
+      "custom-sector-end",
+      "active-reset-set",
+      "active-reset-run",
+    ])
+    .default("cycle"),
   direction: z.enum(["next", "previous"]).default("next"),
 });
 
@@ -44,7 +64,19 @@ export const GLOBAL_KEY_NAMES = {
   NEXT: "splitsDeltaNext",
   PREVIOUS: "splitsDeltaPrevious",
   TOGGLE_REF_CAR: "toggleUiDisplayRefCar",
+  CUSTOM_SECTOR_START: "splitsDeltaCustomSectorStart",
+  CUSTOM_SECTOR_END: "splitsDeltaCustomSectorEnd",
+  ACTIVE_RESET_SET: "splitsDeltaActiveResetSet",
+  ACTIVE_RESET_RUN: "splitsDeltaActiveResetRun",
 } as const;
+
+const MODE_KEY_MAP: Record<string, string> = {
+  "custom-sector-start": GLOBAL_KEY_NAMES.CUSTOM_SECTOR_START,
+  "custom-sector-end": GLOBAL_KEY_NAMES.CUSTOM_SECTOR_END,
+  "active-reset-set": GLOBAL_KEY_NAMES.ACTIVE_RESET_SET,
+  "active-reset-run": GLOBAL_KEY_NAMES.ACTIVE_RESET_RUN,
+  "toggle-ref-car": GLOBAL_KEY_NAMES.TOGGLE_REF_CAR,
+};
 
 /**
  * @internal Exported for testing
@@ -52,11 +84,25 @@ export const GLOBAL_KEY_NAMES = {
 export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
   const { mode, direction } = settings;
 
+  // toggle-ref-car uses an icon from toggle-ui-elements, not splits-delta-cycle
   if (mode === "toggle-ref-car") {
     const colors = resolveIconColors(displayRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
     const svg = renderIconTemplate(displayRefCarIconSvg, {
       mainLabel: "REFERENCE",
       subLabel: "CAR",
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
+  }
+
+  const modeIcon = MODE_ICONS[mode];
+
+  if (modeIcon) {
+    const colors = resolveIconColors(modeIcon.svg, getGlobalColors(), settings.colorOverrides);
+    const svg = renderIconTemplate(modeIcon.svg, {
+      mainLabel: modeIcon.mainLabel,
+      subLabel: modeIcon.subLabel,
       ...colors,
     });
 
@@ -113,11 +159,8 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const settings = parsed.success ? parsed.data : SplitsDeltaCycleSettings.parse({});
 
     const settingKey =
-      settings.mode === "toggle-ref-car"
-        ? GLOBAL_KEY_NAMES.TOGGLE_REF_CAR
-        : settings.direction === "next"
-          ? GLOBAL_KEY_NAMES.NEXT
-          : GLOBAL_KEY_NAMES.PREVIOUS;
+      MODE_KEY_MAP[settings.mode] ??
+      (settings.direction === "next" ? GLOBAL_KEY_NAMES.NEXT : GLOBAL_KEY_NAMES.PREVIOUS);
 
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
     const binding = parseKeyBinding(globalSettings[settingKey]);
@@ -137,13 +180,15 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const parsed = SplitsDeltaCycleSettings.safeParse(ev.payload.settings);
     const settings = parsed.success ? parsed.data : SplitsDeltaCycleSettings.parse({});
 
-    if (settings.mode !== "toggle-ref-car") return;
+    const settingKey = MODE_KEY_MAP[settings.mode];
+
+    if (!settingKey) return;
 
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const binding = parseKeyBinding(globalSettings[GLOBAL_KEY_NAMES.TOGGLE_REF_CAR]);
+    const binding = parseKeyBinding(globalSettings[settingKey]);
 
     if (!binding?.key) {
-      this.logger.warn(`No key binding configured for ${GLOBAL_KEY_NAMES.TOGGLE_REF_CAR}`);
+      this.logger.warn(`No key binding configured for ${settingKey}`);
 
       return;
     }

@@ -11,6 +11,18 @@ vi.mock("@iracedeck/icons/splits-delta-cycle/previous.svg", () => ({
 vi.mock("@iracedeck/icons/toggle-ui-elements/display-ref-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg" class="ref-car">{{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/splits-delta-cycle/custom-sector-start.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg" class="custom-sector-start">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/custom-sector-end.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg" class="custom-sector-end">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/active-reset-set.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg" class="active-reset-set">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/splits-delta-cycle/active-reset-run.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg" class="active-reset-run">{{mainLabel}} {{subLabel}}</svg>',
+}));
 
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
@@ -77,6 +89,22 @@ describe("SplitsDeltaCycle", () => {
     it("should have correct global key name for toggle ref car", () => {
       expect(GLOBAL_KEY_NAMES.TOGGLE_REF_CAR).toBe("toggleUiDisplayRefCar");
     });
+
+    it("should have correct global key name for custom sector start", () => {
+      expect(GLOBAL_KEY_NAMES.CUSTOM_SECTOR_START).toBe("splitsDeltaCustomSectorStart");
+    });
+
+    it("should have correct global key name for custom sector end", () => {
+      expect(GLOBAL_KEY_NAMES.CUSTOM_SECTOR_END).toBe("splitsDeltaCustomSectorEnd");
+    });
+
+    it("should have correct global key name for active reset set", () => {
+      expect(GLOBAL_KEY_NAMES.ACTIVE_RESET_SET).toBe("splitsDeltaActiveResetSet");
+    });
+
+    it("should have correct global key name for active reset run", () => {
+      expect(GLOBAL_KEY_NAMES.ACTIVE_RESET_RUN).toBe("splitsDeltaActiveResetRun");
+    });
   });
 
   describe("generateSplitsDeltaCycleSvg", () => {
@@ -139,6 +167,67 @@ describe("SplitsDeltaCycle", () => {
       const refCar = generateSplitsDeltaCycleSvg({ mode: "toggle-ref-car", direction: "next" });
 
       expect(cycle).not.toBe(refCar);
+    });
+
+    it("should generate custom-sector-start icon", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
+      expect(result).toContain("data:image/svg+xml");
+      expect(decodeURIComponent(result)).toContain("custom-sector-start");
+    });
+
+    it("should include SECTOR and START labels for custom-sector-start mode", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("START");
+      expect(decoded).toContain("SECTOR");
+    });
+
+    it("should generate custom-sector-end icon", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
+      expect(result).toContain("data:image/svg+xml");
+      expect(decodeURIComponent(result)).toContain("custom-sector-end");
+    });
+
+    it("should include SECTOR and END labels for custom-sector-end mode", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("END");
+      expect(decoded).toContain("SECTOR");
+    });
+
+    it("should generate active-reset-set icon", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
+      expect(result).toContain("data:image/svg+xml");
+      expect(decodeURIComponent(result)).toContain("active-reset-set");
+    });
+
+    it("should include SET and RESET POINT labels for active-reset-set mode", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("SET");
+      expect(decoded).toContain("RESET POINT");
+    });
+
+    it("should generate active-reset-run icon", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      expect(result).toContain("data:image/svg+xml");
+      expect(decodeURIComponent(result)).toContain("active-reset-run");
+    });
+
+    it("should include RESET and TO START labels for active-reset-run mode", () => {
+      const result = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("RESET");
+      expect(decoded).toContain("TO START");
+    });
+
+    it("should produce different icons for all new modes", () => {
+      const sectorStart = generateSplitsDeltaCycleSvg({ mode: "custom-sector-start", direction: "next" });
+      const sectorEnd = generateSplitsDeltaCycleSvg({ mode: "custom-sector-end", direction: "next" });
+      const resetSet = generateSplitsDeltaCycleSvg({ mode: "active-reset-set", direction: "next" });
+      const resetRun = generateSplitsDeltaCycleSvg({ mode: "active-reset-run", direction: "next" });
+      const allIcons = [sectorStart, sectorEnd, resetSet, resetRun];
+      expect(new Set(allIcons).size).toBe(4);
     });
   });
 });

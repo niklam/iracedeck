@@ -7,7 +7,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 ## Data File
 
-Complete action definitions (29 actions, 320 controls): `docs/reference/actions.json`
+Complete action definitions (29 actions, 324 controls): `docs/reference/actions.json`
 
 Each action entry:
 ```json
@@ -37,13 +37,13 @@ When asked about actions or controls:
 |----------|---------|----------|-------------|
 | Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
 | Driving Controls | 5 | 35 | AI spotter, audio, black boxes, look direction, car control |
-| Cockpit & Interface | 4 | 26 | Wipers, FFB, splits & reference, telemetry, UI toggles |
+| Cockpit & Interface | 4 | 30 | Wipers, FFB, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 102 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 2 | 48 | Chat, macros (15), whisper, reply, race admin commands |
-| **Total** | **28** | **316** | |
+| **Total** | **28** | **320** | |
 
 ## Actions by Category
 
@@ -68,7 +68,7 @@ When asked about actions or controls:
 | Action | Controls | Modes |
 |--------|----------|-------|
 | Cockpit Misc | 10 | toggle/trigger wipers, FFB +/-, latency, dash pages +/-, in-lap mode |
-| Splits & Reference | 3 | cycle (next/previous), toggle-ref-car |
+| Splits & Reference | 7 | cycle (next/previous), toggle-ref-car, custom-sector-start, custom-sector-end, active-reset-set, active-reset-run |
 | Telemetry Control | 5 | toggle-logging, mark-event, start/stop/restart recording |
 | Toggle UI Elements | 8 | dash-box, speed/gear, radio, FPS, weather, mirror, edit mode, replay UI |
 
