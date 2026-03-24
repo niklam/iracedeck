@@ -20,6 +20,10 @@ Open source means the full source code is publicly available on [GitHub](https:/
 
 The MIT License is one of the most permissive open-source licenses — it allows commercial use, modification, and distribution with minimal restrictions.
 
+## Support the Project
+
+iRaceDeck is free and open source — servers and Red Bull aren't. If you find iRaceDeck useful, consider supporting its development: [Donate via PayPal](https://www.paypal.com/donate/?business=4SQKAH3XHYEA4&no_recurring=0&item_name=iRaceDeck+is+free+and+open+source+%E2%80%94+servers+and+Red+Bull+aren%27t.+Any+support+is+genuinely+appreciated.&currency_code=EUR)
+
 ## Learn More
 
 - [Tech Stack](/docs/development/tech-stack/) — packages, architecture, and how iRacing communication works

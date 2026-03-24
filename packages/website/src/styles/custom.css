@@ -258,6 +258,19 @@ starlight-theme-select label select {
   line-height: 1.4;
 }
 
+/* ── Donate section ── */
+
+.donate-section {
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.donate-section p {
+  color: var(--sl-color-gray-3);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
 /* ── Landing footer ── */
 
 .landing-footer {
