@@ -8,19 +8,29 @@ describe("parseBinding", () => {
     it("should parse a keyboard binding JSON string", () => {
       const result = parseBinding('{"key":"f1","modifiers":["ctrl"],"code":"F1"}');
 
-      expect(result).toEqual({ key: "f1", modifiers: ["ctrl"], code: "F1" });
+      expect(result).toEqual({ type: "keyboard", key: "f1", modifiers: ["ctrl"], code: "F1" });
+    });
+
+    it("should parse a keyboard binding with explicit type", () => {
+      const result = parseBinding('{"type":"keyboard","key":"f1","modifiers":["ctrl"]}');
+
+      expect(result).toEqual({ type: "keyboard", key: "f1", modifiers: ["ctrl"] });
     });
 
     it("should parse a keyboard binding with empty modifiers", () => {
       const result = parseBinding('{"key":"a","modifiers":[]}');
 
-      expect(result).toEqual({ key: "a", modifiers: [] });
+      expect(result).toEqual({ type: "keyboard", key: "a", modifiers: [] });
     });
 
     it("should parse a keyboard binding with displayKey", () => {
       const result = parseBinding('{"key":"\'","modifiers":[],"code":"Quote","displayKey":"ä"}');
 
-      expect(result).toEqual({ key: "'", modifiers: [], code: "Quote", displayKey: "ä" });
+      expect(result).toEqual({ type: "keyboard", key: "'", modifiers: [], code: "Quote", displayKey: "ä" });
+    });
+
+    it("should reject a keyboard binding with empty key", () => {
+      expect(parseBinding('{"key":"","modifiers":[]}')).toBeUndefined();
     });
   });
 
@@ -37,13 +47,17 @@ describe("parseBinding", () => {
 
       expect(result).toEqual({ type: "simhub", role: "Black Box - Lap Timing" });
     });
+
+    it("should reject a SimHub binding with empty role", () => {
+      expect(parseBinding('{"type":"simhub","role":""}')).toBeUndefined();
+    });
   });
 
   describe("object input (already parsed)", () => {
     it("should handle an already-parsed keyboard binding object", () => {
       const result = parseBinding({ key: "f3", modifiers: ["shift"], code: "F3" });
 
-      expect(result).toEqual({ key: "f3", modifiers: ["shift"], code: "F3" });
+      expect(result).toEqual({ type: "keyboard", key: "f3", modifiers: ["shift"], code: "F3" });
     });
 
     it("should handle an already-parsed SimHub binding object", () => {
@@ -92,7 +106,7 @@ describe("isSimHubBinding", () => {
   });
 
   it("should return false for keyboard binding", () => {
-    expect(isSimHubBinding({ key: "f1", modifiers: [] })).toBe(false);
+    expect(isSimHubBinding({ type: "keyboard", key: "f1", modifiers: [] })).toBe(false);
   });
 
   it("should return false for undefined", () => {

@@ -20,7 +20,8 @@ import type { IDeckPlatformAdapter } from "./types.js";
  * Exported for use by plugins defining their own key binding schemas.
  */
 export const KeyBindingValueSchema = z.object({
-  key: z.string(),
+  type: z.literal("keyboard").default("keyboard"),
+  key: z.string().min(1),
   modifiers: z.array(z.string()).default([]),
   /** KeyboardEvent.code (e.g., "Quote") - identifies the physical key position */
   code: z.string().optional(),
@@ -36,7 +37,7 @@ export type KeyBindingValue = z.infer<typeof KeyBindingValueSchema>;
  */
 export const SimHubBindingValueSchema = z.object({
   type: z.literal("simhub"),
-  role: z.string(),
+  role: z.string().min(1),
 });
 
 export type SimHubBindingValue = z.infer<typeof SimHubBindingValueSchema>;
@@ -50,7 +51,7 @@ export type BindingValue = KeyBindingValue | SimHubBindingValue;
  * Type guard to check if a binding value is a SimHub role binding.
  */
 export function isSimHubBinding(value: BindingValue | null | undefined): value is SimHubBindingValue {
-  return value != null && "type" in value && value.type === "simhub";
+  return value != null && value.type === "simhub";
 }
 
 /**

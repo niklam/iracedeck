@@ -20,11 +20,14 @@ export { isSimHubBinding } from "./global-settings.js";
 /**
  * Format a key binding for display in logs.
  * Returns a human-readable string like "Ctrl+Shift+F1" or "F3".
+ * Accepts any object with key/modifiers/displayKey — does not require the `type` discriminant.
  *
  * @param binding - The key binding to format
  * @returns Formatted string, or empty string if binding is invalid
  */
-export function formatKeyBinding(binding: KeyBindingValue | undefined): string {
+export function formatKeyBinding(
+  binding: Pick<KeyBindingValue, "key" | "modifiers" | "displayKey"> | undefined,
+): string {
   if (!binding?.key) return "";
 
   const modifiers = (binding.modifiers || [])
@@ -68,24 +71,26 @@ export function parseBinding(rawValue: unknown): BindingValue | undefined {
 }
 
 /**
- * Parse a raw object into a BindingValue.
+ * Parse a raw object into a BindingValue using the `type` discriminant.
+ * Both KeyBindingValue ("keyboard") and SimHubBindingValue ("simhub") have
+ * a `type` field. KeyBindingValueSchema defaults `type` to "keyboard" for
+ * backward compatibility with persisted values that lack the field.
  */
 function parseBindingObject(obj: unknown): BindingValue | undefined {
-  // Try SimHub binding first (has "type": "simhub")
-  const simhub = SimHubBindingValueSchema.safeParse(obj);
+  if (!obj || typeof obj !== "object") return undefined;
 
-  if (simhub.success) {
-    return simhub.data;
+  const record = obj as Record<string, unknown>;
+
+  if (record.type === "simhub") {
+    const result = SimHubBindingValueSchema.safeParse(obj);
+
+    return result.success ? result.data : undefined;
   }
 
-  // Try keyboard binding
-  const keyboard = KeyBindingValueSchema.safeParse(obj);
+  // Keyboard binding (type: "keyboard" or missing — the schema defaults it)
+  const result = KeyBindingValueSchema.safeParse(obj);
 
-  if (keyboard.success) {
-    return keyboard.data;
-  }
-
-  return undefined;
+  return result.success ? result.data : undefined;
 }
 
 /**

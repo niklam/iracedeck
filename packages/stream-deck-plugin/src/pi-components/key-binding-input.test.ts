@@ -199,19 +199,20 @@ describe("key-binding-input", () => {
 
   describe("parseSimpleDefault", () => {
     it("should parse simple key with code", () => {
-      expect(parseSimpleDefault("a")).toEqual({ key: "a", modifiers: [], code: "KeyA" });
+      expect(parseSimpleDefault("a")).toEqual({ type: "keyboard", key: "a", modifiers: [], code: "KeyA" });
     });
 
     it("should parse function key with code", () => {
-      expect(parseSimpleDefault("F1")).toEqual({ key: "f1", modifiers: [], code: "F1" });
+      expect(parseSimpleDefault("F1")).toEqual({ type: "keyboard", key: "f1", modifiers: [], code: "F1" });
     });
 
     it("should parse key with single modifier", () => {
-      expect(parseSimpleDefault("Ctrl+A")).toEqual({ key: "a", modifiers: ["ctrl"], code: "KeyA" });
+      expect(parseSimpleDefault("Ctrl+A")).toEqual({ type: "keyboard", key: "a", modifiers: ["ctrl"], code: "KeyA" });
     });
 
     it("should parse key with multiple modifiers", () => {
       expect(parseSimpleDefault("Ctrl+Shift+Alt+A")).toEqual({
+        type: "keyboard",
         key: "a",
         modifiers: ["ctrl", "shift", "alt"],
         code: "KeyA",
@@ -219,11 +220,17 @@ describe("key-binding-input", () => {
     });
 
     it("should handle 'Control' alias for 'ctrl'", () => {
-      expect(parseSimpleDefault("Control+A")).toEqual({ key: "a", modifiers: ["ctrl"], code: "KeyA" });
+      expect(parseSimpleDefault("Control+A")).toEqual({
+        type: "keyboard",
+        key: "a",
+        modifiers: ["ctrl"],
+        code: "KeyA",
+      });
     });
 
     it("should handle spaces around plus signs", () => {
       expect(parseSimpleDefault("Ctrl + Shift + A")).toEqual({
+        type: "keyboard",
         key: "a",
         modifiers: ["ctrl", "shift"],
         code: "KeyA",
@@ -232,6 +239,7 @@ describe("key-binding-input", () => {
 
     it("should be case-insensitive", () => {
       expect(parseSimpleDefault("CTRL+SHIFT+A")).toEqual({
+        type: "keyboard",
         key: "a",
         modifiers: ["ctrl", "shift"],
         code: "KeyA",
@@ -247,13 +255,28 @@ describe("key-binding-input", () => {
     });
 
     it("should parse special keys with code", () => {
-      expect(parseSimpleDefault("Space")).toEqual({ key: "space", modifiers: [], code: "Space" });
-      expect(parseSimpleDefault("Ctrl+Enter")).toEqual({ key: "enter", modifiers: ["ctrl"], code: "Enter" });
+      expect(parseSimpleDefault("Space")).toEqual({ type: "keyboard", key: "space", modifiers: [], code: "Space" });
+      expect(parseSimpleDefault("Ctrl+Enter")).toEqual({
+        type: "keyboard",
+        key: "enter",
+        modifiers: ["ctrl"],
+        code: "Enter",
+      });
     });
 
     it("should include code for navigation keys", () => {
-      expect(parseSimpleDefault("Ctrl+pageup")).toEqual({ key: "pageup", modifiers: ["ctrl"], code: "PageUp" });
-      expect(parseSimpleDefault("Ctrl+pagedown")).toEqual({ key: "pagedown", modifiers: ["ctrl"], code: "PageDown" });
+      expect(parseSimpleDefault("Ctrl+pageup")).toEqual({
+        type: "keyboard",
+        key: "pageup",
+        modifiers: ["ctrl"],
+        code: "PageUp",
+      });
+      expect(parseSimpleDefault("Ctrl+pagedown")).toEqual({
+        type: "keyboard",
+        key: "pagedown",
+        modifiers: ["ctrl"],
+        code: "PageDown",
+      });
     });
 
     it("should include code for symbol keys", () => {

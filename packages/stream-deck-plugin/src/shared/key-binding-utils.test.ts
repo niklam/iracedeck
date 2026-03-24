@@ -65,14 +65,14 @@ describe("Key Binding Utils", () => {
       const json = JSON.stringify({ key: "f1", modifiers: [] });
       const result = parseKeyBinding(json);
 
-      expect(result).toEqual({ key: "f1", modifiers: [] });
+      expect(result).toEqual({ type: "keyboard", key: "f1", modifiers: [] });
     });
 
     it("should parse JSON string with modifiers", () => {
       const json = JSON.stringify({ key: "r", modifiers: ["ctrl", "shift"] });
       const result = parseKeyBinding(json);
 
-      expect(result).toEqual({ key: "r", modifiers: ["ctrl", "shift"] });
+      expect(result).toEqual({ type: "keyboard", key: "r", modifiers: ["ctrl", "shift"] });
     });
 
     it("should return undefined for invalid JSON string", () => {
@@ -89,14 +89,14 @@ describe("Key Binding Utils", () => {
       const obj = { key: "f3", modifiers: ["alt"] };
       const result = parseKeyBinding(obj);
 
-      expect(result).toEqual({ key: "f3", modifiers: ["alt"] });
+      expect(result).toEqual({ type: "keyboard", key: "f3", modifiers: ["alt"] });
     });
 
     it("should add default empty modifiers array if missing", () => {
       const obj = { key: "f5" };
       const result = parseKeyBinding(obj);
 
-      expect(result).toEqual({ key: "f5", modifiers: [] });
+      expect(result).toEqual({ type: "keyboard", key: "f5", modifiers: [] });
     });
 
     it("should return undefined for invalid object", () => {

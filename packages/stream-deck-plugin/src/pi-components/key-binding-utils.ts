@@ -30,6 +30,7 @@ export const SDPI_THEME = {
 } as const;
 
 export interface KeyBindingValue {
+  type?: "keyboard";
   key: string;
   modifiers: Modifier[];
   /** KeyboardEvent.code (e.g., "Quote") - identifies the physical key position */
@@ -129,5 +130,5 @@ export function parseSimpleDefault(value: string): KeyBindingValue | null {
 
   const code = keyToCode(key);
 
-  return code ? { key, modifiers, code } : { key, modifiers };
+  return code ? { type: "keyboard", key, modifiers, code } : { type: "keyboard", key, modifiers };
 }

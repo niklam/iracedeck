@@ -40,34 +40,29 @@ import {
 import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
 
 /**
- * SimHub role binding value.
+ * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
+ * isSimHubBinding() guard are browser-side duplicates of their counterparts
+ * in @iracedeck/deck-core/global-settings.ts. The PI runs in a browser
+ * context and cannot import from deck-core (Node.js). When modifying
+ * binding types, update BOTH locations.
  *
- * SYNC NOTE: This is a browser-side duplicate of SimHubBindingValue in
- * @iracedeck/deck-core/global-settings.ts. The PI runs in a browser context
- * and cannot import from deck-core (Node.js). Keep both definitions in sync
- * when adding new fields or binding types.
+ * Key invariant: both KeyBindingValue and SimHubBindingValue have a `type`
+ * discriminant field ("keyboard" and "simhub" respectively).
  */
 export interface SimHubBindingValue {
   type: "simhub";
   role: string;
 }
 
-/**
- * Union type for all binding values stored by this component.
- * SYNC NOTE: Mirrors BindingValue in @iracedeck/deck-core/global-settings.ts.
- */
 export type BindingValue = KeyBindingValue | SimHubBindingValue;
 
-/**
- * Type guard for SimHub binding values.
- * SYNC NOTE: Mirrors isSimHubBinding in @iracedeck/deck-core/global-settings.ts.
- */
-export function isSimHubBinding(value: BindingValue | null): value is SimHubBindingValue {
-  return value !== null && "type" in value && value.type === "simhub";
+export function isSimHubBinding(value: BindingValue | null | undefined): value is SimHubBindingValue {
+  return value != null && value.type === "simhub";
 }
 
 /**
  * Parse a stored JSON string into a BindingValue (keyboard or SimHub).
+ * Uses the `type` discriminant to determine binding kind.
  */
 function parseBindingValue(json: string | null): BindingValue | null {
   if (!json) return null;
@@ -75,13 +70,14 @@ function parseBindingValue(json: string | null): BindingValue | null {
   try {
     const parsed = JSON.parse(json);
 
-    // SimHub binding
-    if (parsed.type === "simhub" && typeof parsed.role === "string") {
+    if (parsed.type === "simhub" && typeof parsed.role === "string" && parsed.role.length > 0) {
       return { type: "simhub", role: parsed.role };
     }
 
-    // Keyboard binding (existing format)
-    return parseKeyBinding(json);
+    // Keyboard binding (type: "keyboard" or legacy without type field)
+    const kb = parseKeyBinding(json);
+
+    return kb;
   } catch {
     return null;
   }
@@ -164,7 +160,11 @@ function subscribeToSimHubSettings(): void {
   window.SDPIComponents.useGlobalSettings(
     "simHubHost",
     (v: string) => {
-      if (v) simHubHost = v;
+      if (v) {
+        simHubHost = v;
+        simHubFetchDone = false;
+        simHubReachable = false;
+      }
     },
     null,
   );
@@ -172,7 +172,11 @@ function subscribeToSimHubSettings(): void {
   window.SDPIComponents.useGlobalSettings(
     "simHubPort",
     (v: string) => {
-      if (v) simHubPort = parseInt(v, 10) || 8888;
+      if (v) {
+        simHubPort = parseInt(v, 10) || 8888;
+        simHubFetchDone = false;
+        simHubReachable = false;
+      }
     },
     null,
   );
@@ -197,13 +201,22 @@ async function ensureSimHubRolesFetched(): Promise<void> {
       const response = await fetch(url, { signal: AbortSignal.timeout(500) });
 
       if (response.ok) {
-        simHubRoles = (await response.json()) as string[];
+        const json: unknown = await response.json();
+
+        if (Array.isArray(json) && json.every((item) => typeof item === "string")) {
+          simHubRoles = json as string[];
+        } else {
+          console.warn("[ird-key-binding] SimHub GetRoles returned unexpected format");
+          simHubRoles = [];
+        }
+
         simHubReachable = true;
       } else {
         simHubRoles = [];
         simHubReachable = false;
       }
-    } catch {
+    } catch (error) {
+      console.warn("[ird-key-binding] Failed to fetch SimHub roles:", error);
       simHubRoles = [];
       simHubReachable = false;
     } finally {
@@ -610,7 +623,7 @@ class KeyBindingInput extends HTMLElement {
     const hasModifiers = e.ctrlKey || e.shiftKey || e.altKey;
     const displayKey = hasModifiers ? (this.layoutMap?.get(code) ?? e.key) : e.key;
 
-    this.currentValue = { key, modifiers, code, displayKey };
+    this.currentValue = { type: "keyboard", key, modifiers, code, displayKey };
     this.isSimHubMode = false;
 
     this.stopRecording();
