@@ -84,13 +84,19 @@ await this.releaseBinding(ev.action.id);
 
 ### Declaring active bindings for readiness tracking
 
-Call `setActiveBinding()` in `onWillAppear` and `onDidReceiveSettings` to declare which
+Call `setActiveBinding()` in both `onWillAppear` and `onDidReceiveSettings` to declare which
 binding the action depends on. The base class automatically tracks readiness (active/inactive
-overlay) based on the binding type:
+overlay) based on the binding type. Cleanup is automatic via `onWillDisappear`.
 
 ```typescript
 override async onWillAppear(ev: IDeckWillAppearEvent<Settings>): Promise<void> {
   await super.onWillAppear(ev);
+  const key = resolveSettingKey(ev.payload.settings);
+  this.setActiveBinding(key);
+}
+
+override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<Settings>): Promise<void> {
+  await super.onDidReceiveSettings(ev);
   const key = resolveSettingKey(ev.payload.settings);
   this.setActiveBinding(key);
 }
@@ -103,6 +109,7 @@ Actions just call `holdBinding`/`releaseBinding`:
 
 ```typescript
 override async onKeyDown(ev: IDeckKeyDownEvent<Settings>): Promise<void> {
+  const settings = Settings.parse(ev.payload.settings);
   const key = GLOBAL_KEYS[settings.direction];
   await this.holdBinding(ev.action.id, key);
 }
@@ -123,9 +130,10 @@ override async onWillDisappear(ev: IDeckWillDisappearEvent<Settings>): Promise<v
 - Cycle action with global key bindings: `packages/actions/src/actions/splits-delta-cycle.ts`
 - Long-press (key hold): `packages/actions/src/actions/look-direction.ts`
 
-## Direct Keyboard Access (Low-Level)
+## Direct Keyboard Access (Plugin-Level Only)
 
-For rare cases where the binding dispatcher is not suitable, direct keyboard access is still available:
+Direct `getKeyboard()` calls are reserved for plugin initialization code and infrastructure,
+**not** for action implementations. Actions must use `tapBinding`/`holdBinding`/`releaseBinding`.
 
 ```typescript
 import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "@iracedeck/deck-core";
@@ -190,30 +198,16 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 adapter.connect();
 ```
 
-### Reading Global Key Bindings
+### Executing Global Key Bindings
 
-Use the shared `parseKeyBinding` utility to handle JSON strings from global settings:
+Use the binding dispatch delegates from `ConnectionStateAwareAction`:
 
 ```typescript
-import {
-  getGlobalSettings,
-  getKeyboard,
-  parseKeyBinding,
-  type KeyboardKey,
-  type KeyboardModifier,
-} from "@iracedeck/deck-core";
+// Declare binding for readiness tracking
+this.setActiveBinding("blackBoxLapTiming");
 
-const globalSettings = getGlobalSettings() as Record<string, unknown>;
-const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
-
-if (binding?.key) {
-  await getKeyboard().sendKeyCombination({
-    key: binding.key as KeyboardKey,
-    modifiers: binding.modifiers.length > 0
-      ? binding.modifiers as KeyboardModifier[]
-      : undefined,
-  });
-}
+// Execute (routes to keyboard or SimHub automatically)
+await this.tapBinding("blackBoxLapTiming");
 ```
 
 ### Logging Key Bindings
@@ -221,11 +215,10 @@ if (binding?.key) {
 Use the shared `formatKeyBinding` utility for human-readable log output:
 
 ```typescript
-import { formatKeyBinding, parseKeyBinding } from "@iracedeck/deck-core";
+import { formatKeyBinding, parseBinding } from "@iracedeck/deck-core";
 
-const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
-if (binding?.key) {
-  this.logger.info("Key sent successfully");
+const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
+if (binding && !isSimHubBinding(binding)) {
   this.logger.debug(`Key combination: ${formatKeyBinding(binding)}`);
   // Output: "Key combination: Ctrl+Shift+F1" or "Key combination: F3"
 }

@@ -54,9 +54,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
     setActiveBinding = vi.fn();
-    tapBinding = vi.fn().mockResolvedValue(undefined),
-    holdBinding = vi.fn().mockResolvedValue(undefined),
-    releaseBinding = vi.fn().mockResolvedValue(undefined),
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
   },
