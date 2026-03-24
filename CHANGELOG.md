@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.7.0](https://github.com/niklam/iracedeck/compare/v1.6.0...v1.7.0) (2026-03-24)
+
+### Features
+
+* **deck-core:** add SimHub reachability health checks ([103e9a3](https://github.com/niklam/iracedeck/commit/103e9a3443cf100198c1332ac25e312dca79c98c))
+* Enhance Key Binding Input for SimHub Integration ([3751baa](https://github.com/niklam/iracedeck/commit/3751baa2ccb9ef51481d93aa16c3cf26763d3eff))
+* **pi:** extract autocomplete component and improve SimHub role UX ([e6c7d1e](https://github.com/niklam/iracedeck/commit/e6c7d1e4c665cf132dfb28b3e2c99c7ec68ad93f))
+
+### Bug Fixes
+
+* address PR review feedback ([80d67e4](https://github.com/niklam/iracedeck/commit/80d67e46829adb841129dd47e1322fb907254848))
+* **deck-core:** add health check logging and response validation ([bac7fde](https://github.com/niklam/iracedeck/commit/bac7fded1733e8cb39aba3baca8ebcd5a6ef8bae))
+* **deck-core:** add keyboard discriminant to BindingValue union ([713db6b](https://github.com/niklam/iracedeck/commit/713db6b2cdede5ffa0fcb99bfdc0a6f15f0aab0d))
+* **deck-core:** add SimHub reachability health checks for overlay state ([86c766f](https://github.com/niklam/iracedeck/commit/86c766fd7124b361bf4e939394018a30d7a62cc2))
+* **deck-core:** fix double-hold stuck key and improve error handling ([8924035](https://github.com/niklam/iracedeck/commit/89240358a1a9d77937dcbb990a0eca0af1653dfd))
+* **deck-core:** guard evaluateReadiness against dispatcher exceptions ([571d3c0](https://github.com/niklam/iracedeck/commit/571d3c0d2e3a829ac5078a5c807daaea57a8258d))
+* **deck-core:** improve release retry and PI cache invalidation ([697054d](https://github.com/niklam/iracedeck/commit/697054d4cca568d261727bf19649ccb8ab3c346f))
+* **deck-core:** normalize empty string SimHub settings to defaults ([be5ab89](https://github.com/niklam/iracedeck/commit/be5ab89241d0d340e2e47d7e8a4c903e38b0edb3))
+* **stream-deck-plugin:** fix binding type dropdown and autocomplete UX issues ([c4b0d02](https://github.com/niklam/iracedeck/commit/c4b0d0243ba0a1d9367d4cde583d3a68c5292520))
+
+### Refactoring
+
+* **actions:** initial migration to BindingDispatcher for key bindings ([87f78a9](https://github.com/niklam/iracedeck/commit/87f78a952c4504d82c8eb0da25684b2b08330a07))
+* **deck-core:** add clarifying comments for non-obvious patterns ([b44888e](https://github.com/niklam/iracedeck/commit/b44888eab220237322f05113469f536e253dc61b))
+* extract connection state management and binding dispatching ([839ab4e](https://github.com/niklam/iracedeck/commit/839ab4eb2c24397ed6c365d73715d64994f3e788))
+* **tests:** use hoisted mocks for protected binding methods ([8fb8f84](https://github.com/niklam/iracedeck/commit/8fb8f841665ba093a87d18c5e14c8d79b0e74522))
+
+### Documentation
+
+* fix rule file examples from PR review feedback ([db4f8e6](https://github.com/niklam/iracedeck/commit/db4f8e667b248636ed6e11ce3feb7ec1c6aacd87))
+* update rules and design document for SimHub integration ([8511d04](https://github.com/niklam/iracedeck/commit/8511d04076b4a0a4ff70cff64b5e8317c1a86fe4))
+* **website:** add donate buttons to landing page and development docs ([decfd0d](https://github.com/niklam/iracedeck/commit/decfd0dc97923f43cfaa5958b2c6a21732ac37d5))
+* **website:** add Mirabox ecosystem support and SimHub key bindings ([f303f95](https://github.com/niklam/iracedeck/commit/f303f95118570030407316d84cb55d00f9b31288))
+
 ## [1.6.0](https://github.com/niklam/iracedeck/compare/v1.5.0...v1.6.0) (2026-03-23)
 
 ### Features
