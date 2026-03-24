@@ -15,6 +15,7 @@ const {
   mockStopRole,
   mockGetGlobalSettings,
   mockIsSimHubInitialized,
+  mockIsSimHubReachable,
 } = vi.hoisted(() => ({
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockPressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -23,6 +24,7 @@ const {
   mockStopRole: vi.fn().mockResolvedValue(true),
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
   mockIsSimHubInitialized: vi.fn(() => true),
+  mockIsSimHubReachable: vi.fn(() => true),
 }));
 
 vi.mock("./keyboard-service.js", () => ({
@@ -35,6 +37,7 @@ vi.mock("./keyboard-service.js", () => ({
 
 vi.mock("./simhub-service.js", () => ({
   isSimHubInitialized: mockIsSimHubInitialized,
+  isSimHubReachable: mockIsSimHubReachable,
   getSimHub: () => ({
     startRole: mockStartRole,
     stopRole: mockStopRole,
@@ -408,8 +411,8 @@ describe("BindingDispatcher", () => {
       expect(getBindingDispatcher().isReady("myKey", false)).toBe(false);
     });
 
-    it("should return true for SimHub bindings when SimHub is initialized", () => {
-      mockIsSimHubInitialized.mockReturnValue(true);
+    it("should return true for SimHub bindings when SimHub is reachable", () => {
+      mockIsSimHubReachable.mockReturnValue(true);
       mockGetGlobalSettings.mockReturnValue({
         myKey: JSON.stringify({ type: "simhub", role: "MyRole" }),
       });
@@ -417,8 +420,8 @@ describe("BindingDispatcher", () => {
       expect(getBindingDispatcher().isReady("myKey", false)).toBe(true);
     });
 
-    it("should return false for SimHub bindings when SimHub is not initialized", () => {
-      mockIsSimHubInitialized.mockReturnValue(false);
+    it("should return false for SimHub bindings when SimHub is not reachable", () => {
+      mockIsSimHubReachable.mockReturnValue(false);
       mockGetGlobalSettings.mockReturnValue({
         myKey: JSON.stringify({ type: "simhub", role: "MyRole" }),
       });

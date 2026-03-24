@@ -29,7 +29,7 @@ import { type BindingValue, getGlobalSettings, isSimHubBinding, type KeyBindingV
 import { formatKeyBinding, parseBinding } from "./key-binding-utils.js";
 import { getKeyboard } from "./keyboard-service.js";
 import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-types.js";
-import { getSimHub, isSimHubInitialized } from "./simhub-service.js";
+import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-service.js";
 
 /**
  * Discriminated union for tracking held bindings across all binding types.
@@ -179,7 +179,7 @@ class BindingDispatcher implements IBindingDispatcher {
     if (!binding) return false;
 
     if (isSimHubBinding(binding)) {
-      return isSimHubInitialized();
+      return isSimHubReachable();
     }
 
     // Keyboard binding: depends on iRacing being connected

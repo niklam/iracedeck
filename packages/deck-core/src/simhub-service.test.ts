@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getGlobalSettings } from "./global-settings.js";
-import { _resetSimHub, getSimHub, initializeSimHub, isSimHubInitialized } from "./simhub-service.js";
+import { _resetSimHub, getSimHub, initializeSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-service.js";
 
 // Mock global-settings before importing
 vi.mock("./global-settings.js", () => ({
@@ -25,9 +25,10 @@ const mockLogger = {
 
 describe("SimHub Service", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     _resetSimHub();
     vi.clearAllMocks();
-    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
     mockGetGlobalSettings.mockReturnValue({
       simHubHost: "127.0.0.1",
       simHubPort: 8888,
@@ -37,6 +38,7 @@ describe("SimHub Service", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -213,6 +215,74 @@ describe("SimHub Service", () => {
           body: "ownerId=iRaceDeck&roleName=My+Role+%26+More",
         }),
       );
+    });
+  });
+
+  describe("reachability", () => {
+    it("should be unreachable before initialization", () => {
+      expect(isSimHubReachable()).toBe(false);
+    });
+
+    it("should become reachable after successful health check", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
+
+      initializeSimHub(mockLogger);
+      // Let the initial health check complete
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(isSimHubReachable()).toBe(true);
+    });
+
+    it("should become unreachable when health check fails", async () => {
+      // Start reachable
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
+      initializeSimHub(mockLogger);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isSimHubReachable()).toBe(true);
+
+      // SimHub goes down
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(isSimHubReachable()).toBe(false);
+    });
+
+    it("should update reachability on successful startRole", async () => {
+      // Start unreachable
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+      initializeSimHub(mockLogger);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isSimHubReachable()).toBe(false);
+
+      // startRole succeeds
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+      await getSimHub().startRole("TestRole");
+
+      expect(isSimHubReachable()).toBe(true);
+    });
+
+    it("should update reachability on failed startRole", async () => {
+      // Start reachable
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
+      initializeSimHub(mockLogger);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isSimHubReachable()).toBe(true);
+
+      // startRole fails
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+      await getSimHub().startRole("TestRole");
+
+      expect(isSimHubReachable()).toBe(false);
+    });
+
+    it("should become unreachable after reset", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
+      initializeSimHub(mockLogger);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(isSimHubReachable()).toBe(true);
+
+      _resetSimHub();
+      expect(isSimHubReachable()).toBe(false);
     });
   });
 });

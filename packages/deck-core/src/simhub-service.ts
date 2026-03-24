@@ -10,9 +10,14 @@
  * - POST /api/ControlMapper/StopRole/ — deactivate a named role
  * - GET /api/ControlMapper/GetRoles/ — list available role names
  *
+ * The service tracks SimHub reachability via periodic health checks and
+ * HTTP request results. Use isSimHubReachable() to check if SimHub is
+ * currently available.
+ *
  * Usage:
  * 1. Call initializeSimHub() once at plugin startup
  * 2. Use getSimHub() in your actions to trigger roles
+ * 3. Use isSimHubReachable() for readiness checks (e.g., overlay state)
  *
  * @example
  * // In plugin.ts (entry point)
@@ -40,6 +45,9 @@ const DEFAULT_PORT = 8888;
 /** HTTP request timeout in milliseconds. */
 const REQUEST_TIMEOUT_MS = 2000;
 
+/** Health check interval in milliseconds. */
+const HEALTH_CHECK_INTERVAL_MS = 5000;
+
 /**
  * Interface for the SimHub Control Mapper service.
  */
@@ -63,6 +71,12 @@ export interface ISimHubService {
    * @returns Array of role name strings, or empty array if SimHub is unreachable
    */
   getRoles(): Promise<string[]>;
+
+  /**
+   * Whether SimHub is currently reachable.
+   * Updated by periodic health checks and HTTP request results.
+   */
+  isReachable(): boolean;
 }
 
 /**
@@ -80,12 +94,20 @@ function getConnectionConfig(): { host: string; port: number } {
 /**
  * SimHub Control Mapper service implementation.
  * Uses Node's built-in fetch for HTTP requests — no external dependencies.
+ * Tracks reachability via periodic health checks and request results.
  */
 class SimHubService implements ISimHubService {
-  private logger: ILogger;
+  private readonly logger: ILogger;
+  private reachable = false;
+  private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(logger: ILogger) {
     this.logger = logger;
+    this.startHealthCheck();
+  }
+
+  isReachable(): boolean {
+    return this.reachable;
   }
 
   async startRole(roleName: string): Promise<boolean> {
@@ -114,18 +136,31 @@ class SimHubService implements ISimHubService {
 
       if (!response.ok) {
         this.logger.warn(`GetRoles failed with status ${response.status}`);
+        this.setReachable(false);
 
         return [];
       }
 
       const roles = (await response.json()) as string[];
       this.logger.debug(`Available roles: ${JSON.stringify(roles)}`);
+      this.setReachable(true);
 
       return roles;
     } catch (error) {
       this.logger.warn(`Failed to fetch roles from SimHub at ${url}: ${error}`);
+      this.setReachable(false);
 
       return [];
+    }
+  }
+
+  /**
+   * Stop the health check timer. Called on reset/cleanup.
+   */
+  dispose(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
     }
   }
 
@@ -147,15 +182,47 @@ class SimHubService implements ISimHubService {
 
       if (!response.ok) {
         this.logger.warn(`${action} failed with status ${response.status} for role "${roleName}"`);
+        this.setReachable(false);
 
         return false;
       }
 
+      this.setReachable(true);
+
       return true;
     } catch (error) {
       this.logger.warn(`Failed to ${action} role "${roleName}" at ${url}: ${error}`);
+      this.setReachable(false);
 
       return false;
+    }
+  }
+
+  private setReachable(value: boolean): void {
+    if (this.reachable !== value) {
+      this.reachable = value;
+      this.logger.info(`SimHub ${value ? "reachable" : "unreachable"}`);
+    }
+  }
+
+  private startHealthCheck(): void {
+    // Check immediately on startup
+    void this.checkHealth();
+    // Then periodically
+    this.healthCheckTimer = setInterval(() => void this.checkHealth(), HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private async checkHealth(): Promise<void> {
+    const { host, port } = getConnectionConfig();
+
+    try {
+      const response = await fetch(`http://${host}:${port}/api/ControlMapper/GetRoles/`, {
+        method: "GET",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      this.setReachable(response.ok);
+    } catch {
+      this.setReachable(false);
     }
   }
 }
@@ -167,6 +234,7 @@ let simHubService: SimHubService | null = null;
  * Initialize the SimHub Control Mapper service singleton.
  * Should be called once at plugin startup.
  *
+ * Starts periodic health checks to track SimHub reachability.
  * The service gracefully handles SimHub being absent — failed HTTP calls
  * return false/[] with a warning log, never throw.
  *
@@ -201,11 +269,17 @@ export function getSimHub(): ISimHubService {
 
 /**
  * Check if the SimHub service has been initialized.
- *
- * @returns true if SimHub service is initialized, false otherwise
  */
 export function isSimHubInitialized(): boolean {
   return simHubService !== null;
+}
+
+/**
+ * Check if SimHub is currently reachable.
+ * Returns false if the service is not initialized or SimHub is unreachable.
+ */
+export function isSimHubReachable(): boolean {
+  return simHubService?.isReachable() ?? false;
 }
 
 /**
@@ -213,5 +287,6 @@ export function isSimHubInitialized(): boolean {
  * @internal
  */
 export function _resetSimHub(): void {
+  simHubService?.dispose();
   simHubService = null;
 }
