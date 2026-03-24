@@ -10,6 +10,9 @@
  * ```
  */
 
+// Autocomplete Input - text input with dropdown suggestions
+export { AutocompleteInput } from "./autocomplete-input.js";
+
 // Key Binding Input - click-to-record keyboard shortcut input
 export {
   KeyBindingInput,

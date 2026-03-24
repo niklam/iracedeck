@@ -12,6 +12,9 @@ export const UI_TEXT = {
   NOT_SET: "Not set",
   PLACEHOLDER: "Click to set...",
   RECORDING: "Press keys...",
+  SIMHUB_PLACEHOLDER: "Type or select a role...",
+  SIMHUB_NOT_REACHABLE: "SimHub not reachable",
+  SIMHUB_NO_ROLES: "No roles configured in SimHub",
 } as const;
 
 /** SDPI theme colors and styles */

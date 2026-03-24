@@ -140,6 +140,81 @@ interface ModeOption {
   icon: string;
 }
 
+/**
+ * Global SimHub state cached for the PI page lifetime.
+ * Host/port read from global settings, roles fetched via HTTP on first access.
+ */
+let simHubHost = "127.0.0.1";
+let simHubPort = 8888;
+let simHubRoles: string[] = [];
+let simHubReachable = false;
+let simHubFetchDone = false;
+let simHubFetchPromise: Promise<void> | null = null;
+let simHubSettingsSubscribed = false;
+
+/**
+ * Subscribe to SimHub host/port global settings (once).
+ * Must be called after SDPIComponents is available.
+ */
+function subscribeToSimHubSettings(): void {
+  if (simHubSettingsSubscribed || !window.SDPIComponents) return;
+
+  simHubSettingsSubscribed = true;
+
+  window.SDPIComponents.useGlobalSettings(
+    "simHubHost",
+    (v: string) => {
+      if (v) simHubHost = v;
+    },
+    null,
+  );
+
+  window.SDPIComponents.useGlobalSettings(
+    "simHubPort",
+    (v: string) => {
+      if (v) simHubPort = parseInt(v, 10) || 8888;
+    },
+    null,
+  );
+}
+
+/**
+ * Ensure SimHub roles have been fetched. Caches the result for the page lifetime.
+ * Retries on next call if the previous fetch failed (SimHub may have started).
+ */
+async function ensureSimHubRolesFetched(): Promise<void> {
+  if (simHubFetchDone && simHubReachable) return;
+
+  if (simHubFetchPromise) {
+    await simHubFetchPromise;
+
+    return;
+  }
+
+  simHubFetchPromise = (async () => {
+    try {
+      const url = `http://${simHubHost}:${simHubPort}/api/ControlMapper/GetRoles/`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(500) });
+
+      if (response.ok) {
+        simHubRoles = (await response.json()) as string[];
+        simHubReachable = true;
+      } else {
+        simHubRoles = [];
+        simHubReachable = false;
+      }
+    } catch {
+      simHubRoles = [];
+      simHubReachable = false;
+    } finally {
+      simHubFetchDone = true;
+      simHubFetchPromise = null;
+    }
+  })();
+
+  await simHubFetchPromise;
+}
+
 const MODE_OPTIONS: ModeOption[] = [
   { value: "keyboard", label: "Keyboard", icon: KEYBOARD_ICON_SVG },
   { value: "simhub", label: "SimHub", icon: SIMHUB_ICON_SVG },
@@ -159,15 +234,13 @@ class KeyBindingInput extends HTMLElement {
   private dropdownPanel: HTMLDivElement | null = null;
   private dropdownIcon: HTMLSpanElement | null = null;
   private displayInput: HTMLInputElement | null = null;
-  private simhubInput: HTMLInputElement | null = null;
+  private simhubAutocomplete: import("./autocomplete-input.js").AutocompleteInput | null = null;
   private isRecording = false;
   private isDropdownOpen = false;
   private currentValue: BindingValue | null = null;
   private isSimHubMode = false;
   private saveToStreamDeck: ((value: string) => void) | null = null;
   private layoutMap: KeyboardLayoutMapLike | null = null;
-  private datalist: HTMLDataListElement | null = null;
-  private rolesFetched = false;
   private boundCloseDropdown: ((e: MouseEvent) => void) | null = null;
 
   constructor() {
@@ -176,7 +249,6 @@ class KeyBindingInput extends HTMLElement {
     this.handleClick = this.handleClick.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleBlur = this.handleBlur.bind(this);
-    this.handleSimHubInput = this.handleSimHubInput.bind(this);
   }
 
   get value(): string {
@@ -288,35 +360,21 @@ class KeyBindingInput extends HTMLElement {
       cursor: "pointer",
     });
 
-    // SimHub mode input
-    this.simhubInput = document.createElement("input");
-    this.simhubInput.type = "text";
-    this.simhubInput.placeholder = "Type or select a role...";
-    Object.assign(this.simhubInput.style, {
-      backgroundColor: "transparent",
-      color: SDPI_THEME.text,
-      fontFamily: SDPI_THEME.fontFamily,
-      fontSize: SDPI_THEME.fontSize,
-      height: SDPI_THEME.height,
-      padding: SDPI_THEME.padding,
-      border: "none",
-      boxSizing: "border-box",
-      flex: "1",
-      minWidth: "0",
-      display: "none",
-    });
-
-    // Datalist for SimHub autocomplete
-    this.datalist = document.createElement("datalist");
-    this.datalist.id = `simhub-roles-${Math.random().toString(36).slice(2, 8)}`;
-    this.simhubInput.setAttribute("list", this.datalist.id);
+    // SimHub mode: autocomplete input for role selection
+    this.simhubAutocomplete = document.createElement(
+      "ird-autocomplete",
+    ) as import("./autocomplete-input.js").AutocompleteInput;
+    this.simhubAutocomplete.placeholder = UI_TEXT.SIMHUB_PLACEHOLDER;
+    this.simhubAutocomplete.style.display = "none";
 
     this.container.appendChild(this.dropdownTrigger);
     this.container.appendChild(this.displayInput);
-    this.container.appendChild(this.simhubInput);
-    this.container.appendChild(this.datalist);
+    this.container.appendChild(this.simhubAutocomplete);
     this.container.appendChild(this.dropdownPanel);
     this.appendChild(this.container);
+
+    // Subscribe to SimHub host/port settings (once, shared across instances)
+    subscribeToSimHubSettings();
 
     // Settings integration
     const settingName = this.getAttribute("setting");
@@ -358,8 +416,11 @@ class KeyBindingInput extends HTMLElement {
     this.displayInput.addEventListener("click", this.handleClick);
     this.displayInput.addEventListener("keydown", this.handleKeyDown);
     this.displayInput.addEventListener("blur", this.handleBlur);
-    this.simhubInput.addEventListener("change", this.handleSimHubInput);
-    this.simhubInput.addEventListener("blur", this.handleSimHubInput);
+    this.simhubAutocomplete.addEventListener("change", () => {
+      const role = this.simhubAutocomplete!.value.trim();
+      this.currentValue = role ? { type: "simhub", role } : null;
+      this.notifyChange();
+    });
 
     // Close dropdown on outside click
     this.boundCloseDropdown = (e: MouseEvent) => {
@@ -388,8 +449,6 @@ class KeyBindingInput extends HTMLElement {
     this.displayInput?.removeEventListener("click", this.handleClick);
     this.displayInput?.removeEventListener("keydown", this.handleKeyDown);
     this.displayInput?.removeEventListener("blur", this.handleBlur);
-    this.simhubInput?.removeEventListener("change", this.handleSimHubInput);
-    this.simhubInput?.removeEventListener("blur", this.handleSimHubInput);
 
     if (this.boundCloseDropdown) {
       document.removeEventListener("click", this.boundCloseDropdown);
@@ -448,9 +507,8 @@ class KeyBindingInput extends HTMLElement {
         this.currentValue = null;
       }
 
-      if (!this.rolesFetched) {
-        this.fetchSimHubRoles();
-      }
+      // Fetch roles from SimHub (async, cached after first successful fetch)
+      void ensureSimHubRolesFetched().then(() => this.updateSimHubAutocomplete());
     } else {
       this.isSimHubMode = false;
 
@@ -468,8 +526,8 @@ class KeyBindingInput extends HTMLElement {
 
     this.updateDisplay();
 
-    if (this.isSimHubMode && this.simhubInput) {
-      this.simhubInput.focus();
+    if (this.isSimHubMode && this.simhubAutocomplete) {
+      this.simhubAutocomplete.focusInput();
     }
   }
 
@@ -565,58 +623,25 @@ class KeyBindingInput extends HTMLElement {
 
   // --- SimHub input ---
 
-  private handleSimHubInput(): void {
-    if (!this.simhubInput) return;
+  /**
+   * Update the SimHub autocomplete component with current roles and reachability.
+   */
+  private updateSimHubAutocomplete(): void {
+    if (!this.simhubAutocomplete) return;
 
-    const role = this.simhubInput.value.trim();
-
-    if (role) {
-      this.currentValue = { type: "simhub", role };
+    if (!simHubReachable) {
+      this.simhubAutocomplete.setStatus(UI_TEXT.SIMHUB_NOT_REACHABLE);
+    } else if (simHubRoles.length === 0) {
+      this.simhubAutocomplete.setStatus(UI_TEXT.SIMHUB_NO_ROLES);
     } else {
-      this.currentValue = null;
-    }
-
-    this.notifyChange();
-  }
-
-  private async fetchSimHubRoles(): Promise<void> {
-    if (!this.datalist) return;
-
-    this.rolesFetched = true;
-
-    try {
-      let host = "127.0.0.1";
-      let port = 8888;
-
-      const hostInput = document.querySelector('[setting="simHubHost"]') as HTMLInputElement | null;
-      const portInput = document.querySelector('[setting="simHubPort"]') as HTMLInputElement | null;
-
-      if (hostInput?.value) host = hostInput.value;
-
-      if (portInput?.value) port = parseInt(portInput.value, 10) || 8888;
-
-      const url = `http://${host}:${port}/api/ControlMapper/GetRoles/`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(2000) });
-
-      if (!response.ok) return;
-
-      const roles = (await response.json()) as string[];
-      this.datalist.innerHTML = "";
-
-      for (const role of roles) {
-        const option = document.createElement("option");
-        option.value = role;
-        this.datalist.appendChild(option);
-      }
-    } catch {
-      // SimHub not running — user can type manually
+      this.simhubAutocomplete.setSuggestions(simHubRoles);
     }
   }
 
   // --- Display ---
 
   private updateDisplay(): void {
-    if (!this.displayInput || !this.simhubInput || !this.dropdownIcon) return;
+    if (!this.displayInput || !this.simhubAutocomplete || !this.dropdownIcon) return;
 
     // Update dropdown icon to reflect current mode
     const currentOption = MODE_OPTIONS.find((o) => o.value === (this.isSimHubMode ? "simhub" : "keyboard"));
@@ -627,16 +652,12 @@ class KeyBindingInput extends HTMLElement {
 
     if (this.isSimHubMode) {
       this.displayInput.style.display = "none";
-      this.simhubInput.style.display = "block";
-
-      if (isSimHubBinding(this.currentValue)) {
-        this.simhubInput.value = this.currentValue.role;
-      } else {
-        this.simhubInput.value = "";
-      }
+      this.simhubAutocomplete.style.display = "flex";
+      this.simhubAutocomplete.value = isSimHubBinding(this.currentValue) ? this.currentValue.role : "";
+      void ensureSimHubRolesFetched().then(() => this.updateSimHubAutocomplete());
     } else {
       this.displayInput.style.display = "block";
-      this.simhubInput.style.display = "none";
+      this.simhubAutocomplete.style.display = "none";
       this.displayInput.value = formatKeyBinding(this.currentValue as KeyBindingValue | null);
     }
   }

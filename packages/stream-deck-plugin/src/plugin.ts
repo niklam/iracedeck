@@ -96,7 +96,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
-// Initialize SimHub Control Mapper service for optional SimHub role triggering
+// Initialize SimHub Control Mapper service
 initializeSimHub(adapter.createLogger("SimHub"));
 
 // Initialize binding dispatcher for centralized keyboard/SimHub/future binding dispatch

@@ -9,28 +9,6 @@
   title: 'Global Settings',
   open: false,
   content: `
-    <sdpi-item label="Focus iRacing">
-      <sdpi-checkbox
-        setting="focusIRacingWindow"
-        label="Focus iRacing window before sending keys"
-        global
-      ></sdpi-checkbox>
-    </sdpi-item>
-    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
-      Automatically focuses the iRacing window before sending key inputs.
-      Enable if actions aren't working when iRacing is in the background.
-    </div>
-    <div class="ird-section-subtitle">SimHub</div>
-    <sdpi-item label="Host">
-      <sdpi-textfield setting="simHubHost" default="127.0.0.1" global></sdpi-textfield>
-    </sdpi-item>
-    <sdpi-item label="Port">
-      <sdpi-textfield setting="simHubPort" default="8888" global></sdpi-textfield>
-    </sdpi-item>
-    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
-      Connection settings for SimHub Control Mapper integration.
-      Default: 127.0.0.1:8888
-    </div>
     <div class="ird-section-subtitle">Icon Colors</div>
     <sdpi-item label="Presets">
       <div style="display:flex;gap:6px;">
@@ -66,5 +44,28 @@
         <a href="#" class="ird-color-reset" data-input="global-color-g2" data-default="#000001" style="font-size:10px;color:#808080;text-decoration:none;white-space:nowrap;" title="Clear global override">&#x21BA;</a>
       </div>
     </sdpi-item>
+    <div class="ird-section-subtitle">iRacing</div>
+    <sdpi-item label="Focus iRacing">
+      <sdpi-checkbox
+        setting="focusIRacingWindow"
+        label="Focus iRacing window before sending keys"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Automatically focuses the iRacing window before sending key inputs.
+      Enable if actions aren't working when iRacing is in the background.
+    </div>
+    <div class="ird-section-subtitle">SimHub</div>
+    <sdpi-item label="Host">
+      <sdpi-textfield setting="simHubHost" default="127.0.0.1" global></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Port">
+      <sdpi-textfield setting="simHubPort" default="8888" global></sdpi-textfield>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      Connection settings for SimHub Control Mapper integration.
+      Default: 127.0.0.1:8888
+    </div>
   `
 }) %>
