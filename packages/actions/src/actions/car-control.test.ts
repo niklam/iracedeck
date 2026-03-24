@@ -11,26 +11,8 @@ import {
   pitLimiterInactiveIcon,
 } from "./car-control.js";
 
-const {
-  mockPressKeyCombination,
-  mockReleaseKeyCombination,
-  mockSendKeyCombination,
-  mockParseKeyBinding,
-  mockGetGlobalSettings,
-  mockGetSessionInfo,
-  mockTap,
-  mockHold,
-  mockRelease,
-} = vi.hoisted(() => ({
-  mockPressKeyCombination: vi.fn().mockResolvedValue(true),
-  mockReleaseKeyCombination: vi.fn().mockResolvedValue(true),
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
+const { mockGetSessionInfo } = vi.hoisted(() => ({
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-  mockHold: vi.fn().mockResolvedValue(undefined),
-  mockRelease: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@iracedeck/icons/car-control/starter.svg", () => ({
@@ -72,6 +54,10 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -84,17 +70,16 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: mockHold, release: mockRelease })),
+  getGlobalSettings: vi.fn(() => ({})),
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
-    pressKeyCombination: mockPressKeyCombination,
-    releaseKeyCombination: mockReleaseKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
+    pressKeyCombination: vi.fn().mockResolvedValue(true),
+    releaseKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -144,8 +129,8 @@ describe("CarControl", () => {
       expect(CAR_CONTROL_GLOBAL_KEYS["pause-sim"]).toBe("carControlPauseSim");
     });
 
-    it("should have exactly 5 entries", () => {
-      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(5);
+    it("should have exactly 9 entries", () => {
+      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(9);
     });
   });
 
@@ -213,41 +198,41 @@ describe("CarControl", () => {
     it("should call tapGlobalBinding on keyDown for ignition", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ignition" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlIgnition");
-      expect(mockHold).not.toHaveBeenCalled();
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlIgnition");
+      expect(action.holdBinding).not.toHaveBeenCalled();
     });
 
     it("should call tapGlobalBinding on keyDown for pit-speed-limiter", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlPitSpeedLimiter");
-      expect(mockHold).not.toHaveBeenCalled();
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlPitSpeedLimiter");
+      expect(action.holdBinding).not.toHaveBeenCalled();
     });
 
     it("should call tapGlobalBinding on keyDown for enter-exit-tow", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlEnterExitTow");
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlEnterExitTow");
     });
 
     it("should call tapGlobalBinding on keyDown for pause-sim", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "pause-sim" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlPauseSim");
-      expect(mockHold).not.toHaveBeenCalled();
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlPauseSim");
+      expect(action.holdBinding).not.toHaveBeenCalled();
     });
 
     it("should call tapGlobalBinding on dialDown for non-starter controls", async () => {
       await action.onDialDown(fakeEvent("action-1", { control: "ignition" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlIgnition");
-      expect(mockHold).not.toHaveBeenCalled();
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlIgnition");
+      expect(action.holdBinding).not.toHaveBeenCalled();
     });
 
     it("should call tapGlobalBinding even when no key binding is configured for tap controls", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ignition" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("carControlIgnition");
+      expect(action.tapBinding).toHaveBeenCalledWith("carControlIgnition");
     });
   });
 
@@ -347,14 +332,14 @@ describe("CarControl", () => {
 
   describe("generateCarControlSvg telemetry variants", () => {
     it("should use active icon when pitLimiterActive is true", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true, 80);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: true, pitSpeedLimit: 80 });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("#3498db");
     });
 
     it("should use inactive icon when pitLimiterActive is false", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false, 80);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 80 });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("#e74c3c");
@@ -368,14 +353,14 @@ describe("CarControl", () => {
     });
 
     it("should include speed limit in the icon", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, false, 60);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 60 });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("60");
     });
 
     it("should use default speed when pitSpeedLimit is undefined", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, true);
+      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: true });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("80");
@@ -431,22 +416,22 @@ describe("CarControl", () => {
     it("should hold key on keyDown and release on keyUp", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledWith("action-1", "carControlStarter");
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.holdBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(action.tapBinding).not.toHaveBeenCalled();
 
       await action.onKeyUp(fakeEvent("action-1") as any);
 
-      expect(mockRelease).toHaveBeenCalledWith("action-1");
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-1");
     });
 
     it("should hold key on dialDown and release on dialUp", async () => {
       await action.onDialDown(fakeEvent("action-1", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledOnce();
+      expect(action.holdBinding).toHaveBeenCalledOnce();
 
       await action.onDialUp(fakeEvent("action-1") as any);
 
-      expect(mockRelease).toHaveBeenCalledWith("action-1");
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-1");
     });
 
     it("should track concurrent presses on different action contexts independently", async () => {
@@ -455,50 +440,50 @@ describe("CarControl", () => {
       // Press starter on action-2
       await action.onKeyDown(fakeEvent("action-2", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledTimes(2);
+      expect(action.holdBinding).toHaveBeenCalledTimes(2);
 
       // Release action-1 — should release action-1's combination only
       await action.onKeyUp(fakeEvent("action-1") as any);
 
-      expect(mockRelease).toHaveBeenCalledTimes(1);
-      expect(mockRelease).toHaveBeenCalledWith("action-1");
+      expect(action.releaseBinding).toHaveBeenCalledTimes(1);
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-1");
 
       // Release action-2
       await action.onKeyUp(fakeEvent("action-2") as any);
 
-      expect(mockRelease).toHaveBeenCalledTimes(2);
-      expect(mockRelease).toHaveBeenCalledWith("action-2");
+      expect(action.releaseBinding).toHaveBeenCalledTimes(2);
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-2");
     });
 
     it("should release held key on onWillDisappear", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
       await action.onWillDisappear(fakeEvent("action-1") as any);
 
-      expect(mockRelease).toHaveBeenCalledWith("action-1");
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-1");
     });
 
     it("should call holdGlobalBinding on keyDown for starter", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(action.holdBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
     });
 
     it("should call releaseHeldBinding on keyUp even when no key is held", async () => {
       await action.onKeyUp(fakeEvent("action-1") as any);
 
-      expect(mockRelease).toHaveBeenCalledWith("action-1");
+      expect(action.releaseBinding).toHaveBeenCalledWith("action-1");
     });
 
     it("should call holdGlobalBinding with correct setting key", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(action.holdBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
     });
 
     it("should call holdGlobalBinding even when no binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
-      expect(mockHold).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(action.holdBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
     });
   });
 });

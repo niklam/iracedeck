@@ -2,7 +2,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   generateIconText,
-  getBindingDispatcher,
   getCommands,
   getGlobalColors,
   type IDeckDialDownEvent,
@@ -294,11 +293,15 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    const activeKey = CHAT_GLOBAL_KEYS[settings.mode];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       if (storedSettings && hasTemplateVars(storedSettings)) {
@@ -319,6 +322,12 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedIcon.delete(ev.action.id);
+    const activeKey = CHAT_GLOBAL_KEYS[settings.mode];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -376,7 +385,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
           return;
         }
 
-        await getBindingDispatcher().tap(settingKey);
+        await this.tapBinding(settingKey);
         break;
       }
     }
@@ -462,8 +471,6 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     ev: IDeckWillAppearEvent<ChatSettings> | IDeckDidReceiveSettingsEvent<ChatSettings>,
     settings: ChatSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const resolved = this.resolveSettingsTemplates(settings);
     const svgDataUri = generateChatSvg(resolved);
     this.lastRenderedIcon.set(ev.action.id, svgDataUri);

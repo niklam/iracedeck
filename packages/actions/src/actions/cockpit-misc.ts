@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -161,21 +159,24 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<CockpitMiscSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<CockpitMiscSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CockpitMiscSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -222,7 +223,7 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private resolveGlobalKey(control: CockpitMiscControl, direction: DirectionType): string | null {
@@ -239,8 +240,6 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     ev: IDeckWillAppearEvent<CockpitMiscSettings> | IDeckDidReceiveSettingsEvent<CockpitMiscSettings>,
     settings: CockpitMiscSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateCockpitMiscSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

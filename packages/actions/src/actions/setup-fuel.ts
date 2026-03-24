@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -129,21 +127,24 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupFuelSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupFuelSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupFuelSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -190,7 +191,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private resolveGlobalKey(setting: SetupFuelSetting, direction: DirectionType): string | null {
@@ -207,8 +208,6 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     ev: IDeckWillAppearEvent<SetupFuelSettings> | IDeckDidReceiveSettingsEvent<SetupFuelSettings>,
     settings: SetupFuelSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateSetupFuelSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

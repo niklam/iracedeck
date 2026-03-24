@@ -1,7 +1,6 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
@@ -89,22 +88,19 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
   override async onWillAppear(ev: IDeckWillAppearEvent<LookDirectionSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction]);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<LookDirectionSettings>): Promise<void> {
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<LookDirectionSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -119,12 +115,12 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
       return;
     }
 
-    await getBindingDispatcher().hold(ev.action.id, settingKey);
+    await this.holdBinding(ev.action.id, settingKey);
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<LookDirectionSettings>): Promise<void> {
     this.logger.info("Key up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<LookDirectionSettings>): Promise<void> {
@@ -138,12 +134,12 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
       return;
     }
 
-    await getBindingDispatcher().hold(ev.action.id, settingKey);
+    await this.holdBinding(ev.action.id, settingKey);
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<LookDirectionSettings>): Promise<void> {
     this.logger.info("Dial up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   private parseSettings(settings: unknown): LookDirectionSettings {
@@ -156,8 +152,6 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     ev: IDeckWillAppearEvent<LookDirectionSettings> | IDeckDidReceiveSettingsEvent<LookDirectionSettings>,
     settings: LookDirectionSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateLookDirectionSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

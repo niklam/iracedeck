@@ -19,7 +19,6 @@ const {
   mockSendKeyCombination,
   mockParseKeyBinding,
   mockGetGlobalSettings,
-  mockTap,
 } = vi.hoisted(() => ({
   mockBeginChat: vi.fn(() => true),
   mockReply: vi.fn(() => true),
@@ -38,7 +37,6 @@ const {
   mockSendKeyCombination: vi.fn().mockResolvedValue(true),
   mockParseKeyBinding: vi.fn(),
   mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@iracedeck/icons/chat/open-chat.svg", () => ({
@@ -84,6 +82,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -101,7 +104,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   getCommands: mockGetCommands,
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: mockSendKeyCombination,
     pressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -536,7 +538,7 @@ describe("Chat", () => {
     it("should call tapGlobalBinding for whisper", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("chatWhisper");
+      expect(action.tapBinding).toHaveBeenCalledWith("chatWhisper");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured for whisper", async () => {
@@ -544,7 +546,7 @@ describe("Chat", () => {
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("chatWhisper");
+      expect(action.tapBinding).toHaveBeenCalledWith("chatWhisper");
     });
 
     it("should not call SDK commands for keyboard modes", async () => {

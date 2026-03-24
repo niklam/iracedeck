@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -128,21 +126,24 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupAeroSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupAeroSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupAeroSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -189,7 +190,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private resolveGlobalKey(setting: SetupAeroSetting, direction: DirectionType): string | null {
@@ -206,8 +207,6 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     ev: IDeckWillAppearEvent<SetupAeroSettings> | IDeckDidReceiveSettingsEvent<SetupAeroSettings>,
     settings: SetupAeroSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateSetupAeroSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

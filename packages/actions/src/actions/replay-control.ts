@@ -415,7 +415,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
-      this.updateConnectionState();
       const prevStateKey = this.buildTelemetryStateKey(ev.action.id);
       this.updateTelemetryState(ev.action.id, telemetry);
       const newStateKey = this.buildTelemetryStateKey(ev.action.id);
@@ -1061,8 +1060,6 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     ev: IDeckWillAppearEvent<ReplayControlSettings> | IDeckDidReceiveSettingsEvent<ReplayControlSettings>,
     settings: ReplayControlSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const isPlaying = this.shouldShowPause(ev.action.id, settings.mode);
     const speed = this.replaySpeed.get(ev.action.id);
     const slowMo = this.replaySlowMotion.get(ev.action.id);

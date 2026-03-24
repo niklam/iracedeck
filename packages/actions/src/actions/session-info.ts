@@ -188,8 +188,6 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
-      this.updateConnectionState();
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       if (storedSettings) {
@@ -232,8 +230,6 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     ev: IDeckWillAppearEvent<SessionInfoSettings> | IDeckDidReceiveSettingsEvent<SessionInfoSettings>,
     settings: SessionInfoSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const telemetry = this.sdkController.getCurrentTelemetry();
     const value = this.extractDisplayValue(settings, telemetry);
     const isFlashing = this.flashStates.get(ev.action.id) ?? false;

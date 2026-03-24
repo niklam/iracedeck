@@ -8,7 +8,6 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -148,15 +147,6 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<ReplayNavigationSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ReplayNavigationSettings>): Promise<void> {
@@ -273,8 +263,6 @@ export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigatio
     ev: IDeckWillAppearEvent<ReplayNavigationSettings> | IDeckDidReceiveSettingsEvent<ReplayNavigationSettings>,
     settings: ReplayNavigationSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateReplayNavigationSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

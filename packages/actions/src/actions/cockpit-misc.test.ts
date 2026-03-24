@@ -2,13 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COCKPIT_MISC_GLOBAL_KEYS, CockpitMisc, generateCockpitMiscSvg } from "./cockpit-misc.js";
 
-const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings, mockTap } = vi.hoisted(() => ({
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@iracedeck/icons/cockpit-misc/toggle-wipers.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">toggle-wipers {{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -60,6 +53,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -72,14 +70,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
+  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -357,67 +354,67 @@ describe("CockpitMisc", () => {
     it("should call tapGlobalBinding on keyDown for trigger-wipers", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "trigger-wipers" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
     });
 
     it("should call tapGlobalBinding on keyDown for report-latency", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "report-latency" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscReportLatency");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscReportLatency");
     });
 
     it("should call tapGlobalBinding on keyDown for in-lap-mode", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "in-lap-mode" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscInLapMode");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscInLapMode");
     });
 
     it("should call tapGlobalBinding for ffb-max-force increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ffb-max-force", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
     });
 
     it("should call tapGlobalBinding for ffb-max-force decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ffb-max-force", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
     });
 
     it("should call tapGlobalBinding for dash-page-1 increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "dash-page-1", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
     });
 
     it("should call tapGlobalBinding for dash-page-2 decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "dash-page-2", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscDashPage2Decrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscDashPage2Decrease");
     });
 
     it("should call tapGlobalBinding on dialDown", async () => {
       await action.onDialDown(fakeEvent("action-1", { control: "trigger-wipers" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
     });
 
     it("should call tapGlobalBinding on keyDown for toggle-wipers", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscToggleWipers");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscToggleWipers");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "trigger-wipers" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscTriggerWipers");
     });
 
     it("should call tapGlobalBinding even for report-latency with no binding", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "report-latency" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscReportLatency");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscReportLatency");
     });
   });
 
@@ -433,7 +430,7 @@ describe("CockpitMisc", () => {
         fakeDialRotateEvent("action-1", { control: "ffb-max-force", direction: "increase" }, 1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceIncrease");
     });
 
     it("should call tapGlobalBinding for decrease on counter-clockwise rotation for directional controls", async () => {
@@ -441,7 +438,7 @@ describe("CockpitMisc", () => {
         fakeDialRotateEvent("action-1", { control: "ffb-max-force", direction: "increase" }, -1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
     });
 
     it("should call tapGlobalBinding for dash-page-1 rotation", async () => {
@@ -449,31 +446,31 @@ describe("CockpitMisc", () => {
         fakeDialRotateEvent("action-1", { control: "dash-page-1", direction: "increase" }, 2) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("cockpitMiscDashPage1Increase");
     });
 
     it("should ignore rotation for non-directional controls (toggle-wipers)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "toggle-wipers" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (trigger-wipers)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "trigger-wipers" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (report-latency)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "report-latency" }, -1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (in-lap-mode)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "in-lap-mode" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
   });
 });

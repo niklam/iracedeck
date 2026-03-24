@@ -208,6 +208,18 @@ describe("BindingDispatcher", () => {
         expect(mockStartRole).not.toHaveBeenCalled();
         expect(mockLogger.warn).toHaveBeenCalledWith("SimHub service not initialized");
       });
+
+      it("should not call stopRole when startRole fails", async () => {
+        mockStartRole.mockResolvedValue(false);
+        mockGetGlobalSettings.mockReturnValue({
+          myKey: JSON.stringify({ type: "simhub", role: "FailRole" }),
+        });
+
+        await getBindingDispatcher().tap("myKey");
+
+        expect(mockStartRole).toHaveBeenCalledWith("FailRole");
+        expect(mockStopRole).not.toHaveBeenCalled();
+      });
     });
 
     describe("missing bindings", () => {
@@ -218,7 +230,7 @@ describe("BindingDispatcher", () => {
 
         expect(mockSendKeyCombination).not.toHaveBeenCalled();
         expect(mockStartRole).not.toHaveBeenCalled();
-        expect(mockLogger.warn).toHaveBeenCalledWith("No binding configured for nonExistentKey");
+        expect(mockLogger.debug).toHaveBeenCalledWith("No binding configured for nonExistentKey");
       });
 
       it("should warn when setting value is empty string", async () => {
@@ -227,7 +239,7 @@ describe("BindingDispatcher", () => {
         await getBindingDispatcher().tap("myKey");
 
         expect(mockSendKeyCombination).not.toHaveBeenCalled();
-        expect(mockLogger.warn).toHaveBeenCalledWith("No binding configured for myKey");
+        expect(mockLogger.debug).toHaveBeenCalledWith("No binding configured for myKey");
       });
     });
   });
@@ -371,6 +383,47 @@ describe("BindingDispatcher", () => {
         expect(mockStopRole).toHaveBeenCalledWith("RoleB");
         expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // --- isReady ---
+
+  describe("isReady", () => {
+    beforeEach(() => {
+      initializeBindingDispatcher(mockLogger);
+    });
+
+    it("should return false when no binding is configured", () => {
+      mockGetGlobalSettings.mockReturnValue({});
+
+      expect(getBindingDispatcher().isReady("nonExistentKey", true)).toBe(false);
+    });
+
+    it("should return iRacingConnected for keyboard bindings", () => {
+      mockGetGlobalSettings.mockReturnValue({
+        myKey: JSON.stringify({ key: "f1", modifiers: [], code: "F1" }),
+      });
+
+      expect(getBindingDispatcher().isReady("myKey", true)).toBe(true);
+      expect(getBindingDispatcher().isReady("myKey", false)).toBe(false);
+    });
+
+    it("should return true for SimHub bindings when SimHub is initialized", () => {
+      mockIsSimHubInitialized.mockReturnValue(true);
+      mockGetGlobalSettings.mockReturnValue({
+        myKey: JSON.stringify({ type: "simhub", role: "MyRole" }),
+      });
+
+      expect(getBindingDispatcher().isReady("myKey", false)).toBe(true);
+    });
+
+    it("should return false for SimHub bindings when SimHub is not initialized", () => {
+      mockIsSimHubInitialized.mockReturnValue(false);
+      mockGetGlobalSettings.mockReturnValue({
+        myKey: JSON.stringify({ type: "simhub", role: "MyRole" }),
+      });
+
+      expect(getBindingDispatcher().isReady("myKey", true)).toBe(false);
     });
   });
 });

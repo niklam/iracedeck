@@ -82,7 +82,7 @@ export const GlobalSettingsSchema = z
      * HTTP port for SimHub's REST API (Control Mapper).
      * Default: 8888
      */
-    simHubPort: z.coerce.number().default(8888),
+    simHubPort: z.coerce.number().min(1).max(65535).default(8888),
   })
   .passthrough();
 

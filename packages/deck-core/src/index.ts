@@ -140,6 +140,7 @@ export {
   getBindingDispatcher,
   isBindingDispatcherInitialized,
   _resetBindingDispatcher,
+  type IBindingDispatcher,
 } from "./binding-dispatcher.js";
 
 // Key binding utilities

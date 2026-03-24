@@ -1,13 +1,11 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -150,84 +148,58 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings):
 export const BLACK_BOX_SELECTOR_UUID = "com.iracedeck.sd.core.black-box-selector" as const;
 
 export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelectorSettings> {
-  /**
-   * When the action appears on the Stream Deck
-   */
   override async onWillAppear(ev: IDeckWillAppearEvent<BlackBoxSelectorSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const parsed = BlackBoxSelectorSettings.safeParse(ev.payload.settings);
-    const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
-
+    const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
   }
 
-  /**
-   * When the action disappears from the Stream Deck
-   */
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<BlackBoxSelectorSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
+  override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>): Promise<void> {
+    await super.onDidReceiveSettings(ev);
+    const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(this.resolveSettingKey(settings));
+    await this.updateDisplay(ev, settings);
   }
 
-  /**
-   * Update display with current settings
-   */
+  override async onKeyDown(ev: IDeckKeyDownEvent<BlackBoxSelectorSettings>): Promise<void> {
+    this.logger.info("Key down received");
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.tapBinding(this.resolveSettingKey(settings));
+  }
+
+  private parseSettings(settings: unknown): BlackBoxSelectorSettings {
+    const parsed = BlackBoxSelectorSettings.safeParse(settings);
+
+    return parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
+  }
+
+  private resolveSettingKey(settings: BlackBoxSelectorSettings): string {
+    const { mode, blackBox } = settings;
+
+    return mode === "direct"
+      ? BLACK_BOX_GLOBAL_KEYS[blackBox]
+      : mode === "next"
+        ? GLOBAL_KEYS.CYCLE_NEXT
+        : GLOBAL_KEYS.CYCLE_PREVIOUS;
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<BlackBoxSelectorSettings> | IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>,
     settings: BlackBoxSelectorSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateBlackBoxSelectorSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => generateBlackBoxSelectorSvg(settings));
   }
 
-  /**
-   * When settings are received or updated
-   */
-  override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>): Promise<void> {
-    await super.onDidReceiveSettings(ev);
-    const parsed = BlackBoxSelectorSettings.safeParse(ev.payload.settings);
-    const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
-
-    await this.updateDisplay(ev, settings);
-  }
-
-  /**
-   * When the key is pressed
-   */
-  override async onKeyDown(ev: IDeckKeyDownEvent<BlackBoxSelectorSettings>): Promise<void> {
-    this.logger.info("Key down received");
-
-    const parsed = BlackBoxSelectorSettings.safeParse(ev.payload.settings);
-    const settings = parsed.success ? parsed.data : BlackBoxSelectorSettings.parse({});
-
-    const { mode, blackBox } = settings;
-    const settingKey =
-      mode === "direct"
-        ? BLACK_BOX_GLOBAL_KEYS[blackBox]
-        : mode === "next"
-          ? GLOBAL_KEYS.CYCLE_NEXT
-          : GLOBAL_KEYS.CYCLE_PREVIOUS;
-
-    await getBindingDispatcher().tap(settingKey);
-  }
-
-  /**
-   * When the encoder dial is rotated (Stream Deck+)
-   */
   override async onDialRotate(ev: IDeckDialRotateEvent<BlackBoxSelectorSettings>): Promise<void> {
     this.logger.info(`Dial rotated: ${ev.payload.ticks} ticks`);
 
     // Clockwise (ticks > 0) = next, Counter-clockwise (ticks < 0) = previous
     const settingKey = ev.payload.ticks > 0 ? GLOBAL_KEYS.CYCLE_NEXT : GLOBAL_KEYS.CYCLE_PREVIOUS;
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 }

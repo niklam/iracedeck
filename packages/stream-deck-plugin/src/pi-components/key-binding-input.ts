@@ -41,6 +41,11 @@ import { KEY_CODE_MAP, type Modifier, resolveEventCode } from "./key-maps.js";
 
 /**
  * SimHub role binding value.
+ *
+ * SYNC NOTE: This is a browser-side duplicate of SimHubBindingValue in
+ * @iracedeck/deck-core/global-settings.ts. The PI runs in a browser context
+ * and cannot import from deck-core (Node.js). Keep both definitions in sync
+ * when adding new fields or binding types.
  */
 export interface SimHubBindingValue {
   type: "simhub";
@@ -49,11 +54,13 @@ export interface SimHubBindingValue {
 
 /**
  * Union type for all binding values stored by this component.
+ * SYNC NOTE: Mirrors BindingValue in @iracedeck/deck-core/global-settings.ts.
  */
 export type BindingValue = KeyBindingValue | SimHubBindingValue;
 
 /**
  * Type guard for SimHub binding values.
+ * SYNC NOTE: Mirrors isSimHubBinding in @iracedeck/deck-core/global-settings.ts.
  */
 export function isSimHubBinding(value: BindingValue | null): value is SimHubBindingValue {
   return value !== null && "type" in value && value.type === "simhub";

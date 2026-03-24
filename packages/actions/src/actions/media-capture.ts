@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getCommands,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -105,21 +103,24 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
   override async onWillAppear(ev: IDeckWillAppearEvent<MediaCaptureSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.action];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<MediaCaptureSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<MediaCaptureSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.action];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -173,7 +174,7 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
           return;
         }
 
-        await getBindingDispatcher().tap(settingKey);
+        await this.tapBinding(settingKey);
         break;
       }
     }
@@ -189,8 +190,6 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
     ev: IDeckWillAppearEvent<MediaCaptureSettings> | IDeckDidReceiveSettingsEvent<MediaCaptureSettings>,
     settings: MediaCaptureSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateMediaCaptureSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

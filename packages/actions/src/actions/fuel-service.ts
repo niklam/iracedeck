@@ -1,7 +1,6 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getCommands,
   getGlobalColors,
   type IDeckDialDownEvent,
@@ -9,7 +8,6 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -195,21 +193,24 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<FuelServiceSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<FuelServiceSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<FuelServiceSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -273,7 +274,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
           return;
         }
 
-        await getBindingDispatcher().tap(settingKey);
+        await this.tapBinding(settingKey);
         break;
       }
     }
@@ -311,8 +312,6 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     ev: IDeckWillAppearEvent<FuelServiceSettings> | IDeckDidReceiveSettingsEvent<FuelServiceSettings>,
     settings: FuelServiceSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateFuelServiceSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

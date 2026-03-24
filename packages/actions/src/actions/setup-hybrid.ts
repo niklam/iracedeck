@@ -1,7 +1,6 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -154,22 +153,29 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupHybridSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    await this.updateDisplay(ev, settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
 
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
+    await this.updateDisplay(ev, settings);
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupHybridSettings>): Promise<void> {
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupHybridSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -181,7 +187,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
       const settingKey = this.resolveGlobalKey(settings.setting, "increase");
 
       if (settingKey) {
-        await getBindingDispatcher().hold(ev.action.id, settingKey);
+        await this.holdBinding(ev.action.id, settingKey);
       }
     } else {
       await this.executeTap(settings.setting, settings.direction);
@@ -190,7 +196,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
 
   override async onKeyUp(ev: IDeckKeyUpEvent<SetupHybridSettings>): Promise<void> {
     this.logger.info("Key up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupHybridSettings>): Promise<void> {
@@ -201,7 +207,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
       const settingKey = this.resolveGlobalKey(settings.setting, "increase");
 
       if (settingKey) {
-        await getBindingDispatcher().hold(ev.action.id, settingKey);
+        await this.holdBinding(ev.action.id, settingKey);
       }
     } else {
       await this.executeTap(settings.setting, settings.direction);
@@ -210,7 +216,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
 
   override async onDialUp(ev: IDeckDialUpEvent<SetupHybridSettings>): Promise<void> {
     this.logger.info("Dial up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupHybridSettings>): Promise<void> {
@@ -252,15 +258,13 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupHybridSettings> | IDeckDidReceiveSettingsEvent<SetupHybridSettings>,
     settings: SetupHybridSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateSetupHybridSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

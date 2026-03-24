@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -231,16 +229,8 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraEditorAdjustmentsSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(
@@ -248,6 +238,7 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
   ): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -294,7 +285,7 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private async updateDisplay(
@@ -303,8 +294,6 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
       | IDeckDidReceiveSettingsEvent<CameraEditorAdjustmentsSettings>,
     settings: CameraEditorAdjustmentsSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateCameraEditorAdjustmentsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

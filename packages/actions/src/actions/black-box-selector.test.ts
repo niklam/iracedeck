@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BLACK_BOX_GLOBAL_KEYS, generateBlackBoxSelectorSvg } from "./black-box-selector.js";
+import { BLACK_BOX_GLOBAL_KEYS, BlackBoxSelector, generateBlackBoxSelectorSvg } from "./black-box-selector.js";
 
 vi.mock("@iracedeck/icons/black-box-selector/lap-timing.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">lap-timing {{mainLabel}} {{subLabel}}</svg>',
@@ -62,6 +62,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
+    async onWillDisappear() {}
   },
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
@@ -223,6 +230,61 @@ describe("BlackBoxSelector", () => {
         expect(decoded).toContain(labels.mainLabel);
         expect(decoded).toContain(labels.subLabel);
       }
+    });
+  });
+
+  describe("action behavior", () => {
+    let action: BlackBoxSelector;
+
+    function fakeEvent(actionId: string, settings: Record<string, unknown>) {
+      return {
+        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings },
+      };
+    }
+
+    beforeEach(() => {
+      action = new BlackBoxSelector();
+    });
+
+    describe("onKeyDown", () => {
+      it("should call tapBinding with correct key for direct mode", async () => {
+        await action.onKeyDown(fakeEvent("a1", { mode: "direct", blackBox: "fuel" }) as never);
+
+        expect(action.tapBinding).toHaveBeenCalledWith("blackBoxFuel");
+      });
+
+      it("should call tapBinding with cycle next key for next mode", async () => {
+        await action.onKeyDown(fakeEvent("a1", { mode: "next", blackBox: "lap-timing" }) as never);
+
+        expect(action.tapBinding).toHaveBeenCalledWith("blackBoxCycleNext");
+      });
+
+      it("should call tapBinding with cycle previous key for previous mode", async () => {
+        await action.onKeyDown(fakeEvent("a1", { mode: "previous", blackBox: "lap-timing" }) as never);
+
+        expect(action.tapBinding).toHaveBeenCalledWith("blackBoxCyclePrevious");
+      });
+    });
+
+    describe("setActiveBinding", () => {
+      it("should set active binding in onWillAppear for direct mode", async () => {
+        await action.onWillAppear(fakeEvent("a1", { mode: "direct", blackBox: "standings" }) as never);
+
+        expect(action.setActiveBinding).toHaveBeenCalledWith("blackBoxStandings");
+      });
+
+      it("should update active binding in onDidReceiveSettings", async () => {
+        await action.onDidReceiveSettings(fakeEvent("a1", { mode: "direct", blackBox: "tires" }) as never);
+
+        expect(action.setActiveBinding).toHaveBeenCalledWith("blackBoxTires");
+      });
+
+      it("should set cycle key for next mode", async () => {
+        await action.onWillAppear(fakeEvent("a1", { mode: "next", blackBox: "lap-timing" }) as never);
+
+        expect(action.setActiveBinding).toHaveBeenCalledWith("blackBoxCycleNext");
+      });
     });
   });
 });

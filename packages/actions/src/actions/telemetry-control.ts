@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getCommands,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -99,21 +97,24 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
   override async onWillAppear(ev: IDeckWillAppearEvent<TelemetryControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.action];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<TelemetryControlSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryControlSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    const activeKey = TELEMETRY_CONTROL_GLOBAL_KEYS[settings.action];
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -148,7 +149,7 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
           return;
         }
 
-        await getBindingDispatcher().tap(settingKey);
+        await this.tapBinding(settingKey);
         break;
       }
 
@@ -175,8 +176,6 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
     ev: IDeckWillAppearEvent<TelemetryControlSettings> | IDeckDidReceiveSettingsEvent<TelemetryControlSettings>,
     settings: TelemetryControlSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateTelemetryControlSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

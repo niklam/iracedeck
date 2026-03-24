@@ -1,7 +1,6 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   getSDK,
   type IDeckDialDownEvent,
@@ -348,11 +347,10 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.setActiveBinding(CAR_CONTROL_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
-      this.updateConnectionState();
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       if (storedSettings) {
@@ -362,7 +360,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CarControlSettings>): Promise<void> {
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -373,6 +371,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.setActiveBinding(CAR_CONTROL_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -384,7 +383,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
   override async onKeyUp(ev: IDeckKeyUpEvent<CarControlSettings>): Promise<void> {
     this.logger.info("Key up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<CarControlSettings>): Promise<void> {
@@ -395,7 +394,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
   override async onDialUp(ev: IDeckDialUpEvent<CarControlSettings>): Promise<void> {
     this.logger.info("Dial up received");
-    await getBindingDispatcher().release(ev.action.id);
+    await this.releaseBinding(ev.action.id);
   }
 
   private parseSettings(settings: unknown): CarControlSettings {
@@ -414,9 +413,9 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
 
     if (HOLD_CONTROLS.has(settings.control)) {
-      await getBindingDispatcher().hold(actionId, settingKey);
+      await this.holdBinding(actionId, settingKey);
     } else {
-      await getBindingDispatcher().tap(settingKey);
+      await this.tapBinding(settingKey);
     }
   }
 
@@ -439,8 +438,6 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     ev: IDeckWillAppearEvent<CarControlSettings> | IDeckDidReceiveSettingsEvent<CarControlSettings>,
     settings: CarControlSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const telemetry = this.sdkController.getCurrentTelemetry();
     const telemetryState = this.getTelemetryState(telemetry, settings.control);
 

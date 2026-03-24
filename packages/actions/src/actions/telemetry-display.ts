@@ -85,8 +85,6 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       if (storedSettings) {
@@ -120,8 +118,6 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     ev: IDeckWillAppearEvent<TelemetryDisplaySettings> | IDeckDidReceiveSettingsEvent<TelemetryDisplaySettings>,
     settings: TelemetryDisplaySettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const { title, value } = this.resolveDisplay(settings);
 
     const svgDataUri = generateTelemetryDisplaySvg(title, value, settings);

@@ -1,14 +1,12 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -199,21 +197,14 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupChassisSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupChassisSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupChassisSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -253,15 +244,13 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupChassisSettings> | IDeckDidReceiveSettingsEvent<SetupChassisSettings>,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateSetupChassisSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

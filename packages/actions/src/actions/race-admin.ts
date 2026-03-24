@@ -152,7 +152,6 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     // Subscribe to telemetry for CamCarIdx (driver targeting)
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
-      this.updateConnectionState();
       this.updateViewedCar(ev.action.id, telemetry);
     });
   }

@@ -314,8 +314,6 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     await this.updateDisplayWithEvent(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
-      this.updateConnectionState();
-
       const storedSettings = this.activeContexts.get(ev.action.id);
 
       if (storedSettings) {
@@ -339,8 +337,6 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const telemetry = this.sdkController.getCurrentTelemetry();
     const tireState = getTireState(telemetry);
     const compound = getCompoundState(telemetry);
-
-    this.updateConnectionState();
 
     const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
     await ev.action.setTitle("");
@@ -374,8 +370,6 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const telemetry = this.sdkController.getCurrentTelemetry();
     const tireState = getTireState(telemetry);
     const compound = getCompoundState(telemetry);
-
-    this.updateConnectionState();
 
     const svgDataUri = generateTireServiceSvg(settings, tireState, compound);
     await ev.action.setTitle("");

@@ -38,9 +38,26 @@ import { getSimHub, isSimHubInitialized } from "./simhub-service.js";
 type HeldBinding = { type: "keyboard"; combination: KeyCombination } | { type: "simhub"; role: string };
 
 /**
- * Binding dispatcher service.
+ * Interface for the binding dispatcher service.
  */
-class BindingDispatcher {
+export interface IBindingDispatcher {
+  /** Execute a tap (press + release) binding from global settings. */
+  tap(settingKey: string): Promise<void>;
+
+  /** Press and hold a binding from global settings. */
+  hold(actionId: string, settingKey: string): Promise<void>;
+
+  /** Release a previously held binding. Safe to call if nothing is held. */
+  release(actionId: string): Promise<void>;
+
+  /** Check if a binding at the given setting key is ready to execute. */
+  isReady(settingKey: string, iRacingConnected: boolean): boolean;
+}
+
+/**
+ * Binding dispatcher service implementation.
+ */
+class BindingDispatcher implements IBindingDispatcher {
   private logger: ILogger;
   private heldBindings = new Map<string, HeldBinding>();
 
@@ -144,6 +161,31 @@ class BindingDispatcher {
     // Future binding types: add release logic here
   }
 
+  /**
+   * Check if a binding at the given setting key is ready to execute.
+   * Resolves the binding type and checks the relevant service health.
+   *
+   * - Keyboard binding: ready if iRacing SDK is connected
+   * - SimHub binding: ready if SimHub service is initialized
+   * - No binding configured: not ready
+   *
+   * @param settingKey - The global settings key
+   * @param iRacingConnected - Current iRacing connection status (caller provides this)
+   */
+  isReady(settingKey: string, iRacingConnected: boolean): boolean {
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const binding = parseBinding(globalSettings[settingKey]);
+
+    if (!binding) return false;
+
+    if (isSimHubBinding(binding)) {
+      return isSimHubInitialized();
+    }
+
+    // Keyboard binding: depends on iRacing being connected
+    return iRacingConnected;
+  }
+
   // --- Internal helpers ---
 
   private resolveGlobalBinding(settingKey: string): BindingValue | undefined {
@@ -151,7 +193,7 @@ class BindingDispatcher {
     const binding = parseBinding(globalSettings[settingKey]);
 
     if (!binding) {
-      this.logger.warn(`No binding configured for ${settingKey}`);
+      this.logger.debug(`No binding configured for ${settingKey}`);
     }
 
     return binding;
@@ -168,8 +210,11 @@ class BindingDispatcher {
     }
 
     const simHub = getSimHub();
-    await simHub.startRole(role);
-    await simHub.stopRole(role);
+    const started = await simHub.startRole(role);
+
+    if (started) {
+      await simHub.stopRole(role);
+    }
   }
 
   private async tapKeyboard(binding: KeyBindingValue): Promise<void> {
@@ -206,7 +251,7 @@ let dispatcher: BindingDispatcher | null = null;
  * @returns The initialized dispatcher
  * @throws Error if called more than once
  */
-export function initializeBindingDispatcher(logger: ILogger = silentLogger): BindingDispatcher {
+export function initializeBindingDispatcher(logger: ILogger = silentLogger): IBindingDispatcher {
   if (dispatcher) {
     throw new Error(
       "Binding dispatcher already initialized. initializeBindingDispatcher() should only be called once.",
@@ -225,7 +270,7 @@ export function initializeBindingDispatcher(logger: ILogger = silentLogger): Bin
  * @returns The dispatcher instance
  * @throws Error if not initialized
  */
-export function getBindingDispatcher(): BindingDispatcher {
+export function getBindingDispatcher(): IBindingDispatcher {
   if (!dispatcher) {
     throw new Error(
       "Binding dispatcher not initialized. Call initializeBindingDispatcher() first in your plugin entry point.",

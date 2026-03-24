@@ -8,7 +8,6 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -71,15 +70,6 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<ReplaySpeedSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ReplaySpeedSettings>): Promise<void> {
@@ -132,8 +122,6 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
     ev: IDeckWillAppearEvent<ReplaySpeedSettings> | IDeckDidReceiveSettingsEvent<ReplaySpeedSettings>,
     settings: ReplaySpeedSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateReplaySpeedSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

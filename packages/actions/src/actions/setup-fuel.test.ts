@@ -24,13 +24,6 @@ vi.mock("@iracedeck/icons/setup-fuel/low-fuel-accept.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">low-fuel-accept {{mainLabel}} {{subLabel}}</svg>',
 }));
 
-const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings, mockTap } = vi.hoisted(() => ({
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -51,6 +44,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -63,14 +61,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
+  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -328,61 +325,61 @@ describe("SetupFuel", () => {
     it("should call tapGlobalBinding on keyDown for disable-fuel-cut", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "disable-fuel-cut" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelDisableFuelCut");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelDisableFuelCut");
     });
 
     it("should call tapGlobalBinding on keyDown for low-fuel-accept", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "low-fuel-accept" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelLowFuelAccept");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelLowFuelAccept");
     });
 
     it("should call tapGlobalBinding on keyDown for fcy-mode-toggle", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fcy-mode-toggle" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFcyModeToggle");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFcyModeToggle");
     });
 
     it("should call tapGlobalBinding for fuel-mixture increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fuel-mixture", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
     });
 
     it("should call tapGlobalBinding for fuel-mixture decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fuel-mixture", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelMixtureDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureDecrease");
     });
 
     it("should call tapGlobalBinding for fuel-cut-position increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fuel-cut-position", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelCutPositionIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelCutPositionIncrease");
     });
 
     it("should call tapGlobalBinding for fuel-cut-position decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fuel-cut-position", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelCutPositionDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelCutPositionDecrease");
     });
 
     it("should call tapGlobalBinding on dialDown", async () => {
       await action.onDialDown(fakeEvent("action-1", { setting: "disable-fuel-cut" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelDisableFuelCut");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelDisableFuelCut");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "disable-fuel-cut" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelDisableFuelCut");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelDisableFuelCut");
     });
 
     it("should call tapGlobalBinding for directional settings", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "fuel-mixture", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
     });
   });
 
@@ -398,7 +395,7 @@ describe("SetupFuel", () => {
         fakeDialRotateEvent("action-1", { setting: "fuel-mixture", direction: "increase" }, 1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureIncrease");
     });
 
     it("should call tapGlobalBinding for decrease on counter-clockwise rotation for directional controls", async () => {
@@ -406,7 +403,7 @@ describe("SetupFuel", () => {
         fakeDialRotateEvent("action-1", { setting: "fuel-mixture", direction: "increase" }, -1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelMixtureDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelMixtureDecrease");
     });
 
     it("should call tapGlobalBinding for fuel-cut-position rotation", async () => {
@@ -414,25 +411,25 @@ describe("SetupFuel", () => {
         fakeDialRotateEvent("action-1", { setting: "fuel-cut-position", direction: "increase" }, 2) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupFuelFuelCutPositionIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupFuelFuelCutPositionIncrease");
     });
 
     it("should ignore rotation for non-directional controls (disable-fuel-cut)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "disable-fuel-cut" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (low-fuel-accept)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "low-fuel-accept" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
 
     it("should ignore rotation for non-directional controls (fcy-mode-toggle)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "fcy-mode-toggle" }, -1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
   });
 });

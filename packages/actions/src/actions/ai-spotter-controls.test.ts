@@ -8,13 +8,6 @@ import {
   SPOTTER_LABELS,
 } from "./ai-spotter-controls.js";
 
-const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings, mockTap } = vi.hoisted(() => ({
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@iracedeck/icons/ai-spotter-controls/damage-report.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -56,6 +49,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -68,14 +66,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
+  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -257,31 +254,31 @@ describe("AiSpotterControls", () => {
     it("should call tapGlobalBinding on keyDown for damage-report", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "damage-report" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("spotterDamageReport");
+      expect(action.tapBinding).toHaveBeenCalledWith("spotterDamageReport");
     });
 
     it("should call tapGlobalBinding on keyDown for louder", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "louder" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("spotterLouder");
+      expect(action.tapBinding).toHaveBeenCalledWith("spotterLouder");
     });
 
     it("should call tapGlobalBinding on keyDown for silence", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "silence" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("spotterSilence");
+      expect(action.tapBinding).toHaveBeenCalledWith("spotterSilence");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "damage-report" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("spotterDamageReport");
+      expect(action.tapBinding).toHaveBeenCalledWith("spotterDamageReport");
     });
 
     it("should call tapGlobalBinding for all controls", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "silence" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("spotterSilence");
+      expect(action.tapBinding).toHaveBeenCalledWith("spotterSilence");
     });
   });
 });

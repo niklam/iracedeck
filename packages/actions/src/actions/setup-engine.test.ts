@@ -28,13 +28,6 @@ vi.mock("@iracedeck/icons/setup-engine/launch-rpm-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">launch-rpm-decrease {{mainLabel}} {{subLabel}}</svg>',
 }));
 
-const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings, mockTap } = vi.hoisted(() => ({
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -55,6 +48,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -67,14 +65,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
+  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -271,49 +268,49 @@ describe("SetupEngine", () => {
     it("should call tapGlobalBinding on keyDown for engine-power increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "engine-power", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
     });
 
     it("should call tapGlobalBinding for engine-power decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "engine-power", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerDecrease");
     });
 
     it("should call tapGlobalBinding for throttle-shaping increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "throttle-shaping", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineThrottleShapingIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineThrottleShapingIncrease");
     });
 
     it("should call tapGlobalBinding for boost-level increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "boost-level", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineBoostLevelIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineBoostLevelIncrease");
     });
 
     it("should call tapGlobalBinding for launch-rpm decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "launch-rpm", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineLaunchRpmDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineLaunchRpmDecrease");
     });
 
     it("should call tapGlobalBinding on dialDown", async () => {
       await action.onDialDown(fakeEvent("action-1", { setting: "engine-power", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "engine-power", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
     });
 
     it("should call tapGlobalBinding for all directional settings", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "boost-level", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineBoostLevelDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineBoostLevelDecrease");
     });
   });
 
@@ -329,7 +326,7 @@ describe("SetupEngine", () => {
         fakeDialRotateEvent("action-1", { setting: "engine-power", direction: "increase" }, 1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerIncrease");
     });
 
     it("should call tapGlobalBinding for decrease on counter-clockwise rotation", async () => {
@@ -337,7 +334,7 @@ describe("SetupEngine", () => {
         fakeDialRotateEvent("action-1", { setting: "engine-power", direction: "increase" }, -1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineEnginePowerDecrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineEnginePowerDecrease");
     });
 
     it("should call tapGlobalBinding for different settings on rotation", async () => {
@@ -345,7 +342,7 @@ describe("SetupEngine", () => {
         fakeDialRotateEvent("action-1", { setting: "throttle-shaping", direction: "increase" }, 2) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupEngineThrottleShapingIncrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupEngineThrottleShapingIncrease");
     });
   });
 });

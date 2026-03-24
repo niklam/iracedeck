@@ -2,21 +2,53 @@ import { ConnectionStateAwareAction, overlayConfig } from "@iracedeck/deck-core"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock sdk-singleton before importing deck-core (same approach as app-monitor.test.ts)
-const mockGetConnectionStatus = vi.fn();
-const mockSetReconnectEnabled = vi.fn();
-const mockGetController = vi.fn(() => ({
-  getConnectionStatus: mockGetConnectionStatus,
-  setReconnectEnabled: mockSetReconnectEnabled,
-}));
+const { mockGetConnectionStatus, mockSetReconnectEnabled, mockGetController } = vi.hoisted(() => {
+  const mockGetConnectionStatus = vi.fn();
+  const mockSetReconnectEnabled = vi.fn();
+  const mockController = {
+    getConnectionStatus: mockGetConnectionStatus,
+    setReconnectEnabled: mockSetReconnectEnabled,
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+  };
+
+  return {
+    mockGetConnectionStatus,
+    mockSetReconnectEnabled,
+    mockGetController: vi.fn(() => mockController),
+  };
+});
 
 vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
-  getController: () => mockGetController(),
+  getController: () => ({
+    ...mockGetController(),
+    subscribe: (..._args: unknown[]) => {},
+    unsubscribe: (..._args: unknown[]) => {},
+  }),
   getSDK: vi.fn(),
   getCommands: vi.fn(),
   initializeSDK: vi.fn(),
   isSDKInitialized: vi.fn(() => true),
   _resetSDK: vi.fn(),
 }));
+
+vi.mock("../../../deck-core/src/binding-dispatcher.js", () => ({
+  getBindingDispatcher: vi.fn(() => ({
+    tap: vi.fn().mockResolvedValue(undefined),
+    hold: vi.fn().mockResolvedValue(undefined),
+    release: vi.fn().mockResolvedValue(undefined),
+    isReady: vi.fn(() => true),
+  })),
+}));
+
+vi.mock("../../../deck-core/src/global-settings.js", async (importOriginal) => {
+  const original = (await importOriginal()) as Record<string, unknown>;
+
+  return {
+    ...original,
+    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  };
+});
 
 // Mock KeyAction
 function createMockKeyAction(id: string) {
@@ -65,6 +97,8 @@ describe("ConnectionStateAwareAction", () => {
     mockGetController.mockReturnValue({
       getConnectionStatus: mockGetConnectionStatus,
       setReconnectEnabled: mockSetReconnectEnabled,
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
     });
     testAction = new TestConnectionAction();
     // Enable overlay for tests (disabled by default in production)

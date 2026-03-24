@@ -1,13 +1,11 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
-  getBindingDispatcher,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
-  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -223,21 +221,14 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraEditorControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
-
-    this.sdkController.subscribe(ev.action.id, () => {
-      this.updateConnectionState();
-    });
-  }
-
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraEditorControlsSettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraEditorControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.setActiveBinding(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
 
@@ -268,15 +259,13 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
       return;
     }
 
-    await getBindingDispatcher().tap(settingKey);
+    await this.tapBinding(settingKey);
   }
 
   private async updateDisplay(
     ev: IDeckWillAppearEvent<CameraEditorControlsSettings> | IDeckDidReceiveSettingsEvent<CameraEditorControlsSettings>,
     settings: CameraEditorControlsSettings,
   ): Promise<void> {
-    this.updateConnectionState();
-
     const svgDataUri = generateCameraEditorControlsSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);

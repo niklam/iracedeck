@@ -2,13 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupTractionSvg, SETUP_TRACTION_GLOBAL_KEYS, SetupTraction } from "./setup-traction.js";
 
-const { mockSendKeyCombination, mockParseKeyBinding, mockGetGlobalSettings, mockTap } = vi.hoisted(() => ({
-  mockSendKeyCombination: vi.fn().mockResolvedValue(true),
-  mockParseKeyBinding: vi.fn(),
-  mockGetGlobalSettings: vi.fn(() => ({})),
-  mockTap: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@iracedeck/icons/setup-traction/tc-toggle.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -57,6 +50,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -69,14 +67,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
-  getBindingDispatcher: vi.fn(() => ({ tap: mockTap, hold: vi.fn(), release: vi.fn() })),
+  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
-    sendKeyCombination: mockSendKeyCombination,
+    sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  parseBinding: mockParseKeyBinding,
-  parseKeyBinding: mockParseKeyBinding,
+  parseBinding: vi.fn(),
+  parseKeyBinding: vi.fn(),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -280,49 +277,49 @@ describe("SetupTraction", () => {
     it("should call tapGlobalBinding on keyDown for tc-toggle", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-toggle" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcToggle");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcToggle");
     });
 
     it("should call tapGlobalBinding for tc-slot-1 increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-slot-1", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
     });
 
     it("should call tapGlobalBinding for tc-slot-1 decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-slot-1", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot1Decrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot1Decrease");
     });
 
     it("should call tapGlobalBinding for tc-slot-2 increase", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-slot-2", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot2Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot2Increase");
     });
 
     it("should call tapGlobalBinding for tc-slot-3 decrease", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-slot-3", direction: "decrease" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot3Decrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot3Decrease");
     });
 
     it("should call tapGlobalBinding on dialDown", async () => {
       await action.onDialDown(fakeEvent("action-1", { setting: "tc-toggle" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcToggle");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcToggle");
     });
 
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-toggle" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcToggle");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcToggle");
     });
 
     it("should call tapGlobalBinding for directional settings", async () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "tc-slot-1", direction: "increase" }) as any);
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
     });
   });
 
@@ -338,7 +335,7 @@ describe("SetupTraction", () => {
         fakeDialRotateEvent("action-1", { setting: "tc-slot-1", direction: "increase" }, 1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot1Increase");
     });
 
     it("should call tapGlobalBinding for decrease on counter-clockwise rotation", async () => {
@@ -346,7 +343,7 @@ describe("SetupTraction", () => {
         fakeDialRotateEvent("action-1", { setting: "tc-slot-1", direction: "increase" }, -1) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot1Decrease");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot1Decrease");
     });
 
     it("should call tapGlobalBinding for different settings on rotation", async () => {
@@ -354,13 +351,13 @@ describe("SetupTraction", () => {
         fakeDialRotateEvent("action-1", { setting: "tc-slot-2", direction: "increase" }, 2) as any,
       );
 
-      expect(mockTap).toHaveBeenCalledWith("setupTractionTcSlot2Increase");
+      expect(action.tapBinding).toHaveBeenCalledWith("setupTractionTcSlot2Increase");
     });
 
     it("should ignore rotation for non-directional controls (tc-toggle)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "tc-toggle" }, 1) as any);
 
-      expect(mockTap).not.toHaveBeenCalled();
+      expect(action.tapBinding).not.toHaveBeenCalled();
     });
   });
 });
