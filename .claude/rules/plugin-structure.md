@@ -137,8 +137,10 @@ import {
   focusIRacingIfEnabled,
   initAppMonitor,
   initGlobalSettings,
+  initializeBindingDispatcher,
   initializeKeyboard,
   initializeSDK,
+  initializeSimHub,
   initWindowFocus,
 } from "@iracedeck/deck-core";
 import { IRacingNative } from "@iracedeck/iracing-native";
@@ -175,16 +177,24 @@ adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyActi
 // 8. Initialize global settings BEFORE connect() - pass adapter!
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
-// 9. Initialize app monitor BEFORE connect() - pass adapter!
+// 9. Initialize SimHub service AFTER global settings (reads host/port from settings)
+initializeSimHub(adapter.createLogger("SimHub"));
+
+// 10. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
+initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
+
+// 11. Initialize app monitor BEFORE connect() - pass adapter!
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
 
-// 10. Connect LAST
+// 12. Connect LAST
 adapter.connect();
 ```
 
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
-- Both must be called BEFORE `adapter.connect()` (handlers must register first)
+- All init calls must be BEFORE `adapter.connect()` (handlers must register first)
+- `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
+- `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`
 - Actions are imported from `@iracedeck/actions` and registered via `adapter.registerAction(UUID, handler)`
 - Logger is injected into each action via constructor: `new MyAction(adapter.createLogger("MyAction"))`
 - `initAppMonitor` requires `initializeSDK()` to be called first

@@ -120,7 +120,7 @@ Always include both scripts in PI HTML files:
 
 ### Custom Components
 
-**`ird-key-binding`** - Keyboard shortcut picker for configurable hotkeys:
+**`ird-key-binding`** - Keyboard shortcut or SimHub role picker for configurable bindings:
 ```html
 <sdpi-item label="Key Binding">
   <ird-key-binding setting="keyBinding" default="F1"></ird-key-binding>
@@ -128,7 +128,9 @@ Always include both scripts in PI HTML files:
 ```
 - `setting` - The settings key name
 - `default` - Default key (e.g., "F1", "Ctrl+Shift+A")
-- Stores value as JSON string: `{"key":"f1","modifiers":[]}`
+- A dropdown lets users switch between Keyboard and SimHub modes
+- Keyboard mode stores: `{"type":"keyboard","key":"f1","modifiers":[]}`
+- SimHub mode stores: `{"type":"simhub","role":"My Role Name"}`
 
 ### sdpi-checkbox Pitfalls
 
@@ -282,38 +284,33 @@ initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 adapter.connect();
 ```
 
-### Accessing Global Settings in Actions
+### Accessing Global Bindings in Actions (Preferred)
 
-Use the shared `parseKeyBinding` and `formatKeyBinding` utilities:
+Actions extending `ConnectionStateAwareAction` use binding dispatch delegates that
+automatically route to keyboard or SimHub based on the binding type:
 
 ```typescript
-import {
-  getGlobalSettings,
-  getKeyboard,
-  parseKeyBinding,
-  formatKeyBinding,
-  type KeyboardKey,
-  type KeyboardModifier,
-} from "@iracedeck/deck-core";
+// Declare which binding this action depends on (for readiness tracking)
+this.setActiveBinding("blackBoxLapTiming");
 
-// Parse key binding from global settings (handles JSON strings automatically)
+// Execute the binding (routes to keyboard or SimHub automatically)
+await this.tapBinding("blackBoxLapTiming");
+
+// For hold/release patterns:
+await this.holdBinding(ev.action.id, "lookDirectionLeft");
+await this.releaseBinding(ev.action.id);
+```
+
+### Direct Global Settings Access (Low-Level)
+
+For cases where the binding dispatcher is not suitable:
+
+```typescript
+import { getGlobalSettings, parseBinding, isSimHubBinding } from "@iracedeck/deck-core";
+
 const globalSettings = getGlobalSettings() as Record<string, unknown>;
-const binding = parseKeyBinding(globalSettings["blackBoxLapTiming"]);
-
-if (binding?.key) {
-  const success = await getKeyboard().sendKeyCombination({
-    key: binding.key as KeyboardKey,
-    modifiers: binding.modifiers.length > 0
-      ? binding.modifiers as KeyboardModifier[]
-      : undefined,
-  });
-
-  // Use formatKeyBinding for logging
-  if (success) {
-    this.logger.info("Key sent successfully");
-    this.logger.debug(`Key combination: ${formatKeyBinding(binding)}`);
-  }
-}
+const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
+// binding is KeyBindingValue | SimHubBindingValue | undefined
 ```
 
 ### Common Pitfalls

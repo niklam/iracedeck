@@ -64,74 +64,76 @@ const MyActionSettings = z.object({
 });
 ```
 
-## Sending Key Combinations
+## Executing Bindings (Preferred Pattern)
+
+Actions that extend `ConnectionStateAwareAction` use the binding dispatch delegates.
+These route to keyboard or SimHub automatically based on the binding type configured in global settings.
 
 ```typescript
-import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "@iracedeck/deck-core";
+// Tap (one-shot press + release)
+await this.tapBinding("blackBoxLapTiming");
 
-// In action handler
-if (settings.keyBinding?.key) {
-  const combination: KeyCombination = {
-    key: settings.keyBinding.key as KeyboardKey,
-    modifiers: settings.keyBinding.modifiers?.length
-      ? settings.keyBinding.modifiers as KeyboardModifier[]
-      : undefined,
-  };
-  await getKeyboard().sendKeyCombination(combination);
-}
-```
-
-## Long-Press / Key Hold
-
-For actions that need to hold a key while the button is pressed (e.g., look direction), use `pressKeyCombination()` and `releaseKeyCombination()` instead of `sendKeyCombination()`:
-
-```typescript
-// onKeyDown — press and hold
-await getKeyboard().pressKeyCombination(combination);
-
-// onKeyUp — release
-await getKeyboard().releaseKeyCombination(combination);
+// Hold (press on key down, release on key up)
+await this.holdBinding(ev.action.id, "lookDirectionLeft");
+await this.releaseBinding(ev.action.id);
 ```
 
 ### When to use hold vs tap
-- **Tap** (`sendKeyCombination`): one-shot actions (toggle, cycle, select)
-- **Hold** (`pressKeyCombination` + `releaseKeyCombination`): continuous actions (look direction, push-to-talk)
+- **Tap** (`tapBinding`): one-shot actions (toggle, cycle, select)
+- **Hold** (`holdBinding` + `releaseBinding`): continuous actions (look direction, push-to-talk)
+
+### Declaring active bindings for readiness tracking
+
+Call `setActiveBinding()` in `onWillAppear` and `onDidReceiveSettings` to declare which
+binding the action depends on. The base class automatically tracks readiness (active/inactive
+overlay) based on the binding type:
+
+```typescript
+override async onWillAppear(ev: IDeckWillAppearEvent<Settings>): Promise<void> {
+  await super.onWillAppear(ev);
+  const key = resolveSettingKey(ev.payload.settings);
+  this.setActiveBinding(key);
+}
+```
 
 ### Long-press action pattern
 
-**IMPORTANT**: Track held keys per action context (`ev.action.id`), not as a single field. A single action class handles all instances of that action type — using a single field causes stuck keys when multiple buttons are pressed concurrently.
+The `BindingDispatcher` tracks held bindings per action context internally.
+Actions just call `holdBinding`/`releaseBinding`:
 
 ```typescript
-private heldCombinations = new Map<string, KeyCombination>();
-
 override async onKeyDown(ev: IDeckKeyDownEvent<Settings>): Promise<void> {
-  const combination = this.resolveCombination(ev.payload.settings);
-  if (!combination) return;
-
-  const success = await getKeyboard().pressKeyCombination(combination);
-  if (success) this.heldCombinations.set(ev.action.id, combination);
+  const key = GLOBAL_KEYS[settings.direction];
+  await this.holdBinding(ev.action.id, key);
 }
 
 override async onKeyUp(ev: IDeckKeyUpEvent<Settings>): Promise<void> {
-  const combination = this.heldCombinations.get(ev.action.id);
-  if (!combination) return;
-  this.heldCombinations.delete(ev.action.id);
-  await getKeyboard().releaseKeyCombination(combination);
+  await this.releaseBinding(ev.action.id);
 }
 
-// SAFETY: always release held keys when action disappears
+// SAFETY: always release held bindings when action disappears
 override async onWillDisappear(ev: IDeckWillDisappearEvent<Settings>): Promise<void> {
-  const combination = this.heldCombinations.get(ev.action.id);
-  if (combination) {
-    this.heldCombinations.delete(ev.action.id);
-    await getKeyboard().releaseKeyCombination(combination);
-  }
+  await this.releaseBinding(ev.action.id);
   await super.onWillDisappear(ev);
 }
 ```
 
-### Reference implementation
-- Long-press action: `packages/actions/src/actions/look-direction.ts`
+### Reference implementations
+- Tap action with global key bindings: `packages/actions/src/actions/black-box-selector.ts`
+- Cycle action with global key bindings: `packages/actions/src/actions/splits-delta-cycle.ts`
+- Long-press (key hold): `packages/actions/src/actions/look-direction.ts`
+
+## Direct Keyboard Access (Low-Level)
+
+For rare cases where the binding dispatcher is not suitable, direct keyboard access is still available:
+
+```typescript
+import { getKeyboard, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "@iracedeck/deck-core";
+
+await getKeyboard().sendKeyCombination(combination);       // tap
+await getKeyboard().pressKeyCombination(combination);      // hold
+await getKeyboard().releaseKeyCombination(combination);    // release
+```
 
 ## Plugin Setup for Keyboard Support
 
@@ -229,13 +231,15 @@ if (binding?.key) {
 }
 ```
 
-## Reference Implementation
-- Global key bindings: `packages/actions/src/actions/black-box-selector.ts`
-- Cycle action with global key bindings: `packages/actions/src/actions/splits-delta-cycle.ts`
-- Long-press (key hold): `packages/actions/src/actions/look-direction.ts`
+## Reference Implementations
+- Binding dispatch (tap): `packages/actions/src/actions/black-box-selector.ts`
+- Binding dispatch (cycle): `packages/actions/src/actions/splits-delta-cycle.ts`
+- Binding dispatch (hold/release): `packages/actions/src/actions/look-direction.ts`
+- Binding dispatcher service: `packages/deck-core/src/binding-dispatcher.ts`
 
 ## Do NOT Use
 - Hardcoded key mappings in action code
+- Direct `getKeyboard()` calls in actions (use `tapBinding`/`holdBinding`/`releaseBinding` instead)
 
 ## Cross-Package Sync
 

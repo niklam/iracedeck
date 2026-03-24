@@ -1,5 +1,13 @@
 # SimHub Control Mapper Integration — Feature Design
 
+> **Implementation Notes:** The actual implementation diverged significantly from this
+> initial design. Instead of per-action `controlMethod`/`simHubRole` settings described
+> below, the implementation uses a unified `BindingDispatcher` singleton that routes
+> bindings based on a type-discriminated `BindingValue` union (`{ type: "keyboard" }` or
+> `{ type: "simhub" }`). Bindings are stored in global settings (not per-action), and
+> actions use `tapBinding()`/`holdBinding()`/`releaseBinding()` delegates from
+> `ConnectionStateAwareAction`. The SimHub protocol and PI UX sections remain accurate.
+
 ## Overview
 
 This document covers the design of a third control mechanism for iRaceDeck alongside the existing iRacing SDK commands and keyboard simulation. SimHub's Control Mapper exposes an HTTP API that allows external programs to activate named "roles" — pre-configured input mappings in SimHub — via a simple HTTP POST. Integrating this as an optional mechanism lets users who already use SimHub trigger their own SimHub Control Mapper roles directly from Stream Deck buttons without requiring iRacing key binding configuration.
@@ -115,7 +123,7 @@ import { initializeSimHub } from "@iracedeck/deck-core";
 initializeSimHub(adapter.createLogger("SimHub"));
 ```
 
-Initialized in `plugin.ts` before actions are registered, following the same pattern as `initializeKeyboard`. Added to both `stream-deck-plugin` and `stream-dock-plugin`.
+Initialized in `plugin.ts` before actions are registered, following the same pattern as `initializeKeyboard`. Added to both `stream-deck-plugin` and `mirabox-plugin`.
 
 ### Changes to Existing Actions
 
@@ -305,7 +313,7 @@ SDK-backed actions (`pit-quick-actions.ts`, `fuel-service.ts`, `chat.ts`, `car-c
 - Update affected action Property Inspector templates to add Control Method dropdown, SimHub role input, and conditional visibility.
 - Add SimHub host/port to the global settings Property Inspector accordion section.
 
-### `@iracedeck/stream-dock-plugin`
+### `@iracedeck/mirabox-plugin`
 
 - Add `initializeSimHub()` call in `plugin.ts`.
 
@@ -360,7 +368,7 @@ Files:
 - `packages/deck-core/src/global-settings.ts` (add `simHubHost`, `simHubPort`)
 - `packages/deck-core/src/index.ts` (export new symbols)
 - `packages/stream-deck-plugin/src/plugin.ts` (add `initializeSimHub`)
-- `packages/stream-dock-plugin/src/plugin.ts` (add `initializeSimHub`)
+- `packages/mirabox-plugin/src/plugin.ts` (add `initializeSimHub`)
 
 ### Phase 2: First Action Integration (Test Case)
 
@@ -399,7 +407,7 @@ Files:
 | `packages/deck-core/src/global-settings.ts` | Add `simHubHost`, `simHubPort` |
 | `packages/deck-core/src/index.ts` | Export SimHub service symbols |
 | `packages/stream-deck-plugin/src/plugin.ts` | Add `initializeSimHub()` |
-| `packages/stream-dock-plugin/src/plugin.ts` | Add `initializeSimHub()` |
+| `packages/mirabox-plugin/src/plugin.ts` | Add `initializeSimHub()` |
 | All ~18 keyboard-based action files | Add `controlMethod`/`simHubRole` settings + dispatch |
 | All ~18 corresponding Property Inspector `.ejs` files | Add Control Method dropdown + SimHub role field |
 | Global settings Property Inspector partial | Add SimHub host/port fields |

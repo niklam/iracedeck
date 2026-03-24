@@ -53,6 +53,10 @@ vi.mock("@iracedeck/deck-core", () => ({
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
+    setActiveBinding = vi.fn();
+    tapBinding = vi.fn().mockResolvedValue(undefined),
+    holdBinding = vi.fn().mockResolvedValue(undefined),
+    releaseBinding = vi.fn().mockResolvedValue(undefined),
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
   },
