@@ -6,6 +6,9 @@
  * - Binding dispatch delegates (tap, hold, release)
  * - Binding-aware readiness (active/inactive overlay based on binding type)
  *
+ * The deprecated updateConnectionState() method is still available for backward
+ * compatibility but delegates to the new evaluateReadiness() internally.
+ *
  * Readiness is fully automatic:
  * - The base class subscribes to the SDK controller on onWillAppear and
  *   evaluates readiness on every telemetry tick.
@@ -108,7 +111,8 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * Property Inspector.
    *
    * Call in onWillAppear and onDidReceiveSettings when the setting key changes
-   * (e.g., user switches mode or direction).
+   * (e.g., user switches mode or direction). Cleanup is automatic —
+   * onWillDisappear unsubscribes all listeners.
    *
    * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), or null to clear
    */
@@ -158,22 +162,27 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   /**
    * Internal readiness evaluation — called automatically by the SDK subscription,
    * setActiveBinding, and the global settings change listener.
+   * Wrapped in try-catch to prevent exceptions from breaking telemetry for all actions.
    */
   private evaluateReadiness(): void {
-    const iRacingConnected = this.sdkController.getConnectionStatus();
+    try {
+      const iRacingConnected = this.sdkController.getConnectionStatus();
 
-    let isReady: boolean;
+      let isReady: boolean;
 
-    if (this.activeBindingKey) {
-      isReady = getBindingDispatcher().isReady(this.activeBindingKey, iRacingConnected);
-    } else {
-      isReady = iRacingConnected;
-    }
+      if (this.activeBindingKey) {
+        isReady = getBindingDispatcher().isReady(this.activeBindingKey, iRacingConnected);
+      } else {
+        isReady = iRacingConnected;
+      }
 
-    if (this.lastReadyStatus !== isReady) {
-      this.logger.debug(`Readiness changed: ${this.lastReadyStatus} -> ${isReady}`);
-      this.lastReadyStatus = isReady;
-      this.setActive(isReady);
+      if (this.lastReadyStatus !== isReady) {
+        this.logger.debug(`Readiness changed: ${this.lastReadyStatus} -> ${isReady}`);
+        this.lastReadyStatus = isReady;
+        this.setActive(isReady);
+      }
+    } catch (error) {
+      this.logger.warn(`Readiness evaluation failed: ${error}`);
     }
   }
 
