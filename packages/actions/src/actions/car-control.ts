@@ -66,7 +66,7 @@ const DEFAULT_PIT_SPEED = 80;
 const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>(["pit-speed-limiter", "push-to-pass", "drs"]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
-const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash"]);
+const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash", "enter-exit-tow"]);
 
 /**
  * @internal Exported for testing
@@ -332,7 +332,7 @@ function renderDynamicIcon(settings: CarControlSettings, iconContent: string, sh
  * Car Control Action
  * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause,
  * headlight flash, push to pass, DRS, tear off visor).
- * Starter and headlight flash use long-press (hold while pressed); all others use tap.
+ * Starter, headlight flash, and enter/exit/tow use long-press (hold while pressed); all others use tap.
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
 

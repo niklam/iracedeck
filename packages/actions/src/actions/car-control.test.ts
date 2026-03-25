@@ -212,10 +212,11 @@ describe("CarControl", () => {
       expect(mockHoldBinding).not.toHaveBeenCalled();
     });
 
-    it("should call tapGlobalBinding on keyDown for enter-exit-tow", async () => {
+    it("should call holdBinding on keyDown for enter-exit-tow", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
 
-      expect(mockTapBinding).toHaveBeenCalledWith("carControlEnterExitTow");
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlEnterExitTow");
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
     it("should call tapGlobalBinding on keyDown for pause-sim", async () => {

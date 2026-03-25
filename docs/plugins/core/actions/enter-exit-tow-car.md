@@ -13,7 +13,8 @@ Enters, exits, or requests a tow for the car.
 
 ## Behavior
 
-### Button Press
+### Button Press (Hold)
+- Uses long-press: hold the Stream Deck button until iRacing registers the action
 - Context-dependent action:
   - If in garage: Enter car
   - If in car: Exit car
