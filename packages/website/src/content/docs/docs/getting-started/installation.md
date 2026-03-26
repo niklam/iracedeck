@@ -20,7 +20,17 @@ The easiest way to install iRaceDeck:
 2. Click **Install** — the Stream Deck software will handle the rest
 3. Once installed, look for the **iRaceDeck** category in the Stream Deck action list
 
-### Option 2: Install from GitHub Releases
+### Option 2: Direct Download from iRaceDeck
+
+Download the latest version directly from iRaceDeck:
+
+1. Go to the [iRaceDeck Downloads page](/downloads/)
+2. Click **Download for Stream Deck**
+3. Double-click the downloaded `.streamDeckPlugin` file
+4. The Stream Deck software will open and install the plugin automatically
+5. Look for the **iRaceDeck** category in the Stream Deck action list
+
+### Option 3: Install from GitHub Releases
 
 GitHub Releases may have a newer version available before it appears on the Elgato Marketplace. Use this option if you want the latest version or if the Marketplace install doesn't work:
 
@@ -47,6 +57,10 @@ The Mirabox ecosystem covers devices from brands including **Stream Dock**, **SO
 1. Open the [iRaceDeck listing on Mirabox Space](https://space.key123.vip/product?id=20260322000598)
 2. Log in and click **Open Software** — the Mirabox app will handle the installation
 3. Once installed, look for the **iRaceDeck** category in the action list
+
+### Direct Download from iRaceDeck
+
+You can also download the Mirabox plugin directly from the [iRaceDeck Downloads page](/downloads/). After downloading, extract the `.sdPlugin` file and import it via the Mirabox Space app.
 
 ## After Installation
 
