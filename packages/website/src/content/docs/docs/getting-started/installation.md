@@ -60,7 +60,7 @@ The Mirabox ecosystem covers devices from brands including **Stream Dock**, **SO
 
 ### Direct Download from iRaceDeck
 
-You can also download the Mirabox plugin directly from the [iRaceDeck Downloads page](/downloads/). After downloading, extract the `.sdPlugin` file and import it via the Mirabox Space app.
+You can also download the Mirabox plugin (`.sdPlugin` file) directly from the [iRaceDeck Downloads page](/downloads/) and import it via the Mirabox Space app.
 
 ## After Installation
 

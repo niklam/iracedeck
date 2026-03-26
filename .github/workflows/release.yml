@@ -5,7 +5,9 @@ on:
     tags: ["v*"]
 
 permissions:
+  checks: write
   contents: write
+  pull-requests: write
 
 jobs:
   build-streamdeck:
