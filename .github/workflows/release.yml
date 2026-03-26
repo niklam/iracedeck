@@ -11,10 +11,10 @@ permissions:
 
 jobs:
   build-streamdeck:
-    uses: ./.github/workflows/release-pack.yml
+    uses: ./.github/workflows/release-pack-streamdeck.yml
     secrets: inherit
   build-mirabox:
-    uses: ./.github/workflows/release-pack-dock.yml
+    uses: ./.github/workflows/release-pack-mirabox.yml
     secrets: inherit
   deploy-website:
     needs: [build-streamdeck, build-mirabox]
