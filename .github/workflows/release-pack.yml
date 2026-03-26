@@ -31,21 +31,16 @@ jobs:
         run: pnpm install --prod --no-frozen-lockfile
 
       - name: Pack Stream Deck plugin
-        run: |
-          $version = if ("${{ github.ref_name }}".StartsWith("v")) { "${{ github.ref_name }}".TrimStart("v") } else { "dev" }
-          npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
-          Rename-Item "com.iracedeck.sd.core.streamDeckPlugin" "iracedeck-streamdeck-v${version}.streamDeckPlugin"
-          Copy-Item "iracedeck-streamdeck-v${version}.streamDeckPlugin" "iracedeck-streamdeck-latest.streamDeckPlugin"
-        shell: pwsh
+        run: npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: streamdeck-plugin
-          path: iracedeck-streamdeck-*.streamDeckPlugin
+          path: com.iracedeck.sd.core.streamDeckPlugin
 
       - name: Attach plugin to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: iracedeck-streamdeck-*.streamDeckPlugin
+          files: com.iracedeck.sd.core.streamDeckPlugin

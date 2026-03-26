@@ -25,7 +25,7 @@ The easiest way to install iRaceDeck:
 GitHub Releases may have a newer version available before it appears on the Elgato Marketplace. Use this option if you want the latest version or if the Marketplace install doesn't work:
 
 1. Go to the [GitHub Releases page](https://github.com/niklam/iracedeck/releases/)
-2. Find the latest release and download the file named **`iracedeck-vX.X.X.streamDeckPlugin`** (e.g., `iracedeck-v1.0.0.streamDeckPlugin`)
+2. Find the latest release and download **`com.iracedeck.sd.core.streamDeckPlugin`**
 3. Double-click the downloaded `.streamDeckPlugin` file
 4. The Stream Deck software will open and install the plugin automatically
 5. Look for the **iRaceDeck** category in the Stream Deck action list
