@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  checks: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-streamdeck:
+    uses: ./.github/workflows/release-pack.yml
+    secrets: inherit
+  build-mirabox:
+    uses: ./.github/workflows/release-pack-dock.yml
+    secrets: inherit
+  deploy-website:
+    needs: [build-streamdeck, build-mirabox]
+    uses: ./.github/workflows/firebase-hosting-release.yml
+    secrets: inherit
+    with:
+      version: ${{ github.ref_name }}

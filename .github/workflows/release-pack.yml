@@ -2,8 +2,7 @@ name: Release - Build Stream Deck Plugin
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+  workflow_call:
 
 permissions:
   contents: write

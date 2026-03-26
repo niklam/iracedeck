@@ -1,0 +1,31 @@
+---
+title: Download iRaceDeck
+description: Download the latest iRaceDeck plugin for Elgato Stream Deck or Mirabox devices.
+template: splash
+prev: false
+next: false
+hero:
+  title: Download iRaceDeck
+  tagline: Get the latest plugin for your device.
+---
+
+export const version = import.meta.env.PUBLIC_IRACEDECK_VERSION;
+
+{version && <p class="version-badge">Latest release: <strong>{version}</strong></p>}
+
+<div class="download-grid">
+  <div class="download-card">
+    <span class="download-title">Elgato Stream Deck</span>
+    <span class="download-desc">For Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+. Requires Stream Deck software version 7.1 or newer.</span>
+    <a class="download-button" href="/downloads/plugin/latest/streamdeck">Download for Stream Deck</a>
+    <span class="download-alt">Or install from <a href="https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d">Elgato Marketplace</a></span>
+  </div>
+  <div class="download-card">
+    <span class="download-title">Mirabox Ecosystem</span>
+    <span class="download-desc">For Stream Dock, SOOMFON, VAPOURD, KILOGOGRAPH, HALCONTORNO, VSDinside, Nouvolo, and other Mirabox devices.</span>
+    <a class="download-button" href="/downloads/plugin/latest/mirabox">Download for Mirabox</a>
+    <span class="download-alt">Or install from <a href="https://space.key123.vip/product?id=20260322000598">Mirabox Space</a></span>
+  </div>
+</div>
+
+<p class="download-help">After downloading, see the <a href="/docs/getting-started/installation/">installation guide</a> for setup instructions specific to your device.</p>

@@ -2,8 +2,7 @@ name: Release - Build Mirabox Plugin
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+  workflow_call:
 
 permissions:
   contents: write

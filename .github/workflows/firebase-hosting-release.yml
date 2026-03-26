@@ -1,8 +1,17 @@
 name: Deploy to Firebase Hosting on release
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+    inputs:
+      version:
+        description: "Release version tag (e.g., v1.7.0) — optional for manual runs"
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version tag (e.g., v1.7.0)"
+        required: true
+        type: string
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
@@ -18,7 +27,10 @@ jobs:
 
       - run: pnpm install
 
-      - run: pnpm --filter @iracedeck/website build
+      - name: Build website
+        run: pnpm --filter @iracedeck/website build
+        env:
+          PUBLIC_IRACEDECK_VERSION: ${{ inputs.version || '' }}
 
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:

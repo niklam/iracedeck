@@ -74,6 +74,7 @@ export default defineConfig({
         },
       ],
       sidebar: [
+        { label: "Downloads", link: "/downloads/" },
         { label: "Home", link: "/docs/" },
         {
           label: "Getting Started",
