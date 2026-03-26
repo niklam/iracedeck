@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.8.0](https://github.com/niklam/iracedeck/compare/v1.7.0...v1.8.0) (2026-03-26)
+
+### Features
+
+* **ci:** add release orchestrator workflow ([0b3b9f3](https://github.com/niklam/iracedeck/commit/0b3b9f39b036b0541b5ee2a1d28ee4d548b7f42c))
+* **website:** add downloads page with version badge ([354a87f](https://github.com/niklam/iracedeck/commit/354a87fa405549d2e59c8b35198afe34eb6e9223))
+* **website:** add Firebase redirects for download URLs ([270387b](https://github.com/niklam/iracedeck/commit/270387b4dad00a1b722bc7133f0c7555bb26e1df))
+* **website:** replace GitHub hero button with download link ([4e8cb68](https://github.com/niklam/iracedeck/commit/4e8cb6815e722e0336f3370d6434963e78f891f5))
+
+### Bug Fixes
+
+* **actions:** add enter-exit-tow to hold controls for long-press support ([6933b34](https://github.com/niklam/iracedeck/commit/6933b3404a46b04bdc6d5fba82c6591a5cbdf17f)), closes [#187](https://github.com/niklam/iracedeck/issues/187)
+* **ci:** add required permissions and tighten workflow inputs ([0724030](https://github.com/niklam/iracedeck/commit/07240305cca6c2bd0d1dad4a26e484fdfc9eac0d))
+* **website:** correct download help text and workflow formatting ([f0c8a10](https://github.com/niklam/iracedeck/commit/f0c8a10fd5b9373e4a418db4edca671ef7a8e320))
+
+### Documentation
+
+* add download URLs design spec ([4b4577b](https://github.com/niklam/iracedeck/commit/4b4577bbf1fe49d992c41f30e75db3a6ea6842d4))
+* add download URLs implementation plan ([625f513](https://github.com/niklam/iracedeck/commit/625f5132579d20dd24037c50c2a75098bb0039a1))
+* address spec review feedback ([c834004](https://github.com/niklam/iracedeck/commit/c8340047bdfbea18dd3bee5516deacf4dc5c7b83))
+* update README with current architecture and add CodeRabbit badge ([82d3eb1](https://github.com/niklam/iracedeck/commit/82d3eb19cdc9ff5a1b4313626fe47bd8bc5ddf66))
+* **website:** add direct download option to installation guide ([de453c0](https://github.com/niklam/iracedeck/commit/de453c0e11b4cf135b12c157c18959a803a1a727))
+* **website:** replace PayPal with Buy Me A Coffee and add device links ([c2dbb53](https://github.com/niklam/iracedeck/commit/c2dbb530da8a5634cdb44c844e522c02dcd3c475))
+
+### Maintenance
+
+* **ci:** rename release workflow files for clarity ([c522b27](https://github.com/niklam/iracedeck/commit/c522b27024bf3c04417122f830e4bffb8ca14522)), closes [#199](https://github.com/niklam/iracedeck/issues/199)
+* **ci:** switch child workflows to workflow_call triggers ([638f572](https://github.com/niklam/iracedeck/commit/638f572a489ad655832361a4adbd9546a756a985))
+* **ci:** use stable filenames for release assets ([4a770a7](https://github.com/niklam/iracedeck/commit/4a770a7ea8c2aec73639316b36fd524b52ea1fff)), closes [#195](https://github.com/niklam/iracedeck/issues/195)
+
 ## [1.7.0](https://github.com/niklam/iracedeck/compare/v1.6.0...v1.7.0) (2026-03-24)
 
 ### Features
