@@ -33,7 +33,7 @@ jobs:
         run: npx @elgato/cli@latest pack packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: streamdeck-plugin
           path: com.iracedeck.sd.core.streamDeckPlugin
