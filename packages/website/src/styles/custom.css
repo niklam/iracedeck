@@ -285,3 +285,84 @@ starlight-theme-select label select {
   font-size: 0.8rem;
   margin: 0.25rem 0;
 }
+
+/* ── Downloads page ── */
+
+.version-badge {
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--sl-color-gray-2);
+  margin-bottom: 2rem;
+}
+
+.download-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+@media (max-width: 600px) {
+  .download-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.download-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1.5rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  text-align: center;
+}
+
+.download-title {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  margin-bottom: 0.75rem;
+}
+
+.download-desc {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-2);
+  line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+
+[data-theme="light"] .download-desc {
+  color: var(--sl-color-gray-3);
+}
+
+.download-button {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: var(--sl-color-accent);
+  color: var(--sl-color-white) !important;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: opacity 0.2s;
+  margin-bottom: 1rem;
+}
+
+.download-button:hover {
+  opacity: 0.85;
+}
+
+.download-alt {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+}
+
+.download-help {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sl-color-gray-3);
+  margin-top: 2rem;
+}
