@@ -36,8 +36,11 @@ SimHub Control Mapper lets you map physical controller inputs (buttons, switches
 
 1. Install [SimHub](https://www.simhubdash.com/) if you haven't already
 2. Enable the **Control Mapper** plugin in SimHub (Add/Remove Features)
-3. Configure your roles in the Control Mapper settings — see the [Control Mapper wiki](https://github.com/SHWotever/SimHub/wiki/Control-Mapper-plugin) for detailed setup instructions
-4. In iRaceDeck, switch any key binding to SimHub mode and select the role from the autocomplete dropdown
+3. **Set up a virtual controller** — Control Mapper needs a virtual or physical game controller to map roles to. You have two options:
+   - **Software**: Install [vJoy](https://sourceforge.net/projects/vjoystick/) (free) — it creates a virtual joystick that SimHub can use
+   - **Hardware**: Connect an **Arduino Pro Micro** or **Arduino Leonardo** — these appear as native USB game controllers and work out of the box with SimHub
+4. Configure your roles in the Control Mapper settings — see the [Control Mapper wiki](https://github.com/SHWotever/SimHub/wiki/Control-Mapper-plugin) for detailed setup instructions
+5. In iRaceDeck, switch any key binding to SimHub mode and select the role from the autocomplete dropdown
 
 ### SimHub connection settings
 
