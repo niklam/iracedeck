@@ -8,7 +8,7 @@ PI components (browser-side web components for Property Inspector) live in `src/
 
 ## Adding a New Action
 
-Every action requires **6 new files** and **4 modified files**. Use `splits-delta-cycle` as the reference pattern for simple actions with global key bindings.
+Each action requires a set of new and modified files. Use `splits-delta-cycle` as the reference pattern for simple actions with global key bindings.
 
 ### Files to create
 
