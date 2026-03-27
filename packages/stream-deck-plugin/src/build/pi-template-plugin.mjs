@@ -177,6 +177,8 @@ export function piTemplatePlugin(options) {
         try {
           const templateContent = readFileSync(templatePath, "utf-8");
           const templateDir = path.dirname(templatePath);
+          const templateName = path.basename(templatePath, ".ejs");
+          const docsUrl = dataFiles["docs-urls"]?.[templateName] || "";
 
           // Compile the template
           const html = ejs.render(templateContent, {
@@ -184,12 +186,15 @@ export function piTemplatePlugin(options) {
             data: dataFiles,
             // Plugin version from manifest.json (trimmed)
             version: version || "unknown",
+            // Documentation URL for this action (empty string if not mapped)
+            docsUrl,
             // Also expose a require function for inline requires
             require: createTemplateRequire(templateDir),
             // Expose locals for checking if variables are defined
             locals: {
               data: dataFiles,
               version: version || "unknown",
+              docsUrl,
             },
           }, {
             // Search directories for includes
