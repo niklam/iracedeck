@@ -14,12 +14,16 @@ import {
   resolveIconColors,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import enterCarIcon from "@iracedeck/icons/car-control/enter-car.svg";
 import enterExitTowIcon from "@iracedeck/icons/car-control/enter-exit-tow.svg";
+import exitCarIcon from "@iracedeck/icons/car-control/exit-car.svg";
 import headlightFlashIcon from "@iracedeck/icons/car-control/headlight-flash.svg";
 import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
 import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
+import resetToPitsIcon from "@iracedeck/icons/car-control/reset-to-pits.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
+import towIcon from "@iracedeck/icons/car-control/tow.svg";
 import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -57,13 +61,35 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
   "tear-off-visor": { line1: "TEAR OFF", line2: "VISOR" },
 };
 
+/** @internal Exported for testing */
+export type EnterExitTowState = "enter-car" | "exit-car" | "reset-to-pits" | "tow";
+
+const ENTER_EXIT_TOW_ICONS: Record<EnterExitTowState, string> = {
+  "enter-car": enterCarIcon,
+  "exit-car": exitCarIcon,
+  "reset-to-pits": resetToPitsIcon,
+  tow: towIcon,
+};
+
+const ENTER_EXIT_TOW_LABELS: Record<EnterExitTowState, { line1: string; line2: string }> = {
+  "enter-car": { line1: "ENTER", line2: "" },
+  "exit-car": { line1: "EXIT", line2: "" },
+  "reset-to-pits": { line1: "RESET", line2: "" },
+  tow: { line1: "TOW", line2: "" },
+};
+
 const DEFAULT_PIT_SPEED = 80;
 
 /**
  * Controls that use telemetry-driven dynamic icons.
  * Keep in sync with getTelemetryState() and buildStateKey().
  */
-const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>(["pit-speed-limiter", "push-to-pass", "drs"]);
+const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>([
+  "pit-speed-limiter",
+  "push-to-pass",
+  "drs",
+  "enter-exit-tow",
+]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
 const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash", "enter-exit-tow"]);
@@ -204,6 +230,39 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
 /**
  * @internal Exported for testing
  *
+ * Determines the Enter/Exit/Tow state based on telemetry and session info.
+ * Priority order: enter-car → exit-car → reset-to-pits/tow (based on session type).
+ */
+export function getEnterExitTowState(
+  telemetry: TelemetryData | null,
+  sessionInfo: Record<string, unknown> | null,
+): EnterExitTowState {
+  if (!telemetry || !telemetry.IsOnTrack) {
+    return "enter-car";
+  }
+
+  if (telemetry.PlayerCarInPitStall) {
+    return "exit-car";
+  }
+
+  // On track, not in pit stall — check session type
+  const sessionNum = telemetry.SessionNum ?? 0;
+  const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
+  const sessionType = currentSession?.SessionType as string | undefined;
+
+  if (sessionType === "Race") {
+    return "tow";
+  }
+
+  return "reset-to-pits";
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Check if pit speed limiter is active from telemetry.
  */
 export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
@@ -244,6 +303,7 @@ export type CarControlTelemetryState = {
   pitSpeedLimit?: number;
   pushToPassActive?: boolean;
   drsActive?: boolean;
+  enterExitTowState?: EnterExitTowState;
 };
 
 const CarControlSettings = CommonSettings.extend({
@@ -296,6 +356,22 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
         : drsIcon(telemetryState?.drsActive ?? false, graphic1);
 
     return renderDynamicIcon(settings, iconContent, false);
+  }
+
+  // Enter/Exit/Tow uses state-specific standalone SVGs
+  if (control === "enter-exit-tow") {
+    const towState = telemetryState?.enterExitTowState ?? "enter-car";
+    const iconSvg = ENTER_EXIT_TOW_ICONS[towState];
+    const labels = ENTER_EXIT_TOW_LABELS[towState];
+
+    const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+    const svg = renderIconTemplate(iconSvg, {
+      mainLabel: labels.line1,
+      subLabel: labels.line2,
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
   }
 
   // Static modes use standalone SVGs from @iracedeck/icons
@@ -429,6 +505,9 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       state.pushToPassActive = isPushToPassActive(telemetry);
     } else if (control === "drs") {
       state.drsActive = isDrsActive(telemetry);
+    } else if (control === "enter-exit-tow") {
+      const sessionInfo = this.sdkController.getSessionInfo();
+      state.enterExitTowState = getEnterExitTowState(telemetry, sessionInfo);
     }
 
     return state;
@@ -467,6 +546,10 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     if (settings.control === "drs") {
       return `drs|${telemetryState.drsActive ?? false}`;
+    }
+
+    if (settings.control === "enter-exit-tow") {
+      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}`;
     }
 
     return settings.control;
