@@ -1,0 +1,32 @@
+changelog:
+  exclude:
+    authors:
+      - dependabot
+      - dependabot[bot]
+    labels:
+      - dependencies
+  categories:
+    - title: Features
+      labels:
+        - "type: feature"
+    - title: Bug Fixes
+      labels:
+        - "type: bug"
+    - title: Performance
+      labels:
+        - "type: performance"
+    - title: Refactoring
+      labels:
+        - "type: refactor"
+    - title: Documentation
+      labels:
+        - "type: docs"
+    - title: CI/CD
+      labels:
+        - "type: ci"
+    - title: Maintenance
+      labels:
+        - "type: chore"
+    - title: Other Changes
+      labels:
+        - "*"

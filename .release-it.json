@@ -11,26 +11,10 @@
   },
   "github": {
     "release": true,
-    "releaseName": "v${version}"
+    "releaseName": "v${version}",
+    "autoGenerate": true
   },
   "hooks": {
     "before:bump": "node scripts/release-hooks.mjs ${version}"
-  },
-  "plugins": {
-    "@release-it/conventional-changelog": {
-      "preset": {
-        "name": "conventionalcommits",
-        "types": [
-          { "type": "feat", "section": "Features" },
-          { "type": "fix", "section": "Bug Fixes" },
-          { "type": "perf", "section": "Performance" },
-          { "type": "refactor", "section": "Refactoring" },
-          { "type": "docs", "section": "Documentation" },
-          { "type": "ci", "section": "CI/CD" },
-          { "type": "chore", "section": "Maintenance" }
-        ]
-      },
-      "infile": "CHANGELOG.md"
-    }
   }
 }

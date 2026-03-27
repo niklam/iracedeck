@@ -1,0 +1,37 @@
+name: PR Labeler
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply type label based on PR title
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          LABEL=""
+
+          case "$PR_TITLE" in
+            feat\(*|feat:*) LABEL="type: feature" ;;
+            fix\(*|fix:*)   LABEL="type: bug" ;;
+            perf\(*|perf:*) LABEL="type: performance" ;;
+            refactor\(*|refactor:*) LABEL="type: refactor" ;;
+            docs\(*|docs:*) LABEL="type: docs" ;;
+            ci\(*|ci:*)     LABEL="type: ci" ;;
+            chore\(*|chore:*) LABEL="type: chore" ;;
+          esac
+
+          if [ -n "$LABEL" ]; then
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "$LABEL"
+            echo "Applied label: $LABEL"
+          else
+            echo "No matching prefix found in title: $PR_TITLE"
+          fi

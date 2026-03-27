@@ -130,7 +130,27 @@ Pull Requests
 - Build, test, and lint checks are handled by CI — they are not in the PR checklist.
 - **Before creating a PR**, run the code-review agent (via the `code-review` skill or `code-reviewer` agent) to review all changes on the branch. Address any issues found before opening the PR.
 
+### PR Labels
+
+PR labels are used to categorize entries in GitHub's auto-generated release notes. A `pr-labeler` workflow automatically applies `type:` labels based on the conventional commit prefix in the PR title:
+
+| PR title prefix | Label applied |
+|-----------------|---------------|
+| `feat(` / `feat:` | `type: feature` |
+| `fix(` / `fix:` | `type: bug` |
+| `perf(` / `perf:` | `type: performance` |
+| `refactor(` / `refactor:` | `type: refactor` |
+| `docs(` / `docs:` | `type: docs` |
+| `ci(` / `ci:` | `type: ci` |
+| `chore(` / `chore:` | `type: chore` |
+
+The labeler runs when a PR is opened or its title is edited. If you change the PR title prefix, the new label is added (but the old one is not removed — remove it manually if needed).
+
+Release notes categories are configured in `.github/release.yml`.
+
 Issues
+
+Issue templates automatically apply labels (`bug`, `enhancement`). These are separate from the `type:` labels used on PRs for release notes categorization — do not manually add `type:` labels to issues.
 
 When creating issues, always include requirements for updating all affected artifacts beyond the code itself. If the change affects actions, features, or behavior described in any of these, the issue must list them:
 
@@ -145,6 +165,7 @@ Merging
 - PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
 - Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
 - **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`. Example: `feat(actions): add Camera Focus action (#42)`.
+- **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.
 - Merging is performed manually or by automation — never by a Claude review step.
 
 ### Post-merge worktree cleanup
