@@ -51,7 +51,7 @@ const UNIT_DISPLAY: Record<FuelUnit, string> = {
  * Uses inverted layout: line1 = bold/bottom (primary), line2 = subdued/top (secondary).
  * Fuel macro modes (add-fuel, reduce-fuel, set-fuel-amount) use dynamic labels computed in getFuelServiceLabels().
  */
-const FUEL_SERVICE_LABELS: Record<FuelServiceMode, { line1: string; line2: string }> = {
+const FUEL_SERVICE_LABELS: Partial<Record<FuelServiceMode, { line1: string; line2: string }>> = {
   "add-fuel": { line1: "+1 L", line2: "ADD FUEL" },
   "reduce-fuel": { line1: "-1 L", line2: "REDUCE FUEL" },
   "set-fuel-amount": { line1: "1 L", line2: "SET FUEL" },
@@ -59,7 +59,6 @@ const FUEL_SERVICE_LABELS: Record<FuelServiceMode, { line1: string; line2: strin
   "toggle-autofuel": { line1: "TOGGLE", line2: "AUTOFUEL" },
   "lap-margin-increase": { line1: "INCREASE", line2: "LAP MARGIN" },
   "lap-margin-decrease": { line1: "DECREASE", line2: "LAP MARGIN" },
-  "toggle-fuel-fill": { line1: "FUEL", line2: "FILL" },
 };
 
 /**
@@ -233,7 +232,7 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
     case "set-fuel-amount":
       return { line1: `${rounded} ${unitLabel}`, line2: "SET FUEL" };
     default:
-      return FUEL_SERVICE_LABELS[mode] || FUEL_SERVICE_LABELS["add-fuel"];
+      return FUEL_SERVICE_LABELS[mode] ?? FUEL_SERVICE_LABELS["add-fuel"]!;
   }
 }
 
@@ -311,10 +310,10 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<FuelServiceSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
-    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<FuelServiceSettings>): Promise<void> {
@@ -436,7 +435,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     }
 
     const pit = getCommands().pit;
-    const isSet = hasFlag(telemetry.PitSvFlags, PitSvFlags.FuelFill);
+    const isSet = isFuelFillOn(telemetry);
     const success = isSet ? pit.clearFuel() : pit.fuel(0);
     this.logger.info("Fuel fill toggled");
     this.logger.debug(`Action: ${isSet ? "cleared" : "requested"}, result: ${success}`);

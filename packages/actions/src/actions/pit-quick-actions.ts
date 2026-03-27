@@ -13,8 +13,6 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import clearAllCheckboxesIconSvg from "@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg";
-import requestFastRepairIconSvg from "@iracedeck/icons/pit-quick-actions/request-fast-repair.svg";
-import windshieldTearoffIconSvg from "@iracedeck/icons/pit-quick-actions/windshield-tearoff.svg";
 import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -26,10 +24,12 @@ type PitQuickActionType = "clear-all-checkboxes" | "windshield-tearoff" | "reque
 /**
  * Standalone SVG templates for static pit quick action modes (imported from @iracedeck/icons)
  */
-const STATIC_ACTION_ICONS: Record<PitQuickActionType, string> = {
+/**
+ * Standalone SVG templates for static pit quick action modes (imported from @iracedeck/icons).
+ * Telemetry-aware modes (windshield-tearoff, request-fast-repair) use the dynamic template instead.
+ */
+const STATIC_ACTION_ICONS: Partial<Record<PitQuickActionType, string>> = {
   "clear-all-checkboxes": clearAllCheckboxesIconSvg,
-  "windshield-tearoff": windshieldTearoffIconSvg,
-  "request-fast-repair": requestFastRepairIconSvg,
 };
 
 /**
@@ -139,7 +139,7 @@ export function generatePitQuickActionsSvg(
 
   // Static mode: clear-all-checkboxes (no telemetry)
   if (!TELEMETRY_AWARE_ACTIONS.has(actionType)) {
-    const iconSvg = STATIC_ACTION_ICONS[actionType] || STATIC_ACTION_ICONS["clear-all-checkboxes"];
+    const iconSvg = STATIC_ACTION_ICONS[actionType] ?? STATIC_ACTION_ICONS["clear-all-checkboxes"]!;
     const labels = PIT_QUICK_ACTION_LABELS[actionType] || PIT_QUICK_ACTION_LABELS["clear-all-checkboxes"];
     const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
     const svg = renderIconTemplate(iconSvg, {
@@ -194,10 +194,10 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<PitQuickActionsSettings>): Promise<void> {
+    await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
-    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<PitQuickActionsSettings>): Promise<void> {
@@ -244,7 +244,7 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
           break;
         }
 
-        const isSet = hasFlag(telemetry.PitSvFlags, PitSvFlags.WindshieldTearoff);
+        const isSet = isWindshieldOn(telemetry);
         const success = isSet ? pit.clearWindshield() : pit.windshield();
         this.logger.info("Windshield tearoff toggled");
         this.logger.debug(`Action: ${isSet ? "cleared" : "requested"}, result: ${success}`);
@@ -258,7 +258,7 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
           break;
         }
 
-        const isSet = hasFlag(telemetry.PitSvFlags, PitSvFlags.FastRepair);
+        const isSet = isFastRepairOn(telemetry);
         const success = isSet ? pit.clearFastRepair() : pit.fastRepair();
         this.logger.info("Fast repair toggled");
         this.logger.debug(`Action: ${isSet ? "cleared" : "requested"}, result: ${success}`);

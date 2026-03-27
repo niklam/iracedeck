@@ -118,8 +118,6 @@ export function pitLimiterInactiveIcon(speed: number): string {
           fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
 }
 
-export { statusBarOff, statusBarOn };
-
 /**
  * @internal Exported for testing
  *

@@ -41,12 +41,6 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 vi.mock("@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/pit-quick-actions/windshield-tearoff.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
-vi.mock("@iracedeck/icons/pit-quick-actions/request-fast-repair.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
-}));
 
 vi.mock("../../icons/pit-quick-actions.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{iconContent}} {{backgroundColor}}</svg>',
