@@ -1,11 +1,13 @@
-# Enter / Exit / Tow Car — Cockpit Misc Mode
+# Enter / Exit / Tow Car — Design Spec
+
+> **Superseded:** This spec was originally designed for a Cockpit Misc mode. During implementation, the feature was moved to the `CarControl` action in `car-control.ts`. Key differences: global key is `carControlEnterExitTow` (not `cockpitMiscEnterExitTow`), icons live in `packages/icons/car-control/` (not `cockpit-misc/`), and the type is `EnterExitTowState` exported from `car-control.ts`.
 
 **Issue**: #193
 **Date**: 2026-03-27
 
 ## Overview
 
-Add a context-aware "Enter / Exit / Tow Car" mode to the existing Cockpit Misc action. The mode dynamically updates its icon based on telemetry state while always sending the same key binding (default Shift+R).
+Add a context-aware "Enter / Exit / Tow Car" control to the Car Control action. The control dynamically updates its icon based on telemetry state while always sending the same key binding (default Shift+R).
 
 ## Context States
 
