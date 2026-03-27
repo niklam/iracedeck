@@ -8,8 +8,10 @@ import {
   getEnterExitTowState,
 } from "./cockpit-misc.js";
 
-const { mockTapBinding } = vi.hoisted(() => ({
+const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
+  mockHoldBinding: vi.fn().mockResolvedValue(undefined),
+  mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@iracedeck/icons/cockpit-misc/toggle-wipers.svg", () => ({
@@ -71,14 +73,19 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: vi.fn(),
+      getSessionInfo: vi.fn(() => null),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn().mockResolvedValue(true);
     tapBinding = mockTapBinding;
-    holdBinding = vi.fn().mockResolvedValue(undefined);
-    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    holdBinding = mockHoldBinding;
+    releaseBinding = mockReleaseBinding;
     setActiveBinding = vi.fn();
     async onWillAppear() {}
     async onDidReceiveSettings() {}
@@ -584,6 +591,103 @@ describe("CockpitMisc", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "report-latency" }) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscReportLatency");
+    });
+  });
+
+  describe("enter-exit-tow telemetry subscription", () => {
+    let action: CockpitMisc;
+
+    beforeEach(() => {
+      action = new CockpitMisc();
+    });
+
+    it("should subscribe to telemetry on willAppear for enter-exit-tow", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(action.sdkController.subscribe).toHaveBeenCalledWith("action-1", expect.any(Function));
+    });
+
+    it("should not subscribe to telemetry for non-enter-exit-tow controls", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+
+      expect(action.sdkController.subscribe).not.toHaveBeenCalled();
+    });
+
+    it("should unsubscribe on willDisappear when subscribed", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(action.sdkController.unsubscribe).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should not unsubscribe on willDisappear for non-enter-exit-tow controls", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+
+      expect(action.sdkController.unsubscribe).not.toHaveBeenCalled();
+    });
+
+    it("should subscribe when switching to enter-exit-tow via settings change", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+      await action.onDidReceiveSettings(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(action.sdkController.subscribe).toHaveBeenCalledWith("action-1", expect.any(Function));
+    });
+
+    it("should unsubscribe when switching away from enter-exit-tow via settings change", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+      await action.onDidReceiveSettings(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+
+      expect(action.sdkController.unsubscribe).toHaveBeenCalledWith("action-1");
+    });
+  });
+
+  describe("enter-exit-tow hold/release behavior", () => {
+    let action: CockpitMisc;
+
+    beforeEach(() => {
+      action = new CockpitMisc();
+    });
+
+    it("should use holdBinding on keyDown for enter-exit-tow", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "cockpitMiscEnterExitTow");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("should use releaseBinding on keyUp for enter-exit-tow", async () => {
+      await action.onKeyUp(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should still use tapBinding on keyDown for non-enter-exit-tow controls", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "toggle-wipers" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscToggleWipers");
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should release binding on willDisappear for enter-exit-tow", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should ignore dial rotation for enter-exit-tow", async () => {
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { control: "enter-exit-tow" }, 1) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should use holdBinding on dialDown for enter-exit-tow", async () => {
+      await action.onDialDown(fakeEvent("action-1", { control: "enter-exit-tow" }) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "cockpitMiscEnterExitTow");
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 

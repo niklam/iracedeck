@@ -6,7 +6,9 @@ import {
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -237,6 +239,10 @@ export function generateCockpitMiscSvg(settings: CockpitMiscSettings): string {
 export const COCKPIT_MISC_UUID = "com.iracedeck.sd.core.cockpit-misc" as const;
 
 export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings> {
+  private subscribedContexts = new Set<string>();
+  private activeContextSettings = new Map<string, CockpitMiscSettings>();
+  private lastTelemetryState = new Map<string, EnterExitTowState>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CockpitMiscSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -244,6 +250,12 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
 
     if (activeKey) {
       this.setActiveBinding(activeKey);
+    }
+
+    this.activeContextSettings.set(ev.action.id, settings);
+
+    if (settings.control === "enter-exit-tow") {
+      this.subscribeToTelemetry(ev.action.id);
     }
 
     await this.updateDisplay(ev, settings);
@@ -258,18 +270,51 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
       this.setActiveBinding(activeKey);
     }
 
+    this.activeContextSettings.set(ev.action.id, settings);
+
+    // Manage subscription transitions
+    if (settings.control === "enter-exit-tow" && !this.subscribedContexts.has(ev.action.id)) {
+      this.subscribeToTelemetry(ev.action.id);
+    } else if (settings.control !== "enter-exit-tow" && this.subscribedContexts.has(ev.action.id)) {
+      this.unsubscribeFromTelemetry(ev.action.id);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<CockpitMiscSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "enter-exit-tow") {
+      const settingKey = COCKPIT_MISC_GLOBAL_KEYS["enter-exit-tow"];
+      await this.holdBinding(ev.action.id, settingKey);
+
+      return;
+    }
+
     await this.executeControl(settings.control, settings.direction);
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<CockpitMiscSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "enter-exit-tow") {
+      await this.releaseBinding(ev.action.id);
+    }
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<CockpitMiscSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "enter-exit-tow") {
+      const settingKey = COCKPIT_MISC_GLOBAL_KEYS["enter-exit-tow"];
+      await this.holdBinding(ev.action.id, settingKey);
+
+      return;
+    }
+
     await this.executeControl(settings.control, settings.direction);
   }
 
@@ -287,6 +332,20 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
     await this.executeControl(settings.control, direction);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<CockpitMiscSettings>): Promise<void> {
+    const contextId = ev.action.id;
+
+    if (this.subscribedContexts.has(contextId)) {
+      await this.releaseBinding(contextId);
+      this.unsubscribeFromTelemetry(contextId);
+    }
+
+    this.activeContextSettings.delete(contextId);
+    this.lastTelemetryState.delete(contextId);
+
+    await super.onWillDisappear(ev);
   }
 
   private parseSettings(settings: unknown): CockpitMiscSettings {
@@ -321,9 +380,68 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     ev: IDeckWillAppearEvent<CockpitMiscSettings> | IDeckDidReceiveSettingsEvent<CockpitMiscSettings>,
     settings: CockpitMiscSettings,
   ): Promise<void> {
+    if (settings.control === "enter-exit-tow") {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      const sessionInfo = this.sdkController.getSessionInfo();
+      const state = getEnterExitTowState(telemetry, sessionInfo);
+      this.lastTelemetryState.set(ev.action.id, state);
+
+      const svgDataUri = generateEnterExitTowSvg(state, settings.colorOverrides);
+      await ev.action.setTitle("");
+      await this.setKeyImage(ev, svgDataUri);
+      this.setRegenerateCallback(ev.action.id, () => {
+        const currentTelemetry = this.sdkController.getCurrentTelemetry();
+        const currentSessionInfo = this.sdkController.getSessionInfo();
+        const currentState = getEnterExitTowState(currentTelemetry, currentSessionInfo);
+
+        return generateEnterExitTowSvg(currentState, settings.colorOverrides);
+      });
+
+      return;
+    }
+
     const svgDataUri = generateCockpitMiscSvg(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => generateCockpitMiscSvg(settings));
+  }
+
+  private subscribeToTelemetry(contextId: string): void {
+    this.subscribedContexts.add(contextId);
+    this.sdkController.subscribe(contextId, (telemetry: TelemetryData | null) => {
+      void this.updateDisplayFromTelemetry(contextId, telemetry);
+    });
+  }
+
+  private unsubscribeFromTelemetry(contextId: string): void {
+    this.subscribedContexts.delete(contextId);
+    this.sdkController.unsubscribe(contextId);
+    this.lastTelemetryState.delete(contextId);
+  }
+
+  private async updateDisplayFromTelemetry(contextId: string, telemetry: TelemetryData | null): Promise<void> {
+    const settings = this.activeContextSettings.get(contextId);
+
+    if (!settings || settings.control !== "enter-exit-tow") return;
+
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const state = getEnterExitTowState(telemetry, sessionInfo);
+    const lastState = this.lastTelemetryState.get(contextId);
+
+    if (state === lastState) return;
+
+    this.lastTelemetryState.set(contextId, state);
+    this.logger.info("Enter/Exit/Tow state changed");
+    this.logger.debug(`New state: ${state}`);
+
+    const svgDataUri = generateEnterExitTowSvg(state, settings.colorOverrides);
+    await this.updateKeyImage(contextId, svgDataUri);
+    this.setRegenerateCallback(contextId, () => {
+      const currentTelemetry = this.sdkController.getCurrentTelemetry();
+      const currentSessionInfo = this.sdkController.getSessionInfo();
+      const currentState = getEnterExitTowState(currentTelemetry, currentSessionInfo);
+
+      return generateEnterExitTowSvg(currentState, settings.colorOverrides);
+    });
   }
 }
