@@ -1,16 +1,20 @@
 # Enter / Exit / Tow Car — Implementation Plan
 
+> **Superseded:** This plan was originally written for a Cockpit Misc mode. During implementation, the feature was moved to the `CarControl` action class in `packages/actions/src/actions/car-control.ts`. References to `CockpitMisc`, `cockpit-misc.ts`, `cockpitMiscEnterExitTow`, and `packages/icons/cockpit-misc/` below are outdated — the actual implementation uses `CarControl`, `car-control.ts`, `carControlEnterExitTow`, and `packages/icons/car-control/`. See the design spec for the original rationale.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a context-aware "Enter / Exit / Tow Car" mode to the Cockpit Misc action that dynamically updates its icon based on telemetry state.
+**Goal:** Add a context-aware "Enter / Exit / Tow Car" mode to the Car Control action that dynamically updates its icon based on telemetry state.
 
-**Architecture:** New mode added to the existing `CockpitMisc` action class. A pure `getEnterExitTowState()` function determines which of 4 states applies based on `IsOnTrack`, `PlayerCarInPitStall`, and session type from `SessionInfo`. The action conditionally subscribes to telemetry only when this mode is selected, caches state per context to avoid unnecessary redraws, and uses `holdBinding`/`releaseBinding` for the long-press pattern.
+**Architecture:** New mode added to the `CarControl` action class. A pure `getEnterExitTowState()` function determines which of 4 states applies based on `IsOnTrack`, `PlayerCarInPitStall`, and session type from `SessionInfo`. The action conditionally subscribes to telemetry only when this mode is selected, caches state per context to avoid unnecessary redraws, and uses `holdBinding`/`releaseBinding` for the long-press pattern.
 
 **Tech Stack:** TypeScript, Vitest, SVG (Mustache templates), EJS (PI templates)
 
 **Spec:** `docs/superpowers/specs/2026-03-27-enter-exit-tow-design.md`
 
 ---
+
+## Tasks
 
 ### Task 1: Create the 4 icon SVGs
 

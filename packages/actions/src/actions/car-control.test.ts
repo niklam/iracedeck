@@ -4,6 +4,7 @@ import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
   generateCarControlSvg,
+  getEnterExitTowState,
   getPitSpeedLimit,
   isPitLimiterActive,
   parsePitSpeedLimit,
@@ -30,6 +31,18 @@ vi.mock("@iracedeck/icons/car-control/enter-exit-tow.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/pause-sim.svg", () => ({
   default: "<svg>pause-sim-icon</svg>",
 }));
+vi.mock("@iracedeck/icons/car-control/enter-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">enter-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/exit-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">exit-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/reset-to-pits.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">reset-to-pits {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/tow.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tow {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
@@ -52,7 +65,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: vi.fn(),
+      getSessionInfo: vi.fn(() => null),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -92,8 +110,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     stopRole: vi.fn().mockResolvedValue(true),
   })),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    return `<svg>${template}${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -177,7 +195,7 @@ describe("CarControl", () => {
         starter: { line1: "START", line2: "ENGINE" },
         ignition: { line1: "IGNITION", line2: "ON/OFF" },
         "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
-        "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
+        "enter-exit-tow": { line1: "DRIVE", line2: "" },
         "pause-sim": { line1: "PAUSE", line2: "SIM" },
       };
 
@@ -497,6 +515,127 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+    });
+  });
+
+  describe("getEnterExitTowState", () => {
+    it("should return enter-car when telemetry is null", () => {
+      expect(getEnterExitTowState(null, null)).toBe("enter-car");
+    });
+
+    it("should return enter-car when IsOnTrack is false", () => {
+      expect(getEnterExitTowState({ IsOnTrack: false } as any, null)).toBe("enter-car");
+    });
+
+    it("should return enter-car when IsOnTrack is undefined", () => {
+      expect(getEnterExitTowState({} as any, null)).toBe("enter-car");
+    });
+
+    it("should return exit-car when on track and in pit stall", () => {
+      expect(getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: true, SessionNum: 0 } as any, null)).toBe(
+        "exit-car",
+      );
+    });
+
+    it("should return reset-to-pits when on track, not in pit stall, non-Race session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Practice" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+
+    it("should return tow when on track, not in pit stall, Race session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Race" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("tow");
+    });
+
+    it("should return reset-to-pits when session info is null", () => {
+      expect(getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, null)).toBe(
+        "reset-to-pits",
+      );
+    });
+
+    it("should return reset-to-pits when session number does not match any session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Race" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 5 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+
+    it("should use correct session from multiple sessions based on SessionNum", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [
+            { SessionNum: 0, SessionType: "Practice" },
+            { SessionNum: 1, SessionType: "Qualifying" },
+            { SessionNum: 2, SessionType: "Race" },
+          ],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 2 } as any, sessionInfo),
+      ).toBe("tow");
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+  });
+
+  describe("generateCarControlSvg enter-exit-tow states", () => {
+    it("should generate state-specific icon for enter-exit-tow with enter-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with exit-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("exit-car");
+      expect(decoded).toContain("EXIT");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with reset-to-pits state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("reset-to-pits");
+      expect(decoded).toContain("RESET");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with tow state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("tow");
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should default to enter-car when no telemetry state for enter-exit-tow", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should produce different icons for each enter-exit-tow state", () => {
+      const states = ["enter-car", "exit-car", "reset-to-pits", "tow"] as const;
+      const results = states.map((s) => generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: s }));
+      const unique = new Set(results);
+      expect(unique.size).toBe(4);
     });
   });
 });
