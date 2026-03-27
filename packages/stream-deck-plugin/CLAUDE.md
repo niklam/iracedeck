@@ -8,7 +8,7 @@ PI components (browser-side web components for Property Inspector) live in `src/
 
 ## Adding a New Action
 
-Every action requires **6 new files** and **3 modified files**. Use `splits-delta-cycle` as the reference pattern for simple actions with global key bindings.
+Every action requires **6 new files** and **4 modified files**. Use `splits-delta-cycle` as the reference pattern for simple actions with global key bindings.
 
 ### Files to create
 
@@ -294,6 +294,16 @@ Add a new category with binding entries:
 - `label`: Human-readable name shown in PI
 - `default`: Default key combination (use `""` if no default)
 - `setting`: Flat global setting key — **must match** what the action reads via `getGlobalSettings()`
+
+#### 10. Add documentation URL — `src/pi/data/docs-urls.json`
+
+Add an entry mapping the template name to its documentation page:
+
+```json
+"{action-name}": "https://iracedeck.com/docs/actions/{category}/{action-name}/"
+```
+
+The `{category}` must match the website docs directory (e.g., `driving`, `cockpit`, `pit-service`, `car-setup`, `view-camera`, `communication`, `media`, `display-session`).
 
 ### Watch mode
 
