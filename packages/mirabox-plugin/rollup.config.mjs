@@ -133,6 +133,7 @@ const config = {
 			templatesDir: path.join(elgatoPluginPath, "src/pi"),
 			outputDir: `${sdPlugin}/ui`,
 			partialsDir: path.join(elgatoPluginPath, "src/pi-templates/partials"),
+			manifestPath: `${sdPlugin}/manifest.json`,
 		}),
 		// Copy static assets (imgs/, JS files) from the Elgato plugin
 		copyAssetsPlugin(sdPlugin),
