@@ -5,6 +5,7 @@
  * Used by resolveTemplate() to hydrate {{variable}} placeholders.
  */
 import type { SDKController } from "./SDKController.js";
+import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
 /**
@@ -247,9 +248,8 @@ export function splitDriverName(userName: string): { firstName: string; lastName
 /**
  * @internal Exported for testing
  *
- * Finds the physically closest car on track in a given direction.
- * Uses laps completed + lap distance percentage for track progress.
- * Excludes cars in the pits, pace car, spectators, and inactive cars.
+ * Finds the physically closest driver on track in a given direction.
+ * Delegates to findNearestCarOnTrack with a filter that excludes pace car and spectators.
  */
 export function findNearestDriverOnTrack(
   playerCarIdx: number,
@@ -257,51 +257,22 @@ export function findNearestDriverOnTrack(
   telemetry: TelemetryData | null,
   direction: "ahead" | "behind",
 ): DriverEntry | null {
-  if (!telemetry?.CarIdxLapCompleted || !telemetry?.CarIdxLapDistPct) return null;
-
-  const lapCompleted = telemetry.CarIdxLapCompleted;
-  const lapDistPct = telemetry.CarIdxLapDistPct;
-  const onPitRoad = telemetry.CarIdxOnPitRoad;
-
-  // Build sorted list of active on-track cars by track progress
-  const activeCars: Array<{ carIdx: number; progress: number }> = [];
+  // Build a set of car indices to skip (pace car, spectators)
+  const skipIndices = new Set<number>();
 
   for (const driver of drivers) {
-    const idx = driver.CarIdx;
-
-    // Skip inactive, pace car, spectators, pit road
-    if (lapCompleted[idx] === undefined || lapCompleted[idx] < 0) continue;
-
-    if (driver.CarIsPaceCar === 1 || driver.IsSpectator === 1) continue;
-
-    if (onPitRoad && onPitRoad[idx]) continue;
-
-    const progress = lapCompleted[idx] + (lapDistPct[idx] ?? 0);
-    activeCars.push({ carIdx: idx, progress });
+    if (driver.CarIsPaceCar === 1 || driver.IsSpectator === 1) {
+      skipIndices.add(driver.CarIdx);
+    }
   }
 
-  // Sort by progress descending (highest first = most laps/distance)
-  activeCars.sort((a, b) => b.progress - a.progress);
+  const carIdx = findNearestCarOnTrack(telemetry, playerCarIdx, direction, {
+    skipIdx: (idx) => skipIndices.has(idx),
+  });
 
-  const playerIndex = activeCars.findIndex((c) => c.carIdx === playerCarIdx);
+  if (carIdx === null) return null;
 
-  if (playerIndex === -1) return null;
-
-  if (direction === "ahead") {
-    // Car ahead = higher progress = lower index in sorted array
-    if (playerIndex === 0) return null;
-
-    const aheadCarIdx = activeCars[playerIndex - 1].carIdx;
-
-    return drivers.find((d) => d.CarIdx === aheadCarIdx) ?? null;
-  } else {
-    // Car behind = lower progress = higher index in sorted array
-    if (playerIndex === activeCars.length - 1) return null;
-
-    const behindCarIdx = activeCars[playerIndex + 1].carIdx;
-
-    return drivers.find((d) => d.CarIdx === behindCarIdx) ?? null;
-  }
+  return drivers.find((d) => d.CarIdx === carIdx) ?? null;
 }
 
 /**

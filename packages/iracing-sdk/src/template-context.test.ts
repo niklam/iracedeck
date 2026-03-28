@@ -117,7 +117,6 @@ describe("findNearestDriverOnTrack", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [4, 5, 3],
       CarIdxLapDistPct: [0.5, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
     const result = findNearestDriverOnTrack(0, drivers, telemetry, "ahead");
@@ -129,7 +128,6 @@ describe("findNearestDriverOnTrack", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [4, 5, 3],
       CarIdxLapDistPct: [0.5, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
     const result = findNearestDriverOnTrack(0, drivers, telemetry, "behind");
@@ -137,40 +135,41 @@ describe("findNearestDriverOnTrack", () => {
     expect(result?.UserName).toBe("Behind Car");
   });
 
-  it("should return null when leading on track", () => {
+  it("should wrap around when leading on track", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [10, 5, 3],
       CarIdxLapDistPct: [0.9, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
+    // Circular: player at 0.9, ahead wraps to Behind Car at 0.3 (gap=0.4)
     const result = findNearestDriverOnTrack(0, drivers, telemetry, "ahead");
 
-    expect(result).toBeNull();
+    expect(result?.UserName).toBe("Behind Car");
   });
 
-  it("should return null when last on track", () => {
+  it("should wrap around when last on track", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [1, 5, 3],
       CarIdxLapDistPct: [0.1, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
+    // Circular: player at 0.1, behind wraps to Ahead Car at 0.7 (gap=0.4)
     const result = findNearestDriverOnTrack(0, drivers, telemetry, "behind");
 
-    expect(result).toBeNull();
+    expect(result?.UserName).toBe("Ahead Car");
   });
 
-  it("should skip cars on pit road", () => {
+  it("should include cars flagged as on pit road", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [4, 5, 3],
       CarIdxLapDistPct: [0.5, 0.7, 0.3],
       CarIdxOnPitRoad: [false, true, false],
     });
 
+    // CarIdxOnPitRoad is unreliable; Ahead Car at 0.7 is still closest ahead
     const result = findNearestDriverOnTrack(0, drivers, telemetry, "ahead");
 
-    expect(result).toBeNull();
+    expect(result?.UserName).toBe("Ahead Car");
   });
 
   it("should skip pace car", () => {
@@ -183,12 +182,12 @@ describe("findNearestDriverOnTrack", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [4, 5, 3],
       CarIdxLapDistPct: [0.5, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
+    // Pace car skipped; ahead wraps to Behind Car at 0.3 (gap=0.8)
     const result = findNearestDriverOnTrack(0, driversWithPace, telemetry, "ahead");
 
-    expect(result).toBeNull();
+    expect(result?.UserName).toBe("Behind Car");
   });
 
   it("should skip spectators", () => {
@@ -201,19 +200,19 @@ describe("findNearestDriverOnTrack", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [4, 5, 3],
       CarIdxLapDistPct: [0.5, 0.7, 0.3],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
+    // Spectator skipped; ahead wraps to Behind Car at 0.3 (gap=0.8)
     const result = findNearestDriverOnTrack(0, driversWithSpectator, telemetry, "ahead");
 
-    expect(result).toBeNull();
+    expect(result?.UserName).toBe("Behind Car");
   });
 
   it("should return null with no telemetry", () => {
     expect(findNearestDriverOnTrack(0, drivers, null, "ahead")).toBeNull();
   });
 
-  it("should find lapped car directly ahead", () => {
+  it("should find lapped car directly ahead by physical proximity", () => {
     const driversMany = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Leader" }),
@@ -223,12 +222,12 @@ describe("findNearestDriverOnTrack", () => {
     const telemetry = makeTelemetry({
       CarIdxLapCompleted: [10, 12, 8],
       CarIdxLapDistPct: [0.5, 0.9, 0.51],
-      CarIdxOnPitRoad: [false, false, false],
     });
 
+    // Lapped Car at 0.51 is physically closest ahead (gap=0.01) vs Leader at 0.9 (gap=0.4)
     const result = findNearestDriverOnTrack(0, driversMany, telemetry, "ahead");
 
-    expect(result?.UserName).toBe("Leader");
+    expect(result?.UserName).toBe("Lapped Car");
   });
 });
 

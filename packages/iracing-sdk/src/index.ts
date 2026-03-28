@@ -113,6 +113,9 @@ export {
   type TemplateContext,
 } from "./template-context.js";
 
+// Track utilities
+export { findNearestCarOnTrack, type FindNearestCarOptions } from "./track-utils.js";
+
 // Flag utilities
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 

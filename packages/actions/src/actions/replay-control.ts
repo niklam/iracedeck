@@ -41,6 +41,7 @@ import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.s
 import speedIncreaseIconSvg from "@iracedeck/icons/replay-control/speed-increase.svg";
 import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
+  findNearestCarOnTrack,
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
@@ -280,53 +281,13 @@ export function generateReplayControlSvg(
 /**
  * @internal Exported for testing
  *
- * Find the nearest car on track ahead or behind the currently viewed car (CamCarIdx).
- * Uses CarIdxLapCompleted + CarIdxLapDistPct for track progress.
- * Skips inactive cars (lap < 0) and cars on pit road.
+ * Find the physically closest car ahead or behind the currently viewed car (CamCarIdx).
+ * Delegates to the shared findNearestCarOnTrack from @iracedeck/iracing-sdk.
  */
 export function findAdjacentCarOnTrack(telemetry: TelemetryData | null, direction: "ahead" | "behind"): number | null {
-  if (!telemetry?.CarIdxLapCompleted || !telemetry?.CarIdxLapDistPct) return null;
+  const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
 
-  const camCarIdx = (telemetry.CamCarIdx as number) ?? -1;
-
-  if (camCarIdx < 0) return null;
-
-  const lapCompleted = telemetry.CarIdxLapCompleted as number[];
-  const lapDistPct = telemetry.CarIdxLapDistPct as number[];
-  const onPitRoad = telemetry.CarIdxOnPitRoad as boolean[] | undefined;
-
-  // Build sorted list of active on-track cars by track progress
-  const activeCars: Array<{ carIdx: number; progress: number }> = [];
-
-  for (let idx = 0; idx < lapCompleted.length; idx++) {
-    if (lapCompleted[idx] === undefined || lapCompleted[idx] < 0) continue;
-
-    if (onPitRoad?.[idx]) continue;
-
-    if (lapDistPct[idx] === undefined || lapDistPct[idx] < 0) continue;
-
-    const progress = lapCompleted[idx] + lapDistPct[idx];
-    activeCars.push({ carIdx: idx, progress });
-  }
-
-  // Sort by progress descending (highest first = most laps/distance)
-  activeCars.sort((a, b) => b.progress - a.progress);
-
-  const currentIndex = activeCars.findIndex((c) => c.carIdx === camCarIdx);
-
-  if (currentIndex === -1) return null;
-
-  if (direction === "ahead") {
-    // Car ahead = higher progress = lower index in sorted array (wraps around)
-    const aheadIndex = currentIndex === 0 ? activeCars.length - 1 : currentIndex - 1;
-
-    return activeCars[aheadIndex].carIdx;
-  } else {
-    // Car behind = lower progress = higher index in sorted array (wraps around)
-    const behindIndex = currentIndex === activeCars.length - 1 ? 0 : currentIndex + 1;
-
-    return activeCars[behindIndex].carIdx;
-  }
+  return findNearestCarOnTrack(telemetry, camCarIdx, direction);
 }
 
 /**
