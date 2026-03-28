@@ -3,16 +3,17 @@
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="#2a4a5a"/>
 
-    <!-- TV camera on tripod with number inside -->
-    <g stroke="#ffffff" fill="none">
-      <rect x="36" y="28" width="52" height="32" stroke-width="3.5"/>
-      <path d="M 88,34 L 108,26 L 108,54 L 88,46" stroke-width="3"/>
-      <rect x="46" y="20" width="14" height="10" stroke-width="2.5"/>
-      <line x1="62" y1="60" x2="40" y2="86" stroke-width="2.5"/>
-      <line x1="62" y1="60" x2="62" y2="86" stroke-width="2.5"/>
-      <line x1="62" y1="60" x2="84" y2="86" stroke-width="2.5"/>
+    <!-- TV (svgrepo, scaled to icon content area) -->
+    <g transform="translate(29.3, 19.7) scale(0.1667)">
+      <path d="M447.86,384H64.14A48.2,48.2,0,0,1,16,335.86V128.14A48.2,48.2,0,0,1,64.14,80H447.86A48.2,48.2,0,0,1,496,128.14V335.86A48.2,48.2,0,0,1,447.86,384Z"
+        fill="#ffffff"/>
+      <line x1="128" y1="416" x2="384" y2="416"
+        stroke="#ffffff" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/>
     </g>
-    <text x="62" y="51" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="bold">1</text>
+
+    <!-- TV1 text on screen (background color for cut-out effect) -->
+    <text x="72" y="67" text-anchor="middle" dominant-baseline="central"
+          fill="#2a4a5a" font-family="Arial, sans-serif" font-size="25" font-weight="bold">TV1</text>
 
     <!-- Label -->
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"
