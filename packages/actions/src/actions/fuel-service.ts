@@ -8,6 +8,7 @@ import {
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   renderIconTemplate,
@@ -201,6 +202,10 @@ export function buildFuelMacro(mode: FuelServiceMode, amount: number, unit: Fuel
   }
 }
 
+/** Modes that support long-press repeat (execute at interval while held) */
+const REPEATABLE_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
+const REPEAT_INTERVAL_MS = 250;
+
 /** Modes that support encoder rotation for +/- adjustments */
 const ROTATABLE_MACRO_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
 const ROTATABLE_KEYBOARD_MODES = new Set<FuelServiceMode>(["lap-margin-increase", "lap-margin-decrease"]);
@@ -290,6 +295,7 @@ export const FUEL_SERVICE_UUID = "com.iracedeck.sd.core.fuel-service" as const;
 export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings> {
   private activeContexts = new Map<string, FuelServiceSettings>();
   private lastState = new Map<string, string>();
+  private repeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<FuelServiceSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -310,6 +316,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<FuelServiceSettings>): Promise<void> {
+    this.stopRepeat(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -331,6 +338,15 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
     await this.executeMode(settings.mode, settings);
+
+    if (REPEATABLE_MODES.has(settings.mode)) {
+      this.startRepeat(ev.action.id);
+    }
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<FuelServiceSettings>): Promise<void> {
+    this.logger.info("Key up received");
+    this.stopRepeat(ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {
@@ -353,6 +369,35 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     const effectiveMode = ev.payload.ticks > 0 ? settings.mode : (ROTATION_PAIRS[settings.mode] ?? settings.mode);
 
     await this.executeMode(effectiveMode, settings);
+  }
+
+  private startRepeat(actionId: string): void {
+    this.stopRepeat(actionId);
+
+    const timer = setInterval(() => {
+      const currentSettings = this.activeContexts.get(actionId);
+
+      if (!currentSettings) {
+        this.stopRepeat(actionId);
+
+        return;
+      }
+
+      void this.executeMode(currentSettings.mode, currentSettings).catch((err) => {
+        this.logger.error(`Repeat execution failed: ${err}`);
+      });
+    }, REPEAT_INTERVAL_MS);
+
+    this.repeatIntervals.set(actionId, timer);
+  }
+
+  private stopRepeat(actionId: string): void {
+    const timer = this.repeatIntervals.get(actionId);
+
+    if (timer) {
+      clearInterval(timer);
+      this.repeatIntervals.delete(actionId);
+    }
   }
 
   private parseSettings(settings: unknown): FuelServiceSettings {
