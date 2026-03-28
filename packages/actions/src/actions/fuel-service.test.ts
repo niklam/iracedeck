@@ -631,5 +631,83 @@ describe("FuelService", () => {
         expect(action.sdkController.unsubscribe).toHaveBeenCalledWith("action-1");
       });
     });
+
+    describe("long-press repeat", () => {
+      let action: FuelService;
+
+      beforeEach(async () => {
+        action = new FuelService();
+        // Appear so activeContexts is populated
+        await action.onWillAppear(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+      });
+
+      it("should start repeat interval for add-fuel on key down", async () => {
+        await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+
+        expect((action as any).repeatIntervals.has("action-1")).toBe(true);
+      });
+
+      it("should start repeat interval for reduce-fuel on key down", async () => {
+        await action.onWillAppear(fakeEvent("action-2", { mode: "reduce-fuel" }) as any);
+        await action.onKeyDown(fakeEvent("action-2", { mode: "reduce-fuel" }) as any);
+
+        expect((action as any).repeatIntervals.has("action-2")).toBe(true);
+      });
+
+      it("should stop repeat interval on key up", async () => {
+        await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+        expect((action as any).repeatIntervals.has("action-1")).toBe(true);
+
+        await action.onKeyUp(fakeEvent("action-1") as any);
+        expect((action as any).repeatIntervals.has("action-1")).toBe(false);
+      });
+
+      it("should clear repeat interval on onWillDisappear", async () => {
+        await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+        expect((action as any).repeatIntervals.has("action-1")).toBe(true);
+
+        await action.onWillDisappear(fakeEvent("action-1") as any);
+        expect((action as any).repeatIntervals.has("action-1")).toBe(false);
+      });
+
+      it("should not start repeat interval for non-repeatable modes", async () => {
+        const nonRepeatableModes = [
+          "set-fuel-amount",
+          "clear-fuel",
+          "toggle-fuel-fill",
+          "toggle-autofuel",
+          "lap-margin-increase",
+          "lap-margin-decrease",
+        ];
+
+        for (const mode of nonRepeatableModes) {
+          await action.onWillAppear(fakeEvent(`ctx-${mode}`, { mode }) as any);
+          await action.onKeyDown(fakeEvent(`ctx-${mode}`, { mode }) as any);
+        }
+
+        expect((action as any).repeatIntervals.size).toBe(0);
+      });
+
+      it("should track multiple contexts independently", async () => {
+        await action.onWillAppear(fakeEvent("action-2", { mode: "reduce-fuel" }) as any);
+
+        await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+        await action.onKeyDown(fakeEvent("action-2", { mode: "reduce-fuel" }) as any);
+        expect((action as any).repeatIntervals.size).toBe(2);
+
+        await action.onKeyUp(fakeEvent("action-1") as any);
+        expect((action as any).repeatIntervals.has("action-1")).toBe(false);
+        expect((action as any).repeatIntervals.has("action-2")).toBe(true);
+
+        await action.onKeyUp(fakeEvent("action-2") as any);
+        expect((action as any).repeatIntervals.size).toBe(0);
+      });
+
+      it("should not start repeat interval on dial press", async () => {
+        await action.onDialDown(fakeEvent("action-1", { mode: "add-fuel" }) as any);
+
+        expect((action as any).repeatIntervals.size).toBe(0);
+      });
+    });
   });
 });
