@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/iracing-native",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Native Node.js addon for iRacing SDK - Win32 memory-mapped file and window messaging",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

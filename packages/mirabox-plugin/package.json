@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/mirabox-plugin",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Mirabox plugin for iRacing - Core driving and interface controls",
   "type": "module",
   "packageManager": "pnpm@10.0.0",

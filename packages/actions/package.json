@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/actions",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Platform-agnostic iRaceDeck action classes",
   "type": "module",
   "main": "src/index.ts",
