@@ -5,20 +5,72 @@
 	</head>
 	<body>
 		<sdpi-item label="Control">
-			<sdpi-select setting="control" default="starter">
-				<option value="starter">Starter</option>
-				<option value="ignition">Ignition</option>
+			<sdpi-select id="control-select" setting="control" default="pit-speed-limiter">
 				<option value="pit-speed-limiter">Pit Speed Limiter</option>
-				<option value="enter-exit-tow">Enter/Exit/Tow Car</option>
-				<option value="pause-sim">Pause Sim</option>
-				<option value="headlight-flash">Headlight Flash</option>
 				<option value="push-to-pass">Push To Pass</option>
 				<option value="drs">DRS</option>
+				<option value="headlight-flash">Headlight Flash</option>
 				<option value="tear-off-visor">Tear Off Visor</option>
+				<option value="ignition">Ignition</option>
+				<option value="starter">Starter</option>
+				<option value="enter-exit-tow">Enter/Exit/Tow Car</option>
+				<option value="escape">Escape</option>
+				<option value="pause-sim">Pause Sim</option>
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="auto-hold-item" label="Auto Hold" class="hidden">
+			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
+		</sdpi-item>
+
 		<%- include('common-settings') %>
+
+		<script>
+			async function initCarControl() {
+				await customElements.whenDefined("sdpi-select");
+
+				const controlSelect = document.getElementById("control-select");
+				if (!controlSelect) return;
+
+				updateAutoHoldVisibility(controlSelect.value || "pit-speed-limiter");
+
+				controlSelect.addEventListener("change", (ev) => {
+					updateAutoHoldVisibility(ev.target.value);
+				});
+				controlSelect.addEventListener("input", (ev) => {
+					updateAutoHoldVisibility(ev.target.value);
+				});
+
+				// Polling fallback: sdpi-select events can be unreliable on programmatic value restores
+				let lastControl = controlSelect.value || "pit-speed-limiter";
+				setInterval(() => {
+					const currentControl = controlSelect.value;
+					if (currentControl && currentControl !== lastControl) {
+						lastControl = currentControl;
+						updateAutoHoldVisibility(currentControl);
+					}
+				}, 100);
+			}
+
+			function updateAutoHoldVisibility(control) {
+				const autoHoldItem = document.getElementById("auto-hold-item");
+				if (control === "escape") {
+					autoHoldItem?.classList.remove("hidden");
+				} else {
+					autoHoldItem?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initCarControl);
+			} else {
+				initCarControl();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/color-defaults.json')['car-control'] }) %>
 
@@ -27,5 +79,9 @@
 		}) %>
 
 		<%- include('global-settings') %>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
 	</body>
 </html>

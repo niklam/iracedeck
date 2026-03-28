@@ -1,13 +1,16 @@
 import {
   CommonSettings,
   ConnectionStateAwareAction,
+  fuelToDisplayUnits,
   getCommands,
   getGlobalColors,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveIconColors,
   svgToDataUri,
@@ -19,9 +22,14 @@ import lapMarginIncreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-incr
 import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
 import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
 import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
+import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import fuelServiceTemplate from "../../icons/fuel-service.svg";
+import { statusBarOff, statusBarOn } from "../icons/status-bar.js";
+
 type FuelServiceMode =
+  | "toggle-fuel-fill"
   | "add-fuel"
   | "reduce-fuel"
   | "set-fuel-amount"
@@ -44,7 +52,7 @@ const UNIT_DISPLAY: Record<FuelUnit, string> = {
  * Uses inverted layout: line1 = bold/bottom (primary), line2 = subdued/top (secondary).
  * Fuel macro modes (add-fuel, reduce-fuel, set-fuel-amount) use dynamic labels computed in getFuelServiceLabels().
  */
-const FUEL_SERVICE_LABELS: Record<FuelServiceMode, { line1: string; line2: string }> = {
+const FUEL_SERVICE_LABELS: Partial<Record<FuelServiceMode, { line1: string; line2: string }>> = {
   "add-fuel": { line1: "+1 L", line2: "ADD FUEL" },
   "reduce-fuel": { line1: "-1 L", line2: "REDUCE FUEL" },
   "set-fuel-amount": { line1: "1 L", line2: "SET FUEL" },
@@ -55,9 +63,10 @@ const FUEL_SERVICE_LABELS: Record<FuelServiceMode, { line1: string; line2: strin
 };
 
 /**
- * SVG templates for each fuel service mode (imported from @iracedeck/icons)
+ * Standalone SVG templates for static fuel service modes (imported from @iracedeck/icons).
+ * Telemetry-aware modes (toggle-fuel-fill) use the dynamic template instead.
  */
-const FUEL_SERVICE_ICONS: Record<FuelServiceMode, string> = {
+const FUEL_SERVICE_ICONS: Partial<Record<FuelServiceMode, string>> = {
   "add-fuel": addFuelIcon,
   "reduce-fuel": reduceFuelIcon,
   "set-fuel-amount": setFuelAmountIcon,
@@ -71,7 +80,7 @@ const FUEL_SERVICE_ICONS: Record<FuelServiceMode, string> = {
  * @internal Exported for testing
  *
  * Mapping from keyboard-based fuel service modes to global settings keys.
- * Chat macro modes (add-fuel, reduce-fuel, set-fuel-amount) and SDK mode (clear-fuel) are NOT included.
+ * Chat macro modes (add-fuel, reduce-fuel, set-fuel-amount) and SDK modes (clear-fuel, toggle-fuel-fill) are NOT included.
  */
 export const FUEL_SERVICE_GLOBAL_KEYS: Record<string, string> = {
   "toggle-autofuel": "fuelServiceToggleAutofuel",
@@ -79,12 +88,19 @@ export const FUEL_SERVICE_GLOBAL_KEYS: Record<string, string> = {
   "lap-margin-decrease": "fuelServiceLapMarginDecrease",
 };
 
+/**
+ * Modes that use telemetry-driven dynamic icons.
+ * Keep in sync with getTelemetryState() and buildStateKey().
+ */
+const TELEMETRY_AWARE_MODES = new Set<FuelServiceMode>(["toggle-fuel-fill"]);
+
 const FuelUnit = z.enum(["l", "g", "k"]);
 type FuelUnit = z.infer<typeof FuelUnit>;
 
 const FuelServiceSettings = CommonSettings.extend({
   mode: z
     .enum([
+      "toggle-fuel-fill",
       "add-fuel",
       "reduce-fuel",
       "set-fuel-amount",
@@ -93,7 +109,7 @@ const FuelServiceSettings = CommonSettings.extend({
       "lap-margin-increase",
       "lap-margin-decrease",
     ])
-    .default("add-fuel"),
+    .default("toggle-fuel-fill"),
   amount: z.preprocess(
     (val) => (typeof val === "string" ? val.replace(",", ".") : val),
     z.coerce.number().min(0).default(1),
@@ -102,6 +118,67 @@ const FuelServiceSettings = CommonSettings.extend({
 });
 
 type FuelServiceSettings = z.infer<typeof FuelServiceSettings>;
+
+/**
+ * @internal Exported for testing
+ */
+export type FuelServiceTelemetryState = {
+  fuelFillOn?: boolean;
+  fuelAmount?: number;
+  displayUnits?: number;
+};
+
+/**
+ * @internal Exported for testing
+ */
+export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
+  if (!telemetry || telemetry.PitSvFlags === undefined) return false;
+
+  return hasFlag(telemetry.PitSvFlags, PitSvFlags.FuelFill);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Returns the pit service fuel amount (liters) from telemetry.
+ */
+export function getFuelAmount(telemetry: TelemetryData | null): number {
+  if (!telemetry || telemetry.PitSvFuel === undefined) return 0;
+
+  return telemetry.PitSvFuel;
+}
+
+const WHITE = "#ffffff";
+
+/**
+ * @internal Exported for testing
+ *
+ * Formats a fuel amount for the toggle-fuel-fill icon display.
+ * Converts liters to display units and adds "+" prefix.
+ */
+export function formatFuelFillAmount(liters: number, displayUnits: number | undefined): string {
+  const displayValue = fuelToDisplayUnits(liters, displayUnits);
+  const rounded = Math.round(displayValue * 10) / 10;
+  // Short suffixes for compact icon display ("L" / "g" for gallons)
+  const suffix = displayUnits === 1 ? "L" : "g";
+
+  return `+${rounded} ${suffix}`;
+}
+
+/**
+ * Generates dynamic icon content (fuel amount + status bar) for toggle-fuel-fill mode.
+ */
+function fuelFillDynamicIcon(telemetryState: FuelServiceTelemetryState, graphic1Color: string): string {
+  const statusBar = telemetryState.fuelFillOn ? statusBarOn() : statusBarOff();
+  const fuelText = formatFuelFillAmount(telemetryState.fuelAmount ?? 0, telemetryState.displayUnits);
+
+  return `
+    <text x="72" y="24" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="22" font-weight="bold">REFUEL</text>
+    <text x="72" y="75" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${fuelText}</text>
+    ${statusBar}`;
+}
 
 /**
  * @internal Exported for testing
@@ -124,6 +201,10 @@ export function buildFuelMacro(mode: FuelServiceMode, amount: number, unit: Fuel
       return null;
   }
 }
+
+/** Modes that support long-press repeat (execute at interval while held) */
+const REPEATABLE_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
+const REPEAT_INTERVAL_MS = 250;
 
 /** Modes that support encoder rotation for +/- adjustments */
 const ROTATABLE_MACRO_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
@@ -156,7 +237,7 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
     case "set-fuel-amount":
       return { line1: `${rounded} ${unitLabel}`, line2: "SET FUEL" };
     default:
-      return FUEL_SERVICE_LABELS[mode] || FUEL_SERVICE_LABELS["add-fuel"];
+      return FUEL_SERVICE_LABELS[mode] ?? FUEL_SERVICE_LABELS["add-fuel"]!;
   }
 }
 
@@ -165,10 +246,31 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
  *
  * Generates an SVG data URI icon for the fuel service action.
  */
-export function generateFuelServiceSvg(settings: FuelServiceSettings): string {
+export function generateFuelServiceSvg(
+  settings: FuelServiceSettings,
+  telemetryState?: FuelServiceTelemetryState,
+): string {
   const { mode } = settings;
 
-  const iconSvg = FUEL_SERVICE_ICONS[mode] || FUEL_SERVICE_ICONS["add-fuel"];
+  // Dynamic telemetry-driven mode: toggle-fuel-fill
+  if (TELEMETRY_AWARE_MODES.has(mode)) {
+    const colors = resolveIconColors(fuelServiceTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+      string,
+      string
+    >;
+    const graphic1 = colors.graphic1Color || WHITE;
+    const iconContent = fuelFillDynamicIcon(telemetryState ?? {}, graphic1);
+
+    const svg = renderIconTemplate(fuelServiceTemplate, {
+      iconContent,
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
+  }
+
+  // Static modes
+  const iconSvg = FUEL_SERVICE_ICONS[mode] ?? FUEL_SERVICE_ICONS["add-fuel"]!;
   const labels = getFuelServiceLabels(settings);
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
@@ -184,24 +286,48 @@ export function generateFuelServiceSvg(settings: FuelServiceSettings): string {
 /**
  * Fuel Service Action
  * Provides fuel management for pit stops (add/reduce fuel, set amount, clear,
- * autofuel toggle, lap margin adjustments).
- * Fuel modes use pit macro chat commands; clear-fuel uses SDK; keyboard-based modes use global key bindings.
+ * autofuel toggle, lap margin adjustments, fuel fill toggle).
+ * Fuel modes use pit macro chat commands; clear-fuel and toggle-fuel-fill use SDK;
+ * keyboard-based modes use global key bindings.
  */
 export const FUEL_SERVICE_UUID = "com.iracedeck.sd.core.fuel-service" as const;
 
 export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings> {
+  private activeContexts = new Map<string, FuelServiceSettings>();
+  private lastState = new Map<string, string>();
+  private repeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<FuelServiceSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
     const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
 
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const storedSettings = this.activeContexts.get(ev.action.id);
+
+      if (storedSettings) {
+        this.updateDisplayFromTelemetry(ev.action.id, telemetry, storedSettings);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<FuelServiceSettings>): Promise<void> {
+    this.stopRepeat(ev.action.id);
+    await super.onWillDisappear(ev);
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastState.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<FuelServiceSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastState.delete(ev.action.id);
     const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
 
@@ -212,6 +338,15 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
     await this.executeMode(settings.mode, settings);
+
+    if (REPEATABLE_MODES.has(settings.mode)) {
+      this.startRepeat(ev.action.id);
+    }
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<FuelServiceSettings>): Promise<void> {
+    this.logger.info("Key up received");
+    this.stopRepeat(ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {
@@ -236,6 +371,35 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     await this.executeMode(effectiveMode, settings);
   }
 
+  private startRepeat(actionId: string): void {
+    this.stopRepeat(actionId);
+
+    const timer = setInterval(() => {
+      const currentSettings = this.activeContexts.get(actionId);
+
+      if (!currentSettings) {
+        this.stopRepeat(actionId);
+
+        return;
+      }
+
+      void this.executeMode(currentSettings.mode, currentSettings).catch((err) => {
+        this.logger.error(`Repeat execution failed: ${err}`);
+      });
+    }, REPEAT_INTERVAL_MS);
+
+    this.repeatIntervals.set(actionId, timer);
+  }
+
+  private stopRepeat(actionId: string): void {
+    const timer = this.repeatIntervals.get(actionId);
+
+    if (timer) {
+      clearInterval(timer);
+      this.repeatIntervals.delete(actionId);
+    }
+  }
+
   private parseSettings(settings: unknown): FuelServiceSettings {
     const parsed = FuelServiceSettings.safeParse(settings);
 
@@ -251,9 +415,13 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
         this.executeFuelMacro(mode, settings);
         break;
 
-      // SDK-based mode
+      // SDK-based modes
       case "clear-fuel":
         this.executeSdkClearFuel();
+        break;
+
+      case "toggle-fuel-fill":
+        this.executeSdkToggleFuelFill();
         break;
 
       // Keyboard-based modes
@@ -302,13 +470,78 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     this.logger.debug(`Result: ${success}`);
   }
 
+  private executeSdkToggleFuelFill(): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for fuel fill toggle");
+
+      return;
+    }
+
+    const pit = getCommands().pit;
+    const isSet = isFuelFillOn(telemetry);
+    const success = isSet ? pit.clearFuel() : pit.fuel(0);
+    this.logger.info("Fuel fill toggled");
+    this.logger.debug(`Action: ${isSet ? "cleared" : "requested"}, result: ${success}`);
+  }
+
+  private getTelemetryState(telemetry: TelemetryData | null): FuelServiceTelemetryState {
+    return {
+      fuelFillOn: isFuelFillOn(telemetry),
+      fuelAmount: getFuelAmount(telemetry),
+      displayUnits: telemetry?.DisplayUnits,
+    };
+  }
+
+  private buildStateKey(settings: FuelServiceSettings, telemetryState: FuelServiceTelemetryState): string {
+    if (settings.mode === "toggle-fuel-fill") {
+      return `fuel-fill|${telemetryState.fuelFillOn ?? false}|${telemetryState.fuelAmount ?? 0}|${telemetryState.displayUnits ?? 0}`;
+    }
+
+    return settings.mode;
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<FuelServiceSettings> | IDeckDidReceiveSettingsEvent<FuelServiceSettings>,
     settings: FuelServiceSettings,
   ): Promise<void> {
-    const svgDataUri = generateFuelServiceSvg(settings);
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const telemetryState = this.getTelemetryState(telemetry);
+    const svgDataUri = generateFuelServiceSvg(settings, telemetryState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateFuelServiceSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => {
+      const currentTelemetry = this.sdkController.getCurrentTelemetry();
+      const currentState = this.getTelemetryState(currentTelemetry);
+
+      return generateFuelServiceSvg(settings, currentState);
+    });
+    const stateKey = this.buildStateKey(settings, telemetryState);
+    this.lastState.set(ev.action.id, stateKey);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: FuelServiceSettings,
+  ): Promise<void> {
+    if (!TELEMETRY_AWARE_MODES.has(settings.mode)) return;
+
+    const telemetryState = this.getTelemetryState(telemetry);
+    const stateKey = this.buildStateKey(settings, telemetryState);
+    const lastStateKey = this.lastState.get(contextId);
+
+    if (lastStateKey !== stateKey) {
+      this.lastState.set(contextId, stateKey);
+      const svgDataUri = generateFuelServiceSvg(settings, telemetryState);
+      await this.updateKeyImage(contextId, svgDataUri);
+      this.setRegenerateCallback(contextId, () => {
+        const currentTelemetry = this.sdkController.getCurrentTelemetry();
+        const currentState = this.getTelemetryState(currentTelemetry);
+
+        return generateFuelServiceSvg(settings, currentState);
+      });
+    }
   }
 }

@@ -5,7 +5,8 @@
 	</head>
 	<body>
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="add-fuel">
+			<sdpi-select id="mode-select" setting="mode" default="toggle-fuel-fill">
+				<option value="toggle-fuel-fill">Toggle Fuel Fill</option>
 				<option value="add-fuel">Add Fuel</option>
 				<option value="reduce-fuel">Reduce Fuel</option>
 				<option value="set-fuel-amount">Set Fuel Amount</option>
@@ -65,17 +66,17 @@
 				}
 
 				if (modeSelect) {
-					updateVisibility(modeSelect.value || "add-fuel");
+					updateVisibility(modeSelect.value || "toggle-fuel-fill");
 
 					modeSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "add-fuel");
+						updateVisibility(ev.target.value || "toggle-fuel-fill");
 					});
 					modeSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "add-fuel");
+						updateVisibility(ev.target.value || "toggle-fuel-fill");
 					});
 
 					// Polling fallback for reliable detection
-					let lastMode = modeSelect.value || "add-fuel";
+					let lastMode = modeSelect.value || "toggle-fuel-fill";
 					setInterval(() => {
 						const currentMode = modeSelect.value;
 						if (currentMode && currentMode !== lastMode) {
@@ -115,5 +116,9 @@
 		</style>
 
 		<%- include('global-settings') %>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
 	</body>
 </html>

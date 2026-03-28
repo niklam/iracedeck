@@ -4,6 +4,7 @@ import {
   CAR_CONTROL_GLOBAL_KEYS,
   CarControl,
   generateCarControlSvg,
+  getEnterExitTowState,
   getPitSpeedLimit,
   isPitLimiterActive,
   parsePitSpeedLimit,
@@ -11,11 +12,20 @@ import {
   pitLimiterInactiveIcon,
 } from "./car-control.js";
 
-const { mockGetSessionInfo, mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
+const {
+  mockGetSessionInfo,
+  mockTapBinding,
+  mockHoldBinding,
+  mockReleaseBinding,
+  mockPressKeyCombination,
+  mockReleaseKeyCombination,
+} = vi.hoisted(() => ({
   mockGetSessionInfo: vi.fn((): Record<string, unknown> | null => null),
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
   mockHoldBinding: vi.fn().mockResolvedValue(undefined),
   mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
+  mockPressKeyCombination: vi.fn().mockResolvedValue(true),
+  mockReleaseKeyCombination: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@iracedeck/icons/car-control/starter.svg", () => ({
@@ -27,8 +37,23 @@ vi.mock("@iracedeck/icons/car-control/ignition.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/enter-exit-tow.svg", () => ({
   default: "<svg>enter-exit-tow-icon</svg>",
 }));
+vi.mock("@iracedeck/icons/car-control/escape.svg", () => ({
+  default: "<svg>escape-icon</svg>",
+}));
 vi.mock("@iracedeck/icons/car-control/pause-sim.svg", () => ({
   default: "<svg>pause-sim-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/enter-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">enter-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/exit-car.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">exit-car {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/reset-to-pits.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">reset-to-pits {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/tow.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">tow {{mainLabel}} {{subLabel}}</svg>',
 }));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -52,7 +77,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: vi.fn(),
+      getSessionInfo: vi.fn(() => null),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -77,8 +107,8 @@ vi.mock("@iracedeck/deck-core", () => ({
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
-    pressKeyCombination: vi.fn().mockResolvedValue(true),
-    releaseKeyCombination: vi.fn().mockResolvedValue(true),
+    pressKeyCombination: mockPressKeyCombination,
+    releaseKeyCombination: mockReleaseKeyCombination,
   })),
   LogLevel: { Info: 2 },
   parseBinding: vi.fn(),
@@ -92,8 +122,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     stopRole: vi.fn().mockResolvedValue(true),
   })),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    return `<svg>${template}${data.iconContent || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -132,8 +162,12 @@ describe("CarControl", () => {
       expect(CAR_CONTROL_GLOBAL_KEYS["pause-sim"]).toBe("carControlPauseSim");
     });
 
-    it("should have exactly 9 entries", () => {
-      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(9);
+    it("should have empty string mapping for escape (no global binding)", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["escape"]).toBe("");
+    });
+
+    it("should have exactly 10 entries", () => {
+      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(10);
     });
   });
 
@@ -177,7 +211,7 @@ describe("CarControl", () => {
         starter: { line1: "START", line2: "ENGINE" },
         ignition: { line1: "IGNITION", line2: "ON/OFF" },
         "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
-        "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
+        "enter-exit-tow": { line1: "DRIVE", line2: "" },
         "pause-sim": { line1: "PAUSE", line2: "SIM" },
       };
 
@@ -470,9 +504,10 @@ describe("CarControl", () => {
 
     it("should release held key on onWillDisappear", async () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
-      await action.onWillDisappear(fakeEvent("action-1") as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "starter" }) as any);
 
       expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
     });
 
     it("should call holdGlobalBinding on keyDown for starter", async () => {
@@ -497,6 +532,309 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+    });
+  });
+
+  describe("getEnterExitTowState", () => {
+    it("should return enter-car when telemetry is null", () => {
+      expect(getEnterExitTowState(null, null)).toBe("enter-car");
+    });
+
+    it("should return enter-car when IsOnTrack is false", () => {
+      expect(getEnterExitTowState({ IsOnTrack: false } as any, null)).toBe("enter-car");
+    });
+
+    it("should return enter-car when IsOnTrack is undefined", () => {
+      expect(getEnterExitTowState({} as any, null)).toBe("enter-car");
+    });
+
+    it("should return exit-car when on track and in pit stall", () => {
+      expect(getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: true, SessionNum: 0 } as any, null)).toBe(
+        "exit-car",
+      );
+    });
+
+    it("should return reset-to-pits when on track, not in pit stall, non-Race session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Practice" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+
+    it("should return tow when on track, not in pit stall, Race session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Race" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("tow");
+    });
+
+    it("should return reset-to-pits when session info is null", () => {
+      expect(getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, null)).toBe(
+        "reset-to-pits",
+      );
+    });
+
+    it("should return reset-to-pits when session number does not match any session", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [{ SessionNum: 0, SessionType: "Race" }],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 5 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+
+    it("should use correct session from multiple sessions based on SessionNum", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [
+            { SessionNum: 0, SessionType: "Practice" },
+            { SessionNum: 1, SessionType: "Qualifying" },
+            { SessionNum: 2, SessionType: "Race" },
+          ],
+        },
+      };
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 2 } as any, sessionInfo),
+      ).toBe("tow");
+      expect(
+        getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
+      ).toBe("reset-to-pits");
+    });
+  });
+
+  describe("generateCarControlSvg escape", () => {
+    it("should generate a valid data URI for escape", () => {
+      const result = generateCarControlSvg({ control: "escape" });
+
+      expect(result).toContain("data:image/svg+xml");
+    });
+
+    it("should include ESCAPE label", () => {
+      const result = generateCarControlSvg({ control: "escape" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("ESCAPE");
+    });
+  });
+
+  describe("generateCarControlSvg enter-exit-tow states", () => {
+    it("should generate state-specific icon for enter-exit-tow with enter-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with exit-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("exit-car");
+      expect(decoded).toContain("EXIT");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with reset-to-pits state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("reset-to-pits");
+      expect(decoded).toContain("RESET");
+    });
+
+    it("should generate state-specific icon for enter-exit-tow with tow state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("tow");
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should default to enter-car when no telemetry state for enter-exit-tow", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should produce different icons for each enter-exit-tow state", () => {
+      const states = ["enter-car", "exit-car", "reset-to-pits", "tow"] as const;
+      const results = states.map((s) => generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: s }));
+      const unique = new Set(results);
+      expect(unique.size).toBe(4);
+    });
+  });
+
+  describe("escape manual hold (auto-hold OFF)", () => {
+    let action: CarControl;
+
+    beforeEach(() => {
+      action = new CarControl();
+    });
+
+    it("should press ESC via direct keyboard on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should release ESC via direct keyboard on keyUp", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+      await action.onKeyUp(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+      expect(mockReleaseBinding).not.toHaveBeenCalled();
+    });
+
+    it("should press ESC on dialDown and release on dialUp", async () => {
+      await action.onDialDown(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+
+      await action.onDialUp(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+    });
+
+    it("should release ESC on onWillDisappear", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "escape", autoHold: false }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+    });
+  });
+
+  describe("escape auto-hold ON", () => {
+    let action: CarControl;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      action = new CarControl();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should press ESC and start auto-hold timer on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should not release ESC on keyUp (timer handles release)", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+      await action.onKeyUp(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should auto-release ESC after 1.5 seconds", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+    });
+
+    it("should not release ESC before 1.5 seconds", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should cancel auto-hold and release ESC on second press", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledTimes(1);
+
+      // Second press while timer running
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+      // Should not have pressed again
+      expect(mockPressKeyCombination).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not release again after timer expires when cancelled by second press", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+      // Cancel with second press
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      mockReleaseKeyCombination.mockClear();
+
+      // Advance past timer — should not fire since it was cancelled
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should handle independent auto-hold timers for different contexts", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+      await action.onKeyDown(fakeEvent("action-2", { control: "escape", autoHold: true }) as any);
+
+      expect(mockPressKeyCombination).toHaveBeenCalledTimes(2);
+
+      // Cancel action-1 with second press
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(1);
+
+      // action-2's timer should still fire
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("escape cleanup on disappear", () => {
+    let action: CarControl;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      action = new CarControl();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should clear auto-hold timer and release ESC on disappear", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(mockReleaseKeyCombination).toHaveBeenCalledWith({ key: "escape", code: "Escape" });
+
+      mockReleaseKeyCombination.mockClear();
+
+      // Timer should not fire after cleanup
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("should clean up autoHoldTimers map on disappear", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(action["autoHoldTimers"].has("action-1")).toBe(true);
+
+      await action.onWillDisappear(fakeEvent("action-1", { control: "escape", autoHold: true }) as any);
+
+      expect(action["autoHoldTimers"].has("action-1")).toBe(false);
     });
   });
 });

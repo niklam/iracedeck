@@ -7,7 +7,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 ## Data File
 
-Complete action definitions (29 actions, 324 controls): `docs/reference/actions.json`
+Complete action definitions (32 actions, 350 controls): `docs/reference/actions.json`
 
 Each action entry:
 ```json
@@ -35,15 +35,15 @@ When asked about actions or controls:
 
 | Category | Actions | Controls | Description |
 |----------|---------|----------|-------------|
-| Display & Session | 1 | 6 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 5 | 39 | AI spotter, audio, black boxes, look direction, car control |
-| Cockpit & Interface | 4 | 26 | Wipers, FFB, splits & reference, telemetry, UI toggles |
-| View & Camera | 5 | 103 | FOV, replay, camera controls, broadcast tools |
+| Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
+| Driving Controls | 5 | 40 | AI spotter, audio, black boxes, look direction, car control |
+| Cockpit & Interface | 4 | 30 | Wipers, FFB, splits & reference, telemetry, UI toggles |
+| View & Camera | 8 | 124 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
-| Pit Service | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
+| Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Chat | 2 | 48 | Chat, macros (15), whisper, reply, race admin commands |
-| **Total** | **28** | **321** | |
+| **Total** | **32** | **350** | |
 
 ## Actions by Category
 
@@ -61,7 +61,7 @@ When asked about actions or controls:
 | Audio Controls | 6 | 2 categories (voice-chat, master) x 3 actions (volume-up, volume-down, mute) |
 | Black Box Selector | 13 | 11 direct selections + next/previous cycle |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (hold pattern) |
-| Car Control | 9 | starter (hold), ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow (hold), pause-sim, headlight-flash (hold), push-to-pass (telemetry-aware), drs (telemetry-aware), tear-off-visor |
+| Car Control | 10 | starter (hold), ignition, pit-speed-limiter (telemetry-aware), enter-exit-tow (hold), pause-sim, headlight-flash (hold), push-to-pass (telemetry-aware), drs (telemetry-aware), tear-off-visor, escape (hold, direct keyboard, auto-hold option) |
 
 ### Cockpit & Interface
 
@@ -92,8 +92,8 @@ When asked about actions or controls:
 
 | Action | Controls | Modes |
 |--------|----------|-------|
-| Pit Quick Actions | 3 | clear all, tearoff, fast repair |
-| Fuel Service | 7 | add/reduce/set/clear fuel, toggle autofuel, lap margin +/- |
+| Pit Quick Actions | 3 | clear all, tearoff (telemetry-aware), fast repair (telemetry-aware) |
+| Fuel Service | 8 | toggle fuel fill (telemetry-aware), add/reduce/set/clear fuel, toggle autofuel, lap margin +/- |
 | Tire Service | 4 | change all tires, clear, toggle tires (per-wheel), change compound (telemetry-aware) |
 
 ### Car Setup

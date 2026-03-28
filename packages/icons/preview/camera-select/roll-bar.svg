@@ -3,15 +3,9 @@
   <g filter="url(#activity-state)">
     <rect x="0" y="0" width="144" height="144" fill="#2a4a5a"/>
 
-    <!-- Side-profile car with roll bar camera -->
-    <g stroke="#ffffff" stroke-width="3.5" fill="none">
-      <path d="M 24,68 L 32,68 L 44,44 L 76,40 L 88,44 L 100,68 L 120,68"/>
-      <path d="M 48,44 L 48,36 L 84,36 L 84,44"/>
-      <circle cx="42" cy="72" r="10"/>
-      <circle cx="102" cy="72" r="10"/>
-      <line x1="20" y1="82" x2="124" y2="82"/>
-    </g>
-    <circle cx="66" cy="36" r="5" fill="#ffffff"/>
+    <!-- Roll bar (top hoop, front view) -->
+    <path d="M36,82 L36,52 Q36,34 72,34 Q108,34 108,52 L108,82"
+      stroke="#ffffff" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 
     <!-- Label -->
     <text x="72" y="126" text-anchor="middle" dominant-baseline="central"

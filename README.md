@@ -13,16 +13,16 @@
 
 ## Features
 
-**28 actions** with **321 controls** across 8 categories, all with Stream Deck+ encoder support:
+**32 actions** with **349 controls** across 8 categories, all with Stream Deck+ encoder support:
 
 | Category | Actions | Controls | Examples |
 |----------|---------|----------|---------|
-| **Display & Session** | 1 | 6 | Incidents, laps, position, fuel, flags |
+| **Display & Session** | 2 | 7 | Incidents, laps, position, fuel, flags |
 | **Driving Controls** | 5 | 39 | AI spotter, audio, black box cycling, look direction, car control |
-| **Cockpit & Interface** | 4 | 26 | Wipers, FFB, splits & reference, telemetry, UI toggles |
-| **View & Camera** | 5 | 103 | FOV, replay transport, camera focus, broadcast tools |
+| **Cockpit & Interface** | 4 | 30 | Wipers, FFB, splits & reference, telemetry, UI toggles |
+| **View & Camera** | 8 | 124 | FOV, replay transport, camera focus, broadcast tools |
 | **Media** | 1 | 7 | Video recording, screenshots |
-| **Pit Service** | 3 | 13 | Fuel, tires, compounds, tearoff, fast repair |
+| **Pit Service** | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | **Car Setup** | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Chat** | 2 | 48 | Chat, macros, whisper, reply, race admin commands |
 

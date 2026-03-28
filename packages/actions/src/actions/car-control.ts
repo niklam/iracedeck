@@ -2,6 +2,7 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalColors,
+  getKeyboard,
   getSDK,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
@@ -14,21 +15,26 @@ import {
   resolveIconColors,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import enterCarIcon from "@iracedeck/icons/car-control/enter-car.svg";
 import enterExitTowIcon from "@iracedeck/icons/car-control/enter-exit-tow.svg";
+import escapeIcon from "@iracedeck/icons/car-control/escape.svg";
+import exitCarIcon from "@iracedeck/icons/car-control/exit-car.svg";
 import headlightFlashIcon from "@iracedeck/icons/car-control/headlight-flash.svg";
 import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
 import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
+import resetToPitsIcon from "@iracedeck/icons/car-control/reset-to-pits.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
+import towIcon from "@iracedeck/icons/car-control/tow.svg";
 import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import carControlTemplate from "../../icons/car-control.svg";
+import { statusBarOff, statusBarOn } from "../icons/status-bar.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
 const RED = "#e74c3c";
-const GREEN = "#2ecc71";
 const BLUE = "#3498db";
 
 type CarControlType =
@@ -40,7 +46,8 @@ type CarControlType =
   | "headlight-flash"
   | "push-to-pass"
   | "drs"
-  | "tear-off-visor";
+  | "tear-off-visor"
+  | "escape";
 
 /**
  * Label configuration for each car control (line1 bold, line2 subdued)
@@ -55,6 +62,24 @@ const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string 
   "push-to-pass": { line1: "PUSH TO", line2: "PASS" },
   drs: { line1: "DRS", line2: "TOGGLE" },
   "tear-off-visor": { line1: "TEAR OFF", line2: "VISOR" },
+  escape: { line1: "ESCAPE", line2: "" },
+};
+
+/** @internal Exported for testing */
+export type EnterExitTowState = "enter-car" | "exit-car" | "reset-to-pits" | "tow";
+
+const ENTER_EXIT_TOW_ICONS: Record<EnterExitTowState, string> = {
+  "enter-car": enterCarIcon,
+  "exit-car": exitCarIcon,
+  "reset-to-pits": resetToPitsIcon,
+  tow: towIcon,
+};
+
+const ENTER_EXIT_TOW_LABELS: Record<EnterExitTowState, { line1: string; line2: string }> = {
+  "enter-car": { line1: "DRIVE", line2: "" },
+  "exit-car": { line1: "EXIT", line2: "" },
+  "reset-to-pits": { line1: "RESET", line2: "" },
+  tow: { line1: "TOW", line2: "" },
 };
 
 const DEFAULT_PIT_SPEED = 80;
@@ -63,10 +88,21 @@ const DEFAULT_PIT_SPEED = 80;
  * Controls that use telemetry-driven dynamic icons.
  * Keep in sync with getTelemetryState() and buildStateKey().
  */
-const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>(["pit-speed-limiter", "push-to-pass", "drs"]);
+const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>([
+  "pit-speed-limiter",
+  "push-to-pass",
+  "drs",
+  "enter-exit-tow",
+]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
 const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash", "enter-exit-tow"]);
+
+/** Hardcoded ESC key combination (not configurable — ESC is always ESC in iRacing) */
+const ESC_KEY = { key: "escape", code: "Escape" } as const;
+
+/** Auto-hold duration in milliseconds */
+const AUTO_HOLD_DURATION = 1500;
 
 /**
  * @internal Exported for testing
@@ -121,30 +157,6 @@ export function pitLimiterInactiveIcon(speed: number): string {
 /**
  * @internal Exported for testing
  *
- * Status bar showing ON state — full-width green bar with "ON" text at the bottom.
- */
-export function statusBarOn(): string {
-  return `
-    <rect x="0" y="100" width="144" height="44" fill="${GREEN}"/>
-    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">ON</text>`;
-}
-
-/**
- * @internal Exported for testing
- *
- * Status bar showing OFF state — full-width dark gray bar with "OFF" text at the bottom.
- */
-export function statusBarOff(): string {
-  return `
-    <rect x="0" y="100" width="144" height="44" fill="${RED}"/>
-    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">OFF</text>`;
-}
-
-/**
- * @internal Exported for testing
- *
  * DRS icon — large centered "DRS" text with ON/OFF status bar at the bottom.
  */
 export function drsIcon(active: boolean, graphic1Color = WHITE): string {
@@ -182,6 +194,7 @@ const STATIC_CAR_CONTROL_ICONS: Partial<Record<CarControlType, string>> = {
   "pause-sim": pauseSimIcon,
   "headlight-flash": headlightFlashIcon,
   "tear-off-visor": tearOffVisorIcon,
+  escape: escapeIcon,
 };
 
 /**
@@ -199,7 +212,41 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "push-to-pass": "carControlPushToPass",
   drs: "carControlDrs",
   "tear-off-visor": "carControlTearOffVisor",
+  escape: "",
 };
+
+/**
+ * @internal Exported for testing
+ *
+ * Determines the Enter/Exit/Tow state based on telemetry and session info.
+ * Priority order: enter-car → exit-car → reset-to-pits/tow (based on session type).
+ */
+export function getEnterExitTowState(
+  telemetry: TelemetryData | null,
+  sessionInfo: Record<string, unknown> | null,
+): EnterExitTowState {
+  if (!telemetry || !telemetry.IsOnTrack) {
+    return "enter-car";
+  }
+
+  if (telemetry.PlayerCarInPitStall) {
+    return "exit-car";
+  }
+
+  // On track, not in pit stall — check session type
+  const sessionNum = telemetry.SessionNum ?? 0;
+  const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
+  const sessionType = currentSession?.SessionType as string | undefined;
+
+  if (sessionType === "Race") {
+    return "tow";
+  }
+
+  return "reset-to-pits";
+}
 
 /**
  * @internal Exported for testing
@@ -244,22 +291,28 @@ export type CarControlTelemetryState = {
   pitSpeedLimit?: number;
   pushToPassActive?: boolean;
   drsActive?: boolean;
+  enterExitTowState?: EnterExitTowState;
 };
 
 const CarControlSettings = CommonSettings.extend({
   control: z
     .enum([
-      "starter",
-      "ignition",
       "pit-speed-limiter",
-      "enter-exit-tow",
-      "pause-sim",
-      "headlight-flash",
       "push-to-pass",
       "drs",
+      "headlight-flash",
       "tear-off-visor",
+      "ignition",
+      "starter",
+      "enter-exit-tow",
+      "escape",
+      "pause-sim",
     ])
-    .default("starter"),
+    .default("pit-speed-limiter"),
+  autoHold: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(false),
 });
 
 type CarControlSettings = z.infer<typeof CarControlSettings>;
@@ -298,6 +351,22 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
     return renderDynamicIcon(settings, iconContent, false);
   }
 
+  // Enter/Exit/Tow uses state-specific standalone SVGs
+  if (control === "enter-exit-tow") {
+    const towState = telemetryState?.enterExitTowState ?? "enter-car";
+    const iconSvg = ENTER_EXIT_TOW_ICONS[towState];
+    const labels = ENTER_EXIT_TOW_LABELS[towState];
+
+    const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+    const svg = renderIconTemplate(iconSvg, {
+      mainLabel: labels.line1,
+      subLabel: labels.line2,
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
+  }
+
   // Static modes use standalone SVGs from @iracedeck/icons
   const iconSvg = STATIC_CAR_CONTROL_ICONS[control] || starterIcon;
   const labels = CAR_CONTROL_LABELS[control] || CAR_CONTROL_LABELS["starter"];
@@ -331,8 +400,9 @@ function renderDynamicIcon(settings: CarControlSettings, iconContent: string, sh
 /**
  * Car Control Action
  * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause,
- * headlight flash, push to pass, DRS, tear off visor).
+ * headlight flash, push to pass, DRS, tear off visor, escape).
  * Starter, headlight flash, and enter/exit/tow use long-press (hold while pressed); all others use tap.
+ * Escape uses direct keyboard (hardcoded ESC key) with optional auto-hold.
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
 
@@ -343,11 +413,19 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   /** State hash cache to prevent re-rendering every telemetry tick */
   private lastState = new Map<string, string>();
 
+  /** Auto-hold release timers per action context (escape auto-hold mode) */
+  private autoHoldTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CarControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(CAR_CONTROL_GLOBAL_KEYS[settings.control]);
+    const globalKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
+
+    if (globalKey) {
+      this.setActiveBinding(globalKey);
+    }
+
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
@@ -360,7 +438,15 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CarControlSettings>): Promise<void> {
-    await this.releaseBinding(ev.action.id);
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "escape") {
+      this.clearAutoHoldTimer(ev.action.id);
+      await getKeyboard().releaseKeyCombination(ESC_KEY);
+    } else {
+      await this.releaseBinding(ev.action.id);
+    }
+
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -371,7 +457,12 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.setActiveBinding(CAR_CONTROL_GLOBAL_KEYS[settings.control]);
+    const globalKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
+
+    if (globalKey) {
+      this.setActiveBinding(globalKey);
+    }
+
     await this.updateDisplay(ev, settings);
   }
 
@@ -383,6 +474,16 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
   override async onKeyUp(ev: IDeckKeyUpEvent<CarControlSettings>): Promise<void> {
     this.logger.info("Key up received");
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "escape") {
+      if (!settings.autoHold) {
+        await getKeyboard().releaseKeyCombination(ESC_KEY);
+      }
+
+      return;
+    }
+
     await this.releaseBinding(ev.action.id);
   }
 
@@ -394,6 +495,16 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
   override async onDialUp(ev: IDeckDialUpEvent<CarControlSettings>): Promise<void> {
     this.logger.info("Dial up received");
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "escape") {
+      if (!settings.autoHold) {
+        await getKeyboard().releaseKeyCombination(ESC_KEY);
+      }
+
+      return;
+    }
+
     await this.releaseBinding(ev.action.id);
   }
 
@@ -404,6 +515,12 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   private async executeControl(actionId: string, settings: CarControlSettings): Promise<void> {
+    if (settings.control === "escape") {
+      await this.executeEscape(actionId, settings);
+
+      return;
+    }
+
     const settingKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
 
     if (!settingKey) {
@@ -419,6 +536,48 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
   }
 
+  private async executeEscape(actionId: string, settings: CarControlSettings): Promise<void> {
+    const keyboard = getKeyboard();
+
+    if (settings.autoHold) {
+      // Second press while timer running: cancel and release immediately
+      if (this.autoHoldTimers.has(actionId)) {
+        this.logger.info("Escape auto-hold cancelled");
+        this.clearAutoHoldTimer(actionId);
+        await keyboard.releaseKeyCombination(ESC_KEY);
+
+        return;
+      }
+
+      // First press: hold ESC, auto-release after timeout
+      this.logger.info("Escape auto-hold started");
+      await keyboard.pressKeyCombination(ESC_KEY);
+      this.autoHoldTimers.set(
+        actionId,
+        setTimeout(() => {
+          this.logger.info("Escape auto-hold released");
+          void keyboard
+            .releaseKeyCombination(ESC_KEY)
+            .catch((err) => this.logger.error(`Escape auto-hold release failed: ${err}`))
+            .finally(() => this.autoHoldTimers.delete(actionId));
+        }, AUTO_HOLD_DURATION),
+      );
+    } else {
+      // Manual hold: press on keyDown, release on keyUp
+      this.logger.info("Escape pressed");
+      await keyboard.pressKeyCombination(ESC_KEY);
+    }
+  }
+
+  private clearAutoHoldTimer(actionId: string): void {
+    const timer = this.autoHoldTimers.get(actionId);
+
+    if (timer) {
+      clearTimeout(timer);
+      this.autoHoldTimers.delete(actionId);
+    }
+  }
+
   private getTelemetryState(telemetry: TelemetryData | null, control: CarControlType): CarControlTelemetryState {
     const state: CarControlTelemetryState = {};
 
@@ -429,6 +588,9 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       state.pushToPassActive = isPushToPassActive(telemetry);
     } else if (control === "drs") {
       state.drsActive = isDrsActive(telemetry);
+    } else if (control === "enter-exit-tow") {
+      const sessionInfo = this.sdkController.getSessionInfo();
+      state.enterExitTowState = getEnterExitTowState(telemetry, sessionInfo);
     }
 
     return state;
@@ -467,6 +629,10 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     if (settings.control === "drs") {
       return `drs|${telemetryState.drsActive ?? false}`;
+    }
+
+    if (settings.control === "enter-exit-tow") {
+      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}`;
     }
 
     return settings.control;

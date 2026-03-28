@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CAMERA_GROUP_MAP,
-  CAMERA_GROUPS_GLOBAL_KEY,
+  CAMERA_GROUPS_SETTING_KEY,
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   generateCameraControlsSvg,
   getEnabledGroupNames,
   getNextSelectedGroup,
+  parseGroupSubset,
 } from "./camera-controls.js";
 
 // Cycle icon mocks
@@ -173,8 +174,8 @@ describe("CameraControls", () => {
   });
 
   describe("constants", () => {
-    it("should have correct global key", () => {
-      expect(CAMERA_GROUPS_GLOBAL_KEY).toBe("cameraGroupSubset");
+    it("should have correct setting key", () => {
+      expect(CAMERA_GROUPS_SETTING_KEY).toBe("cameraGroupSubset");
     });
 
     it("should have default camera groups", () => {
@@ -208,50 +209,79 @@ describe("CameraControls", () => {
     });
   });
 
-  describe("getEnabledGroupNames", () => {
-    it("should return DEFAULT_ENABLED_GROUPS when no global setting", () => {
-      mockGetGlobalSettings.mockReturnValue({});
-      expect(getEnabledGroupNames()).toEqual(DEFAULT_ENABLED_GROUPS);
+  describe("parseGroupSubset", () => {
+    it("should return undefined when no value provided", () => {
+      expect(parseGroupSubset(undefined)).toBeUndefined();
     });
 
-    it("should return enabled groups from global settings (object)", () => {
-      mockGetGlobalSettings.mockReturnValue({
-        [CAMERA_GROUPS_GLOBAL_KEY]: {
-          groups: { Nose: true, Gearbox: false, TV1: true },
-        },
+    it("should return undefined for invalid JSON string", () => {
+      expect(parseGroupSubset("not valid json")).toBeUndefined();
+    });
+
+    it("should return undefined when groups key is missing", () => {
+      expect(parseGroupSubset({ other: true })).toBeUndefined();
+    });
+
+    it("should return enabled groups from object value", () => {
+      const result = parseGroupSubset({
+        groups: { Nose: true, Gearbox: false, TV1: true },
       });
-      const result = getEnabledGroupNames();
       expect(result).toContain("Nose");
       expect(result).toContain("TV1");
       expect(result).not.toContain("Gearbox");
     });
 
-    it("should parse JSON string from global settings", () => {
-      mockGetGlobalSettings.mockReturnValue({
-        [CAMERA_GROUPS_GLOBAL_KEY]: JSON.stringify({
-          groups: { Cockpit: true, Chase: true, TV1: false },
-        }),
-      });
-      const result = getEnabledGroupNames();
+    it("should parse JSON string value", () => {
+      const result = parseGroupSubset(JSON.stringify({ groups: { Cockpit: true, Chase: true, TV1: false } }));
       expect(result).toContain("Cockpit");
       expect(result).toContain("Chase");
       expect(result).not.toContain("TV1");
     });
 
-    it("should fall back to defaults for invalid JSON string", () => {
-      mockGetGlobalSettings.mockReturnValue({
-        [CAMERA_GROUPS_GLOBAL_KEY]: "not valid json",
-      });
-      expect(getEnabledGroupNames()).toEqual(DEFAULT_ENABLED_GROUPS);
+    it("should return empty array when all groups explicitly disabled", () => {
+      expect(parseGroupSubset({ groups: { Nose: false, TV1: false } })).toEqual([]);
+    });
+  });
+
+  describe("getEnabledGroupNames", () => {
+    it("should use per-action setting when provided", () => {
+      const result = getEnabledGroupNames(JSON.stringify({ groups: { Nose: true, TV1: true } }));
+      expect(result).toContain("Nose");
+      expect(result).toContain("TV1");
+      expect(result).toHaveLength(2);
     });
 
-    it("should return empty array when all groups explicitly disabled", () => {
+    it("should fall back to legacy global setting when no per-action setting", () => {
       mockGetGlobalSettings.mockReturnValue({
-        [CAMERA_GROUPS_GLOBAL_KEY]: {
-          groups: { Nose: false, TV1: false },
-        },
+        [CAMERA_GROUPS_SETTING_KEY]: { groups: { Cockpit: true, Chase: true } },
       });
-      expect(getEnabledGroupNames()).toEqual([]);
+      const result = getEnabledGroupNames(undefined);
+      expect(result).toContain("Cockpit");
+      expect(result).toContain("Chase");
+      expect(result).toHaveLength(2);
+    });
+
+    it("should return DEFAULT_ENABLED_GROUPS when neither per-action nor global setting exists", () => {
+      mockGetGlobalSettings.mockReturnValue({});
+      expect(getEnabledGroupNames(undefined)).toEqual(DEFAULT_ENABLED_GROUPS);
+    });
+
+    it("should prefer per-action setting over global setting", () => {
+      mockGetGlobalSettings.mockReturnValue({
+        [CAMERA_GROUPS_SETTING_KEY]: { groups: { Cockpit: true } },
+      });
+      const result = getEnabledGroupNames(JSON.stringify({ groups: { TV1: true, TV2: true } }));
+      expect(result).toContain("TV1");
+      expect(result).toContain("TV2");
+      expect(result).toHaveLength(2);
+    });
+
+    it("should return empty array when per-action setting has all groups disabled", () => {
+      mockGetGlobalSettings.mockReturnValue({
+        [CAMERA_GROUPS_SETTING_KEY]: { groups: { Cockpit: true } },
+      });
+      const result = getEnabledGroupNames(JSON.stringify({ groups: { Nose: false, TV1: false } }));
+      expect(result).toEqual([]);
     });
   });
 

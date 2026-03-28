@@ -75,6 +75,7 @@ const config = {
 			templatesDir: "src/pi",
 			outputDir: `${sdPlugin}/ui`,
 			partialsDir: "src/pi-templates/partials",
+			manifestPath: `${sdPlugin}/manifest.json`,
 		}),
 		{
 			name: "watch-externals",

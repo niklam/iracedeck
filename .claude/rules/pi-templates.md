@@ -61,6 +61,8 @@ Located in `packages/stream-deck-plugin/src/pi-templates/partials/`:
 - **color-overrides.ejs** - Per-action color override controls with Default/White/Black presets
 - **global-key-bindings.ejs** - Key bindings in collapsible section
 - **global-settings.ejs** - Global plugin settings accordion (focus window, icon colors)
+- **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped)
+- **version.ejs** - Version footer with downloads link
 
 ## Color Overrides Partial
 
@@ -118,6 +120,20 @@ export default {
   ]
 }
 ```
+
+## Documentation URLs JSON Format
+
+`src/pi/data/docs-urls.json` maps PI template names (without `.ejs`) to their documentation page URLs:
+
+```json
+{
+  "action-name": "https://iracedeck.com/docs/actions/{category}/{action-name}/"
+}
+```
+
+Templates not in the map (e.g., `settings`, hidden sub-actions) will not show a documentation link.
+
+**Maintenance:** When adding a new action, add its entry to `docs-urls.json` with the correct category and action name.
 
 ## Build Output
 

@@ -30,9 +30,19 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 Branching & Worktrees
 
-All development must happen in a **git worktree**, never directly in the main working tree on `master`. Worktrees are created as sibling directories of the main working tree (same parent directory), named `ir-<issue>`.
+**IMPORTANT — before writing any code, ask the user:**
+
+> Where should this work happen: worktree, branch, or master?
+
+- **Worktree** (default for issues/features) — isolated sibling directory, ends with a PR.
+- **Branch** — branch in the current working tree, ends with a PR.
+- **Master** — direct work on master, pushed without a PR.
+
+Do not assume. Do not start coding until the user answers.
 
 ### Worktree workflow
+
+Worktrees are created as sibling directories of the main working tree (same parent directory), named `ir-<issue>`.
 
 1. Create a worktree with a new branch:
    ```bash
@@ -128,7 +138,10 @@ Pull Requests
 - Mark checklist items as complete (`[x]`) or incomplete (`[ ]`) as appropriate.
 - Use `N/A` for sections that don't apply (e.g., "Related Issue" for infra work with no issue).
 - Build, test, and lint checks are handled by CI — they are not in the PR checklist.
-- **Before creating a PR**, run the code-review agent (via the `code-review` skill or `code-reviewer` agent) to review all changes on the branch. Address any issues found before opening the PR.
+- **Before creating a PR, ask the user:**
+  > Should we run the code review agent for these changes?
+
+  If yes, run it (via the `code-review` skill or `code-reviewer` agent) and address any issues found before opening the PR.
 
 ### PR Labels
 
