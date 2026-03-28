@@ -26,6 +26,22 @@
 				cursor: pointer;
 			}
 
+			.camera-groups-grid .group-heading {
+				grid-column: 1 / -1;
+				font-family: "Segoe UI", Arial, sans-serif;
+				font-size: 8pt;
+				color: #888;
+				text-transform: uppercase;
+				letter-spacing: 0.5px;
+				padding: 6px 0 2px 0;
+				border-bottom: 1px solid #444;
+				margin-bottom: 2px;
+			}
+
+			.camera-groups-grid .group-heading:first-child {
+				padding-top: 0;
+			}
+
 			.camera-groups-buttons {
 				display: flex;
 				gap: 6px;
@@ -98,26 +114,34 @@
 
 		<sdpi-item label="Camera Group" id="camera-group-item" class="hidden">
 			<sdpi-select setting="cameraGroup" default="9">
-				<option value="1">Nose</option>
-				<option value="2">Gearbox</option>
-				<option value="3">Roll Bar</option>
-				<option value="4">LF Susp</option>
-				<option value="5">LR Susp</option>
-				<option value="6">Gyro</option>
-				<option value="7">RF Susp</option>
-				<option value="8">RR Susp</option>
-				<option value="9">Cockpit</option>
-				<option value="10">Blimp</option>
-				<option value="11">Chopper</option>
-				<option value="12">Chase</option>
-				<option value="13">Far Chase</option>
-				<option value="14">Rear Chase</option>
-				<option value="15">Pit Lane</option>
-				<option value="16">Pit Lane 2</option>
-				<option value="17">TV1</option>
-				<option value="18">TV2</option>
-				<option value="19">TV3</option>
-				<option value="20">Scenic</option>
+				<optgroup label="Car">
+					<option value="1">Nose</option>
+					<option value="2">Gearbox</option>
+					<option value="9">Cockpit</option>
+					<option value="3">Roll Bar</option>
+					<option value="6">Gyro</option>
+					<option value="4">Suspension - Left Front</option>
+					<option value="7">Suspension - Right Front</option>
+					<option value="5">Suspension - Left Rear</option>
+					<option value="8">Suspension - Right Rear</option>
+				</optgroup>
+				<optgroup label="Chase">
+					<option value="12">Chase</option>
+					<option value="13">Far Chase</option>
+					<option value="14">Rear Chase</option>
+				</optgroup>
+				<optgroup label="Track">
+					<option value="17">TV1</option>
+					<option value="18">TV2</option>
+					<option value="19">TV3</option>
+					<option value="20">Scenic</option>
+					<option value="15">Pit Lane</option>
+					<option value="16">Pit Lane 2</option>
+				</optgroup>
+				<optgroup label="Aerial">
+					<option value="11">Chopper</option>
+					<option value="10">Blimp</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -133,12 +157,22 @@
 				// (DEFAULT_CAMERA_GROUPS and DEFAULT_ENABLED_GROUPS). PI runs in a
 				// separate browser context and cannot import action code.
 				var ALL_GROUPS = [
-					"Nose", "Gearbox", "Roll Bar", "LF Susp", "LR Susp", "Gyro",
-					"RF Susp", "RR Susp", "Cockpit", "Scenic",
-					"TV1", "TV2", "TV3",
-					"Pit Lane", "Pit Lane2", "Chopper",
-					"Blimp", "Chase", "Far Chase", "Rear Chase"
+					// Car cameras (0-8)
+					"Nose", "Gearbox", "Cockpit", "Roll Bar",
+					"LF Susp", "RF Susp", "LR Susp", "RR Susp", "Gyro",
+					// Chase cameras (9-11)
+					"Chase", "Far Chase", "Rear Chase",
+					// Track cameras (12-17)
+					"TV1", "TV2", "TV3", "Scenic", "Pit Lane", "Pit Lane 2",
+					// Aerial cameras (18-19)
+					"Chopper", "Blimp"
 				];
+				var DISPLAY_NAMES = {
+					"LF Susp": "Suspension LF",
+					"RF Susp": "Suspension RF",
+					"LR Susp": "Suspension LR",
+					"RR Susp": "Suspension RR"
+				};
 				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
 				var GLOBAL_KEY = "cameraGroupSubset";
 				var CYCLE_TARGETS = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"];
@@ -152,8 +186,7 @@
 				}
 
 				function getGroupNames() {
-					var names = Object.keys(currentGroups);
-					return names.length > 0 ? names : ALL_GROUPS;
+					return ALL_GROUPS;
 				}
 
 				// Ensure currentGroups has entries for ALL visible groups
@@ -177,6 +210,13 @@
 					return DEFAULT_ENABLED.indexOf(name) !== -1;
 				}
 
+				var GROUP_SECTIONS = [
+					{ heading: "Car", start: 0, end: 9 },
+					{ heading: "Chase", start: 9, end: 12 },
+					{ heading: "Track", start: 12, end: 18 },
+					{ heading: "Aerial", start: 18, end: 20 }
+				];
+
 				function renderCheckboxes() {
 					var grid = document.getElementById("camera-groups-grid");
 					if (!grid) return;
@@ -184,17 +224,25 @@
 					var names = getGroupNames();
 					grid.innerHTML = "";
 
-					for (var i = 0; i < names.length; i++) {
-						var name = names[i];
-						var label = document.createElement("label");
-						var checkbox = document.createElement("input");
-						checkbox.type = "checkbox";
-						checkbox.checked = isGroupEnabled(name);
-						checkbox.dataset.group = name;
-						checkbox.addEventListener("change", onCheckboxChange);
-						label.appendChild(checkbox);
-						label.appendChild(document.createTextNode(name));
-						grid.appendChild(label);
+					for (var s = 0; s < GROUP_SECTIONS.length; s++) {
+						var section = GROUP_SECTIONS[s];
+						var heading = document.createElement("div");
+						heading.className = "group-heading";
+						heading.textContent = section.heading;
+						grid.appendChild(heading);
+
+						for (var i = section.start; i < section.end && i < names.length; i++) {
+							var name = names[i];
+							var label = document.createElement("label");
+							var checkbox = document.createElement("input");
+							checkbox.type = "checkbox";
+							checkbox.checked = isGroupEnabled(name);
+							checkbox.dataset.group = name;
+							checkbox.addEventListener("change", onCheckboxChange);
+							label.appendChild(checkbox);
+							label.appendChild(document.createTextNode(DISPLAY_NAMES[name] || name));
+							grid.appendChild(label);
+						}
 					}
 				}
 
