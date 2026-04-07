@@ -8,6 +8,8 @@ import {
   getCompoundColor,
   getCompoundName,
   getDriverTires,
+  isTireSelected,
+  migrateTireSettings,
   TireService,
 } from "./tire-service.js";
 
@@ -63,7 +65,7 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
-      const defaults = { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true };
+      const defaults = { action: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] };
       const schema = {
         parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
         safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
@@ -292,38 +294,75 @@ describe("TireService", () => {
     });
   });
 
+  describe("isTireSelected", () => {
+    it("should return true when tire is in array", () => {
+      expect(isTireSelected({ action: "toggle-tires", tires: ["lf", "rf"] }, "lf")).toBe(true);
+    });
+
+    it("should return false when tire is not in array", () => {
+      expect(isTireSelected({ action: "toggle-tires", tires: ["lf", "rf"] }, "lr")).toBe(false);
+    });
+
+    it("should return false for empty array", () => {
+      expect(isTireSelected({ action: "toggle-tires", tires: [] }, "lf")).toBe(false);
+    });
+  });
+
+  describe("migrateTireSettings", () => {
+    it("should migrate old boolean settings when tires key is absent", () => {
+      const result = migrateTireSettings({ action: "toggle-tires", lf: true, rf: true, lr: false, rr: false });
+      expect(result.tires).toEqual(["lf", "rf"]);
+    });
+
+    it("should not migrate when tires key is present", () => {
+      const result = migrateTireSettings({ action: "toggle-tires", tires: ["lf"], lf: true, rf: true });
+      expect(result.tires).toEqual(["lf"]);
+    });
+
+    it("should keep all tires when all legacy booleans are true", () => {
+      const result = migrateTireSettings({ action: "toggle-tires", lf: true, rf: true, lr: true, rr: true });
+      expect(result.tires).toEqual(["lf", "rf", "lr", "rr"]);
+    });
+
+    it("should produce empty array when all legacy booleans are false", () => {
+      const result = migrateTireSettings({ action: "toggle-tires", lf: false, rf: false, lr: false, rr: false });
+      expect(result.tires).toEqual([]);
+    });
+
+    it("should default to all tires when no settings provided", () => {
+      const result = migrateTireSettings({});
+      expect(result.tires).toEqual(["lf", "rf", "lr", "rr"]);
+    });
+  });
+
   describe("buildTireToggleMacro", () => {
     it("should build macro for all tires", () => {
-      expect(buildTireToggleMacro({ action: "toggle-tires", lf: true, rf: true, lr: true, rr: true })).toBe(
+      expect(buildTireToggleMacro({ action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] })).toBe(
         "#!lf !rf !lr !rr",
       );
     });
 
     it("should build macro for front tires only", () => {
-      expect(buildTireToggleMacro({ action: "toggle-tires", lf: true, rf: true, lr: false, rr: false })).toBe(
-        "#!lf !rf",
-      );
+      expect(buildTireToggleMacro({ action: "toggle-tires", tires: ["lf", "rf"] })).toBe("#!lf !rf");
     });
 
     it("should build macro for left side only", () => {
-      expect(buildTireToggleMacro({ action: "toggle-tires", lf: true, rf: false, lr: true, rr: false })).toBe(
-        "#!lf !lr",
-      );
+      expect(buildTireToggleMacro({ action: "toggle-tires", tires: ["lf", "lr"] })).toBe("#!lf !lr");
     });
 
     it("should build macro for single tire", () => {
-      expect(buildTireToggleMacro({ action: "toggle-tires", lf: false, rf: false, lr: false, rr: true })).toBe("#!rr");
+      expect(buildTireToggleMacro({ action: "toggle-tires", tires: ["rr"] })).toBe("#!rr");
     });
 
     it("should return null when no tires configured", () => {
-      expect(buildTireToggleMacro({ action: "toggle-tires", lf: false, rf: false, lr: false, rr: false })).toBeNull();
+      expect(buildTireToggleMacro({ action: "toggle-tires", tires: [] })).toBeNull();
     });
   });
 
   describe("generateToggleTiresIconContent", () => {
     it("should return SVG with car body path and tire rects", () => {
       const result = generateToggleTiresIconContent(
-        { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
+        { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
         { lf: false, rf: false, lr: false, rr: false },
         "#ffffff",
       );
@@ -334,7 +373,7 @@ describe("TireService", () => {
 
     it("should use correct colors per tire position", () => {
       const result = generateToggleTiresIconContent(
-        { action: "toggle-tires", lf: true, rf: false, lr: true, rr: false },
+        { action: "toggle-tires", tires: ["lf", "lr"] },
         { lf: true, rf: false, lr: false, rr: false },
         "#ffffff",
       );
@@ -358,7 +397,7 @@ describe("TireService", () => {
 
     it("should show all green when all configured and active", () => {
       const result = generateToggleTiresIconContent(
-        { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
+        { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
         { lf: true, rf: true, lr: true, rr: true },
         "#ffffff",
       );
@@ -372,7 +411,7 @@ describe("TireService", () => {
 
     it("should show all red when all configured but inactive", () => {
       const result = generateToggleTiresIconContent(
-        { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
+        { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
         { lf: false, rf: false, lr: false, rr: false },
         "#ffffff",
       );
@@ -386,7 +425,7 @@ describe("TireService", () => {
 
     it("should apply bodyColor to the car body path", () => {
       const result = generateToggleTiresIconContent(
-        { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
+        { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] },
         { lf: true, rf: true, lr: true, rr: true },
         "#ff0000",
       );
@@ -400,18 +439,12 @@ describe("TireService", () => {
 
     describe("change-all-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg(
-          { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should include CHANGE and ALL TIRES labels", () => {
-        const result = generateTireServiceSvg(
-          { action: "change-all-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "change-all-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("CHANGE");
         expect(decoded).toContain("ALL TIRES");
@@ -420,43 +453,31 @@ describe("TireService", () => {
 
     describe("toggle-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg(
-          { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should show red for configured but inactive tires", () => {
-        const result = generateTireServiceSvg(
-          { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#FF4444");
       });
 
       it("should show green for configured and active tires", () => {
-        const result = generateTireServiceSvg(
-          { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true },
-          allTires,
-        );
+        const result = generateTireServiceSvg({ action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }, allTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#44FF44");
       });
 
       it("should show black for unconfigured tires", () => {
-        const result = generateTireServiceSvg(
-          { action: "toggle-tires", lf: false, rf: false, lr: false, rr: false },
-          allTires,
-        );
+        const result = generateTireServiceSvg({ action: "toggle-tires", tires: [] }, allTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("#000000ff");
       });
 
       it("should show green for partially configured tires when active", () => {
         const result = generateTireServiceSvg(
-          { action: "toggle-tires", lf: true, rf: false, lr: false, rr: false },
+          { action: "toggle-tires", tires: ["lf"] },
           { lf: true, rf: false, lr: false, rr: false },
         );
         const decoded = decodeURIComponent(result);
@@ -466,7 +487,7 @@ describe("TireService", () => {
     });
 
     describe("change-compound mode", () => {
-      const compoundSettings = { action: "change-compound" as const, lf: true, rf: true, lr: true, rr: true };
+      const compoundSettings = { action: "change-compound" as const, tires: ["lf", "rf", "lr", "rr"] };
 
       beforeEach(() => {
         mockGetSessionInfo.mockReturnValue({
@@ -529,18 +550,12 @@ describe("TireService", () => {
 
     describe("clear-tires mode", () => {
       it("should generate a valid data URI", () => {
-        const result = generateTireServiceSvg(
-          { action: "clear-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         expect(result).toContain("data:image/svg+xml");
       });
 
       it("should include CLEAR and TIRES labels", () => {
-        const result = generateTireServiceSvg(
-          { action: "clear-tires", lf: true, rf: true, lr: true, rr: true },
-          noTires,
-        );
+        const result = generateTireServiceSvg({ action: "clear-tires", tires: ["lf", "rf", "lr", "rr"] }, noTires);
         const decoded = decodeURIComponent(result);
         expect(decoded).toContain("CLEAR");
         expect(decoded).toContain("TIRES");
@@ -566,27 +581,21 @@ describe("TireService", () => {
 
     describe("toggle-tires mode", () => {
       it("should send toggle macro for all configured tires", async () => {
-        await action.onKeyDown(
-          fakeEvent("a1", { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true }) as any,
-        );
+        await action.onKeyDown(fakeEvent("a1", { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }) as any);
 
         expect(mockSendMessage).toHaveBeenCalledOnce();
         expect(mockSendMessage).toHaveBeenCalledWith("#!lf !rf !lr !rr");
       });
 
       it("should send toggle macro for only configured tires", async () => {
-        await action.onKeyDown(
-          fakeEvent("a1", { action: "toggle-tires", lf: true, rf: false, lr: true, rr: false }) as any,
-        );
+        await action.onKeyDown(fakeEvent("a1", { action: "toggle-tires", tires: ["lf", "lr"] }) as any);
 
         expect(mockSendMessage).toHaveBeenCalledOnce();
         expect(mockSendMessage).toHaveBeenCalledWith("#!lf !lr");
       });
 
       it("should not send message when no tires configured", async () => {
-        await action.onKeyDown(
-          fakeEvent("a1", { action: "toggle-tires", lf: false, rf: false, lr: false, rr: false }) as any,
-        );
+        await action.onKeyDown(fakeEvent("a1", { action: "toggle-tires", tires: [] }) as any);
 
         expect(mockSendMessage).not.toHaveBeenCalled();
       });
@@ -705,9 +714,7 @@ describe("TireService", () => {
     it("should not execute toggle-tires when not connected", async () => {
       mockGetConnectionStatus.mockReturnValue(false);
 
-      await action.onKeyDown(
-        fakeEvent("a1", { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true }) as any,
-      );
+      await action.onKeyDown(fakeEvent("a1", { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }) as any);
 
       expect(mockSendMessage).not.toHaveBeenCalled();
       expect(mockPitTireCompound).not.toHaveBeenCalled();
@@ -730,9 +737,7 @@ describe("TireService", () => {
     });
 
     it("should send toggle macro on dial down", async () => {
-      await action.onDialDown(
-        fakeEvent("a1", { action: "toggle-tires", lf: true, rf: true, lr: true, rr: true }) as any,
-      );
+      await action.onDialDown(fakeEvent("a1", { action: "toggle-tires", tires: ["lf", "rf", "lr", "rr"] }) as any);
 
       expect(mockSendMessage).toHaveBeenCalledOnce();
       expect(mockSendMessage).toHaveBeenCalledWith("#!lf !rf !lr !rr");
