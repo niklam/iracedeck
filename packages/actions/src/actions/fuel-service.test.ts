@@ -47,21 +47,25 @@ vi.mock("../../icons/fuel-service.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{iconContent}} {{backgroundColor}}</svg>',
 }));
 
+vi.mock("../../icons/fuel-add.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg"><desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#3fb23f"},"locked":["graphic1Color"]}</desc>{{iconContent}}ADD</svg>',
+}));
+vi.mock("../../icons/fuel-reduce.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg"><desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#e74c3c"},"locked":["graphic1Color"]}</desc>{{iconContent}}REDUCE</svg>',
+}));
+vi.mock("../../icons/fuel-set.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg"><desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#d3c518"},"locked":["graphic1Color"]}</desc>{{iconContent}}SET</svg>',
+}));
+
 vi.mock("../icons/status-bar.js", () => ({
   statusBarOn: () => '<rect class="status-on"/>',
   statusBarOff: () => '<rect class="status-off"/>',
   borderColorForState: (state: string) => ({ on: "#2ecc71", off: "#e74c3c", na: "#888888" })[state],
 }));
 
-vi.mock("@iracedeck/icons/fuel-service/add-fuel.svg", () => ({
-  default: "<svg>add-fuel-icon</svg>",
-}));
-vi.mock("@iracedeck/icons/fuel-service/reduce-fuel.svg", () => ({
-  default: "<svg>reduce-fuel-icon</svg>",
-}));
-vi.mock("@iracedeck/icons/fuel-service/set-fuel-amount.svg", () => ({
-  default: "<svg>set-fuel-amount-icon</svg>",
-}));
 vi.mock("@iracedeck/icons/fuel-service/clear-fuel.svg", () => ({
   default: "<svg>clear-fuel-icon</svg>",
 }));
@@ -166,8 +170,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     graphic1Color: "#ffffff",
   })),
   generateTitleText: vi.fn((opts: { text: string }) => `<text>${opts.text}</text>`),
-  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.titleContent || ""}${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`;
+  renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
+    return `<svg>${template}${data.titleContent || ""}${data.iconContent || ""}${data.mainLabel || ""}${data.subLabel || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -254,18 +258,23 @@ describe("FuelService", () => {
     it("should include dynamic labels for macro modes", () => {
       const addResult = decodeURIComponent(generateFuelServiceSvg({ mode: "add-fuel", amount: 5, unit: "l" }));
 
-      expect(addResult).toContain("ADD FUEL");
-      expect(addResult).toContain("+5 L");
+      expect(addResult).toContain("ADD");
+      expect(addResult).toContain(">5<");
+      expect(addResult).toContain(">L<");
 
       const reduceResult = decodeURIComponent(generateFuelServiceSvg({ mode: "reduce-fuel", amount: 3.5, unit: "g" }));
 
-      expect(reduceResult).toContain("REDUCE FUEL");
-      expect(reduceResult).toContain("-3.5 GAL");
+      expect(reduceResult).toContain("REDUCE");
+      expect(reduceResult).toContain(">3.5<");
+      expect(reduceResult).toContain(">GAL<");
+      expect(reduceResult).toContain("#e74c3c");
 
       const setResult = decodeURIComponent(generateFuelServiceSvg({ mode: "set-fuel-amount", amount: 50, unit: "k" }));
 
-      expect(setResult).toContain("SET FUEL");
-      expect(setResult).toContain("50 KG");
+      expect(setResult).toContain("SET");
+      expect(setResult).toContain(">50<");
+      expect(setResult).toContain(">KG<");
+      expect(setResult).toContain("#d3c518");
     });
 
     it("should fall back to toggle-fuel-fill for unspecified settings", () => {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#d3c518"},"locked":["graphic1Color"]}</desc>
+  {{borderDefs}}
+  <rect x="0" y="0" width="144" height="144" fill="{{backgroundColor}}"/>
+  {{borderContent}}
+  <text font-family="Arial" font-size="21.41" fill="{{textColor}}" text-anchor="middle" x="72" y="26.49">FUEL</text>
+  {{iconContent}}
+  <text font-family="Arial" font-size="24" font-weight="700" fill="{{textColor}}" text-anchor="middle" x="72" y="121.98">SET</text>
+  <rect x="101.67" y="104.9" width="42.33" height="17.07" fill="#d3c518"/>
+  <rect x="0" y="104.9" width="43.32" height="17.07" fill="#d3c518"/>
+  <rect x="132.94" y="60.53" width="11.06" height="4" fill="#d3c518"/>
+  <rect x="132.94" y="45.19" width="11.06" height="4" fill="#d3c518"/>
+  <rect x="132.94" y="75.87" width="11.06" height="4" fill="#d3c518"/>
+  <rect x="0" y="60.53" width="12.25" height="4" fill="#d3c518"/>
+  <rect x="0" y="75.39" width="12.25" height="4" fill="#d3c518"/>
+  <rect x="0" y="44.71" width="12.25" height="4" fill="#d3c518"/>
+</svg>

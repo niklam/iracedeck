@@ -2,16 +2,13 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  extractGraphicContent,
   generateBorderParts,
   generateIconText,
-  generateTitleText,
   getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalTitleSettings,
   getSDK,
-  ICON_BASE_TEMPLATE,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
@@ -25,7 +22,6 @@ import {
 } from "@iracedeck/deck-core";
 import changeAllTiresIconSvg from "@iracedeck/icons/tire-service/change-all-tires.svg";
 import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
-import toggleTiresCarSvg from "@iracedeck/icons/tire-service/toggle-tires.svg";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -195,20 +191,6 @@ export function buildTireToggleMacro(settings: TireServiceSettings): string | nu
 }
 
 /**
- * Shared transform for the 512->144 car coordinate space.
- * Rotates 90 deg CCW, scales from 512 to ~90px, centers at (72, 53).
- */
-const CAR_TRANSFORM = "translate(72, 53) rotate(-90) scale(0.176) translate(-256, -256)";
-
-/** Per-tire scale + sideways shift applied around each tire's center. */
-const TIRE_XFORMS = {
-  lf: "translate(381, 114) scale(1.4) translate(-381, -134)",
-  rf: "translate(381, 398) scale(1.4) translate(-381, -378)",
-  lr: "translate(98, 107) scale(1.4) translate(-98, -132)",
-  rr: "translate(98, 405) scale(1.4) translate(-98, -380)",
-};
-
-/**
  * @internal Exported for testing
  *
  * Generates dynamic tire indicator SVG paths for the toggle-tires action.
@@ -217,18 +199,19 @@ const TIRE_XFORMS = {
 export function generateToggleTiresIconContent(
   settings: TireServiceSettings,
   currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
+  bodyColor: string,
 ): string {
   const lfColor = getTireColor(settings.lf ?? false, currentState.lf);
   const rfColor = getTireColor(settings.rf ?? false, currentState.rf);
   const lrColor = getTireColor(settings.lr ?? false, currentState.lr);
   const rrColor = getTireColor(settings.rr ?? false, currentState.rr);
 
-  return `<g transform="${CAR_TRANSFORM}">
-    <path fill="${lfColor}" stroke="${GRAY}" stroke-width="6" transform="${TIRE_XFORMS.lf}" d="M346.451,158.291h68.507c5.779,0,10.451-4.682,10.451-10.452V119.88c0-5.77-4.672-10.442-10.451-10.442h-68.507c-5.77,0-10.452,4.672-10.452,10.442v27.959C335.999,153.609,340.681,158.291,346.451,158.291z"/>
-    <path fill="${rfColor}" stroke="${GRAY}" stroke-width="6" transform="${TIRE_XFORMS.rf}" d="M414.958,353.711h-68.507c-5.77,0-10.452,4.672-10.452,10.442v27.959c0,5.77,4.682,10.461,10.452,10.461h68.507c5.779,0,10.451-4.692,10.451-10.461v-27.959C425.409,358.383,420.737,353.711,414.958,353.711z"/>
-    <path fill="${lrColor}" stroke="${GRAY}" stroke-width="6" transform="${TIRE_XFORMS.lr}" d="M62.217,159.681h72.206c5.77,0,10.452-4.692,10.452-10.461v-35.328c0-5.779-4.682-10.451-10.452-10.451H62.217c-5.769,0-10.442,4.672-10.442,10.451v35.328C51.775,154.99,56.448,159.681,62.217,159.681z"/>
-    <path fill="${rrColor}" stroke="${GRAY}" stroke-width="6" transform="${TIRE_XFORMS.rr}" d="M134.422,352.329H62.217c-5.769,0-10.451,4.682-10.451,10.461v35.317c0,5.77,4.682,10.451,10.451,10.451h72.206c5.77,0,10.452-4.682,10.452-10.451v-35.317C144.874,357.011,140.192,352.329,134.422,352.329z"/>
-  </g>`;
+  return `
+  <path d="M59.91,45.74l-8.02-3.5v1.06c0,.96.47,1.82,1.22,2.16l7.92,3.67.12-.87c.14-1.08-.38-2.14-1.24-2.52ZM61.79,38.44h-8.93c-.53,0-.97.43-.97.97v.38c0,.54.44.97.97.97h8.87c.48,0,.88-.34.95-.81l.06-.39c.11-.59-.35-1.12-.95-1.12ZM58.07,112.1h-8.11c-.54,0-.98.43-.98.97v.78c0,.54.44.97.98.97h8.11c.53,0,.96-.43.96-.97v-.78c0-.54-.43-.97-.96-.97ZM66.88,10.06l-2.44-1.73-18.03,3.98-5.6,3.78-2.36,5.65h2.89l3.56-3.98,11.75-1.19,7.61,8.37.7-3.66-4.89-5.3,5.93-.66.88-5.26ZM57.84,121.03l-8.86-4.34v.66c0,1,.59,1.9,1.49,2.32l6.52,3.1c.33.15.69.12.98-.08.6-.43.52-1.34-.13-1.66ZM68.05,127.28l-6.72-9.64c-.42-.6-1.36-.3-1.36.43v4.74c0,.95-.77,1.71-1.72,1.71h-6.21s-.02.02-.06.03c-.01.01-.02.01-.03.01h-.03c-.16.01-.33.03-.5.08-.03.01-.07.02-.12.04-.04.01-.09.03-.14.05-.07.02-.14.05-.2.09-.05.01-.11.04-.17.08-.07.04-.14.09-.21.14-.51.35-.87.87-1.09,1.47-.04.11-.07.23-.1.34-.04.14-.07.28-.09.42,0,.01-.01.03-.01.05-.02.22-.05.44-.05.67h.03l.02,2.15v1.52c0,.41.32.75.74.75h17.41c.41,0,.74-.34.74-.75v-3.95c0-.15-.04-.3-.13-.43ZM86.18,121.03c-.66.32-.73,1.23-.13,1.66.28.2.65.23.97.08l6.53-3.1c.9-.42,1.48-1.32,1.48-2.32v-.66l-8.85,4.34ZM103.21,16.09l-5.6-3.78-18.04-3.98-2.43,1.73.88,5.26,5.93.66-4.9,5.3.71,3.66,7.61-8.37,11.75,1.19,3.56,3.98h2.89l-2.36-5.65ZM84.11,45.74c-.86.38-1.38,1.44-1.24,2.52l.12.87,7.92-3.67c.74-.34,1.22-1.2,1.22-2.16v-1.06l-8.02,3.5ZM94.75,127.99h.02c0-.23-.02-.45-.05-.67,0-.02,0-.04,0-.05-.01-.14-.04-.28-.08-.42-.03-.11-.06-.23-.11-.34-.21-.6-.57-1.12-1.08-1.47-.07-.05-.14-.1-.22-.14-.05-.04-.11-.07-.16-.08-.06-.04-.13-.07-.2-.09-.05-.02-.1-.04-.15-.05-.04-.02-.08-.03-.12-.04-.16-.05-.33-.07-.5-.08h-.02s-.02,0-.03-.01c-.04-.01-.07-.03-.07-.03h-6.2c-.95,0-1.72-.76-1.72-1.71v-4.74c0-.73-.94-1.03-1.36-.43l-6.72,9.64c-.09.13-.14.28-.14.43v3.95c0,.41.34.75.75.75h17.41c.42,0,.75-.34.75-.75v-1.33s-.01-.19-.01-.19l.02-2.15ZM94.06,112.1h-8.11c-.53,0-.96.43-.96.97v.78c0,.54.43.97.96.97h8.11c.53,0,.97-.43.97-.97v-.78c0-.54-.44-.97-.97-.97ZM82.97,49.14h.02s-.02,0-.02,0ZM91.16,38.44h-8.94c-.59,0-1.05.53-.95,1.12l.06.39c.08.47.48.81.96.81h8.87c.53,0,.97-.43.97-.97v-.38c0-.54-.44-.97-.97-.97ZM94.76,133.25h-45.5l-.02,3.15c0,.12.05.24.06.34.09.8.43,1.54,1.06,2.08.44.38,1.03.66,1.65.66h5.18c.65,0,1.19-.53,1.19-1.19s.53-1.18,1.18-1.18h24.9c.65,0,1.18.53,1.18,1.18s.53,1.19,1.19,1.19h5.18c.62,0,1.2-.28,1.64-.66.64-.54.98-1.28,1.06-2.08.02-.1.06-.22.06-.34v-3.15ZM72.04,130.11h-.06c-1.1,0-2.09-.48-2.8-1.29v3.59h5.65v-3.59c-.71.81-1.69,1.29-2.79,1.29ZM72.04,69.28h-.06c-3.04,0-5.51,2.79-5.51,6.23s2.47,6.24,5.51,6.24h.06c3.04,0,5.51-2.79,5.51-6.24s-2.47-6.23-5.51-6.23ZM76.83,59.43h-9.65c-.26,0-.46.21-.46.48v.55c0,.26.2.48.46.48h9.65c.26,0,.47-.22.47-.48v-.55c0-.27-.21-.48-.47-.48ZM67.18,60.94h9.65c.26,0,.47-.22.47-.48v-.55c0-.27-.21-.48-.47-.48h-9.65c-.26,0-.46.21-.46.48v.55c0,.26.2.48.46.48ZM72.04,69.28h-.06c-3.04,0-5.51,2.79-5.51,6.23s2.47,6.24,5.51,6.24h.06c3.04,0,5.51-2.79,5.51-6.24s-2.47-6.23-5.51-6.23ZM72.1,47.47h-.18c-3.35.01-10.95,5.03-10.96,25.34.08,8.83.66,17.74,3.01,26.31.98,3.53,2.96,6.97,5.37,9.72,1.01,1.14,1.99,2.02,2.64,2.02.01,0,.02-.01.03-.01s.02.01.03.01c.65,0,1.63-.88,2.64-2.02,2.41-2.75,4.39-6.19,5.37-9.72,2.35-8.57,2.93-17.48,3.01-26.31-.01-20.31-7.61-25.33-10.96-25.34ZM78.47,77.78c0,2.84-2.31,5.15-5.15,5.15h-2.62c-2.84,0-5.16-2.31-5.16-5.15v-18.92c0-.67.56-1.22,1.23-1.22h10.48c.67,0,1.22.55,1.22,1.22v18.92ZM67.18,60.94h9.65c.26,0,.47-.22.47-.48v-.55c0-.27-.21-.48-.47-.48h-9.65c-.26,0-.46.21-.46.48v.55c0,.26.2.48.46.48ZM72.04,69.28h-.06c-3.04,0-5.51,2.79-5.51,6.23s2.47,6.24,5.51,6.24h.06c3.04,0,5.51-2.79,5.51-6.24s-2.47-6.23-5.51-6.23ZM72.04,69.28h-.06c-3.04,0-5.51,2.79-5.51,6.23s2.47,6.24,5.51,6.24h.06c3.04,0,5.51-2.79,5.51-6.24s-2.47-6.23-5.51-6.23ZM76.83,59.43h-9.65c-.26,0-.46.21-.46.48v.55c0,.26.2.48.46.48h9.65c.26,0,.47-.22.47-.48v-.55c0-.27-.21-.48-.47-.48ZM76.83,59.43h-9.65c-.26,0-.46.21-.46.48v.55c0,.26.2.48.46.48h9.65c.26,0,.47-.22.47-.48v-.55c0-.27-.21-.48-.47-.48ZM72.04,69.28h-.06c-3.04,0-5.51,2.79-5.51,6.23s2.47,6.24,5.51,6.24h.06c3.04,0,5.51-2.79,5.51-6.24s-2.47-6.23-5.51-6.23ZM95.03,110.2v.66l-7.96-3.9c-2.04,4.69-4.54,9.17-7.47,13.37l-5.3,7.6c-.52.74-1.36,1.18-2.26,1.18h-.06c-.9,0-1.75-.44-2.26-1.18l-5.3-7.6c-2.93-4.2-5.43-8.68-7.48-13.37l-7.96,3.9v-.66c0-1,.59-1.9,1.49-2.32l5.73-2.72c-1.13-3-3.54-10.13-5.15-17.48-1.49-6.8-1.75-11.71-1.71-14.57.02-1.88.32-3.74.92-5.51,2.75-8.13,7.28-8.32,8.77-10.69,6.46-10.37,10.44-50.77,10.44-50.77,0-.01,0-.02.01-.03.08-1.14.93-2.07,2.03-2.28v34.14c-.01,4.05-1.94,7.84-5.2,10.23-5.89,4.34-6.87,18.14-6.87,18.14-.92,13.76-1.79,29.25,5.39,41.92,1.25,2.59,5.37,8.84,7.01,11.23,0,0,.09.01.17.01s.16-.01.17-.01c1.64-2.39,5.76-8.64,7.01-11.23,7.17-12.67,6.31-28.16,5.39-41.92,0,0-.98-13.8-6.87-18.14-3.26-2.39-5.19-6.18-5.19-10.23V3.83c1.09.21,1.94,1.14,2.02,2.28.01.01.01.02.01.03,0,0,3.97,40.4,10.44,50.77,1.49,2.37,6.02,2.56,8.77,10.69.6,1.77.9,3.63.92,5.51.04,2.86-.22,7.77-1.71,14.57-1.61,7.35-4.02,14.48-5.15,17.48l5.73,2.72c.9.42,1.48,1.32,1.48,2.32Z" fill="${bodyColor}"/>
+  <rect x="34.02" y="24.94" width="16.28" height="32.7" rx="3" fill="${lfColor}" stroke="${GRAY}" stroke-width="2"/>
+  <rect x="93.76" y="24.94" width="16.28" height="32.7" rx="3" fill="${rfColor}" stroke="${GRAY}" stroke-width="2"/>
+  <rect x="30.16" y="95.56" width="16.28" height="34" rx="3" fill="${lrColor}" stroke="${GRAY}" stroke-width="2"/>
+  <rect x="97.32" y="95.56" width="16.28" height="34" rx="3" fill="${rrColor}" stroke="${GRAY}" stroke-width="2"/>`;
 }
 
 /**
@@ -308,35 +291,19 @@ export function generateTireServiceSvg(
       return assembleIcon({ graphicSvg: clearTiresIconSvg, colors, title, border });
     }
     default: {
-      const tireElements = generateToggleTiresIconContent(settings, currentState);
+      const toggleColors = resolveIconColors(tireServiceTemplate, getGlobalColors(), settings.colorOverrides);
+      const bodyColor = (toggleColors as Record<string, string>).graphic1Color || WHITE;
+      const toggleIconContent = generateToggleTiresIconContent(settings, currentState, bodyColor);
 
-      const colors = resolveIconColors(toggleTiresCarSvg, getGlobalColors(), settings.colorOverrides);
-      const title = resolveTitleSettings(toggleTiresCarSvg, getGlobalTitleSettings(), settings.titleOverrides, "TIRES");
-      const border = resolveBorderSettings(toggleTiresCarSvg, getGlobalBorderSettings(), settings.borderOverrides);
-
-      const rawCarGraphic = extractGraphicContent(toggleTiresCarSvg);
-      const colorizedCar = title.showGraphics ? renderIconTemplate(rawCarGraphic, colors) : "";
-      const graphicContent = colorizedCar + "\n" + tireElements;
-
-      const titleContent = title.showTitle
-        ? generateTitleText({
-            text: title.titleText,
-            fontSize: title.fontSize,
-            bold: title.bold,
-            position: title.position,
-            customPosition: title.customPosition,
-            fill: colors.textColor ?? "#ffffff",
-          })
-        : "";
-
+      const border = resolveBorderSettings(tireServiceTemplate, getGlobalBorderSettings(), settings.borderOverrides);
       const borderSvg = generateBorderParts(border);
-      const borderContent = borderSvg.defs + borderSvg.rects;
 
-      const svg = renderIconTemplate(ICON_BASE_TEMPLATE, {
-        backgroundColor: colors.backgroundColor ?? "#000000",
-        borderContent,
-        graphicContent,
-        titleContent,
+      const svg = renderIconTemplate(tireServiceTemplate, {
+        iconContent: toggleIconContent,
+        textElement: "",
+        borderDefs: borderSvg.defs,
+        borderContent: borderSvg.rects,
+        ...toggleColors,
       });
 
       return svgToDataUri(svg);

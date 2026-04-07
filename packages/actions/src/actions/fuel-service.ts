@@ -22,17 +22,17 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import addFuelIcon from "@iracedeck/icons/fuel-service/add-fuel.svg";
 import clearFuelIcon from "@iracedeck/icons/fuel-service/clear-fuel.svg";
 import lapMarginDecreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-decrease.svg";
 import lapMarginIncreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-increase.svg";
-import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
-import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
 import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
 import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import fuelAddTemplate from "../../icons/fuel-add.svg";
+import fuelReduceTemplate from "../../icons/fuel-reduce.svg";
 import fuelServiceTemplate from "../../icons/fuel-service.svg";
+import fuelSetTemplate from "../../icons/fuel-set.svg";
 import { borderColorForState, statusBarOff, statusBarOn } from "../icons/status-bar.js";
 
 type FuelServiceMode =
@@ -60,9 +60,6 @@ const UNIT_DISPLAY: Record<FuelUnit, string> = {
  * Fuel macro modes (add-fuel, reduce-fuel, set-fuel-amount) use dynamic labels computed in getFuelServiceLabels().
  */
 const FUEL_SERVICE_LABELS: Partial<Record<FuelServiceMode, { line1: string; line2: string }>> = {
-  "add-fuel": { line1: "+1 L", line2: "ADD FUEL" },
-  "reduce-fuel": { line1: "-1 L", line2: "REDUCE FUEL" },
-  "set-fuel-amount": { line1: "1 L", line2: "SET FUEL" },
   "clear-fuel": { line1: "CLEAR", line2: "FUEL" },
   "toggle-autofuel": { line1: "TOGGLE", line2: "AUTOFUEL" },
   "lap-margin-increase": { line1: "INCREASE", line2: "LAP MARGIN" },
@@ -74,13 +71,23 @@ const FUEL_SERVICE_LABELS: Partial<Record<FuelServiceMode, { line1: string; line
  * Telemetry-aware modes (toggle-fuel-fill) use the dynamic template instead.
  */
 const FUEL_SERVICE_ICONS: Partial<Record<FuelServiceMode, string>> = {
-  "add-fuel": addFuelIcon,
-  "reduce-fuel": reduceFuelIcon,
-  "set-fuel-amount": setFuelAmountIcon,
   "clear-fuel": clearFuelIcon,
   "toggle-autofuel": toggleAutofuelIcon,
   "lap-margin-increase": lapMarginIncreaseIcon,
   "lap-margin-decrease": lapMarginDecreaseIcon,
+};
+
+/**
+ * Per-mode template and accent color for fixed-layout fuel modes.
+ * Bars, labels, and colors are baked into each SVG template — only {{iconContent}} is dynamic.
+ */
+const FUEL_STATIC_TEMPLATES: Record<
+  "add-fuel" | "reduce-fuel" | "set-fuel-amount",
+  { template: string; color: string }
+> = {
+  "add-fuel": { template: fuelAddTemplate, color: "#3fb23f" },
+  "reduce-fuel": { template: fuelReduceTemplate, color: "#e74c3c" },
+  "set-fuel-amount": { template: fuelSetTemplate, color: "#d3c518" },
 };
 
 /**
@@ -184,7 +191,7 @@ function fuelFillGraphicContent(telemetryState: FuelServiceTelemetryState, graph
 
   return `
     <text x="72" y="75" text-anchor="middle" dominant-baseline="central"
-          fill="${graphic1Color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${fuelText}</text>`;
+          fill="${graphic1Color}" font-family="Arial" font-size="40" font-weight="700">${fuelText}</text>`;
 }
 
 function fuelFillStatusBar(telemetryState: FuelServiceTelemetryState): string {
@@ -248,7 +255,7 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
     case "set-fuel-amount":
       return { line1: `${rounded} ${unitLabel}`, line2: "SET FUEL" };
     default:
-      return FUEL_SERVICE_LABELS[mode] ?? FUEL_SERVICE_LABELS["add-fuel"]!;
+      return FUEL_SERVICE_LABELS[mode] ?? { line1: "", line2: "FUEL" };
   }
 }
 
@@ -310,8 +317,48 @@ export function generateFuelServiceSvg(
     return svgToDataUri(svg);
   }
 
-  // Static modes
-  const iconSvg = FUEL_SERVICE_ICONS[mode] ?? FUEL_SERVICE_ICONS["add-fuel"]!;
+  // Fixed-layout modes: bars and labels baked into per-mode SVG, only the value text is dynamic
+  const staticEntry = FUEL_STATIC_TEMPLATES[mode as keyof typeof FUEL_STATIC_TEMPLATES];
+
+  if (staticEntry) {
+    const { template, color } = staticEntry;
+    const { line1 } = getFuelServiceLabels(settings);
+    const colors = resolveIconColors(template, getGlobalColors(), settings.colorOverrides) as Record<string, string>;
+    const border = resolveBorderSettings(template, getGlobalBorderSettings(), settings.borderOverrides);
+    const borderSvg = generateBorderParts(border);
+
+    const valueText = line1.replace(/^[+-]/, "");
+    const lastSpace = valueText.lastIndexOf(" ");
+    const numPart = lastSpace >= 0 ? valueText.slice(0, lastSpace) : valueText;
+    const unitPart = lastSpace >= 0 ? valueText.slice(lastSpace + 1) : "";
+
+    // 48.1px matches the design tool export baseline; scales to 36px for 3+ digits to stay within decorative bars
+    const numFontSize = numPart.length >= 3 ? 36 : 48.1;
+    const unitFontSize = Math.round(numFontSize * 0.55);
+
+    // Estimate widths to center the number+unit group (charWidth ≈ 0.6 × fontSize for bold numbers)
+    const numWidth = numPart.length * numFontSize * 0.6;
+    const unitWidth = unitPart.length * unitFontSize * 0.6;
+    const gap = 7;
+    const totalWidth = numWidth + gap + unitWidth;
+    const startX = 72 - totalWidth / 2;
+
+    const iconContent =
+      `<text font-family="Arial" font-size="${numFontSize}" font-weight="900" letter-spacing="-6" fill="${color}" text-anchor="start" x="${startX}" y="79.39">${numPart}</text>` +
+      `<text font-family="Arial" font-size="${unitFontSize}" font-weight="700" fill="${color}" text-anchor="start" x="${startX + numWidth + gap}" y="79.39">${unitPart}</text>`;
+
+    const svg = renderIconTemplate(template, {
+      iconContent,
+      borderDefs: borderSvg.defs,
+      borderContent: borderSvg.rects,
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
+  }
+
+  // Legacy static modes (using assembleIcon with icon snippets)
+  const iconSvg = FUEL_SERVICE_ICONS[mode] ?? FUEL_SERVICE_ICONS["clear-fuel"]!;
   const { line1, line2 } = getFuelServiceLabels(settings);
   // Convert inverted layout (line2=subLabel/top, line1=mainLabel/bottom) to title format (top\nbottom)
   const defaultTitle = line2 ? `${line2}\n${line1}` : line1;
@@ -496,7 +543,6 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
     if (success) {
       this.logger.info("Fuel macro sent");
-      this.logger.debug(`Macro: ${macro}`);
     } else {
       this.logger.warn("Failed to send fuel macro");
       this.logger.debug(`Failed macro: ${macro}`);

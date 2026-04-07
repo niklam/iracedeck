@@ -12,7 +12,7 @@ export function statusBarOn(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${GREEN}"/>
     <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">ON</text>`;
+          fill="${WHITE}" font-family="Arial" font-size="20" font-weight="900">ON</text>`;
 }
 
 /**
@@ -24,7 +24,7 @@ export function statusBarOff(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${RED}"/>
     <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">OFF</text>`;
+          fill="${WHITE}" font-family="Arial" font-size="22" font-weight="700">OFF</text>`;
 }
 
 /**
@@ -36,7 +36,7 @@ export function statusBarNA(): string {
   return `
     <rect x="0" y="100" width="144" height="44" fill="${GRAY}"/>
     <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
-          fill="${WHITE}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">N/A</text>`;
+          fill="${WHITE}" font-family="Arial" font-size="20" font-weight="900">N/A</text>`;
 }
 
 /**
