@@ -330,16 +330,36 @@ describe("TireService", () => {
     });
 
     it("should show 'CHANGING' with white box when service is in progress and flash visible", () => {
-      const box = generateCompoundStatusBox("WET", true, true, true);
+      const box = generateCompoundStatusBox("WET", true, true, false, true);
       expect(box).toContain("CHANGING");
       expect(box).toContain("#ffffff");
       expect(box).toContain("#1a1a1a");
     });
 
     it("should show white box without text when service is in progress and flash hidden", () => {
-      const box = generateCompoundStatusBox("WET", true, true, false);
+      const box = generateCompoundStatusBox("WET", true, true, false, false);
       expect(box).toContain("#ffffff");
       expect(box).not.toContain("CHANGING");
+    });
+
+    it("should flash text on pit road warning with compound color bar", () => {
+      const boxVisible = generateCompoundStatusBox("WET", true, false, true, true);
+      expect(boxVisible).toContain("CHANGE TO");
+      expect(boxVisible).toContain("#078cd1");
+
+      const boxHidden = generateCompoundStatusBox("WET", true, false, true, false);
+      expect(boxHidden).toContain("#078cd1");
+      expect(boxHidden).not.toContain("CHANGE TO");
+    });
+
+    it("should flash text on pit road warning for dry compound", () => {
+      const boxVisible = generateCompoundStatusBox("DRY", true, false, true, true);
+      expect(boxVisible).toContain("CHANGE TO");
+      expect(boxVisible).toContain("#ffd318");
+
+      const boxHidden = generateCompoundStatusBox("DRY", true, false, true, false);
+      expect(boxHidden).toContain("#ffd318");
+      expect(boxHidden).not.toContain("CHANGE TO");
     });
 
     it("should use white border color during service in progress", () => {

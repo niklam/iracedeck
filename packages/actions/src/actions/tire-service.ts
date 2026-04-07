@@ -209,15 +209,17 @@ export function generateTireIcon(compoundType: string): string {
  * Generate a status bar overlay for the compound change action.
  * Matches the full-width status bar used by toggle switches (x=0, y=100, 144×44).
  * - "STAY ON": compound color bar (yellow/blue)
- * - "CHANGE TO": compound color bar (yellow/blue)
- * - "CHANGING": white bar with flashing text (flashVisible toggles on/off at 4Hz)
+ * - "CHANGE TO": compound color bar (yellow/blue); on pit road: text flashes on/off as warning
+ * - "CHANGING": white bar with flashing text during pit service
  */
 export function generateCompoundStatusBox(
   compoundType: string,
   isChanging: boolean,
   isServiceInProgress: boolean = false,
+  isPitRoadWarning: boolean = false,
   flashVisible: boolean = true,
 ): string {
+  // State 5: pit service in progress — white bar, "CHANGING" flashes
   if (isServiceInProgress) {
     const textEl = flashVisible
       ? `<text x="72" y="129" text-anchor="middle" dominant-baseline="central"
@@ -233,6 +235,18 @@ export function generateCompoundStatusBox(
   const boxColor = isWet ? WET_COMPOUND_COLOR : DRY_COMPOUND_COLOR;
   const textColor = isWet ? "#ffffff" : "#1a1a1a";
   const label = isChanging ? "CHANGE TO" : "STAY ON";
+
+  // State 3: on pit road with compound change queued — text flashes as warning
+  if (isPitRoadWarning) {
+    const textEl = flashVisible
+      ? `<text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+          fill="${textColor}" font-family="Arial" font-size="22" font-weight="700">${label}</text>`
+      : "";
+
+    return `
+    <rect x="0" y="100" width="144" height="44" fill="${boxColor}"/>
+    ${textEl}`;
+  }
 
   return `
     <rect x="0" y="100" width="144" height="44" fill="${boxColor}"/>
@@ -287,11 +301,15 @@ function getCompoundState(telemetry: TelemetryData | null): {
   player: number;
   pitSv: number;
   pitSvStatus: number;
+  onPitRoad: boolean;
+  inPitStall: boolean;
 } {
   return {
     player: telemetry?.PlayerTireCompound ?? 0,
     pitSv: telemetry?.PitSvTireCompound ?? 0,
     pitSvStatus: telemetry?.PlayerCarPitSvStatus ?? PitSvStatus.None,
+    onPitRoad: telemetry?.OnPitRoad ?? false,
+    inPitStall: telemetry?.PlayerCarInPitStall ?? false,
   };
 }
 
@@ -371,12 +389,31 @@ export function generateTireServiceSvg(
       const tiresBeingChanged = currentState.lf || currentState.rf || currentState.lr || currentState.rr;
       const isServiceInProgress =
         compoundState.pitSvStatus === PitSvStatus.InProgress && (isChanging || tiresBeingChanged);
+      // Pit road warning: on pit road but not in stall yet, with compound change queued
+      const isPitRoadWarning =
+        isChanging && compoundState.onPitRoad && !compoundState.inPitStall && !isServiceInProgress;
 
       const iconContent = generateTireIcon(compoundType);
-      const textElement = generateCompoundStatusBox(compoundType, isChanging, isServiceInProgress, flashVisible);
+      const textElement = generateCompoundStatusBox(
+        compoundType,
+        isChanging,
+        isServiceInProgress,
+        isPitRoadWarning,
+        flashVisible,
+      );
 
       const compoundColors = resolveIconColors(tireServiceTemplate, getGlobalColors(), settings.colorOverrides);
-      const compoundBorderColor = isServiceInProgress ? WHITE : isWet ? WET_COMPOUND_COLOR : DRY_COMPOUND_COLOR;
+      // Border: red flash on pit road warning, white during service, compound color otherwise
+      let compoundBorderColor: string;
+
+      if (isPitRoadWarning) {
+        compoundBorderColor = flashVisible ? RED : isWet ? WET_COMPOUND_COLOR : DRY_COMPOUND_COLOR;
+      } else if (isServiceInProgress) {
+        compoundBorderColor = WHITE;
+      } else {
+        compoundBorderColor = isWet ? WET_COMPOUND_COLOR : DRY_COMPOUND_COLOR;
+      }
+
       const border = resolveBorderSettings(
         tireServiceTemplate,
         getGlobalBorderSettings(),
@@ -525,9 +562,10 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const isChanging = compound.player !== compound.pitSv;
     const tiresBeingChanged = tireState.lf || tireState.rf || tireState.lr || tireState.rr;
     const isServiceInProgress = compound.pitSvStatus === PitSvStatus.InProgress && (isChanging || tiresBeingChanged);
+    const isPitRoadWarning = isChanging && compound.onPitRoad && !compound.inPitStall && !isServiceInProgress;
 
-    // Toggle flash state every telemetry tick (4Hz → 2Hz flash) when service is in progress
-    if (isServiceInProgress && settings.action === "change-compound") {
+    // Toggle flash state every telemetry tick (4Hz → 2Hz flash) for pit road warning or service in progress
+    if ((isServiceInProgress || isPitRoadWarning) && settings.action === "change-compound") {
       const currentFlash = this.flashToggle.get(contextId) ?? true;
       this.flashToggle.set(contextId, !currentFlash);
       const svgDataUri = generateTireServiceSvg(settings, tireState, compound, currentFlash);
@@ -537,7 +575,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
       return;
     }
 
-    // Reset flash toggle when not in service
+    // Reset flash toggle when not flashing
     this.flashToggle.delete(contextId);
 
     const stateKey = this.buildStateKey(settings, tireState, compound);
