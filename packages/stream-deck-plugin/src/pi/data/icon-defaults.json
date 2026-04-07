@@ -65,9 +65,10 @@
     "borderColor": "#5a5a6a"
   },
   "fuel-service": {
-    "backgroundColor": "#000000",
+    "backgroundColor": "#3a2a2a",
     "textColor": "#ffffff",
-    "graphic1Color": "#3fb23f"
+    "graphic1Color": "#ffffff",
+    "borderColor": "#6a5a5a"
   },
   "look-direction": {
     "backgroundColor": "#1a2a3a",
@@ -195,6 +196,21 @@
     "backgroundColor": "#2a3a2a",
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
+  },
+  "fuel-add": {
+    "backgroundColor": "#000000",
+    "textColor": "#ffffff",
+    "graphic1Color": "#3fb23f"
+  },
+  "fuel-reduce": {
+    "backgroundColor": "#000000",
+    "textColor": "#ffffff",
+    "graphic1Color": "#e74c3c"
+  },
+  "fuel-set": {
+    "backgroundColor": "#000000",
+    "textColor": "#ffffff",
+    "graphic1Color": "#d3c518"
   },
   "pit-quick-actions-fast-repair": {
     "backgroundColor": "#3a2a2a",
