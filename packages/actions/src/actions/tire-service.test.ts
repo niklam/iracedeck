@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildTireToggleMacro,
+  generateCompoundStatusBox,
   generateTireIcon,
   generateTireServiceSvg,
   generateToggleTiresIconContent,
@@ -59,6 +60,11 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
     RFTireChange: 0x0002,
     LRTireChange: 0x0004,
     RRTireChange: 0x0008,
+  },
+  PitSvStatus: {
+    None: 0,
+    InProgress: 1,
+    Complete: 2,
   },
 }));
 
@@ -278,19 +284,73 @@ describe("TireService", () => {
   });
 
   describe("generateTireIcon", () => {
-    it("should include compound color in SVG", () => {
-      const icon = generateTireIcon("Hard");
-      expect(icon).toContain("#ffffff");
+    it("should use DRY tire artwork (yellow) for non-wet compounds", () => {
+      const icon = generateTireIcon("DRY");
+      expect(icon).toContain("#ffd318");
+      expect(icon).toContain("scale(0.9)");
     });
 
-    it("should use blue for Wet compound", () => {
-      const icon = generateTireIcon("Wet");
-      expect(icon).toContain("#3498db");
+    it("should use WET tire artwork (blue) for wet compound", () => {
+      const icon = generateTireIcon("WET");
+      expect(icon).toContain("#078cd1");
+      expect(icon).toContain("scale(0.9)");
     });
 
-    it("should use gray for unknown compound", () => {
+    it("should default to DRY tire artwork for unknown compound", () => {
       const icon = generateTireIcon("Unknown");
-      expect(icon).toContain("#888888");
+      expect(icon).toContain("#ffd318");
+    });
+  });
+
+  describe("generateCompoundStatusBox", () => {
+    it("should show 'STAY ON' with yellow box for dry compound", () => {
+      const box = generateCompoundStatusBox("DRY", false);
+      expect(box).toContain("STAY ON");
+      expect(box).toContain("#ffd318");
+      expect(box).toContain("#1a1a1a");
+    });
+
+    it("should show 'CHANGE TO' with blue box for wet compound", () => {
+      const box = generateCompoundStatusBox("WET", true);
+      expect(box).toContain("CHANGE TO");
+      expect(box).toContain("#078cd1");
+      expect(box).toContain("#ffffff");
+    });
+
+    it("should show 'STAY ON' with blue box when staying on wet", () => {
+      const box = generateCompoundStatusBox("WET", false);
+      expect(box).toContain("STAY ON");
+      expect(box).toContain("#078cd1");
+    });
+
+    it("should show 'CHANGE TO' with yellow box when changing to dry", () => {
+      const box = generateCompoundStatusBox("DRY", true);
+      expect(box).toContain("CHANGE TO");
+      expect(box).toContain("#ffd318");
+    });
+
+    it("should show 'CHANGING' with white box when service is in progress and flash visible", () => {
+      const box = generateCompoundStatusBox("WET", true, true, true);
+      expect(box).toContain("CHANGING");
+      expect(box).toContain("#ffffff");
+      expect(box).toContain("#1a1a1a");
+    });
+
+    it("should show white box without text when service is in progress and flash hidden", () => {
+      const box = generateCompoundStatusBox("WET", true, true, false);
+      expect(box).toContain("#ffffff");
+      expect(box).not.toContain("CHANGING");
+    });
+
+    it("should use white border color during service in progress", () => {
+      const result = generateTireServiceSvg(
+        { action: "change-compound", tires: ["lf", "rf", "lr", "rr"] },
+        { lf: false, rf: false, lr: false, rr: false },
+        { player: 0, pitSv: 1, pitSvStatus: 1 },
+        true,
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain("CHANGING");
     });
   });
 
@@ -505,46 +565,51 @@ describe("TireService", () => {
         expect(result).toContain("data:image/svg+xml");
       });
 
-      it("should show Stay on DRY when player and pit service are both dry", () => {
+      it("should show STAY ON with DRY tire (yellow) when player and pit service are both dry", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 0 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
-        expect(decoded).toContain("DRY");
+        expect(decoded).toContain("STAY ON");
+        expect(decoded).toContain("#ffd318");
       });
 
-      it("should show Change to WET when player is dry but pit service is wet", () => {
+      it("should show CHANGE TO with WET tire (blue) when player is dry but pit service is wet", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 1 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Change to");
-        expect(decoded).toContain("WET");
+        expect(decoded).toContain("CHANGE TO");
+        expect(decoded).toContain("#078cd1");
       });
 
-      it("should show Stay on WET when player and pit service are both wet", () => {
+      it("should show STAY ON with WET tire (blue) when player and pit service are both wet", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 1, pitSv: 1 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
-        expect(decoded).toContain("WET");
+        expect(decoded).toContain("STAY ON");
+        expect(decoded).toContain("#078cd1");
       });
 
-      it("should show Change to DRY when player is wet but pit service is dry", () => {
+      it("should show CHANGE TO with DRY tire (yellow) when player is wet but pit service is dry", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 1, pitSv: 0 });
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Change to");
-        expect(decoded).toContain("DRY");
+        expect(decoded).toContain("CHANGE TO");
+        expect(decoded).toContain("#ffd318");
       });
 
-      it("should default to Stay on DRY when compound is not provided", () => {
+      it("should default to STAY ON with DRY tire when compound is not provided", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires);
         const decoded = decodeURIComponent(result);
-        expect(decoded).toContain("Stay on");
-        expect(decoded).toContain("DRY");
+        expect(decoded).toContain("STAY ON");
+        expect(decoded).toContain("#ffd318");
       });
 
-      it("should use compound color in tire icon", () => {
+      it("should use WET tire artwork (blue) when pit compound is wet", () => {
         const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 1 });
         const decoded = decodeURIComponent(result);
-        // Wet compound uses blue
-        expect(decoded).toContain("#3498db");
+        expect(decoded).toContain("#078cd1");
+      });
+
+      it("should use DRY tire artwork (yellow) when pit compound is dry", () => {
+        const result = generateTireServiceSvg(compoundSettings, noTires, { player: 0, pitSv: 0 });
+        const decoded = decodeURIComponent(result);
+        expect(decoded).toContain("#ffd318");
       });
     });
 

@@ -589,6 +589,7 @@ export interface TelemetryData {
   PlayerCarClassPosition?: number;
   PlayerCarClass?: number;
   PlayerCarInPitStall?: boolean;
+  PlayerCarPitSvStatus?: number;
   PlayerCarSLFirstRPM?: number;
   PlayerCarSLShiftRPM?: number;
   PlayerCarSLLastRPM?: number;
