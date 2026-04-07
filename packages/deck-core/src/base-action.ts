@@ -358,9 +358,20 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   async onDialUp(ev: IDeckDialUpEvent<T>): Promise<void> {}
 
   /**
-   * Generate a solid-color SVG for a flag overlay.
+   * Generate an SVG for a flag overlay. Most flags use a solid color;
+   * the checkered flag uses a 2x2 checker pattern.
    */
   protected generateFlagOverlaySvg(flagInfo: FlagInfo): string {
+    if (flagInfo.label === "FINISH") {
+      return svgToDataUri(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">` +
+          `<rect width="72" height="72" rx="8" fill="#ffffff"/>` +
+          `<rect width="36" height="36" fill="#1a1a1a"/>` +
+          `<rect x="36" y="36" width="36" height="36" fill="#1a1a1a"/>` +
+          `</svg>`,
+      );
+    }
+
     return svgToDataUri(
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="8" fill="${flagInfo.color}"/></svg>`,
     );

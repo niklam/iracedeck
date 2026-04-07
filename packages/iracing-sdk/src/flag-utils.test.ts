@@ -87,30 +87,49 @@ describe("flag-utils", () => {
       expect(labels).toContain("BLUE");
     });
 
-    it("should exclude green flag", () => {
+    it("should suppress blue when green is also active (race start)", () => {
       const result = resolveAllActiveFlags(Flags.Green | Flags.Blue);
       expect(result).toHaveLength(1);
-      expect(result[0].label).toBe("BLUE");
+      expect(result[0].label).toBe("GREEN");
     });
 
-    it("should return empty array for green-only", () => {
-      expect(resolveAllActiveFlags(Flags.Green)).toEqual([]);
+    it("should return green for green-only", () => {
+      const result = resolveAllActiveFlags(Flags.Green);
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe("GREEN");
     });
 
-    it("should exclude white flag (informational)", () => {
+    it("should include white flag", () => {
       const result = resolveAllActiveFlags(Flags.White | Flags.Blue);
-      expect(result).toHaveLength(1);
-      expect(result[0].label).toBe("BLUE");
+      expect(result).toHaveLength(2);
+      const labels = result.map((f) => f.label);
+      expect(labels).toContain("WHITE");
+      expect(labels).toContain("BLUE");
     });
 
-    it("should exclude checkered flag (informational)", () => {
+    it("should include checkered flag", () => {
       const result = resolveAllActiveFlags(Flags.Checkered | Flags.Yellow);
-      expect(result).toHaveLength(1);
-      expect(result[0].label).toBe("YELLOW");
+      expect(result).toHaveLength(2);
+      const labels = result.map((f) => f.label);
+      expect(labels).toContain("FINISH");
+      expect(labels).toContain("YELLOW");
     });
 
-    it("should return empty for only informational flags", () => {
-      expect(resolveAllActiveFlags(Flags.Green | Flags.White | Flags.Checkered)).toEqual([]);
+    it("should show both green and yellow when active together", () => {
+      const result = resolveAllActiveFlags(Flags.Green | Flags.Yellow);
+      expect(result).toHaveLength(2);
+      const labels = result.map((f) => f.label);
+      expect(labels).toContain("GREEN");
+      expect(labels).toContain("YELLOW");
+    });
+
+    it("should include all non-blue flag types together", () => {
+      const result = resolveAllActiveFlags(Flags.Green | Flags.White | Flags.Checkered);
+      expect(result).toHaveLength(3);
+      const labels = result.map((f) => f.label);
+      expect(labels).toContain("GREEN");
+      expect(labels).toContain("WHITE");
+      expect(labels).toContain("FINISH");
     });
 
     it("should detect yellow waving flag", () => {

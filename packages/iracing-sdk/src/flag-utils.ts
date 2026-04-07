@@ -70,14 +70,10 @@ export function resolveActiveFlag(sessionFlags: number | undefined): FlagInfo | 
 }
 
 /**
- * Labels excluded from the overlay. These are either normal racing state
- * or informational flags that should not flash buttons.
- */
-const OVERLAY_EXCLUDED_LABELS = new Set(["GREEN", "WHITE", "FINISH"]);
-
-/**
- * Resolves all active warning flags from the session flags bitfield, in priority order.
- * Excludes non-warning flags: Green (normal racing), White (last lap), Checkered (finish).
+ * Resolves all active flags from the session flags bitfield, in priority order.
+ * Blue is suppressed when green is also active — this combination occurs only
+ * at race start (rolling/standing start), not mid-race where blue means a
+ * faster car is approaching.
  */
 export function resolveAllActiveFlags(sessionFlags: number | undefined): FlagInfo[] {
   if (sessionFlags === undefined) return [];
@@ -85,9 +81,14 @@ export function resolveAllActiveFlags(sessionFlags: number | undefined): FlagInf
   const result: FlagInfo[] = [];
 
   for (const def of FLAG_DEFINITIONS) {
-    if (OVERLAY_EXCLUDED_LABELS.has(def.info.label)) continue;
-
     if (def.check(sessionFlags)) result.push(def.info);
+  }
+
+  // Suppress blue when green is active — green only appears at race start
+  // (rolling start moment), and iRacing sets both Green + Blue bits together.
+  // Mid-race blue (faster car approaching) never has green set.
+  if (result.some((f) => f.label === "GREEN") && result.some((f) => f.label === "BLUE")) {
+    return result.filter((f) => f.label !== "BLUE");
   }
 
   return result;
