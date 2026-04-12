@@ -306,13 +306,17 @@ export function generateFuelServiceSvg(
     let toggleState: "on" | "off" | "na";
 
     if (mode === "toggle-autofuel") {
-      if (state.autofuelEnabled === false) {
+      if (state.autofuelActive === undefined || state.autofuelEnabled === false) {
         toggleState = "na";
       } else {
         toggleState = state.autofuelActive ? "on" : "off";
       }
     } else {
-      toggleState = state.fuelFillOn ? "on" : "off";
+      if (state.fuelFillOn === undefined) {
+        toggleState = "na";
+      } else {
+        toggleState = state.fuelFillOn ? "on" : "off";
+      }
     }
 
     // Show fuel amount when available; show "--" when the system is unavailable
@@ -618,10 +622,14 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   private getTelemetryState(telemetry: TelemetryData | null): FuelServiceTelemetryState {
+    if (!telemetry) {
+      return {};
+    }
+
     return {
       fuelFillOn: isFuelFillOn(telemetry),
       fuelAmount: getFuelAmount(telemetry),
-      displayUnits: telemetry?.DisplayUnits,
+      displayUnits: telemetry.DisplayUnits,
       autofuelActive: isAutofuelActive(telemetry),
       autofuelEnabled: isAutofuelEnabled(telemetry),
     };
@@ -632,11 +640,11 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
 
     if (settings.mode === "toggle-fuel-fill") {
-      return `fuel-fill|${telemetryState.fuelFillOn ?? false}|${telemetryState.fuelAmount ?? "none"}|${telemetryState.displayUnits ?? 0}|${borderKey}`;
+      return `fuel-fill|${telemetryState.fuelFillOn ?? "na"}|${telemetryState.fuelAmount ?? "none"}|${telemetryState.displayUnits ?? 0}|${borderKey}`;
     }
 
     if (settings.mode === "toggle-autofuel") {
-      return `autofuel|${telemetryState.autofuelEnabled ?? true}|${telemetryState.autofuelActive ?? false}|${telemetryState.fuelAmount ?? "none"}|${telemetryState.displayUnits ?? 0}|${borderKey}`;
+      return `autofuel|${telemetryState.autofuelEnabled ?? true}|${telemetryState.autofuelActive ?? "na"}|${telemetryState.fuelAmount ?? "none"}|${telemetryState.displayUnits ?? 0}|${borderKey}`;
     }
 
     return settings.mode;

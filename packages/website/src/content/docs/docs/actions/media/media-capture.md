@@ -7,20 +7,118 @@ sidebar:
     variant: tip
 ---
 
-Media Capture puts iRacing's recording and screenshot functions at your fingertips. Quickly start or stop video capture, grab screenshots, or reload textures without leaving the cockpit.
+One-tap access to iRacing's recording, screenshot, and texture-reload functions. Start or stop video capture, grab screenshots, or reload textures without leaving the cockpit.
 
 ## Modes
 
-| Mode | Description |
-|------|-------------|
-| Start/Stop Video | Start or stop a video recording session |
-| Video Timer | Display the current video recording timer |
-| Toggle Video Capture | Enable or disable the video capture subsystem |
-| Take Screenshot | Capture a standard screenshot |
-| Take Giant Screenshot | Capture a high-resolution giant screenshot |
-| Reload All Textures | Reload all in-sim textures |
-| Reload Car Textures | Reload car textures only |
+Select the mode from the **Action** dropdown in the Property Inspector.
 
-## Encoder Support
+### Start/Stop Video
 
-Yes — rotation provides additional control depending on the selected mode.
+Toggle video recording on or off via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Video Timer
+
+Show the video recording timer overlay via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Toggle Video Capture
+
+Enable or disable the video capture subsystem via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Take Screenshot
+
+Capture a standard screenshot via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Take Giant Screenshot
+
+Capture a high-resolution giant screenshot. This mode uses a keyboard binding because iRacing does not expose a giant screenshot SDK command.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `Ctrl+Shift+PrintScreen`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Reload All Textures
+
+Reload all in-sim textures via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Reload Car Textures
+
+Reload only the player's car textures via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings

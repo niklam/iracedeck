@@ -46,6 +46,19 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
+  migrateLegacyActionToMode: (raw: unknown) => {
+    if (!raw || typeof raw !== "object") return { migrated: {}, changed: false };
+
+    const record = raw as Record<string, unknown>;
+
+    if (record.mode !== undefined || record.action === undefined) {
+      return { migrated: { ...record }, changed: false };
+    }
+
+    const { action, ...rest } = record;
+
+    return { migrated: { ...rest, mode: action }, changed: true };
+  },
   getCommands: vi.fn(() => ({
     telem: {
       start: vi.fn(() => true),
@@ -142,28 +155,28 @@ describe("TelemetryControl", () => {
 
   describe("generateTelemetryControlSvg", () => {
     it("should generate a valid data URI for toggle-logging", () => {
-      const result = generateTelemetryControlSvg({ action: "toggle-logging" });
+      const result = generateTelemetryControlSvg({ mode: "toggle-logging" });
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all 5 actions", () => {
-      for (const action of ALL_ACTIONS) {
-        const result = generateTelemetryControlSvg({ action });
+      for (const mode of ALL_ACTIONS) {
+        const result = generateTelemetryControlSvg({ mode });
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different actions", () => {
-      const toggleLogging = generateTelemetryControlSvg({ action: "toggle-logging" });
-      const markEvent = generateTelemetryControlSvg({ action: "mark-event" });
+      const toggleLogging = generateTelemetryControlSvg({ mode: "toggle-logging" });
+      const markEvent = generateTelemetryControlSvg({ mode: "mark-event" });
 
       expect(toggleLogging).not.toBe(markEvent);
     });
 
     it("should include correct labels for toggle-logging", () => {
-      const result = generateTelemetryControlSvg({ action: "toggle-logging" });
+      const result = generateTelemetryControlSvg({ mode: "toggle-logging" });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("LOGGING");
@@ -171,7 +184,7 @@ describe("TelemetryControl", () => {
     });
 
     it("should include correct labels for mark-event", () => {
-      const result = generateTelemetryControlSvg({ action: "mark-event" });
+      const result = generateTelemetryControlSvg({ mode: "mark-event" });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("MARK");
@@ -187,9 +200,9 @@ describe("TelemetryControl", () => {
         "restart-recording": { mainLabel: "RECORDING", subLabel: "RESTART" },
       };
 
-      for (const [action, labels] of Object.entries(expectedLabels)) {
+      for (const [mode, labels] of Object.entries(expectedLabels)) {
         const result = generateTelemetryControlSvg({
-          action: action as (typeof ALL_ACTIONS)[number],
+          mode: mode as (typeof ALL_ACTIONS)[number],
         });
         const decoded = decodeURIComponent(result);
 

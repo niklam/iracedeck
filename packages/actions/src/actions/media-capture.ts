@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  migrateLegacyActionToMode,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -71,7 +72,7 @@ export const MEDIA_CAPTURE_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const MediaCaptureSettings = CommonSettings.extend({
-  action: z.enum(ACTION_VALUES).default("start-stop-video"),
+  mode: z.enum(ACTION_VALUES).default("start-stop-video"),
 });
 
 type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
@@ -82,7 +83,7 @@ type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
  * Generates an SVG data URI icon for the media capture action.
  */
 export function generateMediaCaptureSvg(settings: MediaCaptureSettings): string {
-  const { action: actionType } = settings;
+  const { mode: actionType } = settings;
 
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["start-stop-video"];
   const defaultTitle = MEDIA_CAPTURE_TITLES[actionType] || MEDIA_CAPTURE_TITLES["start-stop-video"];
@@ -107,8 +108,18 @@ export const MEDIA_CAPTURE_UUID = "com.iracedeck.sd.core.media-capture" as const
 export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<MediaCaptureSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.action];
+    const { migrated, changed } = migrateLegacyActionToMode(ev.payload.settings);
+
+    if (changed) {
+      try {
+        await ev.action.setSettings(migrated);
+      } catch (error) {
+        this.logger.warn(`Failed to persist migrated settings: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    const settings = this.parseSettings(migrated);
+    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
 
     await this.updateDisplay(ev, settings);
@@ -117,7 +128,7 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<MediaCaptureSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.action];
+    const activeKey = MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
 
     await this.updateDisplay(ev, settings);
@@ -126,17 +137,18 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
   override async onKeyDown(ev: IDeckKeyDownEvent<MediaCaptureSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeAction(settings.action);
+    await this.executeAction(settings.mode);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<MediaCaptureSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeAction(settings.action);
+    await this.executeAction(settings.mode);
   }
 
   private parseSettings(settings: unknown): MediaCaptureSettings {
-    const parsed = MediaCaptureSettings.safeParse(settings);
+    const { migrated } = migrateLegacyActionToMode(settings);
+    const parsed = MediaCaptureSettings.safeParse(migrated);
 
     return parsed.success ? parsed.data : MediaCaptureSettings.parse({});
   }

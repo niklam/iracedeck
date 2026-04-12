@@ -6,7 +6,9 @@ import {
   generateCarControlSvg,
   getEnterExitTowState,
   getPitSpeedLimit,
+  isDrsActive,
   isPitLimiterActive,
+  isPushToPassActive,
   parsePitSpeedLimit,
   pitLimiterActiveIcon,
   pitLimiterInactiveIcon,
@@ -327,6 +329,42 @@ describe("CarControl", () => {
     });
   });
 
+  describe("isDrsActive", () => {
+    it("should return false when telemetry is null", () => {
+      expect(isDrsActive(null)).toBe(false);
+    });
+
+    it("should return false when DRS_Status is undefined (connected car without DRS)", () => {
+      expect(isDrsActive({} as any)).toBe(false);
+    });
+
+    it("should return false when DRS_Status is 0", () => {
+      expect(isDrsActive({ DRS_Status: 0 } as any)).toBe(false);
+    });
+
+    it("should return true when DRS_Status is greater than 0", () => {
+      expect(isDrsActive({ DRS_Status: 1 } as any)).toBe(true);
+    });
+  });
+
+  describe("isPushToPassActive", () => {
+    it("should return false when telemetry is null", () => {
+      expect(isPushToPassActive(null)).toBe(false);
+    });
+
+    it("should return false when P2P_Status is undefined (connected car without P2P)", () => {
+      expect(isPushToPassActive({} as any)).toBe(false);
+    });
+
+    it("should return false when P2P_Status is false", () => {
+      expect(isPushToPassActive({ P2P_Status: false } as any)).toBe(false);
+    });
+
+    it("should return true when P2P_Status is true", () => {
+      expect(isPushToPassActive({ P2P_Status: true } as any)).toBe(true);
+    });
+  });
+
   describe("parsePitSpeedLimit", () => {
     it("should parse '80.00 kph' to 80", () => {
       expect(parsePitSpeedLimit("80.00 kph")).toBe(80);
@@ -449,6 +487,64 @@ describe("CarControl", () => {
       const starterDefault = generateCarControlSvg({ control: "starter" });
 
       expect(starter).toBe(starterDefault);
+    });
+
+    it("should render DRS ON status bar when drsActive is true", () => {
+      const result = generateCarControlSvg({ control: "drs" }, { drsActive: true });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">ON<");
+    });
+
+    it("should render DRS OFF status bar when drsActive is false", () => {
+      const result = generateCarControlSvg({ control: "drs" }, { drsActive: false });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">OFF<");
+    });
+
+    it("should render DRS N/A status bar when drsActive is undefined (no telemetry)", () => {
+      const result = generateCarControlSvg({ control: "drs" }, {});
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">N/A<");
+      expect(decoded).not.toContain(">OFF<");
+    });
+
+    it("should render DRS N/A status bar when telemetryState is not provided", () => {
+      const result = generateCarControlSvg({ control: "drs" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">N/A<");
+    });
+
+    it("should render Push-to-Pass ON status bar when pushToPassActive is true", () => {
+      const result = generateCarControlSvg({ control: "push-to-pass" }, { pushToPassActive: true });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">ON<");
+    });
+
+    it("should render Push-to-Pass OFF status bar when pushToPassActive is false", () => {
+      const result = generateCarControlSvg({ control: "push-to-pass" }, { pushToPassActive: false });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">OFF<");
+    });
+
+    it("should render Push-to-Pass N/A status bar when pushToPassActive is undefined (no telemetry)", () => {
+      const result = generateCarControlSvg({ control: "push-to-pass" }, {});
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">N/A<");
+      expect(decoded).not.toContain(">OFF<");
+    });
+
+    it("should render Push-to-Pass N/A status bar when telemetryState is not provided", () => {
+      const result = generateCarControlSvg({ control: "push-to-pass" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain(">N/A<");
     });
   });
 

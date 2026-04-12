@@ -14,6 +14,7 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  migrateLegacyActionToMode,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -46,7 +47,7 @@ const STATIC_ACTION_ICONS: Partial<Record<PitQuickActionType, string>> = {
 const TELEMETRY_AWARE_ACTIONS = new Set<PitQuickActionType>(["windshield-tearoff", "request-fast-repair"]);
 
 const PitQuickActionsSettings = CommonSettings.extend({
-  action: z.enum(["clear-all-checkboxes", "windshield-tearoff", "request-fast-repair"]).default("clear-all-checkboxes"),
+  mode: z.enum(["clear-all-checkboxes", "windshield-tearoff", "request-fast-repair"]).default("clear-all-checkboxes"),
 });
 
 type PitQuickActionsSettings = z.infer<typeof PitQuickActionsSettings>;
@@ -98,9 +99,11 @@ function pitQuickActionDynamicIcon(
 ): string {
   switch (actionType) {
     case "windshield-tearoff":
+      if (telemetryState.windshieldOn === undefined) return statusBarNA();
+
       return telemetryState.windshieldOn ? statusBarOn() : statusBarOff();
     case "request-fast-repair":
-      if (telemetryState.fastRepairAvailable === false) {
+      if (telemetryState.fastRepairOn === undefined || telemetryState.fastRepairAvailable === false) {
         return statusBarNA();
       }
 
@@ -119,7 +122,7 @@ export function generatePitQuickActionsSvg(
   settings: PitQuickActionsSettings,
   telemetryState?: PitQuickActionTelemetryState,
 ): string {
-  const { action: actionType } = settings;
+  const { mode: actionType } = settings;
 
   // Static mode: clear-all-checkboxes (no telemetry)
   if (!TELEMETRY_AWARE_ACTIONS.has(actionType)) {
@@ -157,10 +160,14 @@ export function generatePitQuickActionsSvg(
   // Determine toggle state for border color
   let toggleState: "on" | "off" | "na";
 
-  if (actionType === "request-fast-repair" && state.fastRepairAvailable === false) {
+  if (actionType === "request-fast-repair") {
+    if (state.fastRepairOn === undefined || state.fastRepairAvailable === false) {
+      toggleState = "na";
+    } else {
+      toggleState = state.fastRepairOn ? "on" : "off";
+    }
+  } else if (state.windshieldOn === undefined) {
     toggleState = "na";
-  } else if (actionType === "request-fast-repair") {
-    toggleState = state.fastRepairOn ? "on" : "off";
   } else {
     toggleState = state.windshieldOn ? "on" : "off";
   }
@@ -198,7 +205,17 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
 
   override async onWillAppear(ev: IDeckWillAppearEvent<PitQuickActionsSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    const { migrated, changed } = migrateLegacyActionToMode(ev.payload.settings);
+
+    if (changed) {
+      try {
+        await ev.action.setSettings(migrated);
+      } catch (error) {
+        this.logger.warn(`Failed to persist migrated settings: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+
+    const settings = this.parseSettings(migrated);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
 
@@ -229,17 +246,18 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
   override async onKeyDown(ev: IDeckKeyDownEvent<PitQuickActionsSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeAction(settings.action);
+    this.executeAction(settings.mode);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<PitQuickActionsSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeAction(settings.action);
+    this.executeAction(settings.mode);
   }
 
   private parseSettings(settings: unknown): PitQuickActionsSettings {
-    const parsed = PitQuickActionsSettings.safeParse(settings);
+    const { migrated } = migrateLegacyActionToMode(settings);
+    const parsed = PitQuickActionsSettings.safeParse(migrated);
 
     return parsed.success ? parsed.data : PitQuickActionsSettings.parse({});
   }
@@ -291,6 +309,10 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
   ): PitQuickActionTelemetryState {
     const state: PitQuickActionTelemetryState = {};
 
+    if (!telemetry) {
+      return state;
+    }
+
     if (actionType === "windshield-tearoff") {
       state.windshieldOn = isWindshieldOn(telemetry);
     } else if (actionType === "request-fast-repair") {
@@ -305,13 +327,13 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
 
-    switch (settings.action) {
+    switch (settings.mode) {
       case "windshield-tearoff":
-        return `windshield|${telemetryState.windshieldOn ?? false}|${borderKey}`;
+        return `windshield|${telemetryState.windshieldOn ?? "na"}|${borderKey}`;
       case "request-fast-repair":
-        return `fast-repair|${telemetryState.fastRepairOn ?? false}|${telemetryState.fastRepairAvailable ?? true}|${borderKey}`;
+        return `fast-repair|${telemetryState.fastRepairOn ?? "na"}|${telemetryState.fastRepairAvailable ?? true}|${borderKey}`;
       default:
-        return settings.action;
+        return settings.mode;
     }
   }
 
@@ -320,13 +342,13 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
     settings: PitQuickActionsSettings,
   ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const telemetryState = this.getTelemetryState(telemetry, settings.action);
+    const telemetryState = this.getTelemetryState(telemetry, settings.mode);
     const svgDataUri = generatePitQuickActionsSvg(settings, telemetryState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
-      const currentState = this.getTelemetryState(currentTelemetry, settings.action);
+      const currentState = this.getTelemetryState(currentTelemetry, settings.mode);
 
       return generatePitQuickActionsSvg(settings, currentState);
     });
@@ -339,9 +361,9 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
     telemetry: TelemetryData | null,
     settings: PitQuickActionsSettings,
   ): Promise<void> {
-    if (!TELEMETRY_AWARE_ACTIONS.has(settings.action)) return;
+    if (!TELEMETRY_AWARE_ACTIONS.has(settings.mode)) return;
 
-    const telemetryState = this.getTelemetryState(telemetry, settings.action);
+    const telemetryState = this.getTelemetryState(telemetry, settings.mode);
     const stateKey = this.buildStateKey(settings, telemetryState);
     const lastStateKey = this.lastState.get(contextId);
 
@@ -351,7 +373,7 @@ export class PitQuickActions extends ConnectionStateAwareAction<PitQuickActionsS
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const currentTelemetry = this.sdkController.getCurrentTelemetry();
-        const currentState = this.getTelemetryState(currentTelemetry, settings.action);
+        const currentState = this.getTelemetryState(currentTelemetry, settings.mode);
 
         return generatePitQuickActionsSvg(settings, currentState);
       });

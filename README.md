@@ -13,18 +13,18 @@
 
 ## Features
 
-**32 actions** with **349 controls** across 8 categories, all with Stream Deck+ encoder support:
+**30 actions** with **254 modes** across 8 categories, with Stream Deck+ dial rotation support on most modes:
 
-| Category | Actions | Controls | Examples |
-|----------|---------|----------|---------|
+| Category | Actions | Modes | Examples |
+|----------|---------|-------|---------|
 | **Display & Session** | 2 | 7 | Incidents, laps, position, fuel, flags |
-| **Driving Controls** | 5 | 39 | AI spotter, audio, black box cycling, look direction, car control |
-| **Cockpit & Interface** | 4 | 30 | Wipers, FFB, splits & reference, telemetry, UI toggles |
-| **View & Camera** | 8 | 124 | FOV, replay transport, camera focus, broadcast tools |
+| **Driving Controls** | 5 | 27 | AI spotter, audio, black box cycling, look direction, car control |
+| **Cockpit & Interface** | 5 | 33 | Wipers, FFB, splits & reference, telemetry, UI toggles |
+| **View & Camera** | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | **Media** | 1 | 7 | Video recording, screenshots |
 | **Pit Service** | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
-| **Car Setup** | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
-| **Chat** | 2 | 48 | Chat, macros, whisper, reply, race admin commands |
+| **Car Setup** | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
+| **Communication** | 2 | 34 | Chat, macros, whisper, reply, race admin commands |
 
 **Key highlights:**
 

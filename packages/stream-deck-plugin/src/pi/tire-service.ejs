@@ -6,8 +6,8 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Action">
-			<sdpi-select id="action-select" setting="action" default="change-all-tires">
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="change-all-tires">
 				<option value="change-all-tires">Change All Tires</option>
 				<option value="clear-tires">Clear Tires</option>
 				<option value="toggle-tires">Toggle Tires</option>
@@ -37,32 +37,32 @@
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
-				const actionSelect = document.getElementById("action-select");
-				if (actionSelect) {
-					updateVisibility(actionSelect.value || "change-all-tires");
+				const modeSelect = document.getElementById("mode-select");
+				if (modeSelect) {
+					updateVisibility(modeSelect.value || "change-all-tires");
 
-					actionSelect.addEventListener("change", (ev) => {
+					modeSelect.addEventListener("change", (ev) => {
 						updateVisibility(ev.target.value || "change-all-tires");
 					});
-					actionSelect.addEventListener("input", (ev) => {
+					modeSelect.addEventListener("input", (ev) => {
 						updateVisibility(ev.target.value || "change-all-tires");
 					});
 
 					// Polling fallback for reliable detection
-					let lastAction = actionSelect.value || "change-all-tires";
+					let lastMode = modeSelect.value || "change-all-tires";
 					setInterval(() => {
-						const currentAction = actionSelect.value;
-						if (currentAction && currentAction !== lastAction) {
-							lastAction = currentAction;
-							updateVisibility(currentAction);
+						const currentMode = modeSelect.value;
+						if (currentMode && currentMode !== lastMode) {
+							lastMode = currentMode;
+							updateVisibility(currentMode);
 						}
 					}, 100);
 				}
 			}
 
-			function updateVisibility(actionType) {
+			function updateVisibility(mode) {
 				const toggleSettings = document.getElementById("toggle-settings");
-				if (actionType === "toggle-tires") {
+				if (mode === "toggle-tires") {
 					toggleSettings?.classList.remove("hidden");
 				} else {
 					toggleSettings?.classList.add("hidden");

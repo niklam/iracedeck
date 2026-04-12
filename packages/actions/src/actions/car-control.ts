@@ -42,7 +42,7 @@ import z from "zod";
 import drsTemplate from "../../icons/car-control-drs.svg";
 import pushToPassTemplate from "../../icons/car-control-push-to-pass.svg";
 import carControlTemplate from "../../icons/car-control.svg";
-import { borderColorForState, statusBarOff, statusBarOn } from "../icons/status-bar.js";
+import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../icons/status-bar.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
@@ -179,8 +179,11 @@ export function pitLimiterInactiveIcon(speed: number): string {
  * @internal Exported for testing
  *
  * DRS icon — status bar only (title text handled by title settings system).
+ * Undefined `active` means no telemetry available → gray N/A.
  */
-export function drsIcon(active: boolean): string {
+export function drsIcon(active: boolean | undefined): string {
+  if (active === undefined) return statusBarNA();
+
   return active ? statusBarOn() : statusBarOff();
 }
 
@@ -188,8 +191,11 @@ export function drsIcon(active: boolean): string {
  * @internal Exported for testing
  *
  * Push To Pass icon — status bar only (title text handled by title settings system).
+ * Undefined `active` means no telemetry available → gray N/A.
  */
-export function pushToPassIcon(active: boolean): string {
+export function pushToPassIcon(active: boolean | undefined): string {
+  if (active === undefined) return statusBarNA();
+
   return active ? statusBarOn() : statusBarOff();
 }
 
@@ -353,9 +359,9 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
   if (control === "push-to-pass" || control === "drs") {
     const template = control === "push-to-pass" ? pushToPassTemplate : drsTemplate;
     const colors = resolveIconColors(template, getGlobalColors(), settings.colorOverrides) as Record<string, string>;
-    const isActive =
-      control === "push-to-pass" ? (telemetryState?.pushToPassActive ?? false) : (telemetryState?.drsActive ?? false);
-    const iconContent = control === "push-to-pass" ? pushToPassIcon(isActive) : drsIcon(isActive);
+    const activeValue = control === "push-to-pass" ? telemetryState?.pushToPassActive : telemetryState?.drsActive;
+    const iconContent = control === "push-to-pass" ? pushToPassIcon(activeValue) : drsIcon(activeValue);
+    const toggleState: "on" | "off" | "na" = activeValue === undefined ? "na" : activeValue ? "on" : "off";
 
     const resolvedTitle = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides);
 
@@ -374,7 +380,7 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
       template,
       getGlobalBorderSettings(),
       settings.borderOverrides,
-      borderColorForState(isActive ? "on" : "off"),
+      borderColorForState(toggleState),
     );
     const borderSvg = generateBorderParts(border);
 
@@ -659,9 +665,9 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       state.pitLimiterActive = isPitLimiterActive(telemetry);
       state.pitSpeedLimit = getPitSpeedLimit();
     } else if (control === "push-to-pass") {
-      state.pushToPassActive = isPushToPassActive(telemetry);
+      if (telemetry) state.pushToPassActive = isPushToPassActive(telemetry);
     } else if (control === "drs") {
-      state.drsActive = isDrsActive(telemetry);
+      if (telemetry) state.drsActive = isDrsActive(telemetry);
     } else if (control === "enter-exit-tow") {
       const sessionInfo = this.sdkController.getSessionInfo();
       state.enterExitTowState = getEnterExitTowState(telemetry, sessionInfo);
@@ -701,11 +707,11 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
 
     if (settings.control === "push-to-pass") {
-      return `push-to-pass|${telemetryState.pushToPassActive ?? false}|${borderKey}`;
+      return `push-to-pass|${telemetryState.pushToPassActive ?? "na"}|${borderKey}`;
     }
 
     if (settings.control === "drs") {
-      return `drs|${telemetryState.drsActive ?? false}|${borderKey}`;
+      return `drs|${telemetryState.drsActive ?? "na"}|${borderKey}`;
     }
 
     if (settings.control === "enter-exit-tow") {

@@ -705,14 +705,21 @@ describe("FuelService", () => {
         expect(decoded).toContain("+0 L");
       });
 
-      it("should show '--' placeholder when no telemetry is available", () => {
+      it("should show '--' placeholder and N/A status bar when no telemetry is available", () => {
         const telemetryState: FuelServiceTelemetryState = {};
         const result = generateFuelServiceSvg({ mode: "toggle-fuel-fill", amount: 1, unit: "l" }, telemetryState);
         const decoded = decodeURIComponent(result);
 
         expect(decoded).toContain("--");
         expect(decoded).not.toContain("+0");
-        expect(decoded).toContain("status-off");
+        expect(decoded).toContain("status-na");
+      });
+
+      it("should show N/A status bar when telemetryState is undefined", () => {
+        const result = generateFuelServiceSvg({ mode: "toggle-fuel-fill", amount: 1, unit: "l" });
+        const decoded = decodeURIComponent(result);
+
+        expect(decoded).toContain("status-na");
       });
 
       it("should show '--' placeholder when fuelAmount is undefined but fuelFillOn is set", () => {
@@ -858,11 +865,11 @@ describe("FuelService", () => {
         expect(decoded).not.toContain("status-on");
       });
 
-      it("should show OFF status bar when no telemetry state is provided", () => {
+      it("should show N/A status bar when no telemetry state is provided", () => {
         const result = generateFuelServiceSvg({ mode: "toggle-autofuel", amount: 1, unit: "l" });
         const decoded = decodeURIComponent(result);
 
-        expect(decoded).toContain("status-off");
+        expect(decoded).toContain("status-na");
       });
 
       it("should show N/A status bar and -- text when autofuel system is not available", () => {

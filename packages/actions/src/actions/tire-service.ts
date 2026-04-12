@@ -20,6 +20,7 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  migrateLegacyActionToMode,
   parseIconArtworkBounds,
   renderIconTemplate,
   resolveBorderSettings,
@@ -63,7 +64,7 @@ const TireCode = z.enum(["lf", "rf", "lr", "rr"]);
 const TOGGLE_MODE_INTRODUCED = "1.13.0";
 
 const TireServiceSettings = CommonSettings.extend({
-  action: z.enum(["change-all-tires", "clear-tires", "toggle-tires", "change-compound"]).default("change-all-tires"),
+  mode: z.enum(["change-all-tires", "clear-tires", "toggle-tires", "change-compound"]).default("change-all-tires"),
   toggleMode: z.enum(["select", "toggle"]).optional(),
   tires: z
     .array(TireCode)
@@ -95,16 +96,20 @@ export function resolveToggleMode(settings: TireServiceSettings): "select" | "to
 /**
  * @internal Exported for testing
  *
- * Migrates legacy boolean tire settings (lf/rf/lr/rr) to the new tires array.
- * Only runs when tires key is absent from the raw settings and legacy booleans are present.
+ * Migrates legacy boolean tire settings (lf/rf/lr/rr) to the new tires array,
+ * and renames the legacy `action` field to `mode`. Tires migration only runs
+ * when the tires key is absent from the raw settings and legacy booleans are present.
  */
 export function migrateTireSettings(raw: unknown): TireServiceSettings {
-  const parsed = TireServiceSettings.safeParse(raw);
+  const { migrated: rawWithMode } = migrateLegacyActionToMode(raw);
+  const parsed = TireServiceSettings.safeParse(rawWithMode);
   const data = parsed.success ? parsed.data : TireServiceSettings.parse({});
 
-  const rawRecord = raw as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== "object") return data;
 
-  if (!rawRecord || rawRecord.tires !== undefined) {
+  const rawRecord = raw as Record<string, unknown>;
+
+  if (rawRecord.tires !== undefined) {
     return data;
   }
 
@@ -351,7 +356,7 @@ export function generateTireServiceSvg(
   currentState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
   compoundState: { player: number; pitSv: number } = { player: 0, pitSv: 0 },
 ): string {
-  switch (settings.action) {
+  switch (settings.mode) {
     case "change-all-tires": {
       const colors = resolveIconColors(changeAllTiresIconSvg, getGlobalColors(), settings.colorOverrides);
       const title = resolveTitleSettings(
@@ -481,15 +486,17 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<TireServiceSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const raw = ev.payload.settings as Record<string, unknown> | undefined;
+    const { migrated: rawWithMode, changed: actionMigrated } = migrateLegacyActionToMode(ev.payload.settings);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
 
-    // Persist defaults on fresh instances so the PI sees correct values
+    // Persist defaults on fresh instances so the PI sees correct values,
+    // and persist the action -> mode rename for legacy instances
     const needsTires = !raw || raw.tires === undefined;
     const needsToggleMode = !raw?.toggleMode;
 
-    if (needsTires || needsToggleMode) {
-      const updates: Record<string, unknown> = { ...(raw ?? {}) };
+    if (needsTires || needsToggleMode || actionMigrated) {
+      const updates: Record<string, unknown> = { ...rawWithMode };
 
       if (needsTires) updates.tires = settings.tires;
 
@@ -601,8 +608,8 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     compound: { player: number; pitSv: number },
   ): string {
     // Static-icon modes don't depend on telemetry — avoid unnecessary re-renders
-    if (settings.action === "change-all-tires" || settings.action === "clear-tires") {
-      return settings.action;
+    if (settings.mode === "change-all-tires" || settings.mode === "clear-tires") {
+      return settings.mode;
     }
 
     const tires = getDriverTires();
@@ -610,7 +617,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
 
-    return `${settings.action}|${settings.tires.join(",")}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}|${compound.player}|${compound.pitSv}|${tires.length}|${compoundType}|${borderKey}`;
+    return `${settings.mode}|${settings.tires.join(",")}|${tireState.lf}|${tireState.rf}|${tireState.lr}|${tireState.rr}|${compound.player}|${compound.pitSv}|${tires.length}|${compoundType}|${borderKey}`;
   }
 
   private executeAction(rawSettings: unknown): void {
@@ -622,7 +629,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
 
     const settings = this.parseSettings(rawSettings);
 
-    switch (settings.action) {
+    switch (settings.mode) {
       case "change-all-tires": {
         this.logger.debug("Sending change all tires macro");
         const success = getCommands().chat.sendMessage("#t");
@@ -675,9 +682,9 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
           return;
         }
 
-        const mode = resolveToggleMode(settings);
+        const toggleMode = resolveToggleMode(settings);
 
-        if (mode === "select") {
+        if (toggleMode === "select") {
           const telemetry = this.sdkController.getCurrentTelemetry();
           const tireState = getTireState(telemetry);
 
@@ -687,7 +694,7 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
           }
         }
 
-        this.logger.debug(`Sending pit macro: ${macro} (mode=${mode})`);
+        this.logger.debug(`Sending pit macro: ${macro} (toggleMode=${toggleMode})`);
         const success = getCommands().chat.sendMessage(macro);
 
         if (success) {

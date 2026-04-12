@@ -1,67 +1,113 @@
 ---
 title: Force Feedback
-description: Force feedback and haptic controls
+description: Force feedback and haptic controls for wheel, bass shaker, and LFE intensity.
 sidebar:
   badge:
-    text: "11 modes"
+    text: "6 modes"
     variant: tip
 ---
 
-Force Feedback provides control over all force feedback and haptic settings from iRacing's Audio & Force Feedback page.
-
-## Properties
-
-| Property | Value |
-|----------|-------|
-| Action ID | `com.iracedeck.sd.core.force-feedback` |
-| Type | Toggle / +/- |
-| SDK Support | No |
-| Encoder Support | Yes |
+Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness and intensity, bass shaker LFE loudness, and haptic LFE intensity.
 
 ## Modes
 
-### Force Feedback
+Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes also expose a **Direction** setting.
 
-| Mode | Type | Direction | Default Key | iRacing Setting |
-|------|------|-----------|-------------|-----------------|
-| Auto Compute FFB Force | Toggle | — | `Ctrl+A` | Auto Compute FFB Force |
-| FFB Force | +/- | Increase / Decrease | *(none)* | Increase FFB Force / Decrease FFB Force |
-| Wheel LFE | +/- | Louder / Quieter | *(none)* | Wheel LFE Louder / Wheel LFE Quieter |
+### Auto Compute FFB Force
 
-### Bass Shaker
+Toggle iRacing's auto-compute FFB force calibration. This is a disruptive toggle — the dial **press** is intentionally a no-op on Stream Deck+ so you can't flip it by accident while rotating a dial nearby.
 
-| Mode | Type | Direction | Default Key | iRacing Setting |
-|------|------|-----------|-------------|-----------------|
-| BassShaker LFE | +/- | Louder / Quieter | *(none)* | BassShaker LFE Louder / BassShaker LFE Quieter |
+#### Details
 
-### Wheel LFE Controls
+- **Dial:** No rotation support; dial press is also disabled to prevent accidental toggling
+- **Default binding:** `Ctrl+A`
+- **Telemetry-aware icon:** No
 
-| Mode | Type | Direction | Default Key | iRacing Setting |
-|------|------|-----------|-------------|-----------------|
-| Wheel LFE Intensity | +/- | More Intense / Less Intense | *(none)* | Wheel LFE More Intense / Wheel LFE Less Intense |
+#### Settings
 
-### Haptic LFE Controls
+- No additional settings
 
-| Mode | Type | Direction | Default Key | iRacing Setting |
-|------|------|-----------|-------------|-----------------|
-| Haptic LFE Intensity | +/- | More Intense / Less Intense | *(none)* | Haptic LFE More Intense / Haptic LFE Less Intense |
+---
 
-## Encoder Support
+### FFB Force
 
-All directional modes support Stream Deck+ encoder rotation:
-- **Clockwise** = increase / louder / more intense
-- **Counter-clockwise** = decrease / quieter / less intense
+Adjust the overall force feedback force. Shares the same global key binding as Cockpit Misc's FFB Max Force mode — configuring one updates the other.
 
-Auto Compute FFB Force does **not** support encoder — it is a keypad-only toggle. The dial press is a no-op to prevent accidental toggling.
+#### Details
 
-## Settings
+- **Dial:** Rotation adjusts FFB force (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| Mode | Dropdown | Auto Compute FFB Force | Force feedback control to activate |
-| Direction | Dropdown | Increase | Direction for +/- modes (hidden for toggle modes) |
+#### Setting: Direction
 
-## Notes
+- **Increase** (default) — Pressing the button raises the force
+- **Decrease** — Pressing the button lowers the force
 
-- FFB Force increase/decrease shares global key bindings with the Cockpit Misc action for backward compatibility.
-- All key bindings default to no key — users must configure them to match their iRacing settings, except Auto Compute FFB Force which defaults to `Ctrl+A`.
+---
+
+### Wheel LFE
+
+Adjust the wheel LFE (low-frequency effects) loudness.
+
+#### Details
+
+- **Dial:** Rotation adjusts wheel LFE loudness (clockwise = louder, counter-clockwise = quieter), regardless of the Direction setting
+- **Default binding:** No default key binding — both Wheel LFE Louder and Wheel LFE Quieter must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button makes it louder
+- **Decrease** — Pressing the button makes it quieter
+
+---
+
+### Bass Shaker LFE
+
+Adjust the bass shaker LFE loudness.
+
+#### Details
+
+- **Dial:** Rotation adjusts bass shaker LFE loudness (clockwise = louder, counter-clockwise = quieter), regardless of the Direction setting
+- **Default binding:** No default key binding — both Bass Shaker LFE Louder and Bass Shaker LFE Quieter must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button makes it louder
+- **Decrease** — Pressing the button makes it quieter
+
+---
+
+### Wheel LFE Intensity
+
+Adjust the wheel LFE intensity curve.
+
+#### Details
+
+- **Dial:** Rotation adjusts wheel LFE intensity (clockwise = more intense, counter-clockwise = less intense), regardless of the Direction setting
+- **Default binding:** No default key binding — both Wheel LFE More Intense and Wheel LFE Less Intense must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button makes it more intense
+- **Decrease** — Pressing the button makes it less intense
+
+---
+
+### Haptic LFE Intensity
+
+Adjust the haptic LFE intensity curve.
+
+#### Details
+
+- **Dial:** Rotation adjusts haptic LFE intensity (clockwise = more intense, counter-clockwise = less intense), regardless of the Direction setting
+- **Default binding:** No default key binding — both Haptic LFE More Intense and Haptic LFE Less Intense must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button makes it more intense
+- **Decrease** — Pressing the button makes it less intense

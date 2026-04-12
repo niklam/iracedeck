@@ -54,12 +54,12 @@ src/content/docs/
     │   ├── overview.md
     │   ├── display-session/         # 2 actions
     │   ├── driving/                 # 5 actions
-    │   ├── cockpit/                 # 4 actions
-    │   ├── view-camera/             # 6 actions
+    │   ├── cockpit/                 # 5 actions
+    │   ├── view-camera/             # 5 actions
     │   ├── media/                   # 1 action
     │   ├── pit-service/             # 3 actions
     │   ├── car-setup/               # 7 actions
-    │   └── communication/           # 1 action
+    │   └── communication/           # 2 actions
     └── reference/
         ├── action-types.md
         └── keyboard-shortcuts.md
@@ -78,6 +78,8 @@ Defined in `astro.config.mjs` under `starlight.sidebar`. Uses `{ slug: "..." }` 
 
 ## Action Doc Template
 
+See the canonical example at `packages/website/src/content/docs/docs/actions/pit-service/tire-service.md` and the full rule at `.claude/rules/website-action-docs.md`. The short version:
+
 ```md
 ---
 title: {Action Name}
@@ -92,14 +94,24 @@ sidebar:
 
 ## Modes
 
-| Mode | Description |
-|------|-------------|
-| {label} | {description} |
+Select the mode from the **{Dropdown Label}** dropdown in the Property Inspector.
 
-## Encoder Support
+### {Mode Name}
 
-{Yes/No — what rotation does}
+{Mode description}
+
+##### Details
+
+- **Dial:** {rotation behavior, or `No rotation support`}
+- **Default binding:** {`Key`, `No default key binding`, or `No keyboard binding`}
+- **Telemetry-aware icon:** {`Yes` (with note on what updates) or `No`}
+
+##### Settings
+
+- No additional settings
 ```
+
+For modes with settings, replace the `##### Settings` block with one or more `##### Setting: {Name}` subheaders documenting defaults and options inline.
 
 ## Deployment
 

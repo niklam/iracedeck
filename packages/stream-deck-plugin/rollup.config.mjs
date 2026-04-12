@@ -49,8 +49,8 @@ const sdPlugin = "com.iracedeck.sd.core.sdPlugin";
 const config = {
 	input: "src/plugin.ts",
 	onwarn(warning, warn) {
-		// Suppress circular dependency warnings from zod internals
-		if (warning.code === "CIRCULAR_DEPENDENCY" && warning.ids?.some(id => id.includes("node_modules\\zod\\") || id.includes("node_modules/zod/"))) return;
+		// Suppress circular dependency warnings from zod and semver internals
+		if (warning.code === "CIRCULAR_DEPENDENCY" && warning.ids?.some(id => id.includes("node_modules\\zod\\") || id.includes("node_modules/zod/") || id.includes("node_modules\\semver\\") || id.includes("node_modules/semver/"))) return;
 		warn(warning);
 	},
 	output: {

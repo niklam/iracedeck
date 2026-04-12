@@ -1,48 +1,178 @@
 ---
 title: Car Control
-description: Control car functions including starter, ignition, pit limiter, headlights, DRS, escape, and more
+description: Control car functions — starter, ignition, pit limiter, headlights, DRS, Push To Pass, escape, and more.
 sidebar:
   badge:
     text: "10 modes"
     variant: tip
 ---
 
-The Car Control action provides quick access to essential car functions. Toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape — all from a single button.
+Quick access to essential car functions: toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape or pause the sim — all from a single button.
 
 ## Modes
 
-| Mode | Description |
-|------|-------------|
-| Pit Speed Limiter | Toggles the pit speed limiter. Icon updates based on telemetry to reflect current state. |
-| Push To Pass | Activates Push To Pass / Overtake (IndyCar, Super Formula, LMDh, and other cars with OTP). Icon shows ON/OFF status from telemetry (`P2P_Status`). |
-| DRS | Toggles DRS (Formula cars). Icon shows ON/OFF status from telemetry (`DRS_Status`). |
-| Headlight Flash | Flashes headlights while held. Useful for multi-class racing communication. |
-| Tear Off Visor | Tears off visor film in open-wheel cars, clearing the view. |
-| Ignition | Toggles the ignition on or off. |
-| Starter | Engages the car starter. Hold button to crank. |
-| Enter/Exit/Tow | Context-aware car entry, exit, pit reset, or tow. Icon updates dynamically based on telemetry. Hold button to confirm. |
-| Escape | Sends the ESC key to exit the car or dismiss dialogs. Supports manual hold or auto-hold (1.5s timed hold with tap-to-cancel). |
-| Pause Sim | Pauses the simulation. |
+Select the mode from the **Control** dropdown in the Property Inspector.
 
-## Encoder Support
+### Pit Speed Limiter
 
-Yes.
+Toggle the pit speed limiter.
 
-### Enter/Exit/Tow States
+#### Details
 
-The Enter/Exit/Tow mode dynamically changes its icon based on your current state in iRacing:
+- **Dial:** No rotation support
+- **Default binding:** `A`
+- **Telemetry-aware icon:** Yes — the icon reflects the current pit limiter state from iRacing telemetry in real time
 
-| State | Condition | Icon |
-|-------|-----------|------|
-| Enter Car | Out of car (replay/spectator) | Car with inward arrow |
-| Exit Car | In the pits | Car with outward arrow |
-| Reset to Pits | On track, non-race session | Car with reset arrow |
-| Tow | On track, race session | Tow hook |
+#### Settings
 
-:::note
-Pit Speed Limiter, Push To Pass, DRS, and Enter/Exit/Tow modes feature telemetry-aware icons that reflect the current state in real time. Push To Pass reads the `P2P_Status` variable (not the momentary button press), so it accurately shows whether overtake power is currently active. Enter/Exit/Tow, Headlight Flash, and Starter use a hold pattern — the action is active while the button is pressed. Escape also uses a hold pattern by default, with an optional auto-hold mode that holds ESC for 1.5 seconds on a single tap (press again to cancel early).
-:::
+- No additional settings
 
-:::caution
-Headlight Flash, Push To Pass, DRS, and Tear Off Visor have no default iRacing key binding. You must configure both the iRacing binding and the action key binding for these modes to work.
-:::
+---
+
+### Push To Pass
+
+Activate Push To Pass / Overtake for IndyCar, Super Formula, LMDh, and other cars with OTP.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — Push To Pass has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** Yes — the icon reads `P2P_Status` (not the momentary button press) so it shows whether overtake power is currently active, not just whether you pressed the button
+
+#### Settings
+
+- No additional settings
+
+---
+
+### DRS
+
+Toggle DRS on Formula cars.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — DRS has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** Yes — the icon reads `DRS_Status` to show whether DRS is currently open
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Headlight Flash
+
+Flash the headlights while the button is held. Useful for multi-class racing communication.
+
+#### Details
+
+- **Dial:** No rotation support; press and hold the dial to flash, release to stop
+- **Default binding:** No default key binding — Headlight Flash has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Tear Off Visor
+
+Tear off a layer of visor film in open-wheel cars, clearing the view.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — Tear Off Visor has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Ignition
+
+Toggle the ignition on or off.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `I`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Starter
+
+Engage the car starter. Hold the button to crank.
+
+#### Details
+
+- **Dial:** No rotation support; press and hold the dial to crank, release to stop
+- **Default binding:** `S`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Enter/Exit/Tow
+
+Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically based on your current iRacing state, and the button uses a hold pattern — press and hold to confirm the action.
+
+#### Details
+
+- **Dial:** No rotation support; press and hold the dial to confirm, release to cancel
+- **Default binding:** `Shift+R`
+- **Telemetry-aware icon:** Yes — the icon switches between Enter Car, Exit Car, Reset to Pits, and Tow based on whether you are out of the car, in the pits, on track in a non-race session, or on track in a race
+
+#### Setting: State icons
+
+Enter/Exit/Tow automatically picks one of four display states based on live telemetry. There is no setting to override this — it is shown here only to document the mapping:
+
+- **Enter Car** — Out of car (replay or spectator); the icon shows a car with an inward arrow
+- **Exit Car** — In the pits; the icon shows a car with an outward arrow
+- **Reset to Pits** — On track in a non-race session; the icon shows a car with a reset arrow
+- **Tow** — On track in a race session; the icon shows a tow hook
+
+---
+
+### Escape
+
+Send the `Escape` key to exit the car or dismiss dialogs. The `Escape` key is hardcoded and is not affected by any Property Inspector key binding.
+
+#### Details
+
+- **Dial:** No rotation support; manual hold holds `Escape` while the button is pressed, auto-hold releases after 1.5 seconds or when you press again
+- **Default binding:** `Escape` (hardcoded — iRacing always uses `Escape` for this action, so the binding is not user-configurable)
+- **Telemetry-aware icon:** No
+
+#### Setting: Auto Hold
+
+- **Off** (default) — Hold the button to hold `Escape`; release the button to release `Escape`
+- **On** — A single tap holds `Escape` for 1.5 seconds automatically; tap again during those 1.5 seconds to cancel early
+
+---
+
+### Pause Sim
+
+Pause the simulation.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `Shift+P`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings

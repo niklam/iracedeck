@@ -1,24 +1,92 @@
 ---
 title: Telemetry Control
-description: Control telemetry logging and recording in iRacing
+description: Control telemetry logging and recording in iRacing.
 sidebar:
   badge:
     text: "5 modes"
     variant: tip
 ---
 
-The Telemetry Control action manages iRacing's telemetry logging and recording features. Toggle logging, mark events of interest, and control recording sessions.
+Manage iRacing's telemetry logging and recording features. Toggle logging, mark events of interest for later review, and start / stop / restart recording sessions.
 
 ## Modes
 
-| Mode | Description |
-|------|-------------|
-| Toggle Logging | Toggles telemetry logging on or off. |
-| Mark Event | Marks the current moment in the telemetry log for later review. |
-| Start Recording | Starts a telemetry recording session. |
-| Stop Recording | Stops the current telemetry recording session. |
-| Restart Recording | Stops and immediately restarts telemetry recording. |
+Select the mode from the **Action** dropdown in the Property Inspector.
 
-## Encoder Support
+### Toggle Logging
 
-Yes.
+Toggle iRacing's telemetry log file on or off.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `Alt+L`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Mark Event
+
+Mark the current moment in the telemetry log for later review.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `M`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Start Recording
+
+Start a telemetry recording session via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Stop Recording
+
+Stop the current telemetry recording session via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Restart Recording
+
+Stop and immediately restart telemetry recording via the iRacing SDK.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings

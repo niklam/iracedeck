@@ -34,6 +34,9 @@ export {
   TitleOverridesSchema,
 } from "./common-settings.js";
 
+// Settings migration helpers
+export { migrateLegacyActionToMode } from "./migrate-legacy-action.js";
+
 // Title, border, and graphic settings (re-exports from icon-composer + global readers)
 export {
   applyGraphicTransform,

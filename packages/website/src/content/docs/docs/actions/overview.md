@@ -3,25 +3,25 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 33 actions with 362 controls for iRacing, organized into 8 categories.
+iRaceDeck provides 30 actions with 254 modes for iRacing, organized into 8 categories.
 
 ## Categories
 
-| Category | Actions | Controls | Description |
-|----------|---------|----------|-------------|
+| Category | Actions | Modes | Description |
+|----------|---------|-------|-------------|
 | [Display & Session](/docs/actions/display-session/session-info/) | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
-| [Driving Controls](/docs/actions/driving/ai-spotter-controls/) | 5 | 41 | AI spotter, audio, black boxes, look direction, car control |
-| [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 5 | 41 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
-| [View & Camera](/docs/actions/view-camera/view-adjustment/) | 8 | 124 | FOV, replay, camera controls, broadcast tools |
+| [Driving Controls](/docs/actions/driving/ai-spotter-controls/) | 5 | 27 | AI spotter, audio, black boxes, look direction, car control |
+| [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
+| [View & Camera](/docs/actions/view-camera/view-adjustment/) | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | [Media](/docs/actions/media/media-capture/) | 1 | 7 | Video recording, screenshots, texture management |
 | [Pit Service](/docs/actions/pit-service/pit-quick-actions/) | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
-| [Car Setup](/docs/actions/car-setup/setup-aero/) | 7 | 79 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction |
-| [Communication](/docs/actions/communication/chat/) | 2 | 48 | Chat, macros, whisper, reply, race admin commands |
+| [Car Setup](/docs/actions/car-setup/setup-aero/) | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction |
+| [Communication](/docs/actions/communication/chat/) | 2 | 34 | Chat, macros, whisper, reply, race admin commands |
 
 ## How Actions Work
 
 Most actions support multiple **modes** selectable via the Property Inspector. For example, the Session Info action can display incidents, time remaining, lap count, position, fuel level, or active flags — all from a single action type.
 
-Actions that support the **encoder** can also be used with the Stream Deck+ dial for rotation-based input (e.g., cycling through black boxes or adjusting volume).
+Actions that support dial rotation can also be used with the Stream Deck+ dial for rotation-based input (e.g., cycling through black boxes or adjusting volume).
 
 All keyboard shortcuts used by actions are **user-configurable** through the Property Inspector to match your iRacing key bindings.

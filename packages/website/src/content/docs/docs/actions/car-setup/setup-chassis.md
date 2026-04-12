@@ -1,45 +1,233 @@
 ---
 title: Setup Chassis
-description: Adjust chassis settings including anti-roll bars, springs, ride height, dampers, tire pressure, and power steering during a session.
+description: Adjust chassis setup options — differential, anti-roll bars, springs, shocks, and power steering — during a session.
 sidebar:
   badge:
-    text: "26 modes"
+    text: "13 modes"
     variant: tip
 ---
 
-Adjust chassis and suspension settings on your car during a session. Covers anti-roll bars, spring rates, ride height, bump and rebound damping, tire pressures, and power steering.
+Adjust chassis setup options from the cockpit: differential curves, anti-roll bars, spring preloads, shock absorbers, and power steering.
 
 ## Modes
 
-| Mode | Description |
-|------|-------------|
-| Front ARB Stiffer | Stiffen front anti-roll bar |
-| Front ARB Softer | Soften front anti-roll bar |
-| Rear ARB Stiffer | Stiffen rear anti-roll bar |
-| Rear ARB Softer | Soften rear anti-roll bar |
-| Front Spring Rate Stiffer | Stiffen front spring rate |
-| Front Spring Rate Softer | Soften front spring rate |
-| Rear Spring Rate Stiffer | Stiffen rear spring rate |
-| Rear Spring Rate Softer | Soften rear spring rate |
-| Front Ride Height Up | Raise front ride height |
-| Front Ride Height Down | Lower front ride height |
-| Rear Ride Height Up | Raise rear ride height |
-| Rear Ride Height Down | Lower rear ride height |
-| Front Bump Stiffer | Stiffen front bump damping |
-| Front Bump Softer | Soften front bump damping |
-| Rear Bump Stiffer | Stiffen rear bump damping |
-| Rear Bump Softer | Soften rear bump damping |
-| Front Rebound Stiffer | Stiffen front rebound damping |
-| Front Rebound Softer | Soften front rebound damping |
-| Rear Rebound Stiffer | Stiffen rear rebound damping |
-| Rear Rebound Softer | Soften rear rebound damping |
-| Front Tire Pressure Up | Increase front tire pressure |
-| Front Tire Pressure Down | Decrease front tire pressure |
-| Rear Tire Pressure Up | Increase rear tire pressure |
-| Rear Tire Pressure Down | Decrease rear tire pressure |
-| Power Steering Increase | Increase power steering assist |
-| Power Steering Decrease | Decrease power steering assist |
+Select the mode from the **Setting** dropdown in the Property Inspector. Every chassis mode is directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does.
 
-## Encoder Support
+### Differential Preload
 
-Yes — rotate the dial to increase or decrease the selected chassis setting.
+Adjust the differential preload value.
+
+#### Details
+
+- **Dial:** Rotation adjusts differential preload (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Diff Preload + and Diff Preload - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Differential Entry
+
+Adjust the differential entry (on-throttle) setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts differential entry (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Diff Entry + and Diff Entry - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Differential Middle
+
+Adjust the differential middle (coasting) setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts differential middle (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Diff Middle + and Diff Middle - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Differential Exit
+
+Adjust the differential exit setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts differential exit (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Diff Exit + and Diff Exit - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Front ARB
+
+Adjust the front anti-roll bar stiffness.
+
+#### Details
+
+- **Dial:** Rotation adjusts the front ARB (clockwise = stiffer, counter-clockwise = softer), regardless of the Direction setting
+- **Default binding:** No default key binding — both Front ARB + and Front ARB - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button stiffens the ARB
+- **Decrease** — Pressing the button softens the ARB
+
+---
+
+### Rear ARB
+
+Adjust the rear anti-roll bar stiffness.
+
+#### Details
+
+- **Dial:** Rotation adjusts the rear ARB (clockwise = stiffer, counter-clockwise = softer), regardless of the Direction setting
+- **Default binding:** No default key binding — both Rear ARB + and Rear ARB - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button stiffens the ARB
+- **Decrease** — Pressing the button softens the ARB
+
+---
+
+### Left Spring
+
+Adjust the left-side spring preload.
+
+#### Details
+
+- **Dial:** Rotation adjusts the left spring (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Left Spring + and Left Spring - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Right Spring
+
+Adjust the right-side spring preload.
+
+#### Details
+
+- **Dial:** Rotation adjusts the right spring (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Right Spring + and Right Spring - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### LF Shock
+
+Adjust the left-front shock setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts the left-front shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both LF Shock + and LF Shock - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### RF Shock
+
+Adjust the right-front shock setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts the right-front shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both RF Shock + and RF Shock - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### LR Shock
+
+Adjust the left-rear shock setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts the left-rear shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both LR Shock + and LR Shock - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### RR Shock
+
+Adjust the right-rear shock setting.
+
+#### Details
+
+- **Dial:** Rotation adjusts the right-rear shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both RR Shock + and RR Shock - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the value
+- **Decrease** — Pressing the button lowers the value
+
+---
+
+### Power Steering
+
+Adjust the power steering assist level.
+
+#### Details
+
+- **Dial:** Rotation adjusts power steering (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Default binding:** No default key binding — both Power Steering + and Power Steering - must be configured in iRacing and in the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Setting: Direction
+
+- **Increase** (default) — Pressing the button raises the assist level
+- **Decrease** — Pressing the button lowers the assist level

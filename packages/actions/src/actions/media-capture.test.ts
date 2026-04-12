@@ -52,6 +52,19 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
+  migrateLegacyActionToMode: (raw: unknown) => {
+    if (!raw || typeof raw !== "object") return { migrated: {}, changed: false };
+
+    const record = raw as Record<string, unknown>;
+
+    if (record.mode !== undefined || record.action === undefined) {
+      return { migrated: { ...record }, changed: false };
+    }
+
+    const { action, ...rest } = record;
+
+    return { migrated: { ...rest, mode: action }, changed: true };
+  },
   getCommands: vi.fn(() => ({
     videoCapture: {
       screenshot: vi.fn(() => true),
@@ -153,28 +166,28 @@ describe("MediaCapture", () => {
 
   describe("generateMediaCaptureSvg", () => {
     it("should generate a valid data URI for start-stop-video", () => {
-      const result = generateMediaCaptureSvg({ action: "start-stop-video" });
+      const result = generateMediaCaptureSvg({ mode: "start-stop-video" });
 
       expect(result).toContain("data:image/svg+xml");
     });
 
     it("should generate valid data URIs for all 7 actions", () => {
-      for (const action of ALL_ACTIONS) {
-        const result = generateMediaCaptureSvg({ action });
+      for (const mode of ALL_ACTIONS) {
+        const result = generateMediaCaptureSvg({ mode });
 
         expect(result).toContain("data:image/svg+xml");
       }
     });
 
     it("should produce different icons for different actions", () => {
-      const startStop = generateMediaCaptureSvg({ action: "start-stop-video" });
-      const screenshot = generateMediaCaptureSvg({ action: "take-screenshot" });
+      const startStop = generateMediaCaptureSvg({ mode: "start-stop-video" });
+      const screenshot = generateMediaCaptureSvg({ mode: "take-screenshot" });
 
       expect(startStop).not.toBe(screenshot);
     });
 
     it("should include correct labels for start-stop-video", () => {
-      const result = generateMediaCaptureSvg({ action: "start-stop-video" });
+      const result = generateMediaCaptureSvg({ mode: "start-stop-video" });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("START/STOP");
@@ -182,7 +195,7 @@ describe("MediaCapture", () => {
     });
 
     it("should include correct labels for take-screenshot", () => {
-      const result = generateMediaCaptureSvg({ action: "take-screenshot" });
+      const result = generateMediaCaptureSvg({ mode: "take-screenshot" });
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("SCREENSHOT");
@@ -200,9 +213,9 @@ describe("MediaCapture", () => {
         "reload-car-textures": { mainLabel: "RELOAD CAR", subLabel: "TEXTURES" },
       };
 
-      for (const [action, labels] of Object.entries(expectedLabels)) {
+      for (const [mode, labels] of Object.entries(expectedLabels)) {
         const result = generateMediaCaptureSvg({
-          action: action as (typeof ALL_ACTIONS)[number],
+          mode: mode as (typeof ALL_ACTIONS)[number],
         });
         const decoded = decodeURIComponent(result);
 

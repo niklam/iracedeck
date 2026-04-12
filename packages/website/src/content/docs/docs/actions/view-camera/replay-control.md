@@ -7,65 +7,412 @@ sidebar:
     variant: tip
 ---
 
-Replay Control gives you complete command over iRacing's replay system. Playback transport, progressive speed control, and session/lap/incident navigation are all available as selectable modes on a single action.
+Complete command over iRacing's replay system. Playback transport, progressive speed control, and session / lap / incident / car navigation are all available as selectable modes on a single action. Every mode uses the iRacing SDK replay and camera commands — no keyboard bindings.
 
 :::note
-Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Navigation actions. Existing button configurations using those actions will continue to work.
+Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Navigation actions. Existing button configurations using those actions continue to work.
 :::
 
-## Transport
+Fast Forward, Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically after an initial 500 ms delay, then every 250 ms.
 
-| Mode | Description |
-|------|-------------|
-| Play / Pause | Toggle forward playback. Remembers slow-motion speed across pause/resume. |
-| Play / Pause Backward | Toggle reverse playback. Mirrors slow-motion speed when switching direction. |
-| Stop | Pause and reset speed memory so next play starts at 1x. |
-| Fast Forward | Progressive fast-forward: each press increases speed 2x → 3x → ... → 16x. |
-| Rewind | Progressive rewind: each press increases reverse speed -2x → -3x → ... → -16x. |
-| Slow Motion | Quick shortcut to 1/2x slow motion. |
-| Frame Forward | Advance one frame. |
-| Frame Backward | Step back one frame. |
+## Modes
 
-## Speed
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
-| Mode | Description |
-|------|-------------|
-| Increase Speed | Traverse full speed range upward: 1/16x → ... → 1/2x → 1x → 2x → ... → 16x. Direction-aware. |
-| Decrease Speed | Traverse full speed range downward. Direction-aware (works in reverse too). |
-| Set Speed | Set a specific speed via dropdown (31 options from 1/16x to 16x). |
-| Speed Display | Read-only display of current replay speed from telemetry. |
+### Play / Pause
 
-## Navigation
+Toggle forward playback. Remembers your last slow-motion speed across pause / resume so you can flip between paused and 1/2x without losing the rhythm.
 
-| Mode | Description |
-|------|-------------|
-| Next Session | Jump to the next session. |
-| Previous Session | Jump to the previous session. |
-| Next Lap | Jump to the next lap. |
-| Previous Lap | Jump to the previous lap. |
-| Next Incident | Jump to the next incident. |
-| Previous Incident | Jump to the previous incident. |
-| Jump to Beginning | Jump to the start of the replay. |
-| Jump to Live | Jump to the live session. |
+#### Details
 
-## Camera
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the icon reflects whether the replay is currently playing or paused based on live replay state
 
-| Mode | Description |
-|------|-------------|
-| Jump to My Car | Jump the replay camera to your own car. |
-| Next Car | Switch to the next car ahead on track. Skips cars on pit road. |
-| Previous Car | Switch to the next car behind on track. Skips cars on pit road. |
-| Next Car (Number Order) | Switch to the next car by car number order. Includes all cars (even in pits), skips pace car. |
-| Previous Car (Number Order) | Switch to the previous car by car number order. Includes all cars (even in pits), skips pace car. |
+#### Settings
 
-## Long-Press Repeat
+- No additional settings
 
-Fast Forward, Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically (500ms initial delay, then every 250ms).
+---
 
-## Encoder Support
+### Play / Pause Backward
 
-Yes — rotation behavior depends on the selected mode:
-- **Speed modes**: rotate adjusts speed progressively
-- **Navigation modes**: rotate cycles next/previous
-- **Camera modes**: rotate cycles next/previous car; push executes the selected action
-- **Transport modes**: rotate steps forward/backward by one frame
+Toggle reverse playback. Mirrors slow-motion speed when switching direction.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the icon reflects whether reverse playback is active based on live replay state
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Stop
+
+Pause playback and reset the remembered speed so the next Play / Pause starts at 1x.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Fast Forward
+
+Progressive fast-forward. Each press steps the forward speed up by one (2x → 3x → 4x → ... → 16x) up to the iRacing maximum.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Rewind
+
+Progressive rewind. Each press steps the reverse speed up by one (−2x → −3x → −4x → ... → −16x) up to the iRacing maximum.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Slow Motion
+
+Quick shortcut to 1/2x slow motion.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Frame Forward
+
+Advance exactly one frame.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Frame Backward
+
+Step back exactly one frame.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Increase Speed
+
+Traverse the full speed range upward: 1/16x → ... → 1/2x → 1x → 2x → ... → 16x. Direction-aware — works whether playback is forward or reverse.
+
+#### Details
+
+- **Dial:** Rotation progressively adjusts replay speed (clockwise = increase, counter-clockwise = decrease)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Decrease Speed
+
+Traverse the full speed range downward. Direction-aware — works whether playback is forward or reverse.
+
+#### Details
+
+- **Dial:** Rotation progressively adjusts replay speed (clockwise = increase, counter-clockwise = decrease)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Set Speed
+
+Set replay playback to a specific speed selected in the Property Inspector.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Speed
+
+The target replay speed. 31 options ranging from `1/16x` slow motion through `1x` up to `16x` fast-forward. Defaults to `1x`.
+
+---
+
+### Speed Display
+
+Read-only display of the current replay speed. Pressing the button does nothing — this is a display-only mode.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the icon shows the live replay speed pulled from telemetry
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Next Session
+
+Jump to the next session in the replay.
+
+#### Details
+
+- **Dial:** Rotation cycles sessions (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Previous Session
+
+Jump to the previous session in the replay.
+
+#### Details
+
+- **Dial:** Rotation cycles sessions (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Next Lap
+
+Jump forward one lap.
+
+#### Details
+
+- **Dial:** Rotation cycles laps (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Previous Lap
+
+Jump backward one lap.
+
+#### Details
+
+- **Dial:** Rotation cycles laps (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Next Incident
+
+Jump to the next incident.
+
+#### Details
+
+- **Dial:** Rotation cycles incidents (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Previous Incident
+
+Jump to the previous incident.
+
+#### Details
+
+- **Dial:** Rotation cycles incidents (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Jump to Beginning
+
+Jump to the start of the replay.
+
+#### Details
+
+- **Dial:** Rotation cycles incidents (clockwise = next incident, counter-clockwise = previous incident)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Jump to Live
+
+Jump to the live point in the session (end of the replay buffer).
+
+#### Details
+
+- **Dial:** Rotation cycles incidents (clockwise = next incident, counter-clockwise = previous incident)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Jump to My Car
+
+Jump the replay camera to your own car.
+
+#### Details
+
+- **Dial:** Rotation cycles to the next / previous car on track around your position (clockwise = ahead, counter-clockwise = behind)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Next Car
+
+Switch the replay camera to the next car ahead on track. Skips cars currently on pit road.
+
+#### Details
+
+- **Dial:** Rotation cycles cars on track (clockwise = next ahead, counter-clockwise = previous behind)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Previous Car
+
+Switch the replay camera to the next car behind on track. Skips cars currently on pit road.
+
+#### Details
+
+- **Dial:** Rotation cycles cars on track (clockwise = next ahead, counter-clockwise = previous behind)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Next Car (Number Order)
+
+Switch the replay camera to the next car by car number order. Includes all cars — even those in the pits — and skips the pace car.
+
+#### Details
+
+- **Dial:** Rotation cycles cars by number order (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Previous Car (Number Order)
+
+Switch the replay camera to the previous car by car number order. Includes all cars — even those in the pits — and skips the pace car.
+
+#### Details
+
+- **Dial:** Rotation cycles cars by number order (clockwise = next, counter-clockwise = previous)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
