@@ -32,6 +32,7 @@ import changeAllTiresIconSvg from "@iracedeck/icons/tire-service/change-all-tire
 import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
 import toggleTiresCarSvg from "@iracedeck/icons/tire-service/toggle-tires.svg";
 import { hasFlag, PitSvFlags, TelemetryData } from "@iracedeck/iracing-sdk";
+import { lt } from "semver";
 import z from "zod";
 
 import tireServiceTemplate from "../../icons/tire-service.svg";
@@ -58,8 +59,12 @@ type DriverTire = { TireIndex: number; TireCompoundType: string };
 
 const TireCode = z.enum(["lf", "rf", "lr", "rr"]);
 
+/** Version threshold: instances added before this default to "toggle" mode */
+const TOGGLE_MODE_INTRODUCED = "1.13.0";
+
 const TireServiceSettings = CommonSettings.extend({
   action: z.enum(["change-all-tires", "clear-tires", "toggle-tires", "change-compound"]).default("change-all-tires"),
+  toggleMode: z.enum(["select", "toggle"]).optional(),
   tires: z
     .array(TireCode)
     .default(["lf", "rf", "lr", "rr"])
@@ -72,6 +77,20 @@ const TireServiceSettings = CommonSettings.extend({
 });
 
 type TireServiceSettings = z.infer<typeof TireServiceSettings>;
+
+/**
+ * @internal Exported for testing
+ *
+ * Resolve the effective toggle mode. If the user has explicitly set it, use that.
+ * Otherwise, default based on when the action was added:
+ *   - Added before TOGGLE_MODE_INTRODUCED → "toggle" (legacy behavior)
+ *   - Added at or after → "select" (clear-first behavior)
+ */
+export function resolveToggleMode(settings: TireServiceSettings): "select" | "toggle" {
+  if (settings.toggleMode) return settings.toggleMode;
+
+  return lt(settings.addedWithVersion, TOGGLE_MODE_INTRODUCED) ? "toggle" : "select";
+}
 
 /**
  * @internal Exported for testing
@@ -264,6 +283,25 @@ export function areRightTiresOn(settings: Pick<TireServiceSettings, "tires">): b
 /**
  * @internal Exported for testing
  *
+ * Check if the current tire change flags exactly match the configured tires.
+ */
+export function doCurrentTiresMatch(
+  settings: Pick<TireServiceSettings, "tires">,
+  tireState: { lf: boolean; rf: boolean; lr: boolean; rr: boolean },
+): boolean {
+  const configured = new Set(settings.tires);
+
+  return (
+    tireState.lf === configured.has("lf") &&
+    tireState.rf === configured.has("rf") &&
+    tireState.lr === configured.has("lr") &&
+    tireState.rr === configured.has("rr")
+  );
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Builds a pit macro string to toggle the configured tires.
  * Uses shorthand macros (#!t, #!l, #!r) when tires match a recognized group pattern.
  * Returns null if no tires are configured.
@@ -446,10 +484,25 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
 
-    // Persist Zod defaults on fresh instances so the PI checkbox-list sees the tires array
-    if (!raw || raw.tires === undefined) {
+    // Persist defaults on fresh instances so the PI sees correct values
+    const needsTires = !raw || raw.tires === undefined;
+    const needsToggleMode = !raw?.toggleMode;
+
+    if (needsTires || needsToggleMode) {
+      const updates: Record<string, unknown> = { ...(raw ?? {}) };
+
+      if (needsTires) updates.tires = settings.tires;
+
+      if (needsToggleMode) {
+        // Determine toggle mode default: raw settings without addedWithVersion
+        // means first appear after the feature was added. Check if other settings
+        // exist to distinguish pre-existing instances (have data) from new ones (empty).
+        const isPreExisting = raw && Object.keys(raw).length > 0 && !raw.addedWithVersion;
+        updates.toggleMode = isPreExisting ? "toggle" : "select";
+      }
+
       try {
-        await ev.action.setSettings({ ...(raw ?? {}), tires: settings.tires });
+        await ev.action.setSettings(updates);
       } catch (error) {
         this.logger.warn(
           `Failed to persist default settings: ${error instanceof Error ? error.message : String(error)}`,
@@ -622,7 +675,19 @@ export class TireService extends ConnectionStateAwareAction<TireServiceSettings>
           return;
         }
 
-        this.logger.debug(`Sending pit macro: ${macro}`);
+        const mode = resolveToggleMode(settings);
+
+        if (mode === "select") {
+          const telemetry = this.sdkController.getCurrentTelemetry();
+          const tireState = getTireState(telemetry);
+
+          if (!doCurrentTiresMatch(settings, tireState)) {
+            this.logger.debug("Current tires don't match configured — clearing first");
+            getCommands().pit.clearTires();
+          }
+        }
+
+        this.logger.debug(`Sending pit macro: ${macro} (mode=${mode})`);
         const success = getCommands().chat.sendMessage(macro);
 
         if (success) {

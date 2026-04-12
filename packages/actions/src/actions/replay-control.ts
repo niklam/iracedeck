@@ -1034,11 +1034,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     if (mode === "speed-increase" || mode === "speed-decrease") {
       // Speed modes: rotate adjusts speed progressively
       const adjustedMode: ReplayControlMode = ticks > 0 ? "speed-increase" : "speed-decrease";
-      this.executeMode(contextId, { mode: adjustedMode, speed: "1", flagsOverlay: false });
+      this.executeMode(contextId, { mode: adjustedMode, speed: "1", flagsOverlay: false, addedWithVersion: "0.0.0" });
     } else if (DIRECTIONAL_PAIRS[mode]) {
       const pair = DIRECTIONAL_PAIRS[mode]!;
       const nav = ticks > 0 ? pair.next : pair.prev;
-      this.executeMode("__dial__", { mode: nav, speed: "1", flagsOverlay: false });
+      this.executeMode("__dial__", { mode: nav, speed: "1", flagsOverlay: false, addedWithVersion: "0.0.0" });
     } else if (mode === "jump-to-beginning" || mode === "jump-to-live") {
       if (ticks > 0) {
         replay.nextIncident();

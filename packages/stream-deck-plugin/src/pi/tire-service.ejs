@@ -15,7 +15,14 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<div id="tire-checkboxes" class="hidden">
+		<div id="toggle-settings" class="hidden">
+			<sdpi-item label="Operation">
+				<sdpi-radio setting="toggleMode" columns="1">
+					<option value="select">Select configured tires</option>
+					<option value="toggle">Toggle configured tires</option>
+				</sdpi-radio>
+			</sdpi-item>
+
 			<sdpi-item label="Tires">
 				<sdpi-checkbox-list setting="tires" columns="2">
 					<option value="lf">Left Front</option>
@@ -54,11 +61,11 @@
 			}
 
 			function updateVisibility(actionType) {
-				const checkboxes = document.getElementById("tire-checkboxes");
+				const toggleSettings = document.getElementById("toggle-settings");
 				if (actionType === "toggle-tires") {
-					checkboxes?.classList.remove("hidden");
+					toggleSettings?.classList.remove("hidden");
 				} else {
-					checkboxes?.classList.add("hidden");
+					toggleSettings?.classList.add("hidden");
 				}
 			}
 
