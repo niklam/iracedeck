@@ -1,5 +1,13 @@
 # Automated Car Control Triggers — Design Spec
 
+> **Status:** Superseded by the shipped implementation. Kept for historical context only.
+>
+> Differences from what actually shipped:
+>
+> - The action is named `automation` (not `auto-control`); file paths, action UUID, and settings use that name.
+> - The `everyXLaps` setting was dropped — per-lap firings are controlled only by `timesPerLap`.
+> - See `docs/plugins/core/actions/automation.md` and `packages/website/src/content/docs/docs/actions/driving/automation.md` for the authoritative current behaviour.
+
 ## Context
 
 Community request (Discord, SebKun, 2026-03-24): users want automated car controls that fire based on telemetry conditions — tear off visor N times per lap (iRacing's built-in auto tear-off only fires once), pit limiter that engages reliably on pit approach, and headlight flash on an interval for manual safety car in leagues.

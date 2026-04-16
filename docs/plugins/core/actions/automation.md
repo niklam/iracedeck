@@ -64,7 +64,7 @@ Shown only when Command is "Headlight Flash".
 - **Press** the button to toggle the automation on/off
 - Automations start **inactive** on plugin startup (manual activation only)
 - Automations **persist across page switches** — the rule continues running even when the button is not visible
-- The button shows a **status bar** (green "AUTO ON" / red "AUTO OFF") to indicate current state
+- The button shows a **status bar** (green "AUTO ON" / red "AUTO OFF" / gray "AUTO N/A" when paused) to indicate current state
 
 ## Keyboard Simulation
 

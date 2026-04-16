@@ -22,7 +22,7 @@ Welcome to the iRaceDeck documentation. Here you'll find guides for getting star
 iRaceDeck provides **31 actions** with **258 modes** across 8 categories. See the [Actions Overview](/docs/actions/overview/) for a full breakdown, or jump to a category:
 
 - [Display & Session](/docs/actions/display-session/session-info/) — Live session data and telemetry displays
-- [Driving Controls](/docs/actions/driving/ai-spotter-controls/) — AI spotter, audio, black boxes, look direction, car control
+- [Driving Controls](/docs/actions/driving/ai-spotter-controls/) — AI spotter, audio, automation, black boxes, look direction, car control
 - [Cockpit & Interface](/docs/actions/cockpit/cockpit-misc/) — Wipers, force feedback, delta splits, telemetry logging, UI toggles
 - [View & Camera](/docs/actions/view-camera/view-adjustment/) — FOV, replay, camera controls, broadcast tools
 - [Media](/docs/actions/media/media-capture/) — Video recording and screenshots
