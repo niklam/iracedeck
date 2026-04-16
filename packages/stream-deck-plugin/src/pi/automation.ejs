@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('section-header', { title: 'Action Settings' }) %>
+
+		<sdpi-item label="Command">
+			<sdpi-select id="command-select" setting="command" default="tear-off-visor">
+				<option value="tear-off-visor">Tear Off Visor</option>
+				<option value="pit-limiter">Pit Limiter</option>
+				<option value="headlight-flash">Headlight Flash</option>
+				<option value="trigger-wipers">Trigger Wipers</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Trigger dropdown (shown for non-pit-limiter commands) -->
+		<sdpi-item id="trigger-item" label="Trigger" class="hidden">
+			<sdpi-select id="trigger-select" setting="trigger" default="lap">
+				<option value="lap">Lap-Based</option>
+				<option value="interval">Interval</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<!-- Lap-Based Settings -->
+		<sdpi-item id="times-per-lap-item" label="Times Per Lap" class="hidden">
+			<sdpi-textfield setting="timesPerLap" default="1" pattern="[0-9]*"></sdpi-textfield>
+		</sdpi-item>
+
+		<!-- Pit Boundary Settings (shown for pit-limiter) -->
+		<sdpi-item id="pit-boundary-item" label="Operation" class="hidden">
+			<sdpi-checkbox setting="enableOnApproach" label="Turn on when approaching pits"></sdpi-checkbox>
+			<sdpi-checkbox setting="disableOnExit" label="Turn off when leaving pits"></sdpi-checkbox>
+		</sdpi-item>
+
+		<!-- Interval Settings -->
+		<sdpi-item id="interval-seconds-item" label="Interval (seconds)" class="hidden">
+			<sdpi-textfield setting="intervalSeconds" default="5" pattern="[0-9]*"></sdpi-textfield>
+		</sdpi-item>
+
+		<!-- Headlight Flash Settings -->
+		<sdpi-item id="flash-count-item" label="Flash Count" class="hidden">
+			<sdpi-textfield setting="flashCount" default="1" pattern="[0-9]*"></sdpi-textfield>
+		</sdpi-item>
+
+		<sdpi-item id="flash-duration-item" label="Flash Duration (ms)" class="hidden">
+			<sdpi-textfield setting="flashDuration" default="200" pattern="[0-9]*"></sdpi-textfield>
+		</sdpi-item>
+
+		<%- include('title-overrides') %>
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor'], defaults: { backgroundColor: '#2a3444', textColor: '#ffffff' } }) %>
+		<%- include('border-overrides', { defaults: { backgroundColor: '#2a3444' } }) %>
+		<%- include('graphic-overrides') %>
+		<%- include('common-settings') %>
+
+		<%- include('section-header', { title: 'Global Settings' }) %>
+
+		<%- include('global-title-defaults') %>
+		<%- include('global-color-defaults') %>
+		<%- include('global-border-defaults') %>
+		<%- include('global-graphic-defaults') %>
+		<%- include('global-common-settings') %>
+
+		<script>
+			async function initAutomation() {
+				await customElements.whenDefined("sdpi-select");
+
+				const commandSelect = document.getElementById("command-select");
+				const triggerSelect = document.getElementById("trigger-select");
+
+				function update() {
+					const command = commandSelect?.value || "tear-off-visor";
+					const trigger = triggerSelect?.value || "lap";
+					const isPitLimiter = command === "pit-limiter";
+
+					// Trigger dropdown: hidden for pit-limiter (always pit-boundary)
+					toggleItem("trigger-item", !isPitLimiter);
+
+					// Pit boundary settings: shown only for pit-limiter
+					toggleItem("pit-boundary-item", isPitLimiter);
+
+					// Lap/interval settings: shown for non-pit-limiter based on trigger
+					toggleItem("times-per-lap-item", !isPitLimiter && trigger === "lap");
+					toggleItem("interval-seconds-item", !isPitLimiter && trigger === "interval");
+
+					// Headlight flash settings: shown only for headlight-flash
+					toggleItem("flash-count-item", command === "headlight-flash");
+					toggleItem("flash-duration-item", command === "headlight-flash");
+				}
+
+				if (commandSelect) {
+					commandSelect.addEventListener("change", update);
+					commandSelect.addEventListener("input", update);
+				}
+				if (triggerSelect) {
+					triggerSelect.addEventListener("change", update);
+					triggerSelect.addEventListener("input", update);
+				}
+
+				// Polling fallback
+				let lastCommand = commandSelect?.value || "";
+				let lastTrigger = triggerSelect?.value || "";
+				setInterval(() => {
+					const curCommand = commandSelect?.value || "";
+					const curTrigger = triggerSelect?.value || "";
+					if (curCommand !== lastCommand || curTrigger !== lastTrigger) {
+						lastCommand = curCommand;
+						lastTrigger = curTrigger;
+						update();
+					}
+				}, 100);
+
+				update();
+			}
+
+			function toggleItem(id, show) {
+				const el = document.getElementById(id);
+				if (show) {
+					el?.classList.remove("hidden");
+				} else {
+					el?.classList.add("hidden");
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initAutomation);
+			} else {
+				initAutomation();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
+	</body>
+</html>

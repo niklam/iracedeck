@@ -186,6 +186,19 @@ export {
   type ISimHubService,
 } from "./simhub-service.js";
 
+// Automation engine singleton
+export {
+  initializeAutomationEngine,
+  getAutomationEngine,
+  isAutomationEngineInitialized,
+  _resetAutomationEngine,
+  type IAutomationEngine,
+  type AutomationRuleConfig,
+  type AutomationRuleState,
+  type AutomationCommand,
+  type AutomationTrigger,
+} from "./automation-engine.js";
+
 // Binding dispatcher singleton
 export {
   initializeBindingDispatcher,

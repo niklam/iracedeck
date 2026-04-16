@@ -38,7 +38,7 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 5 | 27 | AI spotter, audio, black boxes, look direction, car control |
+| Driving Controls | 6 | 31 | AI spotter, audio, automation, black boxes, look direction, car control |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
@@ -64,6 +64,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 |--------|-------|-------------|
 | AI Spotter Controls | 7 | damage-report, weather-report, toggle-report-laps, announce-leader, louder, quieter, silence |
 | Audio Controls | 3 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action) |
+| Automation | 4 | tear-off-visor, pit-limiter, headlight-flash, trigger-wipers (background automation with lap/pit-boundary/interval triggers) |
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware), escape (hardcoded ESC, auto-hold option), pause-sim |

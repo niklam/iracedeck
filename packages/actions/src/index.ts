@@ -7,6 +7,7 @@
 
 export { AI_SPOTTER_CONTROLS_UUID, AiSpotterControls } from "./actions/ai-spotter-controls.js";
 export { AUDIO_CONTROLS_UUID, AudioControls } from "./actions/audio-controls.js";
+export { AUTOMATION_UUID, Automation } from "./actions/automation.js";
 export { BLACK_BOX_SELECTOR_UUID, BlackBoxSelector } from "./actions/black-box-selector.js";
 export { CAMERA_CONTROLS_UUID, CAMERA_FOCUS_UUID, CameraControls, CameraFocus } from "./actions/camera-controls.js";
 export { CAMERA_EDITOR_ADJUSTMENTS_UUID, CameraEditorAdjustments } from "./actions/camera-editor-adjustments.js";

@@ -11,6 +11,8 @@ import {
   AiSpotterControls,
   AUDIO_CONTROLS_UUID,
   AudioControls,
+  Automation,
+  AUTOMATION_UUID,
   BLACK_BOX_SELECTOR_UUID,
   BlackBoxSelector,
   CAMERA_CONTROLS_UUID,
@@ -78,6 +80,7 @@ import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
   initAppMonitor,
   initGlobalSettings,
+  initializeAutomationEngine,
   initializeBindingDispatcher,
   initializeKeyboard,
   initializeSDK,
@@ -124,6 +127,7 @@ adapter.onDialRotate(() => focusIRacingIfEnabled());
 // Register core actions via the platform adapter
 adapter.registerAction(AI_SPOTTER_CONTROLS_UUID, new AiSpotterControls(adapter.createLogger("AiSpotterControls")));
 adapter.registerAction(AUDIO_CONTROLS_UUID, new AudioControls(adapter.createLogger("AudioControls")));
+adapter.registerAction(AUTOMATION_UUID, new Automation(adapter.createLogger("Automation")));
 adapter.registerAction(BLACK_BOX_SELECTOR_UUID, new BlackBoxSelector(adapter.createLogger("BlackBoxSelector")));
 adapter.registerAction(CAMERA_CONTROLS_UUID, new CameraControls(adapter.createLogger("CameraControls")));
 // Legacy UUID — existing Camera Cycle buttons continue to work after merge into Camera Controls
@@ -175,6 +179,9 @@ initializeSimHub(adapter.createLogger("SimHub"));
 
 // Initialize binding dispatcher AFTER SimHub so isReady can check reachability
 initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
+
+// Initialize automation engine AFTER binding dispatcher (dispatches commands via bindings)
+initializeAutomationEngine(adapter.createLogger("AutomationEngine"));
 
 // Initialize app monitor for iRacing process detection
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));

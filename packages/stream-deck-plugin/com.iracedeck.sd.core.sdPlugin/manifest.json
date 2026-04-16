@@ -47,6 +47,23 @@
       ]
     },
     {
+      "Name": "Automation",
+      "UUID": "com.iracedeck.sd.core.automation",
+      "Icon": "imgs/actions/automation/icon",
+      "Tooltip": "Automated car controls triggered by telemetry (lap position, pit boundary, interval)",
+      "PropertyInspectorPath": "ui/automation.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/automation/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Black Box Selector",
       "UUID": "com.iracedeck.sd.core.black-box-selector",
       "Icon": "imgs/actions/black-box-selector/icon",

@@ -26,12 +26,12 @@
 
 ## Features
 
-**30 actions** with **254 modes** across 8 categories, with Stream Deck+ dial rotation support on most modes:
+**31 actions** with **258 modes** across 8 categories, with Stream Deck+ dial rotation support on most modes:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
 | **Display & Session**   | 2       | 7     | Incidents, laps, position, fuel, flags                                |
-| **Driving Controls**    | 5       | 27    | AI spotter, audio, black box cycling, look direction, car control     |
+| **Driving Controls**    | 6       | 31    | AI spotter, audio, black box cycling, look direction, car control, automation |
 | **Cockpit & Interface** | 5       | 33    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 5       | 87    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
@@ -109,7 +109,7 @@ packages/
 
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@iracedeck/actions`              | All 28 action implementations, platform-agnostic                                          |
+| `@iracedeck/actions`              | All 29 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |

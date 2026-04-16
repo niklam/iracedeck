@@ -108,6 +108,19 @@
           ]
         },
         {
+          "id": "com.iracedeck.sd.core.automation",
+          "name": "Automation",
+          "file": "automation.ts",
+          "encoder": false,
+          "settingsKey": "command",
+          "modes": [
+            { "value": "tear-off-visor", "label": "Tear Off Visor" },
+            { "value": "pit-limiter", "label": "Pit Limiter" },
+            { "value": "headlight-flash", "label": "Headlight Flash" },
+            { "value": "trigger-wipers", "label": "Trigger Wipers" }
+          ]
+        },
+        {
           "id": "com.iracedeck.sd.core.car-control",
           "name": "Car Control",
           "file": "car-control.ts",
