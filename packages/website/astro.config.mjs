@@ -119,6 +119,7 @@ export default defineConfig({
               items: [
                 { slug: "docs/actions/driving/ai-spotter-controls" },
                 { slug: "docs/actions/driving/audio-controls" },
+                { slug: "docs/actions/driving/automation" },
                 { slug: "docs/actions/driving/black-box-selector" },
                 { slug: "docs/actions/driving/look-direction" },
                 { slug: "docs/actions/driving/car-control" },

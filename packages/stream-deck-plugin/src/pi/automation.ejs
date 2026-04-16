@@ -30,8 +30,8 @@
 
 		<!-- Pit Boundary Settings (shown for pit-limiter) -->
 		<sdpi-item id="pit-boundary-item" label="Operation" class="hidden">
-			<sdpi-checkbox setting="enableOnApproach" label="Turn on when approaching pits"></sdpi-checkbox>
-			<sdpi-checkbox setting="disableOnExit" label="Turn off when leaving pits"></sdpi-checkbox>
+			<sdpi-checkbox setting="enableOnApproach" label="Turn on when approaching pits" default="true"></sdpi-checkbox>
+			<sdpi-checkbox setting="disableOnExit" label="Turn off when leaving pits" default="true"></sdpi-checkbox>
 		</sdpi-item>
 
 		<!-- Interval Settings -->
@@ -56,6 +56,9 @@
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%- include('global-key-bindings', {
+			keyBindings: require('./data/key-bindings.json').automation
+		}) %>
 		<%- include('global-title-defaults') %>
 		<%- include('global-color-defaults') %>
 		<%- include('global-border-defaults') %>

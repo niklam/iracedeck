@@ -1,4 +1,4 @@
-import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,11 +58,11 @@ function defaultConfig(overrides: Partial<AutomationRuleConfig> = {}): Automatio
 }
 
 /** Simulate a telemetry callback — grabs the registered callback and calls it. */
-function simulateTelemetry(telemetry: Partial<TelemetryData> | null): void {
+function simulateTelemetry(telemetry: Partial<TelemetryData> | null, isConnected = true): void {
   const callback = mockSubscribe.mock.calls[mockSubscribe.mock.calls.length - 1]?.[1];
 
   expect(callback).toBeDefined();
-  callback(telemetry as TelemetryData | null);
+  callback(telemetry as TelemetryData | null, isConnected);
 }
 
 describe("AutomationEngine", () => {
@@ -119,30 +119,36 @@ describe("AutomationEngine", () => {
       expect(engine.isRuleActive("rule-1")).toBe(false);
     });
 
-    it("should subscribe to telemetry on first activation", () => {
+    it("should subscribe to telemetry on first rule registration", () => {
       const engine = initializeAutomationEngine(mockLogger);
       engine.registerRule("rule-1", defaultConfig());
-      engine.activateRule("rule-1");
 
       expect(mockSubscribe).toHaveBeenCalledWith("automation-engine", expect.any(Function));
     });
 
-    it("should unsubscribe from telemetry when last rule deactivated", () => {
+    it("should not unsubscribe on deactivate (rule still registered)", () => {
       const engine = initializeAutomationEngine(mockLogger);
       engine.registerRule("rule-1", defaultConfig());
       engine.activateRule("rule-1");
       engine.deactivateRule("rule-1");
+
+      // Subscription stays alive so the UI can keep showing AUTO N/A when off-track.
+      expect(mockUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it("should unsubscribe from telemetry when last rule is removed", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+      engine.removeRule("rule-1");
 
       expect(mockUnsubscribe).toHaveBeenCalledWith("automation-engine");
     });
 
-    it("should not unsubscribe when other rules are still active", () => {
+    it("should not unsubscribe when other rules are still registered", () => {
       const engine = initializeAutomationEngine(mockLogger);
       engine.registerRule("rule-1", defaultConfig());
       engine.registerRule("rule-2", defaultConfig());
-      engine.activateRule("rule-1");
-      engine.activateRule("rule-2");
-      engine.deactivateRule("rule-1");
+      engine.removeRule("rule-1");
 
       expect(mockUnsubscribe).not.toHaveBeenCalled();
     });
@@ -162,6 +168,101 @@ describe("AutomationEngine", () => {
       engine.removeRule("rule-1");
 
       expect(mockUnsubscribe).toHaveBeenCalled();
+    });
+  });
+
+  // ─── Pause State ────────────────────────────────────────────────
+
+  describe("pause state (N/A visual)", () => {
+    it("should default to paused before any telemetry arrives", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+
+      expect(engine.isPaused()).toBe(true);
+    });
+
+    it("should clear paused on first valid telemetry", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+
+      simulateTelemetry({ LapDistPct: 0.0, LapCompleted: 0 }, true);
+
+      expect(engine.isPaused()).toBe(false);
+    });
+
+    it("should re-enter paused when telemetry reports disconnected", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+      simulateTelemetry({ LapDistPct: 0.0, LapCompleted: 0 }, true);
+      expect(engine.isPaused()).toBe(false);
+
+      simulateTelemetry(null, false);
+      expect(engine.isPaused()).toBe(true);
+    });
+
+    it("should stay paused when telemetry reports off-track", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+
+      simulateTelemetry({ IsOnTrack: false }, true);
+
+      expect(engine.isPaused()).toBe(true);
+    });
+
+    it("should stay paused when telemetry reports replay playing", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+
+      simulateTelemetry({ IsReplayPlaying: true }, true);
+
+      expect(engine.isPaused()).toBe(true);
+    });
+
+    it("should fire state-change listener on pause transitions", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+      const listener = vi.fn();
+      engine.onStateChange(listener);
+
+      simulateTelemetry({ LapDistPct: 0.0, LapCompleted: 0 }, true);
+      simulateTelemetry(null, false);
+
+      // One resume, one pause.
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it("should fire state-change listener on activate and deactivate", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+      const listener = vi.fn();
+      engine.onStateChange(listener);
+
+      engine.activateRule("rule-1");
+      engine.deactivateRule("rule-1");
+
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it("should stop firing after unsubscribe", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig());
+      const listener = vi.fn();
+      const unsubscribe = engine.onStateChange(listener);
+      unsubscribe();
+
+      engine.activateRule("rule-1");
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("should not fire command when paused even if rule is active", () => {
+      const engine = initializeAutomationEngine(mockLogger);
+      engine.registerRule("rule-1", defaultConfig({ trigger: "interval", intervalSeconds: 1 }));
+      engine.activateRule("rule-1");
+
+      simulateTelemetry({ SessionTime: 0, IsReplayPlaying: true }, true);
+      simulateTelemetry({ SessionTime: 5, IsReplayPlaying: true }, true);
+
+      expect(mockTap).not.toHaveBeenCalled();
     });
   });
 
@@ -310,10 +411,18 @@ describe("AutomationEngine", () => {
       );
       engine.activateRule("rule-1");
 
-      // Seed: on pit road
-      simulateTelemetry({ PlayerTrackSurface: TrkLoc.OnTrack, OnPitRoad: true });
-      // Exit pit road
-      simulateTelemetry({ PlayerTrackSurface: TrkLoc.OnTrack, OnPitRoad: false });
+      // Seed: on pit road, limiter ON (gating requires limiter to be active for exit to fire)
+      simulateTelemetry({
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        OnPitRoad: true,
+        EngineWarnings: EngineWarnings.PitSpeedLimiter,
+      });
+      // Exit pit road, limiter still ON
+      simulateTelemetry({
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        OnPitRoad: false,
+        EngineWarnings: EngineWarnings.PitSpeedLimiter,
+      });
 
       expect(mockTap).toHaveBeenCalledWith("carControlPitSpeedLimiter");
     });
@@ -362,6 +471,129 @@ describe("AutomationEngine", () => {
       // Exit pit road
       simulateTelemetry({ PlayerTrackSurface: TrkLoc.OnTrack, OnPitRoad: false });
       expect(mockTap).toHaveBeenCalledTimes(2);
+    });
+
+    describe("pit limiter state-aware gating", () => {
+      it("should skip approach fire when limiter is already active", () => {
+        const engine = initializeAutomationEngine(mockLogger);
+        engine.registerRule(
+          "rule-1",
+          defaultConfig({
+            trigger: "pit-boundary",
+            enableOnApproach: true,
+            command: "pit-limiter",
+          }),
+        );
+        engine.activateRule("rule-1");
+
+        // Seed with limiter ON (e.g. driver manually armed it before approach)
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.OnTrack,
+          OnPitRoad: false,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+        // Transition to approaching pits with limiter still ON
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.AproachingPits,
+          OnPitRoad: false,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+
+        expect(mockTap).not.toHaveBeenCalled();
+      });
+
+      it("should fire approach when limiter is inactive", () => {
+        const engine = initializeAutomationEngine(mockLogger);
+        engine.registerRule(
+          "rule-1",
+          defaultConfig({
+            trigger: "pit-boundary",
+            enableOnApproach: true,
+            command: "pit-limiter",
+          }),
+        );
+        engine.activateRule("rule-1");
+
+        simulateTelemetry({ PlayerTrackSurface: TrkLoc.OnTrack, OnPitRoad: false, EngineWarnings: 0 });
+        simulateTelemetry({ PlayerTrackSurface: TrkLoc.AproachingPits, OnPitRoad: false, EngineWarnings: 0 });
+
+        expect(mockTap).toHaveBeenCalledWith("carControlPitSpeedLimiter");
+      });
+
+      it("should skip exit fire when limiter is already inactive", () => {
+        const engine = initializeAutomationEngine(mockLogger);
+        engine.registerRule(
+          "rule-1",
+          defaultConfig({
+            trigger: "pit-boundary",
+            disableOnExit: true,
+            command: "pit-limiter",
+          }),
+        );
+        engine.activateRule("rule-1");
+
+        // Seed on pit road with limiter OFF (e.g. iRacing's auto-limiter already disabled it)
+        simulateTelemetry({ PlayerTrackSurface: TrkLoc.InPitStall, OnPitRoad: true, EngineWarnings: 0 });
+        // Exit pit road, limiter still OFF
+        simulateTelemetry({ PlayerTrackSurface: TrkLoc.OnTrack, OnPitRoad: false, EngineWarnings: 0 });
+
+        expect(mockTap).not.toHaveBeenCalled();
+      });
+
+      it("should fire exit when limiter is still active", () => {
+        const engine = initializeAutomationEngine(mockLogger);
+        engine.registerRule(
+          "rule-1",
+          defaultConfig({
+            trigger: "pit-boundary",
+            disableOnExit: true,
+            command: "pit-limiter",
+          }),
+        );
+        engine.activateRule("rule-1");
+
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.InPitStall,
+          OnPitRoad: true,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.OnTrack,
+          OnPitRoad: false,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+
+        expect(mockTap).toHaveBeenCalledWith("carControlPitSpeedLimiter");
+      });
+
+      it("should not gate other pit-boundary commands on limiter state", () => {
+        const engine = initializeAutomationEngine(mockLogger);
+        // Edge case: tear-off-visor with pit-boundary trigger and approach enabled.
+        // resolveEffectiveTrigger in the action would coerce this to "lap", but the
+        // engine itself must not apply limiter-state gating to non-limiter commands.
+        engine.registerRule(
+          "rule-1",
+          defaultConfig({
+            trigger: "pit-boundary",
+            enableOnApproach: true,
+            command: "tear-off-visor",
+          }),
+        );
+        engine.activateRule("rule-1");
+
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.OnTrack,
+          OnPitRoad: false,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+        simulateTelemetry({
+          PlayerTrackSurface: TrkLoc.AproachingPits,
+          OnPitRoad: false,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        });
+
+        expect(mockTap).toHaveBeenCalledWith("carControlTearOffVisor");
+      });
     });
   });
 

@@ -50,8 +50,16 @@
       "UUID": "com.iracedeck.sd.core.automation",
       "Icon": "imgs/actions/automation/icon",
       "Tooltip": "Automated car controls triggered by telemetry (lap position, pit boundary, interval)",
+      "PropertyInspectorPath": "ui/automation.html",
       "Controllers": [
         "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/automation/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
       ]
     },
     {

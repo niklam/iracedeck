@@ -24,6 +24,7 @@ vi.mock("@iracedeck/icons/cockpit-misc/trigger-wipers.svg", () => ({
 }));
 
 const mockIsRuleActive = vi.fn(() => false);
+const mockIsPaused = vi.fn(() => false);
 
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
@@ -47,6 +48,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     holdBinding = vi.fn().mockResolvedValue(undefined);
     releaseBinding = vi.fn().mockResolvedValue(undefined);
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn().mockResolvedValue(true);
     setRegenerateCallback = vi.fn();
   },
   extractGraphicContent: vi.fn((svg: string) => {
@@ -65,9 +67,12 @@ vi.mock("@iracedeck/deck-core", () => ({
     deactivateRule: vi.fn(),
     getRuleState: vi.fn(() => ({ active: false, lastFiredAt: null, fireCount: 0 })),
     isRuleActive: mockIsRuleActive,
+    isPaused: mockIsPaused,
+    onStateChange: vi.fn(() => () => undefined),
   })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
+  getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalTitleSettings: vi.fn(() => ({})),
   ICON_BASE_TEMPLATE: "<svg>{{backgroundColor}}{{borderContent}}{{graphicContent}}{{titleContent}}</svg>",
   renderIconTemplate: vi.fn((_t: string, data: Record<string, string>) => {
@@ -87,6 +92,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     glowEnabled: true,
     glowWidth: 18,
   })),
+  resolveGraphicSettings: vi.fn(() => ({ scale: 100 })),
   resolveTitleSettings: vi.fn((_svg: unknown, _global: unknown, _overrides: unknown, defaultTitle?: string) => ({
     showTitle: true,
     showGraphics: true,
@@ -103,6 +109,7 @@ describe("Automation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsRuleActive.mockReturnValue(false);
+    mockIsPaused.mockReturnValue(false);
   });
 
   describe("constants", () => {
@@ -155,34 +162,41 @@ describe("Automation", () => {
   });
 
   describe("generateAutomationSvg", () => {
-    it("should show AUTO OFF for inactive state", () => {
-      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, false);
+    it("should show AUTO OFF for off state", () => {
+      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, "off");
 
       expect(result).toContain("data:image/svg+xml");
       expect(result).toContain(encodeURIComponent("AUTO OFF"));
     });
 
-    it("should show AUTO ON for active state", () => {
-      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, true);
+    it("should show AUTO ON for on state", () => {
+      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, "on");
 
       expect(result).toContain("data:image/svg+xml");
       expect(result).toContain(encodeURIComponent("AUTO ON"));
     });
 
+    it("should show AUTO N/A for paused (na) state", () => {
+      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, "na");
+
+      expect(result).toContain("data:image/svg+xml");
+      expect(result).toContain(encodeURIComponent("AUTO N/A"));
+    });
+
     it("should include single-line title for tear-off-visor", () => {
-      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, false);
+      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, "off");
 
       expect(result).toContain(encodeURIComponent("VISOR"));
     });
 
     it("should include single-line title for headlight-flash", () => {
-      const result = generateAutomationSvg({ command: "headlight-flash", trigger: "interval" } as never, true);
+      const result = generateAutomationSvg({ command: "headlight-flash", trigger: "interval" } as never, "on");
 
       expect(result).toContain(encodeURIComponent("FLASH"));
     });
 
     it("should include extracted graphic content", () => {
-      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, false);
+      const result = generateAutomationSvg({ command: "tear-off-visor", trigger: "lap" } as never, "off");
 
       expect(result).toContain(encodeURIComponent("circle"));
     });

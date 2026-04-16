@@ -9,6 +9,7 @@ import {
   getAutomationEngine,
   getGlobalBorderSettings,
   getGlobalColors,
+  getGlobalGraphicSettings,
   getGlobalTitleSettings,
   ICON_BASE_TEMPLATE,
   type IDeckDidReceiveSettingsEvent,
@@ -17,6 +18,7 @@ import {
   type IDeckWillDisappearEvent,
   renderIconTemplate,
   resolveBorderSettings,
+  resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
@@ -33,6 +35,10 @@ import { borderColorForState } from "../icons/status-bar.js";
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
 const RED = "#e74c3c";
+const GRAY = "#888888";
+
+/** Visual state of the automation rule: active/running, inactive, or paused by the engine (disconnected/replay/off-track). */
+export type AutomationVisualState = "on" | "off" | "na";
 
 /**
  * @internal Exported for testing
@@ -119,12 +125,19 @@ function automationStatusBarOff(): string {
           fill="${WHITE}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">AUTO OFF</text>`;
 }
 
+function automationStatusBarNA(): string {
+  return `
+    <rect x="0" y="100" width="144" height="44" fill="${GRAY}"/>
+    <text x="72" y="129" text-anchor="middle" dominant-baseline="central"
+          fill="${WHITE}" font-family="Arial, sans-serif" font-size="18" font-weight="bold">AUTO N/A</text>`;
+}
+
 // ─── Settings ───────────────────────────────────────────────────────
 
-const booleanField = z
+const booleanFieldOn = z
   .union([z.boolean(), z.string()])
   .transform((val) => val === true || val === "true")
-  .default(false);
+  .default(true);
 
 /** @internal Exported for testing */
 export const AutomationSettings = CommonSettings.extend({
@@ -132,8 +145,10 @@ export const AutomationSettings = CommonSettings.extend({
   trigger: z.enum(["lap", "pit-boundary", "interval"]).default("lap"),
   timesPerLap: z.coerce.number().min(1).max(20).default(1),
   intervalSeconds: z.coerce.number().min(1).max(300).default(5),
-  enableOnApproach: booleanField,
-  disableOnExit: booleanField,
+  // Default both to true: a fresh pit-limiter rule should toggle on entry and off on exit.
+  // Either-off would render the rule a no-op without any visible cue.
+  enableOnApproach: booleanFieldOn,
+  disableOnExit: booleanFieldOn,
   flashCount: z.coerce.number().min(1).max(10).default(1),
   flashDuration: z.coerce.number().min(100).max(1000).default(200),
 });
@@ -145,9 +160,13 @@ type AutomationSettings = z.infer<typeof AutomationSettings>;
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI for the automation action.
+ * Generates an SVG data URI for the automation action. The status bar and border
+ * reflect the rule's visual state:
+ *   "on"  — rule active and firing (green, AUTO ON)
+ *   "off" — rule inactive, user toggled off (red, AUTO OFF)
+ *   "na"  — rule active but engine is paused (disconnected/off-track/replay) (gray, AUTO N/A)
  */
-export function generateAutomationSvg(settings: AutomationSettings, active: boolean): string {
+export function generateAutomationSvg(settings: AutomationSettings, state: AutomationVisualState): string {
   const command = settings.command;
   const iconSvg = COMMAND_ICONS[command];
   const defaultTitle = COMMAND_TITLES[command];
@@ -163,11 +182,9 @@ export function generateAutomationSvg(settings: AutomationSettings, active: bool
     defaultTitle,
   );
 
-  // Status bar (AUTO ON / AUTO OFF) at the bottom — always visible
-  const statusBar = active ? automationStatusBarOn() : automationStatusBarOff();
+  const statusBar =
+    state === "on" ? automationStatusBarOn() : state === "na" ? automationStatusBarNA() : automationStatusBarOff();
 
-  // Extract the command icon artwork (strip <svg> wrapper, <desc>, background, labels)
-  // then apply color variables and position in the content area between title and status bar
   let graphicContent = "";
 
   if (resolvedTitle.showGraphics) {
@@ -175,7 +192,16 @@ export function generateAutomationSvg(settings: AutomationSettings, active: bool
     const coloredGraphic = renderIconTemplate(rawGraphic, { ...colors });
     const offsetY = COMMAND_GRAPHIC_OFFSET_Y[command];
     const scale = COMMAND_GRAPHIC_SCALE[command] ?? "";
-    graphicContent = `<g transform="translate(0, ${offsetY})${scale}">${coloredGraphic}</g>`;
+    const baseGroup = `<g transform="translate(0, ${offsetY})${scale}">${coloredGraphic}</g>`;
+    const userScale = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides).scale / 100;
+
+    if (userScale === 1) {
+      graphicContent = baseGroup;
+    } else {
+      // Pivot around the visual center of the content area (above the status bar).
+      // Without the translate offsets a bare scale() would also shift the icon toward 0,0.
+      graphicContent = `<g transform="translate(72 50) scale(${userScale}) translate(-72 -50)">${baseGroup}</g>`;
+    }
   }
 
   graphicContent += statusBar;
@@ -191,12 +217,11 @@ export function generateAutomationSvg(settings: AutomationSettings, active: bool
       })
     : "";
 
-  const toggleState: "on" | "off" = active ? "on" : "off";
   const border = resolveBorderSettings(
     AUTOMATION_META_SVG,
     getGlobalBorderSettings(),
     settings.borderOverrides,
-    borderColorForState(toggleState),
+    borderColorForState(state),
   );
   const borderSvg = generateBorderParts(border);
   const borderContent = borderSvg.defs + borderSvg.rects;
@@ -213,12 +238,11 @@ export function generateAutomationSvg(settings: AutomationSettings, active: bool
 
 // ─── Action ─────────────────────────────────────────────────────────
 
-function settingsToConfig(settings: AutomationSettings): AutomationRuleConfig {
-  const effectiveTrigger = resolveEffectiveTrigger(settings.command, settings.trigger);
-
+/** @internal Exported for testing */
+export function settingsToConfig(settings: AutomationSettings): AutomationRuleConfig {
   return {
     command: settings.command,
-    trigger: effectiveTrigger,
+    trigger: resolveEffectiveTrigger(settings.command, settings.trigger),
     timesPerLap: settings.timesPerLap,
     intervalSeconds: settings.intervalSeconds,
     enableOnApproach: settings.enableOnApproach,
@@ -231,29 +255,93 @@ function settingsToConfig(settings: AutomationSettings): AutomationRuleConfig {
 export const AUTOMATION_UUID = "com.iracedeck.sd.core.automation" as const;
 
 export class Automation extends ConnectionStateAwareAction<AutomationSettings> {
+  private visibleSettings = new Map<string, AutomationSettings>();
+  private engineUnsubscribes = new Map<string, () => void>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<AutomationSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.visibleSettings.set(ev.action.id, settings);
 
     const engine = getAutomationEngine();
-    engine.registerRule(ev.action.id, settingsToConfig(settings));
+    engine.registerRule(ev.action.id, this.buildConfig(settings));
 
+    this.subscribeToEngineState(ev.action.id);
     await this.updateDisplay(ev, settings);
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<AutomationSettings>): Promise<void> {
-    // Do NOT deactivate or remove the rule — it persists across page switches
+    // Do NOT deactivate or remove the rule — it persists across page switches.
+    // Only tear down this visible instance's display subscription.
+    this.unsubscribeFromEngineState(ev.action.id);
+    this.visibleSettings.delete(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<AutomationSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.visibleSettings.set(ev.action.id, settings);
 
     const engine = getAutomationEngine();
-    engine.updateRule(ev.action.id, settingsToConfig(settings));
+    engine.updateRule(ev.action.id, this.buildConfig(settings));
 
     await this.updateDisplay(ev, settings);
+  }
+
+  private subscribeToEngineState(actionId: string): void {
+    // Replace any stale subscription for this action id (e.g. PI reopened without willDisappear).
+    this.unsubscribeFromEngineState(actionId);
+
+    const unsubscribe = getAutomationEngine().onStateChange(() => {
+      void this.refreshDisplay(actionId);
+    });
+
+    this.engineUnsubscribes.set(actionId, unsubscribe);
+  }
+
+  private unsubscribeFromEngineState(actionId: string): void {
+    const unsubscribe = this.engineUnsubscribes.get(actionId);
+
+    if (!unsubscribe) return;
+
+    unsubscribe();
+    this.engineUnsubscribes.delete(actionId);
+  }
+
+  private computeVisualState(actionId: string): AutomationVisualState {
+    const engine = getAutomationEngine();
+
+    // Paused beats both on and off: if the engine can't fire (disconnected / off-track / replay),
+    // showing AUTO OFF would be misleading — the button isn't usable regardless of user toggle.
+    if (engine.isPaused()) return "na";
+
+    return engine.isRuleActive(actionId) ? "on" : "off";
+  }
+
+  private async refreshDisplay(actionId: string): Promise<void> {
+    const settings = this.visibleSettings.get(actionId);
+
+    if (!settings) return;
+
+    const svgDataUri = generateAutomationSvg(settings, this.computeVisualState(actionId));
+    await this.updateKeyImage(actionId, svgDataUri);
+  }
+
+  /** Build the engine config and warn on legacy trigger/command combinations the PI no longer exposes. */
+  private buildConfig(settings: AutomationSettings): AutomationRuleConfig {
+    const config = settingsToConfig(settings);
+
+    // pit-limiter intentionally always coerces to pit-boundary (by design, PI hides the trigger).
+    // The warn is for the inverse case: a non-pit command persisted with pit-boundary
+    // (stale settings from when the user previously had pit-limiter selected).
+    if (settings.command !== "pit-limiter" && settings.trigger === "pit-boundary") {
+      this.logger.warn(
+        `Trigger 'pit-boundary' is not valid for command '${settings.command}'; coerced to '${config.trigger}'`,
+      );
+    }
+
+    return config;
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<AutomationSettings>): Promise<void> {
@@ -269,14 +357,22 @@ export class Automation extends ConnectionStateAwareAction<AutomationSettings> {
       this.logger.info("Automation activated");
     }
 
+    // activateRule/deactivateRule fires the state-change listener which refreshes the icon;
+    // still parse+cache the latest settings in case the PI hasn't sent onDidReceiveSettings yet.
     const settings = this.parseSettings(ev.payload.settings);
+    this.visibleSettings.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
   }
 
   private parseSettings(settings: unknown): AutomationSettings {
     const parsed = AutomationSettings.safeParse(settings);
 
-    return parsed.success ? parsed.data : AutomationSettings.parse({});
+    if (parsed.success) return parsed.data;
+
+    this.logger.error(`Invalid automation settings; falling back to defaults: ${parsed.error.message}`);
+    this.logger.debug(`Raw settings: ${JSON.stringify(settings)}`);
+
+    return AutomationSettings.parse({});
   }
 
   private async updateDisplay(
@@ -286,15 +382,11 @@ export class Automation extends ConnectionStateAwareAction<AutomationSettings> {
       | IDeckKeyDownEvent<AutomationSettings>,
     settings: AutomationSettings,
   ): Promise<void> {
-    const engine = getAutomationEngine();
-    const active = engine.isRuleActive(ev.action.id);
-    const svgDataUri = generateAutomationSvg(settings, active);
+    const svgDataUri = generateAutomationSvg(settings, this.computeVisualState(ev.action.id));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => {
-      const currentActive = engine.isRuleActive(ev.action.id);
-
-      return generateAutomationSvg(settings, currentActive);
-    });
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateAutomationSvg(settings, this.computeVisualState(ev.action.id)),
+    );
   }
 }

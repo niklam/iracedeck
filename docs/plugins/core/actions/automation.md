@@ -35,15 +35,14 @@ Automated car controls triggered by telemetry. Executes commands (tear off visor
 
 | Setting | Type | Default | Range | Description |
 |---------|------|---------|-------|-------------|
-| Every X Laps | Number | 1 | 1–99 | Fire every Nth lap |
-| Times Per Lap | Number | 1 | 1–20 | Firings per qualifying lap |
+| Times Per Lap | Number | 1 | 1–20 | Number of evenly-spaced firings per lap |
 
 ### Pit Boundary Settings
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Turn On When Approaching | Checkbox | Off | Fire when approaching pit road |
-| Turn Off When Leaving | Checkbox | Off | Fire when leaving pit road |
+| Turn On When Approaching | Checkbox | On | Fire when approaching pit road |
+| Turn Off When Leaving | Checkbox | On | Fire when leaving pit road |
 
 ### Interval Settings
 
@@ -84,3 +83,4 @@ This action reuses existing global key bindings from the Car Control and Cockpit
 |-------|------|
 | Active (AUTO ON) | Command icon with green "AUTO ON" status bar |
 | Inactive (AUTO OFF) | Command icon with red "AUTO OFF" status bar |
+| Paused (AUTO N/A) | Command icon with gray "AUTO N/A" status bar — rule is active but trigger evaluation is suppressed because iRacing is disconnected, the player is off track, or a replay is playing |

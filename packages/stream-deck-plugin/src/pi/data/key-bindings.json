@@ -959,6 +959,22 @@
       "setting": "spotterSilence"
     }
   ],
+  "automation": [
+    { "id": "tearOffVisor", "label": "Tear Off Visor", "default": "", "setting": "carControlTearOffVisor" },
+    {
+      "id": "pitSpeedLimiter",
+      "label": "Pit Speed Limiter",
+      "default": "A",
+      "setting": "carControlPitSpeedLimiter"
+    },
+    { "id": "headlightFlash", "label": "Headlight Flash", "default": "", "setting": "carControlHeadlightFlash" },
+    {
+      "id": "triggerWipers",
+      "label": "Trigger Wipers",
+      "default": "Ctrl+Alt+W",
+      "setting": "cockpitMiscTriggerWipers"
+    }
+  ],
   "audioControls": [
     {
       "id": "pushToTalk",
