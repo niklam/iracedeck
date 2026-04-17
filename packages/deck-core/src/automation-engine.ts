@@ -564,6 +564,13 @@ class AutomationEngine implements IAutomationEngine {
     this.logger.info(`Firing command: ${state.config.command}`);
     this.logger.debug(`Rule: ${ruleId}, binding: ${bindingKey}, attempt: ${state.fireCount + 1}`);
 
+    // fireCount semantics differ intentionally by command:
+    //   - Tap commands: increment only when the keyboard/SimHub dispatch resolves (see `.then` below).
+    //     A failed tap indicates nothing actually happened, so it shouldn't count.
+    //   - Headlight flash: increment immediately. The async sequence catches its own errors and
+    //     its first `hold()` runs before the user sees anything; by the time we could observe
+    //     "full completion" the event has already been user-visible. Counting here keeps the
+    //     metric in sync with what the driver actually perceives as a fire.
     if (state.config.command === "headlight-flash") {
       state.fireCount++;
       void this.executeFlashSequence(ruleId, state, bindingKey);
