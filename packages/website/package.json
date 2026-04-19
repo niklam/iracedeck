@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@astrojs/starlight": "0.38.3",
-    "astro": "6.1.5",
+    "astro": "6.1.8",
     "sharp": "0.34.5"
   },
   "devDependencies": {
-    "firebase-tools": "15.14.0"
+    "firebase-tools": "15.15.0"
   }
 }
