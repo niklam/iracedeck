@@ -327,6 +327,10 @@ const CarControlSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
     .default(false),
+  autoHoldStates: z
+    .array(z.enum(["exit-car", "reset-to-pits", "tow"]))
+    .default([])
+    .transform((arr) => [...new Set(arr)]),
 });
 
 type CarControlSettings = z.infer<typeof CarControlSettings>;
@@ -523,6 +527,9 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     if (settings.control === "escape") {
       this.clearAutoHoldTimer(ev.action.id);
       await getKeyboard().releaseKeyCombination(ESC_KEY);
+    } else if (settings.control === "enter-exit-tow") {
+      this.clearAutoHoldTimer(ev.action.id);
+      await this.releaseBinding(ev.action.id);
     } else {
       await this.releaseBinding(ev.action.id);
     }
@@ -564,6 +571,15 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       return;
     }
 
+    if (settings.control === "enter-exit-tow") {
+      // Auto-hold timer owns the release; skip when one is active
+      if (!this.autoHoldTimers.has(ev.action.id)) {
+        await this.releaseBinding(ev.action.id);
+      }
+
+      return;
+    }
+
     await this.releaseBinding(ev.action.id);
   }
 
@@ -585,6 +601,14 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       return;
     }
 
+    if (settings.control === "enter-exit-tow") {
+      if (!this.autoHoldTimers.has(ev.action.id)) {
+        await this.releaseBinding(ev.action.id);
+      }
+
+      return;
+    }
+
     await this.releaseBinding(ev.action.id);
   }
 
@@ -601,6 +625,12 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       return;
     }
 
+    if (settings.control === "enter-exit-tow") {
+      await this.executeEnterExitTow(actionId, settings);
+
+      return;
+    }
+
     const settingKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
 
     if (!settingKey) {
@@ -613,6 +643,59 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
       await this.holdBinding(actionId, settingKey);
     } else {
       await this.tapBinding(settingKey);
+    }
+  }
+
+  /**
+   * Resolves whether auto-hold should apply for the current Enter/Exit/Tow telemetry state.
+   * Enter-car is instant — never auto-holds regardless of settings.
+   */
+  private getEnterExitTowAutoHold(settings: CarControlSettings): boolean {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const state = getEnterExitTowState(telemetry, sessionInfo);
+
+    if (state === "enter-car") return false;
+
+    return settings.autoHoldStates?.includes(state) ?? false;
+  }
+
+  private async executeEnterExitTow(actionId: string, settings: CarControlSettings): Promise<void> {
+    const settingKey = CAR_CONTROL_GLOBAL_KEYS["enter-exit-tow"];
+
+    if (!settingKey) {
+      this.logger.warn("No global key mapping for control: enter-exit-tow");
+
+      return;
+    }
+
+    const autoHold = this.getEnterExitTowAutoHold(settings);
+
+    if (autoHold) {
+      // Second press while timer running: cancel and release immediately
+      if (this.autoHoldTimers.has(actionId)) {
+        this.logger.info("Enter/Exit/Tow auto-hold cancelled");
+        this.clearAutoHoldTimer(actionId);
+        await this.releaseBinding(actionId);
+
+        return;
+      }
+
+      // First press: start hold, auto-release after timeout
+      this.logger.info("Enter/Exit/Tow auto-hold started");
+      await this.holdBinding(actionId, settingKey);
+      this.autoHoldTimers.set(
+        actionId,
+        setTimeout(() => {
+          this.logger.info("Enter/Exit/Tow auto-hold released");
+          void this.releaseBinding(actionId)
+            .catch((err) => this.logger.error(`Enter/Exit/Tow auto-hold release failed: ${err}`))
+            .finally(() => this.autoHoldTimers.delete(actionId));
+        }, AUTO_HOLD_DURATION),
+      );
+    } else {
+      // Manual hold: press on keyDown, release on keyUp
+      await this.holdBinding(actionId, settingKey);
     }
   }
 
