@@ -964,4 +964,253 @@ describe("CarControl", () => {
       expect(action["autoHoldTimers"].has("action-1")).toBe(false);
     });
   });
+
+  describe("enter-exit-tow auto-hold", () => {
+    type State = "enter-car" | "exit-car" | "reset-to-pits" | "tow";
+
+    function telemetryFor(state: State): Record<string, unknown> | null {
+      switch (state) {
+        case "enter-car":
+          return null;
+        case "exit-car":
+          return { IsOnTrack: true, PlayerCarInPitStall: true, SessionNum: 0 };
+        case "reset-to-pits":
+        case "tow":
+          return { IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 };
+      }
+    }
+
+    function sessionInfoFor(state: State): Record<string, unknown> | null {
+      if (state !== "tow" && state !== "reset-to-pits") return null;
+
+      const sessionType = state === "tow" ? "Race" : "Practice";
+
+      return { SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: sessionType }] } };
+    }
+
+    function primeTelemetry(action: CarControl, state: State): void {
+      (action as any).sdkController.getCurrentTelemetry = vi.fn(() => telemetryFor(state));
+      (action as any).sdkController.getSessionInfo = vi.fn(() => sessionInfoFor(state));
+    }
+
+    describe("manual hold (autoHoldStates empty)", () => {
+      let action: CarControl;
+
+      beforeEach(() => {
+        action = new CarControl();
+      });
+
+      it.each(["enter-car", "exit-car", "reset-to-pits", "tow"] as const)(
+        "should hold on keyDown and release on keyUp when state is not in autoHoldStates (state=%s)",
+        async (state) => {
+          primeTelemetry(action, state);
+          const settings = { control: "enter-exit-tow", autoHoldStates: [] as string[] };
+
+          await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+          expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlEnterExitTow");
+
+          await action.onKeyUp(fakeEvent("action-1", settings) as any);
+
+          expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+        },
+      );
+
+      it("should release via releaseBinding on onWillDisappear", async () => {
+        primeTelemetry(action, "exit-car");
+        const settings = { control: "enter-exit-tow" };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+        await action.onWillDisappear(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+        expect(mockReleaseKeyCombination).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("auto-hold ON per state", () => {
+      let action: CarControl;
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+        action = new CarControl();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      const cases: Array<{ state: State }> = [{ state: "exit-car" }, { state: "reset-to-pits" }, { state: "tow" }];
+
+      it.each(cases)("should hold and start auto-release timer on keyDown (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+
+        await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow", autoHoldStates: [state] }) as any);
+
+        expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlEnterExitTow");
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      });
+
+      it.each(cases)("should not release on keyUp when timer is running (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+        const settings = { control: "enter-exit-tow", autoHoldStates: [state] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+        await action.onKeyUp(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      });
+
+      it.each(cases)("should auto-release after 1.5 seconds (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+
+        await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow", autoHoldStates: [state] }) as any);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      });
+
+      it.each(cases)("should not release before 1.5 seconds (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+
+        await action.onKeyDown(fakeEvent("action-1", { control: "enter-exit-tow", autoHoldStates: [state] }) as any);
+
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      });
+
+      it.each(cases)("should cancel timer and release on second press (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+        const settings = { control: "enter-exit-tow", autoHoldStates: [state] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(mockHoldBinding).toHaveBeenCalledTimes(1);
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+        expect(mockHoldBinding).toHaveBeenCalledTimes(1);
+      });
+
+      it.each(cases)("should not double-release after cancel+timer expiration (state=$state)", async ({ state }) => {
+        primeTelemetry(action, state);
+        const settings = { control: "enter-exit-tow", autoHoldStates: [state] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        mockReleaseBinding.mockClear();
+
+        await vi.advanceTimersByTimeAsync(2000);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      });
+
+      it("should work via dialDown/dialUp as well", async () => {
+        primeTelemetry(action, "tow");
+        const settings = { control: "enter-exit-tow", autoHoldStates: ["tow"] };
+
+        await action.onDialDown(fakeEvent("action-1", settings) as any);
+
+        expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlEnterExitTow");
+
+        await action.onDialUp(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      });
+
+      it("should handle independent timers across action contexts", async () => {
+        primeTelemetry(action, "tow");
+        const settings = { control: "enter-exit-tow", autoHoldStates: ["tow"] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+        await action.onKeyDown(fakeEvent("action-2", settings) as any);
+
+        expect(mockHoldBinding).toHaveBeenCalledTimes(2);
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+        expect(mockReleaseBinding).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(1500);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-2");
+        expect(mockReleaseBinding).toHaveBeenCalledTimes(2);
+      });
+
+      it("should ignore auto-hold when state is enter-car (instant action)", async () => {
+        primeTelemetry(action, "enter-car");
+        const settings = {
+          control: "enter-exit-tow",
+          autoHoldStates: ["exit-car", "reset-to-pits", "tow"],
+        };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlEnterExitTow");
+        expect(action["autoHoldTimers"].has("action-1")).toBe(false);
+
+        await action.onKeyUp(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      });
+
+      it("should ignore auto-hold when current state is not in autoHoldStates", async () => {
+        primeTelemetry(action, "exit-car");
+        // Only tow is selected; active state is exit-car
+        const settings = { control: "enter-exit-tow", autoHoldStates: ["tow"] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(action["autoHoldTimers"].has("action-1")).toBe(false);
+
+        await action.onKeyUp(fakeEvent("action-1", settings) as any);
+
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      });
+    });
+
+    describe("cleanup on disappear", () => {
+      let action: CarControl;
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+        action = new CarControl();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("should clear timer and release binding on disappear", async () => {
+        primeTelemetry(action, "tow");
+        const settings = { control: "enter-exit-tow", autoHoldStates: ["tow"] };
+
+        await action.onKeyDown(fakeEvent("action-1", settings) as any);
+
+        expect(action["autoHoldTimers"].has("action-1")).toBe(true);
+
+        await action.onWillDisappear(fakeEvent("action-1", settings) as any);
+
+        expect(action["autoHoldTimers"].has("action-1")).toBe(false);
+        expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+
+        mockReleaseBinding.mockClear();
+
+        await vi.advanceTimersByTimeAsync(2000);
+
+        expect(mockReleaseBinding).not.toHaveBeenCalled();
+      });
+    });
+  });
 });

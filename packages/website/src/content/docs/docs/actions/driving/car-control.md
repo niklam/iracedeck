@@ -127,11 +127,11 @@ Engage the car starter. Hold the button to crank.
 
 ### Enter/Exit/Tow
 
-Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically based on your current iRacing state, and the button uses a hold pattern — press and hold to confirm the action.
+Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically based on your current iRacing state, and the button uses a hold pattern — press and hold to confirm the action. Enter Car is instant; Exit, Reset to Pits, and Tow each have an optional auto-hold checkbox that taps the button for you.
 
 #### Details
 
-- **Dial:** No rotation support; press and hold the dial to confirm, release to cancel
+- **Dial:** No rotation support; manual hold holds `Shift+R` while the button is pressed. When auto-hold is on for the active state, a single tap holds it for 1.5 seconds or until you press again
 - **Default binding:** `Shift+R`
 - **Telemetry-aware icon:** Yes — the icon switches between Enter Car, Exit Car, Reset to Pits, and Tow based on whether you are out of the car, in the pits, on track in a non-race session, or on track in a race
 
@@ -143,6 +143,13 @@ Enter/Exit/Tow automatically picks one of four display states based on live tele
 - **Exit Car** — In the pits; the icon shows a car with an outward arrow
 - **Reset to Pits** — On track in a non-race session; the icon shows a car with a reset arrow
 - **Tow** — On track in a race session; the icon shows a tow hook
+
+#### Setting: Auto-hold
+
+Three independent checkboxes pick which hold-based states use auto-hold. Each one applies only when the matching telemetry state is active, so you can mix manual and auto-hold per state (for example, auto-hold for tow but manual for exit). Enter Car is instant and has no checkbox.
+
+- **Off** (default) — Hold the button to hold `Shift+R`; release the button to release it
+- **On** — A single tap holds `Shift+R` for 1.5 seconds automatically; tap again during those 1.5 seconds to cancel early
 
 ---
 

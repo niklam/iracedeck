@@ -121,7 +121,7 @@
             { "value": "tear-off-visor", "label": "Tear Off Visor" },
             { "value": "ignition", "label": "Ignition" },
             { "value": "starter", "label": "Starter", "controlType": "hold" },
-            { "value": "enter-exit-tow", "label": "Enter/Exit/Tow" },
+            { "value": "enter-exit-tow", "label": "Enter/Exit/Tow", "controlType": "hold", "telemetryAware": true },
             { "value": "escape", "label": "Escape", "controlType": "hold" },
             { "value": "pause-sim", "label": "Pause Sim" }
           ]

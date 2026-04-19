@@ -25,6 +25,14 @@
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
 		</sdpi-item>
 
+		<sdpi-item id="auto-hold-states-item" label="Auto-hold" class="hidden">
+			<sdpi-checkbox-list setting="autoHoldStates" columns="1">
+				<option value="exit-car">Exit</option>
+				<option value="reset-to-pits">Reset</option>
+				<option value="tow">Tow</option>
+			</sdpi-checkbox-list>
+		</sdpi-item>
+
 		<%- include('title-overrides') %>
 
 		<script>
@@ -56,11 +64,10 @@
 
 			function updateAutoHoldVisibility(control) {
 				const autoHoldItem = document.getElementById("auto-hold-item");
-				if (control === "escape") {
-					autoHoldItem?.classList.remove("hidden");
-				} else {
-					autoHoldItem?.classList.add("hidden");
-				}
+				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
+
+				autoHoldItem?.classList.toggle("hidden", control !== "escape");
+				autoHoldStatesItem?.classList.toggle("hidden", control !== "enter-exit-tow");
 			}
 
 			if (document.readyState === "loading") {
