@@ -84,6 +84,8 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
+  packages/audio-assets: {}
+
   packages/deck-adapter-elgato:
     dependencies:
       '@elgato/streamdeck':
