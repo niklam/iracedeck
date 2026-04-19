@@ -63,7 +63,7 @@
     "lint-staged": "16.4.0",
     "node-gyp": "12.2.0",
     "prettier": "3.8.2",
-    "release-it": "19.2.4",
+    "release-it": "20.0.0",
     "semver": "7.7.4",
     "svgdom": "0.1.23",
     "svgpath": "2.6.0",
