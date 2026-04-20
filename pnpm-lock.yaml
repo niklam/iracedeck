@@ -329,6 +329,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
       '@iracedeck/iracing-actions':
         specifier: workspace:*
         version: link:../iracing-actions
@@ -344,6 +347,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/sim-events-iracing':
+        specifier: workspace:*
+        version: link:../sim-events-iracing
       ws:
         specifier: 8.20.0
         version: 8.20.0
@@ -408,6 +414,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
       '@iracedeck/iracing-actions':
         specifier: workspace:*
         version: link:../iracing-actions
@@ -423,6 +432,9 @@ importers:
       '@iracedeck/pi-components':
         specifier: workspace:*
         version: link:../pi-components
+      '@iracedeck/sim-events-iracing':
+        specifier: workspace:*
+        version: link:../sim-events-iracing
       zod:
         specifier: 4.3.6
         version: 4.3.6
@@ -536,6 +548,34 @@ importers:
       tslib:
         specifier: 2.8.1
         version: 2.8.1
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
+
+  packages/sim-events-iracing:
+    dependencies:
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.6.0
+        version: 25.6.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
       typescript:
         specifier: 5.9.3
         version: 5.9.3
