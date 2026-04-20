@@ -557,7 +557,18 @@ Each stage is a single logical commit; the whole thing can be one PR or several 
 
 ---
 
-## 13. Critical files
+## 13. Release cadence is out of scope
+
+This plan governs **architecture**, not **feature release cadence**. The two axes are orthogonal, and conflating them is the easiest way for a future reader to mis-scope follow-up work.
+
+- **Every stage in §12 preserves user-visible behavior.** A scenario that plays on `feature/pit-engineer` today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports do **not** count as introducing a new scenario for release-cadence purposes; defaults carry over from the pre-refactor PI schema.
+- **When each scenario becomes audible to users** is controlled by the per-scenario PI toggles already present on `feature/pit-engineer` and, optionally, a plugin-level "pit engineer (beta)" gate. Those decisions are not made here.
+- **First GA release exclusions.** The **directional spotter** (proximity beeps when a car is alongside) and **toggle confirmations** ("ok, we're changing all tires") are explicitly held back from the first pit-engineer release and ship in later releases. Remaining engineer scenarios (approach, service reminder, stall departure, exit, flag alerts, incident alerts, overtake, tips, fuel warnings, pit limiter, welcome) are in scope for the first release, subject to the defaults policy tracked below.
+- **Follow-up tracking.** Per-scenario default state, beta-gate mechanism, race-test signoff format, and the flip-default-ON cadence are tracked in a separate issue filed after #375 (Pit Engineer) merges. Not part of this PR.
+
+---
+
+## 14. Critical files
 
 ### New packages (each gets its own folder under `packages/`)
 
@@ -588,7 +599,7 @@ Each stage is a single logical commit; the whole thing can be one PR or several 
 
 ---
 
-## 14. Verification
+## 15. Verification
 
 Per-stage:
 
@@ -626,7 +637,7 @@ Runtime on macOS (mock path):
 
 ---
 
-## 15. Open questions
+## 16. Open questions
 
 - **Second-sim translator naming.** Today: `@iracedeck/sim-events-iracing`. For AC, would we use `sim-events-ac` or `sim-events-assetto-corsa`? The branch picks short names (`iracing-*`), so keep short for consistency. Not blocking.
 - **Pool scope.** Shared no-repeat rotation across all scenarios that use the same pool, or per-scenario rotation? Default to shared (that's how the branch behaves implicitly — there's one `lastAckIndex`). Revisit if it causes surprises.
