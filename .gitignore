@@ -66,6 +66,12 @@ local/*
 # Git worktrees (parallel implementation)
 .worktrees/
 
+# Radio-effect spike (local samples + generated outputs)
+scripts/radio-effect/input/*
+!scripts/radio-effect/input/.gitkeep
+scripts/radio-effect/output/*
+!scripts/radio-effect/output/.gitkeep
+
 # Claude Code
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
