@@ -1,0 +1,42 @@
+{
+  "name": "@iracedeck/audio-native",
+  "version": "1.14.0",
+  "description": "Native Node.js addon for miniaudio-based multi-channel audio mixer",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "install": "echo Run build manually in audio-native to avoid extra builds",
+    "build": "node scripts/build.mjs",
+    "clean": "node scripts/clean.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "files": [
+    "dist",
+    "build/Release/*.node",
+    "src/*.cc",
+    "src/*.h"
+  ],
+  "dependencies": {
+    "node-addon-api": "8.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "node-gyp": "12.2.0",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.4"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "keywords": [
+    "iracedeck",
+    "audio",
+    "miniaudio",
+    "node-addon",
+    "mixer"
+  ],
+  "license": "SEE LICENSE IN LICENSE"
+}

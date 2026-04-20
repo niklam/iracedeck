@@ -5,7 +5,8 @@ Project-wide instructions and overview for iRaceDeck. See the `.claude/rules/` d
 Packages
 
 - `@iracedeck/logger`
-- `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions and the miniaudio audio engine
+- `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions
+- `@iracedeck/audio-native` — native miniaudio-backed 4-channel mixer; has its own `CLAUDE.md`
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/icon-composer` — Standalone SVG icon assembly with zero dependencies. Contains all pure assembly functions (assembleIcon, resolveIconColors, resolveTitleSettings, resolveBorderSettings, resolveGraphicSettings, etc.). Re-exported by deck-core for backward compatibility.
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types, and shared utilities (base actions, keyboard service, audio service, global settings, icon templates, etc.). Re-exports icon-composer and adds global settings readers.
@@ -27,7 +28,7 @@ High-level guidance
 
 Cross-platform development
 
-This project supports development on both Windows and macOS. The native addon (`@iracedeck/iracing-native`) automatically uses a mock implementation on non-Windows platforms. See the `cross-platform-development` skill and `packages/iracing-native/CLAUDE.md` for details.
+This project supports development on both Windows and macOS. Both native addons (`@iracedeck/iracing-native` and `@iracedeck/audio-native`) automatically use mock implementations on non-Windows platforms. See the `cross-platform-development` skill and the respective `CLAUDE.md` files for details.
 
 How to import or reference
 

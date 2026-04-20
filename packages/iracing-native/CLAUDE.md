@@ -68,43 +68,6 @@ All functions accept an array of PS/2 scan codes (modifiers first, then main key
 ### Internal helper: `sendScanKey(scanCode, isDown)`
 Static C++ function used by all three public functions. Sends a single key event via `SendInput()`. Derives `wVk` from scan code using `MapVirtualKeyW()` for compatibility.
 
-## Audio Engine (miniaudio)
-
-The addon embeds the miniaudio single-header C library for multi-channel audio mixing. 4 independent channels with per-channel volume, looping, and completion callbacks via ThreadSafeFunction.
-
-### `initAudioEngine(): boolean`
-Creates a `ma_engine` (WASAPI shared mode on Windows). Returns `true` on success.
-
-### `destroyAudioEngine(): void`
-Uninitializes all sounds and the engine.
-
-### `playOnChannel(channel: number, filePath: string, loop?: boolean, volume?: number): boolean`
-Plays a file on a specific channel (0–3). Stops any existing sound on that channel first. Supports WAV, MP3, FLAC.
-
-### `stopChannel(channel: number): void`
-Stops and releases the sound on a channel.
-
-### `setChannelVolume(channel: number, volume: number): void`
-Sets per-channel volume (0.0–1.0). Only works on an existing `ma_sound`.
-
-### `isChannelPlaying(channel: number): boolean`
-Checks if a channel has active playback.
-
-### `setChannelEndCallback(channel: number, callback: () => void): void`
-Registers a JS callback via TSFN that fires when a sound finishes playing.
-
-### `stopAllChannels(): void`
-Stops all 4 channels.
-
-### `seekChannelRandom(channel: number): void`
-Seeks to a random position in the current sound (used for ambient loop variation).
-
-### `getAudioDevices(): Array<{ index: number, name: string, isDefault: boolean }>`
-Enumerates available audio playback devices.
-
-### `setAudioDevice(deviceIndex: number): boolean`
-Switches audio output to a specific device. -1 for system default. Stops all sounds and reinitializes the engine.
-
 ## Cross-Package Sync
 
 The TypeScript wrapper in `src/index.ts` must mirror every function exported from `addon.cc`. When adding or modifying native keyboard functions:

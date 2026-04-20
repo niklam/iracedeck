@@ -114,44 +114,6 @@ export class IRacingNativeMock {
     console.debug(`[IRacingNativeMock] sendScanKeyUp([${scanCodes.join(", ")}])`);
   }
 
-  // ──── Audio Engine (mock — no-op on non-Windows) ────────────────────────────
-
-  initAudioEngine(): boolean {
-    console.debug("[IRacingNativeMock] initAudioEngine()");
-
-    return true;
-  }
-
-  destroyAudioEngine(): void {
-    console.debug("[IRacingNativeMock] destroyAudioEngine()");
-  }
-
-  playOnChannel(_channel: number, _filePath: string, _loop = false, _volume = 1.0): boolean {
-    return true;
-  }
-
-  stopChannel(_channel: number): void {}
-
-  setChannelVolume(_channel: number, _volume: number): void {}
-
-  isChannelPlaying(_channel: number): boolean {
-    return false;
-  }
-
-  setChannelEndCallback(_channel: number, _callback: () => void): void {}
-
-  stopAllChannels(): void {}
-
-  seekChannelRandom(_channel: number): void {}
-
-  getAudioDevices(): Array<{ index: number; name: string; isDefault: boolean }> {
-    return [{ index: 0, name: "Mock Audio Device", isDefault: true }];
-  }
-
-  setAudioDevice(_deviceIndex: number): boolean {
-    return true;
-  }
-
   private maybeRotateSnapshot(): void {
     const now = Date.now();
 
