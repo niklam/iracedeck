@@ -84,7 +84,11 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
-  packages/audio-assets: {}
+  packages/audio-assets:
+    devDependencies:
+      vitest:
+        specifier: 4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
   packages/audio-native:
     dependencies:
@@ -98,6 +102,37 @@ importers:
       node-gyp:
         specifier: 12.2.0
         version: 12.2.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
+
+  packages/audio-scenarios:
+    dependencies:
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
+      '@iracedeck/event-bus':
+        specifier: workspace:*
+        version: link:../event-bus
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.6.0
+        version: 25.6.0
       rimraf:
         specifier: 6.1.3
         version: 6.1.3
