@@ -2,14 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CAR_CONTROL_TOGGLE_AUDIO,
-  FUEL_CRITICAL_POOL,
-  FUEL_EMPTY_POOL,
-  FUEL_LOW_3_POOL,
-  FUEL_LOW_5_POOL,
   generatePitEngineerSvg,
   getEligibleTips,
   MID_RACE_ONLY_TIPS,
-  pickFromPool,
   PIT_ENGINEER_UUID,
   PIT_SERVICE_TOGGLE_AUDIO,
   START_ONLY_TIPS,
@@ -397,60 +392,6 @@ describe("PitEngineer", () => {
 
       for (const tip of MID_RACE_ONLY_TIPS) {
         expect(TIP_POOL).toContain(tip);
-      }
-    });
-  });
-
-  // ─── Fuel Warnings ────────────────────────────────────────────────────────
-
-  describe("pickFromPool", () => {
-    it("returns the only entry for a single-entry pool", () => {
-      const pool = ["only.mp3"];
-
-      for (let i = 0; i < 5; i++) {
-        expect(pickFromPool(pool)).toBe("only.mp3");
-      }
-    });
-
-    it("returns empty string for an empty pool", () => {
-      expect(pickFromPool([])).toBe("");
-    });
-
-    it("never picks the same entry back-to-back", () => {
-      const pool = ["a.mp3", "b.mp3", "c.mp3"];
-      let prev = pickFromPool(pool);
-
-      for (let i = 0; i < 50; i++) {
-        const next = pickFromPool(pool);
-        expect(next).not.toBe(prev);
-        prev = next;
-      }
-    });
-
-    it("tracks each pool's last index independently", () => {
-      const poolA = ["a1.mp3", "a2.mp3"];
-      const poolB = ["b1.mp3", "b2.mp3"];
-      // Even though pools are interleaved, back-to-back exclusion is per-pool
-      const picksA: string[] = [];
-
-      for (let i = 0; i < 10; i++) {
-        picksA.push(pickFromPool(poolA));
-        pickFromPool(poolB);
-      }
-
-      for (let i = 1; i < picksA.length; i++) {
-        expect(picksA[i]).not.toBe(picksA[i - 1]);
-      }
-    });
-
-    it("all fuel pools have exactly 3 entries", () => {
-      for (const pool of [
-        FUEL_LOW_5_POOL,
-        FUEL_LOW_3_POOL,
-        FUEL_CRITICAL_POOL,
-        FUEL_EMPTY_POOL,
-      ]) {
-        expect(pool.length).toBe(3);
       }
     });
   });

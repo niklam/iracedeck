@@ -58,6 +58,34 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
   ],
 
+  // Fuel low-5-laps pool ("fuel's going to be tight — five laps to go").
+  "fuel-low-5laps": [
+    "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-01.mp3",
+    "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-02.mp3",
+    "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-03.mp3",
+  ],
+
+  // Fuel low-3-laps pool.
+  "fuel-low-3laps": [
+    "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-01.mp3",
+    "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-02.mp3",
+    "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-03.mp3",
+  ],
+
+  // Fuel critical pool ("we're down to the last lap").
+  "fuel-critical": [
+    "pit-engineer/fuel/critical/IRD-fuel-critical-01.mp3",
+    "pit-engineer/fuel/critical/IRD-fuel-critical-02.mp3",
+    "pit-engineer/fuel/critical/IRD-fuel-critical-03.mp3",
+  ],
+
+  // Fuel empty pool ("we're on fumes").
+  "fuel-empty": [
+    "pit-engineer/fuel/empty/IRD-fuel-empty-01.mp3",
+    "pit-engineer/fuel/empty/IRD-fuel-empty-02.mp3",
+    "pit-engineer/fuel/empty/IRD-fuel-empty-03.mp3",
+  ],
+
   // Track-limits / off-track incident warnings. Rotated sequentially; see
   // `incident-alerts.ts` for why no-repeat works per scenario.
   "incident-limits": [

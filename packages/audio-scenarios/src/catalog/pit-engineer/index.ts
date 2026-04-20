@@ -12,6 +12,7 @@
  */
 import { getScenarioEngine } from "../../interpreter.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
+import { FUEL_WARNINGS } from "./fuel-warnings.js";
 import { INCIDENT_ALERTS } from "./incident-alerts.js";
 import { OVERTAKE } from "./overtake.js";
 import { PIT_APPROACH } from "./pit-approach.js";
@@ -23,6 +24,7 @@ import { STALL_DEPARTURE } from "./stall-departure.js";
 import { WELCOME } from "./welcome.js";
 
 export { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
+export { FUEL_SCENARIO_IDS } from "./fuel-warnings.js";
 
 let driverNameResolver: () => string | null = () => null;
 
@@ -57,6 +59,8 @@ export function registerPitEngineer(): void {
   engine.defineScenario(OVERTAKE);
 
   for (const flag of FLAG_ALERTS) engine.defineScenario(flag);
+
+  for (const fuel of FUEL_WARNINGS) engine.defineScenario(fuel);
 }
 
 /**

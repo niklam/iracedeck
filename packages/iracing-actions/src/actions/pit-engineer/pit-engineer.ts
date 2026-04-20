@@ -1,5 +1,5 @@
 import { getScenarioEngine } from "@iracedeck/audio-scenarios";
-import { FLAG_SCENARIO_IDS, setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
+import { FLAG_SCENARIO_IDS, FUEL_SCENARIO_IDS, setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -168,70 +168,6 @@ function pickTip(isStartWindow: boolean): string {
   lastTipFile = choice;
 
   return choice;
-}
-
-// ─── Fuel Warnings Pools ─────────────────────────────────────────────────────
-//
-// Pit Engineer fuel warnings. The translator's `fuel.lapsRemaining.crossed`
-// event fires once per descending threshold crossing (5, 3, 1, 0 laps). The
-// handler below picks from the matching pool. Threshold values live in
-// `@iracedeck/sim-events-iracing`'s `FUEL_THRESHOLDS` export.
-
-/** @internal Exported for testing */
-export const FUEL_LOW_5_POOL = [
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-01.mp3",
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-02.mp3",
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_LOW_3_POOL = [
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-01.mp3",
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-02.mp3",
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_CRITICAL_POOL = [
-  "pit-engineer/fuel/critical/IRD-fuel-critical-01.mp3",
-  "pit-engineer/fuel/critical/IRD-fuel-critical-02.mp3",
-  "pit-engineer/fuel/critical/IRD-fuel-critical-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_EMPTY_POOL = [
-  "pit-engineer/fuel/empty/IRD-fuel-empty-01.mp3",
-  "pit-engineer/fuel/empty/IRD-fuel-empty-02.mp3",
-  "pit-engineer/fuel/empty/IRD-fuel-empty-03.mp3",
-];
-
-/**
- * Last index tracker for back-to-back exclusion per pool. Keyed by pool
- * reference identity — a pool is allowed to pick any entry except the one
- * just played.
- */
-const fuelLastIdx = new WeakMap<readonly string[], number>();
-
-/**
- * @internal Exported for testing
- *
- * Picks a random entry from a pool, never the same back-to-back.
- * Uses an internal WeakMap keyed by the pool reference so each pool
- * tracks its own "last played" index independently.
- */
-export function pickFromPool(pool: readonly string[]): string {
-  if (pool.length === 0) return "";
-
-  const last = fuelLastIdx.get(pool) ?? -1;
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * pool.length);
-  } while (idx === last && pool.length > 1);
-
-  fuelLastIdx.set(pool, idx);
-
-  return pool[idx];
 }
 
 // ─── Driver Name ──────────────────────────────────────────────────────────────
@@ -762,19 +698,6 @@ let pitSpeedingIndex = 0;
 let globalPriorityActive = false;
 
 /**
- * Plays a priority pit-lane message (approach, stall departure, exit).
- * Marks the priority flow active so other audio defers until it ends.
- * Skipped if another priority message is still in flight so priority
- * messages can't cut each other off.
- */
-function playPriorityMessage(filename: string): void {
-  if (globalPriorityActive) return;
-
-  globalPriorityActive = true;
-  playRadioMessage([filename], false);
-}
-
-/**
  * Plays a one-shot engineer message with simplified radio flow (no ack).
  * tick-open → ambient → message → ambient off → tick-close.
  * Skipped if a priority pit-lane message is still in flight.
@@ -981,6 +904,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     engine.setEnabled("pit-engineer.overtake", settings.overtakeAndTipsEnabled);
 
     for (const id of FLAG_SCENARIO_IDS) engine.setEnabled(id, settings.flagAlertsEnabled);
+
+    for (const id of FUEL_SCENARIO_IDS) engine.setEnabled(id, settings.fuelWarningsEnabled);
   }
 
   /** Disable every pit-engineer scenario — called when the engineer is toggled off. */
@@ -996,6 +921,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       "pit-engineer.incident-alerts",
       "pit-engineer.overtake",
       ...FLAG_SCENARIO_IDS,
+      ...FUEL_SCENARIO_IDS,
     ]) {
       engine.setEnabled(id, false);
     }
@@ -1017,7 +943,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       bus.subscribe("limiter.dropped", () => this.onLimiterWarning("dropped")),
       bus.subscribe("limiter.speeding", () => this.onLimiterWarning("speeding")),
       bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)),
-      bus.subscribe("fuel.lapsRemaining.crossed", (ev) => this.onFuelCrossed(ev)),
       bus.subscribe("lap.started", () => this.onLapStarted()),
       bus.subscribe("session.changed", () => this.onSessionChanged()),
     );
@@ -1138,32 +1063,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     globalSpotterState = state;
     this.updateAllVisibleIcons();
-  }
-
-  private onFuelCrossed(ev: SimEventOf<"fuel.lapsRemaining.crossed">): void {
-    if (!globalEnabled || !globalSettings?.fuelWarningsEnabled) return;
-
-    const { threshold, laps } = ev.data;
-    let file: string;
-    let priority = false;
-
-    if (threshold === 5) {
-      file = pickFromPool(FUEL_LOW_5_POOL);
-    } else if (threshold === 3) {
-      file = pickFromPool(FUEL_LOW_3_POOL);
-      priority = true;
-    } else if (threshold === 1) {
-      file = pickFromPool(FUEL_CRITICAL_POOL);
-      priority = true;
-    } else {
-      file = pickFromPool(FUEL_EMPTY_POOL);
-      priority = true;
-    }
-
-    this.logger.info(`Fuel warning: ~${threshold} laps remaining (${laps.toFixed(2)})`);
-
-    if (priority) playPriorityMessage(file);
-    else playEngineerSoundSimple(file);
   }
 
   private onLapStarted(): void {
