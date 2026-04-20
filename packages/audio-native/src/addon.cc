@@ -5,6 +5,7 @@
  * Provides a 4-channel mixer used by Pit Engineer and other audio actions.
  */
 
+#include <mutex>
 #include <napi.h>
 #include <string>
 
@@ -23,6 +24,16 @@ static Napi::ThreadSafeFunction g_completionTSFN[IRD_MAX_CHANNELS];
 static bool g_tsfnRegistered[IRD_MAX_CHANNELS] = {};
 static int g_selectedDeviceIndex = -1; // -1 = system default
 
+// Serializes access to g_completionTSFN[] / g_tsfnRegistered[].
+// Without it, maEndCallback runs on miniaudio's audio thread while
+// DestroyAudioEngine and SetChannelEndCallback mutate those slots on the
+// JS thread — the callback could dereference a released TSFN.
+// We deliberately do NOT hold this lock across ma_sound_uninit or
+// ma_sound_init_from_file: miniaudio's own audio-thread work must stay
+// unblocked, and we only need the lock for the narrow window that inspects
+// or rewrites the TSFN handle itself.
+static std::mutex g_tsfnMutex;
+
 /**
  * Completion callback fired on miniaudio's audio thread when a sound finishes.
  * Marshals to the JS main thread via ThreadSafeFunction.
@@ -30,7 +41,13 @@ static int g_selectedDeviceIndex = -1; // -1 = system default
 static void maEndCallback(void *pUserData, ma_sound * /*pSound*/)
 {
     int channel = static_cast<int>(reinterpret_cast<intptr_t>(pUserData));
-    if (channel >= 0 && channel < IRD_MAX_CHANNELS && g_tsfnRegistered[channel])
+    if (channel < 0 || channel >= IRD_MAX_CHANNELS)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_tsfnMutex);
+    if (g_tsfnRegistered[channel])
     {
         g_completionTSFN[channel].NonBlockingCall();
     }
@@ -101,7 +118,12 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 
     for (int i = 0; i < IRD_MAX_CHANNELS; i++)
     {
+        // uninitChannel detaches miniaudio's end callback. An end callback
+        // that started before uninit may still be in flight on the audio
+        // thread — the mutex below serializes its access to the TSFN slot
+        // with the Release() below.
         uninitChannel(i);
+        std::lock_guard<std::mutex> lock(g_tsfnMutex);
         if (g_tsfnRegistered[i])
         {
             g_completionTSFN[i].Release();
@@ -287,14 +309,17 @@ Napi::Value SetChannelEndCallback(const Napi::CallbackInfo &info)
         return env.Undefined();
     }
 
-    // Release existing TSFN if any
+    Napi::Function callback = info[1].As<Napi::Function>();
+
+    // Serialize release+reassign with maEndCallback so the audio thread can
+    // never read a TSFN handle that is being torn down or rewritten.
+    std::lock_guard<std::mutex> lock(g_tsfnMutex);
+
     if (g_tsfnRegistered[channel])
     {
         g_completionTSFN[channel].Release();
         g_tsfnRegistered[channel] = false;
     }
-
-    Napi::Function callback = info[1].As<Napi::Function>();
 
     g_completionTSFN[channel] = Napi::ThreadSafeFunction::New(
         env,
@@ -419,6 +444,28 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, true);
     }
 
+    // Validate deviceIndex BEFORE tearing down the current engine.
+    // Without this, an invalid index silently falls back to the default
+    // device but is still recorded as selected — the next call on the same
+    // stale index would short-circuit via the fast-path above and return
+    // true for a device that was never active.
+    ma_device_id *pDeviceId = nullptr;
+    ma_device_id selectedId = {};
+
+    if (deviceIndex >= 0)
+    {
+        ma_device_info *pPlaybackDevices;
+        ma_uint32 playbackCount;
+        ma_result enumResult = ma_context_get_devices(g_audioContext, &pPlaybackDevices, &playbackCount, NULL, NULL);
+        if (enumResult != MA_SUCCESS || static_cast<ma_uint32>(deviceIndex) >= playbackCount)
+        {
+            return Napi::Boolean::New(env, false);
+        }
+        selectedId = pPlaybackDevices[deviceIndex].id;
+        pDeviceId = &selectedId;
+    }
+    // deviceIndex == -1 leaves pDeviceId null → engine uses the system default.
+
     // Stop all active sounds (but keep TSFNs alive)
     for (int i = 0; i < IRD_MAX_CHANNELS; i++)
     {
@@ -429,23 +476,6 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
     ma_engine_uninit(g_engine);
     delete g_engine;
     g_engine = nullptr;
-
-    // Get device list for the requested device ID
-    ma_device_id *pDeviceId = nullptr;
-    ma_device_id selectedId = {};
-
-    if (deviceIndex >= 0)
-    {
-        ma_device_info *pPlaybackDevices;
-        ma_uint32 playbackCount;
-        ma_result enumResult = ma_context_get_devices(g_audioContext, &pPlaybackDevices, &playbackCount, NULL, NULL);
-        if (enumResult == MA_SUCCESS && static_cast<ma_uint32>(deviceIndex) < playbackCount)
-        {
-            selectedId = pPlaybackDevices[deviceIndex].id;
-            pDeviceId = &selectedId;
-        }
-        // If device not found, fall through to default
-    }
 
     // Reinitialize engine with selected device
     g_engine = new ma_engine();
