@@ -1,0 +1,55 @@
+/**
+ * Pit-engineer scenario catalog registration.
+ *
+ * `registerPitEngineer()` registers pools, defines the `{{name}}` driver
+ * variable, and registers every pit-engineer scenario with the shared
+ * scenario engine. Must be called once per plugin startup, after
+ * `initializeAudioScenarios(...)`.
+ *
+ * The driver-name resolver is injected by the pit-engineer action through
+ * `setDriverNameResolver(getter)` so the scenario can read the latest PI
+ * setting at fire time without the catalog owning action-specific state.
+ */
+import { getScenarioEngine } from "../../interpreter.js";
+import { POOLS } from "./pools.js";
+import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
+import { WELCOME } from "./welcome.js";
+
+let driverNameResolver: () => string | null = () => null;
+
+/**
+ * Register the pit-engineer scenario catalog with the scenario engine.
+ *
+ * Order matters:
+ *   1. Pools are defined first so scenarios referencing them validate cleanly.
+ *   2. `{{name}}` variable is registered before any scenario uses it.
+ *   3. Include targets (`radio-open`, `radio-close`) are defined before
+ *      their referencing scenarios so validation can resolve them.
+ *   4. Event-driven scenarios (`welcome`, ...) are defined last.
+ */
+export function registerPitEngineer(): void {
+  const engine = getScenarioEngine();
+
+  for (const [name, clips] of Object.entries(POOLS)) {
+    engine.definePool(name, [...clips]);
+  }
+
+  engine.defineVar("name", () => driverNameResolver());
+
+  engine.defineScenario(RADIO_OPEN);
+  engine.defineScenario(RADIO_CLOSE);
+
+  engine.defineScenario(WELCOME);
+}
+
+/**
+ * Inject a resolver for the `{{name}}` variable. The pit-engineer action
+ * calls this with a closure over its current settings so scenarios pick
+ * up driver-name changes without re-registration.
+ *
+ * Returns the full audio-assets path (e.g. `pit-engineer/names/IRD-name-niklas.mp3`)
+ * or `null` when no driver is selected (drops the step).
+ */
+export function setDriverNameResolver(resolver: () => string | null): void {
+  driverNameResolver = resolver;
+}

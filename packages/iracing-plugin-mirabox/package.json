@@ -14,7 +14,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
+    "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-adapter-mirabox": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
@@ -31,6 +33,7 @@
   "devDependencies": {
     "@elgato/cli": "1.7.4",
     "@rollup/plugin-commonjs": "29.0.2",
+    "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-replace": "6.0.3",
     "@rollup/plugin-terser": "1.0.0",

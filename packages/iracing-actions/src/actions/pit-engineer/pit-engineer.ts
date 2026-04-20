@@ -1,3 +1,5 @@
+import { getScenarioEngine } from "@iracedeck/audio-scenarios";
+import { setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -211,31 +213,6 @@ function pickPitExit(): string {
   return PIT_EXIT_POOL[idx];
 }
 
-// ─── Greeting Pool ───────────────────────────────────────────────────────────
-
-const GREETING_POOL = [
-  "pit-engineer/greeting/IRD-radio-opener-alright.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-hi.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-right-then.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-so.mp3",
-];
-
-/** Last greeting index to avoid repeats. */
-let lastGreetingIndex = -1;
-
-/** Pick a random greeting, never the same back-to-back. */
-function pickGreeting(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * GREETING_POOL.length);
-  } while (idx === lastGreetingIndex && GREETING_POOL.length > 1);
-
-  lastGreetingIndex = idx;
-
-  return GREETING_POOL[idx];
-}
-
 // ─── Tip Pool ────────────────────────────────────────────────────────────────
 
 /**
@@ -402,6 +379,12 @@ function getDriverNameFile(): string | null {
 
   return `pit-engineer/names/IRD-name-${name}.mp3`;
 }
+
+// Expose the driver-name resolver to scenarios that use the `{{name}}` variable
+// (the welcome scenario today; others may reuse it later). The closure reads
+// the latest `globalSettings` at fire time, so no re-registration on settings
+// changes is needed.
+setDriverNameResolver(getDriverNameFile);
 
 // ─── Radio Flow Orchestrator ──────────────────────────────────────────────────
 //
@@ -834,9 +817,6 @@ function getAudioPath(filename: string): string {
 /** Global enabled flag — shared across all action instances. */
 let globalEnabled = true;
 
-/** Whether the welcome message has been played this iRacing session. */
-let globalWelcomePlayed = false;
-
 /** Current global settings (merged from last-seen action instance). */
 let globalSettings: PitEngineerSettings | null = null;
 
@@ -1108,66 +1088,6 @@ function playEngineerSoundSimple(filename: string): boolean {
 }
 
 /**
- * Plays the welcome flow: tick → greeting → name → welcome message → tick.
- * Ambient plays in the background during all voice parts.
- *
- * Flow: [tick-open] → [ambient + (greeting ~60%) + (driver name) + tip]
- *       → [ambient stops] → [tick-close]
- */
-function playWelcomeMessage(): void {
-  applyChannelVolumes();
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at random position
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Decide greeting up front so we know the delay
-    const includeGreeting = Math.random() < 0.6;
-
-    const startWelcomeVoice = (): void => {
-      if (radioFlowState !== "tick-open") return;
-
-      radioFlowState = "messages";
-
-      // Chain: (greeting if included) → (driver name if set) → tip
-      const nameFile = getDriverNameFile();
-      const voiceFiles = [
-        ...(includeGreeting ? [pickGreeting()] : []),
-        ...(nameFile ? [nameFile] : []),
-        pickTip(true), // welcome flow fires at session start — use START_ONLY tip bucket
-      ];
-
-      getAudio().onVoiceSequenceComplete(() => {
-        if (radioFlowState !== "messages") return;
-
-        radioFlowState = "tick-close";
-        playTickClose();
-      });
-
-      // Play voice sequence without connectors (greeting → name → welcome flows naturally)
-      getAudio().playVoiceSequence(voiceFiles.map(getAudioPath));
-    };
-
-    if (includeGreeting) {
-      // Normal random micro-delay before greeting
-      randomRadioDelay("tick-open", startWelcomeVoice);
-    } else {
-      // No greeting — hold ambient for 250ms then start voice
-      setTimeout(startWelcomeVoice, 250);
-    }
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
-}
-
-/**
  * Resets all audio state — stops all channels and cancels radio flow.
  */
 function resetAllAudioState(): void {
@@ -1278,7 +1198,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     if (testTimestamp && testTimestamp !== this.lastTestTimestamp) {
       this.logger.info("Playing welcome message (engineer test)");
-      playWelcomeMessage();
+      getScenarioEngine().fire("pit-engineer.welcome");
     }
 
     this.lastTestTimestamp = testTimestamp ?? 0;
@@ -1345,7 +1265,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     const bus = getEventBus();
 
     this.eventSubscriptions.push(
-      bus.subscribe("driver.firstOnTrack", () => this.onFirstOnTrack()),
       bus.subscribe("pitLane.approaching", () => this.onPitApproaching()),
       bus.subscribe("pitLane.entered", (ev) => this.onPitLaneEntered(ev)),
       bus.subscribe("pitLane.exited", () => this.onPitLaneExited()),
@@ -1389,14 +1308,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   }
 
   // ─── Event handlers ──────────────────────────────────────────────────────
-
-  private onFirstOnTrack(): void {
-    if (globalWelcomePlayed) return;
-
-    globalWelcomePlayed = true;
-    this.logger.info("First time in car — playing welcome message");
-    playWelcomeMessage();
-  }
 
   private onPitApproaching(): void {
     if (!globalEnabled || !globalSettings?.pitApproachEnabled) return;
@@ -1656,7 +1567,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   }
 
   private onSessionChanged(): void {
-    globalWelcomePlayed = false;
     this.stopTipPolling();
   }
 

@@ -39,6 +39,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@iracedeck/audio-native": resolve(__dirname, "packages/audio-native/src/index.ts"),
+      "@iracedeck/audio-scenarios/pit-engineer": resolve(
+        __dirname,
+        "packages/audio-scenarios/src/catalog/pit-engineer/index.ts",
+      ),
       "@iracedeck/audio-scenarios": resolve(__dirname, "packages/audio-scenarios/src/index.ts"),
       "@iracedeck/audio-service": resolve(__dirname, "packages/audio-service/src/index.ts"),
       "@iracedeck/deck-core": resolve(__dirname, "packages/deck-core/src/index.ts"),
