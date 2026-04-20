@@ -87,7 +87,11 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
-  packages/audio-assets: {}
+  packages/audio-assets:
+    devDependencies:
+      ffmpeg-static:
+        specifier: 5.3.0
+        version: 5.3.0
 
   packages/audio-native:
     dependencies:
@@ -320,6 +324,9 @@ importers:
 
   packages/iracing-plugin-mirabox:
     dependencies:
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
       '@iracedeck/audio-native':
         specifier: workspace:*
         version: link:../audio-native
@@ -399,6 +406,9 @@ importers:
       '@elgato/streamdeck':
         specifier: 2.1.0
         version: 2.1.0
+      '@iracedeck/audio-assets':
+        specifier: workspace:*
+        version: link:../audio-assets
       '@iracedeck/audio-native':
         specifier: workspace:*
         version: link:../audio-native

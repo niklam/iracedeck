@@ -6,7 +6,8 @@ import typescript from "@rollup/plugin-typescript";
 import path from "node:path";
 import url from "node:url";
 import process from "node:process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import { browserDir, partialsDir, piTemplatePlugin } from "@iracedeck/pi-components/build";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -14,25 +15,6 @@ const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../p
 const iconsPackagePath = path.resolve(__dirname, "../icons");
 const actionsPackagePath = path.resolve(__dirname, "../iracing-actions/src");
 const actionTemplatesDir = path.join(actionsPackagePath, "actions");
-const audioAssetsPath = path.resolve(__dirname, "../audio-assets");
-
-/**
- * Rollup plugin to copy shared audio assets into the sdPlugin directory.
- * `audio-assets/` is the single source of truth for MP3s used by both the
- * Elgato and Mirabox plugins.
- */
-function copyAudioAssetsPlugin(sdPlugin) {
-	return {
-		name: "copy-audio-assets",
-		generateBundle() {
-			const dest = path.join(sdPlugin, "assets", "audio");
-			if (existsSync(audioAssetsPath)) {
-				cpSync(audioAssetsPath, dest, { recursive: true, filter: (src) => !src.endsWith("package.json") });
-				this.info?.("Copied audio assets from @iracedeck/audio-assets");
-			}
-		},
-	};
-}
 
 /**
  * Deep-merge two plain objects. `override` keys win on collision. Nested
@@ -213,8 +195,9 @@ const config = {
 				}
 			},
 		},
-		// Copy shared audio assets from @iracedeck/audio-assets
-		copyAudioAssetsPlugin(sdPlugin),
+		// Copy shared audio assets from @iracedeck/audio-assets, applying the
+		// radio-engineer ffmpeg treatment to voice categories and caching output.
+		processAndCopyAudioAssetsPlugin({ sdPlugin }),
 		// Copy vendored sdpi-components.js and built pi-components.js from @iracedeck/pi-components
 		{
 			name: "copy-pi-browser-assets",

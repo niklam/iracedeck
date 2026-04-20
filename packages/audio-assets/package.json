@@ -2,5 +2,13 @@
   "name": "@iracedeck/audio-assets",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared audio assets (MP3) for iRaceDeck plugins"
+  "type": "module",
+  "description": "Shared audio assets (MP3) for iRaceDeck plugins",
+  "exports": {
+    "./build": "./src/build/index.mjs",
+    "./presets": "./src/presets.mjs"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "5.3.0"
+  }
 }
