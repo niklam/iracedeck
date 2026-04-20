@@ -61,10 +61,15 @@ export function diffLimiter(
     return;
   }
 
-  // Just-left-stall check BEFORE the in-stall bail — catches the exit transition.
+  const isCreeping = speed < CREEPING_SPEED_MPS;
+
+  // Just-left-stall check BEFORE the in-stall bail — catches the exit
+  // transition. Runs before `diffPitLane` in the translator so
+  // `state.lastInPitStall` still holds the previous tick's value here.
+  // Creep-guarded like the other on-pit-road warnings below.
   const justLeftStall = state.lastInPitStall && !inPitStall;
 
-  if (justLeftStall && !limiter) {
+  if (justLeftStall && !limiter && !isCreeping) {
     emit({ event: "limiter.missing", data: {} });
     state.lastOnPitRoadForLimiter = onPitRoad;
     state.lastLimiterOnPitRoad = limiter;
@@ -78,8 +83,6 @@ export function diffLimiter(
 
     return;
   }
-
-  const isCreeping = speed < CREEPING_SPEED_MPS;
 
   const justEnteredPitRoad = !state.lastOnPitRoadForLimiter && onPitRoad;
 

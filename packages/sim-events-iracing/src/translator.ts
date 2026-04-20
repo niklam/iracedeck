@@ -152,14 +152,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
   const pitSpeedLimitMps = resolvePitSpeedLimit(self, sessionInfo, telemetry);
 
-  // Diff modules — order matters where downstream modules read state that
-  // earlier ones have updated (e.g. limiter peeks at lastInPitStall which
-  // pit-lane updates first).
+  // Diff modules — `diffLimiter` reads `state.lastInPitStall` to detect the
+  // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
+  // the new stall flag. All other modules are independent.
   diffLifecycle(self.state, telemetry, emit);
+  diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
   diffToggles(self.state, telemetry, emit);
-  diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffIncidents(self.state, telemetry, now, emit);
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
@@ -210,7 +210,14 @@ function resolvePitSpeedLimit(
   const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
   const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
 
-  if (trackId === self.pitSpeedLimitKey && self.pitSpeedLimitMps > 0) {
+  // Track or session changed — invalidate the cache. We re-parse below; if
+  // the new session YAML is missing or malformed, the cached limit resets
+  // to 0 so `diffLimiter` won't fire `limiter.speeding` against a stale
+  // threshold from the previous track.
+  if (trackId !== self.pitSpeedLimitKey) {
+    self.pitSpeedLimitKey = trackId;
+    self.pitSpeedLimitMps = 0;
+  } else if (self.pitSpeedLimitMps > 0) {
     return self.pitSpeedLimitMps;
   }
 
@@ -223,7 +230,6 @@ function resolvePitSpeedLimit(
       const value = parseFloat(match[1]!);
       const unit = match[2]!.toLowerCase();
       self.pitSpeedLimitMps = unit === "mph" ? value * 0.44704 : value / 3.6;
-      self.pitSpeedLimitKey = trackId;
     }
   }
 

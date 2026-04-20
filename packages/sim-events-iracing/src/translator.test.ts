@@ -417,7 +417,7 @@ describe("sim-events-iracing translator", () => {
         CarIdxLapDistPct: [0.5],
         CarIdxLap: [1],
         CarIdxOnPitRoad: [false],
-      } as const;
+      };
 
       // Seed at position 5.
       controller.__tick(telemetry({ ...mockPositions, PlayerCarPosition: 5, CarIdxPosition: [5] }));
