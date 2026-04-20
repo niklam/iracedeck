@@ -95,6 +95,20 @@ export function getLatestTelemetry(): TelemetryData | null {
   return instance?.latestTelemetry ?? null;
 }
 
+/**
+ * Returns the current iRacing session type ("Race", "Practice", "Open Qualify",
+ * "Lone Qualify", …) or empty string if session info is unavailable. Resolved
+ * from the SDK's session YAML; action consumers use this to gate session-
+ * specific behavior without taking a direct dependency on `@iracedeck/iracing-sdk`.
+ */
+export function getSessionType(): string {
+  if (!instance || !instance.latestTelemetry) return "";
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  return resolveSessionType(sessionInfo, instance.latestTelemetry);
+}
+
 export function isSimEventsIracingInitialized(): boolean {
   return instance !== null;
 }

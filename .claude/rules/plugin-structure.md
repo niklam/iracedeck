@@ -131,22 +131,24 @@ The initialization order in `plugin.ts` is critical. The plugin uses `ElgatoPlat
 
 ```typescript
 import streamDeck from "@elgato/streamdeck";
+import { AudioNative } from "@iracedeck/audio-native";
+import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { MY_ACTION_UUID, MyAction } from "@iracedeck/iracing-actions";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   focusIRacingIfEnabled,
-  getAudio,
+  getController,
   initAppMonitor,
   initGlobalSettings,
-  initializeAudio,
   initializeBindingDispatcher,
   initializeKeyboard,
   initializeSDK,
   initializeSimHub,
   initWindowFocus,
 } from "@iracedeck/deck-core";
-import { AudioNative } from "@iracedeck/audio-native";
+import { initializeEventBus } from "@iracedeck/event-bus";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
@@ -154,10 +156,17 @@ const adapter = new ElgatoPlatformAdapter(streamDeck);
 // 2. Enable logging
 streamDeck.logger.setLevel("debug");
 
-// 3. Initialize SDK singleton
+// 3. Initialize SDK singleton (must come before sim-events-iracing)
 initializeSDK(adapter.createLogger("iRacingSDK"));
 
-// 4. Initialize keyboard (if using keyboard shortcuts)
+// 4. Initialize event bus (must come before any publisher or subscriber)
+const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
+
+// 5. Wire the iRacing translator: sdkController ticks → semantic events on the bus.
+//    The only package that imports `@iracedeck/iracing-sdk` for telemetry consumption.
+initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
+
+// 6. Initialize keyboard (if using keyboard shortcuts)
 const native = new IRacingNative();
 initializeKeyboard(
   adapter.createLogger("Keyboard"),
@@ -166,41 +175,43 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),      // release only (key release)
 );
 
-// 5. Initialize audio engine for pit engineer voice playback
+// 7. Initialize audio engine for pit engineer voice playback
 const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative);
 getAudio().init();
 
-// 6. Initialize window focus service
+// 8. Initialize window focus service
 initWindowFocus(adapter.createLogger("WindowFocus"), () => native.focusIRacingWindow());
 
-// 7. Register focus-before-action listeners (BEFORE registering actions)
+// 9. Register focus-before-action listeners (BEFORE registering actions)
 adapter.onKeyDown(() => focusIRacingIfEnabled());
 adapter.onDialDown(() => focusIRacingIfEnabled());
 adapter.onDialRotate(() => focusIRacingIfEnabled());
 
-// 8. Register actions via the adapter (logger injected via constructor)
+// 10. Register actions via the adapter (logger injected via constructor)
 adapter.registerAction(MY_ACTION_UUID, new MyAction(adapter.createLogger("MyAction")));
 
-// 9. Initialize global settings BEFORE connect() - pass adapter!
+// 11. Initialize global settings BEFORE connect() - pass adapter!
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
 
-// 10. Initialize SimHub service AFTER global settings (reads host/port from settings)
+// 12. Initialize SimHub service AFTER global settings (reads host/port from settings)
 initializeSimHub(adapter.createLogger("SimHub"));
 
-// 11. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
+// 13. Initialize binding dispatcher AFTER global settings, keyboard, and SimHub
 initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
 
-// 12. Initialize app monitor BEFORE connect() - pass adapter!
+// 14. Initialize app monitor BEFORE connect() - pass adapter!
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
 
-// 13. Connect LAST
+// 15. Connect LAST
 adapter.connect();
 ```
 
 **CRITICAL**:
 - Both `initGlobalSettings()` and `initAppMonitor()` take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
 - All init calls must be BEFORE `adapter.connect()` (handlers must register first)
+- `initializeEventBus()` must come before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`)
+- `initializeSimEventsIracing()` must come after `initializeSDK()` (requires `getController()`) and after `initializeEventBus()`; it's the only package that reads `sdkController` ticks on behalf of action consumers
 - `initializeAudio()` creates the audio service singleton; `getAudio().init()` starts the miniaudio engine. Both must be called before actions that use audio (e.g., Pit Engineer)
 - `initializeSimHub()` must come AFTER `initGlobalSettings()` (reads host/port from settings)
 - `initializeBindingDispatcher()` must come AFTER `initGlobalSettings()`, `initializeKeyboard()`, and `initializeSimHub()`

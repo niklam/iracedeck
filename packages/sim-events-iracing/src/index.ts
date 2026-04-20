@@ -9,6 +9,7 @@
 export {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getSessionType,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
 } from "./translator.js";
