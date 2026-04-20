@@ -7,7 +7,7 @@ Packages
 - `@iracedeck/logger`
 - `@iracedeck/iracing-native` — has its own `CLAUDE.md` documenting native keyboard functions
 - `@iracedeck/audio-native` — native miniaudio-backed 4-channel mixer; has its own `CLAUDE.md`
-- `@iracedeck/audio-service` — TypeScript multi-channel audio mixer singleton over `@iracedeck/audio-native`. Exports `AudioChannel`, `AudioBus`, `initializeAudio`, `getAudio`, `IAudioService`. Owns bus routing, per-channel volumes, voice-sequence engine, and device selection.
+- `@iracedeck/audio-service` — TypeScript multi-channel audio mixer singleton over `@iracedeck/audio-native`. Exports `AudioChannel`, `AudioBus`, `initializeAudio`, `getAudio`, `isAudioInitialized`, `IAudioService`. Owns bus routing, per-channel volumes, voice-sequence engine, and device selection.
 - `@iracedeck/iracing-sdk`
 - `@iracedeck/icon-composer` — Standalone SVG icon assembly with zero dependencies. Contains all pure assembly functions (assembleIcon, resolveIconColors, resolveTitleSettings, resolveBorderSettings, resolveGraphicSettings, etc.). Re-exported by deck-core for backward compatibility.
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types, and shared utilities (base actions, keyboard service, global settings, icon templates, etc.). Re-exports icon-composer and adds global settings readers.
