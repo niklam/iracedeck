@@ -69,6 +69,7 @@
     "semver": "7.7.4",
     "svgdom": "0.1.23",
     "svgpath": "2.6.0",
+    "tsx": "4.21.0",
     "turbo": "2.9.6",
     "typescript": "5.9.3",
     "vitest": "4.1.4"
