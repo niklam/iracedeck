@@ -26,7 +26,8 @@
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
-    "@iracedeck/logger": "workspace:*"
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/sim-events-iracing": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",

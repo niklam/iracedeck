@@ -58,6 +58,21 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
   ],
 
+  // Track-limits / off-track incident warnings. Rotated sequentially; see
+  // `incident-alerts.ts` for why no-repeat works per scenario.
+  "incident-limits": [
+    "pit-engineer/incidents/IRD-incident-limits-01.mp3",
+    "pit-engineer/incidents/IRD-incident-limits-02.mp3",
+    "pit-engineer/incidents/IRD-incident-limits-03.mp3",
+    "pit-engineer/incidents/IRD-incident-limits-04.mp3",
+    "pit-engineer/incidents/IRD-incident-limits-05.mp3",
+    "pit-engineer/incidents/IRD-incident-limits-06.mp3",
+  ],
+
+  // Overtake congratulations. Single clip today; pool leaves room for
+  // variants without touching the scenario.
+  overtake: ["pit-engineer/overtake/IRD-overtake-good-pass.mp3"],
+
   // Auto-fuel reminder alternatives. Replaces the generic fuel reminder when
   // the user has auto-fuel enabled at pit entry.
   "autofuel-reminder": [

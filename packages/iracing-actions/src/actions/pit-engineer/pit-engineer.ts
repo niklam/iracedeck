@@ -96,26 +96,6 @@ function pickAcknowledgment(): string {
   return ACKNOWLEDGMENT_POOL[idx];
 }
 
-// ─── Overtake Pool ──────────────────────────────────────────────────────────
-
-const OVERTAKE_POOL = [
-  "pit-engineer/overtake/IRD-overtake-good-pass.mp3",
-];
-
-let lastOvertakeIndex = -1;
-
-function pickOvertake(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * OVERTAKE_POOL.length);
-  } while (idx === lastOvertakeIndex && OVERTAKE_POOL.length > 1);
-
-  lastOvertakeIndex = idx;
-
-  return OVERTAKE_POOL[idx];
-}
-
 // ─── Tip Pool ────────────────────────────────────────────────────────────────
 
 /**
@@ -636,22 +616,6 @@ const SPOTTER_TICK_INTERVALS: Readonly<Record<Exclude<SpotterVisualState, "clear
   both: 230,
 };
 
-// ─── Overtake sub-feature state ─────────────────────────────────────────────
-
-/** Timestamp of last overtake alert (cooldown to prevent spam). */
-let globalLastOvertakeTime = 0;
-
-/** Minimum ms between overtake alerts. */
-const OVERTAKE_COOLDOWN_MS = 8000;
-
-/** Number of confirmed overtakes before playing the audio. */
-const OVERTAKE_PLAY_EVERY = 5;
-
-/** Counter of confirmed overtakes since last audio play. */
-let globalOvertakeCount = 0;
-
-// ─── Flag alert sub-feature state ──────────────────────────────────────────
-
 /**
  * @internal Exported for testing
  *
@@ -781,37 +745,6 @@ const PIT_SPEEDING_WARNINGS = [
 let pitNoLimiterIndex = 0;
 let pitLimiterDroppedIndex = 0;
 let pitSpeedingIndex = 0;
-
-/**
- * Track-limits warnings — fire on brief off-track incidents (counter +1 without
- * a sustained excursion). Add recorded clips here once available.
- *
- * TODO(4c): restore material-specific grass/gravel/generic pools once the
- * translator exposes recent off-track material samples in event data.
- */
-const OFF_TRACK_LIMITS_WARNINGS: readonly string[] = [
-  "pit-engineer/incidents/IRD-incident-limits-01.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-02.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-03.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-04.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-05.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-06.mp3",
-];
-let offTrackLimitsIndex = 0;
-
-/**
- * Picks the next track-limits audio file, or null if the pool is empty.
- *
- * @internal Exported for testing
- */
-export function pickTrackLimitsFile(): string | null {
-  if (OFF_TRACK_LIMITS_WARNINGS.length === 0) return null;
-
-  const f = OFF_TRACK_LIMITS_WARNINGS[offTrackLimitsIndex]!;
-  offTrackLimitsIndex = (offTrackLimitsIndex + 1) % OFF_TRACK_LIMITS_WARNINGS.length;
-
-  return f;
-}
 
 // NOTE: the old `resolvePitServiceToggleAudio` and `resolveCarControlToggleAudio`
 // helpers were removed in Stage 4b when pit-engineer migrated to sim-events.
@@ -1044,6 +977,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     engine.setEnabled("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
     engine.setEnabled("pit-engineer.pit-exit", settings.pitExitEnabled);
     engine.setEnabled("pit-engineer.stall-departure", settings.pitDepartureEnabled);
+    engine.setEnabled("pit-engineer.incident-alerts", settings.incidentAlert);
+    engine.setEnabled("pit-engineer.overtake", settings.overtakeAndTipsEnabled);
 
     for (const id of FLAG_SCENARIO_IDS) engine.setEnabled(id, settings.flagAlertsEnabled);
   }
@@ -1058,6 +993,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       "pit-engineer.service-reminder",
       "pit-engineer.pit-exit",
       "pit-engineer.stall-departure",
+      "pit-engineer.incident-alerts",
+      "pit-engineer.overtake",
       ...FLAG_SCENARIO_IDS,
     ]) {
       engine.setEnabled(id, false);
@@ -1079,8 +1016,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       bus.subscribe("limiter.missing", () => this.onLimiterWarning("missing")),
       bus.subscribe("limiter.dropped", () => this.onLimiterWarning("dropped")),
       bus.subscribe("limiter.speeding", () => this.onLimiterWarning("speeding")),
-      bus.subscribe("incident.occurred", () => this.onIncidentOccurred()),
-      bus.subscribe("overtake.completed", () => this.onOvertakeCompleted()),
       bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)),
       bus.subscribe("fuel.lapsRemaining.crossed", (ev) => this.onFuelCrossed(ev)),
       bus.subscribe("lap.started", () => this.onLapStarted()),
@@ -1166,35 +1101,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     this.logger.info(`Pit limiter warning: ${kind}`);
     playEngineerSoundSimple(file);
-  }
-
-  private onIncidentOccurred(): void {
-    if (!globalEnabled || !globalSettings?.incidentAlert) return;
-
-    // TODO(4c): restore material-specific off-track callouts when
-    // `incident.occurred` carries material/duration data.
-    const file = pickTrackLimitsFile();
-
-    if (!file) return;
-
-    this.logger.info("Incident occurred — generic warning");
-    playEngineerSoundSimple(file);
-  }
-
-  private onOvertakeCompleted(): void {
-    if (!globalEnabled || !globalSettings?.overtakeAndTipsEnabled) return;
-
-    if (getSessionType() !== "Race") return;
-
-    globalOvertakeCount++;
-    const now = Date.now();
-
-    if (globalOvertakeCount >= OVERTAKE_PLAY_EVERY && now - globalLastOvertakeTime >= OVERTAKE_COOLDOWN_MS) {
-      globalLastOvertakeTime = now;
-      globalOvertakeCount = 0;
-      this.logger.info("Playing overtake audio");
-      playEngineerSoundSimple(pickOvertake());
-    }
   }
 
   private onSpotterChanged(ev: SimEventOf<"spotter.changed">): void {

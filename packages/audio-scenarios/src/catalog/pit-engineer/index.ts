@@ -12,6 +12,8 @@
  */
 import { getScenarioEngine } from "../../interpreter.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
+import { INCIDENT_ALERTS } from "./incident-alerts.js";
+import { OVERTAKE } from "./overtake.js";
 import { PIT_APPROACH } from "./pit-approach.js";
 import { PIT_EXIT } from "./pit-exit.js";
 import { POOLS } from "./pools.js";
@@ -51,6 +53,8 @@ export function registerPitEngineer(): void {
   engine.defineScenario(PIT_EXIT);
   engine.defineScenario(STALL_DEPARTURE);
   engine.defineScenario(SERVICE_REMINDER);
+  engine.defineScenario(INCIDENT_ALERTS);
+  engine.defineScenario(OVERTAKE);
 
   for (const flag of FLAG_ALERTS) engine.defineScenario(flag);
 }
