@@ -66,7 +66,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Audio Controls | 3 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action) |
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
-| Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware), escape (hardcoded ESC, auto-hold option), pause-sim |
+| Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
 
 ### Cockpit & Interface
 
