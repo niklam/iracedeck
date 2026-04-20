@@ -1,5 +1,5 @@
 import { getScenarioEngine } from "@iracedeck/audio-scenarios";
-import { setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
+import { FLAG_SCENARIO_IDS, setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -653,22 +653,6 @@ let globalOvertakeCount = 0;
 // ─── Flag alert sub-feature state ──────────────────────────────────────────
 
 /**
- * Audio file mapping for each flag type.
- * Uses Warning Flow (simple, no ack) — urgent informational callouts.
- */
-const FLAG_AUDIO: Record<string, string> = {
-  green: "pit-engineer/flags/IRD-flag-green-flag.mp3",
-  yellow: "pit-engineer/flags/IRD-flag-yellow-flag.mp3",
-  blue: "pit-engineer/flags/IRD-flag-blue-flag.mp3",
-  black: "pit-engineer/flags/IRD-flag-black-flag.mp3",
-  red: "pit-engineer/flags/IRD-flag-red-flag.mp3",
-  white: "pit-engineer/flags/IRD-flag-white-flag.mp3",
-  checkered: "pit-engineer/flags/IRD-flag-checkered-flag.mp3",
-  meatball: "pit-engineer/flags/IRD-flag-meatball-flag.mp3",
-  debris: "pit-engineer/flags/IRD-flag-debris.mp3",
-};
-
-/**
  * @internal Exported for testing
  *
  * Pit service toggle audio file mapping.
@@ -1060,6 +1044,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     engine.setEnabled("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
     engine.setEnabled("pit-engineer.pit-exit", settings.pitExitEnabled);
     engine.setEnabled("pit-engineer.stall-departure", settings.pitDepartureEnabled);
+
+    for (const id of FLAG_SCENARIO_IDS) engine.setEnabled(id, settings.flagAlertsEnabled);
   }
 
   /** Disable every pit-engineer scenario — called when the engineer is toggled off. */
@@ -1072,6 +1058,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       "pit-engineer.service-reminder",
       "pit-engineer.pit-exit",
       "pit-engineer.stall-departure",
+      ...FLAG_SCENARIO_IDS,
     ]) {
       engine.setEnabled(id, false);
     }
@@ -1085,13 +1072,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     const bus = getEventBus();
 
     this.eventSubscriptions.push(
-      bus.subscribe("flag.yellow.raised", () => this.onFlag("yellow")),
-      bus.subscribe("flag.green.raised", () => this.onFlag("green")),
-      bus.subscribe("flag.blue.raised", () => this.onFlag("blue")),
-      bus.subscribe("flag.black.raised", () => this.onFlag("black")),
-      bus.subscribe("flag.red.raised", () => this.onFlag("red")),
-      bus.subscribe("flag.white.raised", () => this.onFlag("white")),
-      bus.subscribe("flag.checkered.raised", () => this.onFlag("checkered")),
       bus.subscribe("pitService.toggled", (ev) => this.onPitServiceToggled(ev)),
       bus.subscribe("carControl.drsToggled", (ev) => this.onCarControlToggled("drs", ev.data.on)),
       bus.subscribe("carControl.p2pToggled", (ev) => this.onCarControlToggled("p2p", ev.data.on)),
@@ -1124,17 +1104,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   }
 
   // ─── Event handlers ──────────────────────────────────────────────────────
-
-  private onFlag(flag: string): void {
-    if (!globalEnabled || !globalSettings?.flagAlertsEnabled) return;
-
-    const audioFile = FLAG_AUDIO[flag];
-
-    if (!audioFile) return;
-
-    this.logger.info(`Flag alert: ${flag}`);
-    playEngineerSoundSimple(audioFile);
-  }
 
   private onPitServiceToggled(ev: SimEventOf<"pitService.toggled">): void {
     if (!globalEnabled || !globalSettings?.toggleAudioEnabled) return;
