@@ -12,6 +12,15 @@
  */
 
 export const POOLS: Readonly<Record<string, readonly string[]>> = {
+  // Acknowledgments that open toggle callouts ("copy that", "got it", ...).
+  acknowledgment: [
+    "pit-engineer/acknowledgment/IRD-ack-okay.mp3",
+    "pit-engineer/acknowledgment/IRD-ack-got-it.mp3",
+    "pit-engineer/acknowledgment/IRD-ack-roger-that.mp3",
+    "pit-engineer/acknowledgment/IRD-ack-copy-that.mp3",
+    "pit-engineer/acknowledgment/IRD-ack-we-got-that.mp3",
+  ],
+
   // Walkie-talkie "uh, yeah, copy that" style fragments inserted between voice
   // clips in multi-message sequences. The special `{ connector: true }` step
   // draws from this pool.
@@ -84,6 +93,49 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "pit-engineer/fuel/empty/IRD-fuel-empty-01.mp3",
     "pit-engineer/fuel/empty/IRD-fuel-empty-02.mp3",
     "pit-engineer/fuel/empty/IRD-fuel-empty-03.mp3",
+  ],
+
+  // Pit limiter on-track warning — fires when the limiter is engaged while
+  // NOT in pit lane. Rotated sequentially.
+  "pit-limiter-on-track": [
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
+  ],
+
+  // Missing pit limiter — entered pit road without the limiter engaged.
+  "pit-no-limiter": [
+    "pit-engineer/pitlane/IRD-pit-no-limiter-01.mp3",
+    "pit-engineer/pitlane/IRD-pit-no-limiter-02.mp3",
+    "pit-engineer/pitlane/IRD-pit-no-limiter-03.mp3",
+  ],
+
+  // Limiter disengaged while still in the pit lane.
+  "pit-limiter-dropped": [
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
+    "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
+  ],
+
+  // Speeding in pit lane.
+  "pit-speeding": [
+    "pit-engineer/pitlane/IRD-pit-speeding-01.mp3",
+    "pit-engineer/pitlane/IRD-pit-speeding-02.mp3",
+    "pit-engineer/pitlane/IRD-pit-speeding-03.mp3",
+  ],
+
+  // Racing tips eligible mid-race (excludes START_ONLY tips 6 and 7 from
+  // welcome-tip; keeps MID_RACE_ONLY tip-11).
+  "race-tip": [
+    "pit-engineer/tips/IRD-pit-engineer-tip-1.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-2.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-3.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-4.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-5.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-8.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-9.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-10.mp3",
+    "pit-engineer/tips/IRD-pit-engineer-tip-11.mp3",
   ],
 
   // Track-limits / off-track incident warnings. Rotated sequentially; see

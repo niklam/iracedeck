@@ -1,5 +1,11 @@
 import { getScenarioEngine } from "@iracedeck/audio-scenarios";
-import { FLAG_SCENARIO_IDS, FUEL_SCENARIO_IDS, setDriverNameResolver } from "@iracedeck/audio-scenarios/pit-engineer";
+import {
+  FLAG_SCENARIO_IDS,
+  FUEL_SCENARIO_IDS,
+  PIT_LIMITER_SCENARIO_IDS,
+  setDriverNameResolver,
+  TOGGLE_SCENARIO_IDS,
+} from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -62,40 +68,6 @@ function applyChannelVolumes(): void {
   getAudio().setBusVolume(AudioBus.Alerts, spotterVol);
 }
 
-// ─── Acknowledgment & Connector Pools ─────────────────────────────────────────
-
-const ACKNOWLEDGMENT_POOL = [
-  "pit-engineer/acknowledgment/IRD-ack-okay.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-got-it.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-roger-that.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-copy-that.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-we-got-that.mp3",
-];
-
-const CONNECTOR_POOL = [
-  "pit-engineer/connector/IRD-connector-and.mp3",
-  "pit-engineer/connector/IRD-connector-also.mp3",
-  "pit-engineer/connector/IRD-connector-plus.mp3",
-  "pit-engineer/connector/IRD-connector-as-well-as.mp3",
-  "pit-engineer/connector/IRD-connector-addition.mp3",
-];
-
-/** Last acknowledgment index to avoid repeats. */
-let lastAckIndex = -1;
-
-/** Pick a random acknowledgment, never the same back-to-back. */
-function pickAcknowledgment(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * ACKNOWLEDGMENT_POOL.length);
-  } while (idx === lastAckIndex && ACKNOWLEDGMENT_POOL.length > 1);
-
-  lastAckIndex = idx;
-
-  return ACKNOWLEDGMENT_POOL[idx];
-}
-
 // ─── Tip Pool ────────────────────────────────────────────────────────────────
 
 /**
@@ -140,9 +112,6 @@ export const MID_RACE_ONLY_TIPS: ReadonlySet<string> = new Set([
   "pit-engineer/tips/IRD-pit-engineer-tip-11.mp3",
 ]);
 
-/** Last tip file played to avoid repeats. */
-let lastTipFile: string | null = null;
-
 /**
  * @internal Exported for testing
  *
@@ -154,20 +123,6 @@ export function getEligibleTips(isStartWindow: boolean): string[] {
   const excluded = isStartWindow ? MID_RACE_ONLY_TIPS : START_ONLY_TIPS;
 
   return TIP_POOL.filter((tip) => !excluded.has(tip));
-}
-
-/** Pick a random tip for the given race phase, never the same back-to-back. */
-function pickTip(isStartWindow: boolean): string {
-  const eligible = getEligibleTips(isStartWindow);
-  let choice: string;
-
-  do {
-    choice = eligible[Math.floor(Math.random() * eligible.length)];
-  } while (choice === lastTipFile && eligible.length > 1);
-
-  lastTipFile = choice;
-
-  return choice;
 }
 
 // ─── Driver Name ──────────────────────────────────────────────────────────────
@@ -204,145 +159,6 @@ function getDriverNameFile(): string | null {
 // the latest `globalSettings` at fire time, so no re-registration on settings
 // changes is needed.
 setDriverNameResolver(getDriverNameFile);
-
-// ─── Radio Flow Orchestrator ──────────────────────────────────────────────────
-//
-// Four flow types for the walkie-talkie radio experience:
-//
-// Full flow (toggles, approach, exit, stall departure):
-//   [tick-open] → [ack + ambient] → [(name occasionally)] → [messages with connectors]
-//   → [ambient stops] → [tick-close]
-//
-// Reminder flow (service reminders, auto-fuel — NO acknowledgment):
-//   [tick-open] → [ambient + reminder messages (with connectors)] → [ambient stops] → [tick-close]
-//
-// Warning flow (pit limiter):
-//   [tick-open] → [ambient + message] → [ambient stops] → [tick-close]
-//
-// Welcome flow (first time in car):
-//   [tick-open] → [(greeting ~60%)] → [(driver name)] → [tip] → [tick-close]
-
-type RadioFlowState = "idle" | "tick-open" | "ack" | "messages" | "tick-close";
-let radioFlowState: RadioFlowState = "idle";
-
-/**
- * Plays a radio-style message sequence.
- *
- * @param files - Message audio filenames (relative to audio root)
- * @param includeAck - Whether to play an acknowledgment before messages (default: true)
- */
-function playRadioMessage(files: string[], includeAck = true): void {
-  if (files.length === 0) return;
-
-  applyChannelVolumes();
-
-  // Cancel any in-progress radio flow
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at a random position (different each transmission)
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Optional micro-delay after tick — ambient plays, voice waits
-    randomRadioDelay("tick-open", () => {
-      if (includeAck) {
-        // Step 2a: Play acknowledgment on Voice
-        radioFlowState = "ack";
-        getAudio().onChannelComplete(AudioChannel.Voice, () => {
-          if (radioFlowState !== "ack") return;
-
-          startVoiceMessages(files);
-        });
-        getAudio().playOnChannel(AudioChannel.Voice, getAudioPath(pickAcknowledgment()));
-      } else {
-        // Step 2b: Skip ack, go straight to messages
-        startVoiceMessages(files);
-      }
-    });
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
-}
-
-/**
- * Adds a random micro-delay before invoking a callback.
- * ~40% chance of a 100–400ms pause — ambient stays audible during the gap,
- * giving the radio transmission a natural, human feel.
- */
-function randomRadioDelay(state: RadioFlowState, callback: () => void): void {
-  const doDelay = Math.random() < 0.4;
-  const delayMs = doDelay ? 100 + Math.floor(Math.random() * 300) : 0;
-
-  if (delayMs > 0) {
-    setTimeout(() => {
-      // Guard: flow may have been cancelled during the delay
-      if (radioFlowState !== state) return;
-
-      callback();
-    }, delayMs);
-  } else {
-    callback();
-  }
-}
-
-/**
- * Plays the tick-close SFX after a subtle delay (100–400ms).
- * Ambient stays audible during the pause for a natural radio feel.
- */
-function playTickClose(): void {
-  const delayMs = 100 + Math.floor(Math.random() * 300);
-  setTimeout(() => {
-    if (radioFlowState !== "tick-close") return;
-
-    getAudio().stopChannel(AudioChannel.Ambient);
-    getAudio().onChannelComplete(AudioChannel.SFX, () => {
-      radioFlowState = "idle";
-      globalPriorityActive = false;
-    });
-    getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-close.mp3"));
-  }, delayMs);
-}
-
-/**
- * Starts the voice message sequence and wires up the completion handler
- * to stop ambient and play the closing tick.
- */
-function startVoiceMessages(files: string[]): void {
-  radioFlowState = "messages";
-
-  // When all messages finish → tick-close (with optional natural delay)
-  getAudio().onVoiceSequenceComplete(() => {
-    if (radioFlowState !== "messages") return;
-
-    radioFlowState = "tick-close";
-    playTickClose();
-  });
-
-  // Start voice sequence with connector pool for multi-message chaining
-  getAudio().playVoiceSequence(
-    files.map(getAudioPath),
-    files.length > 1 ? CONNECTOR_POOL.map(getAudioPath) : undefined,
-  );
-}
-
-/**
- * Cancels any in-progress radio flow and stops all non-spotter channels.
- */
-function cancelRadioFlow(): void {
-  radioFlowState = "idle";
-  globalPriorityActive = false;
-
-  getAudio().cancelVoiceSequence();
-  getAudio().stopChannel(AudioChannel.SFX);
-  getAudio().stopChannel(AudioChannel.Voice);
-  getAudio().stopChannel(AudioChannel.Ambient);
-}
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
@@ -647,41 +463,6 @@ export const CAR_CONTROL_TOGGLE_AUDIO: Record<string, { on: string; off: string 
   drs: { on: "pit-engineer/toggle/IRD-toggle-drs-on.mp3", off: "pit-engineer/toggle/IRD-toggle-drs-off.mp3" },
 };
 
-/** Pit limiter warning files — cycled each time limiter activates on track. */
-const PIT_LIMITER_WARNINGS = [
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-1.mp3",
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-2.mp3",
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-3.mp3",
-];
-
-/** Current index into the pit limiter warning rotation. */
-let pitLimiterWarningIndex = 0;
-
-/** Entered pit lane without limiter engaged. */
-const PIT_NO_LIMITER_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-no-limiter-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-no-limiter-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-no-limiter-03.mp3",
-];
-
-/** Limiter disengaged while still between pit cones. */
-const PIT_LIMITER_DROPPED_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
-];
-
-/** Over the pit speed limit. */
-const PIT_SPEEDING_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-speeding-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-speeding-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-speeding-03.mp3",
-];
-
-let pitNoLimiterIndex = 0;
-let pitLimiterDroppedIndex = 0;
-let pitSpeedingIndex = 0;
-
 // NOTE: the old `resolvePitServiceToggleAudio` and `resolveCarControlToggleAudio`
 // helpers were removed in Stage 4b when pit-engineer migrated to sim-events.
 // The translator now emits a single-service / single-toggle event per change,
@@ -691,33 +472,16 @@ let pitSpeedingIndex = 0;
 // TODO(4c) at the incident pool comment for the full follow-up list.
 
 /**
- * True while a priority pit-lane message (approach, stall departure, exit) is
- * being played — i.e. tick-open, voice, tick-close are still in flight.
- * Cleared when the radio flow returns to idle at the end of tick-close.
- */
-let globalPriorityActive = false;
-
-/**
- * Plays a one-shot engineer message with simplified radio flow (no ack).
- * tick-open → ambient → message → ambient off → tick-close.
- * Skipped if a priority pit-lane message is still in flight.
- *
- * @returns true if the radio flow was started, false if skipped (priority active).
- */
-function playEngineerSoundSimple(filename: string): boolean {
-  if (globalPriorityActive) return false;
-
-  playRadioMessage([filename], false);
-
-  return true;
-}
-
-/**
- * Resets all audio state — stops all channels and cancels radio flow.
+ * Resets all audio state — cancels any in-flight voice sequence, stops every
+ * channel, and stops the spotter tick loop. Called when the engineer is
+ * toggled off.
  */
 function resetAllAudioState(): void {
-  cancelRadioFlow();
   stopSpotterTickLoop();
+  getAudio().cancelVoiceSequence();
+  getAudio().stopChannel(AudioChannel.SFX);
+  getAudio().stopChannel(AudioChannel.Voice);
+  getAudio().stopChannel(AudioChannel.Ambient);
   getAudio().stopChannel(AudioChannel.Spotter);
 }
 
@@ -745,21 +509,12 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   /** Active event-bus unsubscribe callbacks while the engineer is enabled. */
   private eventSubscriptions: Array<() => void> = [];
 
-  /** Polling timer for the current lap's racing tip (2-second cadence). */
-  private tipPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  /** LapDistPct threshold picked per lap when a tip is scheduled (-1 = not scheduled). */
-  private tipTriggerPct = -1;
-
   /** Spotter test file rotation order. */
   private static readonly SPOTTER_TEST_FILES = [
     "pit-engineer/spotter/IRD-spotter-left.mp3",
     "pit-engineer/spotter/IRD-spotter-right.mp3",
     "pit-engineer/spotter/IRD-spotter-both.mp3",
   ];
-
-  /** Per-lap probability that a racing tip fires. Deliberate Stage-4b behavior change. */
-  private static readonly TIP_LAP_PROBABILITY = 0.25;
 
   override async onWillAppear(ev: IDeckWillAppearEvent<PitEngineerSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -880,7 +635,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       this.applyScenarioGates(settings);
     } else {
       this.stopEventSubscriptions();
-      this.stopTipPolling();
       resetAllAudioState();
       this.disableAllScenarios();
     }
@@ -906,6 +660,13 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     for (const id of FLAG_SCENARIO_IDS) engine.setEnabled(id, settings.flagAlertsEnabled);
 
     for (const id of FUEL_SCENARIO_IDS) engine.setEnabled(id, settings.fuelWarningsEnabled);
+
+    for (const id of TOGGLE_SCENARIO_IDS) engine.setEnabled(id, settings.toggleAudioEnabled);
+
+    for (const id of PIT_LIMITER_SCENARIO_IDS) engine.setEnabled(id, settings.pitLimiterWarning);
+
+    // Tips share the overtakeAndTipsEnabled gate with the overtake scenario.
+    engine.setEnabled("pit-engineer.racing-tips", settings.overtakeAndTipsEnabled);
   }
 
   /** Disable every pit-engineer scenario — called when the engineer is toggled off. */
@@ -920,8 +681,11 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       "pit-engineer.stall-departure",
       "pit-engineer.incident-alerts",
       "pit-engineer.overtake",
+      "pit-engineer.racing-tips",
       ...FLAG_SCENARIO_IDS,
       ...FUEL_SCENARIO_IDS,
+      ...TOGGLE_SCENARIO_IDS,
+      ...PIT_LIMITER_SCENARIO_IDS,
     ]) {
       engine.setEnabled(id, false);
     }
@@ -934,18 +698,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     const bus = getEventBus();
 
-    this.eventSubscriptions.push(
-      bus.subscribe("pitService.toggled", (ev) => this.onPitServiceToggled(ev)),
-      bus.subscribe("carControl.drsToggled", (ev) => this.onCarControlToggled("drs", ev.data.on)),
-      bus.subscribe("carControl.p2pToggled", (ev) => this.onCarControlToggled("p2p", ev.data.on)),
-      bus.subscribe("carControl.limiterToggled", (ev) => this.onLimiterToggled(ev)),
-      bus.subscribe("limiter.missing", () => this.onLimiterWarning("missing")),
-      bus.subscribe("limiter.dropped", () => this.onLimiterWarning("dropped")),
-      bus.subscribe("limiter.speeding", () => this.onLimiterWarning("speeding")),
-      bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)),
-      bus.subscribe("lap.started", () => this.onLapStarted()),
-      bus.subscribe("session.changed", () => this.onSessionChanged()),
-    );
+    this.eventSubscriptions.push(bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)));
 
     this.logger.debug(`Pit Engineer subscribed to ${this.eventSubscriptions.length} events`);
   }
@@ -956,77 +709,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     this.eventSubscriptions = [];
   }
 
-  private stopTipPolling(): void {
-    if (this.tipPollTimer) clearInterval(this.tipPollTimer);
-
-    this.tipPollTimer = null;
-    this.tipTriggerPct = -1;
-  }
-
   // ─── Event handlers ──────────────────────────────────────────────────────
-
-  private onPitServiceToggled(ev: SimEventOf<"pitService.toggled">): void {
-    if (!globalEnabled || !globalSettings?.toggleAudioEnabled) return;
-
-    const { service, on } = ev.data;
-    const map = PIT_SERVICE_TOGGLE_AUDIO[service];
-
-    if (!map) return;
-
-    const file = on ? map.on : map.off;
-    this.logger.info(`Pit service toggle: ${service} ${on ? "on" : "off"}`);
-    playRadioMessage([file]);
-  }
-
-  private onCarControlToggled(kind: "drs" | "p2p", on: boolean): void {
-    if (!globalEnabled || !globalSettings?.toggleAudioEnabled) return;
-
-    const key = kind === "drs" ? "drs" : "pushToPass";
-    const map = CAR_CONTROL_TOGGLE_AUDIO[key];
-
-    if (!map) return;
-
-    const file = on ? map.on : map.off;
-    this.logger.info(`Car control toggle: ${kind} ${on ? "on" : "off"}`);
-    playEngineerSoundSimple(file);
-  }
-
-  private onLimiterToggled(ev: SimEventOf<"carControl.limiterToggled">): void {
-    if (!globalEnabled || !globalSettings?.pitLimiterWarning) return;
-
-    if (!ev.data.on) return;
-
-    const telemetry = getLatestTelemetry();
-    const onPitRoad = telemetry?.OnPitRoad ?? false;
-
-    // Toggling the limiter on while on pit road is the expected behavior.
-    if (onPitRoad) return;
-
-    const file = PIT_LIMITER_WARNINGS[pitLimiterWarningIndex]!;
-    pitLimiterWarningIndex = (pitLimiterWarningIndex + 1) % PIT_LIMITER_WARNINGS.length;
-    this.logger.info("Pit limiter activated on track — warning");
-    playEngineerSoundSimple(file);
-  }
-
-  private onLimiterWarning(kind: "missing" | "dropped" | "speeding"): void {
-    if (!globalEnabled || !globalSettings?.pitLimiterWarning) return;
-
-    let file: string;
-
-    if (kind === "missing") {
-      file = PIT_NO_LIMITER_WARNINGS[pitNoLimiterIndex]!;
-      pitNoLimiterIndex = (pitNoLimiterIndex + 1) % PIT_NO_LIMITER_WARNINGS.length;
-    } else if (kind === "dropped") {
-      file = PIT_LIMITER_DROPPED_WARNINGS[pitLimiterDroppedIndex]!;
-      pitLimiterDroppedIndex = (pitLimiterDroppedIndex + 1) % PIT_LIMITER_DROPPED_WARNINGS.length;
-    } else {
-      file = PIT_SPEEDING_WARNINGS[pitSpeedingIndex]!;
-      pitSpeedingIndex = (pitSpeedingIndex + 1) % PIT_SPEEDING_WARNINGS.length;
-    }
-
-    this.logger.info(`Pit limiter warning: ${kind}`);
-    playEngineerSoundSimple(file);
-  }
 
   private onSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
     if (!globalEnabled || !globalSettings?.spotterEnabled) return;
@@ -1063,45 +746,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     globalSpotterState = state;
     this.updateAllVisibleIcons();
-  }
-
-  private onLapStarted(): void {
-    this.stopTipPolling();
-
-    if (!globalEnabled || !globalSettings?.overtakeAndTipsEnabled) return;
-
-    if (getSessionType() !== "Race") return;
-
-    // User-configured probability gate — deliberate behavior change from the
-    // pre-event-bus "every lap" firing model.
-    if (Math.random() >= PitEngineer.TIP_LAP_PROBABILITY) return;
-
-    this.tipTriggerPct = Math.random();
-
-    this.tipPollTimer = setInterval(() => {
-      const telemetry = getLatestTelemetry();
-
-      if (!telemetry) return;
-
-      const pct = typeof telemetry.LapDistPct === "number" ? telemetry.LapDistPct : -1;
-
-      if (pct < this.tipTriggerPct) return;
-
-      this.stopTipPolling();
-
-      if (radioFlowState !== "idle") return;
-
-      const currentLap = typeof telemetry.Lap === "number" ? telemetry.Lap : 1;
-      const isStartWindow = currentLap <= 1;
-      this.logger.info(
-        `Racing tip on lap ${currentLap} at ~${Math.round(pct * 100)}% (${isStartWindow ? "start" : "mid-race"})`,
-      );
-      playEngineerSoundSimple(pickTip(isStartWindow));
-    }, 2000);
-  }
-
-  private onSessionChanged(): void {
-    this.stopTipPolling();
   }
 
   // ─── Icon Updates ─────────────────────────────────────────────────────────

@@ -17,14 +17,19 @@ import { INCIDENT_ALERTS } from "./incident-alerts.js";
 import { OVERTAKE } from "./overtake.js";
 import { PIT_APPROACH } from "./pit-approach.js";
 import { PIT_EXIT } from "./pit-exit.js";
+import { PIT_LIMITER_SCENARIOS } from "./pit-limiter.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { SERVICE_REMINDER } from "./service-reminder.js";
 import { STALL_DEPARTURE } from "./stall-departure.js";
+import { RACING_TIPS } from "./tips.js";
+import { TOGGLE_CONFIRMATIONS } from "./toggle-confirmations.js";
 import { WELCOME } from "./welcome.js";
 
 export { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 export { FUEL_SCENARIO_IDS } from "./fuel-warnings.js";
+export { PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
+export { TOGGLE_SCENARIO_IDS } from "./toggle-confirmations.js";
 
 let driverNameResolver: () => string | null = () => null;
 
@@ -61,6 +66,12 @@ export function registerPitEngineer(): void {
   for (const flag of FLAG_ALERTS) engine.defineScenario(flag);
 
   for (const fuel of FUEL_WARNINGS) engine.defineScenario(fuel);
+
+  for (const toggle of TOGGLE_CONFIRMATIONS) engine.defineScenario(toggle);
+
+  for (const limiter of PIT_LIMITER_SCENARIOS) engine.defineScenario(limiter);
+
+  engine.defineScenario(RACING_TIPS);
 }
 
 /**
