@@ -433,6 +433,16 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
 
     int deviceIndex = info[0].As<Napi::Number>().Int32Value();
 
+    // Only -1 (system default) and non-negative device indices are valid.
+    // Without this, negative values below -1 skip the `>= 0` enumeration
+    // branch, silently get treated as "default device", and are then
+    // persisted into g_selectedDeviceIndex — the next call with the same
+    // invalid value would short-circuit via the fast-path below.
+    if (deviceIndex < -1)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
     if (!g_engine || !g_audioContext)
     {
         return Napi::Boolean::New(env, false);
