@@ -11,8 +11,12 @@
  * setting at fire time without the catalog owning action-specific state.
  */
 import { getScenarioEngine } from "../../interpreter.js";
+import { PIT_APPROACH } from "./pit-approach.js";
+import { PIT_EXIT } from "./pit-exit.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
+import { SERVICE_REMINDER } from "./service-reminder.js";
+import { STALL_DEPARTURE } from "./stall-departure.js";
 import { WELCOME } from "./welcome.js";
 
 let driverNameResolver: () => string | null = () => null;
@@ -40,6 +44,10 @@ export function registerPitEngineer(): void {
   engine.defineScenario(RADIO_CLOSE);
 
   engine.defineScenario(WELCOME);
+  engine.defineScenario(PIT_APPROACH);
+  engine.defineScenario(PIT_EXIT);
+  engine.defineScenario(STALL_DEPARTURE);
+  engine.defineScenario(SERVICE_REMINDER);
 }
 
 /**

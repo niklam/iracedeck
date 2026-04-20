@@ -24,7 +24,6 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { getEventBus, type SimEventOf } from "@iracedeck/event-bus";
-import { PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
 import path from "node:path";
 import z from "zod";
@@ -97,29 +96,6 @@ function pickAcknowledgment(): string {
   return ACKNOWLEDGMENT_POOL[idx];
 }
 
-// ─── Stall Departure Pool ────────────────────────────────────────────────────
-
-const STALL_DEPARTURE_POOL = [
-  "pit-engineer/pitlane/IRD-pit-stall-departure.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-2.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-3.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
-];
-
-let lastStallDepartureIndex = -1;
-
-function pickStallDeparture(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * STALL_DEPARTURE_POOL.length);
-  } while (idx === lastStallDepartureIndex && STALL_DEPARTURE_POOL.length > 1);
-
-  lastStallDepartureIndex = idx;
-
-  return STALL_DEPARTURE_POOL[idx];
-}
-
 // ─── Overtake Pool ──────────────────────────────────────────────────────────
 
 const OVERTAKE_POOL = [
@@ -138,79 +114,6 @@ function pickOvertake(): string {
   lastOvertakeIndex = idx;
 
   return OVERTAKE_POOL[idx];
-}
-
-// ─── Auto-Fuel Reminder Pool ────────────────────────────────────────────────
-
-const AUTOFUEL_REMINDER_POOL = [
-  "pit-engineer/reminder/IRD-pit-reminder-autofuel.mp3",
-  "pit-engineer/reminder/IRD-pit-reminder-autofuel-2.mp3",
-];
-
-/** Last auto-fuel reminder index to avoid repeats. */
-let lastAutofuelReminderIndex = -1;
-
-/** Pick a random auto-fuel reminder, never the same back-to-back. */
-function pickAutofuelReminder(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * AUTOFUEL_REMINDER_POOL.length);
-  } while (idx === lastAutofuelReminderIndex && AUTOFUEL_REMINDER_POOL.length > 1);
-
-  lastAutofuelReminderIndex = idx;
-
-  return AUTOFUEL_REMINDER_POOL[idx];
-}
-
-// ─── Pit Approach Pool ───────────────────────────────────────────────────────
-
-const PIT_APPROACH_POOL = [
-  "pit-engineer/pitlane/IRD-pit-approach.mp3",
-  "pit-engineer/pitlane/IRD-pit-approach-2.mp3",
-];
-
-/** Last pit approach index to avoid repeats. */
-let lastPitApproachIndex = -1;
-
-/** Pick a random pit approach message, never the same back-to-back. */
-function pickPitApproach(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * PIT_APPROACH_POOL.length);
-  } while (idx === lastPitApproachIndex && PIT_APPROACH_POOL.length > 1);
-
-  lastPitApproachIndex = idx;
-
-  return PIT_APPROACH_POOL[idx];
-}
-
-// ─── Pit Exit Pool ───────────────────────────────────────────────────────────
-
-const PIT_EXIT_POOL = [
-  "pit-engineer/pitlane/IRD-pit-exit.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-2.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-3.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-4.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-5.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-6.mp3",
-];
-
-/** Last pit exit index to avoid repeats. */
-let lastPitExitIndex = -1;
-
-/** Pick a random pit exit message, never the same back-to-back. */
-function pickPitExit(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * PIT_EXIT_POOL.length);
-  } while (idx === lastPitExitIndex && PIT_EXIT_POOL.length > 1);
-
-  lastPitExitIndex = idx;
-
-  return PIT_EXIT_POOL[idx];
 }
 
 // ─── Tip Pool ────────────────────────────────────────────────────────────────
@@ -484,15 +387,7 @@ function playTickClose(): void {
     getAudio().stopChannel(AudioChannel.Ambient);
     getAudio().onChannelComplete(AudioChannel.SFX, () => {
       radioFlowState = "idle";
-      const wasPriority = globalPriorityActive;
       globalPriorityActive = false;
-
-      // If a service-reminder flow was deferred while priority was playing, run it now.
-      if (wasPriority && globalPendingReminder) {
-        const pending = globalPendingReminder;
-        globalPendingReminder = null;
-        playReminderFlow(pending);
-      }
     });
     getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-close.mp3"));
   }, delayMs);
@@ -526,76 +421,11 @@ function startVoiceMessages(files: string[]): void {
 function cancelRadioFlow(): void {
   radioFlowState = "idle";
   globalPriorityActive = false;
-  globalPendingReminder = null;
-
-  if (globalReminderTimer) {
-    clearTimeout(globalReminderTimer);
-    globalReminderTimer = null;
-  }
 
   getAudio().cancelVoiceSequence();
   getAudio().stopChannel(AudioChannel.SFX);
   getAudio().stopChannel(AudioChannel.Voice);
   getAudio().stopChannel(AudioChannel.Ambient);
-}
-
-/**
- * Plays a reminder-only radio flow with NO acknowledgment.
- *
- * Flow: [tick-open] → [ambient + reminder messages (with connectors)] → [ambient stops] → [tick-close]
- *
- * This is a dedicated flow separate from playRadioMessage to guarantee
- * no acknowledgment logic can leak in.
- *
- * @param files - Reminder audio filenames (relative to audio root)
- */
-function playReminderFlow(files: string[]): void {
-  if (files.length === 0) return;
-
-  // Don't interrupt a priority pit-lane message (approach, departure, exit).
-  // Queue to play when the priority flow finishes (see playTickClose idle handler).
-  if (globalPriorityActive) {
-    globalPendingReminder = files;
-
-    return;
-  }
-
-  applyChannelVolumes();
-
-  // Cancel any in-progress radio flow
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at a random position
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Optional micro-delay after tick — ambient plays, voice waits
-    randomRadioDelay("tick-open", () => {
-      // Step 3: Play reminder messages directly (no ack)
-      radioFlowState = "messages";
-
-      getAudio().onVoiceSequenceComplete(() => {
-        if (radioFlowState !== "messages") return;
-
-        radioFlowState = "tick-close";
-        playTickClose();
-      });
-
-      // Start voice sequence with connectors for multi-message chaining
-      getAudio().playVoiceSequence(
-        files.map(getAudioPath),
-        files.length > 1 ? CONNECTOR_POOL.map(getAudioPath) : undefined,
-      );
-    });
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
 }
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
@@ -670,42 +500,6 @@ function startSpotterTickLoop(state: SpotterVisualState): void {
   };
 
   fire();
-}
-
-/**
- * @internal Exported for testing
- *
- * Resolves which pit services are queued from the PitSvFlags bitfield
- * and tire compound state. Only includes services that are actually
- * toggled on (enabled) in iRacing's pit service menu.
- *
- * @param flags - PitSvFlags bitfield from telemetry
- * @param playerCompound - Current tire compound (PlayerTireCompound)
- * @param pitSvCompound - Queued tire compound (PitSvTireCompound)
- */
-export function resolveQueuedServices(flags: number, playerCompound = 0, pitSvCompound = 0): string[] {
-  const services: string[] = [];
-  const hasTires =
-    (flags & PitSvFlags.LFTireChange) !== 0 ||
-    (flags & PitSvFlags.RFTireChange) !== 0 ||
-    (flags & PitSvFlags.LRTireChange) !== 0 ||
-    (flags & PitSvFlags.RRTireChange) !== 0;
-
-  // Order: Fast Repair first, then Refueling, then Tires/Compound last.
-  if ((flags & PitSvFlags.FastRepair) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
-
-  if ((flags & PitSvFlags.FuelFill) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
-
-  const hasCompoundChange = hasTires && pitSvCompound !== 0 && pitSvCompound !== playerCompound;
-
-  if (hasCompoundChange) {
-    // Compound change implies tire change — skip the generic tire reminder
-    services.push("pit-engineer/reminder/IRD-pit-reminder-compound.mp3");
-  } else if (hasTires) {
-    services.push("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
-  }
-
-  return services;
 }
 
 // ─── Icon Generation ───────────────────────────────────────────────────────────
@@ -1050,15 +844,6 @@ export function pickTrackLimitsFile(): string | null {
  */
 let globalPriorityActive = false;
 
-/** Reminder files deferred until an in-flight priority flow completes. */
-let globalPendingReminder: string[] | null = null;
-
-/** Pending service reminder timer — cancelled if the action disappears or flow changes. */
-let globalReminderTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Delay (ms) between pit entry and the service reminder flow so the approach message finishes first. */
-const SERVICE_REMINDER_DELAY_MS = 1500;
-
 /**
  * Plays a priority pit-lane message (approach, stall departure, exit).
  * Marks the priority flow active so other audio defers until it ends.
@@ -1160,6 +945,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       this.startEventSubscriptions();
     }
 
+    this.applyScenarioGates(settings);
+
     // Provide regeneration callback for icon refresh (global color changes, etc.)
     this.setRegenerateCallback(contextId, () => {
       const s = this.settingsCache.get(contextId);
@@ -1192,6 +979,9 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     // Apply channel volumes whenever settings change
     applyChannelVolumes();
+
+    // Sync PI toggles to the scenario engine's setEnabled.
+    this.applyScenarioGates(settings);
 
     // Handle engineer test volume button from PI
     const testTimestamp = raw._testVolume as number | undefined;
@@ -1247,14 +1037,44 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       const settings = Settings.parse(ev.payload.settings);
       globalSettings = settings;
       this.startEventSubscriptions();
+      this.applyScenarioGates(settings);
     } else {
       this.stopEventSubscriptions();
       this.stopTipPolling();
       resetAllAudioState();
+      this.disableAllScenarios();
     }
 
     // Update icon on all visible instances
     this.updateAllVisibleIcons();
+  }
+
+  /**
+   * Sync PI toggles to the scenario engine. Each mapping translates a PI
+   * setting to a scenario id; gates that are off also disable the scenario
+   * here so in-flight fires are cancelled.
+   */
+  private applyScenarioGates(settings: PitEngineerSettings): void {
+    const engine = getScenarioEngine();
+    engine.setEnabled("pit-engineer.pit-approach", settings.pitApproachEnabled);
+    engine.setEnabled("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
+    engine.setEnabled("pit-engineer.pit-exit", settings.pitExitEnabled);
+    engine.setEnabled("pit-engineer.stall-departure", settings.pitDepartureEnabled);
+  }
+
+  /** Disable every pit-engineer scenario — called when the engineer is toggled off. */
+  private disableAllScenarios(): void {
+    const engine = getScenarioEngine();
+
+    for (const id of [
+      "pit-engineer.welcome",
+      "pit-engineer.pit-approach",
+      "pit-engineer.service-reminder",
+      "pit-engineer.pit-exit",
+      "pit-engineer.stall-departure",
+    ]) {
+      engine.setEnabled(id, false);
+    }
   }
 
   // ─── Event-bus subscription plumbing ─────────────────────────────────────
@@ -1265,10 +1085,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     const bus = getEventBus();
 
     this.eventSubscriptions.push(
-      bus.subscribe("pitLane.approaching", () => this.onPitApproaching()),
-      bus.subscribe("pitLane.entered", (ev) => this.onPitLaneEntered(ev)),
-      bus.subscribe("pitLane.exited", () => this.onPitLaneExited()),
-      bus.subscribe("pitStall.departed", () => this.onStallDeparted()),
       bus.subscribe("flag.yellow.raised", () => this.onFlag("yellow")),
       bus.subscribe("flag.green.raised", () => this.onFlag("green")),
       bus.subscribe("flag.blue.raised", () => this.onFlag("blue")),
@@ -1308,62 +1124,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   }
 
   // ─── Event handlers ──────────────────────────────────────────────────────
-
-  private onPitApproaching(): void {
-    if (!globalEnabled || !globalSettings?.pitApproachEnabled) return;
-
-    this.logger.info("Pit approach detected");
-    playPriorityMessage(pickPitApproach());
-  }
-
-  private onPitLaneEntered(ev: SimEventOf<"pitLane.entered">): void {
-    if (!globalEnabled || !globalSettings?.pitServiceReminderEnabled) return;
-
-    const telemetry = ev.telemetry as TelemetryData | null;
-    const pitSvFlags = telemetry?.PitSvFlags ?? 0;
-    const playerCompound = telemetry?.PlayerTireCompound ?? 0;
-    const pitSvCompound = telemetry?.PitSvTireCompound ?? 0;
-    const services = resolveQueuedServices(pitSvFlags, playerCompound, pitSvCompound);
-    const autoFuelActive = telemetry?.dpFuelAutoFillActive ?? false;
-
-    if (autoFuelActive) {
-      const fuelIdx = services.indexOf("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
-
-      if (fuelIdx !== -1) services.splice(fuelIdx, 1);
-
-      services.unshift(pickAutofuelReminder());
-    }
-
-    if (services.length === 0) {
-      this.logger.debug("Pit entry — no services queued, skipping reminder");
-
-      return;
-    }
-
-    this.logger.info("Pit entry — queuing service reminders");
-    this.logger.debug(`Services: ${services.join(", ")}`);
-
-    if (globalReminderTimer) clearTimeout(globalReminderTimer);
-
-    globalReminderTimer = setTimeout(() => {
-      globalReminderTimer = null;
-      playReminderFlow(services);
-    }, SERVICE_REMINDER_DELAY_MS);
-  }
-
-  private onPitLaneExited(): void {
-    if (!globalEnabled || !globalSettings?.pitExitEnabled) return;
-
-    this.logger.info("Pit exit detected");
-    playPriorityMessage(pickPitExit());
-  }
-
-  private onStallDeparted(): void {
-    if (!globalEnabled || !globalSettings?.pitDepartureEnabled) return;
-
-    this.logger.info("Stall departure — disable pit limiter reminder");
-    playPriorityMessage(pickStallDeparture());
-  }
 
   private onFlag(flag: string): void {
     if (!globalEnabled || !globalSettings?.flagAlertsEnabled) return;

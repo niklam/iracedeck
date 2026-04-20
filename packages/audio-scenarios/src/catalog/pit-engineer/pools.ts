@@ -33,6 +33,38 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "pit-engineer/greeting/IRD-radio-opener-so.mp3",
   ],
 
+  // Pit approach callouts ("you're approaching the pits"). Picked randomly,
+  // no-repeat back-to-back.
+  "pit-approach": [
+    "pit-engineer/pitlane/IRD-pit-approach.mp3",
+    "pit-engineer/pitlane/IRD-pit-approach-2.mp3",
+  ],
+
+  // Pit exit callouts ("you're out").
+  "pit-exit": [
+    "pit-engineer/pitlane/IRD-pit-exit.mp3",
+    "pit-engineer/pitlane/IRD-pit-exit-2.mp3",
+    "pit-engineer/pitlane/IRD-pit-exit-3.mp3",
+    "pit-engineer/pitlane/IRD-pit-exit-4.mp3",
+    "pit-engineer/pitlane/IRD-pit-exit-5.mp3",
+    "pit-engineer/pitlane/IRD-pit-exit-6.mp3",
+  ],
+
+  // Stall-departure callouts ("remember to disengage the pit limiter").
+  "stall-departure": [
+    "pit-engineer/pitlane/IRD-pit-stall-departure.mp3",
+    "pit-engineer/pitlane/IRD-pit-stall-departure-2.mp3",
+    "pit-engineer/pitlane/IRD-pit-stall-departure-3.mp3",
+    "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
+  ],
+
+  // Auto-fuel reminder alternatives. Replaces the generic fuel reminder when
+  // the user has auto-fuel enabled at pit entry.
+  "autofuel-reminder": [
+    "pit-engineer/reminder/IRD-pit-reminder-autofuel.mp3",
+    "pit-engineer/reminder/IRD-pit-reminder-autofuel-2.mp3",
+  ],
+
   // Tips eligible during the start-of-race window (formation/pace lap through
   // lap 1). Excludes MID_RACE_ONLY tip-11 from the full TIP_POOL.
   "welcome-tip": [

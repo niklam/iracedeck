@@ -24,12 +24,16 @@ const audioAssetsPath = path.resolve(__dirname, "../audio-assets");
  * of truth for MP3s used by both plugins.
  */
 function copyAudioAssetsPlugin(sdPlugin) {
+	const SKIP_BASENAMES = new Set(["package.json", "manifest.json", "node_modules", "src", "scripts"]);
 	return {
 		name: "copy-audio-assets",
 		generateBundle() {
 			const dest = path.join(sdPlugin, "assets", "audio");
 			if (existsSync(audioAssetsPath)) {
-				cpSync(audioAssetsPath, dest, { recursive: true, filter: (src) => !src.endsWith("package.json") });
+				cpSync(audioAssetsPath, dest, {
+					recursive: true,
+					filter: (src) => !SKIP_BASENAMES.has(path.basename(src)),
+				});
 				this.info?.("Copied audio assets from @iracedeck/audio-assets");
 			}
 		},

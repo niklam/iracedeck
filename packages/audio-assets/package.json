@@ -7,11 +7,6 @@
     "./manifest.json": "./manifest.json"
   },
   "scripts": {
-    "generate:manifest": "node scripts/generate-audio-manifest.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "devDependencies": {
-    "vitest": "4.1.4"
+    "generate:manifest": "node scripts/generate-audio-manifest.mjs"
   }
 }
