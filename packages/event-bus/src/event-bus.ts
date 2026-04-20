@@ -69,7 +69,13 @@ class EventBus implements IEventBus {
         // is the worst case for a bus that deliberately isolates handler
         // failures (design doc §9: audio failures are non-fatal).
         const detail = err instanceof Error ? (err.stack ?? `${err.name}: ${err.message}`) : String(err);
-        this.logger.error(`Event handler for "${name}" threw: ${detail}`);
+
+        try {
+          this.logger.error(`Event handler for "${name}" threw: ${detail}`);
+        } catch {
+          // A throwing logger must not break handler isolation either.
+          // Swallow — the throwing handler's error is already lost to us.
+        }
       }
     }
   }
@@ -113,10 +119,14 @@ export function initializeEventBus(logger: ILogger = silentLogger): IEventBus {
     throw new Error("Event bus already initialized. initializeEventBus() should only be called once.");
   }
 
-  eventBus = new EventBus(logger);
+  // Construct and log before publishing the singleton so a throwing logger
+  // cannot leave the module in a half-initialized state where
+  // isEventBusInitialized() returns true but the caller saw an exception.
+  const bus = new EventBus(logger);
   logger.info("Event bus initialized");
+  eventBus = bus;
 
-  return eventBus;
+  return bus;
 }
 
 /** Get the initialized event bus. Throws if not initialized. */

@@ -68,6 +68,20 @@ describe("EventBus", () => {
       const bus = initializeEventBus(createMockLogger());
       expect(getEventBus()).toBe(bus);
     });
+
+    it("does not partially initialize when the logger throws during init", () => {
+      // If logger.info throws, callers see the exception; the singleton must
+      // not be left assigned, otherwise isEventBusInitialized() lies and a
+      // retry would hit the "already initialized" guard spuriously.
+      const logger = createMockLogger();
+      (logger.info as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new Error("logger blew up");
+      });
+
+      expect(() => initializeEventBus(logger)).toThrow("logger blew up");
+      expect(isEventBusInitialized()).toBe(false);
+      expect(() => getEventBus()).toThrow("Event bus not initialized");
+    });
   });
 
   describe("publish / subscribe", () => {
@@ -262,6 +276,25 @@ describe("EventBus", () => {
       // V8 error stacks begin with "Error: <message>\n    at ..."; asserting
       // on "at " confirms the stack is present rather than just the message.
       expect(logged).toContain("at ");
+    });
+
+    it("continues dispatching siblings even if the logger itself throws", () => {
+      // Handler isolation is the contract — a misbehaving logger must not
+      // block sibling handlers any more than a misbehaving handler can.
+      const logger = createMockLogger();
+      (logger.error as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new Error("logger blew up");
+      });
+      const bus = initializeEventBus(logger);
+
+      const good = vi.fn();
+      bus.subscribe("pitLane.entered", () => {
+        throw new Error("handler blew up");
+      });
+      bus.subscribe("pitLane.entered", good);
+
+      expect(() => bus.publish(envelope("pitLane.entered"))).not.toThrow();
+      expect(good).toHaveBeenCalledTimes(1);
     });
 
     it("handles non-Error throws", () => {
