@@ -12,29 +12,22 @@
  * random connector words ("and", "also", "plus") between them.
  *
  * Usage:
- * 1. Call initializeAudio() once at plugin startup with native callbacks
+ * 1. Call initializeAudio() once at plugin startup with an AudioNative instance
  * 2. Call getAudio().init() to start the engine
  * 3. Use getAudio() in actions to play sounds on channels
  *
  * @example
- * import { initializeAudio, getAudio, AudioChannel } from "@iracedeck/deck-core";
- * const native = new IRacingNative();
- * initializeAudio(logger, {
- *   initAudioEngine: () => native.initAudioEngine(),
- *   destroyAudioEngine: () => native.destroyAudioEngine(),
- *   playOnChannel: (ch, path, loop, vol) => native.playOnChannel(ch, path, loop, vol),
- *   stopChannel: (ch) => native.stopChannel(ch),
- *   setChannelVolume: (ch, vol) => native.setChannelVolume(ch, vol),
- *   isChannelPlaying: (ch) => native.isChannelPlaying(ch),
- *   setChannelEndCallback: (ch, cb) => native.setChannelEndCallback(ch, cb),
- *   stopAllChannels: () => native.stopAllChannels(),
- * });
+ * import { AudioNative } from "@iracedeck/audio-native";
+ * import { initializeAudio, getAudio } from "@iracedeck/audio-service";
+ * const native = new AudioNative();
+ * initializeAudio(logger, native);
  * getAudio().init();
  */
+import type { AudioNative } from "@iracedeck/audio-native";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-// ─── Channel enum (re-exported from iracing-native for convenience) ──────────
+// ─── Channel enum ────────────────────────────────────────────────────────────
 
 export enum AudioChannel {
   Ambient = 0,
@@ -81,23 +74,6 @@ const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.Voice]: 1.0,
   [AudioChannel.Spotter]: 1.0,
 };
-
-// ─── Native callback interface ───────────────────────────────────────────────
-
-/** Callbacks provided by the native addon for the miniaudio engine. */
-export interface AudioEngineCallbacks {
-  initAudioEngine: () => boolean;
-  destroyAudioEngine: () => void;
-  playOnChannel: (channel: number, filePath: string, loop: boolean, volume: number) => boolean;
-  stopChannel: (channel: number) => void;
-  setChannelVolume: (channel: number, volume: number) => void;
-  isChannelPlaying: (channel: number) => boolean;
-  setChannelEndCallback: (channel: number, callback: () => void) => void;
-  stopAllChannels: () => void;
-  seekChannelRandom: (channel: number) => void;
-  getAudioDevices: () => Array<{ index: number; name: string; isDefault: boolean }>;
-  setAudioDevice: (deviceIndex: number) => boolean;
-}
 
 // ─── Voice sequence state ────────────────────────────────────────────────────
 
@@ -180,7 +156,7 @@ export interface IAudioService {
 
 class AudioService implements IAudioService {
   private logger: ILogger;
-  private native: AudioEngineCallbacks;
+  private native: AudioNative;
   private engineReady = false;
 
   // Voice sequence state
@@ -200,7 +176,7 @@ class AudioService implements IAudioService {
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
 
-  constructor(logger: ILogger, native: AudioEngineCallbacks) {
+  constructor(logger: ILogger, native: AudioNative) {
     this.logger = logger;
     this.native = native;
 
@@ -445,10 +421,10 @@ class AudioService implements IAudioService {
 let audioService: AudioService | null = null;
 
 /**
- * Initialize the audio service singleton with the miniaudio engine callbacks.
+ * Initialize the audio service singleton with an AudioNative instance.
  * Call once at plugin startup, then call getAudio().init() to start the engine.
  */
-export function initializeAudio(logger: ILogger = silentLogger, native: AudioEngineCallbacks): IAudioService {
+export function initializeAudio(logger: ILogger = silentLogger, native: AudioNative): IAudioService {
   if (audioService) {
     throw new Error("Audio service already initialized. initializeAudio() should only be called once.");
   }

@@ -111,6 +111,21 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   calculateRacePositions: vi.fn(() => []),
 }));
 
+vi.mock("@iracedeck/audio-service", () => ({
+  AudioBus: {
+    Voice: 0,
+    Background: 1,
+    Alerts: 2,
+  },
+  AudioChannel: {
+    Ambient: 0,
+    SFX: 1,
+    Voice: 2,
+    Spotter: 3,
+  },
+  getAudio: mockGetAudio,
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
@@ -133,12 +148,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     },
     parse: (data: Record<string, unknown>) => ({ ...data }),
     safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  AudioChannel: {
-    Ambient: 0,
-    SFX: 1,
-    Voice: 2,
-    Spotter: 3,
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -163,7 +172,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   generateTitleText: vi.fn((opts: { text: string; fill: string }) =>
     opts.text ? `<text fill="${opts.fill}">${opts.text}</text>` : "",
   ),
-  getAudio: mockGetAudio,
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),

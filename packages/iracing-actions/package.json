@@ -12,6 +12,7 @@
     }
   },
   "dependencies": {
+    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/icons": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",

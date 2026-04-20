@@ -7,13 +7,12 @@
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
 import { AudioNative } from "@iracedeck/audio-native";
+import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
-  getAudio,
   initAppMonitor,
   initEngineStartupAnimation,
   initGlobalSettings,
-  initializeAudio,
   initializeBindingDispatcher,
   initializeKeyboard,
   initializeSDK,

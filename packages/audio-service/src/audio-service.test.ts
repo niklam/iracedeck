@@ -1,15 +1,9 @@
+import type { AudioNative } from "@iracedeck/audio-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  _resetAudio,
-  AudioChannel,
-  type AudioEngineCallbacks,
-  getAudio,
-  initializeAudio,
-  isAudioInitialized,
-} from "./audio-service.js";
+import { _resetAudio, AudioChannel, getAudio, initializeAudio, isAudioInitialized } from "./audio-service.js";
 
-function createMockNative(): AudioEngineCallbacks {
+function createMockNative(): AudioNative {
   return {
     initAudioEngine: vi.fn(() => true),
     destroyAudioEngine: vi.fn(),
@@ -22,7 +16,7 @@ function createMockNative(): AudioEngineCallbacks {
     seekChannelRandom: vi.fn(),
     getAudioDevices: vi.fn(() => [{ index: 0, name: "Default Device", isDefault: true }]),
     setAudioDevice: vi.fn(() => true),
-  };
+  } as unknown as AudioNative;
 }
 
 const mockLogger = {

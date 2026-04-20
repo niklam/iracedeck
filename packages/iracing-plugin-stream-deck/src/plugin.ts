@@ -1,12 +1,11 @@
 import streamDeck from "@elgato/streamdeck";
 import { AudioNative } from "@iracedeck/audio-native";
+import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
-  getAudio,
   initAppMonitor,
   initEngineStartupAnimation,
   initGlobalSettings,
-  initializeAudio,
   initializeBindingDispatcher,
   initializeKeyboard,
   initializeSDK,

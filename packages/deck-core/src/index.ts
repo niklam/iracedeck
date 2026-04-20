@@ -209,18 +209,6 @@ export {
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 
-// Audio service singleton (miniaudio multi-channel mixer)
-export {
-  AudioBus,
-  AudioChannel,
-  initializeAudio,
-  getAudio,
-  isAudioInitialized,
-  _resetAudio,
-  type AudioEngineCallbacks,
-  type IAudioService,
-} from "./audio-service.js";
-
 // Plugin config singleton
 export {
   initPluginConfig,

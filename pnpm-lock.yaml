@@ -108,6 +108,31 @@ importers:
         specifier: 4.1.4
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
+  packages/audio-service:
+    dependencies:
+      '@iracedeck/audio-native':
+        specifier: workspace:*
+        version: link:../audio-native
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.5
+        version: 22.0.5
+      '@types/node':
+        specifier: 25.6.0
+        version: 25.6.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
+
   packages/deck-adapter-elgato:
     dependencies:
       '@elgato/streamdeck':
@@ -214,6 +239,9 @@ importers:
 
   packages/iracing-actions:
     dependencies:
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -270,6 +298,9 @@ importers:
       '@iracedeck/audio-native':
         specifier: workspace:*
         version: link:../audio-native
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
       '@iracedeck/deck-adapter-mirabox':
         specifier: workspace:*
         version: link:../deck-adapter-mirabox
@@ -346,6 +377,9 @@ importers:
       '@iracedeck/audio-native':
         specifier: workspace:*
         version: link:../audio-native
+      '@iracedeck/audio-service':
+        specifier: workspace:*
+        version: link:../audio-service
       '@iracedeck/deck-adapter-elgato':
         specifier: workspace:*
         version: link:../deck-adapter-elgato
