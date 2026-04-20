@@ -221,57 +221,57 @@ describe("PitEngineer", () => {
     it("should return fuel reminder when fuel fill is set", () => {
       const result = resolveQueuedServices(0x0010); // FuelFill
 
-      expect(result).toContain("reminder/IRD-pit-reminder-fuel.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
     });
 
     it("should return tire reminder when any tire is set", () => {
       const result = resolveQueuedServices(0x0001); // LFTireChange
 
-      expect(result).toContain("reminder/IRD-pit-reminder-tires.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
     });
 
     it("should return tire reminder for all tires", () => {
       const result = resolveQueuedServices(0x000f); // All 4 tires
 
-      expect(result).toContain("reminder/IRD-pit-reminder-tires.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
     });
 
     it("should return fast repair reminder when fast repair is set", () => {
       const result = resolveQueuedServices(0x0040); // FastRepair
 
-      expect(result).toContain("reminder/IRD-pit-reminder-fast-repair.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
     });
 
     it("should return all services when everything is queued", () => {
       const result = resolveQueuedServices(0x005f); // Fuel + all tires + windshield tearoff + fast repair
 
-      expect(result).toContain("reminder/IRD-pit-reminder-fuel.mp3");
-      expect(result).toContain("reminder/IRD-pit-reminder-tires.mp3");
-      expect(result).toContain("reminder/IRD-pit-reminder-fast-repair.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
     });
 
     it("should return compound reminder instead of tire when compound changes", () => {
       // All tires + different compound (player=0 dry, pit=1 wet)
       const result = resolveQueuedServices(0x000f, 0, 1);
 
-      expect(result).toContain("reminder/IRD-pit-reminder-compound.mp3");
-      expect(result).not.toContain("reminder/IRD-pit-reminder-tires.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-compound.mp3");
+      expect(result).not.toContain("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
     });
 
     it("should return tire reminder when compound stays the same", () => {
       // All tires + same compound (player=0, pit=0)
       const result = resolveQueuedServices(0x000f, 0, 0);
 
-      expect(result).toContain("reminder/IRD-pit-reminder-tires.mp3");
-      expect(result).not.toContain("reminder/IRD-pit-reminder-compound.mp3");
+      expect(result).toContain("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
+      expect(result).not.toContain("pit-engineer/reminder/IRD-pit-reminder-compound.mp3");
     });
 
     it("should return services in correct order: fast repair, fuel, tires/compound", () => {
       const result = resolveQueuedServices(0x005f); // Fuel + all tires + windshield + fast repair
 
-      const repairIdx = result.indexOf("reminder/IRD-pit-reminder-fast-repair.mp3");
-      const fuelIdx = result.indexOf("reminder/IRD-pit-reminder-fuel.mp3");
-      const tiresIdx = result.indexOf("reminder/IRD-pit-reminder-tires.mp3");
+      const repairIdx = result.indexOf("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
+      const fuelIdx = result.indexOf("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
+      const tiresIdx = result.indexOf("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
 
       expect(repairIdx).toBeLessThan(fuelIdx);
       expect(fuelIdx).toBeLessThan(tiresIdx);
