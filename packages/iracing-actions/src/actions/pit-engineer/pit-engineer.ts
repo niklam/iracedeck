@@ -64,19 +64,19 @@ function applyChannelVolumes(): void {
 // ─── Acknowledgment & Connector Pools ─────────────────────────────────────────
 
 const ACKNOWLEDGMENT_POOL = [
-  "acknowledgment/IRD-ack-okay.mp3",
-  "acknowledgment/IRD-ack-got-it.mp3",
-  "acknowledgment/IRD-ack-roger-that.mp3",
-  "acknowledgment/IRD-ack-copy-that.mp3",
-  "acknowledgment/IRD-ack-we-got-that.mp3",
+  "pit-engineer/acknowledgment/IRD-ack-okay.mp3",
+  "pit-engineer/acknowledgment/IRD-ack-got-it.mp3",
+  "pit-engineer/acknowledgment/IRD-ack-roger-that.mp3",
+  "pit-engineer/acknowledgment/IRD-ack-copy-that.mp3",
+  "pit-engineer/acknowledgment/IRD-ack-we-got-that.mp3",
 ];
 
 const CONNECTOR_POOL = [
-  "connector/IRD-connector-and.mp3",
-  "connector/IRD-connector-also.mp3",
-  "connector/IRD-connector-plus.mp3",
-  "connector/IRD-connector-as-well-as.mp3",
-  "connector/IRD-connector-addition.mp3",
+  "pit-engineer/connector/IRD-connector-and.mp3",
+  "pit-engineer/connector/IRD-connector-also.mp3",
+  "pit-engineer/connector/IRD-connector-plus.mp3",
+  "pit-engineer/connector/IRD-connector-as-well-as.mp3",
+  "pit-engineer/connector/IRD-connector-addition.mp3",
 ];
 
 /** Last acknowledgment index to avoid repeats. */
@@ -98,10 +98,10 @@ function pickAcknowledgment(): string {
 // ─── Stall Departure Pool ────────────────────────────────────────────────────
 
 const STALL_DEPARTURE_POOL = [
-  "pitlane/IRD-pit-stall-departure.mp3",
-  "pitlane/IRD-pit-stall-departure-2.mp3",
-  "pitlane/IRD-pit-stall-departure-3.mp3",
-  "pitlane/IRD-pit-stall-departure-4.mp3",
+  "pit-engineer/pitlane/IRD-pit-stall-departure.mp3",
+  "pit-engineer/pitlane/IRD-pit-stall-departure-2.mp3",
+  "pit-engineer/pitlane/IRD-pit-stall-departure-3.mp3",
+  "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
 ];
 
 let lastStallDepartureIndex = -1;
@@ -121,7 +121,7 @@ function pickStallDeparture(): string {
 // ─── Overtake Pool ──────────────────────────────────────────────────────────
 
 const OVERTAKE_POOL = [
-  "overtake/IRD-overtake-good-pass.mp3",
+  "pit-engineer/overtake/IRD-overtake-good-pass.mp3",
 ];
 
 let lastOvertakeIndex = -1;
@@ -141,8 +141,8 @@ function pickOvertake(): string {
 // ─── Auto-Fuel Reminder Pool ────────────────────────────────────────────────
 
 const AUTOFUEL_REMINDER_POOL = [
-  "reminder/IRD-pit-reminder-autofuel.mp3",
-  "reminder/IRD-pit-reminder-autofuel-2.mp3",
+  "pit-engineer/reminder/IRD-pit-reminder-autofuel.mp3",
+  "pit-engineer/reminder/IRD-pit-reminder-autofuel-2.mp3",
 ];
 
 /** Last auto-fuel reminder index to avoid repeats. */
@@ -164,8 +164,8 @@ function pickAutofuelReminder(): string {
 // ─── Pit Approach Pool ───────────────────────────────────────────────────────
 
 const PIT_APPROACH_POOL = [
-  "pitlane/IRD-pit-approach.mp3",
-  "pitlane/IRD-pit-approach-2.mp3",
+  "pit-engineer/pitlane/IRD-pit-approach.mp3",
+  "pit-engineer/pitlane/IRD-pit-approach-2.mp3",
 ];
 
 /** Last pit approach index to avoid repeats. */
@@ -187,12 +187,12 @@ function pickPitApproach(): string {
 // ─── Pit Exit Pool ───────────────────────────────────────────────────────────
 
 const PIT_EXIT_POOL = [
-  "pitlane/IRD-pit-exit.mp3",
-  "pitlane/IRD-pit-exit-2.mp3",
-  "pitlane/IRD-pit-exit-3.mp3",
-  "pitlane/IRD-pit-exit-4.mp3",
-  "pitlane/IRD-pit-exit-5.mp3",
-  "pitlane/IRD-pit-exit-6.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit-2.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit-3.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit-4.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit-5.mp3",
+  "pit-engineer/pitlane/IRD-pit-exit-6.mp3",
 ];
 
 /** Last pit exit index to avoid repeats. */
@@ -214,10 +214,10 @@ function pickPitExit(): string {
 // ─── Greeting Pool ───────────────────────────────────────────────────────────
 
 const GREETING_POOL = [
-  "radio-openers/IRD-radio-opener-alright.mp3",
-  "radio-openers/IRD-radio-opener-hi.mp3",
-  "radio-openers/IRD-radio-opener-right-then.mp3",
-  "radio-openers/IRD-radio-opener-so.mp3",
+  "pit-engineer/greeting/IRD-radio-opener-alright.mp3",
+  "pit-engineer/greeting/IRD-radio-opener-hi.mp3",
+  "pit-engineer/greeting/IRD-radio-opener-right-then.mp3",
+  "pit-engineer/greeting/IRD-radio-opener-so.mp3",
 ];
 
 /** Last greeting index to avoid repeats. */
@@ -246,17 +246,17 @@ function pickGreeting(): string {
  * at any point.
  */
 export const TIP_POOL = [
-  "tips/IRD-pit-engineer-tip-1.mp3",
-  "tips/IRD-pit-engineer-tip-2.mp3",
-  "tips/IRD-pit-engineer-tip-3.mp3",
-  "tips/IRD-pit-engineer-tip-4.mp3",
-  "tips/IRD-pit-engineer-tip-5.mp3",
-  "tips/IRD-pit-engineer-tip-6.mp3",
-  "tips/IRD-pit-engineer-tip-7.mp3",
-  "tips/IRD-pit-engineer-tip-8.mp3",
-  "tips/IRD-pit-engineer-tip-9.mp3",
-  "tips/IRD-pit-engineer-tip-10.mp3",
-  "tips/IRD-pit-engineer-tip-11.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-1.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-2.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-3.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-4.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-5.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-6.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-7.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-8.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-9.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-10.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-11.mp3",
 ];
 
 /**
@@ -266,8 +266,8 @@ export const TIP_POOL = [
  * (formation/pace lap through lap 1). Excluded from the mid-race pool.
  */
 export const START_ONLY_TIPS: ReadonlySet<string> = new Set([
-  "tips/IRD-pit-engineer-tip-6.mp3",
-  "tips/IRD-pit-engineer-tip-7.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-6.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-7.mp3",
 ]);
 
 /**
@@ -277,7 +277,7 @@ export const START_ONLY_TIPS: ReadonlySet<string> = new Set([
  * Excluded from the start-of-race pool.
  */
 export const MID_RACE_ONLY_TIPS: ReadonlySet<string> = new Set([
-  "tips/IRD-pit-engineer-tip-11.mp3",
+  "pit-engineer/tips/IRD-pit-engineer-tip-11.mp3",
 ]);
 
 /** Last tip file played to avoid repeats. */
@@ -319,30 +319,30 @@ function pickTip(isStartWindow: boolean): string {
 
 /** @internal Exported for testing */
 export const FUEL_LOW_5_POOL = [
-  "fuel-warnings/low-5laps/IRD-fuel-low-5laps-01.mp3",
-  "fuel-warnings/low-5laps/IRD-fuel-low-5laps-02.mp3",
-  "fuel-warnings/low-5laps/IRD-fuel-low-5laps-03.mp3",
+  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-01.mp3",
+  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-02.mp3",
+  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-03.mp3",
 ];
 
 /** @internal Exported for testing */
 export const FUEL_LOW_3_POOL = [
-  "fuel-warnings/low-3laps/IRD-fuel-low-3laps-01.mp3",
-  "fuel-warnings/low-3laps/IRD-fuel-low-3laps-02.mp3",
-  "fuel-warnings/low-3laps/IRD-fuel-low-3laps-03.mp3",
+  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-01.mp3",
+  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-02.mp3",
+  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-03.mp3",
 ];
 
 /** @internal Exported for testing */
 export const FUEL_CRITICAL_POOL = [
-  "fuel-warnings/critical/IRD-fuel-critical-01.mp3",
-  "fuel-warnings/critical/IRD-fuel-critical-02.mp3",
-  "fuel-warnings/critical/IRD-fuel-critical-03.mp3",
+  "pit-engineer/fuel/critical/IRD-fuel-critical-01.mp3",
+  "pit-engineer/fuel/critical/IRD-fuel-critical-02.mp3",
+  "pit-engineer/fuel/critical/IRD-fuel-critical-03.mp3",
 ];
 
 /** @internal Exported for testing */
 export const FUEL_EMPTY_POOL = [
-  "fuel-warnings/empty/IRD-fuel-empty-01.mp3",
-  "fuel-warnings/empty/IRD-fuel-empty-02.mp3",
-  "fuel-warnings/empty/IRD-fuel-empty-03.mp3",
+  "pit-engineer/fuel/empty/IRD-fuel-empty-01.mp3",
+  "pit-engineer/fuel/empty/IRD-fuel-empty-02.mp3",
+  "pit-engineer/fuel/empty/IRD-fuel-empty-03.mp3",
 ];
 
 /**
@@ -376,14 +376,14 @@ export function pickFromPool(pool: readonly string[]): string {
 
 // ─── Driver Name ──────────────────────────────────────────────────────────────
 //
-// The driver name file is selected from the names/ folder.
+// The driver name file is selected from the pit-engineer/names/ folder.
 // Multiple names can be added (e.g., IRD-name-john.mp3, IRD-name-mike.mp3).
 //
 // To add a new name:
 //   1. Place the mp3 file named `IRD-name-<lowercase>.mp3` in all three dirs:
-//        - packages/audio-assets/names/
-//        - packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/assets/audio/names/
-//        - packages/mirabox-plugin/com.iracedeck.sd.core.sdPlugin/assets/audio/names/
+//        - packages/audio-assets/pit-engineer/names/
+//        - packages/stream-deck-plugin/com.iracedeck.sd.core.sdPlugin/assets/audio/pit-engineer/names/
+//        - packages/mirabox-plugin/com.iracedeck.sd.core.sdPlugin/assets/audio/pit-engineer/names/
 //      (Mirabox rollup does not copy from audio-assets/, so the plugin dirs must have it.)
 //   2. Add an entry to the NAMES array in
 //      packages/stream-deck-plugin/src/pi/pit-engineer.ejs — keep alphabetical.
@@ -400,7 +400,7 @@ function getDriverNameFile(): string | null {
 
   if (!name || name === "none") return null;
 
-  return `names/IRD-name-${name}.mp3`;
+  return `pit-engineer/names/IRD-name-${name}.mp3`;
 }
 
 // ─── Radio Flow Orchestrator ──────────────────────────────────────────────────
@@ -650,11 +650,11 @@ export type SpotterVisualState = "clear" | "left" | "right" | "both" | "two-left
 
 /** Audio file names for each directional state. */
 const SPOTTER_AUDIO: Record<string, string> = {
-  left: "spotter/IRD-spotter-left.mp3",
-  right: "spotter/IRD-spotter-right.mp3",
-  both: "spotter/IRD-spotter-both.mp3",
-  "two-left": "spotter/IRD-spotter-left.mp3",
-  "two-right": "spotter/IRD-spotter-right.mp3",
+  left: "pit-engineer/spotter/IRD-spotter-left.mp3",
+  right: "pit-engineer/spotter/IRD-spotter-right.mp3",
+  both: "pit-engineer/spotter/IRD-spotter-both.mp3",
+  "two-left": "pit-engineer/spotter/IRD-spotter-left.mp3",
+  "two-right": "pit-engineer/spotter/IRD-spotter-right.mp3",
 };
 
 /** Stops the current spotter tick loop (if any). Safe to call when idle. */
@@ -709,17 +709,17 @@ export function resolveQueuedServices(flags: number, playerCompound = 0, pitSvCo
     (flags & PitSvFlags.RRTireChange) !== 0;
 
   // Order: Fast Repair first, then Refueling, then Tires/Compound last.
-  if ((flags & PitSvFlags.FastRepair) !== 0) services.push("reminder/IRD-pit-reminder-fast-repair.mp3");
+  if ((flags & PitSvFlags.FastRepair) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
 
-  if ((flags & PitSvFlags.FuelFill) !== 0) services.push("reminder/IRD-pit-reminder-fuel.mp3");
+  if ((flags & PitSvFlags.FuelFill) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
 
   const hasCompoundChange = hasTires && pitSvCompound !== 0 && pitSvCompound !== playerCompound;
 
   if (hasCompoundChange) {
     // Compound change implies tire change — skip the generic tire reminder
-    services.push("reminder/IRD-pit-reminder-compound.mp3");
+    services.push("pit-engineer/reminder/IRD-pit-reminder-compound.mp3");
   } else if (hasTires) {
-    services.push("reminder/IRD-pit-reminder-tires.mp3");
+    services.push("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
   }
 
   return services;
@@ -883,15 +883,15 @@ let globalOvertakeCount = 0;
  * Uses Warning Flow (simple, no ack) — urgent informational callouts.
  */
 const FLAG_AUDIO: Record<string, string> = {
-  green: "flags/IRD-flag-green-flag.mp3",
-  yellow: "flags/IRD-flag-yellow-flag.mp3",
-  blue: "flags/IRD-flag-blue-flag.mp3",
-  black: "flags/IRD-flag-black-flag.mp3",
-  red: "flags/IRD-flag-red-flag.mp3",
-  white: "flags/IRD-flag-white-flag.mp3",
-  checkered: "flags/IRD-flag-checkered-flag.mp3",
-  meatball: "flags/IRD-flag-meatball-flag.mp3",
-  debris: "flags/IRD-flag-debris.mp3",
+  green: "pit-engineer/flags/IRD-flag-green-flag.mp3",
+  yellow: "pit-engineer/flags/IRD-flag-yellow-flag.mp3",
+  blue: "pit-engineer/flags/IRD-flag-blue-flag.mp3",
+  black: "pit-engineer/flags/IRD-flag-black-flag.mp3",
+  red: "pit-engineer/flags/IRD-flag-red-flag.mp3",
+  white: "pit-engineer/flags/IRD-flag-white-flag.mp3",
+  checkered: "pit-engineer/flags/IRD-flag-checkered-flag.mp3",
+  meatball: "pit-engineer/flags/IRD-flag-meatball-flag.mp3",
+  debris: "pit-engineer/flags/IRD-flag-debris.mp3",
 };
 
 /**
@@ -900,9 +900,15 @@ const FLAG_AUDIO: Record<string, string> = {
  * Pit service toggle audio file mapping.
  */
 export const PIT_SERVICE_TOGGLE_AUDIO: Record<string, { on: string; off: string }> = {
-  fuel: { on: "toggle/IRD-toggle-fuel-on.mp3", off: "toggle/IRD-toggle-fuel-off.mp3" },
-  windshield: { on: "toggle/IRD-toggle-windshield-on.mp3", off: "toggle/IRD-toggle-windshield-off.mp3" },
-  fastRepair: { on: "toggle/IRD-toggle-fast-repair-on.mp3", off: "toggle/IRD-toggle-fast-repair-off.mp3" },
+  fuel: { on: "pit-engineer/toggle/IRD-toggle-fuel-on.mp3", off: "pit-engineer/toggle/IRD-toggle-fuel-off.mp3" },
+  windshield: {
+    on: "pit-engineer/toggle/IRD-toggle-windshield-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-windshield-off.mp3",
+  },
+  fastRepair: {
+    on: "pit-engineer/toggle/IRD-toggle-fast-repair-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-fast-repair-off.mp3",
+  },
 };
 
 /**
@@ -911,21 +917,54 @@ export const PIT_SERVICE_TOGGLE_AUDIO: Record<string, { on: string; off: string 
  * Tire toggle audio file mapping — pattern-aware.
  */
 export const TIRE_TOGGLE_AUDIO: Record<string, { on: string; off: string }> = {
-  all: { on: "toggle/IRD-toggle-tires-all-on.mp3", off: "toggle/IRD-toggle-tires-all-off.mp3" },
-  front: { on: "toggle/IRD-toggle-tires-front-on.mp3", off: "toggle/IRD-toggle-tires-front-off.mp3" },
-  rear: { on: "toggle/IRD-toggle-tires-rear-on.mp3", off: "toggle/IRD-toggle-tires-rear-off.mp3" },
-  left: { on: "toggle/IRD-toggle-tires-left-on.mp3", off: "toggle/IRD-toggle-tires-left-off.mp3" },
-  right: { on: "toggle/IRD-toggle-tires-right-on.mp3", off: "toggle/IRD-toggle-tires-right-off.mp3" },
-  crossLfRr: { on: "toggle/IRD-toggle-tires-lf-rr-on.mp3", off: "toggle/IRD-toggle-tires-lf-rr-off.mp3" },
-  crossRfLr: { on: "toggle/IRD-toggle-tires-rf-lr-on.mp3", off: "toggle/IRD-toggle-tires-rf-lr-off.mp3" },
-  stayDry: { on: "toggle/IRD-toggle-compound-stay-dry.mp3", off: "toggle/IRD-toggle-compound-stay-dry.mp3" },
-  stayWet: { on: "toggle/IRD-toggle-compound-stay-wet.mp3", off: "toggle/IRD-toggle-compound-stay-wet.mp3" },
-  changeToDry: { on: "toggle/IRD-toggle-compound-change-dry.mp3", off: "toggle/IRD-toggle-compound-change-dry.mp3" },
-  changeToWet: { on: "toggle/IRD-toggle-compound-change-wet.mp3", off: "toggle/IRD-toggle-compound-change-wet.mp3" },
-  lf: { on: "toggle/IRD-toggle-tires-lf-on.mp3", off: "toggle/IRD-toggle-tires-lf-off.mp3" },
-  rf: { on: "toggle/IRD-toggle-tires-rf-on.mp3", off: "toggle/IRD-toggle-tires-rf-off.mp3" },
-  lr: { on: "toggle/IRD-toggle-tires-lr-on.mp3", off: "toggle/IRD-toggle-tires-lr-off.mp3" },
-  rr: { on: "toggle/IRD-toggle-tires-rr-on.mp3", off: "toggle/IRD-toggle-tires-rr-off.mp3" },
+  all: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-all-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-all-off.mp3",
+  },
+  front: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-front-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-front-off.mp3",
+  },
+  rear: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-rear-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-rear-off.mp3",
+  },
+  left: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-left-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-left-off.mp3",
+  },
+  right: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-right-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-right-off.mp3",
+  },
+  crossLfRr: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-lf-rr-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-lf-rr-off.mp3",
+  },
+  crossRfLr: {
+    on: "pit-engineer/toggle/IRD-toggle-tires-rf-lr-on.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-tires-rf-lr-off.mp3",
+  },
+  stayDry: {
+    on: "pit-engineer/toggle/IRD-toggle-compound-stay-dry.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-compound-stay-dry.mp3",
+  },
+  stayWet: {
+    on: "pit-engineer/toggle/IRD-toggle-compound-stay-wet.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-compound-stay-wet.mp3",
+  },
+  changeToDry: {
+    on: "pit-engineer/toggle/IRD-toggle-compound-change-dry.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-compound-change-dry.mp3",
+  },
+  changeToWet: {
+    on: "pit-engineer/toggle/IRD-toggle-compound-change-wet.mp3",
+    off: "pit-engineer/toggle/IRD-toggle-compound-change-wet.mp3",
+  },
+  lf: { on: "pit-engineer/toggle/IRD-toggle-tires-lf-on.mp3", off: "pit-engineer/toggle/IRD-toggle-tires-lf-off.mp3" },
+  rf: { on: "pit-engineer/toggle/IRD-toggle-tires-rf-on.mp3", off: "pit-engineer/toggle/IRD-toggle-tires-rf-off.mp3" },
+  lr: { on: "pit-engineer/toggle/IRD-toggle-tires-lr-on.mp3", off: "pit-engineer/toggle/IRD-toggle-tires-lr-off.mp3" },
+  rr: { on: "pit-engineer/toggle/IRD-toggle-tires-rr-on.mp3", off: "pit-engineer/toggle/IRD-toggle-tires-rr-off.mp3" },
 };
 
 /**
@@ -934,10 +973,10 @@ export const TIRE_TOGGLE_AUDIO: Record<string, { on: string; off: string }> = {
  * Short tire name clips (no "change" prefix) for 3-tire combo announcements.
  */
 export const TIRE_SHORT: Record<string, string> = {
-  lf: "toggle/IRD-toggle-tires-lf-short.mp3",
-  rf: "toggle/IRD-toggle-tires-rf-short.mp3",
-  lr: "toggle/IRD-toggle-tires-lr-short.mp3",
-  rr: "toggle/IRD-toggle-tires-rr-short.mp3",
+  lf: "pit-engineer/toggle/IRD-toggle-tires-lf-short.mp3",
+  rf: "pit-engineer/toggle/IRD-toggle-tires-rf-short.mp3",
+  lr: "pit-engineer/toggle/IRD-toggle-tires-lr-short.mp3",
+  rr: "pit-engineer/toggle/IRD-toggle-tires-rr-short.mp3",
 };
 
 /**
@@ -946,15 +985,15 @@ export const TIRE_SHORT: Record<string, string> = {
  * Car control toggle audio file mapping.
  */
 export const CAR_CONTROL_TOGGLE_AUDIO: Record<string, { on: string; off: string }> = {
-  pushToPass: { on: "toggle/IRD-toggle-p2p-on.mp3", off: "toggle/IRD-toggle-p2p-off.mp3" },
-  drs: { on: "toggle/IRD-toggle-drs-on.mp3", off: "toggle/IRD-toggle-drs-off.mp3" },
+  pushToPass: { on: "pit-engineer/toggle/IRD-toggle-p2p-on.mp3", off: "pit-engineer/toggle/IRD-toggle-p2p-off.mp3" },
+  drs: { on: "pit-engineer/toggle/IRD-toggle-drs-on.mp3", off: "pit-engineer/toggle/IRD-toggle-drs-off.mp3" },
 };
 
 /** Pit limiter warning files — cycled each time limiter activates on track. */
 const PIT_LIMITER_WARNINGS = [
-  "toggle/IRD-toggle-limiter-on-warning-1.mp3",
-  "toggle/IRD-toggle-limiter-on-warning-2.mp3",
-  "toggle/IRD-toggle-limiter-on-warning-3.mp3",
+  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-1.mp3",
+  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-2.mp3",
+  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-3.mp3",
 ];
 
 /** Current index into the pit limiter warning rotation. */
@@ -962,23 +1001,23 @@ let pitLimiterWarningIndex = 0;
 
 /** Entered pit lane without limiter engaged. */
 const PIT_NO_LIMITER_WARNINGS = [
-  "pitlane/IRD-pit-no-limiter-01.mp3",
-  "pitlane/IRD-pit-no-limiter-02.mp3",
-  "pitlane/IRD-pit-no-limiter-03.mp3",
+  "pit-engineer/pitlane/IRD-pit-no-limiter-01.mp3",
+  "pit-engineer/pitlane/IRD-pit-no-limiter-02.mp3",
+  "pit-engineer/pitlane/IRD-pit-no-limiter-03.mp3",
 ];
 
 /** Limiter disengaged while still between pit cones. */
 const PIT_LIMITER_DROPPED_WARNINGS = [
-  "pitlane/IRD-pit-limiter-dropped-01.mp3",
-  "pitlane/IRD-pit-limiter-dropped-02.mp3",
-  "pitlane/IRD-pit-limiter-dropped-03.mp3",
+  "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
+  "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
+  "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
 ];
 
 /** Over the pit speed limit. */
 const PIT_SPEEDING_WARNINGS = [
-  "pitlane/IRD-pit-speeding-01.mp3",
-  "pitlane/IRD-pit-speeding-02.mp3",
-  "pitlane/IRD-pit-speeding-03.mp3",
+  "pit-engineer/pitlane/IRD-pit-speeding-01.mp3",
+  "pit-engineer/pitlane/IRD-pit-speeding-02.mp3",
+  "pit-engineer/pitlane/IRD-pit-speeding-03.mp3",
 ];
 
 let pitNoLimiterIndex = 0;
@@ -993,12 +1032,12 @@ let pitSpeedingIndex = 0;
  * translator exposes recent off-track material samples in event data.
  */
 const OFF_TRACK_LIMITS_WARNINGS: readonly string[] = [
-  "incidents/IRD-incident-limits-01.mp3",
-  "incidents/IRD-incident-limits-02.mp3",
-  "incidents/IRD-incident-limits-03.mp3",
-  "incidents/IRD-incident-limits-04.mp3",
-  "incidents/IRD-incident-limits-05.mp3",
-  "incidents/IRD-incident-limits-06.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-01.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-02.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-03.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-04.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-05.mp3",
+  "pit-engineer/incidents/IRD-incident-limits-06.mp3",
 ];
 let offTrackLimitsIndex = 0;
 
@@ -1169,9 +1208,9 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
   /** Spotter test file rotation order. */
   private static readonly SPOTTER_TEST_FILES = [
-    "spotter/IRD-spotter-left.mp3",
-    "spotter/IRD-spotter-right.mp3",
-    "spotter/IRD-spotter-both.mp3",
+    "pit-engineer/spotter/IRD-spotter-left.mp3",
+    "pit-engineer/spotter/IRD-spotter-right.mp3",
+    "pit-engineer/spotter/IRD-spotter-both.mp3",
   ];
 
   /** Per-lap probability that a racing tip fires. Deliberate Stage-4b behavior change. */
@@ -1377,7 +1416,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     const autoFuelActive = telemetry?.dpFuelAutoFillActive ?? false;
 
     if (autoFuelActive) {
-      const fuelIdx = services.indexOf("reminder/IRD-pit-reminder-fuel.mp3");
+      const fuelIdx = services.indexOf("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
 
       if (fuelIdx !== -1) services.splice(fuelIdx, 1);
 
