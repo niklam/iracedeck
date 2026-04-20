@@ -2,7 +2,6 @@
 
 **Status:** Proposed. Work lands on `feature/pit-engineer`: each stage branches off that feature branch and merges back into it. `feature/pit-engineer` → `master` is one final PR containing both the Pit Engineer feature and this architecture, closing #375 and #376 together.
 **Date:** 2026-04-19.
-**Branch when started:** `ir-376-audio-architecture` (this branch).
 **Issue:** #376. Ships together with #375 (Pit Engineer).
 
 ---
@@ -223,7 +222,11 @@ engine.startup                 one-shot when RPM jumps from 0
 
 ```text
 spotter.changed                payload: { from: SpotterState; to: SpotterState }
-fuel.lapsRemaining.crossed     payload: { threshold: 5 | 3 | 1; laps: number }
+fuel.lapsRemaining.crossed     payload: { threshold: number; laps: number }
+                               // Translator emits once per descending threshold crossing.
+                               // Thresholds are sim-agnostic numeric values; scenarios
+                               // filter on `threshold` in their `where` predicate to
+                               // react to specific tiers (e.g., 5, 3, 1 laps remaining).
 ```
 
 ### 6.3 Event envelope
@@ -258,7 +261,7 @@ A scenario is data:
 ```ts
 type Scenario = {
   id: string;                          // "pit-engineer.welcome"
-  when: { event: keyof SimEventMap; where?: (e: SimEvent) => boolean };
+  when?: { event: keyof SimEventMap; where?: (e: SimEvent) => boolean };  // absent = fires only via engineer.fire(id)
   channel: AudioChannel;               // Voice | Spotter | SFX | Ambient
   bus: AudioBus;                       // Voice | Background | Alerts
   priority?: "low" | "normal" | "high" | "urgent";   // default: normal
@@ -290,16 +293,33 @@ type Step =
 | `"pause:500"` | `{ pause: 500 }` |
 | `"@other-scenario"` | `{ include: "other-scenario" }` |
 
-**The user's playful example:**
+**Syntax-only example** (no `when` — triggered imperatively via `engineer.fire(id)`, e.g., from a PI "Test" button):
 
 ```ts
 {
   id: "pit-engineer.wtf",
-  when: { event: "debug.test" },       // illustrative — wire a real trigger (e.g., a PI test button) when shipping
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-engineer",
   sequence: ["{{name}}", "pause:1000", "extras/wtf.mp3"],
+}
+```
+
+Scenarios without `when` are not auto-subscribed to the event bus; they only play when explicitly fired. This is how the existing PI "Test" button wires up today.
+
+**Event-driven example with `where` filter** (fuel warning at the 3-lap threshold only):
+
+```ts
+{
+  id: "pit-engineer.fuel-3laps",
+  when: {
+    event: "fuel.lapsRemaining.crossed",
+    where: (e) => e.data.threshold === 3,
+  },
+  channel: AudioChannel.Voice,
+  bus: AudioBus.Voice,
+  base: "pit-engineer",
+  sequence: ["@pit-engineer.radio-open", "pool:fuel-low-3laps", "@pit-engineer.radio-close"],
 }
 ```
 
@@ -427,6 +447,9 @@ type ScenarioContext = {
 3. `eventBus.publish({ event: "pitLane.approaching", telemetry, data: {} })`.
 4. `audio-scenarios` handler receives the event, looks up scenarios with `when.event === "pitLane.approaching"`, filters by `where` predicate.
 5. Per matched scenario: check cooldown, priority vs. currently-playing scenario, optional preempt.
+   - **Default (non-urgent scenario fires while another non-urgent is playing):** the new scenario is dropped, not queued. Voice lanes are single-stream — queuing would stale-play callouts seconds after their triggering event.
+   - **Urgent + preempt:** stops the current clip mid-sentence and plays the urgent scenario.
+   - **Urgent without preempt:** same as non-urgent default — dropped if something is playing.
 6. Resolve `sequence` step-by-step:
    - literal → path (applying `base` unless leading `/`)
    - var → call registered resolver
@@ -456,6 +479,7 @@ type ScenarioContext = {
 
 - **Audio failures are non-fatal.** Missing MP3, dropped device, native-engine hiccup: log and skip. Plugin never crashes on audio.
 - **Load-time validation.** On scenario catalog load, scan every scenario: check clip files exist (via `audio-assets` manifest), pools referenced are defined, events referenced exist in the catalog, vars are registered. Broken scenarios log and skip. The rest keep working.
+  - The manifest is auto-generated at `audio-assets` build time by a new `scripts/generate-audio-manifest.mjs` (mirrors the existing `scripts/generate-icon-defaults.mjs` pattern). Output: a JSON list of clip paths committed under `packages/audio-assets/manifest.json`. A freshness test verifies the manifest matches the file tree, same way icon previews are checked today.
 - **Runtime per-fire try/catch.** Interpreter wraps each fire so one broken scenario never blocks another. Logged at error level with scenario id + event name.
 - **Sequencer resilience.** If `setChannelEndCallback` fires with an error, or if a step's clip resolves to a missing path at runtime, the sequencer logs and advances to the next step rather than stalling.
 - **Non-Windows dev.** Existing native mock handles everything as no-op success. No behavioral divergence for scenario logic — it still resolves and "plays" (no sound), letting the DSL be tested end-to-end on macOS/Linux.
@@ -521,16 +545,17 @@ The extraction happens on branches off `feature/pit-engineer`, not on `master`. 
 - Empty event catalog at this point — no consumers yet.
 - Commit: `feat(events): add event-bus package (#376)`.
 
-### Stage 4 — Add `@iracedeck/sim-events-iracing`
+### Stage 4 — Add `@iracedeck/sim-events-iracing` and migrate pit-engineer handlers
 
-- New package. Moves all the telemetry-diffing / event-detection logic out of `pit-engineer.ts`.
-- At this point `pit-engineer.ts` still has the handlers but now calls `eventBus.subscribe(...)` instead of reading telemetry directly.
-- Commit: `feat(events): add sim-events-iracing translator (#376)`.
+This stage does two related things; split into two commits inside the same PR for reviewability:
+
+- **4a.** Add the package with the translator skeleton + event catalog. No consumers yet; telemetry-diffing logic copied over from `pit-engineer.ts` into the new package but not deleted from the action. Commit: `feat(events): add sim-events-iracing translator (#376)`.
+- **4b.** Migrate `pit-engineer.ts` handlers to subscribe to the event bus instead of reading telemetry directly. Delete the duplicated diffing logic from the action in the same commit it becomes unreachable. Commit: `refactor(pit-engineer): consume semantic events from sim-events-iracing (#376)`.
 
 ### Stage 5 — Reorganize `audio-assets`
 
-- Git-move files into `pit-engineer/` subfolder.
-- Update all path references in `pit-engineer.ts` in one sweep.
+- Git-move files into `pit-engineer/` subfolder. Rename targets: `radio-openers/` → `pit-engineer/greeting/`, `fuel-warnings/` → `pit-engineer/fuel/`, others preserve their names under `pit-engineer/`.
+- **Pre-check:** `grep -r "radio-openers\|fuel-warnings" packages/` before moving. Hits outside `pit-engineer.ts` (EJS templates, test fixtures, other actions) must be updated in the same commit.
 - No new package; just file reorg.
 - Commit: `refactor(audio-assets): reorganize into pit-engineer/ namespace (#376)`.
 
