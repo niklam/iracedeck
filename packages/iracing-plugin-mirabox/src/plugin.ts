@@ -6,6 +6,7 @@
  *
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
+import { AudioNative } from "@iracedeck/audio-native";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
   getAudio,
@@ -120,7 +121,8 @@ initializeKeyboard(
 );
 
 // Initialize audio engine for pit engineer voice playback
-initializeAudio(adapter.createLogger("Audio"), native);
+const audioNative = new AudioNative();
+initializeAudio(adapter.createLogger("Audio"), audioNative);
 getAudio().init();
 
 // Publish audio device list and apply saved device selection

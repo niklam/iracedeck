@@ -145,6 +145,7 @@ import {
   initializeSimHub,
   initWindowFocus,
 } from "@iracedeck/deck-core";
+import { AudioNative } from "@iracedeck/audio-native";
 import { IRacingNative } from "@iracedeck/iracing-native";
 
 // 1. Create the Elgato platform adapter
@@ -166,7 +167,8 @@ initializeKeyboard(
 );
 
 // 5. Initialize audio engine for pit engineer voice playback
-initializeAudio(adapter.createLogger("Audio"), native);
+const audioNative = new AudioNative();
+initializeAudio(adapter.createLogger("Audio"), audioNative);
 getAudio().init();
 
 // 6. Initialize window focus service

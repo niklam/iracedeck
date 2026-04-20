@@ -1,0 +1,44 @@
+/**
+ * Mock implementation of AudioNative for non-Windows platforms and tests.
+ *
+ * Returns success for every call but produces no audio.
+ */
+import type { AudioDeviceInfo } from "./index.js";
+
+export class AudioNativeMock {
+  initAudioEngine(): boolean {
+    console.debug("[AudioNativeMock] initAudioEngine()");
+
+    return true;
+  }
+
+  destroyAudioEngine(): void {
+    console.debug("[AudioNativeMock] destroyAudioEngine()");
+  }
+
+  playOnChannel(_channel: number, _filePath: string, _loop = false, _volume = 1.0): boolean {
+    return true;
+  }
+
+  stopChannel(_channel: number): void {}
+
+  setChannelVolume(_channel: number, _volume: number): void {}
+
+  isChannelPlaying(_channel: number): boolean {
+    return false;
+  }
+
+  setChannelEndCallback(_channel: number, _callback: () => void): void {}
+
+  stopAllChannels(): void {}
+
+  seekChannelRandom(_channel: number): void {}
+
+  getAudioDevices(): AudioDeviceInfo[] {
+    return [{ index: 0, name: "Mock Audio Device", isDefault: true }];
+  }
+
+  setAudioDevice(_deviceIndex: number): boolean {
+    return true;
+  }
+}

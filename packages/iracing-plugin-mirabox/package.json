@@ -14,6 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@iracedeck/audio-native": "workspace:*",
     "@iracedeck/deck-adapter-mirabox": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",
