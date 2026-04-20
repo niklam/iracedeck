@@ -312,10 +312,10 @@ function pickTip(isStartWindow: boolean): string {
 
 // ─── Fuel Warnings Pools ─────────────────────────────────────────────────────
 //
-// Pit Engineer fuel warnings. Thresholds are documented in
-// project_fuel_warnings_plan.md and tuned "safety first": the voice warns
-// a lap earlier than the number it says (e.g. "5 laps" fires at 6 laps
-// remaining). See `FUEL_THRESHOLDS` and `resolveFuelWarning` below.
+// Pit Engineer fuel warnings. The translator's `fuel.lapsRemaining.crossed`
+// event fires once per descending threshold crossing (5, 3, 1, 0 laps). The
+// handler below picks from the matching pool. Threshold values live in
+// `@iracedeck/sim-events-iracing`'s `FUEL_THRESHOLDS` export.
 
 /** @internal Exported for testing */
 export const FUEL_LOW_5_POOL = [

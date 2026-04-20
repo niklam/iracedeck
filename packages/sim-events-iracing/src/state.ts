@@ -34,6 +34,7 @@ export type TranslatorState = {
   lastDrsActive: boolean;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
+  limiterInitialized: boolean;
   lastOnPitRoadForLimiter: boolean;
   lastLimiterOnPitRoad: boolean;
   speedingWarnedAt: number;
@@ -87,6 +88,7 @@ export function createInitialState(): TranslatorState {
     lastP2PActive: false,
     lastDrsActive: false,
 
+    limiterInitialized: false,
     lastOnPitRoadForLimiter: false,
     lastLimiterOnPitRoad: false,
     speedingWarnedAt: 0,

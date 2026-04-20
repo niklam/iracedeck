@@ -44,6 +44,17 @@ export function diffLimiter(
   }
 
   if (!onPitRoad) {
+    state.limiterInitialized = true;
+    state.lastOnPitRoadForLimiter = onPitRoad;
+    state.lastLimiterOnPitRoad = limiter;
+
+    return;
+  }
+
+  // First on-track tick already on pit road — seed without firing. This
+  // covers mid-session reconnects and replays that start in pit lane.
+  if (!state.limiterInitialized) {
+    state.limiterInitialized = true;
     state.lastOnPitRoadForLimiter = onPitRoad;
     state.lastLimiterOnPitRoad = limiter;
 
