@@ -1,9 +1,9 @@
 # Audio architecture design
 
-**Status:** Proposed. Decoupled from `feature/pit-engineer` — this work lands after that branch merges.
+**Status:** Proposed. Work lands on `feature/pit-engineer`: each stage branches off that feature branch and merges back into it. `feature/pit-engineer` → `master` is one final PR containing both the Pit Engineer feature and this architecture, closing #375 and #376 together.
 **Date:** 2026-04-19.
 **Branch when started:** `ir-376-audio-architecture` (this branch).
-**Issue:** #376. Follow-up to #375 (Pit Engineer merge).
+**Issue:** #376. Ships together with #375 (Pit Engineer).
 
 ---
 
@@ -499,20 +499,20 @@ type ScenarioContext = {
 
 ## 12. Migration and rollout
 
-The branch merges first (#375). Then this extraction happens on a fresh branch against `master`. The extraction is done in stages so each commit is installable and playable.
+The extraction happens on branches off `feature/pit-engineer`, not on `master`. Each stage is its own PR into `feature/pit-engineer`. The whole refactored feature — Pit Engineer action + architecture — lands on `master` as a single final merge, closing both #375 and #376. Stages are ordered so each commit leaves `feature/pit-engineer` installable and playable; because `master` never sees an intermediate state, no compatibility shims are required — consumers update in the same commit that moves the code.
 
 ### Stage 1 — Extract `@iracedeck/audio-native`
 
 - Move `miniaudio.h` and the audio section of `addon.cc` / `mock-impl.ts` / `index.ts` from `iracing-native` to new `packages/audio-native/`.
 - `binding.gyp` split: iRacing-native gets the no-audio baseline; audio-native gets `ole32.lib` + warning disables.
-- Thin shim in `iracing-native`: re-export `AudioChannel` and the audio methods from `audio-native` as a compatibility layer so intermediate stages don't break plugin wiring. Removed in stage 8.
+- Update both plugins' `plugin.ts`: instantiate a separate `new AudioNative()` alongside `new IRacingNative()` and pass its audio callbacks to `initializeAudio(...)`. No re-export shims in `iracing-native`.
 - No behavior change. Commit: `refactor(audio): extract audio-native from iracing-native (#376)`.
 
 ### Stage 2 — Extract `@iracedeck/audio-service`
 
 - Move today's `deck-core/audio-service.ts` into the new package.
 - Depend on `@iracedeck/audio-native` directly.
-- `deck-core/index.ts` re-exports from the new package for backward compat.
+- Update all consumers (`pit-engineer.ts`, both plugins' `plugin.ts`) to import from the new package in the same commit. `deck-core` does not re-export.
 - Commit: `refactor(audio): extract audio-service package (#376)`.
 
 ### Stage 3 — Add `@iracedeck/event-bus`
@@ -547,24 +547,17 @@ The branch merges first (#375). Then this extraction happens on a fresh branch a
 - All module-level `let` globals deleted (their roles are now owned by scenarios / sim-events-iracing / audio-service).
 - Commit: `refactor(pit-engineer): shrink action to thin shell over audio-scenarios (#376)`.
 
-### Stage 8 — Drop compat shims
-
-- Remove `deck-core/audio-service.ts` re-export.
-- Remove `iracing-native` audio re-exports.
-- Commit: `refactor(audio): drop compat shims after migration (#376)`.
-
-Each stage is a single logical commit; the whole thing can be one PR or several depending on size. Tests run and pass at every stage.
+Each stage is a single logical commit; each lands as its own PR into `feature/pit-engineer`. Tests run and pass at every stage. Stage 6 may split into multiple per-scenario-group commits inside a single PR.
 
 ---
 
 ## 13. Release cadence is out of scope
 
-This plan governs **architecture**, not **feature release cadence**. The two axes are orthogonal, and conflating them is the easiest way for a future reader to mis-scope follow-up work.
+This plan governs **architecture**, not **feature release cadence**. The two axes are orthogonal.
 
-- **Every stage in §12 preserves user-visible behavior.** A scenario that plays on `feature/pit-engineer` today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports do **not** count as introducing a new scenario for release-cadence purposes; defaults carry over from the pre-refactor PI schema.
-- **When each scenario becomes audible to users** is controlled by the per-scenario PI toggles already present on `feature/pit-engineer` and, optionally, a plugin-level "pit engineer (beta)" gate. Those decisions are not made here.
-- **First GA release exclusions.** The **directional spotter** (proximity beeps when a car is alongside) and **toggle confirmations** ("ok, we're changing all tires") are explicitly held back from the first pit-engineer release and ship in later releases. Remaining engineer scenarios (approach, service reminder, stall departure, exit, flag alerts, incident alerts, overtake, tips, fuel warnings, pit limiter, welcome) are in scope for the first release, subject to the defaults policy tracked below.
-- **Follow-up tracking.** Per-scenario default state, beta-gate mechanism, race-test signoff format, and the flip-default-ON cadence are tracked in a separate issue filed after #375 (Pit Engineer) merges. Not part of this PR.
+- **Every stage preserves user-visible behavior on `feature/pit-engineer`.** A scenario that plays on the branch today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports are refactors, not new-scenario introductions.
+- **First GA release exclusions.** When `feature/pit-engineer` → `master` lands, the **directional spotter** (proximity beeps when a car is alongside) and **toggle confirmations** ("ok, we're changing all tires") ship **default-off**; they flip on in later releases after race-test validation. Remaining engineer scenarios (approach, service reminder, stall departure, exit, flag alerts, incident alerts, overtake, tips, fuel warnings, pit limiter, welcome) ship with their existing defaults from the feature branch.
+- **Follow-up tracking.** Optional "pit engineer (beta)" gate, race-test signoff format, and the default-flip cadence for held-back scenarios are tracked in a separate issue filed alongside the final `feature/pit-engineer` → `master` merge. Not part of this PR.
 
 ---
 
@@ -581,7 +574,7 @@ This plan governs **architecture**, not **feature release cadence**. The two axe
 ### Modified packages
 
 - `packages/iracing-native/` — drop audio section from `addon.cc`, `index.ts`, `mock-impl.ts`; drop `miniaudio.h`; revert `binding.gyp` audio libs
-- `packages/deck-core/` — remove `audio-service.ts` (now in its own package); keep a re-export shim during stages 2–8; drop after stage 8
+- `packages/deck-core/` — remove `audio-service.ts` (now in its own package). All consumers updated in stage 2; no re-export shim, since `master` only sees the final post-refactor state.
 - `packages/audio-assets/` — reorganize into `pit-engineer/` + top-level generics
 - `packages/iracing-actions/src/actions/pit-engineer/pit-engineer.ts` — shrinks to ~400 LOC
 - `packages/iracing-actions/src/actions/pit-engineer/pit-engineer.test.ts` — rewrites to test the thin action directly; scenario tests move to `audio-scenarios`
