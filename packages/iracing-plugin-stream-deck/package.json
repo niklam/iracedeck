@@ -16,6 +16,7 @@
   "dependencies": {
     "@elgato/streamdeck": "2.1.0",
     "@iracedeck/audio-native": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-adapter-elgato": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",

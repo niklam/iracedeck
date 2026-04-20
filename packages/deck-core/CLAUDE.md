@@ -39,7 +39,6 @@ deck-core adds global settings readers on top of the pure functions:
 - `scan-code-map.ts` — PS/2 scan code mapping
 - `iracing-hotkeys.ts` — iRacing hotkey presets
 - `unit-conversion.ts` — Fuel unit conversion utilities
-- `audio-service.ts` — Multi-channel audio mixer singleton (miniaudio). Provides `initializeAudio()`, `getAudio()`, `AudioChannel` enum, `IAudioService` interface. Four independent channels (Ambient, SFX, Voice, Spotter) with per-channel volume, looping, completion callbacks, and a voice sequence engine for chaining clips with connector words.
 
 ## Build
 

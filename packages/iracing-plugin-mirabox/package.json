@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@iracedeck/audio-native": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-adapter-mirabox": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",

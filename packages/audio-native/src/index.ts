@@ -57,7 +57,7 @@ if (platform() === "win32" && !forceMock) {
  * native addon is unavailable), delegates to {@link AudioNativeMock} which
  * returns success for every call but produces no audio.
  *
- * The method surface is the one consumed by `@iracedeck/deck-core`'s
+ * The method surface is the one consumed by `@iracedeck/audio-service`'s
  * `initializeAudio(logger, native)` — any shape-compatible object can be
  * passed in its place for testing.
  */

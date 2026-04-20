@@ -38,6 +38,8 @@ export default defineConfig({
   plugins: [svgPlugin()],
   resolve: {
     alias: {
+      "@iracedeck/audio-native": resolve(__dirname, "packages/audio-native/src/index.ts"),
+      "@iracedeck/audio-service": resolve(__dirname, "packages/audio-service/src/index.ts"),
       "@iracedeck/deck-core": resolve(__dirname, "packages/deck-core/src/index.ts"),
       "@iracedeck/icon-composer": resolve(__dirname, "packages/icon-composer/src/index.ts"),
       "@iracedeck/iracing-sdk": resolve(__dirname, "packages/iracing-sdk/src/index.ts"),

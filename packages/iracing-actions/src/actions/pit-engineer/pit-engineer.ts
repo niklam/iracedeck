@@ -1,13 +1,11 @@
+import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
-  AudioBus,
-  AudioChannel,
   CommonSettings,
   computeGraphicArea,
   ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
-  getAudio,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
