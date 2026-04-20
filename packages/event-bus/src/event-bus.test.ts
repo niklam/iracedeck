@@ -2,7 +2,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized } from "./event-bus.js";
-import type { EmptySimEventPayload, SimEvent, SimEventName, SimEventOf } from "./event-catalog.js";
+import type { FlagScope, SimEvent, SimEventName, SimEventOf } from "./event-catalog.js";
 
 function createMockLogger(): ILogger {
   return {
@@ -16,13 +16,18 @@ function createMockLogger(): ILogger {
   } as unknown as ILogger;
 }
 
-// Helper: build a concrete envelope of a given name with empty data.
-function envelope<T extends "pitLane.entered" | "flag.yellow.raised">(event: T): SimEventOf<T> {
+// Helper: build a concrete envelope for a given event name. The helper
+// handles the two names the suite uses directly; other tests build their
+// own envelopes with typed payloads.
+function envelope<T extends "pitLane.entered" | "flag.yellow.raised">(
+  event: T,
+  data?: T extends "flag.yellow.raised" ? { scope: FlagScope } : Record<string, never>,
+): SimEventOf<T> {
   return {
     event,
     timestamp: 0,
     telemetry: undefined,
-    data: {},
+    data: (data ?? (event === "flag.yellow.raised" ? { scope: "local" } : {})) as SimEventOf<T>["data"],
   } as SimEventOf<T>;
 }
 
@@ -316,7 +321,7 @@ describe("EventBus", () => {
   describe("type-level", () => {
     it("narrows SimEventOf<'flag.yellow.raised'> to a concrete SimEvent variant", () => {
       expectTypeOf<SimEventOf<"flag.yellow.raised">>().toEqualTypeOf<
-        SimEvent<"flag.yellow.raised", EmptySimEventPayload, unknown>
+        SimEvent<"flag.yellow.raised", { scope: FlagScope }, unknown>
       >();
     });
 

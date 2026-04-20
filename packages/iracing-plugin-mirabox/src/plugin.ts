@@ -10,6 +10,7 @@ import { AudioNative } from "@iracedeck/audio-native";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
+  getController,
   initAppMonitor,
   initEngineStartupAnimation,
   initGlobalSettings,
@@ -22,6 +23,7 @@ import {
   type PluginConfig,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
+import { initializeEventBus } from "@iracedeck/event-bus";
 import {
   AI_SPOTTER_CONTROLS_UUID,
   AiSpotterControls,
@@ -93,6 +95,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,6 +112,15 @@ const adapter = new VSDPlatformAdapter();
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
+
+// Initialize the event bus BEFORE any publisher (sim-events-iracing) or
+// subscriber (actions) exist. Must land before sdk translator + actions so
+// both sides can see the bus.
+const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
+
+// Translate sdkController ticks → semantic events on the bus. The only
+// package allowed to read `@iracedeck/iracing-sdk` for telemetry.
+initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
 
 // Initialize keyboard for hotkey actions with scan code support for non-US layouts
 const native = new IRacingNative();

@@ -46,6 +46,7 @@ export default defineConfig({
       "@iracedeck/iracing-sdk": resolve(__dirname, "packages/iracing-sdk/src/index.ts"),
       "@iracedeck/iracing-native": resolve(__dirname, "packages/iracing-native/src/index.ts"),
       "@iracedeck/logger": resolve(__dirname, "packages/logger/src/index.ts"),
+      "@iracedeck/sim-events-iracing": resolve(__dirname, "packages/sim-events-iracing/src/index.ts"),
     },
   },
   test: {
