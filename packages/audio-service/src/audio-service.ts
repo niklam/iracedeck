@@ -26,6 +26,7 @@
 import type { AudioNative } from "@iracedeck/audio-native";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
+import path from "node:path";
 
 // ─── Channel enum ────────────────────────────────────────────────────────────
 
@@ -157,6 +158,7 @@ export interface IAudioService {
 class AudioService implements IAudioService {
   private logger: ILogger;
   private native: AudioNative;
+  private readonly basePath: string | null;
   private engineReady = false;
 
   // Voice sequence state
@@ -176,9 +178,10 @@ class AudioService implements IAudioService {
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
 
-  constructor(logger: ILogger, native: AudioNative) {
+  constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
     this.logger = logger;
     this.native = native;
+    this.basePath = basePath;
 
     // Register persistent native end callbacks for all channels.
     // These dispatch to the JS-level one-shot callbacks.
@@ -219,9 +222,24 @@ class AudioService implements IAudioService {
   playOnChannel(channel: AudioChannel, filePath: string, loop = false): boolean {
     if (!this.engineReady) return false;
 
-    this.logger.debug(`Play ch${channel}: ${filePath}${loop ? " (loop)" : ""}`);
+    const resolved = this.resolvePath(filePath);
+    this.logger.debug(`Play ch${channel}: ${resolved}${loop ? " (loop)" : ""}`);
 
-    return this.native.playOnChannel(channel, filePath, loop, this.channelVolumes[channel]);
+    return this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+  }
+
+  /**
+   * Resolve a clip path against the service's configured base path. Absolute
+   * paths pass through unchanged, so callers that build their own absolute
+   * paths (e.g. the spotter engine) still work. Callers passing manifest-
+   * relative paths (e.g. the scenario interpreter emitting
+   * `sfx/IRD-tick-open.mp3`) get prefixed with the base so the native layer
+   * receives a filesystem path it can actually open.
+   */
+  private resolvePath(filePath: string): string {
+    if (!this.basePath || path.isAbsolute(filePath)) return filePath;
+
+    return path.join(this.basePath, filePath);
   }
 
   stopChannel(channel: AudioChannel): void {
@@ -382,7 +400,12 @@ class AudioService implements IAudioService {
       const connector = this.pickConnector();
       this.voiceSeqState = VoiceSeqState.PlayingConnector;
       this.logger.debug(`Playing connector: ${connector}`);
-      this.native.playOnChannel(AudioChannel.Voice, connector, false, this.channelVolumes[AudioChannel.Voice]);
+      this.native.playOnChannel(
+        AudioChannel.Voice,
+        this.resolvePath(connector),
+        false,
+        this.channelVolumes[AudioChannel.Voice],
+      );
     } else {
       // No connectors — play next message directly
       this.playCurrentMessage();
@@ -397,7 +420,12 @@ class AudioService implements IAudioService {
   private playCurrentMessage(): void {
     const file = this.voiceSeqFiles[this.voiceSeqIndex];
     this.logger.debug(`Playing message ${this.voiceSeqIndex + 1}/${this.voiceSeqFiles.length}: ${file}`);
-    this.native.playOnChannel(AudioChannel.Voice, file, false, this.channelVolumes[AudioChannel.Voice]);
+    this.native.playOnChannel(
+      AudioChannel.Voice,
+      this.resolvePath(file),
+      false,
+      this.channelVolumes[AudioChannel.Voice],
+    );
   }
 
   private pickConnector(): string {
@@ -423,13 +451,25 @@ let audioService: AudioService | null = null;
 /**
  * Initialize the audio service singleton with an AudioNative instance.
  * Call once at plugin startup, then call getAudio().init() to start the engine.
+ *
+ * `basePath` is prepended to every manifest-relative clip path passed to
+ * `playOnChannel` / `playVoiceSequence` (absolute paths pass through
+ * unchanged). Typically the plugin passes `path.join(process.cwd(),
+ * "assets", "audio")` so scenarios can emit short namespace-relative paths
+ * like `sfx/IRD-tick-open.mp3` and the native layer still gets a real
+ * filesystem path. Pass `null` to disable resolution (useful in tests that
+ * inject a fake AudioNative and don't care where the path points).
  */
-export function initializeAudio(logger: ILogger = silentLogger, native: AudioNative): IAudioService {
+export function initializeAudio(
+  logger: ILogger = silentLogger,
+  native: AudioNative,
+  basePath: string | null = null,
+): IAudioService {
   if (audioService) {
     throw new Error("Audio service already initialized. initializeAudio() should only be called once.");
   }
 
-  audioService = new AudioService(logger, native);
+  audioService = new AudioService(logger, native, basePath);
   logger.info("Audio service initialized");
 
   return audioService;

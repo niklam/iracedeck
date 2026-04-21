@@ -130,9 +130,12 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
-// Initialize audio engine for pit engineer voice playback
+// Initialize audio engine for pit engineer voice playback.
+// Base path lets scenarios emit manifest-relative clip paths (e.g.
+// "sfx/IRD-tick-open.mp3") that audio-service prepends with the plugin's
+// assets/audio directory before passing them to the native engine.
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative);
+initializeAudio(adapter.createLogger("Audio"), audioNative, join(process.cwd(), "assets", "audio"));
 getAudio().init();
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but

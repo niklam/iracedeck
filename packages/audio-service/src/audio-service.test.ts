@@ -120,6 +120,35 @@ describe("AudioService", () => {
       expect(result).toBe(false);
     });
 
+    it("prepends basePath to relative paths", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "sfx/IRD-tick-open.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(/[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]IRD-tick-open\.mp3$/),
+        false,
+        1.0,
+      );
+    });
+
+    it("leaves absolute paths untouched when basePath is set", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Spotter, "/abs/path/clip.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Spotter, "/abs/path/clip.mp3", false, 1.0);
+    });
+
+    it("leaves relative paths untouched when basePath is null", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "sfx/IRD-tick-open.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Voice, "sfx/IRD-tick-open.mp3", false, 1.0);
+    });
+
     it("should stop channel", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
