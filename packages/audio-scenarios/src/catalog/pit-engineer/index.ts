@@ -1,10 +1,13 @@
 /**
  * Pit-engineer scenario catalog registration.
  *
- * `registerPitEngineer()` registers pools, defines the `{{name}}` driver
+ * `registerPitEngineer(bus)` registers pools, defines the `{{name}}` driver
  * variable, and registers every pit-engineer scenario with the shared
- * scenario engine. Must be called once per plugin startup, after
- * `initializeAudioScenarios(...)`.
+ * scenario engine. The `bus` is the event bus instance returned by
+ * `initializeEventBus(...)` — passed through to `registerSpotterEngine`
+ * so the spotter engine and scenario engine share the exact same bus.
+ * Must be called once per plugin startup, after
+ * `initializeAudioScenarios(bus, ...)`.
  *
  * The driver-name resolver is injected by the pit-engineer action through
  * `setDriverNameResolver(getter)` so the scenario can read the latest PI

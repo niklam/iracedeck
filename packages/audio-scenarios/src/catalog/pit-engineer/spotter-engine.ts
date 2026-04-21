@@ -72,7 +72,11 @@ function startTickLoop(state: ActiveState): void {
   const file = SPOTTER_AUDIO[state];
   const interval = SPOTTER_TICK_INTERVALS[state];
   const fire = (): void => {
-    getAudio().playOnChannel(AudioChannel.Spotter, resolveAudioPath(file));
+    // If the audio engine isn't ready, playOnChannel returns false — don't
+    // reschedule a timer in that case; the next spotter.changed event will
+    // retry the loop once the system is healthy.
+    if (!getAudio().playOnChannel(AudioChannel.Spotter, resolveAudioPath(file))) return;
+
     tickTimer = setTimeout(fire, interval);
   };
 
@@ -93,19 +97,29 @@ function isOnPitRoad(): boolean {
   return telemetry?.OnPitRoad === true;
 }
 
+function forceClear(): void {
+  if (visualState !== "clear") {
+    stopTickLoop();
+    getAudio().stopChannel(AudioChannel.Spotter);
+    setVisualState("clear");
+  }
+}
+
 function handleSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
   if (!enabled) return;
 
   // Lone qualifying sessions have no other cars on track; the raw
-  // CarLeftRight value can flicker, and the callouts aren't useful.
-  if (getSessionType() === "Lone Qualify") return;
+  // CarLeftRight value can flicker, and the callouts aren't useful. If a
+  // loop was already running from a prior non-qualify state, tear it down
+  // so the spotter doesn't keep ticking after the session flips.
+  if (getSessionType() === "Lone Qualify") {
+    forceClear();
+
+    return;
+  }
 
   if (isOnPitRoad()) {
-    if (visualState !== "clear") {
-      stopTickLoop();
-      getAudio().stopChannel(AudioChannel.Spotter);
-      setVisualState("clear");
-    }
+    forceClear();
 
     return;
   }
@@ -186,7 +200,13 @@ export function playSpotterTest(): void {
     getAudio().onChannelComplete(AudioChannel.Spotter, () => {
       setTimeout(playNext, SPOTTER_TEST_GAP_MS);
     });
-    getAudio().playOnChannel(AudioChannel.Spotter, resolveAudioPath(file));
+
+    // If playOnChannel returns false (audio engine not initialized) the
+    // completion callback will never fire, so clear the guard here and
+    // bail; a future press after audio comes up will start fresh.
+    if (!getAudio().playOnChannel(AudioChannel.Spotter, resolveAudioPath(file))) {
+      testSequenceInFlight = false;
+    }
   };
 
   playNext();

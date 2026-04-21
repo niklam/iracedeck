@@ -231,6 +231,19 @@ describe("Lone Qualify suppression", () => {
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     expect(getSpotterVisualState()).toBe("clear");
   });
+
+  it("tears down an already-running loop when the session flips to Lone Qualify", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    setSpotterEnabled(true);
+    hoisted.publishSpotter("left");
+    expect(getSpotterVisualState()).toBe("left");
+
+    hoisted.getSessionType.mockReturnValue("Lone Qualify");
+    hoisted.publishSpotter("both", "left");
+
+    expect(getSpotterVisualState()).toBe("clear");
+    expect(hoisted.stopChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL);
+  });
 });
 
 describe("setSpotterEnabled", () => {
@@ -309,6 +322,19 @@ describe("playSpotterTest", () => {
     // Second press before the first sequence completes → ignored.
     playSpotterTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the in-flight guard when the audio engine refuses playback", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    hoisted.playOnChannel.mockReturnValueOnce(false);
+
+    playSpotterTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+    // Guard cleared synchronously so a later press can retry.
+    hoisted.playOnChannel.mockReturnValue(true);
+    playSpotterTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Imports appear above the `vi.mock(...)` blocks because the repo-wide
+// prettier config (@elgato/prettier-config + @trivago/prettier-plugin-sort-imports)
+// hoists every import to the top and won't leave them interleaved with other
+// statements. Vitest transforms `vi.mock(...)` to run before any import at
+// module init, so the mocks still apply to the action import below.
 import {
   applyVolumes,
   driverNamePath,
@@ -236,6 +241,9 @@ function buildAppearEvent(settings: TestInputs, actionId = "ctx-1"): unknown {
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.setGlobalSettings({ pitEngineerEnabled: true });
+  // Clear hoisted listener sets so cross-test listener counts stay
+  // deterministic for tests that don't pair onWillAppear with onWillDisappear.
+  hoisted.globalSettingsListeners.clear();
 });
 
 describe("PIT_ENGINEER_UUID", () => {
@@ -255,6 +263,13 @@ describe("driverNamePath", () => {
 
   it("returns the audio-assets path for a real name", () => {
     expect(driverNamePath("niklas")).toBe("pit-engineer/names/IRD-name-niklas.mp3");
+  });
+
+  it("rejects names with path-traversal characters", () => {
+    expect(driverNamePath("../../etc/passwd")).toBeNull();
+    expect(driverNamePath("foo/bar")).toBeNull();
+    expect(driverNamePath("foo.mp3")).toBeNull();
+    expect(driverNamePath("NIKLAS")).toBeNull();
   });
 });
 

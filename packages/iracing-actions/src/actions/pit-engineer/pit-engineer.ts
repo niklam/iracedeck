@@ -76,9 +76,16 @@ type PitEngineerSettings = z.infer<typeof Settings>;
  * @internal Exported for testing.
  *
  * Returns the audio-assets path for the chosen driver name, or null if none.
+ * The slug regex rejects anything outside lowercase alphanumerics / hyphens /
+ * underscores — defense in depth against path-traversal if a user edits
+ * persisted settings by hand (the PI dropdown only ever emits valid slugs).
  */
+const DRIVER_NAME_SLUG = /^[a-z0-9_-]+$/;
+
 export function driverNamePath(name: string | undefined): string | null {
   if (!name || name === "none") return null;
+
+  if (!DRIVER_NAME_SLUG.test(name)) return null;
 
   return `pit-engineer/names/IRD-name-${name}.mp3`;
 }
