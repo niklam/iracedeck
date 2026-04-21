@@ -83,6 +83,12 @@ type ActiveFire = {
   index: number;
   cancelled: boolean;
   pauseTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * Channels this fire can touch — computed once from the expanded ops and
+   * used by `cancelActiveFire` so we don't stop channels belonging to
+   * scenarios running on other buses.
+   */
+  usedChannels: ReadonlySet<AudioChannel>;
 };
 
 /**
@@ -323,7 +329,15 @@ class ScenarioEngine implements IScenarioEngine {
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
     state.playingId = entry.raw.id;
-    state.activeFire = { id: entry.raw.id, bus, ops, index: 0, cancelled: false, pauseTimer: null };
+    state.activeFire = {
+      id: entry.raw.id,
+      bus,
+      ops,
+      index: 0,
+      cancelled: false,
+      pauseTimer: null,
+      usedChannels: collectUsedChannels(ops),
+    };
 
     this.logger.info(`Playing scenario "${entry.raw.id}"`);
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
@@ -414,8 +428,8 @@ class ScenarioEngine implements IScenarioEngine {
 
   /**
    * Cancel the currently-executing fire on the given bus. Stops only the
-   * channels that fire was actually using (Voice / SFX / Ambient for
-   * engineer scenarios) — other buses are unaffected.
+   * channels the fire actually referenced (from its expanded ops), so
+   * scenarios running on other buses aren't disturbed.
    */
   private cancelActiveFire(state: BusState): void {
     const fire = state.activeFire;
@@ -429,9 +443,7 @@ class ScenarioEngine implements IScenarioEngine {
       fire.pauseTimer = null;
     }
 
-    this.audio.stopChannel(AudioChannel.Voice);
-    this.audio.stopChannel(AudioChannel.SFX);
-    this.audio.stopChannel(AudioChannel.Ambient);
+    for (const channel of fire.usedChannels) this.audio.stopChannel(channel);
 
     if (state.playingId === fire.id) state.playingId = null;
 
@@ -574,6 +586,22 @@ function opLabel(op: ExecOp): string {
   if (op.kind === "ambient") return `ambient:${op.action}`;
 
   return `pause:${op.ms}`;
+}
+
+/**
+ * Scan the expanded op list for every `AudioChannel` the fire will touch.
+ * Cancellation uses this set so we stop exactly the channels this fire can
+ * play on, no more and no less.
+ */
+function collectUsedChannels(ops: readonly ExecOp[]): ReadonlySet<AudioChannel> {
+  const channels = new Set<AudioChannel>();
+
+  for (const op of ops) {
+    if (op.kind === "play") channels.add(op.channel);
+    else if (op.kind === "ambient") channels.add(AudioChannel.Ambient);
+  }
+
+  return channels;
 }
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
