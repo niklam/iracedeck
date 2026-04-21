@@ -98,11 +98,17 @@ function isOnPitRoad(): boolean {
 }
 
 function forceClear(): void {
-  if (visualState !== "clear") {
+  if (visualState === "clear") return;
+
+  // Don't touch AudioChannel.Spotter while a test preview owns it; the
+  // preview completion callback re-syncs playback from the (possibly
+  // "clear") visualState.
+  if (!testSequenceInFlight) {
     stopTickLoop();
     getAudio().stopChannel(AudioChannel.Spotter);
-    setVisualState("clear");
   }
+
+  setVisualState("clear");
 }
 
 function handleSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
@@ -128,11 +134,18 @@ function handleSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
 
   if (next === visualState) return;
 
-  if (next === "clear") {
-    stopTickLoop();
-    getAudio().stopChannel(AudioChannel.Spotter);
-  } else {
-    startTickLoop(next);
+  // A test preview owns AudioChannel.Spotter until it completes — gate
+  // every live tick / stop to keep the left→right→both sequence from being
+  // garbled. `visualState` still flips here so listeners stay current;
+  // the preview's completion handler resumes the live loop with the
+  // post-test state.
+  if (!testSequenceInFlight) {
+    if (next === "clear") {
+      stopTickLoop();
+      getAudio().stopChannel(AudioChannel.Spotter);
+    } else {
+      startTickLoop(next);
+    }
   }
 
   setVisualState(next);
@@ -162,15 +175,16 @@ export function registerSpotterEngine(bus: IEventBus): void {
 }
 
 /**
- * Master gate. `false` stops any in-flight tick loop, silences the spotter
- * channel, and forces the visual state back to `"clear"` (notifying
- * subscribers so the key icon clears). `true` is passive — the next
- * `spotter.changed` event will drive playback.
+ * Master gate. `false` aborts any in-flight test preview, stops the tick
+ * loop, silences the spotter channel, and forces the visual state back to
+ * `"clear"` (notifying subscribers so the key icon clears). `true` is
+ * passive — the next `spotter.changed` event will drive playback.
  */
 export function setSpotterEnabled(next: boolean): void {
   enabled = next;
 
   if (!enabled) {
+    testSequenceInFlight = false;
     stopTickLoop();
     getAudio().stopChannel(AudioChannel.Spotter);
     setVisualState("clear");
@@ -187,10 +201,26 @@ export function playSpotterTest(): void {
   if (testSequenceInFlight) return;
 
   testSequenceInFlight = true;
+  // Suspend the live tick loop so a scheduled tick doesn't cut off the
+  // preview clip mid-play. `handleSpotterChanged` also gates on
+  // `testSequenceInFlight` so no new live tick fires during the preview.
+  stopTickLoop();
+
+  const finishTest = (): void => {
+    testSequenceInFlight = false;
+
+    // Resume the live loop if the spotter is still active. Events that
+    // arrived during the preview updated `visualState` without touching
+    // the audio channel, so this picks up the latest state.
+    if (enabled && visualState !== "clear") {
+      startTickLoop(visualState);
+    }
+  };
+
   let idx = 0;
   const playNext = (): void => {
     if (idx >= SPOTTER_TEST_SEQUENCE.length) {
-      testSequenceInFlight = false;
+      finishTest();
 
       return;
     }
@@ -203,9 +233,10 @@ export function playSpotterTest(): void {
 
     // If playOnChannel returns false (audio engine not initialized) the
     // completion callback will never fire, so clear the guard here and
-    // bail; a future press after audio comes up will start fresh.
+    // resume the live loop; a future press after audio comes up will
+    // start fresh.
     if (!getAudio().playOnChannel(AudioChannel.Spotter, resolveAudioPath(file))) {
-      testSequenceInFlight = false;
+      finishTest();
     }
   };
 

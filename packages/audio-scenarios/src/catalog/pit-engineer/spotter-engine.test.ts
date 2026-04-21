@@ -336,6 +336,55 @@ describe("playSpotterTest", () => {
     playSpotterTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
   });
+
+  it("suspends the live tick loop while the preview is playing", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    setSpotterEnabled(true);
+    hoisted.publishSpotter("left");
+    const liveCalls = hoisted.playOnChannel.mock.calls.length;
+
+    playSpotterTest();
+    // First test clip plays; no tick fires while test is in flight.
+    vi.advanceTimersByTime(10_000);
+    const callsDuringTest = hoisted.playOnChannel.mock.calls.length;
+
+    // Only the 1 test-clip call (live loop's outstanding timer cleared).
+    expect(callsDuringTest - liveCalls).toBe(1);
+    expect(hoisted.playOnChannel.mock.calls[liveCalls][1]).toContain("IRD-spotter-left");
+  });
+
+  it("ignores live spotter events mid-preview but still updates visual state", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    setSpotterEnabled(true);
+    hoisted.publishSpotter("left");
+    const callsBeforeTest = hoisted.playOnChannel.mock.calls.length;
+
+    playSpotterTest();
+
+    // Live transition during preview — visual flips, but no extra live playback.
+    hoisted.publishSpotter("both", "left");
+    expect(getSpotterVisualState()).toBe("both");
+    // playSpotterTest has fired 1 clip; live event added no playback on top.
+    expect(hoisted.playOnChannel.mock.calls.length - callsBeforeTest).toBe(1);
+  });
+
+  it("resumes the live tick loop at the current state after the preview completes", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    setSpotterEnabled(true);
+    hoisted.publishSpotter("left");
+    playSpotterTest();
+
+    // Drive the 3-clip sequence to completion via the registered channel-complete callbacks.
+    for (let i = 0; i < 3; i++) {
+      const cb = hoisted.onChannelComplete.mock.calls.at(-1)?.[1] as () => void;
+      cb();
+      vi.advanceTimersByTime(250);
+    }
+
+    // After the preview, the live loop resumes using the current visual state.
+    const lastCall = hoisted.playOnChannel.mock.calls.at(-1);
+    expect(lastCall?.[1]).toContain("IRD-spotter-left");
+  });
 });
 
 describe("subscribeSpotterVisualState", () => {
