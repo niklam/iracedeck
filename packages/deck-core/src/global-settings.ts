@@ -105,6 +105,16 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * Master on/off for the Pit Engineer action. Toggled by pressing the Pit
+     * Engineer key — gates every pit-engineer scenario via `setEnabled` so
+     * audio stops immediately when off. Persists across plugin restarts.
+     * Default: true
+     */
+    pitEngineerEnabled: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
   })
   .passthrough();
 

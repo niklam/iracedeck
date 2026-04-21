@@ -566,11 +566,13 @@ This stage does two related things; split into two commits inside the same PR fo
 - After each port: delete the corresponding handler from `pit-engineer.ts`, confirm tests pass.
 - Commit per scenario group: `refactor(pit-engineer): port pit-lane scenarios to audio-scenarios (#376)`, etc.
 
-### Stage 7 — Shrink `PitEngineer` action
+### Stage 7 — Shrink `PitEngineer` action ✅
 
-- After all scenarios are ported, `pit-engineer.ts` becomes: button, PI, settings, icon. Target: under 400 LOC.
+- After all scenarios are ported, `pit-engineer.ts` becomes: button, PI, settings, icon. Target: under 400 LOC. **Landed at 380 LOC (#401).**
 - All module-level `let` globals deleted (their roles are now owned by scenarios / sim-events-iracing / audio-service).
-- Commit: `refactor(pit-engineer): shrink action to thin shell over audio-scenarios (#376)`.
+- Commit: `refactor(pit-engineer): shrink action to thin shell over audio-scenarios (#401)`.
+- Master on/off stored as a plugin-global setting (`pitEngineerEnabled`) so the flag persists across restarts and is readable by every action instance without module state.
+- The spotter tick loop — the one imperative piece the DSL cannot yet express (see §15) — moved to `packages/audio-scenarios/src/catalog/pit-engineer/spotter-engine.ts`. Registered alongside `registerPitEngineer(bus)` and exposed via `setSpotterEnabled` / `playSpotterTest` / `subscribeSpotterVisualState` so the action stays stateless.
 
 Each stage is a single logical commit; each lands as its own PR into `feature/pit-engineer`. Tests run and pass at every stage. Stage 6 may split into multiple per-scenario-group commits inside a single PR.
 

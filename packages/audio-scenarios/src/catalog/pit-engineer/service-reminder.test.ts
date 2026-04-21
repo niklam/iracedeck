@@ -144,7 +144,7 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, buildTestManifest(), mockLogger as never);
-  registerPitEngineer();
+  registerPitEngineer(bus);
 });
 
 afterEach(() => {

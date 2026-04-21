@@ -139,7 +139,7 @@ getAudio().init();
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
-registerPitEngineer();
+registerPitEngineer(eventBus);
 
 // Publish audio device list and apply saved device selection
 let audioDeviceInitialized = false;
