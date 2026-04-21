@@ -235,11 +235,26 @@ class AudioService implements IAudioService {
    * relative paths (e.g. the scenario interpreter emitting
    * `sfx/IRD-tick-open.mp3`) get prefixed with the base so the native layer
    * receives a filesystem path it can actually open.
+   *
+   * Rejects paths that escape the base via `..` segments. The scenario DSL
+   * only emits manifest slugs (no traversal), so a rejection here means a
+   * scenario author or a malformed manifest tried to reach outside the
+   * audio-assets directory — almost certainly a bug worth failing loud on.
    */
   private resolvePath(filePath: string): string {
-    if (!this.basePath || path.isAbsolute(filePath)) return filePath;
+    if (path.isAbsolute(filePath)) return filePath;
 
-    return path.join(this.basePath, filePath);
+    if (!this.basePath) return filePath;
+
+    const base = path.resolve(this.basePath);
+    const resolved = path.resolve(base, filePath);
+    const rel = path.relative(base, resolved);
+
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Audio clip path escapes basePath: ${filePath}`);
+    }
+
+    return resolved;
   }
 
   stopChannel(channel: AudioChannel): void {

@@ -149,6 +149,13 @@ describe("AudioService", () => {
       expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Voice, "sfx/IRD-tick-open.mp3", false, 1.0);
     });
 
+    it("throws when a relative path tries to escape basePath via ..", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "../../etc/passwd")).toThrow(/escapes basePath/);
+    });
+
     it("should stop channel", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
@@ -289,6 +296,44 @@ describe("AudioService", () => {
       // Simulate end callback after cancel — should not fire sequence complete
       endCallbacks[AudioChannel.Voice]();
       expect(onSeqComplete).not.toHaveBeenCalled();
+    });
+
+    it("resolves sequence clips + connectors against basePath", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playVoiceSequence(["sfx/one.mp3", "sfx/two.mp3"], ["sfx/and.mp3"]);
+
+      const msgPattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]one\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(msgPattern),
+        false,
+        1.0,
+      );
+
+      endCallbacks[AudioChannel.Voice]();
+      const connectorPattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]and\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(connectorPattern),
+        false,
+        1.0,
+      );
+
+      endCallbacks[AudioChannel.Voice]();
+      const msg2Pattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]two\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(msg2Pattern),
+        false,
+        1.0,
+      );
     });
 
     it("should skip empty file array", () => {
