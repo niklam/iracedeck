@@ -385,6 +385,20 @@ describe("playSpotterTest", () => {
     const lastCall = hoisted.playOnChannel.mock.calls.at(-1);
     expect(lastCall?.[1]).toContain("IRD-spotter-left");
   });
+
+  it("clears the in-flight guard when the master is disabled mid-preview", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    setSpotterEnabled(true);
+    playSpotterTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+    // Master off during preview → guard cleared so the button works after re-enable.
+    setSpotterEnabled(false);
+    setSpotterEnabled(true);
+
+    playSpotterTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("subscribeSpotterVisualState", () => {
