@@ -51,7 +51,8 @@ const SPOTTER_TEST_GAP_MS = 250;
 let enabled = false;
 let visualState: SpotterVisualState = "clear";
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
-let registered = false;
+let registeredBus: IEventBus | null = null;
+let testSequenceInFlight = false;
 const listeners = new Set<SpotterListener>();
 
 function resolveAudioPath(file: string): string {
@@ -124,15 +125,25 @@ function handleSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
 }
 
 /**
- * Subscribe the engine to the event bus. Idempotent — safe to call multiple
- * times. Invoked once from `registerPitEngineer(bus)` at plugin startup;
- * takes the bus explicitly so tests can pass a fake bus without going
- * through `initializeEventBus`.
+ * Subscribe the engine to the event bus. Idempotent as long as every call
+ * passes the same bus instance — re-registering with a different bus would
+ * leave the handler attached to the original one and silently break spotter
+ * events, so we throw loudly instead. Invoked once from
+ * `registerPitEngineer(bus)` at plugin startup; takes the bus explicitly
+ * so tests can pass a fake bus without going through `initializeEventBus`.
  */
 export function registerSpotterEngine(bus: IEventBus): void {
-  if (registered) return;
+  if (registeredBus !== null) {
+    if (registeredBus !== bus) {
+      throw new Error(
+        "registerSpotterEngine called with a different event bus than the initial registration. All callers must share the same bus instance.",
+      );
+    }
 
-  registered = true;
+    return;
+  }
+
+  registeredBus = bus;
   bus.subscribe("spotter.changed", handleSpotterChanged);
 }
 
@@ -155,12 +166,20 @@ export function setSpotterEnabled(next: boolean): void {
 /**
  * Plays the three-clip preview sequence (left → right → both) on the
  * spotter channel with a 250 ms gap between clips. Used by the PI Test
- * button; works regardless of the master gate.
+ * button; works regardless of the master gate. Safe against double-press:
+ * a second call while a sequence is in flight is a no-op.
  */
 export function playSpotterTest(): void {
+  if (testSequenceInFlight) return;
+
+  testSequenceInFlight = true;
   let idx = 0;
   const playNext = (): void => {
-    if (idx >= SPOTTER_TEST_SEQUENCE.length) return;
+    if (idx >= SPOTTER_TEST_SEQUENCE.length) {
+      testSequenceInFlight = false;
+
+      return;
+    }
 
     const file = SPOTTER_TEST_SEQUENCE[idx];
     idx++;
@@ -197,5 +216,6 @@ export function _resetSpotterEngine(): void {
   enabled = false;
   visualState = "clear";
   listeners.clear();
-  registered = false;
+  registeredBus = null;
+  testSequenceInFlight = false;
 }

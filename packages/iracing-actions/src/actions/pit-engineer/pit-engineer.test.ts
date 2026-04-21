@@ -29,16 +29,6 @@ const hoisted = vi.hoisted(() => {
   const setDriverNameResolver = vi.fn();
   const setSpotterEnabled = vi.fn();
   const playSpotterTest = vi.fn();
-  let currentSpotterVisualState = "clear" as string;
-  const spotterListeners = new Set<(s: string) => void>();
-  const getSpotterVisualState = vi.fn(() => currentSpotterVisualState);
-  const subscribeSpotterVisualState = vi.fn((listener: (s: string) => void) => {
-    spotterListeners.add(listener);
-
-    return () => {
-      spotterListeners.delete(listener);
-    };
-  });
 
   const FLAG_SCENARIO_IDS = ["pit-engineer.flag-yellow", "pit-engineer.flag-blue"] as const;
   const FUEL_SCENARIO_IDS = ["pit-engineer.fuel-low-5laps"] as const;
@@ -69,9 +59,6 @@ const hoisted = vi.hoisted(() => {
     setDriverNameResolver,
     setSpotterEnabled,
     playSpotterTest,
-    getSpotterVisualState,
-    subscribeSpotterVisualState,
-    spotterListeners,
     FLAG_SCENARIO_IDS,
     FUEL_SCENARIO_IDS,
     PIT_LIMITER_SCENARIO_IDS,
@@ -82,9 +69,6 @@ const hoisted = vi.hoisted(() => {
     onGlobalSettingsChange,
     setGlobalSettings: (next: Record<string, unknown>) => {
       globalSettings = next;
-    },
-    setSpotterVisualState: (next: string) => {
-      currentSpotterVisualState = next;
     },
   };
 });
@@ -111,11 +95,9 @@ vi.mock("@iracedeck/audio-scenarios/pit-engineer", () => ({
   FUEL_SCENARIO_IDS: hoisted.FUEL_SCENARIO_IDS,
   PIT_LIMITER_SCENARIO_IDS: hoisted.PIT_LIMITER_SCENARIO_IDS,
   TOGGLE_SCENARIO_IDS: hoisted.TOGGLE_SCENARIO_IDS,
-  getSpotterVisualState: hoisted.getSpotterVisualState,
   playSpotterTest: hoisted.playSpotterTest,
   setDriverNameResolver: hoisted.setDriverNameResolver,
   setSpotterEnabled: hoisted.setSpotterEnabled,
-  subscribeSpotterVisualState: hoisted.subscribeSpotterVisualState,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
@@ -233,11 +215,16 @@ const DEFAULT_SETTINGS = {
 
 type Settings = typeof DEFAULT_SETTINGS;
 
+type TestInputs = Partial<Settings> & {
+  _testVolume?: number;
+  _testSpotterVolume?: number;
+};
+
 function buildSettings(overrides: Partial<Settings> = {}): Settings {
   return { ...DEFAULT_SETTINGS, ...overrides };
 }
 
-function buildAppearEvent(settings: Partial<Settings> & Record<string, unknown>, actionId = "ctx-1"): unknown {
+function buildAppearEvent(settings: TestInputs, actionId = "ctx-1"): unknown {
   return {
     action: { id: actionId },
     payload: { settings },
@@ -249,7 +236,6 @@ function buildAppearEvent(settings: Partial<Settings> & Record<string, unknown>,
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.setGlobalSettings({ pitEngineerEnabled: true });
-  hoisted.setSpotterVisualState("clear");
 });
 
 describe("PIT_ENGINEER_UUID", () => {
@@ -363,11 +349,10 @@ describe("PitEngineer action", () => {
       expect(resolver()).toBe("pit-engineer/names/IRD-name-niklas.mp3");
     });
 
-    it("subscribes to spotter visual-state and global-settings changes", async () => {
+    it("subscribes to global-settings changes so icons re-render when the master flag changes", async () => {
       const action = new PitEngineer();
       await action.onWillAppear(buildAppearEvent({}) as never);
 
-      expect(hoisted.subscribeSpotterVisualState).toHaveBeenCalledTimes(1);
       expect(hoisted.onGlobalSettingsChange).toHaveBeenCalledTimes(1);
     });
 
@@ -471,17 +456,14 @@ describe("PitEngineer action", () => {
   });
 
   describe("onWillDisappear", () => {
-    it("unsubscribes spotter and global-settings listeners", async () => {
+    it("unsubscribes the global-settings listener", async () => {
       const action = new PitEngineer();
       await action.onWillAppear(buildAppearEvent({}) as never);
-      const listenersBefore = hoisted.spotterListeners.size;
       const globalBefore = hoisted.globalSettingsListeners.size;
-      expect(listenersBefore).toBeGreaterThan(0);
       expect(globalBefore).toBeGreaterThan(0);
 
       await action.onWillDisappear(buildAppearEvent({}) as never);
 
-      expect(hoisted.spotterListeners.size).toBe(listenersBefore - 1);
       expect(hoisted.globalSettingsListeners.size).toBe(globalBefore - 1);
     });
   });
@@ -489,23 +471,23 @@ describe("PitEngineer action", () => {
 
 describe("generatePitEngineerSvg", () => {
   it("returns a data URI", () => {
-    const result = generatePitEngineerSvg(DEFAULT_SETTINGS, "clear", true);
+    const result = generatePitEngineerSvg(DEFAULT_SETTINGS, true);
     expect(result).toContain("data:image/svg+xml");
   });
 
   it("marks the status bar on when enabled", () => {
-    const result = decodeURIComponent(generatePitEngineerSvg(DEFAULT_SETTINGS, "clear", true));
+    const result = decodeURIComponent(generatePitEngineerSvg(DEFAULT_SETTINGS, true));
     expect(result).toContain("status-bar-on");
   });
 
   it("marks the status bar off when disabled", () => {
-    const result = decodeURIComponent(generatePitEngineerSvg(DEFAULT_SETTINGS, "clear", false));
+    const result = decodeURIComponent(generatePitEngineerSvg(DEFAULT_SETTINGS, false));
     expect(result).toContain("status-bar-off");
   });
 
   it("produces different output when enabled flips", () => {
-    const on = generatePitEngineerSvg(DEFAULT_SETTINGS, "clear", true);
-    const off = generatePitEngineerSvg(DEFAULT_SETTINGS, "clear", false);
+    const on = generatePitEngineerSvg(DEFAULT_SETTINGS, true);
+    const off = generatePitEngineerSvg(DEFAULT_SETTINGS, false);
     expect(on).not.toBe(off);
   });
 });

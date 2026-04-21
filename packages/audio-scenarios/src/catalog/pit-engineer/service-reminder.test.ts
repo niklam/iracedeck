@@ -8,6 +8,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitEngineer } from "./index.js";
 import { POOLS } from "./pools.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 // ─── Test utilities ─────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ beforeEach(() => {
 
 afterEach(() => {
   _resetAudioScenarios();
+  _resetSpotterEngine();
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });

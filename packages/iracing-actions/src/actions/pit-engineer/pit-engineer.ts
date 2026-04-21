@@ -2,13 +2,10 @@ import { getScenarioEngine } from "@iracedeck/audio-scenarios";
 import {
   FLAG_SCENARIO_IDS,
   FUEL_SCENARIO_IDS,
-  getSpotterVisualState,
   PIT_LIMITER_SCENARIO_IDS,
   playSpotterTest,
   setDriverNameResolver,
   setSpotterEnabled,
-  type SpotterVisualState,
-  subscribeSpotterVisualState,
   TOGGLE_SCENARIO_IDS,
 } from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, getAudio } from "@iracedeck/audio-service";
@@ -166,13 +163,11 @@ function mechanicPathContent(graphicColor: string): string {
 /**
  * @internal Exported for testing.
  *
- * Generates a complete SVG data URI for the pit engineer icon.
+ * Generates a complete SVG data URI for the pit engineer icon. Spotter
+ * proximity state is audio-only today — the icon reflects only the master
+ * on/off state via the status bar.
  */
-export function generatePitEngineerSvg(
-  settings: PitEngineerSettings,
-  spotterState: SpotterVisualState,
-  enabled: boolean,
-): string {
+export function generatePitEngineerSvg(settings: PitEngineerSettings, enabled: boolean): string {
   const colors = resolveIconColors(pitEngineerTemplate, getGlobalColors(), settings.colorOverrides) as Record<
     string,
     string
@@ -223,11 +218,6 @@ export function generatePitEngineerSvg(
   );
   const borderSvg = generateBorderParts(border);
 
-  // spotterState is accepted for API compatibility with the regenerate callback
-  // and future visual overlays; the current template renders identically
-  // regardless of proximity state (spotter is audio-only).
-  void spotterState;
-
   const svg = renderIconTemplate(pitEngineerTemplate, {
     iconContent,
     borderDefs: borderSvg.defs,
@@ -247,8 +237,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   /** Set of currently visible context IDs. */
   private readonly visibleContexts = new Set<string>();
 
-  /** Per-context unsubscribe callbacks for spotter + global-settings listeners. */
-  private readonly listenerUnsubs = new Map<string, Array<() => void>>();
+  /** Per-context unsubscribe callback for the global-settings listener. */
+  private readonly listenerUnsubs = new Map<string, () => void>();
 
   /** Last-seen settings, used by the driver-name resolver injected into scenarios. */
   private latestSettings: PitEngineerSettings | null = null;
@@ -277,34 +267,34 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     setDriverNameResolver(() => driverNamePath(this.latestSettings?.driverName));
 
-    this.listenerUnsubs.set(contextId, [
-      subscribeSpotterVisualState(() => {
-        void this.rerender(contextId);
-      }),
+    // Re-render when the master flag changes (both from our own onKeyDown
+    // round-trip and from another instance). Spotter state isn't part of
+    // the icon today, so no spotter-listener subscription.
+    this.listenerUnsubs.set(
+      contextId,
       onGlobalSettingsChange(() => {
         void this.rerender(contextId);
       }),
-    ]);
+    );
 
     applyVolumes(settings);
     syncScenarioState(settings, isEngineerEnabled());
 
-    await this.setKeyImage(ev, generatePitEngineerSvg(settings, getSpotterVisualState(), isEngineerEnabled()));
+    await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
 
     this.setRegenerateCallback(contextId, () => {
       const s = this.settingsCache.get(contextId);
 
       if (!s) return "";
 
-      return generatePitEngineerSvg(s, getSpotterVisualState(), isEngineerEnabled());
+      return generatePitEngineerSvg(s, isEngineerEnabled());
     });
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<PitEngineerSettings>): Promise<void> {
     const contextId = ev.action.id;
 
-    for (const unsub of this.listenerUnsubs.get(contextId) ?? []) unsub();
-
+    this.listenerUnsubs.get(contextId)?.();
     this.listenerUnsubs.delete(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
@@ -343,7 +333,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     this.lastSpotterTestTimestamp = spotterTestTimestamp ?? 0;
 
-    await this.setKeyImage(ev, generatePitEngineerSvg(settings, getSpotterVisualState(), isEngineerEnabled()));
+    await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<PitEngineerSettings>): Promise<void> {
@@ -363,7 +353,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
       if (!s) continue;
 
-      await this.updateKeyImage(contextId, generatePitEngineerSvg(s, getSpotterVisualState(), nextMaster));
+      await this.updateKeyImage(contextId, generatePitEngineerSvg(s, nextMaster));
     }
   }
 
@@ -372,9 +362,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     if (!settings) return;
 
-    await this.updateKeyImage(
-      contextId,
-      generatePitEngineerSvg(settings, getSpotterVisualState(), isEngineerEnabled()),
-    );
+    await this.updateKeyImage(contextId, generatePitEngineerSvg(settings, isEngineerEnabled()));
   }
 }

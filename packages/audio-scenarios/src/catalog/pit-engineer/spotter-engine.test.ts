@@ -98,6 +98,14 @@ describe("registerSpotterEngine", () => {
     expect(hoisted.subscribe).toHaveBeenCalledTimes(1);
     expect(hoisted.subscribe).toHaveBeenCalledWith("spotter.changed", expect.any(Function));
   });
+
+  it("throws when re-registered with a different bus instance", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() };
+
+    expect(() => registerSpotterEngine(otherBus as never)).toThrow(/different event bus/);
+    expect(otherBus.subscribe).not.toHaveBeenCalled();
+  });
 });
 
 describe("spotter.changed → tick loop", () => {
@@ -290,6 +298,16 @@ describe("playSpotterTest", () => {
     // enabled=false — test button still plays.
     playSpotterTest();
 
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a no-op if called while a sequence is already in flight", () => {
+    registerSpotterEngine(hoisted.bus as never);
+    playSpotterTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+    // Second press before the first sequence completes → ignored.
+    playSpotterTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
   });
 });
