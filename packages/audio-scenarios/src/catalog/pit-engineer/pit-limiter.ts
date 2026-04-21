@@ -14,7 +14,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { Scenario } from "../../dsl.js";
 
@@ -23,12 +23,15 @@ export const LIMITER_ON_TRACK: Scenario = {
   when: {
     event: "carControl.limiterToggled",
     where: (e) => {
-      const on = (e as SimEventOf<"carControl.limiterToggled">).data.on;
+      const ev = e as SimEventOf<"carControl.limiterToggled">;
 
-      if (!on) return false;
+      if (!ev.data.on) return false;
 
       // Toggling the limiter on while on pit road is the expected behavior.
-      return getLatestTelemetry()?.OnPitRoad !== true;
+      // Use the event's own telemetry snapshot to avoid drift near pit-entry.
+      const telemetry = ev.telemetry as TelemetryData | null;
+
+      return telemetry?.OnPitRoad !== true;
     },
   },
   channel: AudioChannel.Voice,

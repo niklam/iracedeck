@@ -96,11 +96,12 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   ],
 
   // Pit limiter on-track warning — fires when the limiter is engaged while
-  // NOT in pit lane. Rotated sequentially.
+  // NOT in pit lane. Dedicated warning clips, distinct from the "dropped"
+  // set (those fire when the limiter disengages mid-pit-lane).
   "pit-limiter-on-track": [
-    "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
-    "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
-    "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
+    "pit-engineer/toggle/IRD-toggle-limiter-on-warning-1.mp3",
+    "pit-engineer/toggle/IRD-toggle-limiter-on-warning-2.mp3",
+    "pit-engineer/toggle/IRD-toggle-limiter-on-warning-3.mp3",
   ],
 
   // Missing pit limiter — entered pit road without the limiter engaged.

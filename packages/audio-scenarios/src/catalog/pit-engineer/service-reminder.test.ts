@@ -149,6 +149,7 @@ beforeEach(() => {
 
 afterEach(() => {
   _resetAudioScenarios();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 

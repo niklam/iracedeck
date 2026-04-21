@@ -159,6 +159,7 @@ beforeEach(() => {
 
 afterEach(() => {
   _resetAudioScenarios();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -490,6 +491,84 @@ describe("priority", () => {
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/reminder/fuel.mp3"]);
+  });
+
+  it("tracks active fires per bus — one bus's cancellation doesn't touch another", () => {
+    // Two scenarios on different buses. Starting the second one must not
+    // cancel the first; both must be able to advance independently.
+    engine.defineScenario({
+      id: "test.voice-bus",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.alerts-bus",
+      channel: AudioChannel.Spotter,
+      bus: AudioBus.Alerts,
+      sequence: ["pit-engineer/greeting/a.mp3"],
+    });
+
+    engine.fire("test.voice-bus"); // starts on Voice bus
+    engine.fire("test.alerts-bus"); // starts on Alerts bus — must NOT overwrite voice
+
+    // Alerts-bus clip plays on the Spotter channel (resolved by the
+    // scenario's declared channel); finish it.
+    audio._triggerChannelEnd(AudioChannel.Spotter);
+    // Voice bus's first clip finishes — its second clip should still follow.
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    audio._triggerChannelEnd(AudioChannel.Voice);
+
+    const voicePaths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(voicePaths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"]);
+  });
+
+  it("preserves the event context when a deferred low fire is replayed", () => {
+    const seenOnReplay: unknown[] = [];
+
+    engine.defineScenario({
+      id: "test.high2",
+      when: { event: "pitLane.approaching" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "high",
+      sequence: ["pit-engineer/greeting/a.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.low-with-data",
+      when: { event: "pitLane.entered" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "low",
+      sequence: [
+        {
+          if: (ctx) => {
+            seenOnReplay.push(ctx.data);
+
+            return (ctx.data as { should: boolean })?.should === true;
+          },
+          then: ["pit-engineer/reminder/fuel.mp3"],
+          else: ["pit-engineer/reminder/tires.mp3"],
+        },
+      ],
+    });
+
+    bus.publishEvent("pitLane.approaching", {}); // starts the high scenario
+    bus.publish({
+      event: "pitLane.entered",
+      timestamp: Date.now(),
+      telemetry: null,
+      data: { should: true } as never,
+    } as never);
+
+    flushVoiceAndSfx(audio);
+
+    // The deferred low fire must replay with the original event data (should=true),
+    // taking the `then` branch — not collapse to the `else` branch that `null` data
+    // would produce.
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/reminder/fuel.mp3"]);
+    expect(seenOnReplay.at(-1)).toEqual({ should: true });
   });
 });
 

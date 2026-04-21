@@ -55,9 +55,34 @@ type CompiledScenario = {
   lastFireAt: number;
 };
 
+/**
+ * A deferred `low`-priority fire. Retains the triggering event so the replay
+ * has the same `ctx.data` / `ctx.telemetry` the original fire would have
+ * used — critical for scenarios like service-reminder that decode pit-flags
+ * from the event's telemetry snapshot.
+ */
+type DeferredFire = {
+  id: string;
+  event: SimEventOf<SimEventName> | null;
+};
+
+/**
+ * Per-bus execution state. Each audio bus can independently be playing a
+ * scenario or holding a deferred `low` fire for replay on idle.
+ */
 type BusState = {
   playingId: string | null;
-  deferredLowFireId: string | null;
+  deferredLowFire: DeferredFire | null;
+  activeFire: ActiveFire | null;
+};
+
+type ActiveFire = {
+  id: string;
+  bus: AudioBus;
+  ops: ExecOp[];
+  index: number;
+  cancelled: boolean;
+  pauseTimer: ReturnType<typeof setTimeout> | null;
 };
 
 /**
@@ -86,16 +111,6 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly pools = new Map<string, PoolState>();
   private readonly vars = new Map<string, () => string | null>();
   private readonly busState = new Map<AudioBus, BusState>();
-
-  /** Currently-executing fire. Non-null while a sequence is being walked. */
-  private activeFire: {
-    id: string;
-    bus: AudioBus;
-    ops: ExecOp[];
-    index: number;
-    cancelled: boolean;
-    pauseTimer: ReturnType<typeof setTimeout> | null;
-  } | null = null;
 
   constructor(eventBus: IEventBus, audio: IAudioService, manifest: AudioAssetsManifest, logger: ILogger) {
     this.eventBus = eventBus;
@@ -183,11 +198,11 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.debug(`Scenario "${scenarioId}" ${enabled ? "enabled" : "disabled"}`);
 
     if (!enabled) {
-      // Cancel in-flight execution + clear deferred replays referring to this id.
-      if (this.activeFire?.id === scenarioId) this.cancelActiveFire();
-
+      // Cancel in-flight execution on any bus + clear deferred replays referring to this id.
       for (const state of this.busState.values()) {
-        if (state.deferredLowFireId === scenarioId) state.deferredLowFireId = null;
+        if (state.activeFire?.id === scenarioId) this.cancelActiveFire(state);
+
+        if (state.deferredLowFire?.id === scenarioId) state.deferredLowFire = null;
       }
     }
   }
@@ -253,10 +268,12 @@ class ScenarioEngine implements IScenarioEngine {
         PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority];
 
       if (canPreempt) {
-        this.cancelActiveFire();
+        this.cancelActiveFire(state);
       } else {
         if (priority === "low") {
-          state.deferredLowFireId = entry.raw.id;
+          // Retain the full event so the deferred replay has the same
+          // `ctx.data` / `ctx.telemetry` the original fire would have seen.
+          state.deferredLowFire = { id: entry.raw.id, event };
           this.logger.debug(`Scenario "${entry.raw.id}" deferred (bus busy)`);
         } else {
           this.logger.debug(`Scenario "${entry.raw.id}" dropped (bus busy)`);
@@ -306,18 +323,17 @@ class ScenarioEngine implements IScenarioEngine {
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
     state.playingId = entry.raw.id;
-
-    this.activeFire = { id: entry.raw.id, bus, ops, index: 0, cancelled: false, pauseTimer: null };
+    state.activeFire = { id: entry.raw.id, bus, ops, index: 0, cancelled: false, pauseTimer: null };
 
     this.logger.info(`Playing scenario "${entry.raw.id}"`);
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
 
-    this.stepNext();
+    this.stepNext(state);
   }
 
-  /** Advance to the next op in the active fire, or complete the fire if done. */
-  private stepNext(): void {
-    const fire = this.activeFire;
+  /** Advance to the next op in the given bus's active fire. */
+  private stepNext(state: BusState): void {
+    const fire = state.activeFire;
 
     if (!fire || fire.cancelled) return;
 
@@ -333,13 +349,13 @@ class ScenarioEngine implements IScenarioEngine {
     try {
       if (op.kind === "play") {
         this.audio.onChannelComplete(op.channel, () => {
-          if (this.activeFire === fire && !fire.cancelled) this.stepNext();
+          if (state.activeFire === fire && !fire.cancelled) this.stepNext(state);
         });
         const ok = this.audio.playOnChannel(op.channel, op.path);
 
         if (!ok) {
           this.logger.warn(`Failed to play ${op.path} on channel ${op.channel}; advancing`);
-          this.stepNext();
+          this.stepNext(state);
         }
 
         return;
@@ -350,14 +366,14 @@ class ScenarioEngine implements IScenarioEngine {
         else if (op.action === "stop") this.audio.stopChannel(AudioChannel.Ambient);
         else if (op.action === "seek") this.audio.seekChannelRandom(AudioChannel.Ambient);
 
-        this.stepNext();
+        this.stepNext(state);
 
         return;
       }
 
       if (op.kind === "pause") {
         if (op.ms <= 0) {
-          this.stepNext();
+          this.stepNext(state);
 
           return;
         }
@@ -365,14 +381,14 @@ class ScenarioEngine implements IScenarioEngine {
         fire.pauseTimer = setTimeout(() => {
           fire.pauseTimer = null;
 
-          if (this.activeFire === fire && !fire.cancelled) this.stepNext();
+          if (state.activeFire === fire && !fire.cancelled) this.stepNext(state);
         }, op.ms);
 
         return;
       }
     } catch (err) {
       this.logger.error(`Scenario "${fire.id}" step threw: ${err instanceof Error ? err.message : String(err)}`);
-      this.stepNext();
+      this.stepNext(state);
     }
   }
 
@@ -381,23 +397,28 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (state.playingId === scenarioId) state.playingId = null;
 
-    if (this.activeFire?.id === scenarioId) this.activeFire = null;
+    if (state.activeFire?.id === scenarioId) state.activeFire = null;
 
-    const deferred = state.deferredLowFireId;
-    state.deferredLowFireId = null;
+    const deferred = state.deferredLowFire;
+    state.deferredLowFire = null;
 
     if (deferred) {
-      const entry = this.scenarios.get(deferred);
+      const entry = this.scenarios.get(deferred.id);
 
       if (entry?.enabled) {
-        this.logger.debug(`Replaying deferred scenario "${deferred}"`);
-        this.attemptFire(entry, null);
+        this.logger.debug(`Replaying deferred scenario "${deferred.id}"`);
+        this.attemptFire(entry, deferred.event);
       }
     }
   }
 
-  private cancelActiveFire(): void {
-    const fire = this.activeFire;
+  /**
+   * Cancel the currently-executing fire on the given bus. Stops only the
+   * channels that fire was actually using (Voice / SFX / Ambient for
+   * engineer scenarios) — other buses are unaffected.
+   */
+  private cancelActiveFire(state: BusState): void {
+    const fire = state.activeFire;
 
     if (!fire) return;
 
@@ -412,18 +433,16 @@ class ScenarioEngine implements IScenarioEngine {
     this.audio.stopChannel(AudioChannel.SFX);
     this.audio.stopChannel(AudioChannel.Ambient);
 
-    const state = this.getBusState(fire.bus);
-
     if (state.playingId === fire.id) state.playingId = null;
 
-    this.activeFire = null;
+    state.activeFire = null;
   }
 
   private getBusState(bus: AudioBus): BusState {
     let state = this.busState.get(bus);
 
     if (!state) {
-      state = { playingId: null, deferredLowFireId: null };
+      state = { playingId: null, deferredLowFire: null, activeFire: null };
       this.busState.set(bus, state);
     }
 

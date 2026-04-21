@@ -650,6 +650,21 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
    */
   private applyScenarioGates(settings: PitEngineerSettings): void {
     const engine = getScenarioEngine();
+
+    // When the engineer is globally off, force every scenario off and exit —
+    // otherwise a later settings sync or page appearance could silently
+    // resume audio while the action is still in the OFF state.
+    if (!globalEnabled) {
+      this.disableAllScenarios();
+
+      return;
+    }
+
+    // Welcome has no PI toggle; keep it always on while the engineer is
+    // enabled. (disableAllScenarios() turns it off on toggle-off, so we have
+    // to explicitly restore it here on toggle-on.)
+    engine.setEnabled("pit-engineer.welcome", true);
+
     engine.setEnabled("pit-engineer.pit-approach", settings.pitApproachEnabled);
     engine.setEnabled("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
     engine.setEnabled("pit-engineer.pit-exit", settings.pitExitEnabled);

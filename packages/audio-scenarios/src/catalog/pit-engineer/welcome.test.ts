@@ -144,6 +144,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   setDriverNameResolver(() => null);
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 

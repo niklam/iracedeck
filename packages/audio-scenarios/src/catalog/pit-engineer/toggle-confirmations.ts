@@ -66,7 +66,7 @@ function carControlScenario(kind: "drs" | "p2p", on: boolean): Scenario {
     id: `pit-engineer.toggle-${kind}-${on ? "on" : "off"}`,
     when: {
       event,
-      where: (e) => (e as SimEventOf<"carControl.drsToggled">).data.on === on,
+      where: (e) => (e as SimEventOf<"carControl.drsToggled" | "carControl.p2pToggled">).data.on === on,
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
