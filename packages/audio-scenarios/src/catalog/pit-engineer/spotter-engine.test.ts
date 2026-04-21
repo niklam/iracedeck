@@ -1,3 +1,4 @@
+import type { IEventBus } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -33,7 +34,9 @@ const hoisted = vi.hoisted(() => {
       set?.delete(handler);
     };
   });
-  const bus = { subscribe, unsubscribe: vi.fn(), publish: vi.fn() };
+  // Typed once so every `registerSpotterEngine(hoisted.bus)` callsite
+  // stays type-safe without a per-call `as never` escape hatch.
+  const bus = { subscribe, unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
   const publishSpotter = (to: string, from = "clear"): void => {
     const set = busHandlers.get("spotter.changed");
 
@@ -92,25 +95,25 @@ afterEach(() => {
 
 describe("registerSpotterEngine", () => {
   it("subscribes to spotter.changed exactly once, even if called twice", () => {
-    registerSpotterEngine(hoisted.bus as never);
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
+    registerSpotterEngine(hoisted.bus);
 
     expect(hoisted.subscribe).toHaveBeenCalledTimes(1);
     expect(hoisted.subscribe).toHaveBeenCalledWith("spotter.changed", expect.any(Function));
   });
 
   it("throws when re-registered with a different bus instance", () => {
-    registerSpotterEngine(hoisted.bus as never);
-    const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() };
+    registerSpotterEngine(hoisted.bus);
+    const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
 
-    expect(() => registerSpotterEngine(otherBus as never)).toThrow(/different event bus/);
+    expect(() => registerSpotterEngine(otherBus)).toThrow(/different event bus/);
     expect(otherBus.subscribe).not.toHaveBeenCalled();
   });
 });
 
 describe("spotter.changed → tick loop", () => {
   it("does nothing when the master gate is disabled", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     hoisted.publishSpotter("left");
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
@@ -118,7 +121,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("starts ticking on the Spotter channel when enabled and state goes non-clear", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
 
     hoisted.publishSpotter("left");
@@ -134,7 +137,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("uses the 180 ms cadence for two-cars-same-side states", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("two-left");
 
@@ -144,7 +147,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("uses the 230 ms cadence for both-sides", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("both");
 
@@ -154,7 +157,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("stops the tick loop and silences the channel when state returns to clear", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     const beforeClearCalls = hoisted.playOnChannel.mock.calls.length;
@@ -169,7 +172,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("switches interval when state transitions between active states", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -184,7 +187,7 @@ describe("spotter.changed → tick loop", () => {
   });
 
   it("ignores repeated transitions to the same state", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -196,7 +199,7 @@ describe("spotter.changed → tick loop", () => {
 
 describe("pit-road suppression", () => {
   it("forces the visual state to clear and silences the channel while on pit road", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     expect(getSpotterVisualState()).toBe("left");
@@ -209,7 +212,7 @@ describe("pit-road suppression", () => {
   });
 
   it("is a no-op when telemetry is missing", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.getLatestTelemetry.mockReturnValue(null);
 
@@ -222,7 +225,7 @@ describe("pit-road suppression", () => {
 
 describe("Lone Qualify suppression", () => {
   it("ignores events during Lone Qualify", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.getSessionType.mockReturnValue("Lone Qualify");
 
@@ -233,7 +236,7 @@ describe("Lone Qualify suppression", () => {
   });
 
   it("tears down an already-running loop when the session flips to Lone Qualify", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     expect(getSpotterVisualState()).toBe("left");
@@ -248,7 +251,7 @@ describe("Lone Qualify suppression", () => {
 
 describe("setSpotterEnabled", () => {
   it("clears visual state, stops the channel, and notifies listeners on disable", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     expect(getSpotterVisualState()).toBe("left");
@@ -264,7 +267,7 @@ describe("setSpotterEnabled", () => {
   });
 
   it("is idempotent when re-enabled — waits for next event before playing", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     setSpotterEnabled(true);
 
@@ -277,7 +280,7 @@ describe("setSpotterEnabled", () => {
 
 describe("playSpotterTest", () => {
   it("plays left → right → both in order with a 250 ms gap between clips", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     playSpotterTest();
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -307,7 +310,7 @@ describe("playSpotterTest", () => {
   });
 
   it("works regardless of the master gate", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     // enabled=false — test button still plays.
     playSpotterTest();
 
@@ -315,7 +318,7 @@ describe("playSpotterTest", () => {
   });
 
   it("is a no-op if called while a sequence is already in flight", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     playSpotterTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
 
@@ -325,7 +328,7 @@ describe("playSpotterTest", () => {
   });
 
   it("clears the in-flight guard when the audio engine refuses playback", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     hoisted.playOnChannel.mockReturnValueOnce(false);
 
     playSpotterTest();
@@ -338,7 +341,7 @@ describe("playSpotterTest", () => {
   });
 
   it("suspends the live tick loop while the preview is playing", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     const liveCalls = hoisted.playOnChannel.mock.calls.length;
@@ -354,7 +357,7 @@ describe("playSpotterTest", () => {
   });
 
   it("ignores live spotter events mid-preview but still updates visual state", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     const callsBeforeTest = hoisted.playOnChannel.mock.calls.length;
@@ -369,7 +372,7 @@ describe("playSpotterTest", () => {
   });
 
   it("resumes the live tick loop at the current state after the preview completes", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     hoisted.publishSpotter("left");
     playSpotterTest();
@@ -387,7 +390,7 @@ describe("playSpotterTest", () => {
   });
 
   it("clears the in-flight guard when the master is disabled mid-preview", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
     playSpotterTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -403,7 +406,7 @@ describe("playSpotterTest", () => {
 
 describe("subscribeSpotterVisualState", () => {
   it("notifies on transitions and stops after unsubscribe", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
 
     const listener = vi.fn();
@@ -419,7 +422,7 @@ describe("subscribeSpotterVisualState", () => {
   });
 
   it("does not fire when transitioning between identical states", () => {
-    registerSpotterEngine(hoisted.bus as never);
+    registerSpotterEngine(hoisted.bus);
     setSpotterEnabled(true);
 
     const listener = vi.fn();
