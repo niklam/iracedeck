@@ -1,15 +1,20 @@
 /**
  * Pit-engineer scenario catalog registration.
  *
- * `registerPitEngineer()` registers pools, defines the `{{name}}` driver
+ * `registerPitEngineer(bus)` registers pools, defines the `{{name}}` driver
  * variable, and registers every pit-engineer scenario with the shared
- * scenario engine. Must be called once per plugin startup, after
- * `initializeAudioScenarios(...)`.
+ * scenario engine. The `bus` is the event bus instance returned by
+ * `initializeEventBus(...)` — passed through to `registerSpotterEngine`
+ * so the spotter engine and scenario engine share the exact same bus.
+ * Must be called once per plugin startup, after
+ * `initializeAudioScenarios(bus, ...)`.
  *
  * The driver-name resolver is injected by the pit-engineer action through
  * `setDriverNameResolver(getter)` so the scenario can read the latest PI
  * setting at fire time without the catalog owning action-specific state.
  */
+import type { IEventBus } from "@iracedeck/event-bus";
+
 import { getScenarioEngine } from "../../interpreter.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { FUEL_WARNINGS } from "./fuel-warnings.js";
@@ -21,6 +26,7 @@ import { PIT_LIMITER_SCENARIOS } from "./pit-limiter.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { SERVICE_REMINDER } from "./service-reminder.js";
+import { registerSpotterEngine } from "./spotter-engine.js";
 import { STALL_DEPARTURE } from "./stall-departure.js";
 import { RACING_TIPS } from "./tips.js";
 import { TOGGLE_CONFIRMATIONS } from "./toggle-confirmations.js";
@@ -29,6 +35,13 @@ import { WELCOME } from "./welcome.js";
 export { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 export { FUEL_SCENARIO_IDS } from "./fuel-warnings.js";
 export { PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
+export {
+  getSpotterVisualState,
+  playSpotterTest,
+  setSpotterEnabled,
+  type SpotterVisualState,
+  subscribeSpotterVisualState,
+} from "./spotter-engine.js";
 export { TOGGLE_SCENARIO_IDS } from "./toggle-confirmations.js";
 
 let driverNameResolver: () => string | null = () => null;
@@ -43,7 +56,7 @@ let driverNameResolver: () => string | null = () => null;
  *      their referencing scenarios so validation can resolve them.
  *   4. Event-driven scenarios (`welcome`, ...) are defined last.
  */
-export function registerPitEngineer(): void {
+export function registerPitEngineer(bus: IEventBus): void {
   const engine = getScenarioEngine();
 
   for (const [name, clips] of Object.entries(POOLS)) {
@@ -72,6 +85,12 @@ export function registerPitEngineer(): void {
   for (const limiter of PIT_LIMITER_SCENARIOS) engine.defineScenario(limiter);
 
   engine.defineScenario(RACING_TIPS);
+
+  // The spotter is a state-driven tick loop that the scenario DSL cannot
+  // express (design doc §15). Registered here so plugin startup only has to
+  // call `registerPitEngineer(bus)` once — the engine subscribes to
+  // `spotter.changed` on the event bus and plays on AudioChannel.Spotter.
+  registerSpotterEngine(bus);
 }
 
 /**

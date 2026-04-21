@@ -130,16 +130,21 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
-// Initialize audio engine for pit engineer voice playback
+// Initialize audio engine for pit engineer voice playback.
+// Base path lets scenarios emit manifest-relative clip paths (e.g.
+// "sfx/IRD-tick-open.mp3") that audio-service prepends with the plugin's
+// assets/audio directory before passing them to the native engine.
+// Resolved from __binDir (→ <sdPlugin>/bin/) so lookup is stable
+// regardless of the launching process's cwd.
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative);
+initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
-registerPitEngineer();
+registerPitEngineer(eventBus);
 
 // Publish audio device list and apply saved device selection
 let audioDeviceInitialized = false;

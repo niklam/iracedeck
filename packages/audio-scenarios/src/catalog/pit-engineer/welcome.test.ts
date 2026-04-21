@@ -7,6 +7,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitEngineer, setDriverNameResolver } from "./index.js";
 import { POOLS } from "./pools.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 // ─── Test utilities (same shape as interpreter.test.ts) ──────────────────────
 
@@ -138,11 +139,12 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, buildTestManifest(), mockLogger as never);
-  registerPitEngineer();
+  registerPitEngineer(bus);
 });
 
 afterEach(() => {
   _resetAudioScenarios();
+  _resetSpotterEngine();
   setDriverNameResolver(() => null);
   vi.restoreAllMocks();
   vi.clearAllMocks();

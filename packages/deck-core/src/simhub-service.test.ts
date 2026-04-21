@@ -43,6 +43,7 @@ describe("SimHub Service", () => {
       focusIRacingWindow: false,
       engineStartupAnimation: true,
       enableFuelingOnChange: true,
+      pitEngineerEnabled: true,
     });
   });
 
@@ -135,6 +136,7 @@ describe("SimHub Service", () => {
         focusIRacingWindow: false,
         engineStartupAnimation: true,
         enableFuelingOnChange: true,
+        pitEngineerEnabled: true,
       });
 
       initializeSimHub(mockLogger);
