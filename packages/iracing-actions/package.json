@@ -12,6 +12,7 @@
     }
   },
   "dependencies": {
+    "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",

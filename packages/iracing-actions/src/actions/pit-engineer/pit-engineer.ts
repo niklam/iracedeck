@@ -1,3 +1,11 @@
+import { getScenarioEngine } from "@iracedeck/audio-scenarios";
+import {
+  FLAG_SCENARIO_IDS,
+  FUEL_SCENARIO_IDS,
+  PIT_LIMITER_SCENARIO_IDS,
+  setDriverNameResolver,
+  TOGGLE_SCENARIO_IDS,
+} from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -22,7 +30,6 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { getEventBus, type SimEventOf } from "@iracedeck/event-bus";
-import { PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
 import path from "node:path";
 import z from "zod";
@@ -59,181 +66,6 @@ function applyChannelVolumes(): void {
   getAudio().setBusVolume(AudioBus.Voice, engineerVol);
   getAudio().setBusVolume(AudioBus.Background, engineerVol);
   getAudio().setBusVolume(AudioBus.Alerts, spotterVol);
-}
-
-// ─── Acknowledgment & Connector Pools ─────────────────────────────────────────
-
-const ACKNOWLEDGMENT_POOL = [
-  "pit-engineer/acknowledgment/IRD-ack-okay.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-got-it.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-roger-that.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-copy-that.mp3",
-  "pit-engineer/acknowledgment/IRD-ack-we-got-that.mp3",
-];
-
-const CONNECTOR_POOL = [
-  "pit-engineer/connector/IRD-connector-and.mp3",
-  "pit-engineer/connector/IRD-connector-also.mp3",
-  "pit-engineer/connector/IRD-connector-plus.mp3",
-  "pit-engineer/connector/IRD-connector-as-well-as.mp3",
-  "pit-engineer/connector/IRD-connector-addition.mp3",
-];
-
-/** Last acknowledgment index to avoid repeats. */
-let lastAckIndex = -1;
-
-/** Pick a random acknowledgment, never the same back-to-back. */
-function pickAcknowledgment(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * ACKNOWLEDGMENT_POOL.length);
-  } while (idx === lastAckIndex && ACKNOWLEDGMENT_POOL.length > 1);
-
-  lastAckIndex = idx;
-
-  return ACKNOWLEDGMENT_POOL[idx];
-}
-
-// ─── Stall Departure Pool ────────────────────────────────────────────────────
-
-const STALL_DEPARTURE_POOL = [
-  "pit-engineer/pitlane/IRD-pit-stall-departure.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-2.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-3.mp3",
-  "pit-engineer/pitlane/IRD-pit-stall-departure-4.mp3",
-];
-
-let lastStallDepartureIndex = -1;
-
-function pickStallDeparture(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * STALL_DEPARTURE_POOL.length);
-  } while (idx === lastStallDepartureIndex && STALL_DEPARTURE_POOL.length > 1);
-
-  lastStallDepartureIndex = idx;
-
-  return STALL_DEPARTURE_POOL[idx];
-}
-
-// ─── Overtake Pool ──────────────────────────────────────────────────────────
-
-const OVERTAKE_POOL = [
-  "pit-engineer/overtake/IRD-overtake-good-pass.mp3",
-];
-
-let lastOvertakeIndex = -1;
-
-function pickOvertake(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * OVERTAKE_POOL.length);
-  } while (idx === lastOvertakeIndex && OVERTAKE_POOL.length > 1);
-
-  lastOvertakeIndex = idx;
-
-  return OVERTAKE_POOL[idx];
-}
-
-// ─── Auto-Fuel Reminder Pool ────────────────────────────────────────────────
-
-const AUTOFUEL_REMINDER_POOL = [
-  "pit-engineer/reminder/IRD-pit-reminder-autofuel.mp3",
-  "pit-engineer/reminder/IRD-pit-reminder-autofuel-2.mp3",
-];
-
-/** Last auto-fuel reminder index to avoid repeats. */
-let lastAutofuelReminderIndex = -1;
-
-/** Pick a random auto-fuel reminder, never the same back-to-back. */
-function pickAutofuelReminder(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * AUTOFUEL_REMINDER_POOL.length);
-  } while (idx === lastAutofuelReminderIndex && AUTOFUEL_REMINDER_POOL.length > 1);
-
-  lastAutofuelReminderIndex = idx;
-
-  return AUTOFUEL_REMINDER_POOL[idx];
-}
-
-// ─── Pit Approach Pool ───────────────────────────────────────────────────────
-
-const PIT_APPROACH_POOL = [
-  "pit-engineer/pitlane/IRD-pit-approach.mp3",
-  "pit-engineer/pitlane/IRD-pit-approach-2.mp3",
-];
-
-/** Last pit approach index to avoid repeats. */
-let lastPitApproachIndex = -1;
-
-/** Pick a random pit approach message, never the same back-to-back. */
-function pickPitApproach(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * PIT_APPROACH_POOL.length);
-  } while (idx === lastPitApproachIndex && PIT_APPROACH_POOL.length > 1);
-
-  lastPitApproachIndex = idx;
-
-  return PIT_APPROACH_POOL[idx];
-}
-
-// ─── Pit Exit Pool ───────────────────────────────────────────────────────────
-
-const PIT_EXIT_POOL = [
-  "pit-engineer/pitlane/IRD-pit-exit.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-2.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-3.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-4.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-5.mp3",
-  "pit-engineer/pitlane/IRD-pit-exit-6.mp3",
-];
-
-/** Last pit exit index to avoid repeats. */
-let lastPitExitIndex = -1;
-
-/** Pick a random pit exit message, never the same back-to-back. */
-function pickPitExit(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * PIT_EXIT_POOL.length);
-  } while (idx === lastPitExitIndex && PIT_EXIT_POOL.length > 1);
-
-  lastPitExitIndex = idx;
-
-  return PIT_EXIT_POOL[idx];
-}
-
-// ─── Greeting Pool ───────────────────────────────────────────────────────────
-
-const GREETING_POOL = [
-  "pit-engineer/greeting/IRD-radio-opener-alright.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-hi.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-right-then.mp3",
-  "pit-engineer/greeting/IRD-radio-opener-so.mp3",
-];
-
-/** Last greeting index to avoid repeats. */
-let lastGreetingIndex = -1;
-
-/** Pick a random greeting, never the same back-to-back. */
-function pickGreeting(): string {
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * GREETING_POOL.length);
-  } while (idx === lastGreetingIndex && GREETING_POOL.length > 1);
-
-  lastGreetingIndex = idx;
-
-  return GREETING_POOL[idx];
 }
 
 // ─── Tip Pool ────────────────────────────────────────────────────────────────
@@ -280,9 +112,6 @@ export const MID_RACE_ONLY_TIPS: ReadonlySet<string> = new Set([
   "pit-engineer/tips/IRD-pit-engineer-tip-11.mp3",
 ]);
 
-/** Last tip file played to avoid repeats. */
-let lastTipFile: string | null = null;
-
 /**
  * @internal Exported for testing
  *
@@ -294,84 +123,6 @@ export function getEligibleTips(isStartWindow: boolean): string[] {
   const excluded = isStartWindow ? MID_RACE_ONLY_TIPS : START_ONLY_TIPS;
 
   return TIP_POOL.filter((tip) => !excluded.has(tip));
-}
-
-/** Pick a random tip for the given race phase, never the same back-to-back. */
-function pickTip(isStartWindow: boolean): string {
-  const eligible = getEligibleTips(isStartWindow);
-  let choice: string;
-
-  do {
-    choice = eligible[Math.floor(Math.random() * eligible.length)];
-  } while (choice === lastTipFile && eligible.length > 1);
-
-  lastTipFile = choice;
-
-  return choice;
-}
-
-// ─── Fuel Warnings Pools ─────────────────────────────────────────────────────
-//
-// Pit Engineer fuel warnings. The translator's `fuel.lapsRemaining.crossed`
-// event fires once per descending threshold crossing (5, 3, 1, 0 laps). The
-// handler below picks from the matching pool. Threshold values live in
-// `@iracedeck/sim-events-iracing`'s `FUEL_THRESHOLDS` export.
-
-/** @internal Exported for testing */
-export const FUEL_LOW_5_POOL = [
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-01.mp3",
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-02.mp3",
-  "pit-engineer/fuel/low-5laps/IRD-fuel-low-5laps-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_LOW_3_POOL = [
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-01.mp3",
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-02.mp3",
-  "pit-engineer/fuel/low-3laps/IRD-fuel-low-3laps-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_CRITICAL_POOL = [
-  "pit-engineer/fuel/critical/IRD-fuel-critical-01.mp3",
-  "pit-engineer/fuel/critical/IRD-fuel-critical-02.mp3",
-  "pit-engineer/fuel/critical/IRD-fuel-critical-03.mp3",
-];
-
-/** @internal Exported for testing */
-export const FUEL_EMPTY_POOL = [
-  "pit-engineer/fuel/empty/IRD-fuel-empty-01.mp3",
-  "pit-engineer/fuel/empty/IRD-fuel-empty-02.mp3",
-  "pit-engineer/fuel/empty/IRD-fuel-empty-03.mp3",
-];
-
-/**
- * Last index tracker for back-to-back exclusion per pool. Keyed by pool
- * reference identity — a pool is allowed to pick any entry except the one
- * just played.
- */
-const fuelLastIdx = new WeakMap<readonly string[], number>();
-
-/**
- * @internal Exported for testing
- *
- * Picks a random entry from a pool, never the same back-to-back.
- * Uses an internal WeakMap keyed by the pool reference so each pool
- * tracks its own "last played" index independently.
- */
-export function pickFromPool(pool: readonly string[]): string {
-  if (pool.length === 0) return "";
-
-  const last = fuelLastIdx.get(pool) ?? -1;
-  let idx: number;
-
-  do {
-    idx = Math.floor(Math.random() * pool.length);
-  } while (idx === last && pool.length > 1);
-
-  fuelLastIdx.set(pool, idx);
-
-  return pool[idx];
 }
 
 // ─── Driver Name ──────────────────────────────────────────────────────────────
@@ -403,217 +154,11 @@ function getDriverNameFile(): string | null {
   return `pit-engineer/names/IRD-name-${name}.mp3`;
 }
 
-// ─── Radio Flow Orchestrator ──────────────────────────────────────────────────
-//
-// Four flow types for the walkie-talkie radio experience:
-//
-// Full flow (toggles, approach, exit, stall departure):
-//   [tick-open] → [ack + ambient] → [(name occasionally)] → [messages with connectors]
-//   → [ambient stops] → [tick-close]
-//
-// Reminder flow (service reminders, auto-fuel — NO acknowledgment):
-//   [tick-open] → [ambient + reminder messages (with connectors)] → [ambient stops] → [tick-close]
-//
-// Warning flow (pit limiter):
-//   [tick-open] → [ambient + message] → [ambient stops] → [tick-close]
-//
-// Welcome flow (first time in car):
-//   [tick-open] → [(greeting ~60%)] → [(driver name)] → [tip] → [tick-close]
-
-type RadioFlowState = "idle" | "tick-open" | "ack" | "messages" | "tick-close";
-let radioFlowState: RadioFlowState = "idle";
-
-/**
- * Plays a radio-style message sequence.
- *
- * @param files - Message audio filenames (relative to audio root)
- * @param includeAck - Whether to play an acknowledgment before messages (default: true)
- */
-function playRadioMessage(files: string[], includeAck = true): void {
-  if (files.length === 0) return;
-
-  applyChannelVolumes();
-
-  // Cancel any in-progress radio flow
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at a random position (different each transmission)
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Optional micro-delay after tick — ambient plays, voice waits
-    randomRadioDelay("tick-open", () => {
-      if (includeAck) {
-        // Step 2a: Play acknowledgment on Voice
-        radioFlowState = "ack";
-        getAudio().onChannelComplete(AudioChannel.Voice, () => {
-          if (radioFlowState !== "ack") return;
-
-          startVoiceMessages(files);
-        });
-        getAudio().playOnChannel(AudioChannel.Voice, getAudioPath(pickAcknowledgment()));
-      } else {
-        // Step 2b: Skip ack, go straight to messages
-        startVoiceMessages(files);
-      }
-    });
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
-}
-
-/**
- * Adds a random micro-delay before invoking a callback.
- * ~40% chance of a 100–400ms pause — ambient stays audible during the gap,
- * giving the radio transmission a natural, human feel.
- */
-function randomRadioDelay(state: RadioFlowState, callback: () => void): void {
-  const doDelay = Math.random() < 0.4;
-  const delayMs = doDelay ? 100 + Math.floor(Math.random() * 300) : 0;
-
-  if (delayMs > 0) {
-    setTimeout(() => {
-      // Guard: flow may have been cancelled during the delay
-      if (radioFlowState !== state) return;
-
-      callback();
-    }, delayMs);
-  } else {
-    callback();
-  }
-}
-
-/**
- * Plays the tick-close SFX after a subtle delay (100–400ms).
- * Ambient stays audible during the pause for a natural radio feel.
- */
-function playTickClose(): void {
-  const delayMs = 100 + Math.floor(Math.random() * 300);
-  setTimeout(() => {
-    if (radioFlowState !== "tick-close") return;
-
-    getAudio().stopChannel(AudioChannel.Ambient);
-    getAudio().onChannelComplete(AudioChannel.SFX, () => {
-      radioFlowState = "idle";
-      const wasPriority = globalPriorityActive;
-      globalPriorityActive = false;
-
-      // If a service-reminder flow was deferred while priority was playing, run it now.
-      if (wasPriority && globalPendingReminder) {
-        const pending = globalPendingReminder;
-        globalPendingReminder = null;
-        playReminderFlow(pending);
-      }
-    });
-    getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-close.mp3"));
-  }, delayMs);
-}
-
-/**
- * Starts the voice message sequence and wires up the completion handler
- * to stop ambient and play the closing tick.
- */
-function startVoiceMessages(files: string[]): void {
-  radioFlowState = "messages";
-
-  // When all messages finish → tick-close (with optional natural delay)
-  getAudio().onVoiceSequenceComplete(() => {
-    if (radioFlowState !== "messages") return;
-
-    radioFlowState = "tick-close";
-    playTickClose();
-  });
-
-  // Start voice sequence with connector pool for multi-message chaining
-  getAudio().playVoiceSequence(
-    files.map(getAudioPath),
-    files.length > 1 ? CONNECTOR_POOL.map(getAudioPath) : undefined,
-  );
-}
-
-/**
- * Cancels any in-progress radio flow and stops all non-spotter channels.
- */
-function cancelRadioFlow(): void {
-  radioFlowState = "idle";
-  globalPriorityActive = false;
-  globalPendingReminder = null;
-
-  if (globalReminderTimer) {
-    clearTimeout(globalReminderTimer);
-    globalReminderTimer = null;
-  }
-
-  getAudio().cancelVoiceSequence();
-  getAudio().stopChannel(AudioChannel.SFX);
-  getAudio().stopChannel(AudioChannel.Voice);
-  getAudio().stopChannel(AudioChannel.Ambient);
-}
-
-/**
- * Plays a reminder-only radio flow with NO acknowledgment.
- *
- * Flow: [tick-open] → [ambient + reminder messages (with connectors)] → [ambient stops] → [tick-close]
- *
- * This is a dedicated flow separate from playRadioMessage to guarantee
- * no acknowledgment logic can leak in.
- *
- * @param files - Reminder audio filenames (relative to audio root)
- */
-function playReminderFlow(files: string[]): void {
-  if (files.length === 0) return;
-
-  // Don't interrupt a priority pit-lane message (approach, departure, exit).
-  // Queue to play when the priority flow finishes (see playTickClose idle handler).
-  if (globalPriorityActive) {
-    globalPendingReminder = files;
-
-    return;
-  }
-
-  applyChannelVolumes();
-
-  // Cancel any in-progress radio flow
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at a random position
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Optional micro-delay after tick — ambient plays, voice waits
-    randomRadioDelay("tick-open", () => {
-      // Step 3: Play reminder messages directly (no ack)
-      radioFlowState = "messages";
-
-      getAudio().onVoiceSequenceComplete(() => {
-        if (radioFlowState !== "messages") return;
-
-        radioFlowState = "tick-close";
-        playTickClose();
-      });
-
-      // Start voice sequence with connectors for multi-message chaining
-      getAudio().playVoiceSequence(
-        files.map(getAudioPath),
-        files.length > 1 ? CONNECTOR_POOL.map(getAudioPath) : undefined,
-      );
-    });
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
-}
+// Expose the driver-name resolver to scenarios that use the `{{name}}` variable
+// (the welcome scenario today; others may reuse it later). The closure reads
+// the latest `globalSettings` at fire time, so no re-registration on settings
+// changes is needed.
+setDriverNameResolver(getDriverNameFile);
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
@@ -687,42 +232,6 @@ function startSpotterTickLoop(state: SpotterVisualState): void {
   };
 
   fire();
-}
-
-/**
- * @internal Exported for testing
- *
- * Resolves which pit services are queued from the PitSvFlags bitfield
- * and tire compound state. Only includes services that are actually
- * toggled on (enabled) in iRacing's pit service menu.
- *
- * @param flags - PitSvFlags bitfield from telemetry
- * @param playerCompound - Current tire compound (PlayerTireCompound)
- * @param pitSvCompound - Queued tire compound (PitSvTireCompound)
- */
-export function resolveQueuedServices(flags: number, playerCompound = 0, pitSvCompound = 0): string[] {
-  const services: string[] = [];
-  const hasTires =
-    (flags & PitSvFlags.LFTireChange) !== 0 ||
-    (flags & PitSvFlags.RFTireChange) !== 0 ||
-    (flags & PitSvFlags.LRTireChange) !== 0 ||
-    (flags & PitSvFlags.RRTireChange) !== 0;
-
-  // Order: Fast Repair first, then Refueling, then Tires/Compound last.
-  if ((flags & PitSvFlags.FastRepair) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fast-repair.mp3");
-
-  if ((flags & PitSvFlags.FuelFill) !== 0) services.push("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
-
-  const hasCompoundChange = hasTires && pitSvCompound !== 0 && pitSvCompound !== playerCompound;
-
-  if (hasCompoundChange) {
-    // Compound change implies tire change — skip the generic tire reminder
-    services.push("pit-engineer/reminder/IRD-pit-reminder-compound.mp3");
-  } else if (hasTires) {
-    services.push("pit-engineer/reminder/IRD-pit-reminder-tires.mp3");
-  }
-
-  return services;
 }
 
 // ─── Icon Generation ───────────────────────────────────────────────────────────
@@ -834,9 +343,6 @@ function getAudioPath(filename: string): string {
 /** Global enabled flag — shared across all action instances. */
 let globalEnabled = true;
 
-/** Whether the welcome message has been played this iRacing session. */
-let globalWelcomePlayed = false;
-
 /** Current global settings (merged from last-seen action instance). */
 let globalSettings: PitEngineerSettings | null = null;
 
@@ -860,38 +366,6 @@ const SPOTTER_TICK_INTERVALS: Readonly<Record<Exclude<SpotterVisualState, "clear
   "two-left": 180,
   "two-right": 180,
   both: 230,
-};
-
-// ─── Overtake sub-feature state ─────────────────────────────────────────────
-
-/** Timestamp of last overtake alert (cooldown to prevent spam). */
-let globalLastOvertakeTime = 0;
-
-/** Minimum ms between overtake alerts. */
-const OVERTAKE_COOLDOWN_MS = 8000;
-
-/** Number of confirmed overtakes before playing the audio. */
-const OVERTAKE_PLAY_EVERY = 5;
-
-/** Counter of confirmed overtakes since last audio play. */
-let globalOvertakeCount = 0;
-
-// ─── Flag alert sub-feature state ──────────────────────────────────────────
-
-/**
- * Audio file mapping for each flag type.
- * Uses Warning Flow (simple, no ack) — urgent informational callouts.
- */
-const FLAG_AUDIO: Record<string, string> = {
-  green: "pit-engineer/flags/IRD-flag-green-flag.mp3",
-  yellow: "pit-engineer/flags/IRD-flag-yellow-flag.mp3",
-  blue: "pit-engineer/flags/IRD-flag-blue-flag.mp3",
-  black: "pit-engineer/flags/IRD-flag-black-flag.mp3",
-  red: "pit-engineer/flags/IRD-flag-red-flag.mp3",
-  white: "pit-engineer/flags/IRD-flag-white-flag.mp3",
-  checkered: "pit-engineer/flags/IRD-flag-checkered-flag.mp3",
-  meatball: "pit-engineer/flags/IRD-flag-meatball-flag.mp3",
-  debris: "pit-engineer/flags/IRD-flag-debris.mp3",
 };
 
 /**
@@ -989,72 +463,6 @@ export const CAR_CONTROL_TOGGLE_AUDIO: Record<string, { on: string; off: string 
   drs: { on: "pit-engineer/toggle/IRD-toggle-drs-on.mp3", off: "pit-engineer/toggle/IRD-toggle-drs-off.mp3" },
 };
 
-/** Pit limiter warning files — cycled each time limiter activates on track. */
-const PIT_LIMITER_WARNINGS = [
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-1.mp3",
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-2.mp3",
-  "pit-engineer/toggle/IRD-toggle-limiter-on-warning-3.mp3",
-];
-
-/** Current index into the pit limiter warning rotation. */
-let pitLimiterWarningIndex = 0;
-
-/** Entered pit lane without limiter engaged. */
-const PIT_NO_LIMITER_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-no-limiter-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-no-limiter-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-no-limiter-03.mp3",
-];
-
-/** Limiter disengaged while still between pit cones. */
-const PIT_LIMITER_DROPPED_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-limiter-dropped-03.mp3",
-];
-
-/** Over the pit speed limit. */
-const PIT_SPEEDING_WARNINGS = [
-  "pit-engineer/pitlane/IRD-pit-speeding-01.mp3",
-  "pit-engineer/pitlane/IRD-pit-speeding-02.mp3",
-  "pit-engineer/pitlane/IRD-pit-speeding-03.mp3",
-];
-
-let pitNoLimiterIndex = 0;
-let pitLimiterDroppedIndex = 0;
-let pitSpeedingIndex = 0;
-
-/**
- * Track-limits warnings — fire on brief off-track incidents (counter +1 without
- * a sustained excursion). Add recorded clips here once available.
- *
- * TODO(4c): restore material-specific grass/gravel/generic pools once the
- * translator exposes recent off-track material samples in event data.
- */
-const OFF_TRACK_LIMITS_WARNINGS: readonly string[] = [
-  "pit-engineer/incidents/IRD-incident-limits-01.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-02.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-03.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-04.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-05.mp3",
-  "pit-engineer/incidents/IRD-incident-limits-06.mp3",
-];
-let offTrackLimitsIndex = 0;
-
-/**
- * Picks the next track-limits audio file, or null if the pool is empty.
- *
- * @internal Exported for testing
- */
-export function pickTrackLimitsFile(): string | null {
-  if (OFF_TRACK_LIMITS_WARNINGS.length === 0) return null;
-
-  const f = OFF_TRACK_LIMITS_WARNINGS[offTrackLimitsIndex]!;
-  offTrackLimitsIndex = (offTrackLimitsIndex + 1) % OFF_TRACK_LIMITS_WARNINGS.length;
-
-  return f;
-}
-
 // NOTE: the old `resolvePitServiceToggleAudio` and `resolveCarControlToggleAudio`
 // helpers were removed in Stage 4b when pit-engineer migrated to sim-events.
 // The translator now emits a single-service / single-toggle event per change,
@@ -1064,115 +472,16 @@ export function pickTrackLimitsFile(): string | null {
 // TODO(4c) at the incident pool comment for the full follow-up list.
 
 /**
- * True while a priority pit-lane message (approach, stall departure, exit) is
- * being played — i.e. tick-open, voice, tick-close are still in flight.
- * Cleared when the radio flow returns to idle at the end of tick-close.
- */
-let globalPriorityActive = false;
-
-/** Reminder files deferred until an in-flight priority flow completes. */
-let globalPendingReminder: string[] | null = null;
-
-/** Pending service reminder timer — cancelled if the action disappears or flow changes. */
-let globalReminderTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Delay (ms) between pit entry and the service reminder flow so the approach message finishes first. */
-const SERVICE_REMINDER_DELAY_MS = 1500;
-
-/**
- * Plays a priority pit-lane message (approach, stall departure, exit).
- * Marks the priority flow active so other audio defers until it ends.
- * Skipped if another priority message is still in flight so priority
- * messages can't cut each other off.
- */
-function playPriorityMessage(filename: string): void {
-  if (globalPriorityActive) return;
-
-  globalPriorityActive = true;
-  playRadioMessage([filename], false);
-}
-
-/**
- * Plays a one-shot engineer message with simplified radio flow (no ack).
- * tick-open → ambient → message → ambient off → tick-close.
- * Skipped if a priority pit-lane message is still in flight.
- *
- * @returns true if the radio flow was started, false if skipped (priority active).
- */
-function playEngineerSoundSimple(filename: string): boolean {
-  if (globalPriorityActive) return false;
-
-  playRadioMessage([filename], false);
-
-  return true;
-}
-
-/**
- * Plays the welcome flow: tick → greeting → name → welcome message → tick.
- * Ambient plays in the background during all voice parts.
- *
- * Flow: [tick-open] → [ambient + (greeting ~60%) + (driver name) + tip]
- *       → [ambient stops] → [tick-close]
- */
-function playWelcomeMessage(): void {
-  applyChannelVolumes();
-  cancelRadioFlow();
-
-  radioFlowState = "tick-open";
-
-  // Step 1: Play tick-open on SFX (clean — no ambient)
-  getAudio().onChannelComplete(AudioChannel.SFX, () => {
-    if (radioFlowState !== "tick-open") return;
-
-    // Step 2: Start ambient loop at random position
-    getAudio().playOnChannel(AudioChannel.Ambient, getAudioPath("sfx/IRD-ambient-pit.mp3"), true);
-    getAudio().seekChannelRandom(AudioChannel.Ambient);
-
-    // Decide greeting up front so we know the delay
-    const includeGreeting = Math.random() < 0.6;
-
-    const startWelcomeVoice = (): void => {
-      if (radioFlowState !== "tick-open") return;
-
-      radioFlowState = "messages";
-
-      // Chain: (greeting if included) → (driver name if set) → tip
-      const nameFile = getDriverNameFile();
-      const voiceFiles = [
-        ...(includeGreeting ? [pickGreeting()] : []),
-        ...(nameFile ? [nameFile] : []),
-        pickTip(true), // welcome flow fires at session start — use START_ONLY tip bucket
-      ];
-
-      getAudio().onVoiceSequenceComplete(() => {
-        if (radioFlowState !== "messages") return;
-
-        radioFlowState = "tick-close";
-        playTickClose();
-      });
-
-      // Play voice sequence without connectors (greeting → name → welcome flows naturally)
-      getAudio().playVoiceSequence(voiceFiles.map(getAudioPath));
-    };
-
-    if (includeGreeting) {
-      // Normal random micro-delay before greeting
-      randomRadioDelay("tick-open", startWelcomeVoice);
-    } else {
-      // No greeting — hold ambient for 250ms then start voice
-      setTimeout(startWelcomeVoice, 250);
-    }
-  });
-
-  getAudio().playOnChannel(AudioChannel.SFX, getAudioPath("sfx/IRD-tick-open.mp3"));
-}
-
-/**
- * Resets all audio state — stops all channels and cancels radio flow.
+ * Resets all audio state — cancels any in-flight voice sequence, stops every
+ * channel, and stops the spotter tick loop. Called when the engineer is
+ * toggled off.
  */
 function resetAllAudioState(): void {
-  cancelRadioFlow();
   stopSpotterTickLoop();
+  getAudio().cancelVoiceSequence();
+  getAudio().stopChannel(AudioChannel.SFX);
+  getAudio().stopChannel(AudioChannel.Voice);
+  getAudio().stopChannel(AudioChannel.Ambient);
   getAudio().stopChannel(AudioChannel.Spotter);
 }
 
@@ -1200,21 +509,12 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   /** Active event-bus unsubscribe callbacks while the engineer is enabled. */
   private eventSubscriptions: Array<() => void> = [];
 
-  /** Polling timer for the current lap's racing tip (2-second cadence). */
-  private tipPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  /** LapDistPct threshold picked per lap when a tip is scheduled (-1 = not scheduled). */
-  private tipTriggerPct = -1;
-
   /** Spotter test file rotation order. */
   private static readonly SPOTTER_TEST_FILES = [
     "pit-engineer/spotter/IRD-spotter-left.mp3",
     "pit-engineer/spotter/IRD-spotter-right.mp3",
     "pit-engineer/spotter/IRD-spotter-both.mp3",
   ];
-
-  /** Per-lap probability that a racing tip fires. Deliberate Stage-4b behavior change. */
-  private static readonly TIP_LAP_PROBABILITY = 0.25;
 
   override async onWillAppear(ev: IDeckWillAppearEvent<PitEngineerSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -1239,6 +539,8 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     if (globalEnabled && this.eventSubscriptions.length === 0) {
       this.startEventSubscriptions();
     }
+
+    this.applyScenarioGates(settings);
 
     // Provide regeneration callback for icon refresh (global color changes, etc.)
     this.setRegenerateCallback(contextId, () => {
@@ -1273,12 +575,15 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     // Apply channel volumes whenever settings change
     applyChannelVolumes();
 
+    // Sync PI toggles to the scenario engine's setEnabled.
+    this.applyScenarioGates(settings);
+
     // Handle engineer test volume button from PI
     const testTimestamp = raw._testVolume as number | undefined;
 
     if (testTimestamp && testTimestamp !== this.lastTestTimestamp) {
       this.logger.info("Playing welcome message (engineer test)");
-      playWelcomeMessage();
+      getScenarioEngine().fire("pit-engineer.welcome");
     }
 
     this.lastTestTimestamp = testTimestamp ?? 0;
@@ -1327,14 +632,78 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
       const settings = Settings.parse(ev.payload.settings);
       globalSettings = settings;
       this.startEventSubscriptions();
+      this.applyScenarioGates(settings);
     } else {
       this.stopEventSubscriptions();
-      this.stopTipPolling();
       resetAllAudioState();
+      this.disableAllScenarios();
     }
 
     // Update icon on all visible instances
     this.updateAllVisibleIcons();
+  }
+
+  /**
+   * Sync PI toggles to the scenario engine. Each mapping translates a PI
+   * setting to a scenario id; gates that are off also disable the scenario
+   * here so in-flight fires are cancelled.
+   */
+  private applyScenarioGates(settings: PitEngineerSettings): void {
+    const engine = getScenarioEngine();
+
+    // When the engineer is globally off, force every scenario off and exit —
+    // otherwise a later settings sync or page appearance could silently
+    // resume audio while the action is still in the OFF state.
+    if (!globalEnabled) {
+      this.disableAllScenarios();
+
+      return;
+    }
+
+    // Welcome has no PI toggle; keep it always on while the engineer is
+    // enabled. (disableAllScenarios() turns it off on toggle-off, so we have
+    // to explicitly restore it here on toggle-on.)
+    engine.setEnabled("pit-engineer.welcome", true);
+
+    engine.setEnabled("pit-engineer.pit-approach", settings.pitApproachEnabled);
+    engine.setEnabled("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
+    engine.setEnabled("pit-engineer.pit-exit", settings.pitExitEnabled);
+    engine.setEnabled("pit-engineer.stall-departure", settings.pitDepartureEnabled);
+    engine.setEnabled("pit-engineer.incident-alerts", settings.incidentAlert);
+    engine.setEnabled("pit-engineer.overtake", settings.overtakeAndTipsEnabled);
+
+    for (const id of FLAG_SCENARIO_IDS) engine.setEnabled(id, settings.flagAlertsEnabled);
+
+    for (const id of FUEL_SCENARIO_IDS) engine.setEnabled(id, settings.fuelWarningsEnabled);
+
+    for (const id of TOGGLE_SCENARIO_IDS) engine.setEnabled(id, settings.toggleAudioEnabled);
+
+    for (const id of PIT_LIMITER_SCENARIO_IDS) engine.setEnabled(id, settings.pitLimiterWarning);
+
+    // Tips share the overtakeAndTipsEnabled gate with the overtake scenario.
+    engine.setEnabled("pit-engineer.racing-tips", settings.overtakeAndTipsEnabled);
+  }
+
+  /** Disable every pit-engineer scenario — called when the engineer is toggled off. */
+  private disableAllScenarios(): void {
+    const engine = getScenarioEngine();
+
+    for (const id of [
+      "pit-engineer.welcome",
+      "pit-engineer.pit-approach",
+      "pit-engineer.service-reminder",
+      "pit-engineer.pit-exit",
+      "pit-engineer.stall-departure",
+      "pit-engineer.incident-alerts",
+      "pit-engineer.overtake",
+      "pit-engineer.racing-tips",
+      ...FLAG_SCENARIO_IDS,
+      ...FUEL_SCENARIO_IDS,
+      ...TOGGLE_SCENARIO_IDS,
+      ...PIT_LIMITER_SCENARIO_IDS,
+    ]) {
+      engine.setEnabled(id, false);
+    }
   }
 
   // ─── Event-bus subscription plumbing ─────────────────────────────────────
@@ -1344,33 +713,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     const bus = getEventBus();
 
-    this.eventSubscriptions.push(
-      bus.subscribe("driver.firstOnTrack", () => this.onFirstOnTrack()),
-      bus.subscribe("pitLane.approaching", () => this.onPitApproaching()),
-      bus.subscribe("pitLane.entered", (ev) => this.onPitLaneEntered(ev)),
-      bus.subscribe("pitLane.exited", () => this.onPitLaneExited()),
-      bus.subscribe("pitStall.departed", () => this.onStallDeparted()),
-      bus.subscribe("flag.yellow.raised", () => this.onFlag("yellow")),
-      bus.subscribe("flag.green.raised", () => this.onFlag("green")),
-      bus.subscribe("flag.blue.raised", () => this.onFlag("blue")),
-      bus.subscribe("flag.black.raised", () => this.onFlag("black")),
-      bus.subscribe("flag.red.raised", () => this.onFlag("red")),
-      bus.subscribe("flag.white.raised", () => this.onFlag("white")),
-      bus.subscribe("flag.checkered.raised", () => this.onFlag("checkered")),
-      bus.subscribe("pitService.toggled", (ev) => this.onPitServiceToggled(ev)),
-      bus.subscribe("carControl.drsToggled", (ev) => this.onCarControlToggled("drs", ev.data.on)),
-      bus.subscribe("carControl.p2pToggled", (ev) => this.onCarControlToggled("p2p", ev.data.on)),
-      bus.subscribe("carControl.limiterToggled", (ev) => this.onLimiterToggled(ev)),
-      bus.subscribe("limiter.missing", () => this.onLimiterWarning("missing")),
-      bus.subscribe("limiter.dropped", () => this.onLimiterWarning("dropped")),
-      bus.subscribe("limiter.speeding", () => this.onLimiterWarning("speeding")),
-      bus.subscribe("incident.occurred", () => this.onIncidentOccurred()),
-      bus.subscribe("overtake.completed", () => this.onOvertakeCompleted()),
-      bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)),
-      bus.subscribe("fuel.lapsRemaining.crossed", (ev) => this.onFuelCrossed(ev)),
-      bus.subscribe("lap.started", () => this.onLapStarted()),
-      bus.subscribe("session.changed", () => this.onSessionChanged()),
-    );
+    this.eventSubscriptions.push(bus.subscribe("spotter.changed", (ev) => this.onSpotterChanged(ev)));
 
     this.logger.debug(`Pit Engineer subscribed to ${this.eventSubscriptions.length} events`);
   }
@@ -1381,181 +724,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     this.eventSubscriptions = [];
   }
 
-  private stopTipPolling(): void {
-    if (this.tipPollTimer) clearInterval(this.tipPollTimer);
-
-    this.tipPollTimer = null;
-    this.tipTriggerPct = -1;
-  }
-
   // ─── Event handlers ──────────────────────────────────────────────────────
-
-  private onFirstOnTrack(): void {
-    if (globalWelcomePlayed) return;
-
-    globalWelcomePlayed = true;
-    this.logger.info("First time in car — playing welcome message");
-    playWelcomeMessage();
-  }
-
-  private onPitApproaching(): void {
-    if (!globalEnabled || !globalSettings?.pitApproachEnabled) return;
-
-    this.logger.info("Pit approach detected");
-    playPriorityMessage(pickPitApproach());
-  }
-
-  private onPitLaneEntered(ev: SimEventOf<"pitLane.entered">): void {
-    if (!globalEnabled || !globalSettings?.pitServiceReminderEnabled) return;
-
-    const telemetry = ev.telemetry as TelemetryData | null;
-    const pitSvFlags = telemetry?.PitSvFlags ?? 0;
-    const playerCompound = telemetry?.PlayerTireCompound ?? 0;
-    const pitSvCompound = telemetry?.PitSvTireCompound ?? 0;
-    const services = resolveQueuedServices(pitSvFlags, playerCompound, pitSvCompound);
-    const autoFuelActive = telemetry?.dpFuelAutoFillActive ?? false;
-
-    if (autoFuelActive) {
-      const fuelIdx = services.indexOf("pit-engineer/reminder/IRD-pit-reminder-fuel.mp3");
-
-      if (fuelIdx !== -1) services.splice(fuelIdx, 1);
-
-      services.unshift(pickAutofuelReminder());
-    }
-
-    if (services.length === 0) {
-      this.logger.debug("Pit entry — no services queued, skipping reminder");
-
-      return;
-    }
-
-    this.logger.info("Pit entry — queuing service reminders");
-    this.logger.debug(`Services: ${services.join(", ")}`);
-
-    if (globalReminderTimer) clearTimeout(globalReminderTimer);
-
-    globalReminderTimer = setTimeout(() => {
-      globalReminderTimer = null;
-      playReminderFlow(services);
-    }, SERVICE_REMINDER_DELAY_MS);
-  }
-
-  private onPitLaneExited(): void {
-    if (!globalEnabled || !globalSettings?.pitExitEnabled) return;
-
-    this.logger.info("Pit exit detected");
-    playPriorityMessage(pickPitExit());
-  }
-
-  private onStallDeparted(): void {
-    if (!globalEnabled || !globalSettings?.pitDepartureEnabled) return;
-
-    this.logger.info("Stall departure — disable pit limiter reminder");
-    playPriorityMessage(pickStallDeparture());
-  }
-
-  private onFlag(flag: string): void {
-    if (!globalEnabled || !globalSettings?.flagAlertsEnabled) return;
-
-    const audioFile = FLAG_AUDIO[flag];
-
-    if (!audioFile) return;
-
-    this.logger.info(`Flag alert: ${flag}`);
-    playEngineerSoundSimple(audioFile);
-  }
-
-  private onPitServiceToggled(ev: SimEventOf<"pitService.toggled">): void {
-    if (!globalEnabled || !globalSettings?.toggleAudioEnabled) return;
-
-    const { service, on } = ev.data;
-    const map = PIT_SERVICE_TOGGLE_AUDIO[service];
-
-    if (!map) return;
-
-    const file = on ? map.on : map.off;
-    this.logger.info(`Pit service toggle: ${service} ${on ? "on" : "off"}`);
-    playRadioMessage([file]);
-  }
-
-  private onCarControlToggled(kind: "drs" | "p2p", on: boolean): void {
-    if (!globalEnabled || !globalSettings?.toggleAudioEnabled) return;
-
-    const key = kind === "drs" ? "drs" : "pushToPass";
-    const map = CAR_CONTROL_TOGGLE_AUDIO[key];
-
-    if (!map) return;
-
-    const file = on ? map.on : map.off;
-    this.logger.info(`Car control toggle: ${kind} ${on ? "on" : "off"}`);
-    playEngineerSoundSimple(file);
-  }
-
-  private onLimiterToggled(ev: SimEventOf<"carControl.limiterToggled">): void {
-    if (!globalEnabled || !globalSettings?.pitLimiterWarning) return;
-
-    if (!ev.data.on) return;
-
-    const telemetry = getLatestTelemetry();
-    const onPitRoad = telemetry?.OnPitRoad ?? false;
-
-    // Toggling the limiter on while on pit road is the expected behavior.
-    if (onPitRoad) return;
-
-    const file = PIT_LIMITER_WARNINGS[pitLimiterWarningIndex]!;
-    pitLimiterWarningIndex = (pitLimiterWarningIndex + 1) % PIT_LIMITER_WARNINGS.length;
-    this.logger.info("Pit limiter activated on track — warning");
-    playEngineerSoundSimple(file);
-  }
-
-  private onLimiterWarning(kind: "missing" | "dropped" | "speeding"): void {
-    if (!globalEnabled || !globalSettings?.pitLimiterWarning) return;
-
-    let file: string;
-
-    if (kind === "missing") {
-      file = PIT_NO_LIMITER_WARNINGS[pitNoLimiterIndex]!;
-      pitNoLimiterIndex = (pitNoLimiterIndex + 1) % PIT_NO_LIMITER_WARNINGS.length;
-    } else if (kind === "dropped") {
-      file = PIT_LIMITER_DROPPED_WARNINGS[pitLimiterDroppedIndex]!;
-      pitLimiterDroppedIndex = (pitLimiterDroppedIndex + 1) % PIT_LIMITER_DROPPED_WARNINGS.length;
-    } else {
-      file = PIT_SPEEDING_WARNINGS[pitSpeedingIndex]!;
-      pitSpeedingIndex = (pitSpeedingIndex + 1) % PIT_SPEEDING_WARNINGS.length;
-    }
-
-    this.logger.info(`Pit limiter warning: ${kind}`);
-    playEngineerSoundSimple(file);
-  }
-
-  private onIncidentOccurred(): void {
-    if (!globalEnabled || !globalSettings?.incidentAlert) return;
-
-    // TODO(4c): restore material-specific off-track callouts when
-    // `incident.occurred` carries material/duration data.
-    const file = pickTrackLimitsFile();
-
-    if (!file) return;
-
-    this.logger.info("Incident occurred — generic warning");
-    playEngineerSoundSimple(file);
-  }
-
-  private onOvertakeCompleted(): void {
-    if (!globalEnabled || !globalSettings?.overtakeAndTipsEnabled) return;
-
-    if (getSessionType() !== "Race") return;
-
-    globalOvertakeCount++;
-    const now = Date.now();
-
-    if (globalOvertakeCount >= OVERTAKE_PLAY_EVERY && now - globalLastOvertakeTime >= OVERTAKE_COOLDOWN_MS) {
-      globalLastOvertakeTime = now;
-      globalOvertakeCount = 0;
-      this.logger.info("Playing overtake audio");
-      playEngineerSoundSimple(pickOvertake());
-    }
-  }
 
   private onSpotterChanged(ev: SimEventOf<"spotter.changed">): void {
     if (!globalEnabled || !globalSettings?.spotterEnabled) return;
@@ -1592,72 +761,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     globalSpotterState = state;
     this.updateAllVisibleIcons();
-  }
-
-  private onFuelCrossed(ev: SimEventOf<"fuel.lapsRemaining.crossed">): void {
-    if (!globalEnabled || !globalSettings?.fuelWarningsEnabled) return;
-
-    const { threshold, laps } = ev.data;
-    let file: string;
-    let priority = false;
-
-    if (threshold === 5) {
-      file = pickFromPool(FUEL_LOW_5_POOL);
-    } else if (threshold === 3) {
-      file = pickFromPool(FUEL_LOW_3_POOL);
-      priority = true;
-    } else if (threshold === 1) {
-      file = pickFromPool(FUEL_CRITICAL_POOL);
-      priority = true;
-    } else {
-      file = pickFromPool(FUEL_EMPTY_POOL);
-      priority = true;
-    }
-
-    this.logger.info(`Fuel warning: ~${threshold} laps remaining (${laps.toFixed(2)})`);
-
-    if (priority) playPriorityMessage(file);
-    else playEngineerSoundSimple(file);
-  }
-
-  private onLapStarted(): void {
-    this.stopTipPolling();
-
-    if (!globalEnabled || !globalSettings?.overtakeAndTipsEnabled) return;
-
-    if (getSessionType() !== "Race") return;
-
-    // User-configured probability gate — deliberate behavior change from the
-    // pre-event-bus "every lap" firing model.
-    if (Math.random() >= PitEngineer.TIP_LAP_PROBABILITY) return;
-
-    this.tipTriggerPct = Math.random();
-
-    this.tipPollTimer = setInterval(() => {
-      const telemetry = getLatestTelemetry();
-
-      if (!telemetry) return;
-
-      const pct = typeof telemetry.LapDistPct === "number" ? telemetry.LapDistPct : -1;
-
-      if (pct < this.tipTriggerPct) return;
-
-      this.stopTipPolling();
-
-      if (radioFlowState !== "idle") return;
-
-      const currentLap = typeof telemetry.Lap === "number" ? telemetry.Lap : 1;
-      const isStartWindow = currentLap <= 1;
-      this.logger.info(
-        `Racing tip on lap ${currentLap} at ~${Math.round(pct * 100)}% (${isStartWindow ? "start" : "mid-race"})`,
-      );
-      playEngineerSoundSimple(pickTip(isStartWindow));
-    }, 2000);
-  }
-
-  private onSessionChanged(): void {
-    globalWelcomePlayed = false;
-    this.stopTipPolling();
   }
 
   // ─── Icon Updates ─────────────────────────────────────────────────────────

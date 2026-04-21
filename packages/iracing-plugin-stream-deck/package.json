@@ -15,7 +15,9 @@
   },
   "dependencies": {
     "@elgato/streamdeck": "2.1.0",
+    "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
+    "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-adapter-elgato": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
@@ -32,6 +34,7 @@
     "@elgato/cli": "1.7.4",
     "@elgato/utils": "0.4.5",
     "@rollup/plugin-commonjs": "29.0.2",
+    "@rollup/plugin-json": "6.1.0",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-replace": "6.0.3",
     "@rollup/plugin-terser": "1.0.0",

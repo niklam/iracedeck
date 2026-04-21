@@ -6,7 +6,10 @@
  *
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
+import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
+import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
+import { registerPitEngineer } from "@iracedeck/audio-scenarios/pit-engineer";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
@@ -135,6 +138,12 @@ initializeKeyboard(
 const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative);
 getAudio().init();
+
+// Initialize the scenario engine AFTER audio (so it can drive playback) but
+// BEFORE actions register (so actions see a ready engine when they wire PI
+// toggles and Test buttons to setEnabled / fire).
+initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
+registerPitEngineer();
 
 // Publish audio device list and apply saved device selection
 let audioDeviceInitialized = false;
