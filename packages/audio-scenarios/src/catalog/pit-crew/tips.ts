@@ -25,7 +25,7 @@ function isStartWindow(ctx: ScenarioContext): boolean {
 }
 
 export const RACING_TIPS: Scenario = {
-  id: "pit-engineer.racing-tips",
+  id: "pit-crew.racing-tips",
   when: {
     event: "lap.started",
     where: () => {
@@ -36,15 +36,15 @@ export const RACING_TIPS: Scenario = {
   },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
   sequence: [
-    "@pit-engineer.radio-open",
+    "@pit-crew.radio-open",
     {
       if: (ctx) => isStartWindow(ctx),
       then: ["pool:welcome-tip"],
       else: ["pool:race-tip"],
     },
-    "@pit-engineer.radio-close",
+    "@pit-crew.radio-close",
   ],
 };

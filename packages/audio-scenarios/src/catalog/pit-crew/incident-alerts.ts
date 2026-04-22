@@ -14,11 +14,11 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { Scenario } from "../../dsl.js";
 
 export const INCIDENT_ALERTS: Scenario = {
-  id: "pit-engineer.incident-alerts",
+  id: "pit-crew.incident-alerts",
   when: { event: "incident.occurred" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
-  sequence: ["@pit-engineer.radio-open", "pool:incident-limits", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:incident-limits", "@pit-crew.radio-close"],
 };

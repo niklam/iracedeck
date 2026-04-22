@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('section-header', { title: 'Action Settings' }) %>
+
+		<p style="padding: 0 16px; color: #999; font-size: 12px;">
+			Pick what pressing this button does. Race Engineer and Radar have independent
+			on/off switches so silencing the voice engineer doesn't kill the proximity alerts.
+		</p>
+
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
+				<option value="race-engineer">Race Engineer</option>
+				<option value="radar">Radar</option>
+				<option value="radar-volume">Radar Volume</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="direction-item" class="hidden" label="Direction">
+			<sdpi-select setting="direction" default="up">
+				<option value="up">Up</option>
+				<option value="down">Down</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('accordion', {
+			title: 'Pit Crew Audio',
+			accordionId: 'pitCrewAudio',
+			open: true,
+			content:
+				'<sdpi-item label="Radar Volume">' +
+					'<div style="display:flex;align-items:center;gap:8px;">' +
+						'<ird-range-input setting="radarVolume" global min="5" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
+						'<button id="test-radar-btn" style="padding:2px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;flex-shrink:0;height:26px;box-sizing:border-box;">Test</button>' +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Output Device">' +
+					'<select id="audio-device-select" global setting="audioOutputDevice" style="width:100%;padding:4px;background:#2a2a2a;color:#c8c8c8;border:1px solid #555;border-radius:4px;">' +
+						'<option value="-1">System Default</option>' +
+					'</select>' +
+				'</sdpi-item>'
+		}) %>
+
+		<div style="display:none;">
+			<sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
+		</div>
+
+		<script>
+		(function() {
+			// Test button — bumps the hidden _testRadarVolume timestamp, which the
+			// action reads in onDidReceiveSettings to trigger playRadarTest().
+			const radarBtn = document.getElementById('test-radar-btn');
+			if (radarBtn) {
+				radarBtn.addEventListener('click', () => {
+					const field = document.getElementById('test-radar-field');
+					if (field) {
+						field.value = String(Date.now());
+						field.dispatchEvent(new Event('change', { bubbles: true }));
+					}
+				});
+			}
+
+			// Audio output device dropdown — populated from global settings.
+			const deviceSelect = document.getElementById('audio-device-select');
+			if (deviceSelect && window.SDPIComponents) {
+				let savedDevice = '-1';
+				let setDevice = null;
+
+				const deviceHook = window.SDPIComponents.useGlobalSettings('audioOutputDevice', function(value) {
+					savedDevice = value !== null && value !== undefined ? String(value) : '-1';
+					deviceSelect.value = savedDevice;
+				});
+				setDevice = deviceHook[1];
+
+				window.SDPIComponents.useGlobalSettings('_audioDeviceList', function(value) {
+					if (!value) return;
+					try {
+						const devices = JSON.parse(value);
+						deviceSelect.innerHTML = '<option value="-1">System Default</option>';
+						devices.forEach(function(d) {
+							const opt = document.createElement('option');
+							opt.value = String(d.index);
+							opt.textContent = d.name + (d.isDefault ? ' (Default)' : '');
+							deviceSelect.appendChild(opt);
+						});
+						deviceSelect.value = savedDevice;
+					} catch(e) { /* ignore parse errors */ }
+				});
+
+				deviceSelect.addEventListener('change', function() {
+					if (setDevice) setDevice(deviceSelect.value);
+				});
+			}
+
+			// Direction visibility — hide unless Mode = radar-volume. sdpi-select
+			// events can be flaky (see session-info.ejs precedent), so combine
+			// change/input listeners with a polling fallback.
+			async function initializeDirectionVisibility() {
+				await customElements.whenDefined("sdpi-select");
+				const modeSelect = document.getElementById("mode-select");
+				const directionItem = document.getElementById("direction-item");
+				if (!modeSelect || !directionItem) return;
+
+				const update = (mode) => {
+					if (mode === "radar-volume") directionItem.classList.remove("hidden");
+					else directionItem.classList.add("hidden");
+				};
+
+				update(modeSelect.value || "race-engineer");
+				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
+				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
+
+				let last = modeSelect.value || "race-engineer";
+				setInterval(() => {
+					const current = modeSelect.value;
+					if (current && current !== last) {
+						last = current;
+						update(current);
+					}
+				}, 100);
+			}
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
+			else initializeDirectionVisibility();
+		})();
+		</script>
+
+		<style>
+		.hidden { display: none !important; }
+		</style>
+
+		<%- include('title-overrides') %>
+
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['pit-crew'] }) %>
+		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['pit-crew'] }) %>
+		<%- include('graphic-overrides') %>
+		<%- include('common-settings') %>
+
+		<%- include('section-header', { title: 'Global Settings' }) %>
+
+		<%- include('global-title-defaults') %>
+		<%- include('global-color-defaults') %>
+		<%- include('global-border-defaults') %>
+		<%- include('global-graphic-defaults') %>
+		<%- include('global-common-settings') %>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
+	</body>
+</html>

@@ -29,16 +29,16 @@ const FLAG_EVENT: Record<FlagColor, SimEventName> = {
 
 function flagScenario(color: FlagColor): Scenario {
   return {
-    id: `pit-engineer.flag-${color}`,
+    id: `pit-crew.flag-${color}`,
     when: { event: FLAG_EVENT[color] },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
-    base: "pit-engineer",
+    base: "pit-crew",
     priority: "normal",
     sequence: [
-      "@pit-engineer.radio-open",
+      "@pit-crew.radio-open",
       `flags/IRD-flag-${color}-flag.mp3`,
-      "@pit-engineer.radio-close",
+      "@pit-crew.radio-close",
     ],
   };
 }

@@ -137,8 +137,8 @@ describe("AudioService", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
       getAudio().init();
-      getAudio().playOnChannel(AudioChannel.Spotter, "/abs/path/clip.mp3");
-      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Spotter, "/abs/path/clip.mp3", false, 1.0);
+      getAudio().playOnChannel(AudioChannel.Radar, "/abs/path/clip.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Radar, "/abs/path/clip.mp3", false, 1.0);
     });
 
     it("leaves relative paths untouched when basePath is null", () => {
@@ -196,7 +196,7 @@ describe("AudioService", () => {
       (native.isChannelPlaying as ReturnType<typeof vi.fn>).mockReturnValue(true);
       initializeAudio(mockLogger as never, native);
       getAudio().init();
-      expect(getAudio().isChannelPlaying(AudioChannel.Spotter)).toBe(true);
+      expect(getAudio().isChannelPlaying(AudioChannel.Radar)).toBe(true);
     });
   });
 

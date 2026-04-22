@@ -15,4 +15,4 @@ export {
 } from "./translator.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
-export { resolveSpotterState } from "./diff/spotter.js";
+export { resolveRadarState } from "./diff/radar.js";

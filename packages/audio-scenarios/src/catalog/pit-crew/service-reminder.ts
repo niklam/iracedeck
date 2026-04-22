@@ -45,14 +45,14 @@ function pitSvFlags(ctx: ScenarioContext): number {
 }
 
 export const SERVICE_REMINDER: Scenario = {
-  id: "pit-engineer.service-reminder",
+  id: "pit-crew.service-reminder",
   when: { event: "pitLane.entered" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "low",
   sequence: [
-    "@pit-engineer.radio-open",
+    "@pit-crew.radio-open",
     {
       if: (ctx) => (pitSvFlags(ctx) & PitSvFlags.FastRepair) !== 0,
       then: ["reminder/IRD-pit-reminder-fast-repair.mp3"],
@@ -81,6 +81,6 @@ export const SERVICE_REMINDER: Scenario = {
         },
       ],
     },
-    "@pit-engineer.radio-close",
+    "@pit-crew.radio-close",
   ],
 };

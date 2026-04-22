@@ -6,7 +6,7 @@
  * Initial state uses sentinel values (negative / null / empty sets) so the
  * first tick after connect seeds without firing spurious transition events.
  */
-import type { SpotterState } from "@iracedeck/event-bus";
+import type { RadarState } from "@iracedeck/event-bus";
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -53,8 +53,8 @@ export type TranslatorState = {
   pendingOvertakeTime: number;
   lastConfirmedOvertakeCarIdx: number;
 
-  // ── Spotter ─────────────────────────────────────────────────────────────
-  spotterState: SpotterState;
+  // ── Radar ─────────────────────────────────────────────────────────────
+  radarState: RadarState;
 
   // ── Fuel thresholds ─────────────────────────────────────────────────────
   fuelLastLap: number;
@@ -105,7 +105,7 @@ export function createInitialState(): TranslatorState {
     pendingOvertakeTime: 0,
     lastConfirmedOvertakeCarIdx: -1,
 
-    spotterState: "clear",
+    radarState: "clear",
 
     fuelLastLap: -1,
     fuelAtLapStart: null,

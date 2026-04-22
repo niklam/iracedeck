@@ -512,19 +512,19 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
-  describe("spotter", () => {
-    it("emits spotter.changed with from/to states", () => {
+  describe("radar", () => {
+    it("emits radar.changed with from/to states", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
-      bus.subscribe("spotter.changed", handler);
+      bus.subscribe("radar.changed", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
       controller.__tick(telemetry({ CarLeftRight: CarLeftRight.CarLeft }));
 
       expect(handler).toHaveBeenCalledTimes(1);
-      const ev = handler.mock.calls[0]![0] as SimEventOf<"spotter.changed">;
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"radar.changed">;
       expect(ev.data).toEqual({ from: "clear", to: "left" });
     });
   });

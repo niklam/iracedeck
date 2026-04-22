@@ -109,7 +109,7 @@ export enum SessionState {
 }
 
 // ============================================================================
-// Car Left/Right (Spotter)
+// Car Left/Right — iRacing telemetry for cars alongside
 // ============================================================================
 
 export enum CarLeftRight {

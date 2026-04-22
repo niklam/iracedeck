@@ -15,5 +15,5 @@ export type {
   SimEventMap,
   SimEventName,
   SimEventOf,
-  SpotterState,
+  RadarState,
 } from "./event-catalog.js";

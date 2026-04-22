@@ -37,11 +37,11 @@ export type SimEvent<TEvent extends string, TData, TTelemetry = unknown> = {
 export type EmptySimEventPayload = Record<string, never>;
 
 /**
- * Proximity spotter state. Sim-agnostic string union so future translators
- * (AC, rFactor, …) can emit the same `spotter.changed` shape without
+ * Proximity radar state. Sim-agnostic string union so future translators
+ * (AC, rFactor, …) can emit the same `radar.changed` shape without
  * redefining it.
  */
-export type SpotterState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
+export type RadarState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
 
 /** Pit service toggle categories that can be individually enabled/disabled. */
 export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
@@ -92,7 +92,7 @@ export type SimEventMap = {
   "lap.started": SimEvent<"lap.started", { lap: number }>;
 
   // ── Value-change events (§6.2) — emit new state when derived value changes
-  "spotter.changed": SimEvent<"spotter.changed", { from: SpotterState; to: SpotterState }>;
+  "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;
   "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", { threshold: number; laps: number }>;
 };
 

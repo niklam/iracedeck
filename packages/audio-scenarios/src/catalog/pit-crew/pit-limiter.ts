@@ -19,7 +19,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { Scenario } from "../../dsl.js";
 
 export const LIMITER_ON_TRACK: Scenario = {
-  id: "pit-engineer.limiter-on-track",
+  id: "pit-crew.limiter-on-track",
   when: {
     event: "carControl.limiterToggled",
     where: (e) => {
@@ -36,39 +36,39 @@ export const LIMITER_ON_TRACK: Scenario = {
   },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
-  sequence: ["@pit-engineer.radio-open", "pool:pit-limiter-on-track", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-on-track", "@pit-crew.radio-close"],
 };
 
 export const LIMITER_MISSING: Scenario = {
-  id: "pit-engineer.limiter-missing",
+  id: "pit-crew.limiter-missing",
   when: { event: "limiter.missing" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
-  sequence: ["@pit-engineer.radio-open", "pool:pit-no-limiter", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-no-limiter", "@pit-crew.radio-close"],
 };
 
 export const LIMITER_DROPPED: Scenario = {
-  id: "pit-engineer.limiter-dropped",
+  id: "pit-crew.limiter-dropped",
   when: { event: "limiter.dropped" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
-  sequence: ["@pit-engineer.radio-open", "pool:pit-limiter-dropped", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-limiter-dropped", "@pit-crew.radio-close"],
 };
 
 export const LIMITER_SPEEDING: Scenario = {
-  id: "pit-engineer.limiter-speeding",
+  id: "pit-crew.limiter-speeding",
   when: { event: "limiter.speeding" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
-  sequence: ["@pit-engineer.radio-open", "pool:pit-speeding", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-speeding", "@pit-crew.radio-close"],
 };
 
 export const PIT_LIMITER_SCENARIOS: readonly Scenario[] = [

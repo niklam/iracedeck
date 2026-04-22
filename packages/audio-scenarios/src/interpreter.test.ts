@@ -74,7 +74,7 @@ function createFakeAudio(): FakeAudio {
     [AudioChannel.Ambient]: null,
     [AudioChannel.SFX]: null,
     [AudioChannel.Voice]: null,
-    [AudioChannel.Spotter]: null,
+    [AudioChannel.Radar]: null,
   };
   const played: { channel: AudioChannel; path: string; loop: boolean }[] = [];
   const stopped: AudioChannel[] = [];
@@ -120,14 +120,14 @@ function createFakeAudio(): FakeAudio {
 
 const manifest: AudioAssetsManifest = {
   clips: [
-    "pit-engineer/greeting/a.mp3",
-    "pit-engineer/greeting/b.mp3",
-    "pit-engineer/connector/and.mp3",
-    "pit-engineer/connector/also.mp3",
-    "pit-engineer/reminder/fuel.mp3",
-    "pit-engineer/reminder/autofuel.mp3",
-    "pit-engineer/reminder/tires.mp3",
-    "pit-engineer/names/alice.mp3",
+    "pit-crew/greeting/a.mp3",
+    "pit-crew/greeting/b.mp3",
+    "pit-crew/connector/and.mp3",
+    "pit-crew/connector/also.mp3",
+    "pit-crew/reminder/fuel.mp3",
+    "pit-crew/reminder/autofuel.mp3",
+    "pit-crew/reminder/tires.mp3",
+    "pit-crew/names/alice.mp3",
     "sfx/IRD-tick-open.mp3",
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
@@ -154,7 +154,7 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never);
-  engine.definePool("connector", ["pit-engineer/connector/and.mp3", "pit-engineer/connector/also.mp3"]);
+  engine.definePool("connector", ["pit-crew/connector/and.mp3", "pit-crew/connector/also.mp3"]);
 });
 
 afterEach(() => {
@@ -171,14 +171,14 @@ describe("string shorthand expansion", () => {
       id: "test.welcome",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      base: "pit-engineer",
+      base: "pit-crew",
       sequence: ["greeting/a.mp3"],
     });
 
     engine.fire("test.welcome");
 
     const played = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(played).toEqual(["pit-engineer/greeting/a.mp3"]);
+    expect(played).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 
   it("leading-slash escapes the base and routes ticks to the SFX channel", () => {
@@ -186,7 +186,7 @@ describe("string shorthand expansion", () => {
       id: "test.escape",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      base: "pit-engineer",
+      base: "pit-crew",
       sequence: ["/sfx/IRD-tick-open.mp3", "greeting/a.mp3"],
     });
 
@@ -200,7 +200,7 @@ describe("string shorthand expansion", () => {
 
     expect(audio._played).toEqual([
       { channel: AudioChannel.SFX, path: "sfx/IRD-tick-open.mp3", loop: false },
-      { channel: AudioChannel.Voice, path: "pit-engineer/greeting/a.mp3", loop: false },
+      { channel: AudioChannel.Voice, path: "pit-crew/greeting/a.mp3", loop: false },
     ]);
   });
 });
@@ -209,7 +209,7 @@ describe("string shorthand expansion", () => {
 
 describe("pools", () => {
   it("noRepeat avoids the same pick twice in a row across scenarios sharing the pool", () => {
-    engine.definePool("shared", ["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"]);
+    engine.definePool("shared", ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
 
     // Force Math.random to return the same value to make the "same pick" case obvious.
     const stub = vi.spyOn(Math, "random").mockReturnValue(0);
@@ -233,7 +233,7 @@ describe("pools", () => {
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"]);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
 
     stub.mockRestore();
   });
@@ -243,7 +243,7 @@ describe("pools", () => {
 
 describe("variables", () => {
   it("calls the resolver each time the variable is referenced", () => {
-    const resolver = vi.fn(() => "pit-engineer/names/alice.mp3");
+    const resolver = vi.fn(() => "pit-crew/names/alice.mp3");
     engine.defineVar("name", resolver);
     engine.defineScenario({
       id: "test.var",
@@ -257,7 +257,7 @@ describe("variables", () => {
     expect(resolver).toHaveBeenCalledTimes(1);
     expect(audio._played.at(-1)).toEqual({
       channel: AudioChannel.Voice,
-      path: "pit-engineer/names/alice.mp3",
+      path: "pit-crew/names/alice.mp3",
       loop: false,
     });
   });
@@ -268,12 +268,12 @@ describe("variables", () => {
       id: "test.var-null",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["{{name}}", "pit-engineer/greeting/a.mp3"],
+      sequence: ["{{name}}", "pit-crew/greeting/a.mp3"],
     });
 
     engine.fire("test.var-null");
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/greeting/a.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 });
 
@@ -288,15 +288,15 @@ describe("conditionals", () => {
       sequence: [
         {
           if: () => true,
-          then: ["pit-engineer/reminder/autofuel.mp3"],
-          else: ["pit-engineer/reminder/fuel.mp3"],
+          then: ["pit-crew/reminder/autofuel.mp3"],
+          else: ["pit-crew/reminder/fuel.mp3"],
         },
       ],
     });
 
     engine.fire("test.if-then");
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/reminder/autofuel.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/reminder/autofuel.mp3"]);
   });
 
   it("selects the `else` branch when the predicate is false", () => {
@@ -307,15 +307,15 @@ describe("conditionals", () => {
       sequence: [
         {
           if: () => false,
-          then: ["pit-engineer/reminder/autofuel.mp3"],
-          else: ["pit-engineer/reminder/fuel.mp3"],
+          then: ["pit-crew/reminder/autofuel.mp3"],
+          else: ["pit-crew/reminder/fuel.mp3"],
         },
       ],
     });
 
     engine.fire("test.if-else");
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/reminder/fuel.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/reminder/fuel.mp3"]);
   });
 
   it("skips the branch entirely when false and no else is provided", () => {
@@ -324,14 +324,14 @@ describe("conditionals", () => {
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       sequence: [
-        "pit-engineer/reminder/fuel.mp3",
-        { if: () => false, then: ["pit-engineer/reminder/autofuel.mp3"] },
+        "pit-crew/reminder/fuel.mp3",
+        { if: () => false, then: ["pit-crew/reminder/autofuel.mp3"] },
       ],
     });
 
     engine.fire("test.if-no-else");
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/reminder/fuel.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/reminder/fuel.mp3"]);
   });
 });
 
@@ -349,7 +349,7 @@ describe("includes", () => {
       id: "test.welcome",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      base: "pit-engineer",
+      base: "pit-crew",
       sequence: ["@test.radio-open", "greeting/a.mp3"],
     });
 
@@ -359,7 +359,7 @@ describe("includes", () => {
     expect(audio._played).toEqual([
       { channel: AudioChannel.SFX, path: "sfx/IRD-tick-open.mp3", loop: false },
       { channel: AudioChannel.Ambient, path: "sfx/IRD-ambient-pit.mp3", loop: true },
-      { channel: AudioChannel.Voice, path: "pit-engineer/greeting/a.mp3", loop: false },
+      { channel: AudioChannel.Voice, path: "pit-crew/greeting/a.mp3", loop: false },
     ]);
   });
 
@@ -396,7 +396,7 @@ describe("cooldown", () => {
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       cooldown: 5000,
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
 
     engine.fire("test.cool");
@@ -425,13 +425,13 @@ describe("priority", () => {
       id: "test.a",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
     engine.defineScenario({
       id: "test.b",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/b.mp3"],
+      sequence: ["pit-crew/greeting/b.mp3"],
     });
 
     engine.fire("test.a"); // starts playing
@@ -439,7 +439,7 @@ describe("priority", () => {
 
     flushVoiceAndSfx(audio);
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/greeting/a.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 
   it("urgent+preempt cancels a running non-urgent scenario", () => {
@@ -447,7 +447,7 @@ describe("priority", () => {
       id: "test.normal",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
     engine.defineScenario({
       id: "test.urgent",
@@ -455,7 +455,7 @@ describe("priority", () => {
       bus: AudioBus.Voice,
       priority: "urgent",
       preempt: true,
-      sequence: ["pit-engineer/reminder/fuel.mp3"],
+      sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     engine.fire("test.normal"); // first clip starts
@@ -464,7 +464,7 @@ describe("priority", () => {
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/reminder/fuel.mp3"]);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
     expect(audio._stopped).toContain(AudioChannel.Voice);
   });
 
@@ -474,14 +474,14 @@ describe("priority", () => {
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       priority: "high",
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
     engine.defineScenario({
       id: "test.low",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       priority: "low",
-      sequence: ["pit-engineer/reminder/fuel.mp3"],
+      sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     engine.fire("test.high"); // starts
@@ -490,7 +490,7 @@ describe("priority", () => {
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/reminder/fuel.mp3"]);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
   });
 
   it("tracks active fires per bus — one bus's cancellation doesn't touch another", () => {
@@ -500,27 +500,27 @@ describe("priority", () => {
       id: "test.voice-bus",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
     engine.defineScenario({
       id: "test.alerts-bus",
-      channel: AudioChannel.Spotter,
+      channel: AudioChannel.Radar,
       bus: AudioBus.Alerts,
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
 
     engine.fire("test.voice-bus"); // starts on Voice bus
     engine.fire("test.alerts-bus"); // starts on Alerts bus — must NOT overwrite voice
 
-    // Alerts-bus clip plays on the Spotter channel (resolved by the
+    // Alerts-bus clip plays on the Radar channel (resolved by the
     // scenario's declared channel); finish it.
-    audio._triggerChannelEnd(AudioChannel.Spotter);
+    audio._triggerChannelEnd(AudioChannel.Radar);
     // Voice bus's first clip finishes — its second clip should still follow.
     audio._triggerChannelEnd(AudioChannel.Voice);
     audio._triggerChannelEnd(AudioChannel.Voice);
 
     const voicePaths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(voicePaths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"]);
+    expect(voicePaths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
   });
 
   it("preserves the event context when a deferred low fire is replayed", () => {
@@ -532,7 +532,7 @@ describe("priority", () => {
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
       priority: "high",
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
     engine.defineScenario({
       id: "test.low-with-data",
@@ -547,8 +547,8 @@ describe("priority", () => {
 
             return (ctx.data as { should: boolean })?.should === true;
           },
-          then: ["pit-engineer/reminder/fuel.mp3"],
-          else: ["pit-engineer/reminder/tires.mp3"],
+          then: ["pit-crew/reminder/fuel.mp3"],
+          else: ["pit-crew/reminder/tires.mp3"],
         },
       ],
     });
@@ -567,7 +567,7 @@ describe("priority", () => {
     // taking the `then` branch — not collapse to the `else` branch that `null` data
     // would produce.
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(paths).toEqual(["pit-engineer/greeting/a.mp3", "pit-engineer/reminder/fuel.mp3"]);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
     expect(seenOnReplay.at(-1)).toEqual({ should: true });
   });
 });
@@ -581,13 +581,13 @@ describe("event subscription", () => {
       when: { event: "pitLane.approaching" },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/a.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3"],
     });
 
     bus.publishEvent("pitLane.approaching", {});
     flushVoiceAndSfx(audio);
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/greeting/a.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 
   it("applies the `where` filter", () => {
@@ -599,7 +599,7 @@ describe("event subscription", () => {
       },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/reminder/fuel.mp3"],
+      sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     bus.publish({
@@ -617,7 +617,7 @@ describe("event subscription", () => {
 
     flushVoiceAndSfx(audio);
 
-    expect(audio._played.map((p) => p.path)).toEqual(["pit-engineer/reminder/fuel.mp3"]);
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/reminder/fuel.mp3"]);
   });
 
   it("setEnabled(false) cancels in-flight and ignores new fires", () => {
@@ -626,7 +626,7 @@ describe("event subscription", () => {
       when: { event: "pitLane.entered" },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/a.mp3", "pit-engineer/greeting/b.mp3"],
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
 
     bus.publishEvent("pitLane.entered", {});
@@ -638,7 +638,7 @@ describe("event subscription", () => {
 
     // Only the first clip started; no further plays on Voice.
     const voicePaths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    expect(voicePaths).toEqual(["pit-engineer/greeting/a.mp3"]);
+    expect(voicePaths).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 });
 
@@ -653,7 +653,7 @@ describe("ambient side-effects", () => {
       sequence: [
         { ambient: "start" },
         { ambient: "seek" },
-        "pit-engineer/greeting/a.mp3",
+        "pit-crew/greeting/a.mp3",
         { ambient: "stop" },
       ],
     });

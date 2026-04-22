@@ -6,7 +6,7 @@
  *   Channel 0 (Ambient) — pit lane background noise loop
  *   Channel 1 (SFX)     — walkie-talkie open/close ticks
  *   Channel 2 (Voice)   — engineer messages, reminders, toggles
- *   Channel 3 (Spotter) — directional spotter ticks
+ *   Channel 3 (Radar) — directional radar ticks
  *
  * Also provides a voice sequence engine that chains audio clips with
  * random connector words ("and", "also", "plus") between them.
@@ -34,7 +34,7 @@ export enum AudioChannel {
   Ambient = 0,
   SFX = 1,
   Voice = 2,
-  Spotter = 3,
+  Radar = 3,
 }
 
 // ─── Bus system ──────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ export enum AudioBus {
   Voice = 0,
   /** Pit/track ambient loops + walkie ticks and non-voice SFX. */
   Background = 1,
-  /** Directional spotter calls; independent from engineer audio. */
+  /** Directional radar calls; independent from engineer audio. */
   Alerts = 2,
 }
 
@@ -66,14 +66,14 @@ const CHANNEL_BUS_MAP: Readonly<Record<AudioChannel, AudioBus>> = {
   [AudioChannel.Ambient]: AudioBus.Background,
   [AudioChannel.SFX]: AudioBus.Background,
   [AudioChannel.Voice]: AudioBus.Voice,
-  [AudioChannel.Spotter]: AudioBus.Alerts,
+  [AudioChannel.Radar]: AudioBus.Alerts,
 };
 
 const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.Ambient]: 0.8,
   [AudioChannel.SFX]: 0.7,
   [AudioChannel.Voice]: 1.0,
-  [AudioChannel.Spotter]: 1.0,
+  [AudioChannel.Radar]: 1.0,
 };
 
 // ─── Voice sequence state ────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ class AudioService implements IAudioService {
   /**
    * Resolve a clip path against the service's configured base path. Absolute
    * paths pass through unchanged, so callers that build their own absolute
-   * paths (e.g. the spotter engine) still work. Callers passing manifest-
+   * paths (e.g. the radar engine) still work. Callers passing manifest-
    * relative paths (e.g. the scenario interpreter emitting
    * `sfx/IRD-tick-open.mp3`) get prefixed with the base so the native layer
    * receives a filesystem path it can actually open.

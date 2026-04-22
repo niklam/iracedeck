@@ -315,17 +315,17 @@
       ]
     },
     {
-      "Name": "Pit Engineer",
-      "UUID": "com.iracedeck.sd.core.pit-engineer",
-      "Icon": "imgs/actions/pit-engineer/icon",
-      "Tooltip": "Pit engineer with directional spotter, pit approach/exit alerts, and service reminders",
-      "PropertyInspectorPath": "ui/pit-engineer.html",
+      "Name": "Pit Crew",
+      "UUID": "com.iracedeck.sd.core.pit-crew",
+      "Icon": "imgs/actions/pit-crew/icon",
+      "Tooltip": "Pit crew with directional radar proximity alerts (voice engineer scenarios land in follow-up PRs)",
+      "PropertyInspectorPath": "ui/pit-crew.html",
       "Controllers": [
         "Keypad"
       ],
       "States": [
         {
-          "Image": "imgs/actions/pit-engineer/key",
+          "Image": "imgs/actions/pit-crew/key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }

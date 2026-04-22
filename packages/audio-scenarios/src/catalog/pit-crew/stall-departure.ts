@@ -7,11 +7,11 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { Scenario } from "../../dsl.js";
 
 export const STALL_DEPARTURE: Scenario = {
-  id: "pit-engineer.stall-departure",
+  id: "pit-crew.stall-departure",
   when: { event: "pitStall.departed" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "high",
-  sequence: ["@pit-engineer.radio-open", "pool:stall-departure", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:stall-departure", "@pit-crew.radio-close"],
 };

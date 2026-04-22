@@ -164,8 +164,8 @@ export function resolveStep(step: Step): ResolvedStep {
 /**
  * Apply a scenario's `base` to a clip path. Leading `/` escapes the base.
  *
- *   applyBase("pit-engineer", "greeting/alright.mp3")   → "pit-engineer/greeting/alright.mp3"
- *   applyBase("pit-engineer", "/sfx/IRD-tick-open.mp3") → "sfx/IRD-tick-open.mp3"
+ *   applyBase("pit-crew", "greeting/alright.mp3")   → "pit-crew/greeting/alright.mp3"
+ *   applyBase("pit-crew", "/sfx/IRD-tick-open.mp3") → "sfx/IRD-tick-open.mp3"
  *   applyBase(undefined,      "sfx/IRD-tick-open.mp3")  → "sfx/IRD-tick-open.mp3"
  */
 export function applyBase(base: string | undefined, path: string): string {
