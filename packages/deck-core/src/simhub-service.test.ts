@@ -41,7 +41,6 @@ describe("SimHub Service", () => {
       simHubPort: 8888,
       disableWhenDisconnected: true,
       focusIRacingWindow: false,
-      engineStartupAnimation: true,
       enableFuelingOnChange: true,
     });
   });
@@ -133,7 +132,6 @@ describe("SimHub Service", () => {
         simHubPort: 9999,
         disableWhenDisconnected: true,
         focusIRacingWindow: false,
-        engineStartupAnimation: true,
         enableFuelingOnChange: true,
       });
 

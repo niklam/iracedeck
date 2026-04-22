@@ -195,17 +195,6 @@ export {
   type IBindingDispatcher,
 } from "./binding-dispatcher.js";
 
-// Engine startup animation service
-export {
-  initEngineStartupAnimation,
-  registerStartupAnimationContext,
-  unregisterStartupAnimationContext,
-  updateStartupAnimationSvg,
-  isStartupAnimationPlaying,
-  isEngineStartupAnimationInitialized,
-  _resetEngineStartupAnimation,
-} from "./engine-startup-service.js";
-
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 

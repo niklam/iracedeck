@@ -76,14 +76,6 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
-     * When true, play a visual animation across all buttons when the engine starts.
-     * Default: true (opt-out)
-     */
-    engineStartupAnimation: z
-      .union([z.boolean(), z.string()])
-      .transform((val) => val === true || val === "true")
-      .default(true),
-    /**
      * Hostname or IP address of the SimHub instance for Control Mapper integration.
      * Default: "127.0.0.1"
      */
