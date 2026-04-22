@@ -1,7 +1,7 @@
 /**
  * Welcome scenario — fires once when the driver first enters the car.
  *
- * Flow (matching the legacy pit-engineer behavior):
+ * Flow (matching the legacy pit-crew behavior):
  *   tick-open + ambient
  *     → (greeting ~60% of the time)
  *     → (driver-name clip if configured)
@@ -10,9 +10,9 @@
  *
  * The 60% greeting decision is encoded as a conditional `if` step. When the
  * PI "Test" button is pressed the action fires this scenario imperatively
- * via `engine.fire("pit-engineer.welcome")`.
+ * via `engine.fire("pit-crew.welcome")`.
  *
- * The `{{name}}` variable is resolved by the pit-engineer action; it returns
+ * The `{{name}}` variable is resolved by the pit-crew action; it returns
  * `null` when the user hasn't picked a driver name, in which case the step
  * is a no-op.
  *
@@ -26,20 +26,20 @@ import type { Scenario } from "../../dsl.js";
 const GREETING_PROBABILITY = 0.6;
 
 export const WELCOME: Scenario = {
-  id: "pit-engineer.welcome",
+  id: "pit-crew.welcome",
   when: { event: "driver.firstOnTrack" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
   sequence: [
-    "@pit-engineer.radio-open",
+    "@pit-crew.radio-open",
     {
       if: () => Math.random() < GREETING_PROBABILITY,
       then: ["pool:greeting"],
     },
     "{{name}}",
     "pool:welcome-tip",
-    "@pit-engineer.radio-close",
+    "@pit-crew.radio-close",
   ],
 };

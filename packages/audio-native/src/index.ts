@@ -27,8 +27,8 @@ export enum AudioChannel {
   SFX = 1,
   /** Engineer voice messages, reminders, toggles */
   Voice = 2,
-  /** Directional spotter ticks (independent) */
-  Spotter = 3,
+  /** Directional radar ticks (independent) */
+  Radar = 3,
 }
 
 /** Audio device descriptor returned by {@link AudioNative.getAudioDevices}. */

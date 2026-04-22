@@ -5,7 +5,7 @@ import type { IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 
 const manifest = {
-  clips: ["pit-engineer/greeting/a.mp3", "pit-engineer/connector/and.mp3"],
+  clips: ["pit-crew/greeting/a.mp3", "pit-crew/connector/and.mp3"],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
@@ -43,7 +43,7 @@ describe("validateScenario", () => {
       id: "bad",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      sequence: ["pit-engineer/greeting/does-not-exist.mp3"],
+      sequence: ["pit-crew/greeting/does-not-exist.mp3"],
     });
 
     expect(errorLogs.join("\n")).toContain("unknown clip");
@@ -117,13 +117,13 @@ describe("validateScenario", () => {
   });
 
   it("accepts a valid scenario", () => {
-    engine.definePool("connector", ["pit-engineer/connector/and.mp3"]);
-    engine.defineVar("name", () => "pit-engineer/greeting/a.mp3");
+    engine.definePool("connector", ["pit-crew/connector/and.mp3"]);
+    engine.defineVar("name", () => "pit-crew/greeting/a.mp3");
     engine.defineScenario({
       id: "good",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      base: "pit-engineer",
+      base: "pit-crew",
       sequence: ["greeting/a.mp3", { connector: true }, "{{name}}"],
     });
 

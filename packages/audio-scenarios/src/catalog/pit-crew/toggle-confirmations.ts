@@ -20,28 +20,28 @@ type PitService = "fuel" | "windshield" | "fastRepair";
 
 const PIT_SERVICE_CLIP: Record<PitService, { on: string; off: string }> = {
   fuel: {
-    on: "pit-engineer/toggle/IRD-toggle-fuel-on.mp3",
-    off: "pit-engineer/toggle/IRD-toggle-fuel-off.mp3",
+    on: "pit-crew/toggle/IRD-toggle-fuel-on.mp3",
+    off: "pit-crew/toggle/IRD-toggle-fuel-off.mp3",
   },
   windshield: {
-    on: "pit-engineer/toggle/IRD-toggle-windshield-on.mp3",
-    off: "pit-engineer/toggle/IRD-toggle-windshield-off.mp3",
+    on: "pit-crew/toggle/IRD-toggle-windshield-on.mp3",
+    off: "pit-crew/toggle/IRD-toggle-windshield-off.mp3",
   },
   fastRepair: {
-    on: "pit-engineer/toggle/IRD-toggle-fast-repair-on.mp3",
-    off: "pit-engineer/toggle/IRD-toggle-fast-repair-off.mp3",
+    on: "pit-crew/toggle/IRD-toggle-fast-repair-on.mp3",
+    off: "pit-crew/toggle/IRD-toggle-fast-repair-off.mp3",
   },
 };
 
 function toggleSequence(clip: string): Scenario["sequence"] {
-  return ["@pit-engineer.radio-open", "pool:acknowledgment", clip, "@pit-engineer.radio-close"];
+  return ["@pit-crew.radio-open", "pool:acknowledgment", clip, "@pit-crew.radio-close"];
 }
 
 function pitServiceScenario(service: PitService, on: boolean): Scenario {
-  const clip = (on ? PIT_SERVICE_CLIP[service].on : PIT_SERVICE_CLIP[service].off).replace(/^pit-engineer\//, "");
+  const clip = (on ? PIT_SERVICE_CLIP[service].on : PIT_SERVICE_CLIP[service].off).replace(/^pit-crew\//, "");
 
   return {
-    id: `pit-engineer.toggle-${service}-${on ? "on" : "off"}`,
+    id: `pit-crew.toggle-${service}-${on ? "on" : "off"}`,
     when: {
       event: "pitService.toggled",
       where: (e) => {
@@ -52,7 +52,7 @@ function pitServiceScenario(service: PitService, on: boolean): Scenario {
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
-    base: "pit-engineer",
+    base: "pit-crew",
     priority: "normal",
     sequence: toggleSequence(clip),
   };
@@ -63,14 +63,14 @@ function carControlScenario(kind: "drs" | "p2p", on: boolean): Scenario {
   const event = kind === "drs" ? "carControl.drsToggled" : "carControl.p2pToggled";
 
   return {
-    id: `pit-engineer.toggle-${kind}-${on ? "on" : "off"}`,
+    id: `pit-crew.toggle-${kind}-${on ? "on" : "off"}`,
     when: {
       event,
       where: (e) => (e as SimEventOf<"carControl.drsToggled" | "carControl.p2pToggled">).data.on === on,
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
-    base: "pit-engineer",
+    base: "pit-crew",
     priority: "normal",
     sequence: toggleSequence(`toggle/IRD-toggle-${fileStub}-${on ? "on" : "off"}.mp3`),
   };

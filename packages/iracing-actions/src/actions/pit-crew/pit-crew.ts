@@ -1,4 +1,4 @@
-import { playSpotterTest, setSpotterEnabled } from "@iracedeck/audio-scenarios/pit-engineer";
+import { playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -27,31 +27,31 @@ import {
 } from "@iracedeck/deck-core";
 import { z } from "zod";
 
-import pitEngineerTemplate from "../../../icons/pit-engineer.svg";
+import pitCrewTemplate from "../../../icons/pit-crew.svg";
 import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 
 const WHITE = "#ffffff";
 
 /** @internal Exported for testing */
-export const PIT_ENGINEER_UUID = "com.iracedeck.sd.core.pit-engineer";
+export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
 
 // ─── Settings ──────────────────────────────────────────────────────────────────
 
 /** Zod-safe boolean that handles string "true"/"false" from PI checkboxes. */
 const zBool = z.union([z.boolean(), z.string()]).transform((val) => val === true || val === "true");
 
-// Initial GA ships spotter-only (#410). Voice-engineer toggles (welcome, pit-lane,
+// Initial GA ships radar-only (#410). Voice-engineer toggles (welcome, pit-lane,
 // flags, incidents, overtake/tips, fuel, toggle confirmations, pit-limiter warnings)
 // and the driver-name picker will return in follow-up PRs after per-feature validation.
 // Persisted values for removed fields pass through Zod's default strip mode — unknown
 // keys are silently dropped on parse, so no migration is needed.
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  spotterEnabled: zBool.default(true),
-  spotterVolume: z.coerce.number().min(5).max(100).default(100),
+  radarEnabled: zBool.default(true),
+  radarVolume: z.coerce.number().min(5).max(100).default(100),
 });
 
-type PitEngineerSettings = z.infer<typeof Settings>;
+type PitCrewSettings = z.infer<typeof Settings>;
 
 // ─── Master gate ──────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ type PitEngineerSettings = z.infer<typeof Settings>;
  * instances on different pages.
  */
 function isEngineerEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).pitEngineerEnabled !== false;
+  return (getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled !== false;
 }
 
 // ─── Scenario gating ──────────────────────────────────────────────────────────
@@ -69,24 +69,24 @@ function isEngineerEnabled(): boolean {
 /**
  * @internal Exported for testing.
  *
- * Sync spotter state to the Property Inspector toggle, gated by the master
+ * Sync radar state to the Property Inspector toggle, gated by the master
  * switch. Called from every event that can change either layer of state
  * (`onWillAppear`, `onDidReceiveSettings`, `onKeyDown`). `master` is passed
  * explicitly because `onKeyDown` needs the new value before the
  * global-settings round-trip completes.
  */
-export function syncScenarioState(settings: PitEngineerSettings, master: boolean): void {
-  setSpotterEnabled(master && settings.spotterEnabled);
+export function syncScenarioState(settings: PitCrewSettings, master: boolean): void {
+  setRadarEnabled(master && settings.radarEnabled);
 }
 
 /**
  * @internal Exported for testing.
  *
- * Apply the volume slider to the Alerts bus (spotter output). Per-channel
+ * Apply the volume slider to the Alerts bus (radar output). Per-channel
  * attenuation is applied inside audio-service's bus mix ratios.
  */
-export function applyVolumes(settings: PitEngineerSettings): void {
-  getAudio().setBusVolume(AudioBus.Alerts, settings.spotterVolume / 100);
+export function applyVolumes(settings: PitCrewSettings): void {
+  getAudio().setBusVolume(AudioBus.Alerts, settings.radarVolume / 100);
 }
 
 // ─── Icon generation ──────────────────────────────────────────────────────────
@@ -102,12 +102,12 @@ function mechanicPathContent(graphicColor: string): string {
 /**
  * @internal Exported for testing.
  *
- * Generates a complete SVG data URI for the pit engineer icon. Spotter
+ * Generates a complete SVG data URI for the pit crew icon. Radar
  * proximity state is audio-only today — the icon reflects only the master
  * on/off state via the status bar.
  */
-export function generatePitEngineerSvg(settings: PitEngineerSettings, enabled: boolean): string {
-  const colors = resolveIconColors(pitEngineerTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+export function generatePitCrewSvg(settings: PitCrewSettings, enabled: boolean): string {
+  const colors = resolveIconColors(pitCrewTemplate, getGlobalColors(), settings.colorOverrides) as Record<
     string,
     string
   >;
@@ -115,7 +115,7 @@ export function generatePitEngineerSvg(settings: PitEngineerSettings, enabled: b
   const graphicColor = colors.graphic1Color ?? WHITE;
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
   const title = resolveTitleSettings(
-    pitEngineerTemplate,
+    pitCrewTemplate,
     getGlobalTitleSettings(),
     settings.titleOverrides,
     "PIT\nENGINEER",
@@ -150,14 +150,14 @@ export function generatePitEngineerSvg(settings: PitEngineerSettings, enabled: b
   const iconContent = scaledGraphic + titleText + statusBar;
 
   const border = resolveBorderSettings(
-    pitEngineerTemplate,
+    pitCrewTemplate,
     getGlobalBorderSettings(),
     settings.borderOverrides,
     borderColorForState(enabled ? "on" : "off"),
   );
   const borderSvg = generateBorderParts(border);
 
-  const svg = renderIconTemplate(pitEngineerTemplate, {
+  const svg = renderIconTemplate(pitCrewTemplate, {
     iconContent,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
@@ -169,9 +169,9 @@ export function generatePitEngineerSvg(settings: PitEngineerSettings, enabled: b
 
 // ─── Action ────────────────────────────────────────────────────────────────────
 
-export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings> {
+export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   /** Per-context settings cache for visible instances. */
-  private readonly settingsCache = new Map<string, PitEngineerSettings>();
+  private readonly settingsCache = new Map<string, PitCrewSettings>();
 
   /** Set of currently visible context IDs. */
   private readonly visibleContexts = new Set<string>();
@@ -180,13 +180,13 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   private readonly listenerUnsubs = new Map<string, () => void>();
 
   /**
-   * Last spotter test-volume timestamp per context. Keyed per visible instance
+   * Last radar test-volume timestamp per context. Keyed per visible instance
    * so two Pit Engineer buttons on different pages don't overwrite each
    * other's baseline and spuriously replay the preview on a settings echo.
    */
-  private readonly lastSpotterTestTimestamps = new Map<string, number>();
+  private readonly lastRadarTestTimestamps = new Map<string, number>();
 
-  override async onWillAppear(ev: IDeckWillAppearEvent<PitEngineerSettings>): Promise<void> {
+  override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
     const raw = ev.payload.settings as Record<string, unknown>;
@@ -198,11 +198,11 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     // Seed test-button timestamp so the first onDidReceiveSettings doesn't
     // replay the previous play when the PI rehydrates the hidden textfield.
-    this.lastSpotterTestTimestamps.set(contextId, Number(raw._testSpotterVolume ?? 0));
+    this.lastRadarTestTimestamps.set(contextId, Number(raw._testRadarVolume ?? 0));
 
     // Re-render when the master flag changes (both from our own onKeyDown
-    // round-trip and from another instance). Spotter state isn't part of
-    // the icon today, so no spotter-listener subscription.
+    // round-trip and from another instance). Radar state isn't part of
+    // the icon today, so no radar-listener subscription.
     this.listenerUnsubs.set(
       contextId,
       onGlobalSettingsChange(() => {
@@ -213,30 +213,30 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     applyVolumes(settings);
     syncScenarioState(settings, isEngineerEnabled());
 
-    await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
+    await this.setKeyImage(ev, generatePitCrewSvg(settings, isEngineerEnabled()));
 
     this.setRegenerateCallback(contextId, () => {
       const s = this.settingsCache.get(contextId);
 
       if (!s) return "";
 
-      return generatePitEngineerSvg(s, isEngineerEnabled());
+      return generatePitCrewSvg(s, isEngineerEnabled());
     });
   }
 
-  override async onWillDisappear(ev: IDeckWillDisappearEvent<PitEngineerSettings>): Promise<void> {
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<PitCrewSettings>): Promise<void> {
     const contextId = ev.action.id;
 
     this.listenerUnsubs.get(contextId)?.();
     this.listenerUnsubs.delete(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
-    this.lastSpotterTestTimestamps.delete(contextId);
+    this.lastRadarTestTimestamps.delete(contextId);
 
     await super.onWillDisappear(ev);
   }
 
-  override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<PitEngineerSettings>): Promise<void> {
+  override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<PitCrewSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
 
     const raw = ev.payload.settings as Record<string, unknown>;
@@ -248,20 +248,20 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     applyVolumes(settings);
     syncScenarioState(settings, isEngineerEnabled());
 
-    const spotterTestTimestamp = raw._testSpotterVolume as number | undefined;
-    const lastSpotterTestTimestamp = this.lastSpotterTestTimestamps.get(contextId) ?? 0;
+    const radarTestTimestamp = raw._testRadarVolume as number | undefined;
+    const lastRadarTestTimestamp = this.lastRadarTestTimestamps.get(contextId) ?? 0;
 
-    if (spotterTestTimestamp && spotterTestTimestamp !== lastSpotterTestTimestamp) {
-      this.logger.info("Playing spotter test: left → right → both");
-      playSpotterTest();
+    if (radarTestTimestamp && radarTestTimestamp !== lastRadarTestTimestamp) {
+      this.logger.info("Playing radar test: left → right → both");
+      playRadarTest();
     }
 
-    this.lastSpotterTestTimestamps.set(contextId, Number(spotterTestTimestamp ?? 0));
+    this.lastRadarTestTimestamps.set(contextId, Number(radarTestTimestamp ?? 0));
 
-    await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
+    await this.setKeyImage(ev, generatePitCrewSvg(settings, isEngineerEnabled()));
   }
 
-  override async onKeyDown(ev: IDeckKeyDownEvent<PitEngineerSettings>): Promise<void> {
+  override async onKeyDown(ev: IDeckKeyDownEvent<PitCrewSettings>): Promise<void> {
     const nextMaster = !isEngineerEnabled();
     const settings = Settings.parse(ev.payload.settings);
 
@@ -271,14 +271,14 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     // settings round-trip is async; relying on it would let audio play in
     // the stale-master window between the button press and the adapter echo.
     syncScenarioState(settings, nextMaster);
-    updateGlobalSettings({ pitEngineerEnabled: nextMaster });
+    updateGlobalSettings({ raceEngineerEnabled: nextMaster });
 
     for (const contextId of this.visibleContexts) {
       const s = this.settingsCache.get(contextId);
 
       if (!s) continue;
 
-      await this.updateKeyImage(contextId, generatePitEngineerSvg(s, nextMaster));
+      await this.updateKeyImage(contextId, generatePitCrewSvg(s, nextMaster));
     }
   }
 
@@ -287,6 +287,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     if (!settings) return;
 
-    await this.updateKeyImage(contextId, generatePitEngineerSvg(settings, isEngineerEnabled()));
+    await this.updateKeyImage(contextId, generatePitCrewSvg(settings, isEngineerEnabled()));
   }
 }

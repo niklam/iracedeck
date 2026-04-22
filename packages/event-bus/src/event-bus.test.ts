@@ -330,7 +330,7 @@ describe("EventBus", () => {
       // members of the SimEventName union. `tsc` fails if any is missing.
       const a: SimEventName = "pitLane.entered";
       const b: SimEventName = "flag.yellow.raised";
-      const c: SimEventName = "spotter.changed";
+      const c: SimEventName = "radar.changed";
       expect([a, b, c]).toHaveLength(3);
     });
 

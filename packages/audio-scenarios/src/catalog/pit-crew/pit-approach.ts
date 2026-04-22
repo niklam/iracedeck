@@ -11,11 +11,11 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { Scenario } from "../../dsl.js";
 
 export const PIT_APPROACH: Scenario = {
-  id: "pit-engineer.pit-approach",
+  id: "pit-crew.pit-approach",
   when: { event: "pitLane.approaching" },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "high",
-  sequence: ["@pit-engineer.radio-open", "pool:pit-approach", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:pit-approach", "@pit-crew.radio-close"],
 };

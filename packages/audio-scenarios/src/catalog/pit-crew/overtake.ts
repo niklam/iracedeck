@@ -37,12 +37,12 @@ function createOvertakeWhere(): () => boolean {
 }
 
 export const OVERTAKE: Scenario = {
-  id: "pit-engineer.overtake",
+  id: "pit-crew.overtake",
   when: { event: "overtake.completed", where: createOvertakeWhere() },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
   cooldown: OVERTAKE_COOLDOWN_MS,
-  sequence: ["@pit-engineer.radio-open", "pool:overtake", "@pit-engineer.radio-close"],
+  sequence: ["@pit-crew.radio-open", "pool:overtake", "@pit-crew.radio-close"],
 };

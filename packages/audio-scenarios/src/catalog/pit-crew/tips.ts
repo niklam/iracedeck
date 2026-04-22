@@ -5,7 +5,7 @@
  * tip-11 but includes the starter-only tips 6 and 7). Mid-race picks from
  * `race-tip` (excludes START_ONLY tips 6 and 7 but includes mid-race tip-11).
  *
- * Behavior drift from the legacy pit-engineer:
+ * Behavior drift from the legacy pit-crew:
  *   - Legacy path polled telemetry every 2 s for a random LapDistPct
  *     threshold. The scenario fires once at `lap.started` (new-lap edge)
  *     which is slightly earlier and more deterministic — acceptable
@@ -25,7 +25,7 @@ function isStartWindow(ctx: ScenarioContext): boolean {
 }
 
 export const RACING_TIPS: Scenario = {
-  id: "pit-engineer.racing-tips",
+  id: "pit-crew.racing-tips",
   when: {
     event: "lap.started",
     where: () => {
@@ -36,15 +36,15 @@ export const RACING_TIPS: Scenario = {
   },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
-  base: "pit-engineer",
+  base: "pit-crew",
   priority: "normal",
   sequence: [
-    "@pit-engineer.radio-open",
+    "@pit-crew.radio-open",
     {
       if: (ctx) => isStartWindow(ctx),
       then: ["pool:welcome-tip"],
       else: ["pool:race-tip"],
     },
-    "@pit-engineer.radio-close",
+    "@pit-crew.radio-close",
   ],
 };

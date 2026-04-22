@@ -6,7 +6,7 @@
  * per descending crossing of FUEL_THRESHOLDS. Consumers (scenarios) filter
  * on `threshold` in their `where` predicate to react to specific tiers.
  *
- * Keeps the full fuel state machine from `pit-engineer.handleFuelWarnings`
+ * Keeps the full fuel state machine from `pit-crew.handleFuelWarnings`
  * minus the audio dispatch — the action still owns pool selection and
  * radio-flow sequencing.
  */

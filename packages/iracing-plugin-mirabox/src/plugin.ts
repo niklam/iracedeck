@@ -9,7 +9,7 @@
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
-import { registerPitEngineer } from "@iracedeck/audio-scenarios/pit-engineer";
+import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
@@ -53,9 +53,9 @@ import {
   LookDirection,
   MEDIA_CAPTURE_UUID,
   MediaCapture,
-  PIT_ENGINEER_UUID,
+  PIT_CREW_UUID,
   PIT_QUICK_ACTIONS_UUID,
-  PitEngineer,
+  PitCrew,
   PitQuickActions,
   RACE_ADMIN_UUID,
   RaceAdmin,
@@ -133,7 +133,7 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
-// Initialize audio engine for pit engineer voice playback.
+// Initialize audio engine for pit crew voice playback.
 // Base path lets scenarios emit manifest-relative clip paths (e.g.
 // "sfx/IRD-tick-open.mp3") that audio-service prepends with the plugin's
 // assets/audio directory before passing them to the native engine.
@@ -147,7 +147,7 @@ getAudio().init();
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
-registerPitEngineer(eventBus);
+registerPitCrew(eventBus);
 
 // Publish audio device list and apply saved device selection
 let audioDeviceInitialized = false;
@@ -210,7 +210,7 @@ adapter.registerAction(FORCE_FEEDBACK_UUID, new ForceFeedback(adapter.createLogg
 adapter.registerAction(FUEL_SERVICE_UUID, new FuelService(adapter.createLogger("FuelService")));
 adapter.registerAction(LOOK_DIRECTION_UUID, new LookDirection(adapter.createLogger("LookDirection")));
 adapter.registerAction(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger("MediaCapture")));
-adapter.registerAction(PIT_ENGINEER_UUID, new PitEngineer(adapter.createLogger("PitEngineer")));
+adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew")));
 adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
 adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
 adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));

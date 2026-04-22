@@ -35,9 +35,9 @@ describe("parseStepShorthand", () => {
   });
 
   it("parses @<id> as include", () => {
-    expect(parseStepShorthand("@pit-engineer.radio-open")).toEqual({
+    expect(parseStepShorthand("@pit-crew.radio-open")).toEqual({
       kind: "include",
-      id: "pit-engineer.radio-open",
+      id: "pit-crew.radio-open",
     });
   });
 
@@ -77,11 +77,11 @@ describe("resolveStep", () => {
 
 describe("applyBase", () => {
   it("prefixes a relative path with the base", () => {
-    expect(applyBase("pit-engineer", "greeting/alright.mp3")).toBe("pit-engineer/greeting/alright.mp3");
+    expect(applyBase("pit-crew", "greeting/alright.mp3")).toBe("pit-crew/greeting/alright.mp3");
   });
 
   it("strips the leading slash to escape the base", () => {
-    expect(applyBase("pit-engineer", "/sfx/IRD-tick-open.mp3")).toBe("sfx/IRD-tick-open.mp3");
+    expect(applyBase("pit-crew", "/sfx/IRD-tick-open.mp3")).toBe("sfx/IRD-tick-open.mp3");
   });
 
   it("passes through unchanged when no base is set", () => {

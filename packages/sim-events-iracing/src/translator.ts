@@ -28,7 +28,7 @@ import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
-import { diffSpotter } from "./diff/spotter.js";
+import { diffSpotter } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import type { PendingEvent } from "./diff/types.js";
 import { createInitialState, type TranslatorState } from "./state.js";

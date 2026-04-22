@@ -10,9 +10,9 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
-    "./pit-engineer": {
-      "import": "./dist/catalog/pit-engineer/index.js",
-      "types": "./dist/catalog/pit-engineer/index.d.ts"
+    "./pit-crew": {
+      "import": "./dist/catalog/pit-crew/index.js",
+      "types": "./dist/catalog/pit-crew/index.d.ts"
     }
   },
   "scripts": {

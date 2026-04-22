@@ -16,7 +16,7 @@ import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iraci
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-// Tire flag → human-readable name (matches pit-engineer's TIRE_SHORT domain)
+// Tire flag → human-readable name (matches pit-crew's TIRE_SHORT domain)
 const TIRE_FLAGS: ReadonlyArray<{ flag: number; name: string }> = [
   { flag: PitSvFlags.LFTireChange, name: "LF" },
   { flag: PitSvFlags.RFTireChange, name: "RF" },
