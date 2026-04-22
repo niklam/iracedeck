@@ -292,4 +292,5 @@ export function _resetRadarEngine(): void {
   listeners.clear();
   registeredBus = null;
   testSequenceInFlight = false;
+  testSequenceGeneration = 0;
 }
