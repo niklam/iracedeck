@@ -283,10 +283,16 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
 
     // Re-render on any global-settings change — every mode depends on at
     // least one global, so every change can affect the rendered state bar
-    // or volume read-out.
+    // or volume read-out. Also push the updated values into the live audio
+    // layer: the PI's global Radar Volume slider and any other Pit Crew
+    // instance's key press go through global settings, so this action has
+    // to mirror them onto `AudioBus.Alerts` and the radar engine's gate
+    // right when the global flips — not on next mount.
     this.listenerUnsubs.set(
       contextId,
       onGlobalSettingsChange(() => {
+        applyRadarVolume();
+        applyRadarEnabled();
         void this.rerender(contextId);
       }),
     );
@@ -328,15 +334,19 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
 
     this.settingsCache.set(contextId, settings);
 
-    const radarTestTimestamp = raw._testRadarVolume as number | undefined;
+    // `_testRadarVolume` is written by the PI as `String(Date.now())` — the
+    // Stream Deck settings round-trip preserves strings, so coerce to a number
+    // on both sides of the compare. A raw `string !== number` mismatch would
+    // fire the preview on every PI rehydrate.
+    const radarTestTimestamp = Number(raw._testRadarVolume ?? 0);
     const lastRadarTestTimestamp = this.lastRadarTestTimestamps.get(contextId) ?? 0;
 
-    if (radarTestTimestamp && radarTestTimestamp !== lastRadarTestTimestamp) {
+    if (radarTestTimestamp > 0 && radarTestTimestamp !== lastRadarTestTimestamp) {
       this.logger.info("Playing radar test: left → right → both");
       playRadarTest();
     }
 
-    this.lastRadarTestTimestamps.set(contextId, Number(radarTestTimestamp ?? 0));
+    this.lastRadarTestTimestamps.set(contextId, radarTestTimestamp);
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
   }

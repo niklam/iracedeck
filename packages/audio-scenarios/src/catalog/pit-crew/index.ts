@@ -1,13 +1,13 @@
 /**
- * Pit-engineer scenario catalog registration.
+ * Pit Crew scenario catalog registration.
  *
- * For the initial GA release of Pit Engineer, only the directional radar is
- * wired up (see issue #410). The voice-engineer scenarios (`WELCOME`,
+ * For the initial GA release of Pit Crew (#413), only the directional radar
+ * is wired up (see issue #410). The voice-engineer scenarios (`WELCOME`,
  * `PIT_APPROACH`, flag/fuel/toggle/limiter/tip catalogs, etc.) stay on disk
  * and will be re-registered one at a time in follow-up PRs after per-feature
- * validation. Everything in this file is intentionally minimal — the engine
- * has no scenarios, no pools, and no variables to resolve until those
- * follow-ups land.
+ * validation. Everything in this file is
+ * intentionally minimal — the engine has no scenarios, no pools, and no
+ * variables to resolve until those follow-ups land.
  *
  * `registerPitCrew(bus)` today only wires the radar engine. The `bus`
  * is the event bus instance returned by `initializeEventBus(...)` — passed

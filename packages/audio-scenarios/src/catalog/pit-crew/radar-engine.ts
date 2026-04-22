@@ -53,6 +53,11 @@ let visualState: RadarVisualState = "clear";
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
 let registeredBus: IEventBus | null = null;
 let testSequenceInFlight = false;
+// Monotonic counter — bumped on every `playRadarTest` and on every
+// `setRadarEnabled(false)`. Every scheduled callback captures the generation
+// at scheduling time and bails if it no longer matches, so a clip completion
+// that lands after a disable can't schedule the next preview step.
+let testSequenceGeneration = 0;
 const listeners = new Set<RadarListener>();
 
 function resolveAudioPath(file: string): string {
@@ -179,11 +184,19 @@ export function registerRadarEngine(bus: IEventBus): void {
  * loop, silences the radar channel, and forces the visual state back to
  * `"clear"` (notifying subscribers so the key icon clears). `true` is
  * passive — the next `radar.changed` event will drive playback.
+ *
+ * Uses a monotonic `testSequenceGeneration` counter so that
+ * `onChannelComplete` callbacks and `setTimeout`-scheduled `playNext`
+ * invocations from a previous preview are inert after the gate flips off.
+ * Without that guard, a clip that completes immediately after the user
+ * toggles Radar off would queue the next preview clip and play it on
+ * `AudioChannel.Radar` despite the master being off.
  */
 export function setRadarEnabled(next: boolean): void {
   enabled = next;
 
   if (!enabled) {
+    testSequenceGeneration++;
     testSequenceInFlight = false;
     stopTickLoop();
     getAudio().stopChannel(AudioChannel.Radar);
@@ -200,6 +213,8 @@ export function setRadarEnabled(next: boolean): void {
 export function playRadarTest(): void {
   if (testSequenceInFlight) return;
 
+  const generation = ++testSequenceGeneration;
+
   testSequenceInFlight = true;
   // Suspend the live tick loop so a scheduled tick doesn't cut off the
   // preview clip mid-play. `handleRadarChanged` also gates on
@@ -207,6 +222,8 @@ export function playRadarTest(): void {
   stopTickLoop();
 
   const finishTest = (): void => {
+    if (generation !== testSequenceGeneration) return;
+
     testSequenceInFlight = false;
 
     // Resume the live loop if the radar is still active. Events that
@@ -219,6 +236,8 @@ export function playRadarTest(): void {
 
   let idx = 0;
   const playNext = (): void => {
+    if (generation !== testSequenceGeneration || !testSequenceInFlight) return;
+
     if (idx >= RADAR_TEST_SEQUENCE.length) {
       finishTest();
 
@@ -228,7 +247,11 @@ export function playRadarTest(): void {
     const file = RADAR_TEST_SEQUENCE[idx];
     idx++;
     getAudio().onChannelComplete(AudioChannel.Radar, () => {
-      setTimeout(playNext, RADAR_TEST_GAP_MS);
+      setTimeout(() => {
+        if (generation === testSequenceGeneration && testSequenceInFlight) {
+          playNext();
+        }
+      }, RADAR_TEST_GAP_MS);
     });
 
     // If playOnChannel returns false (audio engine not initialized) the
@@ -262,7 +285,7 @@ export function subscribeRadarVisualState(listener: RadarListener): () => void {
 }
 
 /** @internal Exported for test isolation only. */
-export function _resetSpotterEngine(): void {
+export function _resetRadarEngine(): void {
   stopTickLoop();
   enabled = false;
   visualState = "clear";

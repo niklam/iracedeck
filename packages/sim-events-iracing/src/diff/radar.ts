@@ -30,12 +30,12 @@ export function resolveRadarState(carLeftRight: number): RadarState {
   }
 }
 
-export function diffSpotter(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
+export function diffRadar(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
   const carLeftRight = telemetry.CarLeftRight ?? CarLeftRight.Off;
   const next = resolveRadarState(carLeftRight);
 
-  if (next !== state.spotterState) {
-    emit({ event: "radar.changed", data: { from: state.spotterState, to: next } });
-    state.spotterState = next;
+  if (next !== state.radarState) {
+    emit({ event: "radar.changed", data: { from: state.radarState, to: next } });
+    state.radarState = next;
   }
 }

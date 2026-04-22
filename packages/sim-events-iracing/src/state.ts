@@ -54,7 +54,7 @@ export type TranslatorState = {
   lastConfirmedOvertakeCarIdx: number;
 
   // ── Radar ─────────────────────────────────────────────────────────────
-  spotterState: RadarState;
+  radarState: RadarState;
 
   // ── Fuel thresholds ─────────────────────────────────────────────────────
   fuelLastLap: number;
@@ -105,7 +105,7 @@ export function createInitialState(): TranslatorState {
     pendingOvertakeTime: 0,
     lastConfirmedOvertakeCarIdx: -1,
 
-    spotterState: "clear",
+    radarState: "clear",
 
     fuelLastLap: -1,
     fuelAtLapStart: null,

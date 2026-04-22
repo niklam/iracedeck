@@ -1,6 +1,6 @@
 # @iracedeck/audio-native
 
-Native Node.js addon (C++/N-API) wrapping the [miniaudio](https://miniaud.io) single-header audio library. Provides a 4-channel mixer used by Pit Engineer and other audio-playing actions.
+Native Node.js addon (C++/N-API) wrapping the [miniaudio](https://miniaud.io) single-header audio library. Provides a 4-channel mixer used by Pit Crew and other audio-playing actions.
 
 See `CLAUDE.md` for the full function reference and `src/index.ts` for the TypeScript surface.
 

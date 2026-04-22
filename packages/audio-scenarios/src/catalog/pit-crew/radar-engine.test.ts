@@ -2,7 +2,7 @@ import type { IEventBus } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _resetSpotterEngine,
+  _resetRadarEngine,
   getRadarVisualState,
   playRadarTest,
   registerRadarEngine,
@@ -37,7 +37,7 @@ const hoisted = vi.hoisted(() => {
   // Typed once so every `registerRadarEngine(hoisted.bus)` callsite
   // stays type-safe without a per-call `as never` escape hatch.
   const bus = { subscribe, unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
-  const publishSpotter = (to: string, from = "clear"): void => {
+  const publishRadar = (to: string, from = "clear"): void => {
     const set = busHandlers.get("radar.changed");
 
     if (!set) return;
@@ -57,7 +57,7 @@ const hoisted = vi.hoisted(() => {
     busHandlers,
     subscribe,
     bus,
-    publishSpotter,
+    publishRadar,
     getLatestTelemetry,
     getSessionType,
   };
@@ -73,7 +73,7 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: hoisted.getSessionType,
 }));
 
-const SPOTTER_CHANNEL = 3;
+const RADAR_CHANNEL = 3;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -89,7 +89,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  _resetSpotterEngine();
+  _resetRadarEngine();
   vi.useRealTimers();
 });
 
@@ -114,7 +114,7 @@ describe("registerRadarEngine", () => {
 describe("radar.changed → tick loop", () => {
   it("does nothing when the master gate is disabled", () => {
     registerRadarEngine(hoisted.bus);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     expect(getRadarVisualState()).toBe("clear");
@@ -124,10 +124,10 @@ describe("radar.changed → tick loop", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
 
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
-    expect(hoisted.playOnChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL, expect.stringContaining("IRD-radar-left"));
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(RADAR_CHANNEL, expect.stringContaining("IRD-radar-left"));
 
     vi.advanceTimersByTime(250);
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
@@ -139,7 +139,7 @@ describe("radar.changed → tick loop", () => {
   it("uses the 180 ms cadence for two-cars-same-side states", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("two-left");
+    hoisted.publishRadar("two-left");
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(180);
@@ -149,7 +149,7 @@ describe("radar.changed → tick loop", () => {
   it("uses the 230 ms cadence for both-sides", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("both");
+    hoisted.publishRadar("both");
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(230);
@@ -159,12 +159,12 @@ describe("radar.changed → tick loop", () => {
   it("stops the tick loop and silences the channel when state returns to clear", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     const beforeClearCalls = hoisted.playOnChannel.mock.calls.length;
 
-    hoisted.publishSpotter("clear", "left");
+    hoisted.publishRadar("clear", "left");
 
-    expect(hoisted.stopChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL);
+    expect(hoisted.stopChannel).toHaveBeenCalledWith(RADAR_CHANNEL);
 
     // Advance time — no further ticks should fire.
     vi.advanceTimersByTime(1000);
@@ -174,10 +174,10 @@ describe("radar.changed → tick loop", () => {
   it("switches interval when state transitions between active states", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
 
-    hoisted.publishSpotter("two-right", "left");
+    hoisted.publishRadar("two-right", "left");
     // New tick fires immediately, then at 180 ms cadence.
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(2);
     expect(hoisted.playOnChannel.mock.calls.at(-1)?.[1]).toContain("IRD-radar-right");
@@ -189,10 +189,10 @@ describe("radar.changed → tick loop", () => {
   it("ignores repeated transitions to the same state", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
 
-    hoisted.publishSpotter("left", "left");
+    hoisted.publishRadar("left", "left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
   });
 });
@@ -201,14 +201,14 @@ describe("pit-road suppression", () => {
   it("forces the visual state to clear and silences the channel while on pit road", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
 
     hoisted.getLatestTelemetry.mockReturnValue({ OnPitRoad: true });
-    hoisted.publishSpotter("both", "left");
+    hoisted.publishRadar("both", "left");
 
     expect(getRadarVisualState()).toBe("clear");
-    expect(hoisted.stopChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL);
+    expect(hoisted.stopChannel).toHaveBeenCalledWith(RADAR_CHANNEL);
   });
 
   it("is a no-op when telemetry is missing", () => {
@@ -216,7 +216,7 @@ describe("pit-road suppression", () => {
     setRadarEnabled(true);
     hoisted.getLatestTelemetry.mockReturnValue(null);
 
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
     expect(getRadarVisualState()).toBe("left");
@@ -229,7 +229,7 @@ describe("Lone Qualify suppression", () => {
     setRadarEnabled(true);
     hoisted.getSessionType.mockReturnValue("Lone Qualify");
 
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
     expect(getRadarVisualState()).toBe("clear");
@@ -238,14 +238,14 @@ describe("Lone Qualify suppression", () => {
   it("tears down an already-running loop when the session flips to Lone Qualify", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
 
     hoisted.getSessionType.mockReturnValue("Lone Qualify");
-    hoisted.publishSpotter("both", "left");
+    hoisted.publishRadar("both", "left");
 
     expect(getRadarVisualState()).toBe("clear");
-    expect(hoisted.stopChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL);
+    expect(hoisted.stopChannel).toHaveBeenCalledWith(RADAR_CHANNEL);
   });
 });
 
@@ -253,7 +253,7 @@ describe("setRadarEnabled", () => {
   it("clears visual state, stops the channel, and notifies listeners on disable", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
 
     const listener = vi.fn();
@@ -261,7 +261,7 @@ describe("setRadarEnabled", () => {
 
     setRadarEnabled(false);
 
-    expect(hoisted.stopChannel).toHaveBeenCalledWith(SPOTTER_CHANNEL);
+    expect(hoisted.stopChannel).toHaveBeenCalledWith(RADAR_CHANNEL);
     expect(getRadarVisualState()).toBe("clear");
     expect(listener).toHaveBeenCalledWith("clear");
   });
@@ -273,7 +273,7 @@ describe("setRadarEnabled", () => {
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
 
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
   });
 });
@@ -343,7 +343,7 @@ describe("playRadarTest", () => {
   it("suspends the live tick loop while the preview is playing", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     const liveCalls = hoisted.playOnChannel.mock.calls.length;
 
     playRadarTest();
@@ -359,13 +359,13 @@ describe("playRadarTest", () => {
   it("ignores live radar events mid-preview but still updates visual state", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     const callsBeforeTest = hoisted.playOnChannel.mock.calls.length;
 
     playRadarTest();
 
     // Live transition during preview — visual flips, but no extra live playback.
-    hoisted.publishSpotter("both", "left");
+    hoisted.publishRadar("both", "left");
     expect(getRadarVisualState()).toBe("both");
     // playRadarTest has fired 1 clip; live event added no playback on top.
     expect(hoisted.playOnChannel.mock.calls.length - callsBeforeTest).toBe(1);
@@ -374,7 +374,7 @@ describe("playRadarTest", () => {
   it("resumes the live tick loop at the current state after the preview completes", () => {
     registerRadarEngine(hoisted.bus);
     setRadarEnabled(true);
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     playRadarTest();
 
     // Drive the 3-clip sequence to completion via the registered channel-complete callbacks.
@@ -412,12 +412,12 @@ describe("subscribeRadarVisualState", () => {
     const listener = vi.fn();
     const unsubscribe = subscribeRadarVisualState(listener);
 
-    hoisted.publishSpotter("left");
+    hoisted.publishRadar("left");
     expect(listener).toHaveBeenCalledWith("left");
 
     unsubscribe();
 
-    hoisted.publishSpotter("both", "left");
+    hoisted.publishRadar("both", "left");
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
@@ -428,8 +428,8 @@ describe("subscribeRadarVisualState", () => {
     const listener = vi.fn();
     subscribeRadarVisualState(listener);
 
-    hoisted.publishSpotter("left");
-    hoisted.publishSpotter("left", "left");
+    hoisted.publishRadar("left");
+    hoisted.publishRadar("left", "left");
 
     expect(listener).toHaveBeenCalledTimes(1);
   });

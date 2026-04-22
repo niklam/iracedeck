@@ -2,7 +2,7 @@
  * @iracedeck/audio-native
  *
  * Native Node.js addon wrapping the miniaudio single-header library.
- * Provides a 4-channel mixer used by Pit Engineer and other audio actions.
+ * Provides a 4-channel mixer used by Pit Crew and other audio actions.
  *
  * On non-Windows platforms, a mock implementation is used automatically
  * to enable development and testing on macOS/Linux.

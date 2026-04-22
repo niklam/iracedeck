@@ -164,7 +164,9 @@ vi.mock("@iracedeck/deck-core", async () => {
 type TestInputs = {
   mode?: "race-engineer" | "radar" | "radar-volume";
   direction?: "up" | "down";
-  _testRadarVolume?: number;
+  /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
+   *  accept both to exercise the coercion path. */
+  _testRadarVolume?: number | string;
 };
 
 function buildAppearEvent(settings: TestInputs = {}, actionId = "ctx-1"): unknown {
@@ -314,6 +316,39 @@ describe("PitCrew action", () => {
       await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 999 }, "ctx-A") as never);
       expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
     });
+
+    it("coerces the string _testRadarVolume from the PI before comparing (no spurious replays)", async () => {
+      // `pit-crew.ejs` writes `String(Date.now())`, so the SDK round-trip
+      // delivers a string payload. Without coercion, every PI rehydrate
+      // would `"1710..." !== 1710...` and spuriously replay.
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testRadarVolume: "1710000000000" }) as never);
+
+      // Same timestamp, now as a number — must NOT trigger another play.
+      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 1710000000000 }) as never);
+      expect(hoisted.playRadarTest).not.toHaveBeenCalled();
+
+      // Different timestamp string — must trigger.
+      await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: "1710000000500" }) as never);
+      expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("global-settings listener re-syncs live audio", () => {
+    it("pushes radarVolume + radarEnabled into the audio layer when any global changes (not just on re-mount)", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+      vi.clearAllMocks();
+
+      // Simulate another Pit Crew instance (or the PI's global slider) writing
+      // a new radarVolume + radarEnabled.
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: false, radarVolume: 25 });
+
+      for (const listener of hoisted.globalSettingsListeners) listener();
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.25);
+      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
+    });
   });
 
   describe("onKeyDown — race-engineer mode", () => {
@@ -337,6 +372,18 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
 
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerEnabled: true });
+    });
+
+    it("does not touch radarEnabled when toggling race engineer (independent feature gates)", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
+      expect(updates).not.toContain("radarEnabled");
+      expect(updates).not.toContain("radarVolume");
     });
   });
 

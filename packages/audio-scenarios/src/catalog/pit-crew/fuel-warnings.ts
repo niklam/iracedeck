@@ -3,7 +3,7 @@
  * emitted by `@iracedeck/sim-events-iracing` at the 5 / 3 / 1 / 0 lap
  * descending thresholds.
  *
- * Priority mapping (preserved from the legacy pit-crew):
+ * Priority mapping (preserved from the legacy pit-engineer):
  *   - 5 laps: `priority: "normal"` — advisory, pit-lane messages still take
  *     precedence.
  *   - 3 / 1 / 0 laps: `priority: "urgent"` + `preempt: true` — these

@@ -3,7 +3,7 @@ title: Pit Crew
 description: Voice engineer + directional proximity radar, driven by the iRaceDeck audio framework.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "3 modes"
     variant: tip
 ---
 

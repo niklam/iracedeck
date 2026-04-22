@@ -5,7 +5,7 @@
  * tip-11 but includes the starter-only tips 6 and 7). Mid-race picks from
  * `race-tip` (excludes START_ONLY tips 6 and 7 but includes mid-race tip-11).
  *
- * Behavior drift from the legacy pit-crew:
+ * Behavior drift from the legacy pit-engineer:
  *   - Legacy path polled telemetry every 2 s for a random LapDistPct
  *     threshold. The scenario fires once at `lap.started` (new-lap edge)
  *     which is slightly earlier and more deterministic — acceptable

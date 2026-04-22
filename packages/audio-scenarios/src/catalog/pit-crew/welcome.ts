@@ -1,7 +1,7 @@
 /**
  * Welcome scenario — fires once when the driver first enters the car.
  *
- * Flow (matching the legacy pit-crew behavior):
+ * Flow (matching the legacy pit-engineer behavior):
  *   tick-open + ambient
  *     → (greeting ~60% of the time)
  *     → (driver-name clip if configured)
