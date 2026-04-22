@@ -42,7 +42,7 @@
 **Key highlights:**
 
 - Live telemetry at 4 Hz with automatic iRacing connection/reconnection
-- **Pit Engineer** with directional spotter, pit approach/exit alerts, flag callouts, overtake detection, and racing tips via multi-channel audio mixer (miniaudio)
+- **Pit Engineer** with directional spotter audio via multi-channel audio mixer (miniaudio); voice-engineer scenarios land in follow-up releases
 - All keyboard shortcuts are user-configurable via the Property Inspector
 - SDK-first design: uses iRacing broadcast commands where possible, keyboard simulation only as fallback
 - Native C++ addon for low-latency Win32 API access (iRacing SDK, keyboard input, audio engine)
