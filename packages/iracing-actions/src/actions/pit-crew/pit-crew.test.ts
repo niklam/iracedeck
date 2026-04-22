@@ -5,24 +5,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // hoists every import to the top and won't leave them interleaved with other
 // statements. Vitest transforms `vi.mock(...)` to run before any import at
 // module init, so the mocks still apply to the action import below.
-import { applyVolumes, generatePitCrewSvg, PIT_CREW_UUID, PitCrew, Settings, syncScenarioState } from "./pit-crew.js";
+import {
+  applyRadarEnabled,
+  applyRadarVolume,
+  generatePitCrewSvg,
+  PIT_CREW_UUID,
+  PitCrew,
+  Settings,
+} from "./pit-crew.js";
 
 // ─── Hoisted mocks ──────────────────────────────────────────────────────────
 //
-// Initial GA ships radar-only (#410). These tests verify the wiring between
-// the Stream Deck action surface (PI settings, radar test button, key press,
-// lifecycle) and the audio packages.
+// Pit Crew is a multi-mode action (#413): Race Engineer (voice toggle),
+// Radar (proximity-tick toggle), Radar Volume +/−. Race Engineer voice
+// scenarios are deferred to follow-up PRs (#410) — the Race Engineer mode
+// here just flips a global flag; no audio is attached yet.
 
 const hoisted = vi.hoisted(() => {
-  // Audio service
   const setBusVolume = vi.fn();
   const getAudio = vi.fn(() => ({ setBusVolume }));
 
-  // Pit-engineer catalog injectors
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
 
-  // Global settings
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
     globalSettings = { ...globalSettings, ...partial };
@@ -75,16 +80,9 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-// Targeted deck-core mock — only the members pit-crew.ts actually imports.
-// CommonSettings is a real zod schema here so Settings.parse(...) behaves like
-// production (defaults + type coercion). Icon helpers are thin fakes that
-// preserve just enough shape for generatePitCrewSvg to produce a data URI
-// with the state-bar marker the snapshot tests grep for.
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
 
-  // Matches production's `z.object(...)` with Zod's default strip mode —
-  // unknown keys are silently dropped on parse.
   const CommonSettings = z.object({
     colorOverrides: z.unknown().optional(),
     titleOverrides: z.unknown().optional(),
@@ -147,10 +145,10 @@ vi.mock("@iracedeck/deck-core", async () => {
       textColor: "#ffffff",
       graphic1Color: "#ffffff",
     })),
-    resolveTitleSettings: vi.fn(() => ({
+    resolveTitleSettings: vi.fn((_t: string, _g: unknown, _o: unknown, defaultText: string) => ({
       showTitle: true,
       showGraphics: true,
-      titleText: "PIT\nENGINEER",
+      titleText: defaultText,
       bold: true,
       fontSize: 18,
       position: "bottom" as const,
@@ -163,22 +161,13 @@ vi.mock("@iracedeck/deck-core", async () => {
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
-const DEFAULT_SETTINGS = {
-  radarEnabled: true,
-  radarVolume: 100,
-};
-
-type DefaultSettings = typeof DEFAULT_SETTINGS;
-
-type TestInputs = Partial<DefaultSettings> & {
+type TestInputs = {
+  mode?: "race-engineer" | "radar" | "radar-volume";
+  direction?: "up" | "down";
   _testRadarVolume?: number;
 };
 
-function buildSettings(overrides: Partial<DefaultSettings> = {}): DefaultSettings {
-  return { ...DEFAULT_SETTINGS, ...overrides };
-}
-
-function buildAppearEvent(settings: TestInputs, actionId = "ctx-1"): unknown {
+function buildAppearEvent(settings: TestInputs = {}, actionId = "ctx-1"): unknown {
   return {
     action: { id: actionId },
     payload: { settings },
@@ -189,9 +178,7 @@ function buildAppearEvent(settings: TestInputs, actionId = "ctx-1"): unknown {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  hoisted.setGlobalSettings({ raceEngineerEnabled: true });
-  // Clear hoisted listener sets so cross-test listener counts stay
-  // deterministic for tests that don't pair onWillAppear with onWillDisappear.
+  hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 100 });
   hoisted.globalSettingsListeners.clear();
 });
 
@@ -201,80 +188,103 @@ describe("PIT_CREW_UUID", () => {
   });
 });
 
-describe("applyVolumes", () => {
-  it("drives the Alerts bus off the radar slider", () => {
-    applyVolumes(buildSettings({ radarVolume: 50 }));
+describe("Settings (persisted legacy field stripping)", () => {
+  it("defaults mode to race-engineer and direction to up", () => {
+    const parsed = Settings.parse({});
+
+    expect(parsed.mode).toBe("race-engineer");
+    expect(parsed.direction).toBe("up");
+  });
+
+  it("silently drops pre-#413 action-level fields via Zod's default strip mode", () => {
+    const raw = {
+      mode: "radar" as const,
+      direction: "down" as const,
+      radarEnabled: true,
+      radarVolume: 75,
+      pitEngineerEnabled: true,
+      spotterEnabled: true,
+      spotterVolume: 50,
+      volume: 45,
+      driverName: "niklas",
+    };
+
+    const parsed = Settings.parse(raw) as Record<string, unknown>;
+
+    expect(parsed.mode).toBe("radar");
+    expect(parsed.direction).toBe("down");
+
+    for (const legacy of [
+      "radarEnabled",
+      "radarVolume",
+      "pitEngineerEnabled",
+      "spotterEnabled",
+      "spotterVolume",
+      "volume",
+      "driverName",
+    ]) {
+      expect(parsed).not.toHaveProperty(legacy);
+    }
+  });
+});
+
+describe("applyRadarVolume", () => {
+  it("copies the global radarVolume onto AudioBus.Alerts", () => {
+    hoisted.setGlobalSettings({ radarVolume: 50 });
+    applyRadarVolume();
 
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.5);
   });
 
-  it("normalizes the slider min to 0.05", () => {
-    applyVolumes(buildSettings({ radarVolume: 5 }));
-    expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.05);
-  });
+  it("defaults to 100% when the global value is missing", () => {
+    hoisted.setGlobalSettings({});
+    applyRadarVolume();
 
-  it("normalizes the slider max to 1", () => {
-    applyVolumes(buildSettings({ radarVolume: 100 }));
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 1);
   });
 
-  it("does not touch the Voice or Background busses", () => {
-    applyVolumes(buildSettings({ radarVolume: 80 }));
+  it("clamps out-of-range persisted values", () => {
+    hoisted.setGlobalSettings({ radarVolume: 250 });
+    applyRadarVolume();
 
-    const callTargets = hoisted.setBusVolume.mock.calls.map(([bus]) => bus);
-    expect(callTargets).not.toContain(0); // Voice
-    expect(callTargets).not.toContain(1); // Background
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 1);
   });
 });
 
-describe("syncScenarioState", () => {
-  it("enables the radar when master + PI toggle are both on", () => {
-    syncScenarioState(buildSettings(), true);
+describe("applyRadarEnabled", () => {
+  it("pushes the current global radarEnabled into the engine", () => {
+    hoisted.setGlobalSettings({ radarEnabled: false });
+    applyRadarEnabled();
+    expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
 
+    vi.clearAllMocks();
+    hoisted.setGlobalSettings({ radarEnabled: true });
+    applyRadarEnabled();
     expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
-  });
-
-  it("disables the radar when the master gate is off regardless of PI", () => {
-    syncScenarioState(buildSettings({ radarEnabled: true }), false);
-
-    expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
-  });
-
-  it("disables the radar when the PI toggle is off even if master is on", () => {
-    syncScenarioState(buildSettings({ radarEnabled: false }), true);
-
-    expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
   });
 });
 
 describe("PitCrew action", () => {
   describe("onWillAppear", () => {
-    it("subscribes to global-settings changes so icons re-render when the master flag changes", async () => {
+    it("subscribes to global-settings changes so icons re-render on any feature flip", async () => {
       const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
+      await action.onWillAppear(buildAppearEvent() as never);
 
       expect(hoisted.onGlobalSettingsChange).toHaveBeenCalledTimes(1);
     });
 
-    it("applies volumes and syncs the radar on appear", async () => {
+    it("asserts current global radar state into the engine + audio bus on mount", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 40 });
       const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ radarVolume: 30 }) as never);
+      await action.onWillAppear(buildAppearEvent() as never);
 
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.3);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.4);
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
-    });
-
-    it("gates the radar off when master is already off at appear time", async () => {
-      hoisted.setGlobalSettings({ raceEngineerEnabled: false });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
-
-      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
     });
   });
 
   describe("onDidReceiveSettings", () => {
-    it("invokes playRadarTest when the radar test timestamp changes", async () => {
+    it("invokes playRadarTest when the hidden _testRadarVolume timestamp changes", async () => {
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 0 }) as never);
 
@@ -283,7 +293,7 @@ describe("PitCrew action", () => {
       expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
     });
 
-    it("does not re-fire the radar test on unrelated settings updates", async () => {
+    it("does not re-fire on unrelated settings echoes", async () => {
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 100 }) as never);
 
@@ -292,165 +302,187 @@ describe("PitCrew action", () => {
       expect(hoisted.playRadarTest).not.toHaveBeenCalled();
     });
 
-    it("re-applies volumes and re-syncs the radar", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ radarVolume: 45, radarEnabled: true }) as never);
-      vi.clearAllMocks();
-
-      await action.onDidReceiveSettings(buildAppearEvent({ radarVolume: 90, radarEnabled: false }) as never);
-
-      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.9);
-      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
-    });
-
-    it("tracks the radar-test baseline per context so two instances don't interfere", async () => {
+    it("tracks the test baseline per context so two instances don't interfere", async () => {
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 100 }, "ctx-A") as never);
       await action.onWillAppear(buildAppearEvent({ _testRadarVolume: 200 }, "ctx-B") as never);
       vi.clearAllMocks();
 
-      // Settings echo on ctx-A with its own baseline timestamp must NOT replay
-      // the preview just because ctx-B last seeded a different baseline.
       await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 100 }, "ctx-A") as never);
       expect(hoisted.playRadarTest).not.toHaveBeenCalled();
 
-      // A real Test press on ctx-A still plays.
       await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: 999 }, "ctx-A") as never);
       expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe("onKeyDown", () => {
-    it("toggles the master flag in global settings", async () => {
+  describe("onKeyDown — race-engineer mode", () => {
+    it("toggles raceEngineerEnabled without touching radar state", async () => {
       const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
 
-      await action.onKeyDown(buildAppearEvent({}) as never);
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
 
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerEnabled: false });
+      expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
     });
 
-    it("synchronously gates the radar off with the new master value", async () => {
+    it("flips back on when already off", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, radarEnabled: true, radarVolume: 100 });
       const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
       vi.clearAllMocks();
 
-      await action.onKeyDown(buildAppearEvent({}) as never);
-
-      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
-    });
-
-    it("turns the master back on when already disabled", async () => {
-      hoisted.setGlobalSettings({ raceEngineerEnabled: false });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
-      vi.clearAllMocks();
-
-      await action.onKeyDown(buildAppearEvent({}) as never);
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
 
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerEnabled: true });
+    });
+  });
+
+  describe("onKeyDown — radar mode", () => {
+    it("flips radarEnabled synchronously via setRadarEnabled and updates the global", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar" }) as never);
+
+      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarEnabled: false });
+    });
+
+    it("does not touch raceEngineerEnabled when toggling radar (independent feature gates)", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar" }) as never);
+
+      const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
+      expect(updates).not.toContain("raceEngineerEnabled");
+    });
+  });
+
+  describe("onKeyDown — radar-volume mode", () => {
+    it("steps radarVolume up by 5 on direction=up", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 70 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.75);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 75 });
+    });
+
+    it("steps down by 5 on direction=down", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 70 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.65);
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 65 });
+    });
+
+    it("clamps at 100 (no-op when already at max)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("clamps at 5 (no-op when already at min)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 5 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("independent feature gates (#413 core requirement)", () => {
+    it("race-engineer off + radar on: radar tick loop still runs", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, radarEnabled: true, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
+    });
+
+    it("race-engineer on + radar off: radar tick loop is silenced", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: false, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+
+      expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
     });
   });
 
   describe("onWillDisappear", () => {
     it("unsubscribes the global-settings listener", async () => {
       const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({}) as never);
-      const globalBefore = hoisted.globalSettingsListeners.size;
-      expect(globalBefore).toBeGreaterThan(0);
+      await action.onWillAppear(buildAppearEvent() as never);
+      const before = hoisted.globalSettingsListeners.size;
+      expect(before).toBeGreaterThan(0);
 
-      await action.onWillDisappear(buildAppearEvent({}) as never);
+      await action.onWillDisappear(buildAppearEvent() as never);
 
-      expect(hoisted.globalSettingsListeners.size).toBe(globalBefore - 1);
+      expect(hoisted.globalSettingsListeners.size).toBe(before - 1);
     });
   });
 });
 
 describe("generatePitCrewSvg", () => {
   it("returns a data URI", () => {
-    const result = generatePitCrewSvg(DEFAULT_SETTINGS, true);
+    const result = generatePitCrewSvg(Settings.parse({ mode: "race-engineer" }));
     expect(result).toContain("data:image/svg+xml");
   });
 
-  it("marks the status bar on when enabled", () => {
-    const result = decodeURIComponent(generatePitCrewSvg(DEFAULT_SETTINGS, true));
+  it("paints the status bar ON for race-engineer mode when raceEngineerEnabled is true", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "race-engineer" })));
     expect(result).toContain("status-bar-on");
   });
 
-  it("marks the status bar off when disabled", () => {
-    const result = decodeURIComponent(generatePitCrewSvg(DEFAULT_SETTINGS, false));
+  it("paints the status bar OFF for race-engineer mode when raceEngineerEnabled is false", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "race-engineer" })));
     expect(result).toContain("status-bar-off");
   });
 
-  it("produces different output when enabled flips", () => {
-    const on = generatePitCrewSvg(DEFAULT_SETTINGS, true);
-    const off = generatePitCrewSvg(DEFAULT_SETTINGS, false);
-    expect(on).not.toBe(off);
-  });
-});
-
-describe("Settings.parse (persisted legacy fields)", () => {
-  it("silently drops pre-GA toggle fields via Zod's default strip mode", () => {
-    const raw = {
-      radarEnabled: true,
-      radarVolume: 75,
-      // Every field removed in #410.
-      pitApproachEnabled: true,
-      pitServiceReminderEnabled: true,
-      pitDepartureEnabled: true,
-      pitExitEnabled: true,
-      pitLimiterWarning: true,
-      incidentAlert: true,
-      toggleAudioEnabled: true,
-      overtakeAndTipsEnabled: true,
-      flagAlertsEnabled: true,
-      fuelWarningsEnabled: true,
-      fuelStintOpenEnabled: true,
-      fuelMidStintEnabled: true,
-      fuelSaveCoachingEnabled: true,
-      volume: 45,
-      driverName: "niklas",
-    };
-
-    const parsed = Settings.parse(raw) as Record<string, unknown>;
-
-    expect(parsed.radarEnabled).toBe(true);
-    expect(parsed.radarVolume).toBe(75);
-
-    for (const legacy of [
-      "pitApproachEnabled",
-      "pitServiceReminderEnabled",
-      "pitDepartureEnabled",
-      "pitExitEnabled",
-      "pitLimiterWarning",
-      "incidentAlert",
-      "toggleAudioEnabled",
-      "overtakeAndTipsEnabled",
-      "flagAlertsEnabled",
-      "fuelWarningsEnabled",
-      "fuelStintOpenEnabled",
-      "fuelMidStintEnabled",
-      "fuelSaveCoachingEnabled",
-      "volume",
-      "driverName",
-    ]) {
-      expect(parsed).not.toHaveProperty(legacy);
-    }
+  it("paints the status bar ON for radar mode when radarEnabled is true", () => {
+    hoisted.setGlobalSettings({ radarEnabled: true });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar" })));
+    expect(result).toContain("status-bar-on");
   });
 
-  it("drives the action lifecycle without errors when raw payload carries legacy fields", async () => {
-    const action = new PitCrew();
-    const legacyPayload = {
-      radarEnabled: true,
-      radarVolume: 60,
-      pitApproachEnabled: true,
-      driverName: "niklas",
-      volume: 45,
-    };
+  it("paints the status bar OFF for radar mode when radarEnabled is false", () => {
+    hoisted.setGlobalSettings({ radarEnabled: false });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar" })));
+    expect(result).toContain("status-bar-off");
+  });
 
-    await expect(action.onWillAppear(buildAppearEvent(legacyPayload) as never)).resolves.not.toThrow();
-    expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.6);
-    expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
+  it("omits the status bar entirely for radar-volume mode (no on/off state)", () => {
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar-volume", direction: "up" })));
+    expect(result).not.toContain("status-bar-on");
+    expect(result).not.toContain("status-bar-off");
+  });
+
+  it("includes the current radarVolume in the title for radar-volume mode", () => {
+    hoisted.setGlobalSettings({ radarVolume: 65 });
+    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar-volume", direction: "up" })));
+    expect(result).toContain("65%");
   });
 });

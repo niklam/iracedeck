@@ -7,27 +7,33 @@
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
 		<p style="padding: 0 16px; color: #999; font-size: 12px;">
-			Press the button to toggle the Pit Engineer on/off.
+			Pick what pressing this button does. Race Engineer and Radar have independent
+			on/off switches so silencing the voice engineer doesn't kill the proximity alerts.
 		</p>
 
-		<%- include('accordion', {
-			title: 'Pit Engineer Features',
-			accordionId: 'pitCrewFeatures',
-			open: true,
-			content:
-				'<sdpi-item label="Directional Radar">' +
-					'<sdpi-checkbox setting="radarEnabled" default="true" label="Play directional audio for nearby cars"></sdpi-checkbox>' +
-				'</sdpi-item>'
-		}) %>
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
+				<option value="race-engineer">Race Engineer</option>
+				<option value="radar">Radar</option>
+				<option value="radar-volume">Radar Volume</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="direction-item" class="hidden" label="Direction">
+			<sdpi-select setting="direction" default="up">
+				<option value="up">Up</option>
+				<option value="down">Down</option>
+			</sdpi-select>
+		</sdpi-item>
 
 		<%- include('accordion', {
-			title: 'Pit Engineer Audio',
+			title: 'Pit Crew Audio',
 			accordionId: 'pitCrewAudio',
 			open: true,
 			content:
 				'<sdpi-item label="Radar Volume">' +
 					'<div style="display:flex;align-items:center;gap:8px;">' +
-						'<ird-range-input setting="radarVolume" min="5" max="100" step="1" default="50" style="flex:1;"></ird-range-input>' +
+						'<ird-range-input setting="radarVolume" global min="5" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
 						'<button id="test-radar-btn" style="padding:2px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;flex-shrink:0;height:26px;box-sizing:border-box;">Test</button>' +
 					'</div>' +
 				'</sdpi-item>' +
@@ -44,6 +50,8 @@
 
 		<script>
 		(function() {
+			// Test button — bumps the hidden _testRadarVolume timestamp, which the
+			// action reads in onDidReceiveSettings to trigger playRadarTest().
 			const radarBtn = document.getElementById('test-radar-btn');
 			if (radarBtn) {
 				radarBtn.addEventListener('click', () => {
@@ -55,20 +63,18 @@
 				});
 			}
 
-			// Audio output device dropdown — populated from global settings
+			// Audio output device dropdown — populated from global settings.
 			const deviceSelect = document.getElementById('audio-device-select');
 			if (deviceSelect && window.SDPIComponents) {
 				let savedDevice = '-1';
 				let setDevice = null;
 
-				// Read saved device selection from global settings
 				const deviceHook = window.SDPIComponents.useGlobalSettings('audioOutputDevice', function(value) {
 					savedDevice = value !== null && value !== undefined ? String(value) : '-1';
 					deviceSelect.value = savedDevice;
 				});
 				setDevice = deviceHook[1];
 
-				// Read device list published by the plugin
 				window.SDPIComponents.useGlobalSettings('_audioDeviceList', function(value) {
 					if (!value) return;
 					try {
@@ -84,13 +90,46 @@
 					} catch(e) { /* ignore parse errors */ }
 				});
 
-				// Save selection to global settings on change (merge, not replace)
 				deviceSelect.addEventListener('change', function() {
 					if (setDevice) setDevice(deviceSelect.value);
 				});
 			}
+
+			// Direction visibility — hide unless Mode = radar-volume. sdpi-select
+			// events can be flaky (see session-info.ejs precedent), so combine
+			// change/input listeners with a polling fallback.
+			async function initializeDirectionVisibility() {
+				await customElements.whenDefined("sdpi-select");
+				const modeSelect = document.getElementById("mode-select");
+				const directionItem = document.getElementById("direction-item");
+				if (!modeSelect || !directionItem) return;
+
+				const update = (mode) => {
+					if (mode === "radar-volume") directionItem.classList.remove("hidden");
+					else directionItem.classList.add("hidden");
+				};
+
+				update(modeSelect.value || "race-engineer");
+				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
+				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
+
+				let last = modeSelect.value || "race-engineer";
+				setInterval(() => {
+					const current = modeSelect.value;
+					if (current && current !== last) {
+						last = current;
+						update(current);
+					}
+				}, 100);
+			}
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
+			else initializeDirectionVisibility();
 		})();
 		</script>
+
+		<style>
+		.hidden { display: none !important; }
+		</style>
 
 		<%- include('title-overrides') %>
 

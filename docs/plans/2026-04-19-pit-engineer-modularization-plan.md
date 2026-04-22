@@ -1,6 +1,8 @@
 # Pit Engineer modularization plan
 
-**Status:** Proposed. Do not start until a trigger is hit (see § 10).
+> **2026-04-22 update (#413):** Superseded and kept only for historical context. The feature was renamed Pit Engineer → **Pit Crew** and split into the Race Engineer (voice) and Radar (directional ticks) sub-features with an action-level Mode selector. The Stage 7 thin-shell refactor (#401 / #410 / #412) already did most of the modularization this doc anticipated — audio / event / scenario logic now lives in `@iracedeck/audio-service`, `@iracedeck/event-bus`, and `@iracedeck/audio-scenarios`. The action itself (`packages/iracing-actions/src/actions/pit-crew/pit-crew.ts`) is a thin Stream Deck shell. References below to "pit-engineer", "pit-engineer.ts", and "spotter" describe the pre-rename state.
+
+**Status:** Historical (refactor shipped via the audio architecture design + #410 + #412 + #413).
 **Date:** 2026-04-19.
 **Branch when started:** `refactor/pit-engineer-modularization`.
 

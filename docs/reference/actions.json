@@ -125,6 +125,34 @@
             { "value": "escape", "label": "Escape", "controlType": "hold" },
             { "value": "pause-sim", "label": "Pause Sim" }
           ]
+        },
+        {
+          "id": "com.iracedeck.sd.core.pit-crew",
+          "name": "Pit Crew",
+          "file": "pit-crew.ts",
+          "encoder": false,
+          "settingsKeys": ["mode", "direction"],
+          "description": "Multi-mode action for the iRaceDeck audio framework. Race Engineer and Radar have independent on/off globals so silencing the voice engineer doesn't kill the proximity ticks. Voice-engineer scenarios (welcome, pit-lane callouts, flag alerts, etc.) land in follow-up PRs — Race Engineer today only flips a global flag.",
+          "modes": [
+            {
+              "mode": "race-engineer",
+              "label": "Race Engineer",
+              "description": "Toggles the Race Engineer voice on/off"
+            },
+            { "mode": "radar", "label": "Radar", "description": "Toggles the directional proximity tick loop on/off" },
+            {
+              "mode": "radar-volume",
+              "direction": "up",
+              "label": "Radar Volume Up",
+              "description": "Bumps the global Radar volume by 5 (max 100)"
+            },
+            {
+              "mode": "radar-volume",
+              "direction": "down",
+              "label": "Radar Volume Down",
+              "description": "Reduces the global Radar volume by 5 (min 5)"
+            }
+          ]
         }
       ]
     },
