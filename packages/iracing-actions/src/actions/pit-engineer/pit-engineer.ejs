@@ -8,7 +8,6 @@
 
 		<p style="padding: 0 16px; color: #999; font-size: 12px;">
 			Press the button to toggle the Pit Engineer on/off.
-			Enable or disable individual features below.
 		</p>
 
 		<%- include('accordion', {
@@ -18,70 +17,7 @@
 			content:
 				'<sdpi-item label="Directional Spotter">' +
 					'<sdpi-checkbox setting="spotterEnabled" default="true" label="Play directional audio for nearby cars"></sdpi-checkbox>' +
-				'</sdpi-item>' +
-				'<details class="ird-collapsible ird-subcollapsible" data-accordion-id="pitEngineerPitLaneSubsection">' +
-					'<summary class="ird-collapsible-header">' +
-						'<span class="ird-collapsible-icon">&#9654;</span>' +
-						'<span class="ird-collapsible-title">Pit Lane</span>' +
-					'</summary>' +
-					'<div class="ird-collapsible-content">' +
-						'<sdpi-item label="Pit Approach">' +
-							'<sdpi-checkbox setting="pitApproachEnabled" default="true" label="Alert when approaching pit lane"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Service Reminders">' +
-							'<sdpi-checkbox setting="pitServiceReminderEnabled" default="true" label="Remind about pending pit services"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Pit Departure">' +
-							'<sdpi-checkbox setting="pitDepartureEnabled" default="true" label="Remind to disable pit limiter on stall departure"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Pit Exit">' +
-							'<sdpi-checkbox setting="pitExitEnabled" default="true" label="Announce exit from pit lane"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Pit Limiter Warning">' +
-							'<sdpi-checkbox setting="pitLimiterWarning" default="true" label="Warn if no limiter, limiter dropped, or speeding in pit lane"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-					'</div>' +
-				'</details>' +
-				'<details class="ird-collapsible ird-subcollapsible" data-accordion-id="pitEngineerRaceSubsection">' +
-					'<summary class="ird-collapsible-header">' +
-						'<span class="ird-collapsible-icon">&#9654;</span>' +
-						'<span class="ird-collapsible-title">Race</span>' +
-					'</summary>' +
-					'<div class="ird-collapsible-content">' +
-						'<sdpi-item label="Flag Alerts">' +
-							'<sdpi-checkbox setting="flagAlertsEnabled" default="true" label="Yellow, blue, green, black, red, white, checkered"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Incident Alerts">' +
-							'<sdpi-checkbox setting="incidentAlert" label="Alert on incidents (off-track, spin, contact)"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Toggle Confirmations">' +
-							'<sdpi-checkbox setting="toggleAudioEnabled" label="Confirm pit service and car control toggles"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Overtake & Tips">' +
-							'<sdpi-checkbox setting="overtakeAndTipsEnabled" default="true" label="Overtake callouts and racing tips"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-					'</div>' +
-				'</details>' +
-				'<details class="ird-collapsible ird-subcollapsible" data-accordion-id="pitEngineerFuelSubsection">' +
-					'<summary class="ird-collapsible-header">' +
-						'<span class="ird-collapsible-icon">&#9654;</span>' +
-						'<span class="ird-collapsible-title">Fuel (WIP)</span>' +
-					'</summary>' +
-					'<div class="ird-collapsible-content">' +
-						'<sdpi-item label="Fuel Warnings">' +
-							'<sdpi-checkbox setting="fuelWarningsEnabled" label="Laps-remaining, pit window, refuel callouts"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Stint Opener">' +
-							'<sdpi-checkbox setting="fuelStintOpenEnabled" label="Report fuel status at the start of a stint"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Mid-stint Checkpoints">' +
-							'<sdpi-checkbox setting="fuelMidStintEnabled" label="Periodic on-plan / high-consumption updates"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-						'<sdpi-item label="Save Fuel Coaching">' +
-							'<sdpi-checkbox setting="fuelSaveCoachingEnabled" label="Prompt to lift-and-coast when short on fuel"></sdpi-checkbox>' +
-						'</sdpi-item>' +
-					'</div>' +
-				'</details>'
+				'</sdpi-item>'
 		}) %>
 
 		<%- include('accordion', {
@@ -89,27 +25,10 @@
 			accordionId: 'pitEngineerAudio',
 			open: true,
 			content:
-				'<sdpi-item label="Driver Name">' +
-					'<div id="name-picker" style="position:relative;">' +
-						'<div style="display:flex;align-items:center;gap:4px;">' +
-							'<input id="name-input" type="text" placeholder="Type to search..." autocomplete="off" ' +
-								'style="flex:1;padding:4px 6px;background:#2a2a2a;color:#c8c8c8;border:1px solid #555;border-radius:4px;font-size:12px;outline:none;" />' +
-							'<button id="name-clear-btn" title="Clear" ' +
-								'style="padding:2px 8px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;height:26px;box-sizing:border-box;display:none;">✕</button>' +
-						'</div>' +
-						'<ul id="name-list" style="display:none;position:absolute;z-index:10;left:0;right:0;max-height:150px;overflow-y:auto;margin:2px 0 0;padding:0;list-style:none;background:#1e1e1e;border:1px solid #555;border-radius:4px;"></ul>' +
-					'</div>' +
-				'</sdpi-item>' +
 				'<sdpi-item label="Spotter Volume">' +
 					'<div style="display:flex;align-items:center;gap:8px;">' +
 						'<ird-range-input setting="spotterVolume" min="5" max="100" step="1" default="50" style="flex:1;"></ird-range-input>' +
 						'<button id="test-spotter-btn" style="padding:2px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;flex-shrink:0;height:26px;box-sizing:border-box;">Test</button>' +
-					'</div>' +
-				'</sdpi-item>' +
-				'<sdpi-item label="Engineer Volume">' +
-					'<div style="display:flex;align-items:center;gap:8px;">' +
-						'<ird-range-input setting="volume" min="5" max="100" step="1" default="50" style="flex:1;"></ird-range-input>' +
-						'<button id="test-volume-btn" style="padding:2px 10px;border:1px solid #555;border-radius:4px;cursor:pointer;font-size:11px;background:#2a2a2a;color:#808080;flex-shrink:0;height:26px;box-sizing:border-box;">Test</button>' +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Output Device">' +
@@ -120,23 +39,11 @@
 		}) %>
 
 		<div style="display:none;">
-			<sdpi-textfield id="test-volume-field" setting="_testVolume"></sdpi-textfield>
 			<sdpi-textfield id="test-spotter-field" setting="_testSpotterVolume"></sdpi-textfield>
-			<sdpi-textfield id="name-setting-field" setting="driverName" default="none"></sdpi-textfield>
 		</div>
 
 		<script>
 		(function() {
-			const btn = document.getElementById('test-volume-btn');
-			if (btn) {
-				btn.addEventListener('click', () => {
-					const field = document.getElementById('test-volume-field');
-					if (field) {
-						field.value = String(Date.now());
-						field.dispatchEvent(new Event('change', { bubbles: true }));
-					}
-				});
-			}
 			const spotterBtn = document.getElementById('test-spotter-btn');
 			if (spotterBtn) {
 				spotterBtn.addEventListener('click', () => {
@@ -182,124 +89,6 @@
 					if (setDevice) setDevice(deviceSelect.value);
 				});
 			}
-		})();
-
-		// ─── Driver Name Autocomplete ────────────────────────────────────────
-		(function() {
-			var NAMES = [
-				{ value: 'adam', label: 'Adam' },
-				{ value: 'chris', label: 'Chris' },
-				{ value: 'daniel', label: 'Daniel' },
-				{ value: 'hesham', label: 'Hesham' },
-				{ value: 'jace', label: 'Jace' },
-				{ value: 'marcus', label: 'Marcus' },
-				{ value: 'niklas', label: 'Niklas' },
-				{ value: 'shawn', label: 'Shawn' },
-				{ value: 'zues', label: 'Zues' },
-			];
-
-			var input = document.getElementById('name-input');
-			var list = document.getElementById('name-list');
-			var clearBtn = document.getElementById('name-clear-btn');
-			var settingField = document.getElementById('name-setting-field');
-			if (!input || !list || !clearBtn || !settingField) return;
-
-			var selectedValue = 'none';
-
-			// Sync from stored setting on load
-			function syncFromSetting() {
-				var poll = setInterval(function() {
-					var val = settingField.value;
-					if (val !== undefined && val !== null && val !== '') {
-						clearInterval(poll);
-						selectedValue = val;
-						if (val && val !== 'none') {
-							var match = NAMES.find(function(n) { return n.value === val; });
-							input.value = match ? match.label : val;
-							clearBtn.style.display = '';
-						} else {
-							input.value = '';
-							clearBtn.style.display = 'none';
-						}
-					}
-				}, 100);
-				// Stop polling after 3s
-				setTimeout(function() { clearInterval(poll); }, 3000);
-			}
-			syncFromSetting();
-
-			function saveName(val) {
-				selectedValue = val;
-				settingField.value = val;
-				settingField.dispatchEvent(new Event('change', { bubbles: true }));
-			}
-
-			function showList(filtered) {
-				list.innerHTML = '';
-				if (filtered.length === 0) {
-					list.style.display = 'none';
-					return;
-				}
-				filtered.forEach(function(name) {
-					var li = document.createElement('li');
-					li.textContent = name.label;
-					li.dataset.value = name.value;
-					li.style.cssText = 'padding:6px 8px;cursor:pointer;color:#c8c8c8;font-size:12px;';
-					li.addEventListener('mouseenter', function() { li.style.background = '#3a3a3a'; });
-					li.addEventListener('mouseleave', function() { li.style.background = 'transparent'; });
-					li.addEventListener('mousedown', function(e) {
-						e.preventDefault(); // prevent input blur before click registers
-						input.value = name.label;
-						saveName(name.value);
-						list.style.display = 'none';
-						clearBtn.style.display = '';
-					});
-					list.appendChild(li);
-				});
-				list.style.display = '';
-			}
-
-			input.addEventListener('focus', function() {
-				var query = input.value.trim().toLowerCase();
-				if (query === '') {
-					// Show all names when focused with empty input
-					showList(NAMES);
-				} else {
-					var filtered = NAMES.filter(function(n) {
-						return n.label.toLowerCase().indexOf(query) === 0;
-					});
-					showList(filtered);
-				}
-			});
-
-			input.addEventListener('input', function() {
-				var query = input.value.trim().toLowerCase();
-				if (query === '') {
-					showList(NAMES);
-					// If user cleared the text, reset to none
-					if (selectedValue !== 'none') {
-						saveName('none');
-						clearBtn.style.display = 'none';
-					}
-					return;
-				}
-				var filtered = NAMES.filter(function(n) {
-					return n.label.toLowerCase().indexOf(query) === 0;
-				});
-				showList(filtered);
-			});
-
-			input.addEventListener('blur', function() {
-				// Delay to allow mousedown on list items
-				setTimeout(function() { list.style.display = 'none'; }, 150);
-			});
-
-			clearBtn.addEventListener('click', function() {
-				input.value = '';
-				saveName('none');
-				clearBtn.style.display = 'none';
-				input.focus();
-			});
 		})();
 		</script>
 

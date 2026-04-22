@@ -1,13 +1,4 @@
-import { getScenarioEngine } from "@iracedeck/audio-scenarios";
-import {
-  FLAG_SCENARIO_IDS,
-  FUEL_SCENARIO_IDS,
-  PIT_LIMITER_SCENARIO_IDS,
-  playSpotterTest,
-  setDriverNameResolver,
-  setSpotterEnabled,
-  TOGGLE_SCENARIO_IDS,
-} from "@iracedeck/audio-scenarios/pit-engineer";
+import { playSpotterTest, setSpotterEnabled } from "@iracedeck/audio-scenarios/pit-engineer";
 import { AudioBus, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -49,46 +40,18 @@ export const PIT_ENGINEER_UUID = "com.iracedeck.sd.core.pit-engineer";
 /** Zod-safe boolean that handles string "true"/"false" from PI checkboxes. */
 const zBool = z.union([z.boolean(), z.string()]).transform((val) => val === true || val === "true");
 
-const Settings = CommonSettings.extend({
+// Initial GA ships spotter-only (#410). Voice-engineer toggles (welcome, pit-lane,
+// flags, incidents, overtake/tips, fuel, toggle confirmations, pit-limiter warnings)
+// and the driver-name picker will return in follow-up PRs after per-feature validation.
+// Persisted values for removed fields pass through Zod's default strip mode — unknown
+// keys are silently dropped on parse, so no migration is needed.
+/** @internal Exported for testing. */
+export const Settings = CommonSettings.extend({
   spotterEnabled: zBool.default(true),
-  pitApproachEnabled: zBool.default(true),
-  pitServiceReminderEnabled: zBool.default(true),
-  pitDepartureEnabled: zBool.default(true),
-  pitExitEnabled: zBool.default(true),
-  pitLimiterWarning: zBool.default(true),
-  incidentAlert: zBool.default(false),
-  toggleAudioEnabled: zBool.default(false),
-  overtakeAndTipsEnabled: zBool.default(true),
-  flagAlertsEnabled: zBool.default(true),
-  // Fuel sub-feature — all off by default while marked Work-In-Progress.
-  fuelWarningsEnabled: zBool.default(false),
-  fuelStintOpenEnabled: zBool.default(false),
-  fuelSaveCoachingEnabled: zBool.default(false),
-  fuelMidStintEnabled: zBool.default(false),
   spotterVolume: z.coerce.number().min(5).max(100).default(100),
-  volume: z.coerce.number().min(5).max(100).default(45),
-  driverName: z.string().default("none"),
 });
 
 type PitEngineerSettings = z.infer<typeof Settings>;
-
-/**
- * @internal Exported for testing.
- *
- * Returns the audio-assets path for the chosen driver name, or null if none.
- * The slug regex rejects anything outside lowercase alphanumerics / hyphens /
- * underscores — defense in depth against path-traversal if a user edits
- * persisted settings by hand (the PI dropdown only ever emits valid slugs).
- */
-const DRIVER_NAME_SLUG = /^[a-z0-9_-]+$/;
-
-export function driverNamePath(name: string | undefined): string | null {
-  if (!name || name === "none") return null;
-
-  if (!DRIVER_NAME_SLUG.test(name)) return null;
-
-  return `pit-engineer/names/IRD-name-${name}.mp3`;
-}
 
 // ─── Master gate ──────────────────────────────────────────────────────────────
 
@@ -106,55 +69,24 @@ function isEngineerEnabled(): boolean {
 /**
  * @internal Exported for testing.
  *
- * Sync every pit-engineer scenario's enabled flag to the Property Inspector
- * toggles, gated by the master switch. Called from every event that can
- * change either layer of state (`onWillAppear`, `onDidReceiveSettings`,
- * `onKeyDown`). `master` is passed explicitly because `onKeyDown` needs the
- * new value before the global-settings round-trip completes.
+ * Sync spotter state to the Property Inspector toggle, gated by the master
+ * switch. Called from every event that can change either layer of state
+ * (`onWillAppear`, `onDidReceiveSettings`, `onKeyDown`). `master` is passed
+ * explicitly because `onKeyDown` needs the new value before the
+ * global-settings round-trip completes.
  */
 export function syncScenarioState(settings: PitEngineerSettings, master: boolean): void {
-  const engine = getScenarioEngine();
-  const gate = (id: string, on: boolean): void => {
-    engine.setEnabled(id, master && on);
-  };
-
-  // Welcome has no PI toggle — it's always on while the engineer is enabled.
-  gate("pit-engineer.welcome", true);
-  gate("pit-engineer.pit-approach", settings.pitApproachEnabled);
-  gate("pit-engineer.service-reminder", settings.pitServiceReminderEnabled);
-  gate("pit-engineer.pit-exit", settings.pitExitEnabled);
-  gate("pit-engineer.stall-departure", settings.pitDepartureEnabled);
-  gate("pit-engineer.incident-alerts", settings.incidentAlert);
-  gate("pit-engineer.overtake", settings.overtakeAndTipsEnabled);
-  gate("pit-engineer.racing-tips", settings.overtakeAndTipsEnabled);
-
-  for (const id of FLAG_SCENARIO_IDS) gate(id, settings.flagAlertsEnabled);
-
-  for (const id of FUEL_SCENARIO_IDS) gate(id, settings.fuelWarningsEnabled);
-
-  for (const id of TOGGLE_SCENARIO_IDS) gate(id, settings.toggleAudioEnabled);
-
-  for (const id of PIT_LIMITER_SCENARIO_IDS) gate(id, settings.pitLimiterWarning);
-
   setSpotterEnabled(master && settings.spotterEnabled);
 }
 
 /**
  * @internal Exported for testing.
  *
- * Apply the volume sliders to the audio busses. The engineer slider drives
- * the Voice + Background bus pair; the spotter slider drives the Alerts
- * bus. Per-channel attenuation (Ambient 0.8×, SFX 0.7×) is applied inside
- * audio-service's bus mix ratios.
+ * Apply the volume slider to the Alerts bus (spotter output). Per-channel
+ * attenuation is applied inside audio-service's bus mix ratios.
  */
 export function applyVolumes(settings: PitEngineerSettings): void {
-  const engineerVol = settings.volume / 100;
-  const spotterVol = settings.spotterVolume / 100;
-  const audio = getAudio();
-
-  audio.setBusVolume(AudioBus.Voice, engineerVol);
-  audio.setBusVolume(AudioBus.Background, engineerVol);
-  audio.setBusVolume(AudioBus.Alerts, spotterVol);
+  getAudio().setBusVolume(AudioBus.Alerts, settings.spotterVolume / 100);
 }
 
 // ─── Icon generation ──────────────────────────────────────────────────────────
@@ -247,14 +179,12 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   /** Per-context unsubscribe callback for the global-settings listener. */
   private readonly listenerUnsubs = new Map<string, () => void>();
 
-  /** Last-seen settings, used by the driver-name resolver injected into scenarios. */
-  private latestSettings: PitEngineerSettings | null = null;
-
-  /** Last engineer test-volume timestamp — prevents replay on unrelated settings updates. */
-  private lastTestTimestamp = 0;
-
-  /** Last spotter test-volume timestamp. */
-  private lastSpotterTestTimestamp = 0;
+  /**
+   * Last spotter test-volume timestamp per context. Keyed per visible instance
+   * so two Pit Engineer buttons on different pages don't overwrite each
+   * other's baseline and spuriously replay the preview on a settings echo.
+   */
+  private readonly lastSpotterTestTimestamps = new Map<string, number>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<PitEngineerSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -265,14 +195,10 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     this.settingsCache.set(contextId, settings);
     this.visibleContexts.add(contextId);
-    this.latestSettings = settings;
 
-    // Seed test-button timestamps so the first onDidReceiveSettings doesn't
-    // replay previous plays when the PI rehydrates the hidden textfields.
-    this.lastTestTimestamp = (raw._testVolume as number) ?? 0;
-    this.lastSpotterTestTimestamp = (raw._testSpotterVolume as number) ?? 0;
-
-    setDriverNameResolver(() => driverNamePath(this.latestSettings?.driverName));
+    // Seed test-button timestamp so the first onDidReceiveSettings doesn't
+    // replay the previous play when the PI rehydrates the hidden textfield.
+    this.lastSpotterTestTimestamps.set(contextId, Number(raw._testSpotterVolume ?? 0));
 
     // Re-render when the master flag changes (both from our own onKeyDown
     // round-trip and from another instance). Spotter state isn't part of
@@ -305,6 +231,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     this.listenerUnsubs.delete(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
+    this.lastSpotterTestTimestamps.delete(contextId);
 
     await super.onWillDisappear(ev);
   }
@@ -317,28 +244,19 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     const contextId = ev.action.id;
 
     this.settingsCache.set(contextId, settings);
-    this.latestSettings = settings;
 
     applyVolumes(settings);
     syncScenarioState(settings, isEngineerEnabled());
 
-    const testTimestamp = raw._testVolume as number | undefined;
-
-    if (testTimestamp && testTimestamp !== this.lastTestTimestamp) {
-      this.logger.info("Playing welcome message (engineer test)");
-      getScenarioEngine().fire("pit-engineer.welcome");
-    }
-
-    this.lastTestTimestamp = testTimestamp ?? 0;
-
     const spotterTestTimestamp = raw._testSpotterVolume as number | undefined;
+    const lastSpotterTestTimestamp = this.lastSpotterTestTimestamps.get(contextId) ?? 0;
 
-    if (spotterTestTimestamp && spotterTestTimestamp !== this.lastSpotterTestTimestamp) {
+    if (spotterTestTimestamp && spotterTestTimestamp !== lastSpotterTestTimestamp) {
       this.logger.info("Playing spotter test: left → right → both");
       playSpotterTest();
     }
 
-    this.lastSpotterTestTimestamp = spotterTestTimestamp ?? 0;
+    this.lastSpotterTestTimestamps.set(contextId, Number(spotterTestTimestamp ?? 0));
 
     await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
   }

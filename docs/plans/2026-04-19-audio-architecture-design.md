@@ -500,7 +500,7 @@ type ScenarioContext = {
   - Include composition (including cycle detection)
   - Cooldown enforcement, priority ordering, preemption of in-flight
 - **`@iracedeck/audio-scenarios` — catalog tests.** Each scenario catalog gets its own test file that feeds canned events and asserts the resolved clip sequence. `audio-service` is faked — no real audio plays. **This is the big win:** scenario behavior is testable without mocking `@iracedeck/deck-core` wholesale (the approach the current `pit-engineer.test.ts` is forced into).
-- **`PitEngineer` action** — shrinks dramatically. Tests verify: PI toggle subscribes/unsubscribes the right scenarios, volume slider calls `bus.setVolume`, Test button fires the right scenario, welcome-test plays the welcome scenario.
+- **`PitEngineer` action** — shrinks dramatically. Tests verify: spotter toggle flips `setSpotterEnabled` under the master gate, Spotter Volume slider calls `bus.setVolume(Alerts, ...)`, Spotter Test button invokes `playSpotterTest`, master key press updates global settings and gates the spotter. Voice-scenario assertions (welcome/pit-lane/flag/etc.) come back with their follow-up PRs (#410).
 - **Plugin wiring** — smoke test that startup order produces a ready event bus + working audio-service + scenarios subscribed to the bus.
 
 ---
@@ -583,8 +583,8 @@ Each stage is a single logical commit; each lands as its own PR into `feature/pi
 This plan governs **architecture**, not **feature release cadence**. The two axes are orthogonal.
 
 - **Every stage preserves user-visible behavior on `feature/pit-engineer`.** A scenario that plays on the branch today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports are refactors, not new-scenario introductions.
-- **First GA release exclusions.** When `feature/pit-engineer` → `master` lands, the **directional spotter** (proximity beeps when a car is alongside) and **toggle confirmations** ("ok, we're changing all tires") ship **default-off**; they flip on in later releases after race-test validation. Remaining engineer scenarios (approach, service reminder, stall departure, exit, flag alerts, incident alerts, overtake, tips, fuel warnings, pit limiter, welcome) ship with their existing defaults from the feature branch.
-- **Follow-up tracking.** Optional "pit engineer (beta)" gate, race-test signoff format, and the default-flip cadence for held-back scenarios are tracked in a separate issue filed alongside the final `feature/pit-engineer` → `master` merge. Not part of this PR.
+- **First GA release scope (updated #410).** Only the **directional spotter** (proximity beeps when a car is alongside) is wired up when `feature/pit-engineer` → `master` lands. Voice-engineer scenarios — welcome, pit-lane callouts (approach / service reminder / stall departure / exit / pit-limiter warnings), flag alerts, incident alerts, overtake + racing tips, toggle confirmations, and fuel warnings — are hidden from the Property Inspector and not registered with the scenario engine; their scenario/pool files remain on disk for the follow-up PRs that re-introduce each group after per-feature validation. Spotter ships default-on.
+- **Follow-up tracking.** Voice-engineer features return one at a time in dedicated PRs after individual validation. Issues get filed when the work is scheduled — no placeholder issues today. Optional "pit engineer (beta)" gate and race-test signoff format remain tracked alongside those follow-ups.
 
 ---
 
@@ -640,14 +640,16 @@ pnpm --filter @iracedeck/iracing-plugin-stream-deck pack:plugin
 pnpm --filter @iracedeck/iracing-plugin-mirabox pack:plugin
 ```
 
-Runtime smoke test on Windows:
+Runtime smoke test on Windows (initial GA — spotter-only, per §13 / #410):
 
 1. Start Stream Deck (or VSD Craft) with a Pit Engineer button bound.
-2. Toggle engineer on. Confirm welcome message plays when you hit the track.
-3. Drive into pit lane. Confirm approach + service reminder + exit callouts fire in the same order as before.
-4. Induce a yellow flag (multiplayer or replay). Confirm flag alert fires.
-5. Trigger each sub-feature checkbox in the PI — enable, hear a callout, disable, silence.
-6. Test the volume sliders and device dropdown — behavior identical to today.
+2. Open the PI — confirm only the Directional Spotter checkbox, Spotter Volume + Test, Output Device, and the standard title/color/border/graphic + common settings are shown. No Pit Lane / Race / Fuel sub-accordions, no Driver Name picker, no Engineer Volume slider.
+3. Press the key to enable the engineer. Confirm the status bar flips green, `pitEngineerEnabled` becomes `true` in global settings, and the spotter is armed (drive alongside a car — directional beeps on `AudioChannel.Spotter` tick at the expected cadence; none fire while the engineer is off).
+4. Confirm **no** voice audio plays on welcome (first-on-track), flag raises, pit-lane transitions, stall departure, pit exit, service reminders, incidents, overtakes, racing tips, toggle confirmations, pit-limiter states, or fuel-threshold crossings. Those scenarios are not registered with the scenario engine today.
+5. Press the Spotter Test button — confirm the left → right → both preview plays on `AudioChannel.Spotter`.
+6. Change Spotter Volume — confirm the directional ticks get louder/quieter. Swap Output Device — confirm the preview plays on the selected device. Voice (engineer) and Background buses are not driven today; any follow-up PR re-introducing a voice feature re-wires them.
+
+Voice-scenario smoke tests (welcome, pit-lane, flag alerts, etc.) return alongside the follow-up PRs that re-register each scenario; they are deferred for the initial GA signoff.
 
 Runtime on macOS (mock path):
 
