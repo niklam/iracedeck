@@ -10,6 +10,7 @@ import {
   generatePitEngineerSvg,
   PIT_ENGINEER_UUID,
   PitEngineer,
+  Settings,
   syncScenarioState,
 } from "./pit-engineer.js";
 
@@ -174,13 +175,13 @@ const DEFAULT_SETTINGS = {
   spotterVolume: 100,
 };
 
-type Settings = typeof DEFAULT_SETTINGS;
+type DefaultSettings = typeof DEFAULT_SETTINGS;
 
-type TestInputs = Partial<Settings> & {
+type TestInputs = Partial<DefaultSettings> & {
   _testSpotterVolume?: number;
 };
 
-function buildSettings(overrides: Partial<Settings> = {}): Settings {
+function buildSettings(overrides: Partial<DefaultSettings> = {}): DefaultSettings {
   return { ...DEFAULT_SETTINGS, ...overrides };
 }
 
@@ -308,6 +309,22 @@ describe("PitEngineer action", () => {
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.9);
       expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(false);
     });
+
+    it("tracks the spotter-test baseline per context so two instances don't interfere", async () => {
+      const action = new PitEngineer();
+      await action.onWillAppear(buildAppearEvent({ _testSpotterVolume: 100 }, "ctx-A") as never);
+      await action.onWillAppear(buildAppearEvent({ _testSpotterVolume: 200 }, "ctx-B") as never);
+      vi.clearAllMocks();
+
+      // Settings echo on ctx-A with its own baseline timestamp must NOT replay
+      // the preview just because ctx-B last seeded a different baseline.
+      await action.onDidReceiveSettings(buildAppearEvent({ _testSpotterVolume: 100 }, "ctx-A") as never);
+      expect(hoisted.playSpotterTest).not.toHaveBeenCalled();
+
+      // A real Test press on ctx-A still plays.
+      await action.onDidReceiveSettings(buildAppearEvent({ _testSpotterVolume: 999 }, "ctx-A") as never);
+      expect(hoisted.playSpotterTest).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("onKeyDown", () => {
@@ -378,10 +395,69 @@ describe("generatePitEngineerSvg", () => {
     const off = generatePitEngineerSvg(DEFAULT_SETTINGS, false);
     expect(on).not.toBe(off);
   });
+});
 
-  it("silently drops persisted legacy fields (pre-GA settings stripped by Zod's default mode)", () => {
-    const extras = { ...DEFAULT_SETTINGS, pitApproachEnabled: true, driverName: "niklas", volume: 45 };
-    const result = generatePitEngineerSvg(extras as typeof DEFAULT_SETTINGS, true);
-    expect(result).toContain("data:image/svg+xml");
+describe("Settings.parse (persisted legacy fields)", () => {
+  it("silently drops pre-GA toggle fields via Zod's default strip mode", () => {
+    const raw = {
+      spotterEnabled: true,
+      spotterVolume: 75,
+      // Every field removed in #410.
+      pitApproachEnabled: true,
+      pitServiceReminderEnabled: true,
+      pitDepartureEnabled: true,
+      pitExitEnabled: true,
+      pitLimiterWarning: true,
+      incidentAlert: true,
+      toggleAudioEnabled: true,
+      overtakeAndTipsEnabled: true,
+      flagAlertsEnabled: true,
+      fuelWarningsEnabled: true,
+      fuelStintOpenEnabled: true,
+      fuelMidStintEnabled: true,
+      fuelSaveCoachingEnabled: true,
+      volume: 45,
+      driverName: "niklas",
+    };
+
+    const parsed = Settings.parse(raw) as Record<string, unknown>;
+
+    expect(parsed.spotterEnabled).toBe(true);
+    expect(parsed.spotterVolume).toBe(75);
+
+    for (const legacy of [
+      "pitApproachEnabled",
+      "pitServiceReminderEnabled",
+      "pitDepartureEnabled",
+      "pitExitEnabled",
+      "pitLimiterWarning",
+      "incidentAlert",
+      "toggleAudioEnabled",
+      "overtakeAndTipsEnabled",
+      "flagAlertsEnabled",
+      "fuelWarningsEnabled",
+      "fuelStintOpenEnabled",
+      "fuelMidStintEnabled",
+      "fuelSaveCoachingEnabled",
+      "volume",
+      "driverName",
+    ]) {
+      expect(parsed).not.toHaveProperty(legacy);
+    }
+  });
+
+  it("drives the action lifecycle without errors when raw payload carries legacy fields", async () => {
+    const action = new PitEngineer();
+    const legacyPayload = {
+      spotterEnabled: true,
+      spotterVolume: 60,
+      pitApproachEnabled: true,
+      driverName: "niklas",
+      volume: 45,
+    };
+
+    await expect(action.onWillAppear(buildAppearEvent(legacyPayload) as never)).resolves.not.toThrow();
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.6);
+    expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(true);
   });
 });

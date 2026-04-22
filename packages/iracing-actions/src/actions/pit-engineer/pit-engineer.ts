@@ -45,7 +45,8 @@ const zBool = z.union([z.boolean(), z.string()]).transform((val) => val === true
 // and the driver-name picker will return in follow-up PRs after per-feature validation.
 // Persisted values for removed fields pass through Zod's default strip mode — unknown
 // keys are silently dropped on parse, so no migration is needed.
-const Settings = CommonSettings.extend({
+/** @internal Exported for testing. */
+export const Settings = CommonSettings.extend({
   spotterEnabled: zBool.default(true),
   spotterVolume: z.coerce.number().min(5).max(100).default(100),
 });
@@ -178,8 +179,12 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
   /** Per-context unsubscribe callback for the global-settings listener. */
   private readonly listenerUnsubs = new Map<string, () => void>();
 
-  /** Last spotter test-volume timestamp. */
-  private lastSpotterTestTimestamp = 0;
+  /**
+   * Last spotter test-volume timestamp per context. Keyed per visible instance
+   * so two Pit Engineer buttons on different pages don't overwrite each
+   * other's baseline and spuriously replay the preview on a settings echo.
+   */
+  private readonly lastSpotterTestTimestamps = new Map<string, number>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<PitEngineerSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -193,7 +198,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     // Seed test-button timestamp so the first onDidReceiveSettings doesn't
     // replay the previous play when the PI rehydrates the hidden textfield.
-    this.lastSpotterTestTimestamp = (raw._testSpotterVolume as number) ?? 0;
+    this.lastSpotterTestTimestamps.set(contextId, Number(raw._testSpotterVolume ?? 0));
 
     // Re-render when the master flag changes (both from our own onKeyDown
     // round-trip and from another instance). Spotter state isn't part of
@@ -226,6 +231,7 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     this.listenerUnsubs.delete(contextId);
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
+    this.lastSpotterTestTimestamps.delete(contextId);
 
     await super.onWillDisappear(ev);
   }
@@ -243,13 +249,14 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
     syncScenarioState(settings, isEngineerEnabled());
 
     const spotterTestTimestamp = raw._testSpotterVolume as number | undefined;
+    const lastSpotterTestTimestamp = this.lastSpotterTestTimestamps.get(contextId) ?? 0;
 
-    if (spotterTestTimestamp && spotterTestTimestamp !== this.lastSpotterTestTimestamp) {
+    if (spotterTestTimestamp && spotterTestTimestamp !== lastSpotterTestTimestamp) {
       this.logger.info("Playing spotter test: left → right → both");
       playSpotterTest();
     }
 
-    this.lastSpotterTestTimestamp = spotterTestTimestamp ?? 0;
+    this.lastSpotterTestTimestamps.set(contextId, Number(spotterTestTimestamp ?? 0));
 
     await this.setKeyImage(ev, generatePitEngineerSvg(settings, isEngineerEnabled()));
   }
