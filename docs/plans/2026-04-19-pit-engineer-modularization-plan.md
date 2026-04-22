@@ -93,12 +93,10 @@ packages/actions/src/actions/
     │   ├── fuel-warnings.ts
     │   ├── service-reminders.ts
     │   ├── toggle-audio.ts
-    │   ├── welcome-message.ts
-    │   └── engine-startup-animation.ts
+    │   └── welcome-message.ts
     │
     ├── icons/
-    │   ├── generate-pit-engineer-svg.ts
-    │   └── animation.ts             # startup animation frames + scheduling
+    │   └── generate-pit-engineer-svg.ts
     │
     └── __tests__/
         ├── core/
@@ -345,7 +343,6 @@ export class PitEngineer extends ConnectionStateAwareAction<PitEngineerSettings>
 
     this.features.push(
       new WelcomeMessageFeature(init),
-      new EngineStartupAnimationFeature(init),
       new PitApproachFeature(init),
       new PitDepartureFeature(init),
       new PitExitFeature(init),

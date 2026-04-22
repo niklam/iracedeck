@@ -436,7 +436,7 @@ type ScenarioContext = {
 8. Register scenario catalogs (pit-engineer, future others)
 9. Register iracing-actions (PitEngineer, etc.) on the adapter
 10. initGlobalSettings(adapter, logger)
-11. ... rest of today's init (SimHub, BindingDispatcher, EngineStartup, AppMonitor)
+11. ... rest of today's init (SimHub, BindingDispatcher, AppMonitor)
 12. adapter.connect()
 ```
 
