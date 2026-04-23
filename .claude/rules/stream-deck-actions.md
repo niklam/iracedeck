@@ -179,6 +179,26 @@ Always include both scripts in PI HTML files:
 - Keyboard mode stores: `{"type":"keyboard","key":"f1","modifiers":[]}`
 - SimHub mode stores: `{"type":"simhub","role":"My Role Name"}`
 
+**`ird-audio-test`** - Preview-playback trigger button. Writes `Date.now()` into a hidden `sdpi-textfield` so the action's `onDidReceiveSettings` handler detects the bump and plays the preview.
+```html
+<div style="display:none;"><sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield></div>
+<ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>
+```
+- `target` - DOM id of the hidden `sdpi-textfield` to bump
+- `label` - Button text (default "Test")
+
+**`ird-audio-device-select`** - Plugin-global audio output device dropdown. Binds to a global setting storing the selected device index, and populates its options from a second global setting that holds the device-list JSON (maintained by the plugin at runtime).
+```html
+<sdpi-item label="Output Device">
+  <ird-audio-device-select setting="audioOutputDevice" devices="_audioDeviceList" default-label="System Default"></ird-audio-device-select>
+</sdpi-item>
+```
+- `setting` - Global setting key holding the selected device index (default: `audioOutputDevice`)
+- `devices` - Global setting key holding the device-list JSON (default: `_audioDeviceList`). Payload: `[{ "index": number, "name": string, "isDefault"?: boolean }, …]`
+- `default-label` - Label for the `-1` (System Default) option (default: `System Default`)
+
+**Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists.
+
 ### sdpi-components Library
 
 See `@.claude/rules/sdpi-components.md` for the full component reference (attributes, value types, helpers, communication).
