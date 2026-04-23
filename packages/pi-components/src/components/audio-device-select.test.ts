@@ -149,6 +149,24 @@ describe("ird-audio-device-select", () => {
       const select = el.querySelector("select") as HTMLSelectElement;
       expect(select.value).toBe("-1");
     });
+
+    it("falls back to '-1' when the persisted device index is no longer in the current device list", () => {
+      const settingCallback = mock.callbacks.get("audioOutputDevice")!;
+      const devicesCallback = mock.callbacks.get("_audioDeviceList")!;
+
+      // Persisted selection was index 7, but the current enumeration only
+      // has indices 0 and 1 (e.g. the headset was unplugged).
+      settingCallback("7");
+      devicesCallback(
+        JSON.stringify([
+          { index: 0, name: "Built-in" },
+          { index: 1, name: "Speakers" },
+        ]),
+      );
+
+      const select = el.querySelector("select") as HTMLSelectElement;
+      expect(select.value).toBe("-1");
+    });
   });
 
   describe("change dispatching", () => {

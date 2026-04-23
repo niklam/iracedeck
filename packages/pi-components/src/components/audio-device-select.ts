@@ -141,7 +141,13 @@ export class AudioDeviceSelect extends HTMLElement {
   private applySavedValue(): void {
     if (!this.select) return;
 
-    this.select.value = this.savedValue;
+    // If the persisted device index is no longer in the current option
+    // list (e.g. the selected device was unplugged), fall back to
+    // System Default so the dropdown reflects what miniaudio will
+    // actually use. Native `<select>.value = "<unknown>"` silently
+    // clears the selection — surface that as "-1" explicitly.
+    const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
+    this.select.value = exists ? this.savedValue : "-1";
   }
 }
 
