@@ -32,7 +32,7 @@ import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/stat
 
 const WHITE = "#ffffff";
 const VOLUME_STEP = 5;
-const VOLUME_MIN = 5;
+const VOLUME_MIN = 0;
 const VOLUME_MAX = 100;
 
 /** @internal Exported for testing */

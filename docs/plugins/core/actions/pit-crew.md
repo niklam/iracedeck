@@ -15,7 +15,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 
 ### Button Press
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Used by Radar alongside the per-instance Radar Test button.
-- **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 5–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down).
+- **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off.
 
 ## Settings
 
@@ -30,10 +30,10 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 
 ### Direction Options
 - **Up** - Bumps Radar volume by 5 (max 100)
-- **Down** - Reduces Radar volume by 5 (min 5)
+- **Down** - Reduces Radar volume by 5 (min 0)
 
 ### Plugin-global Audio Settings (in the Pit Crew accordion, not under Global Settings)
-- **Radar Volume** (range 5–100, default 100) - slider + Test button. Shared across every Pit Crew instance.
+- **Radar Volume** (range 0–100, default 100) - slider + Test button. Shared across every Pit Crew instance.
 - **Output Device** - audio device used for the iRaceDeck audio engine; shared globally across the plugin.
 
 ## Keyboard Simulation
