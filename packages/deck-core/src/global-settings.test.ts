@@ -142,14 +142,11 @@ describe("global-settings cache (synchronous update on local writes)", () => {
 
   it("no-ops when the adapter is not initialized", () => {
     _resetGlobalSettings();
-    const logger = createMockLogger();
     // Not calling initGlobalSettings — adapterRef stays null.
 
     updateGlobalSettings({ radarEnabled: false });
 
-    // Nothing to assert on the adapter (we didn't create one); just
-    // verify no throw and that subsequent reads stay at the default.
+    // No throw; cache stays at the schema default.
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
-    expect(logger.warn).not.toHaveBeenCalled(); // logger isn't wired when init never ran
   });
 });
