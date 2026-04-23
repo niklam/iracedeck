@@ -145,7 +145,7 @@
               "mode": "radar-volume",
               "direction": "down",
               "label": "Radar Volume Down",
-              "description": "Reduces the global Radar volume by 5 (min 5)"
+              "description": "Reduces the global Radar volume by 5 (min 0)"
             }
           ]
         }

@@ -25,12 +25,12 @@ Toggles the directional proximity tick loop on/off. Pressing the button flips `r
 
 ### Radar Volume
 
-Steps the global Radar volume up or down. Takes effect immediately on `AudioBus.Alerts` so the next tick plays at the new level. Clamps at 5 (minimum) and 100 (maximum). The key shows the current percentage in its title.
+Steps the global Radar volume up or down. Takes effect immediately on `AudioBus.Alerts` so the next tick plays at the new level. Clamps at 0 (minimum, fully muted) and 100 (maximum). The key shows the current percentage in its title.
 
 #### Setting: Direction
 
 - **Up** — Bumps `radarVolume` by 5 (max 100)
-- **Down** — Reduces `radarVolume` by 5 (min 5)
+- **Down** — Reduces `radarVolume` by 5 (min 0)
 
 #### Details
 
@@ -42,7 +42,7 @@ Steps the global Radar volume up or down. Takes effect immediately on `AudioBus.
 
 The Pit Crew accordion in the Property Inspector exposes these plugin-global settings alongside the Mode selector (not under the generic Global Settings section):
 
-- **Radar Volume** (5–100, default 100) — slider + Test button. Shared across every Pit Crew instance; the button lets you preview the left → right → both sequence without waiting for a live proximity event.
+- **Radar Volume** (0–100, default 100) — slider + Test button. Shared across every Pit Crew instance; the button lets you preview the left → right → both sequence without waiting for a live proximity event. Sliding to 0 mutes the radar without toggling the feature off.
 - **Output Device** — the audio device used for the iRaceDeck audio engine; shared globally across the plugin.
 
 ## Notes

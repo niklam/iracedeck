@@ -119,11 +119,12 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
-     * Volume for the directional Radar ticks, 5–100 (mapped to 0.05–1.0 on
+     * Volume for the directional Radar ticks, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Alerts`). Stepped by the Radar Volume Up/Down modes of the
-     * Pit Crew action. Default: 100.
+     * Pit Crew action; sliding to 0 mutes the radar without toggling the
+     * feature off. Default: 100.
      */
-    radarVolume: z.coerce.number().min(5).max(100).default(100),
+    radarVolume: z.coerce.number().min(0).max(100).default(100),
   })
   .passthrough();
 

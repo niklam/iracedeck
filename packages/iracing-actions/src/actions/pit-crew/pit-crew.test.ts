@@ -453,8 +453,8 @@ describe("PitCrew action", () => {
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
     });
 
-    it("clamps at 5 (no-op when already at min)", async () => {
-      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 5 });
+    it("clamps at 0 (no-op when already at min)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 0 });
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
       vi.clearAllMocks();
@@ -462,6 +462,17 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+    });
+
+    it("steps to 0 on direction=down when current volume is VOLUME_STEP", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 5 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 0 });
     });
   });
 
