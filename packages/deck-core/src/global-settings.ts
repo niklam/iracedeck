@@ -183,12 +183,7 @@ export function initGlobalSettings(adapter: IDeckPlatformAdapter, log: ILogger):
     logger?.debug(`Raw settings: ${JSON.stringify(settings)}`);
     const newSettings = GlobalSettingsSchema.parse(settings);
     logger?.debug(`Parsed focusIRacingWindow: ${newSettings.focusIRacingWindow}`);
-    currentSettings = newSettings;
-
-    // Notify all listeners
-    for (const listener of listeners) {
-      listener(newSettings);
-    }
+    applyParsedSettings(newSettings);
   });
 
   initialized = true;
@@ -226,7 +221,14 @@ export function onGlobalSettingsChange(listener: GlobalSettingsListener): () => 
 
 /**
  * Update global settings by merging partial values into current settings.
- * Writes the merged result back to the platform adapter.
+ * Writes the merged result back to the platform adapter **and** updates the
+ * in-memory cache synchronously so subsequent reads in the same task see the
+ * new value. The host's `onDidReceiveGlobalSettings` echo is not guaranteed to
+ * fire promptly — in observed Stream Deck sessions the echo has arrived
+ * minutes after the write — and without the synchronous cache update every
+ * read-modify-write toggle (Pit Crew Radar, Race Engineer) gets stuck because
+ * subsequent presses re-read the stale value and compute the same "next"
+ * again. See #419.
  *
  * @param partial - Partial settings to merge into current settings
  */
@@ -240,7 +242,27 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   const merged = { ...currentSettings, ...partial };
   logger?.info("Updating global settings");
   logger?.debug(`Partial update: ${JSON.stringify(partial)}`);
-  adapterRef.setGlobalSettings(merged);
+
+  // Parse + apply synchronously so the cache and listeners reflect the
+  // new value immediately. The later `onDidReceiveGlobalSettings` echo
+  // re-parses the same payload and reconciles as a no-op.
+  const applied = applyParsedSettings(GlobalSettingsSchema.parse(merged));
+  adapterRef.setGlobalSettings(applied);
+}
+
+/**
+ * Apply a parsed settings object: update the cache and notify listeners.
+ * Shared between the host-echo path (`onDidReceiveGlobalSettings`) and the
+ * local-write path (`updateGlobalSettings`) so both stay in sync.
+ */
+function applyParsedSettings(parsed: GlobalSettings): GlobalSettings {
+  currentSettings = parsed;
+
+  for (const listener of listeners) {
+    listener(parsed);
+  }
+
+  return parsed;
 }
 
 /**
