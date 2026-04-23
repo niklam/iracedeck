@@ -129,7 +129,7 @@ export class AudioDeviceSelect extends HTMLElement {
 
     const defaultLabel = this.getAttribute("default-label") ?? DEFAULT_LABEL;
 
-    this.select.innerHTML = "";
+    this.select.replaceChildren();
 
     const systemOption = document.createElement("option");
     systemOption.value = "-1";
