@@ -191,11 +191,17 @@ describe("PIT_CREW_UUID", () => {
 });
 
 describe("Settings (persisted legacy field stripping)", () => {
-  it("defaults mode to race-engineer and direction to up", () => {
+  it("defaults mode to radar and direction to up", () => {
     const parsed = Settings.parse({});
 
-    expect(parsed.mode).toBe("race-engineer");
+    expect(parsed.mode).toBe("radar");
     expect(parsed.direction).toBe("up");
+  });
+
+  it("still accepts persisted race-engineer mode for backward compat", () => {
+    const parsed = Settings.parse({ mode: "race-engineer" });
+
+    expect(parsed.mode).toBe("race-engineer");
   });
 
   it("silently drops pre-#413 action-level fields via Zod's default strip mode", () => {
