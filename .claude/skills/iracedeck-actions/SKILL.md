@@ -38,7 +38,7 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (race engineer + radar) |
+| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |

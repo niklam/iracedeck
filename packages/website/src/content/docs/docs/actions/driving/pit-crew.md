@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. In the initial release, only the **Radar** mode (directional proximity ticks on the audio bus when a car pulls alongside) is exposed. A **Race Engineer** voice (welcome / pit-lane callouts / flag alerts / incidents / fuel warnings) is planned to return in follow-up releases and will be re-added to the Mode dropdown alongside its voice scenarios.
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. The initial release exposes **Radar** (directional proximity ticks on the audio bus when a car pulls alongside) and **Radar Volume** (a dedicated Up/Down mode for stepping the radar volume from the key). A **Race Engineer** voice (welcome / pit-lane callouts / flag alerts / incidents / fuel warnings) is planned to return in follow-up releases and will be re-added to the Mode dropdown alongside its voice scenarios.
 
 ## Modes
 
