@@ -462,6 +462,7 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
 
     it("steps to 0 on direction=down when current volume is VOLUME_STEP", async () => {
@@ -473,6 +474,7 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
 
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 0 });
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0);
     });
   });
 
