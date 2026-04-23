@@ -143,8 +143,12 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     updateGlobalSettings({ radarEnabled: false });
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
 
+    // initGlobalSettings must register an echo callback; fail loudly if
+    // not, otherwise the reconciliation step below silently skips.
+    expect(mock.echo).not.toBeNull();
+
     // Host finally echoes the earlier write — cache stays false.
-    mock.echo?.({ radarEnabled: false });
+    mock.echo!({ radarEnabled: false });
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
 
     // New local write still flips immediately.
