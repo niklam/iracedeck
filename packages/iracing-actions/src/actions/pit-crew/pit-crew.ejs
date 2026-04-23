@@ -6,11 +6,6 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<p style="padding: 0 16px; color: #999; font-size: 12px;">
-			Pick what pressing this button does. Race Engineer and Radar have independent
-			on/off switches so silencing the voice engineer doesn't kill the proximity alerts.
-		</p>
-
 		<sdpi-item label="Mode">
 			<sdpi-select id="mode-select" setting="mode" default="radar">
 				<option value="radar">Radar</option>
