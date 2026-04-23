@@ -181,7 +181,7 @@ describe("ird-audio-device-select", () => {
       expect(mock.saves.get("audioOutputDevice")).toHaveBeenCalledWith("3");
     });
 
-    it("bubbles a change event from the custom element", () => {
+    it("dispatches exactly one change event per user selection (no double-fire from native bubble)", () => {
       const handler = vi.fn();
       el.addEventListener("change", handler);
 
@@ -189,7 +189,7 @@ describe("ird-audio-device-select", () => {
       select.value = "-1";
       select.dispatchEvent(new Event("change", { bubbles: true }));
 
-      expect(handler).toHaveBeenCalled();
+      expect(handler).toHaveBeenCalledTimes(1);
     });
   });
 });

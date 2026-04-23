@@ -81,8 +81,14 @@ export class AudioDeviceSelect extends HTMLElement {
   }
 
   private attachListeners(): void {
-    this.select?.addEventListener("change", () => {
+    this.select?.addEventListener("change", (ev: Event) => {
       if (!this.select) return;
+
+      // Native `change` on `<select>` bubbles through the host custom
+      // element. Without `stopPropagation` the consumer would see two
+      // events per user selection — once from the native bubble and
+      // once from the host dispatch below.
+      ev.stopPropagation();
 
       this.savedValue = this.select.value;
       this.saveToStreamDeck?.(this.savedValue);
