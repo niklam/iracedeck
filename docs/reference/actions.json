@@ -132,13 +132,8 @@
           "file": "pit-crew.ts",
           "encoder": false,
           "settingsKeys": ["mode", "direction"],
-          "description": "Multi-mode action for the iRaceDeck audio framework. Race Engineer and Radar have independent on/off globals so silencing the voice engineer doesn't kill the proximity ticks. Voice-engineer scenarios (welcome, pit-lane callouts, flag alerts, etc.) land in follow-up PRs — Race Engineer today only flips a global flag.",
+          "description": "Multi-mode action for the iRaceDeck audio framework. The initial release exposes only the directional Radar proximity ticks; a Race Engineer voice feature is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios.",
           "modes": [
-            {
-              "mode": "race-engineer",
-              "label": "Race Engineer",
-              "description": "Toggles the Race Engineer voice on/off"
-            },
             { "mode": "radar", "label": "Radar", "description": "Toggles the directional proximity tick loop on/off" },
             {
               "mode": "radar-volume",

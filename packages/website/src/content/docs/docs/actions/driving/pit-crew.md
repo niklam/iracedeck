@@ -1,27 +1,17 @@
 ---
 title: Pit Crew
-description: Voice engineer + directional proximity radar, driven by the iRaceDeck audio framework.
+description: Directional proximity radar driven by the iRaceDeck audio framework.
 sidebar:
   badge:
-    text: "3 modes"
+    text: "2 modes"
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. A **Race Engineer** voice (welcome / pit-lane callouts / flag alerts / incidents / fuel warnings — all coming back in follow-up releases) and a **Radar** (directional proximity ticks on the audio bus when a car pulls alongside) share the action's Mode dropdown. The two features have independent on/off globals, so muting the voice engineer to talk to teammates on Discord doesn't kill the proximity alerts.
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. The initial release exposes **Radar** (directional proximity ticks on the audio bus when a car pulls alongside) and **Radar Volume** (a dedicated Up/Down mode for stepping the radar volume from the key). A **Race Engineer** voice (welcome / pit-lane callouts / flag alerts / incidents / fuel warnings) is planned to return in follow-up releases and will be re-added to the Mode dropdown alongside its voice scenarios.
 
 ## Modes
 
 Select the mode from the **Mode** dropdown in the Property Inspector. For the Radar Volume mode, also pick **Up** or **Down** from the **Direction** dropdown.
-
-### Race Engineer
-
-Toggles the Race Engineer voice on/off for every Pit Crew instance across the plugin. Pressing the button flips `raceEngineerEnabled` in plugin-global settings; the status bar at the bottom of the key flips green ↔ red. Voice scenarios (welcome, pit-lane, flag alerts, fuel warnings, etc.) are deferred to follow-up releases — the toggle today only flips the global flag that those scenarios will read once they return.
-
-#### Details
-
-- **Dial:** Not supported
-- **Default binding:** None — button-driven feature, no keyboard binding
-- **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
 
 ### Radar
 

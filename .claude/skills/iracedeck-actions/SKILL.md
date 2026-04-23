@@ -38,7 +38,7 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (race engineer + radar) |
+| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
@@ -67,7 +67,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
-| Pit Crew | 3 | race-engineer (toggles the Race Engineer voice global), radar (toggles the directional proximity tick loop), radar-volume (with Direction up/down; steps global radarVolume by ±5, clamped 5–100). Race Engineer and Radar have independent globals so silencing the voice doesn't kill the ticks. |
+| Pit Crew | 2 | radar (toggles the directional proximity tick loop), radar-volume (with Direction up/down; steps global radarVolume by ±5, clamped 5–100). A Race Engineer voice mode is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. |
 
 ### Cockpit & Interface
 

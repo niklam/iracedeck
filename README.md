@@ -42,7 +42,7 @@
 **Key highlights:**
 
 - Live telemetry at 4 Hz with automatic iRacing connection/reconnection
-- **Pit Crew** action with two independent features: **Race Engineer** voice (scenarios land in follow-up releases) and **Radar** directional proximity ticks via multi-channel audio mixer (miniaudio)
+- **Pit Crew** action with **Radar** directional proximity ticks via multi-channel audio mixer (miniaudio); a voice **Race Engineer** feature is planned for a follow-up release
 - All keyboard shortcuts are user-configurable via the Property Inspector
 - SDK-first design: uses iRacing broadcast commands where possible, keyboard simulation only as fallback
 - Native C++ addon for low-latency Win32 API access (iRacing SDK, keyboard input, audio engine)

@@ -1,6 +1,6 @@
 # Pit Crew
 
-Multi-mode action covering the iRaceDeck pit-side audio framework: Race Engineer voice scenarios and the directional Radar proximity ticks. Race Engineer and Radar have independent on/off globals so silencing one does not affect the other.
+Multi-mode action covering the iRaceDeck pit-side audio framework. The initial release exposes only the directional Radar proximity ticks. A Race Engineer voice feature is planned and will return to the Mode dropdown in a follow-up release alongside its voice scenarios.
 
 ## Properties
 
@@ -14,7 +14,6 @@ Multi-mode action covering the iRaceDeck pit-side audio framework: Race Engineer
 ## Behavior
 
 ### Button Press
-- **Race Engineer mode**: Flips the plugin-global `raceEngineerEnabled`. Voice scenarios (welcome, pit-lane callouts, flag alerts, fuel warnings, etc.) ship disabled until their follow-up PRs re-register them; this toggle flips the gate they will read. Today the only observable effect is the status-bar icon state.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 5–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down).
 
@@ -22,11 +21,10 @@ Multi-mode action covering the iRaceDeck pit-side audio framework: Race Engineer
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Mode | Dropdown | Race Engineer | Selects what the key press does |
+| Mode | Dropdown | Radar | Selects what the key press does |
 | Direction | Dropdown | Up | Up / Down step, visible only when Mode = Radar Volume |
 
 ### Mode Options
-- **Race Engineer** - Toggles the Race Engineer voice on/off
 - **Radar** - Toggles the directional proximity ticks on/off
 - **Radar Volume** - Steps the global Radar volume up or down
 
@@ -44,12 +42,10 @@ None. Pit Crew drives its own audio framework; it does not emit keyboard events.
 
 ## Icon States
 
-Race Engineer and Radar modes paint a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
+Radar mode paints a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
 
 | Mode / State | Icon |
 |--------------|------|
-| Race Engineer — on | Headset / mic glyph, status bar green |
-| Race Engineer — off | Headset / mic glyph, status bar red |
 | Radar — on | Radar-sweep glyph, status bar green |
 | Radar — off | Radar-sweep glyph, status bar red |
 | Radar Volume Up | Radar glyph + up arrow, title shows `VOL +` and current % |

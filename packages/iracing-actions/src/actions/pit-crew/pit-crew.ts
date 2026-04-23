@@ -59,7 +59,7 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  */
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  mode: z.enum(["race-engineer", "radar", "radar-volume"]).default("race-engineer"),
+  mode: z.enum(["race-engineer", "radar", "radar-volume"]).default("radar"),
   direction: z.enum(["up", "down"]).default("up"),
 });
 

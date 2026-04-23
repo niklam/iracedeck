@@ -12,8 +12,7 @@
 		</p>
 
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
-				<option value="race-engineer">Race Engineer</option>
+			<sdpi-select id="mode-select" setting="mode" default="radar">
 				<option value="radar">Radar</option>
 				<option value="radar-volume">Radar Volume</option>
 			</sdpi-select>
@@ -109,11 +108,11 @@
 					else directionItem.classList.add("hidden");
 				};
 
-				update(modeSelect.value || "race-engineer");
+				update(modeSelect.value || "radar");
 				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
 				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
 
-				let last = modeSelect.value || "race-engineer";
+				let last = modeSelect.value || "radar";
 				setInterval(() => {
 					const current = modeSelect.value;
 					if (current && current !== last) {
