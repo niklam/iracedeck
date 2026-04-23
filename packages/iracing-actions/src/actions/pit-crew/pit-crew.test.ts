@@ -415,6 +415,28 @@ describe("PitCrew action", () => {
       const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
       expect(updates).not.toContain("raceEngineerEnabled");
     });
+
+    it("alternates radarEnabled across three consecutive presses without a host echo (#419)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 100 });
+      const action = new PitCrew();
+      const event = buildAppearEvent({ mode: "radar" }) as never;
+      await action.onWillAppear(event);
+
+      // Press 1 — on → off
+      await action.onKeyDown(event);
+      expect(hoisted.updateGlobalSettings).toHaveBeenLastCalledWith({ radarEnabled: false });
+      expect(hoisted.setRadarEnabled).toHaveBeenLastCalledWith(false);
+
+      // Press 2 — off → on (the #419 bug: previously stayed at false)
+      await action.onKeyDown(event);
+      expect(hoisted.updateGlobalSettings).toHaveBeenLastCalledWith({ radarEnabled: true });
+      expect(hoisted.setRadarEnabled).toHaveBeenLastCalledWith(true);
+
+      // Press 3 — on → off
+      await action.onKeyDown(event);
+      expect(hoisted.updateGlobalSettings).toHaveBeenLastCalledWith({ radarEnabled: false });
+      expect(hoisted.setRadarEnabled).toHaveBeenLastCalledWith(false);
+    });
   });
 
   describe("onKeyDown — radar-volume mode", () => {
