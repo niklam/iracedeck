@@ -119,12 +119,24 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     expect(listener.mock.calls[1][0].radarVolume).toBe(75);
   });
 
-  it("forwards the merged (parsed) settings to the adapter", () => {
+  it("forwards the full merged+parsed settings payload to the adapter", () => {
     updateGlobalSettings({ radarEnabled: false });
 
     expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
     const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
-    expect(sent.radarEnabled).toBe(false);
+    // Assert both the partial override and the Zod-produced defaults are
+    // all present — this proves the adapter receives the parsed result,
+    // not just the caller's bare partial.
+    expect(sent).toMatchObject({
+      radarEnabled: false,
+      raceEngineerEnabled: true,
+      radarVolume: 100,
+      disableWhenDisconnected: true,
+      focusIRacingWindow: false,
+      enableFuelingOnChange: true,
+      simHubHost: "127.0.0.1",
+      simHubPort: 8888,
+    });
   });
 
   it("reconciles on host echo without losing later local writes' semantics", () => {
