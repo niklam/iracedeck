@@ -12,11 +12,23 @@ if (isWindows) {
   console.log("Building native addon (node-gyp rebuild)...");
   try {
     execSync("node-gyp rebuild", { stdio: "inherit" });
-  } catch {
-    if (existsSync(addonPath)) {
+  } catch (error) {
+    // Only treat as recoverable when Windows reports the .node file is locked
+    // (Stream Deck / dev plugin holding the DLL). Everything else (compiler
+    // errors, missing toolchain, bad gyp config, …) must surface so real
+    // build regressions aren't silently papered over. Mirrors audio-native's
+    // catch — keep the two in sync when touching either.
+    const err = /** @type {NodeJS.ErrnoException} */ (error);
+    const message = String(err?.message ?? "");
+    const isLockOrPermissionError =
+      err?.code === "EBUSY" ||
+      err?.code === "EPERM" ||
+      /in use by another process|being used by another process|permission denied/i.test(message);
+
+    if (isLockOrPermissionError && existsSync(addonPath)) {
       console.warn("node-gyp rebuild failed (file may be locked by a running process). Using existing native addon.");
     } else {
-      throw new Error("node-gyp rebuild failed and no existing addon found. Close any processes using the addon and retry.");
+      throw error;
     }
   }
 } else {
