@@ -132,6 +132,21 @@ export function _resetSimEventsIracing(): void {
 // ── Internals ──────────────────────────────────────────────────────────────
 
 function handleDisconnect(self: TranslatorInstance): void {
+  // Publish a teardown signal for any active state that would otherwise
+  // leave downstream consumers stuck in an active mode. Today that's just
+  // radar (its tick loop keeps running until it sees a `radar.changed → clear`
+  // transition); other active-state subsystems should plug in here the
+  // same way. We publish via the live envelope shape so consumers don't
+  // need a separate disconnect code path.
+  if (self.state.radarState !== "clear" && self.latestTelemetry !== null) {
+    publish(
+      self,
+      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
+      self.latestTelemetry,
+      Date.now(),
+    );
+  }
+
   // Fresh state so reconnect seeds cleanly.
   self.state = createInitialState();
   self.latestTelemetry = null;
