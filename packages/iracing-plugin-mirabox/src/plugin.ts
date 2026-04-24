@@ -203,7 +203,7 @@ onGlobalSettingsChange((settings) => {
 });
 
 // Re-enumerate audio devices on every PI open so a headset plugged in
-// after Stream Deck booted appears without a full restart. The
+// after VSD Craft booted appears without a full restart. The
 // `pushAudioDevicesIfChanged` guard short-circuits the common case (PI
 // reopened, no hardware changed) so the sdpi-components data source
 // doesn't churn.
