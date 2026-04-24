@@ -108,6 +108,11 @@ describe("sim-events-iracing translator", () => {
   afterEach(() => {
     _resetSimEventsIracing();
     _resetEventBus();
+    // Safety net — one overtake test uses fake timers with inline restore,
+    // so a throw between `useFakeTimers()` and `useRealTimers()` would
+    // leak mocked timers into every following test. Cheap unconditional
+    // restore here makes that impossible.
+    vi.useRealTimers();
   });
 
   describe("lifecycle", () => {
