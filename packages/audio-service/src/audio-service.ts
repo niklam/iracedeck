@@ -390,11 +390,21 @@ class AudioService implements IAudioService {
       this.logger.info("Audio output device switched by id");
       this.logger.debug(`Device id: ${deviceId}`);
     } else {
-      // A stale or unknown id — caller decides how to recover (typically
-      // fall back to system default via setAudioDevice(-1)). Log at warn
-      // since it's expected after a device unplug, not an internal failure.
-      this.logger.warn("Audio output device id not found in current enumeration");
-      this.logger.debug(`Unknown device id: ${deviceId}`);
+      // The native layer returns false for three distinct reasons:
+      // (a) the id isn't in the current enumeration (stale / unplugged /
+      // legacy value), (b) the hex string is malformed, or (c) the engine
+      // reinit failed. Distinguish (a) from (b)+(c) by re-checking the
+      // enumeration so the operator log is truthful. Caller decides how
+      // to recover (typically fall back to system default).
+      const exists = this.native.getAudioDevices().some((d) => d.id === deviceId);
+
+      if (exists) {
+        this.logger.error("Failed to switch audio output device by id (engine reinit failed)");
+      } else {
+        this.logger.warn("Audio output device id not found in current enumeration");
+      }
+
+      this.logger.debug(`Device id: ${deviceId}`);
     }
 
     return ok;
