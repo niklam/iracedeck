@@ -29,7 +29,7 @@ export interface IDeckActionContext {
  */
 export interface IDeckEvent<T> {
   action: IDeckActionContext;
-  payload: { settings: T };
+  payload: { settings: T; coordinates?: { row: number; column: number } };
 }
 
 /** Fired when the action becomes visible on the device */

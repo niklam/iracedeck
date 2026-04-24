@@ -33,7 +33,7 @@
     flex-shrink: 0;
   }
 
-  .ird-collapsible[open] .ird-collapsible-icon {
+  .ird-collapsible[open] > .ird-collapsible-header > .ird-collapsible-icon {
     transform: rotate(90deg);
   }
 
@@ -48,6 +48,25 @@
 
   .ird-collapsible-content {
     padding-top: 4px;
+  }
+
+  /* Nested sub-collapsible (inside an accordion) — smaller, indented, no border */
+  .ird-collapsible.ird-subcollapsible {
+    margin-top: 2px;
+    margin-left: 12px;
+  }
+  .ird-subcollapsible > .ird-collapsible-header {
+    border-top: none;
+    padding: 4px 0 2px 0;
+  }
+  .ird-subcollapsible > .ird-collapsible-header .ird-collapsible-icon {
+    font-size: 7px;
+  }
+  .ird-subcollapsible > .ird-collapsible-header .ird-collapsible-title {
+    font-size: 8pt;
+    font-weight: 500;
+    color: #c8c8c8;
+    letter-spacing: 0.3px;
   }
 
   .ird-section-subtitle {

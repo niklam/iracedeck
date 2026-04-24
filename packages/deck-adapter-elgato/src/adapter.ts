@@ -82,8 +82,8 @@ function wrapEvent<T>(ev: {
     setSettings(settings: unknown): Promise<void>;
     isKey(): boolean;
   };
-  payload: { settings: T };
-}): { action: IDeckActionContext; payload: { settings: T } } {
+  payload: { settings: T; coordinates?: { row: number; column: number } };
+}): { action: IDeckActionContext; payload: { settings: T; coordinates?: { row: number; column: number } } } {
   return {
     action: new ElgatoActionContext(ev.action),
     payload: ev.payload,

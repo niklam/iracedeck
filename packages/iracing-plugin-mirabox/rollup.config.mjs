@@ -1,4 +1,5 @@
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
@@ -15,6 +16,29 @@ const iconsPackagePath = path.resolve(__dirname, "../icons");
 const actionsPackagePath = path.resolve(__dirname, "../iracing-actions/src");
 const actionTemplatesDir = path.join(actionsPackagePath, "actions");
 const elgatoPluginPath = path.resolve(__dirname, "../iracing-plugin-stream-deck");
+const audioAssetsPath = path.resolve(__dirname, "../audio-assets");
+
+/**
+ * Rollup plugin to copy shared audio assets into the sdPlugin directory.
+ * Mirrors iracing-plugin-stream-deck so `audio-assets/` is the single source
+ * of truth for MP3s used by both plugins.
+ */
+function copyAudioAssetsPlugin(sdPlugin) {
+	const SKIP_BASENAMES = new Set(["package.json", "manifest.json", "node_modules", "src", "scripts"]);
+	return {
+		name: "copy-audio-assets",
+		generateBundle() {
+			const dest = path.join(sdPlugin, "assets", "audio");
+			if (existsSync(audioAssetsPath)) {
+				cpSync(audioAssetsPath, dest, {
+					recursive: true,
+					filter: (src) => !SKIP_BASENAMES.has(path.basename(src)),
+				});
+				this.info?.("Copied audio assets from @iracedeck/audio-assets");
+			}
+		},
+	};
+}
 
 /**
  * Deep-merge two plain objects. `override` keys win on collision. Nested
@@ -217,7 +241,7 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/iracing-native", "yaml", "keysender", "ws"],
+	external: ["@iracedeck/audio-native", "@iracedeck/audio-service", "@iracedeck/iracing-native", "yaml", "keysender", "ws"],
 	plugins: [
 		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
 		// Only applies to relative imports (starting with ".") within the actions package.
@@ -233,6 +257,7 @@ const config = {
 			},
 		},
 		svgPlugin(),
+		json(),
 		replace({
 			preventAssignment: true,
 			values: {
@@ -252,6 +277,8 @@ const config = {
 		}),
 		// Copy imgs/ from the Elgato plugin and PI browser assets from @iracedeck/pi-components
 		copyAssetsPlugin(sdPlugin),
+		// Copy shared audio assets from @iracedeck/audio-assets
+		copyAudioAssetsPlugin(sdPlugin),
 		{
 			name: "watch-externals",
 			buildStart: function () {
@@ -301,6 +328,8 @@ const config = {
 				const pkg = {
 					type: "module",
 					dependencies: {
+						"@iracedeck/audio-native": "file:../../../audio-native",
+						"@iracedeck/audio-service": "file:../../../audio-service",
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						ws: "8.18.2",
 						yaml: "2.8.2",

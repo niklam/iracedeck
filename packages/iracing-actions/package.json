@@ -12,10 +12,14 @@
     }
   },
   "dependencies": {
+    "@iracedeck/audio-scenarios": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/icons": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
+    "@iracedeck/sim-events-iracing": "workspace:*",
     "zod": "4.3.6"
   },
   "devDependencies": {

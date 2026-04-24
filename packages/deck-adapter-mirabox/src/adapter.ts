@@ -57,9 +57,12 @@ function wrapEvent<T>(
   data: VSDEvent & { context: string },
   controllerType: ControllerType,
 ): IDeckEvent<T> {
+  const payload = data.payload as Record<string, unknown> | undefined;
+  const coordinates = payload?.coordinates as { row: number; column: number } | undefined;
+
   return {
     action: new VSDActionContext(client, data.context, controllerType),
-    payload: { settings: (data.payload?.settings ?? {}) as T },
+    payload: { settings: (payload?.settings ?? {}) as T, coordinates },
   };
 }
 

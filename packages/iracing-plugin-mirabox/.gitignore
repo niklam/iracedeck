@@ -6,6 +6,7 @@ node_modules/
 *.sdPlugin/logs
 *.sdPlugin/imgs
 *.sdPlugin/ui
+*.sdPlugin/assets
 
 # Build artifacts
 *.streamDeckPlugin

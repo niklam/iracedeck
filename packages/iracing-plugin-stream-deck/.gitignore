@@ -14,3 +14,6 @@ node_modules/
 # Per-action static icons copied at build time (source of truth in @iracedeck/iracing-actions)
 *.sdPlugin/imgs/actions/
 
+# Audio assets (copied from @iracedeck/audio-assets at build time)
+*.sdPlugin/assets/audio
+

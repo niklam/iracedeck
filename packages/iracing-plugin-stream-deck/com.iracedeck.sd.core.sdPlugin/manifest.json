@@ -315,6 +315,23 @@
       ]
     },
     {
+      "Name": "Pit Crew",
+      "UUID": "com.iracedeck.sd.core.pit-crew",
+      "Icon": "imgs/actions/pit-crew/icon",
+      "Tooltip": "Pit crew with directional radar proximity alerts (voice engineer scenarios land in follow-up PRs)",
+      "PropertyInspectorPath": "ui/pit-crew.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/pit-crew/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Chat",
       "UUID": "com.iracedeck.sd.core.chat",
       "Icon": "imgs/actions/chat/icon",

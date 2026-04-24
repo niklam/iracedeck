@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"PIT\nENGINEER"},"border":{"color":"#4a5a7a"},"artworkBounds":{"x":12,"y":10,"width":120,"height":80}}</desc>
+
+    <!-- Car body (top-down silhouette) -->
+    <rect x="52" y="18" width="40" height="64" rx="10" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <!-- Windshield -->
+    <line x1="56" y1="34" x2="88" y2="34" stroke="#ffffff" stroke-width="2.5"/>
+    <!-- Rear window -->
+    <line x1="56" y1="62" x2="88" y2="62" stroke="#ffffff" stroke-width="2.5"/>
+
+    <!-- Left arrow -->
+    <path d="M36 50l-16 0" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M24 42l-8 8 8 8" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Right arrow -->
+    <path d="M108 50l16 0" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M120 42l8 8-8 8" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Headset/radio icon (top-right corner) -->
+    <path d="M118 12 a10 10 0 0 1 0 20" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="116" y="12" width="6" height="8" rx="2" fill="#ffffff"/>
+    <rect x="126" y="12" width="6" height="8" rx="2" fill="#ffffff"/>
+
+</svg>

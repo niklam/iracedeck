@@ -1,4 +1,5 @@
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
@@ -6,7 +7,7 @@ import typescript from "@rollup/plugin-typescript";
 import path from "node:path";
 import url from "node:url";
 import process from "node:process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { browserDir, partialsDir, piTemplatePlugin } from "@iracedeck/pi-components/build";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -14,6 +15,29 @@ const rootPackageJson = JSON.parse(readFileSync(path.resolve(__dirname, "../../p
 const iconsPackagePath = path.resolve(__dirname, "../icons");
 const actionsPackagePath = path.resolve(__dirname, "../iracing-actions/src");
 const actionTemplatesDir = path.join(actionsPackagePath, "actions");
+const audioAssetsPath = path.resolve(__dirname, "../audio-assets");
+
+/**
+ * Rollup plugin to copy shared audio assets into the sdPlugin directory.
+ * `audio-assets/` is the single source of truth for MP3s used by both the
+ * Elgato and Mirabox plugins.
+ */
+function copyAudioAssetsPlugin(sdPlugin) {
+	const SKIP_BASENAMES = new Set(["package.json", "manifest.json", "node_modules", "src", "scripts"]);
+	return {
+		name: "copy-audio-assets",
+		generateBundle() {
+			const dest = path.join(sdPlugin, "assets", "audio");
+			if (existsSync(audioAssetsPath)) {
+				cpSync(audioAssetsPath, dest, {
+					recursive: true,
+					filter: (src) => !SKIP_BASENAMES.has(path.basename(src)),
+				});
+				this.info?.("Copied audio assets from @iracedeck/audio-assets");
+			}
+		},
+	};
+}
 
 /**
  * Deep-merge two plain objects. `override` keys win on collision. Nested
@@ -143,7 +167,7 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/iracing-native", "yaml", "keysender"],
+	external: ["@iracedeck/audio-native", "@iracedeck/audio-service", "@iracedeck/iracing-native", "yaml", "keysender"],
 	plugins: [
 		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
 		// Only applies to relative imports (starting with ".") within the actions package.
@@ -159,6 +183,7 @@ const config = {
 			},
 		},
 		svgPlugin(),
+		json(),
 		replace({
 			preventAssignment: true,
 			values: {
@@ -194,6 +219,8 @@ const config = {
 				}
 			},
 		},
+		// Copy shared audio assets from @iracedeck/audio-assets
+		copyAudioAssetsPlugin(sdPlugin),
 		// Copy vendored sdpi-components.js and built pi-components.js from @iracedeck/pi-components
 		{
 			name: "copy-pi-browser-assets",
@@ -257,6 +284,8 @@ const config = {
 				const pkg = {
 					type: "module",
 					dependencies: {
+						"@iracedeck/audio-native": "file:../../../audio-native",
+						"@iracedeck/audio-service": "file:../../../audio-service",
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						yaml: "2.8.2",
 					},

@@ -13,6 +13,12 @@
 // Autocomplete Input - text input with dropdown suggestions
 export { AutocompleteInput } from "./autocomplete-input.js";
 
+// Audio Device Select - global audio output device dropdown populated from a device-list global
+export { AudioDeviceSelect } from "./audio-device-select.js";
+
+// Audio Test - button that bumps a hidden per-action timestamp to trigger preview playback
+export { AudioTest } from "./audio-test.js";
+
 // Color Picker - custom color picker with "not set" state and inline hex display
 export { ColorPicker } from "./color-picker.js";
 

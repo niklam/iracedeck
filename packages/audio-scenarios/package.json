@@ -1,0 +1,39 @@
+{
+  "name": "@iracedeck/audio-scenarios",
+  "version": "1.14.0",
+  "description": "Data-driven audio scenario DSL and interpreter. Subscribes to @iracedeck/event-bus and drives @iracedeck/audio-service.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./pit-crew": {
+      "import": "./dist/catalog/pit-crew/index.js",
+      "types": "./dist/catalog/pit-crew/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@iracedeck/audio-assets": "workspace:*",
+    "@iracedeck/audio-service": "workspace:*",
+    "@iracedeck/event-bus": "workspace:*",
+    "@iracedeck/iracing-sdk": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/sim-events-iracing": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.5",
+    "@types/node": "25.6.0",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.4"
+  }
+}

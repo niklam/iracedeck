@@ -42,6 +42,9 @@ describe("SimHub Service", () => {
       disableWhenDisconnected: true,
       focusIRacingWindow: false,
       enableFuelingOnChange: true,
+      raceEngineerEnabled: true,
+      radarEnabled: true,
+      radarVolume: 100,
     });
   });
 
@@ -133,6 +136,9 @@ describe("SimHub Service", () => {
         disableWhenDisconnected: true,
         focusIRacingWindow: false,
         enableFuelingOnChange: true,
+        raceEngineerEnabled: true,
+        radarEnabled: true,
+        radarVolume: 100,
       });
 
       initializeSimHub(mockLogger);

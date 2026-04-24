@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('section-header', { title: 'Action Settings' }) %>
+
+		<sdpi-item label="Mode">
+			<sdpi-select id="mode-select" setting="mode" default="radar">
+				<option value="radar">Radar</option>
+				<option value="radar-volume">Radar Volume</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="direction-item" class="hidden" label="Direction">
+			<sdpi-select setting="direction" default="up">
+				<option value="up">Up</option>
+				<option value="down">Down</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('accordion', {
+			title: 'Pit Crew Audio',
+			accordionId: 'pitCrewAudio',
+			open: true,
+			content:
+				'<sdpi-item label="Radar Volume">' +
+					'<div style="display:flex;align-items:center;gap:8px;">' +
+						'<ird-range-input setting="radarVolume" global min="0" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
+						'<ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>' +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Output Device">' +
+					'<ird-audio-device-select setting="audioOutputDevice" devices="_audioDeviceList" default-label="System Default"></ird-audio-device-select>' +
+				'</sdpi-item>'
+		}) %>
+
+		<div style="display:none;">
+			<sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
+		</div>
+
+		<script>
+		(function() {
+			// Direction visibility — hide unless Mode = radar-volume. sdpi-select
+			// events can be flaky (see session-info.ejs precedent), so combine
+			// change/input listeners with a polling fallback.
+			async function initializeDirectionVisibility() {
+				await customElements.whenDefined("sdpi-select");
+				const modeSelect = document.getElementById("mode-select");
+				const directionItem = document.getElementById("direction-item");
+				if (!modeSelect || !directionItem) return;
+
+				const update = (mode) => {
+					if (mode === "radar-volume") directionItem.classList.remove("hidden");
+					else directionItem.classList.add("hidden");
+				};
+
+				update(modeSelect.value || "radar");
+				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
+				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
+
+				let last = modeSelect.value || "radar";
+				setInterval(() => {
+					const current = modeSelect.value;
+					if (current && current !== last) {
+						last = current;
+						update(current);
+					}
+				}, 100);
+			}
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeDirectionVisibility);
+			else initializeDirectionVisibility();
+		})();
+		</script>
+
+		<style>
+		.hidden { display: none !important; }
+		</style>
+
+		<%- include('title-overrides') %>
+
+		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['pit-crew'] }) %>
+		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['pit-crew'] }) %>
+		<%- include('graphic-overrides') %>
+		<%- include('common-settings') %>
+
+		<%- include('section-header', { title: 'Global Settings' }) %>
+
+		<%- include('global-title-defaults') %>
+		<%- include('global-color-defaults') %>
+		<%- include('global-border-defaults') %>
+		<%- include('global-graphic-defaults') %>
+		<%- include('global-common-settings') %>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
+	</body>
+</html>
