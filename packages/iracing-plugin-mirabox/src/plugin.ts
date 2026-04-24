@@ -152,14 +152,18 @@ registerPitCrew(eventBus);
 // Publish audio device list and apply saved device selection.
 // See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence
 // contract (id-based; empty string = System Default; legacy values fall
-// back to default without rewriting the persisted setting).
-let audioDeviceInitialized = false;
-let currentAudioDeviceId: string | null = null;
+// back to default without rewriting the persisted setting) and the
+// recursion-safety note around the listener re-entry.
+let audioDeviceListPushed = false;
+let currentAudioDeviceId: string = "";
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
-  // Publish device list for PI consumption (once, on first settings receipt)
-  if (!audioDeviceInitialized) {
+  // Publish device list for PI consumption (once, on first settings receipt).
+  // Set the flag BEFORE the push: updateGlobalSettings synchronously re-fires
+  // this listener, and without the flip we infinite-loop on the push branch.
+  if (!audioDeviceListPushed) {
+    audioDeviceListPushed = true;
     const devices = getAudio().getAudioDevices();
     updateGlobalSettings({ _audioDeviceList: JSON.stringify(devices) });
   }
@@ -168,23 +172,19 @@ onGlobalSettingsChange((settings) => {
   const saved = s.audioOutputDevice;
   const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceId !== currentAudioDeviceId) {
-    currentAudioDeviceId = deviceId;
+  if (deviceId === currentAudioDeviceId) return;
 
-    if (deviceId === "") {
-      if (audioDeviceInitialized) {
-        getAudio().setAudioDevice(-1);
-      }
-    } else {
-      const ok = getAudio().setAudioDeviceById(deviceId);
+  currentAudioDeviceId = deviceId;
 
-      if (!ok) {
-        getAudio().setAudioDevice(-1);
-      }
+  if (deviceId === "") {
+    getAudio().setAudioDevice(-1);
+  } else {
+    const ok = getAudio().setAudioDeviceById(deviceId);
+
+    if (!ok) {
+      getAudio().setAudioDevice(-1);
     }
   }
-
-  audioDeviceInitialized = true;
 });
 
 // Initialize window focus service for focusing iRacing before any action

@@ -156,13 +156,23 @@ registerPitCrew(eventBus);
 // "-1", malformed entries) are treated as unknown and silently fall back
 // to System Default. The project is pre-v1 with a single user; no
 // migration code is needed.
-let audioDeviceInitialized = false;
-let currentAudioDeviceId: string | null = null;
+//
+// `currentAudioDeviceId` starts as `""` (System Default) because that is
+// what `getAudio().init()` opened above — without this seed, the first
+// arrival of `audioOutputDevice = ""` would look like a transition and
+// fire a redundant `setAudioDevice(-1)` (an engine teardown + reopen).
+let audioDeviceListPushed = false;
+let currentAudioDeviceId: string = "";
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
-  // Publish device list for PI consumption (once, on first settings receipt)
-  if (!audioDeviceInitialized) {
+  // Publish device list for PI consumption (once, on first settings receipt).
+  // CRITICAL: set the flag BEFORE calling updateGlobalSettings — that call
+  // synchronously re-fires this listener (see deck-core's
+  // applyParsedSettings), and without the flag flip we infinite-loop on the
+  // push branch.
+  if (!audioDeviceListPushed) {
+    audioDeviceListPushed = true;
     const devices = getAudio().getAudioDevices();
     updateGlobalSettings({ _audioDeviceList: JSON.stringify(devices) });
   }
@@ -171,31 +181,23 @@ onGlobalSettingsChange((settings) => {
   const saved = s.audioOutputDevice;
   const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceId !== currentAudioDeviceId) {
-    currentAudioDeviceId = deviceId;
+  if (deviceId === currentAudioDeviceId) return;
 
-    // Skip the open-default call on the very first receipt: the engine
-    // already opened the system default during init(). After the first
-    // settings round-trip, every empty-string arrival is the result of
-    // either a deliberate user pick or a non-default → default switch.
-    if (deviceId === "") {
-      if (audioDeviceInitialized) {
-        getAudio().setAudioDevice(-1);
-      }
-    } else {
-      const ok = getAudio().setAudioDeviceById(deviceId);
+  currentAudioDeviceId = deviceId;
 
-      // Stale or unknown id (legacy index, unplugged device): fall back to
-      // System Default. We do NOT rewrite the persisted setting — the user
-      // may replug their device next session and we want it to re-bind
-      // automatically when the id reappears in the enumeration.
-      if (!ok) {
-        getAudio().setAudioDevice(-1);
-      }
+  if (deviceId === "") {
+    getAudio().setAudioDevice(-1);
+  } else {
+    const ok = getAudio().setAudioDeviceById(deviceId);
+
+    // Stale or unknown id (legacy index, unplugged device): fall back to
+    // System Default. We do NOT rewrite the persisted setting — the user
+    // may replug their device next session and we want it to re-bind
+    // automatically when the id reappears in the enumeration.
+    if (!ok) {
+      getAudio().setAudioDevice(-1);
     }
   }
-
-  audioDeviceInitialized = true;
 });
 
 // Initialize window focus service for focusing iRacing before any action
