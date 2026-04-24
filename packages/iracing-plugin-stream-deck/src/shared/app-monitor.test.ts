@@ -46,6 +46,7 @@ function createMockAdapter() {
     onApplicationDidTerminate: vi.fn((cb: (application: string) => void) => {
       terminateCallbacks.push(cb);
     }),
+    onPropertyInspectorDidAppear: vi.fn(),
     createLogger: vi.fn(() => createMockLogger()),
     registerAction: vi.fn(),
     onKeyDown: vi.fn(),

@@ -87,6 +87,13 @@ export interface IDeckPlatformAdapter {
   onApplicationDidLaunch(callback: (application: string) => void): void;
   /** Subscribe to application termination events */
   onApplicationDidTerminate(callback: (application: string) => void): void;
+  /**
+   * Subscribe to Property Inspector appear events (fires each time any
+   * action's PI becomes visible). Used to refresh dynamic PI state that
+   * only makes sense while the PI is open — e.g. re-enumerating audio
+   * output devices so a headset plugged in after plugin startup appears.
+   */
+  onPropertyInspectorDidAppear(callback: () => void): void;
   /** Create a scoped logger for a component */
   createLogger(scope: string): ILogger;
   /** Register an action handler for a UUID */

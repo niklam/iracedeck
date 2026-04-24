@@ -104,6 +104,26 @@ describe("VSDPlatformAdapter", () => {
     });
   });
 
+  describe("onPropertyInspectorDidAppear", () => {
+    it("should register a global event handler for propertyInspectorDidAppear", () => {
+      const callback = vi.fn();
+      adapter.onPropertyInspectorDidAppear(callback);
+
+      expect(client.onGlobalEvent).toHaveBeenCalledWith("propertyInspectorDidAppear", expect.any(Function));
+    });
+
+    it("should invoke the callback (parameterless) when the PI-appear event arrives", () => {
+      const callback = vi.fn();
+      adapter.onPropertyInspectorDidAppear(callback);
+
+      const handler = client.onGlobalEvent.mock.calls[0][1];
+      handler({ event: "propertyInspectorDidAppear", action: "com.iracedeck.sd.core.pit-crew", context: "abc" });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(callback).toHaveBeenCalledWith();
+    });
+  });
+
   describe("createLogger", () => {
     it("should create a logger with the given scope", () => {
       const logger = adapter.createLogger("TestScope");
