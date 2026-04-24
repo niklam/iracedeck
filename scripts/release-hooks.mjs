@@ -8,14 +8,6 @@ if (!version) {
   process.exit(1);
 }
 
-// release-it runs before:bump hooks even in dry-run mode, which would otherwise
-// modify real package.json / manifest.json files and stage them with `git add`.
-// `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
-if (process.env.RELEASE_IT_DRY_RUN === "1") {
-  console.log(`  [dry-run] Would bump 13 package.json files and 2 manifest.json files to version ${version}`);
-  process.exit(0);
-}
-
 const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
 
 // Bump version in all packages/*/package.json
@@ -33,14 +25,6 @@ const packageJsonPaths = [
   "packages/website/package.json",
 ];
 
-for (const rel of packageJsonPaths) {
-  const filePath = join(root, rel);
-  const pkg = JSON.parse(readFileSync(filePath, "utf-8"));
-  pkg.version = version;
-  writeFileSync(filePath, JSON.stringify(pkg, null, 2) + "\n");
-  console.log(`  Updated ${rel} → ${version}`);
-}
-
 // Bump Version in manifest.json files. Elgato's manifest schema requires a
 // strict 4-part numeric format `{major}.{minor}.{patch}.{build}`
 // (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so semver pre-release / build metadata
@@ -50,6 +34,24 @@ const manifestPaths = [
   "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json",
   "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json",
 ];
+
+// release-it runs before:bump hooks even in dry-run mode, which would otherwise
+// modify real package.json / manifest.json files and stage them with `git add`.
+// `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
+if (process.env.RELEASE_IT_DRY_RUN === "1") {
+  console.log(
+    `  [dry-run] Would bump ${packageJsonPaths.length} package.json files and ${manifestPaths.length} manifest.json files to version ${version}`,
+  );
+  process.exit(0);
+}
+
+for (const rel of packageJsonPaths) {
+  const filePath = join(root, rel);
+  const pkg = JSON.parse(readFileSync(filePath, "utf-8"));
+  pkg.version = version;
+  writeFileSync(filePath, JSON.stringify(pkg, null, 2) + "\n");
+  console.log(`  Updated ${rel} → ${version}`);
+}
 
 const numericVersion = version.replace(/[-+].*$/, "");
 
