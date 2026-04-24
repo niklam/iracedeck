@@ -194,6 +194,32 @@ describe("ird-audio-device-select", () => {
       const select = el.querySelector("select") as HTMLSelectElement;
       expect(select.value).toBe("");
     });
+
+    it("persists the System Default fallback when the saved id is not in the list", () => {
+      const settingCallback = mock.callbacks.get("audioOutputDevice")!;
+      const devicesCallback = mock.callbacks.get("_audioDeviceList")!;
+      const save = mock.saves.get("audioOutputDevice")!;
+
+      // Persisted selection is an unplugged headset; the current
+      // enumeration doesn't contain it, so the fallback must be written
+      // through so the plugin doesn't keep retrying the missing device.
+      settingCallback("MISSING-ID");
+      devicesCallback(JSON.stringify([{ index: 0, name: "Built-in", id: "AAAA" }]));
+
+      expect(save).toHaveBeenCalledWith("");
+    });
+
+    it("does not re-persist when the saved value is already System Default", () => {
+      const settingCallback = mock.callbacks.get("audioOutputDevice")!;
+      const save = mock.saves.get("audioOutputDevice")!;
+
+      // Nothing to persist — the dropdown was already showing System
+      // Default, and there is nothing stale to clear. Writing back "" here
+      // would turn every fresh PI load into a redundant setting write.
+      settingCallback("");
+
+      expect(save).not.toHaveBeenCalled();
+    });
   });
 
   describe("change dispatching", () => {

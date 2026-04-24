@@ -49,6 +49,12 @@ export class AudioDeviceSelect extends HTMLElement {
   private savedValue = SYSTEM_DEFAULT_VALUE;
   private saveToStreamDeck: ((value: string) => void) | null = null;
   private _initialized = false;
+  // Flips true on the first `devices` payload so we can tell "device list
+  // not delivered yet" (common race during PI open — setting callback fires
+  // before the device list does) from "device list delivered; saved id is
+  // genuinely stale". Only the latter should persist the System Default
+  // fallback back to the plugin.
+  private devicesLoaded = false;
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -126,6 +132,7 @@ export class AudioDeviceSelect extends HTMLElement {
         if (!Array.isArray(devices)) return;
 
         this.renderOptions(devices);
+        this.devicesLoaded = true;
         this.applySavedValue();
       } catch {
         // ignore parse errors; dropdown keeps its prior options
@@ -169,7 +176,29 @@ export class AudioDeviceSelect extends HTMLElement {
     // `<select>.value = "<unknown>"` silently clears the selection —
     // surface that as the System Default value explicitly.
     const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
-    this.select.value = exists ? this.savedValue : SYSTEM_DEFAULT_VALUE;
+
+    if (exists) {
+      this.select.value = this.savedValue;
+
+      return;
+    }
+
+    this.select.value = SYSTEM_DEFAULT_VALUE;
+
+    // Only persist the fallback once the device list has actually arrived.
+    // Otherwise we'd race the init sequence: the setting callback routinely
+    // fires before the device-list callback, and overwriting the saved id
+    // on that first apply would throw away the user's real selection.
+    if (!this.devicesLoaded) return;
+
+    // The DOM now shows System Default, but the global setting still holds
+    // the stale id. Persist the fallback so every cold start doesn't retry
+    // the missing device and every fresh PI load doesn't see a mismatch
+    // between what the dropdown shows and what miniaudio will actually open.
+    if (this.savedValue !== SYSTEM_DEFAULT_VALUE) {
+      this.savedValue = SYSTEM_DEFAULT_VALUE;
+      this.saveToStreamDeck?.(SYSTEM_DEFAULT_VALUE);
+    }
   }
 }
 
