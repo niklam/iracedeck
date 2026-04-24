@@ -162,6 +162,17 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  onPropertyInspectorDidAppear(callback: () => void): void {
+    // VSD Craft mimics the Elgato protocol; `propertyInspectorDidAppear`
+    // carries an `action` field, but `routeEvent` also fans it out to
+    // global handlers, so a single generic subscription here is enough.
+    // Callback is parameterless because consumers today only need the
+    // "some PI opened" signal, not per-action identity.
+    this.client.onGlobalEvent("propertyInspectorDidAppear", () => {
+      callback();
+    });
+  }
+
   createLogger(scope: string): ILogger {
     return createConsoleLogger(scope);
   }

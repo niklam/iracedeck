@@ -154,18 +154,33 @@ registerPitCrew(eventBus);
 // contract (id-based; empty string = System Default; legacy values fall
 // back to default without rewriting the persisted setting) and the
 // recursion-safety note around the listener re-entry.
-let audioDeviceListPushed = false;
+let initialDevicePushDone = false;
 let currentAudioDeviceId: string = "";
+// Cache the last pushed payload so identical re-enumerations (the common
+// case on repeated PI re-opens with no hardware change) don't churn the
+// sdpi-components data source and force a full dropdown re-render.
+let lastPushedDeviceListJson = "";
+
+function pushAudioDevicesIfChanged(): void {
+  const devices = getAudio().getAudioDevices();
+  const json = JSON.stringify(devices);
+
+  if (json === lastPushedDeviceListJson) return;
+
+  lastPushedDeviceListJson = json;
+  updateGlobalSettings({ _audioDeviceList: json });
+}
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
-  // Publish device list for PI consumption (once, on first settings receipt).
-  // Set the flag BEFORE the push: updateGlobalSettings synchronously re-fires
-  // this listener, and without the flip we infinite-loop on the push branch.
-  if (!audioDeviceListPushed) {
-    audioDeviceListPushed = true;
-    const devices = getAudio().getAudioDevices();
-    updateGlobalSettings({ _audioDeviceList: JSON.stringify(devices) });
+  // First time settings arrive, seed the device list so the PI sees the
+  // initial enumeration without needing to be opened first. After this
+  // the PI-appear hook drives refreshes — `initialDevicePushDone` is just
+  // a one-shot gate, not a "never refresh" latch.
+  if (!initialDevicePushDone) {
+    initialDevicePushDone = true;
+    pushAudioDevicesIfChanged();
   }
 
   // Apply audio output device (on startup and when changed from PI)
@@ -185,6 +200,15 @@ onGlobalSettingsChange((settings) => {
       getAudio().setAudioDevice(-1);
     }
   }
+});
+
+// Re-enumerate audio devices on every PI open so a headset plugged in
+// after Stream Deck booted appears without a full restart. The
+// `pushAudioDevicesIfChanged` guard short-circuits the common case (PI
+// reopened, no hardware changed) so the sdpi-components data source
+// doesn't churn.
+adapter.onPropertyInspectorDidAppear(() => {
+  pushAudioDevicesIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action
