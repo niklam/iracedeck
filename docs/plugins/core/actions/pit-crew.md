@@ -34,7 +34,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 
 ### Plugin-global Audio Settings (in the Pit Crew accordion, not under Global Settings)
 - **Radar Volume** (range 0–100, default 100) - slider + Test button. Shared across every Pit Crew instance.
-- **Output Device** - audio device used for the iRaceDeck audio engine; shared globally across the plugin.
+- **Output Device** - audio device used for the iRaceDeck audio engine; shared globally across the plugin. Persisted by the platform-stable device id (WASAPI endpoint ID on Windows), so the selection survives device-list reordering, replug, and OS audio-preference changes.
 
 ## Keyboard Simulation
 

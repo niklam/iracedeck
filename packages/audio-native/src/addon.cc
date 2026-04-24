@@ -5,12 +5,71 @@
  * Provides a 4-channel mixer used by Pit Engineer and other audio actions.
  */
 
+#include <cstring>
 #include <mutex>
 #include <napi.h>
 #include <string>
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
+
+// ============================================================================
+// Stable device-id encoding
+// ============================================================================
+//
+// `ma_device_id` is a union of platform-specific stable identifiers (WASAPI
+// endpoint IDs, CoreAudio UIDs, ALSA names, etc.). The raw layout is opaque
+// to JS; we expose it as an uppercase-hex string of `sizeof(ma_device_id)`
+// bytes so it round-trips losslessly between native enumeration and the
+// persisted plugin setting.
+//
+// The encoding is deliberately format-stable: the byte layout of
+// `ma_device_id` depends on miniaudio's compile-time configuration (active
+// backends), so a setting persisted under one build is only meaningful to
+// the same build. That is acceptable for iRaceDeck — we ship a single
+// addon binary per platform and there is no cross-machine setting sync.
+
+static std::string SerializeDeviceId(const ma_device_id &id)
+{
+    static constexpr char hex[] = "0123456789ABCDEF";
+    const ma_uint8 *bytes = reinterpret_cast<const ma_uint8 *>(&id);
+    std::string out;
+    out.resize(sizeof(ma_device_id) * 2);
+    for (size_t i = 0; i < sizeof(ma_device_id); i++)
+    {
+        out[i * 2] = hex[(bytes[i] >> 4) & 0x0F];
+        out[i * 2 + 1] = hex[bytes[i] & 0x0F];
+    }
+    return out;
+}
+
+static bool DeserializeDeviceId(const std::string &hex, ma_device_id &outId)
+{
+    if (hex.size() != sizeof(ma_device_id) * 2)
+    {
+        return false;
+    }
+
+    ma_uint8 *bytes = reinterpret_cast<ma_uint8 *>(&outId);
+    for (size_t i = 0; i < sizeof(ma_device_id); i++)
+    {
+        auto fromHex = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+
+        int hi = fromHex(hex[i * 2]);
+        int lo = fromHex(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0)
+        {
+            return false;
+        }
+        bytes[i] = static_cast<ma_uint8>((hi << 4) | lo);
+    }
+    return true;
+}
 
 // ============================================================================
 // Audio Engine (miniaudio — multi-channel mixer)
@@ -383,7 +442,12 @@ Napi::Value SeekChannelRandom(const Napi::CallbackInfo &info)
 
 /**
  * Get list of available audio playback devices.
- * @returns Array of { index: number, name: string, isDefault: boolean }
+ * @returns Array of { index: number, name: string, id: string, isDefault: boolean }
+ *
+ * `id` is a hex-encoded `ma_device_id` — the platform-stable identifier
+ * (WASAPI endpoint ID on Windows, CoreAudio UID on macOS, etc.) suitable
+ * for persisting selection across sessions. `index` is preserved for
+ * backward compatibility with `setAudioDevice(index)`.
  */
 Napi::Value GetAudioDevices(const Napi::CallbackInfo &info)
 {
@@ -408,6 +472,7 @@ Napi::Value GetAudioDevices(const Napi::CallbackInfo &info)
         Napi::Object device = Napi::Object::New(env);
         device.Set("index", Napi::Number::New(env, static_cast<int>(i)));
         device.Set("name", Napi::String::New(env, pPlaybackDevices[i].name));
+        device.Set("id", Napi::String::New(env, SerializeDeviceId(pPlaybackDevices[i].id)));
         device.Set("isDefault", Napi::Boolean::New(env, pPlaybackDevices[i].isDefault != 0));
         result.Set(i, device);
     }
@@ -522,6 +587,111 @@ Napi::Value SetAudioDevice(const Napi::CallbackInfo &info)
     return Napi::Boolean::New(env, true);
 }
 
+/**
+ * Switch audio output to a specific device looked up by its stable ID.
+ * Stops all sounds, reinitializes engine with the matched device.
+ *
+ * @param deviceId - Hex-encoded `ma_device_id` from a `getAudioDevices()` entry.
+ * @returns true if the device was found and the engine was reinitialized.
+ *          Returns false if the ID is malformed, the device isn't in the
+ *          current enumeration, or engine reinit fails. On reinit failure
+ *          the engine is recreated with the system default so the mixer
+ *          stays usable.
+ */
+Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString())
+    {
+        Napi::TypeError::New(env, "Expected (deviceId: string)").ThrowAsJavaScriptException();
+        return Napi::Boolean::New(env, false);
+    }
+
+    if (!g_engine || !g_audioContext)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    std::string idHex = info[0].As<Napi::String>().Utf8Value();
+    ma_device_id targetId;
+    if (!DeserializeDeviceId(idHex, targetId))
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    // Look up the device by raw-bytes match against the current enumeration.
+    // We resolve every session because device list ordering is volatile, but
+    // the underlying ma_device_id bytes are platform-stable.
+    ma_device_info *pPlaybackDevices;
+    ma_uint32 playbackCount;
+    ma_result enumResult = ma_context_get_devices(g_audioContext, &pPlaybackDevices, &playbackCount, NULL, NULL);
+    if (enumResult != MA_SUCCESS)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    int matchIndex = -1;
+    for (ma_uint32 i = 0; i < playbackCount; i++)
+    {
+        if (memcmp(&pPlaybackDevices[i].id, &targetId, sizeof(ma_device_id)) == 0)
+        {
+            matchIndex = static_cast<int>(i);
+            break;
+        }
+    }
+
+    if (matchIndex < 0)
+    {
+        return Napi::Boolean::New(env, false);
+    }
+
+    // Snapshot the matched ID — `pPlaybackDevices` is owned by miniaudio and
+    // may be invalidated by the next enumeration / reinit.
+    ma_device_id selectedId = pPlaybackDevices[matchIndex].id;
+
+    // Stop all active sounds before tearing down the engine
+    for (int i = 0; i < IRD_MAX_CHANNELS; i++)
+    {
+        uninitChannel(i);
+    }
+
+    ma_engine_uninit(g_engine);
+    delete g_engine;
+    g_engine = nullptr;
+
+    // Reinitialize engine with the selected device
+    g_engine = new ma_engine();
+    ma_engine_config engineConfig = ma_engine_config_init();
+    engineConfig.pContext = g_audioContext;
+    engineConfig.pPlaybackDeviceID = &selectedId;
+
+    ma_result result = ma_engine_init(&engineConfig, g_engine);
+    if (result != MA_SUCCESS)
+    {
+        delete g_engine;
+        g_engine = nullptr;
+
+        // Fallback: try default device so the mixer remains usable.
+        g_engine = new ma_engine();
+        ma_engine_config fallbackConfig = ma_engine_config_init();
+        fallbackConfig.pContext = g_audioContext;
+        ma_result fallbackResult = ma_engine_init(&fallbackConfig, g_engine);
+        if (fallbackResult != MA_SUCCESS)
+        {
+            delete g_engine;
+            g_engine = nullptr;
+        }
+        g_selectedDeviceIndex = -1;
+        return Napi::Boolean::New(env, false);
+    }
+
+    // Track the matched index so a subsequent `setAudioDevice(index)` skip
+    // optimization stays consistent with what's actually open.
+    g_selectedDeviceIndex = matchIndex;
+    return Napi::Boolean::New(env, true);
+}
+
 // ============================================================================
 // Module Initialization
 // ============================================================================
@@ -539,6 +709,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("seekChannelRandom", Napi::Function::New(env, SeekChannelRandom));
     exports.Set("getAudioDevices", Napi::Function::New(env, GetAudioDevices));
     exports.Set("setAudioDevice", Napi::Function::New(env, SetAudioDevice));
+    exports.Set("setAudioDeviceById", Napi::Function::New(env, SetAudioDeviceById));
 
     return exports;
 }

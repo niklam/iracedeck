@@ -3,10 +3,11 @@
  * Audio Device Select Web Component for Stream Deck Property Inspector
  *
  * A styled `<select>` bound to a plugin-global setting that stores the
- * selected audio output device index as a string (e.g. `"-1"` for
- * System Default, or the string form of a miniaudio device index).
- * Options are populated at runtime from a second global setting
- * (a JSON array of `{ index: number, name: string, isDefault?: boolean }`),
+ * selected audio output device by its stable `id` (a hex-encoded
+ * `ma_device_id` from the audio-native enumeration). The empty string
+ * represents System Default. Options are populated at runtime from a
+ * second global setting (a JSON array of
+ * `{ index: number, name: string, id: string, isDefault?: boolean }`),
  * which the plugin maintains from its audio-device enumeration.
  *
  * Usage in HTML:
@@ -22,10 +23,11 @@
  *
  * Attributes:
  * - setting: Plugin-global setting key that stores the selected device
- *   index as a string (default: `audioOutputDevice`).
+ *   id as a string (default: `audioOutputDevice`). The empty string
+ *   means System Default.
  * - devices: Plugin-global setting key that stores the device list as a
  *   JSON array (default: `_audioDeviceList`).
- * - default-label: Label shown for the `-1` (System Default) option
+ * - default-label: Label shown for the System Default option
  *   (default: `System Default`).
  *
  * The plugin populates `devices` via `updateGlobalSettings({ [devicesKey]: JSON.stringify(list) })`.
@@ -33,15 +35,18 @@
 
 let styleInjected = false;
 
-type DeviceRecord = { index: number; name: string; isDefault?: boolean };
+type DeviceRecord = { index?: number; name: string; id: string; isDefault?: boolean };
 
 const DEFAULT_SETTING = "audioOutputDevice";
 const DEFAULT_DEVICE_LIST_SETTING = "_audioDeviceList";
 const DEFAULT_LABEL = "System Default";
 
+/** Sentinel value persisted for the System Default selection. */
+const SYSTEM_DEFAULT_VALUE = "";
+
 export class AudioDeviceSelect extends HTMLElement {
   private select: HTMLSelectElement | null = null;
-  private savedValue = "-1";
+  private savedValue = SYSTEM_DEFAULT_VALUE;
   private saveToStreamDeck: ((value: string) => void) | null = null;
   private _initialized = false;
 
@@ -103,7 +108,11 @@ export class AudioDeviceSelect extends HTMLElement {
     const devicesKey = this.getAttribute("devices") ?? DEFAULT_DEVICE_LIST_SETTING;
 
     const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
-      this.savedValue = value !== null && value !== undefined && value !== "" ? String(value) : "-1";
+      // Runtime may deliver non-string types; normalize to string so the
+      // option-value comparison in applySavedValue is type-safe. Empty
+      // string is the System Default sentinel, not a "missing" marker.
+      const v: unknown = value;
+      this.savedValue = v == null ? SYSTEM_DEFAULT_VALUE : String(v);
       this.applySavedValue();
     });
     this.saveToStreamDeck = save;
@@ -132,13 +141,19 @@ export class AudioDeviceSelect extends HTMLElement {
     this.select.replaceChildren();
 
     const systemOption = document.createElement("option");
-    systemOption.value = "-1";
+    systemOption.value = SYSTEM_DEFAULT_VALUE;
     systemOption.textContent = defaultLabel;
     this.select.appendChild(systemOption);
 
     for (const device of devices) {
+      // Skip records without a usable stable id. The plugin should always
+      // populate id from the audio-native enumeration, but defend against
+      // malformed input — and against an empty-string id colliding with
+      // the System Default option.
+      if (typeof device.id !== "string" || device.id === "") continue;
+
       const opt = document.createElement("option");
-      opt.value = String(device.index);
+      opt.value = device.id;
       opt.textContent = `${device.name}${device.isDefault ? " (Default)" : ""}`;
       this.select.appendChild(opt);
     }
@@ -147,13 +162,14 @@ export class AudioDeviceSelect extends HTMLElement {
   private applySavedValue(): void {
     if (!this.select) return;
 
-    // If the persisted device index is no longer in the current option
-    // list (e.g. the selected device was unplugged), fall back to
-    // System Default so the dropdown reflects what miniaudio will
-    // actually use. Native `<select>.value = "<unknown>"` silently
-    // clears the selection — surface that as "-1" explicitly.
+    // If the persisted device id is no longer in the current option list
+    // (e.g. unplugged headset, or a legacy numeric-index value from
+    // pre-#427 builds), fall back to System Default so the dropdown
+    // reflects what miniaudio will actually use. Native
+    // `<select>.value = "<unknown>"` silently clears the selection —
+    // surface that as the System Default value explicitly.
     const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
-    this.select.value = exists ? this.savedValue : "-1";
+    this.select.value = exists ? this.savedValue : SYSTEM_DEFAULT_VALUE;
   }
 }
 

@@ -149,9 +149,12 @@ getAudio().init();
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
 registerPitCrew(eventBus);
 
-// Publish audio device list and apply saved device selection
+// Publish audio device list and apply saved device selection.
+// See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence
+// contract (id-based; empty string = System Default; legacy values fall
+// back to default without rewriting the persisted setting).
 let audioDeviceInitialized = false;
-let currentAudioDevice = -1;
+let currentAudioDeviceId: string | null = null;
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -163,13 +166,21 @@ onGlobalSettingsChange((settings) => {
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
-  const deviceIndex = saved !== undefined && saved !== null && saved !== "" ? Number(saved) : -1;
+  const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceIndex !== currentAudioDevice) {
-    currentAudioDevice = deviceIndex;
+  if (deviceId !== currentAudioDeviceId) {
+    currentAudioDeviceId = deviceId;
 
-    if (deviceIndex !== -1 || audioDeviceInitialized) {
-      getAudio().setAudioDevice(deviceIndex);
+    if (deviceId === "") {
+      if (audioDeviceInitialized) {
+        getAudio().setAudioDevice(-1);
+      }
+    } else {
+      const ok = getAudio().setAudioDeviceById(deviceId);
+
+      if (!ok) {
+        getAudio().setAudioDevice(-1);
+      }
     }
   }
 

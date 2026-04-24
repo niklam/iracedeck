@@ -145,9 +145,19 @@ getAudio().init();
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
 registerPitCrew(eventBus);
 
-// Publish audio device list and apply saved device selection
+// Publish audio device list and apply saved device selection.
+//
+// `audioOutputDevice` is persisted as the platform-stable `ma_device_id`
+// (hex-encoded) — empty string means System Default. The enumeration index
+// is volatile across replug / driver reset / OS audio-preference change, so
+// we re-resolve by id every session.
+//
+// Legacy values from pre-#427 builds (numeric index strings, the literal
+// "-1", malformed entries) are treated as unknown and silently fall back
+// to System Default. The project is pre-v1 with a single user; no
+// migration code is needed.
 let audioDeviceInitialized = false;
-let currentAudioDevice = -1;
+let currentAudioDeviceId: string | null = null;
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -159,13 +169,29 @@ onGlobalSettingsChange((settings) => {
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
-  const deviceIndex = saved !== undefined && saved !== null && saved !== "" ? Number(saved) : -1;
+  const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceIndex !== currentAudioDevice) {
-    currentAudioDevice = deviceIndex;
+  if (deviceId !== currentAudioDeviceId) {
+    currentAudioDeviceId = deviceId;
 
-    if (deviceIndex !== -1 || audioDeviceInitialized) {
-      getAudio().setAudioDevice(deviceIndex);
+    // Skip the open-default call on the very first receipt: the engine
+    // already opened the system default during init(). After the first
+    // settings round-trip, every empty-string arrival is the result of
+    // either a deliberate user pick or a non-default → default switch.
+    if (deviceId === "") {
+      if (audioDeviceInitialized) {
+        getAudio().setAudioDevice(-1);
+      }
+    } else {
+      const ok = getAudio().setAudioDeviceById(deviceId);
+
+      // Stale or unknown id (legacy index, unplugged device): fall back to
+      // System Default. We do NOT rewrite the persisted setting — the user
+      // may replug their device next session and we want it to re-bind
+      // automatically when the id reappears in the enumeration.
+      if (!ok) {
+        getAudio().setAudioDevice(-1);
+      }
     }
   }
 
