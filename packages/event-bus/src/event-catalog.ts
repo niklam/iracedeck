@@ -80,7 +80,7 @@ export type SimEventMap = {
   "limiter.missing": SimEvent<"limiter.missing", EmptySimEventPayload>;
   "limiter.speeding": SimEvent<"limiter.speeding", EmptySimEventPayload>;
 
-  "incident.occurred": SimEvent<"incident.occurred", EmptySimEventPayload>;
+  "incident.occurred": SimEvent<"incident.occurred", { delta: number }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;
   "offTrack.ended": SimEvent<"offTrack.ended", EmptySimEventPayload>;
 

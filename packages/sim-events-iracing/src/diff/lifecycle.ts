@@ -17,6 +17,25 @@ const ENGINE_STARTUP_RPM_THRESHOLD = 200;
 
 export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
   const isOnTrack = telemetry.IsOnTrack ?? false;
+  const sessionNum = typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : null;
+  const rpm = typeof telemetry.RPM === "number" ? telemetry.RPM : 0;
+  const engineRunning = rpm > ENGINE_STARTUP_RPM_THRESHOLD;
+  const lap = typeof telemetry.Lap === "number" ? telemetry.Lap : -1;
+
+  // First tick — seed from the current snapshot and bail. Without this,
+  // connecting while the engine is already spinning would fire a bogus
+  // `engine.startup`, and reconnecting while already on track would fire
+  // `driver.firstOnTrack` on a reconnect event that isn't actually the
+  // driver's first on-track moment.
+  if (!state.lifecycleInitialized) {
+    state.lifecycleInitialized = true;
+    state.firstOnTrackFired = isOnTrack;
+    state.lastSessionNum = sessionNum;
+    state.lastEngineRunning = engineRunning;
+    state.lastLap = lap;
+
+    return;
+  }
 
   // ── First time on track this lifetime ──────────────────────────────────
   if (!state.firstOnTrackFired && isOnTrack) {
@@ -25,8 +44,6 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
   }
 
   // ── Session change ─────────────────────────────────────────────────────
-  const sessionNum = typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : null;
-
   if (sessionNum !== null) {
     if (state.lastSessionNum !== null && sessionNum !== state.lastSessionNum) {
       emit({ event: "session.changed", data: { from: state.lastSessionNum, to: sessionNum } });
@@ -36,9 +53,6 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
   }
 
   // ── Engine startup (RPM 0 → >threshold) ────────────────────────────────
-  const rpm = typeof telemetry.RPM === "number" ? telemetry.RPM : 0;
-  const engineRunning = rpm > ENGINE_STARTUP_RPM_THRESHOLD;
-
   if (!state.lastEngineRunning && engineRunning) {
     emit({ event: "engine.startup", data: {} });
   }
@@ -46,9 +60,9 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
   state.lastEngineRunning = engineRunning;
 
   // ── Lap started ────────────────────────────────────────────────────────
-  const lap = typeof telemetry.Lap === "number" ? telemetry.Lap : -1;
-
-  if (lap > 0 && state.lastLap > 0 && lap !== state.lastLap) {
+  // Strict `>` so a session reset (e.g. practice → race flips Lap 12 → 1)
+  // doesn't synthesize a fake `lap.started` event.
+  if (lap > 0 && state.lastLap > 0 && lap > state.lastLap) {
     emit({ event: "lap.started", data: { lap } });
   }
 

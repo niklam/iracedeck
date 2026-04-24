@@ -17,6 +17,24 @@ export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, em
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const trackSurface = telemetry.PlayerTrackSurface ?? TrkLoc.NotInWorld;
+  const isApproaching = trackSurface === TrkLoc.AproachingPits && !onPitRoad;
+
+  // First tick — seed from the current snapshot and bail. A translator that
+  // boots while the car is already on pit road, in the stall, or in the
+  // approach zone would otherwise synthesize `pitLane.entered`,
+  // `pitStall.entered`, and `pitLane.approaching` on the first tick even
+  // though no transition happened. Seeding `approachExitingSuppressed`
+  // while already on pit road / approach is how the existing exit-zone
+  // logic would have landed after observing the entry transition.
+  if (!state.pitLaneInitialized) {
+    state.pitLaneInitialized = true;
+    state.lastOnPitRoad = onPitRoad;
+    state.lastInPitStall = inPitStall;
+    state.approachAlertFired = isApproaching;
+    state.approachExitingSuppressed = onPitRoad || isApproaching;
+
+    return;
+  }
 
   // ── Pit road on/off transitions ────────────────────────────────────────
   if (!state.lastOnPitRoad && onPitRoad) {
@@ -34,7 +52,6 @@ export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, em
   }
 
   // ── Approach zone (with exit suppression) ──────────────────────────────
-  const isApproaching = trackSurface === TrkLoc.AproachingPits && !onPitRoad;
   const isOnTrack = trackSurface === TrkLoc.OnTrack;
   const isExitingPits = state.lastOnPitRoad || state.approachExitingSuppressed;
 

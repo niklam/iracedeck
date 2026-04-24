@@ -22,6 +22,27 @@ export function diffIncidents(state: TranslatorState, telemetry: TelemetryData, 
   const material = telemetry.PlayerTrackSurfaceMaterial ?? 0;
   const incidentCount = telemetry.PlayerCarMyIncidentCount ?? 0;
 
+  // First tick — seed both the incident counter AND the off-track fields
+  // from the current snapshot, then bail. Without this, a translator that
+  // starts mid-excursion (reconnect, session restart with car already off
+  // track) would synthesize an `offTrack.started` on the very next eligible
+  // tick even though no transition actually happened.
+  if (state.lastIncidentCount < 0) {
+    state.lastIncidentCount = incidentCount;
+
+    // Only seed the off-track state if the current tick is in an eligible
+    // zone (on track, not in pit stall). Otherwise leave it untouched so
+    // the normal reset branch below still runs next tick.
+    if (isOnTrack && !onPitRoad && surface !== TrkLoc.InPitStall && surface === TrkLoc.OffTrack) {
+      state.offTrackStartedAt = now;
+      state.offTrackPending = true;
+      state.offTrackWarnedThisExcursion = false;
+      state.materialHistory = [{ t: now, material }];
+    }
+
+    return;
+  }
+
   if (!isOnTrack || onPitRoad || surface === TrkLoc.InPitStall) {
     // Reset off-track state — emit "ended" if we were off track.
     if (state.offTrackPending) {
@@ -55,17 +76,13 @@ export function diffIncidents(state: TranslatorState, telemetry: TelemetryData, 
 
   state.materialHistory = state.materialHistory.filter((s) => now - s.t <= MATERIAL_WINDOW_MS);
 
-  // First tick — seed without firing.
-  if (state.lastIncidentCount < 0) {
-    state.lastIncidentCount = incidentCount;
-
-    return;
-  }
-
   const delta = incidentCount - state.lastIncidentCount;
   state.lastIncidentCount = incidentCount;
 
   if (delta > 0) {
-    emit({ event: "incident.occurred", data: {} });
+    // Forward the delta so scenarios can distinguish a 1x/2x track-limits
+    // nudge from a 4x spin/contact. Consumers that only care that *any*
+    // incident happened can still use the event name alone.
+    emit({ event: "incident.occurred", data: { delta } });
   }
 }

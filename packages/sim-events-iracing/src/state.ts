@@ -15,6 +15,7 @@ export type MaterialSample = {
 
 export type TranslatorState = {
   // ── Pit lane / stall ────────────────────────────────────────────────────
+  pitLaneInitialized: boolean;
   lastOnPitRoad: boolean;
   lastInPitStall: boolean;
   approachExitingSuppressed: boolean;
@@ -64,6 +65,7 @@ export type TranslatorState = {
   lastLapsRemaining: number | null;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
+  lifecycleInitialized: boolean;
   firstOnTrackFired: boolean;
   lastSessionNum: number | null;
   lastEngineRunning: boolean;
@@ -72,6 +74,7 @@ export type TranslatorState = {
 
 export function createInitialState(): TranslatorState {
   return {
+    pitLaneInitialized: false,
     lastOnPitRoad: false,
     lastInPitStall: false,
     approachExitingSuppressed: false,
@@ -113,6 +116,7 @@ export function createInitialState(): TranslatorState {
     fuelFiredThresholds: new Set(),
     lastLapsRemaining: null,
 
+    lifecycleInitialized: false,
     firstOnTrackFired: false,
     lastSessionNum: null,
     lastEngineRunning: false,

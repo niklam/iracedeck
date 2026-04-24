@@ -203,6 +203,39 @@ describe("sim-events-iracing translator", () => {
 
       expect(handler).toHaveBeenCalledTimes(1);
     });
+
+    it("does not synthesize pitLane.entered / pitStall.entered when the first tick is already in the stall", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const entered = vi.fn();
+      const stallEntered = vi.fn();
+      bus.subscribe("pitLane.entered", entered);
+      bus.subscribe("pitStall.entered", stallEntered);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Reconnect while serviced in the stall — must not replay the
+      // entry transitions.
+      controller.__tick(telemetry({ OnPitRoad: true, PlayerCarInPitStall: true }));
+      controller.__tick(telemetry({ OnPitRoad: true, PlayerCarInPitStall: true }));
+
+      expect(entered).not.toHaveBeenCalled();
+      expect(stallEntered).not.toHaveBeenCalled();
+    });
+
+    it("does not synthesize pitLane.approaching when the first tick is already in the approach zone", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Reconnect mid-approach — treated like "exiting" so we wait for a
+      // full lap back on track before arming again.
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.AproachingPits }));
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.AproachingPits }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 
   describe("flags", () => {
@@ -510,6 +543,52 @@ describe("sim-events-iracing translator", () => {
 
       expect(handler).toHaveBeenCalledTimes(1);
     });
+
+    it("forwards the incident delta in the event payload", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("incident.occurred", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // 0 → 1 (1x track limits) then 1 → 5 (4x spin/contact). Consumers
+      // filter on delta to pick which audio scenario to play.
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 5 }));
+
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data.delta).toBe(1);
+      expect((handler.mock.calls[1]![0] as SimEventOf<"incident.occurred">).data.delta).toBe(4);
+    });
+
+    it("does not synthesize offTrack.started when the first tick starts off-track (mid-excursion reconnect)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const started = vi.fn();
+      bus.subscribe("offTrack.started", started);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Reconnect while the car is already off track — no real transition
+      // happened, so the translator must seed quietly.
+      controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OffTrack }));
+      controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OffTrack }));
+
+      expect(started).not.toHaveBeenCalled();
+    });
+
+    it("emits offTrack.ended when returning to track after a mid-excursion seed", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const ended = vi.fn();
+      bus.subscribe("offTrack.ended", ended);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OffTrack }));
+      controller.__tick(telemetry({ IsOnTrack: true, PlayerTrackSurface: TrkLoc.OnTrack }));
+
+      expect(ended).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("radar", () => {
@@ -526,6 +605,42 @@ describe("sim-events-iracing translator", () => {
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"radar.changed">;
       expect(ev.data).toEqual({ from: "clear", to: "left" });
+    });
+
+    it("publishes a radar.changed → clear teardown signal on disconnect when radar was active", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("radar.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Seed → active left.
+      controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
+      controller.__tick(telemetry({ CarLeftRight: CarLeftRight.CarLeft }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Disconnect — translator must emit a radar.changed → clear so the
+      // radar engine stops its tick loop. Otherwise the last callout keeps
+      // looping after iRacing exits.
+      controller.__tick(null, false);
+
+      expect(handler).toHaveBeenCalledTimes(2);
+      const teardown = handler.mock.calls[1]![0] as SimEventOf<"radar.changed">;
+      expect(teardown.data).toEqual({ from: "left", to: "clear" });
+    });
+
+    it("does not publish a teardown signal when disconnecting with radar already clear", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("radar.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ CarLeftRight: CarLeftRight.Off }));
+      controller.__tick(null, false);
+
+      expect(handler).not.toHaveBeenCalled();
     });
   });
 
@@ -585,6 +700,49 @@ describe("sim-events-iracing translator", () => {
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
       expect(ev.data).toEqual({ from: 0, to: 1 });
+    });
+
+    it("does not synthesize engine.startup when the first tick already has RPM > threshold", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("engine.startup", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Reconnecting while the engine is already running is not a startup.
+      controller.__tick(telemetry({ RPM: 3500 }));
+      controller.__tick(telemetry({ RPM: 3600 }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("does not synthesize driver.firstOnTrack when the first tick is already on-track", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Reconnect mid-session with the driver already on track — the
+      // welcome scenario must not re-trigger.
+      controller.__tick(telemetry({ IsOnTrack: true }));
+      controller.__tick(telemetry({ IsOnTrack: true }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("does not synthesize lap.started when Lap resets to a lower number (session flip)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("lap.started", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // End of practice on lap 12, then race starts at lap 1.
+      controller.__tick(telemetry({ Lap: 12 }));
+      controller.__tick(telemetry({ Lap: 1 }));
+
+      expect(handler).not.toHaveBeenCalled();
     });
   });
 
