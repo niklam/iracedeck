@@ -1,11 +1,19 @@
-import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const version = process.argv[2];
 if (!version) {
   console.error("Usage: node release-hooks.mjs <version>");
   process.exit(1);
+}
+
+// release-it runs before:bump hooks even in dry-run mode, which would otherwise
+// modify real package.json / manifest.json files and stage them with `git add`.
+// `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
+if (process.env.RELEASE_IT_DRY_RUN === "1") {
+  console.log(`  [dry-run] Would bump 13 package.json files and 2 manifest.json files to version ${version}`);
+  process.exit(0);
 }
 
 const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
