@@ -49,8 +49,14 @@ function createMockController(): MockController {
   let sessionInfo: Record<string, unknown> | null = null;
 
   const controller = {
+    // Matches the real `SDKController.subscribe` contract: after storing the
+    // callback, invoke it once with the current telemetry / connection state
+    // so subscribers see the "nothing happening yet" tick the translator
+    // actually gets at plugin startup. The real controller starts offline
+    // with no telemetry, so the mock defaults to `(null, false)`.
     subscribe: (_id: string, cb: TelemetryCallback) => {
       callback = cb;
+      cb(null, false);
     },
     unsubscribe: (_id: string) => {
       callback = null;
