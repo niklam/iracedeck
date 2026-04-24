@@ -59,15 +59,24 @@ describe("AudioNativeMock", () => {
   });
 
   describe("device enumeration", () => {
-    it("getAudioDevices returns a single default mock device", () => {
+    it("getAudioDevices returns a single default mock device with a stable id", () => {
       const devices = mock.getAudioDevices();
-      expect(devices).toEqual([{ index: 0, name: "Mock Audio Device", isDefault: true }]);
+      expect(devices).toEqual([{ index: 0, name: "Mock Audio Device", id: "mock-device-0", isDefault: true }]);
     });
 
     it("setAudioDevice returns true for any index", () => {
       expect(mock.setAudioDevice(-1)).toBe(true);
       expect(mock.setAudioDevice(0)).toBe(true);
       expect(mock.setAudioDevice(99)).toBe(true);
+    });
+
+    it("setAudioDeviceById returns true for the known mock id", () => {
+      expect(mock.setAudioDeviceById("mock-device-0")).toBe(true);
+    });
+
+    it("setAudioDeviceById returns false for unknown ids", () => {
+      expect(mock.setAudioDeviceById("unknown-id")).toBe(false);
+      expect(mock.setAudioDeviceById("")).toBe(false);
     });
   });
 });

@@ -43,7 +43,7 @@ Steps the global Radar volume up or down. Takes effect immediately on `AudioBus.
 The Pit Crew accordion in the Property Inspector exposes these plugin-global settings alongside the Mode selector (not under the generic Global Settings section):
 
 - **Radar Volume** (0–100, default 100) — slider + Test button. Shared across every Pit Crew instance; the button lets you preview the left → right → both sequence without waiting for a live proximity event. Sliding to 0 mutes the radar without toggling the feature off.
-- **Output Device** — the audio device used for the iRaceDeck audio engine; shared globally across the plugin.
+- **Output Device** — the audio device used for the iRaceDeck audio engine; shared globally across the plugin. The selection is persisted by the platform-stable device id (WASAPI endpoint ID on Windows), so it survives replug and Windows audio-preference changes — no need to re-pick after rebooting or moving the headset to a different USB port.
 
 ## Notes
 

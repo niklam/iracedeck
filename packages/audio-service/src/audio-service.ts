@@ -147,10 +147,18 @@ export interface IAudioService {
   seekChannelRandom(channel: AudioChannel): void;
 
   /** Get list of available audio output devices. */
-  getAudioDevices(): Array<{ index: number; name: string; isDefault: boolean }>;
+  getAudioDevices(): Array<{ index: number; name: string; id: string; isDefault: boolean }>;
 
   /** Switch to a specific audio output device. -1 for system default. Returns true on success. */
   setAudioDevice(deviceIndex: number): boolean;
+
+  /**
+   * Switch to a device looked up by its stable `id` from
+   * {@link getAudioDevices}. Use this for any persisted selection — `id`
+   * survives device-list reordering, replug, and OS audio reconfiguration.
+   * Returns false if the id isn't in the current enumeration.
+   */
+  setAudioDeviceById(deviceId: string): boolean;
 }
 
 // ─── Implementation ──────────────────────────────────────────────────────────
@@ -345,7 +353,7 @@ class AudioService implements IAudioService {
     this.native.seekChannelRandom(channel);
   }
 
-  getAudioDevices(): Array<{ index: number; name: string; isDefault: boolean }> {
+  getAudioDevices(): Array<{ index: number; name: string; id: string; isDefault: boolean }> {
     return this.native.getAudioDevices();
   }
 
@@ -359,9 +367,44 @@ class AudioService implements IAudioService {
     const ok = this.native.setAudioDevice(deviceIndex);
 
     if (ok) {
-      this.logger.info(`Audio output device switched to index ${deviceIndex}`);
+      this.logger.info("Audio output device switched");
+      this.logger.debug(`Device index: ${deviceIndex}`);
     } else {
-      this.logger.error(`Failed to switch audio output device to index ${deviceIndex}`);
+      this.logger.error("Failed to switch audio output device");
+      this.logger.debug(`Failed device index: ${deviceIndex}`);
+    }
+
+    return ok;
+  }
+
+  setAudioDeviceById(deviceId: string): boolean {
+    // Stop all active playback before switching
+    this.cancelVoiceSequence();
+    this.native.stopAllChannels();
+
+    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+
+    const ok = this.native.setAudioDeviceById(deviceId);
+
+    if (ok) {
+      this.logger.info("Audio output device switched by id");
+      this.logger.debug(`Device id: ${deviceId}`);
+    } else {
+      // The native layer returns false for three distinct reasons:
+      // (a) the id isn't in the current enumeration (stale / unplugged /
+      // legacy value), (b) the hex string is malformed, or (c) the engine
+      // reinit failed. Distinguish (a) from (b)+(c) by re-checking the
+      // enumeration so the operator log is truthful. Caller decides how
+      // to recover (typically fall back to system default).
+      const exists = this.native.getAudioDevices().some((d) => d.id === deviceId);
+
+      if (exists) {
+        this.logger.error("Failed to switch audio output device by id (engine reinit failed)");
+      } else {
+        this.logger.warn("Audio output device id not found in current enumeration");
+      }
+
+      this.logger.debug(`Device id: ${deviceId}`);
     }
 
     return ok;

@@ -31,8 +31,16 @@ export enum AudioChannel {
   Radar = 3,
 }
 
-/** Audio device descriptor returned by {@link AudioNative.getAudioDevices}. */
-export type AudioDeviceInfo = { index: number; name: string; isDefault: boolean };
+/**
+ * Audio device descriptor returned by {@link AudioNative.getAudioDevices}.
+ *
+ * `id` is a hex-encoded `ma_device_id` — the platform-stable identifier
+ * (WASAPI endpoint ID on Windows, CoreAudio UID on macOS, etc.) suitable
+ * for persisting selection across sessions. `index` is the volatile
+ * enumeration position retained for backward compatibility with
+ * {@link AudioNative.setAudioDevice}.
+ */
+export type AudioDeviceInfo = { index: number; name: string; id: string; isDefault: boolean };
 
 // Try to load native addon (only on Windows, with safety catch).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
@@ -197,5 +205,18 @@ export class AudioNative {
     }
 
     return this.getMock().setAudioDevice(deviceIndex);
+  }
+
+  /**
+   * Switch audio output to a device looked up by its stable `id` from
+   * {@link getAudioDevices}. Returns true on success, false if the id is
+   * unknown to the current enumeration (e.g. unplugged device).
+   */
+  setAudioDeviceById(deviceId: string): boolean {
+    if (addon) {
+      return addon.setAudioDeviceById(deviceId);
+    }
+
+    return this.getMock().setAudioDeviceById(deviceId);
   }
 }

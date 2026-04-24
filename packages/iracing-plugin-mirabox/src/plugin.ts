@@ -149,31 +149,42 @@ getAudio().init();
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
 registerPitCrew(eventBus);
 
-// Publish audio device list and apply saved device selection
-let audioDeviceInitialized = false;
-let currentAudioDevice = -1;
+// Publish audio device list and apply saved device selection.
+// See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence
+// contract (id-based; empty string = System Default; legacy values fall
+// back to default without rewriting the persisted setting) and the
+// recursion-safety note around the listener re-entry.
+let audioDeviceListPushed = false;
+let currentAudioDeviceId: string = "";
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
-  // Publish device list for PI consumption (once, on first settings receipt)
-  if (!audioDeviceInitialized) {
+  // Publish device list for PI consumption (once, on first settings receipt).
+  // Set the flag BEFORE the push: updateGlobalSettings synchronously re-fires
+  // this listener, and without the flip we infinite-loop on the push branch.
+  if (!audioDeviceListPushed) {
+    audioDeviceListPushed = true;
     const devices = getAudio().getAudioDevices();
     updateGlobalSettings({ _audioDeviceList: JSON.stringify(devices) });
   }
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
-  const deviceIndex = saved !== undefined && saved !== null && saved !== "" ? Number(saved) : -1;
+  const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceIndex !== currentAudioDevice) {
-    currentAudioDevice = deviceIndex;
+  if (deviceId === currentAudioDeviceId) return;
 
-    if (deviceIndex !== -1 || audioDeviceInitialized) {
-      getAudio().setAudioDevice(deviceIndex);
+  currentAudioDeviceId = deviceId;
+
+  if (deviceId === "") {
+    getAudio().setAudioDevice(-1);
+  } else {
+    const ok = getAudio().setAudioDeviceById(deviceId);
+
+    if (!ok) {
+      getAudio().setAudioDevice(-1);
     }
   }
-
-  audioDeviceInitialized = true;
 });
 
 // Initialize window focus service for focusing iRacing before any action
