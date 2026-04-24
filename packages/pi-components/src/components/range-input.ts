@@ -247,7 +247,12 @@ export class RangeInput extends HTMLElement {
       const [, save] = useSettingsHook(
         settingName,
         (value: string) => {
-          this.currentValue = value || "";
+          // Runtime may deliver number/null/undefined despite the string type
+          // annotation. Treat only null/undefined/empty-string as cleared so
+          // the numeric value 0 (e.g., radarVolume) doesn't fall through to
+          // the default-display branch via JS truthiness.
+          const v: unknown = value;
+          this.currentValue = v == null || v === "" ? "" : String(v);
           this.updateDisplay();
         },
         null,
