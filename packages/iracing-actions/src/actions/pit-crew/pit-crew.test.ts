@@ -473,6 +473,7 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
 
     it("clamps at 0 (no-op when already at min)", async () => {
@@ -482,6 +483,34 @@ describe("PitCrew action", () => {
       vi.clearAllMocks();
 
       await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+
+    it("auto-repeat at upper boundary (5x onKeyDown at 100) is fully a no-op", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      vi.clearAllMocks();
+
+      for (let i = 0; i < 5; i += 1) {
+        await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      }
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+
+    it("auto-repeat at lower boundary (5x onKeyDown at 0) is fully a no-op", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, radarEnabled: true, radarVolume: 0 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      vi.clearAllMocks();
+
+      for (let i = 0; i < 5; i += 1) {
+        await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      }
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
