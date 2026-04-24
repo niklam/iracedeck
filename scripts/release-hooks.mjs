@@ -33,18 +33,24 @@ for (const rel of packageJsonPaths) {
   console.log(`  Updated ${rel} → ${version}`);
 }
 
-// Bump Version in manifest.json files (4-part format: x.y.z.0)
+// Bump Version in manifest.json files. Elgato's manifest schema requires a
+// strict 4-part numeric format `{major}.{minor}.{patch}.{build}`
+// (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so semver pre-release / build metadata
+// suffixes must be stripped. Every 1.15.0 pre-release and the final 1.15.0
+// therefore ship with the same manifest Version "1.15.0.0".
 const manifestPaths = [
   "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json",
   "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json",
 ];
 
+const numericVersion = version.replace(/[-+].*$/, "");
+
 for (const rel of manifestPaths) {
   const filePath = join(root, rel);
   const manifest = JSON.parse(readFileSync(filePath, "utf-8"));
-  manifest.Version = `${version}.0`;
+  manifest.Version = `${numericVersion}.0`;
   writeFileSync(filePath, JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`  Updated ${rel} → ${version}.0`);
+  console.log(`  Updated ${rel} → ${numericVersion}.0`);
 }
 
 // Stage all modified files
