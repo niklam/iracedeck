@@ -19,9 +19,18 @@
 //
 // `ma_device_id` is a union of platform-specific stable identifiers (WASAPI
 // endpoint IDs, CoreAudio UIDs, ALSA names, etc.). The raw layout is opaque
-// to JS; we expose it as an uppercase-hex string of `sizeof(ma_device_id)`
-// bytes so it round-trips losslessly between native enumeration and the
-// persisted plugin setting.
+// to JS; we expose it as an uppercase-hex string so it round-trips losslessly
+// between native enumeration and the persisted plugin setting.
+//
+// We trim trailing zero bytes before hex-encoding and zero-pad on decode.
+// `ma_context_get_devices` zero-initializes the union, so unused tail bytes
+// are not data — trimming reduces a Windows WASAPI endpoint id from
+// 2 * sizeof(ma_device_id) (~512 chars) down to ~220 chars (the actual
+// `{0.0.0.00000000}.{guid}` wide-string plus its null terminator). Without
+// trimming, pushing the device list into Stream Deck's global settings
+// inflates the cross-process settings echo enough to trigger a stack
+// overflow in the SDK's connection logger when the failed-parse fallback
+// tries to format the oversized payload.
 //
 // The encoding is deliberately format-stable: the byte layout of
 // `ma_device_id` depends on miniaudio's compile-time configuration (active
@@ -33,9 +42,20 @@ static std::string SerializeDeviceId(const ma_device_id &id)
 {
     static constexpr char hex[] = "0123456789ABCDEF";
     const ma_uint8 *bytes = reinterpret_cast<const ma_uint8 *>(&id);
+
+    // Trim trailing zero bytes. Safe because miniaudio zero-fills the union
+    // and every backend stores its identifier in the leading bytes (string
+    // backends include their null terminator; integer backends fit in 4 bytes
+    // followed by zero padding).
+    size_t sigLen = sizeof(ma_device_id);
+    while (sigLen > 0 && bytes[sigLen - 1] == 0)
+    {
+        sigLen--;
+    }
+
     std::string out;
-    out.resize(sizeof(ma_device_id) * 2);
-    for (size_t i = 0; i < sizeof(ma_device_id); i++)
+    out.resize(sigLen * 2);
+    for (size_t i = 0; i < sigLen; i++)
     {
         out[i * 2] = hex[(bytes[i] >> 4) & 0x0F];
         out[i * 2 + 1] = hex[bytes[i] & 0x0F];
@@ -45,13 +65,20 @@ static std::string SerializeDeviceId(const ma_device_id &id)
 
 static bool DeserializeDeviceId(const std::string &hex, ma_device_id &outId)
 {
-    if (hex.size() != sizeof(ma_device_id) * 2)
+    // Hex must be even-length and fit within the union. Empty string is
+    // rejected so the System Default sentinel ("") never round-trips into
+    // a zero-filled ma_device_id and accidentally matches a real device.
+    if (hex.empty() || hex.size() > sizeof(ma_device_id) * 2 || hex.size() % 2 != 0)
     {
         return false;
     }
 
+    // Zero-fill so trimmed trailing bytes are restored — the resulting
+    // memcmp matches what `ma_context_get_devices` enumerates.
+    memset(&outId, 0, sizeof(ma_device_id));
     ma_uint8 *bytes = reinterpret_cast<ma_uint8 *>(&outId);
-    for (size_t i = 0; i < sizeof(ma_device_id); i++)
+    size_t numBytes = hex.size() / 2;
+    for (size_t i = 0; i < numBytes; i++)
     {
         auto fromHex = [](char c) -> int {
             if (c >= '0' && c <= '9') return c - '0';
