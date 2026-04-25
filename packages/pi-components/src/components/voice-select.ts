@@ -65,12 +65,41 @@ export class VoiceSelect extends HTMLElement {
   private injectStyle(): void {
     if (styleInjected || typeof document === "undefined") return;
 
-    // Stretch to fill the row but otherwise let the browser's native dark
-    // <select> rendering show through — matches `<sdpi-select>` (chevron,
-    // background, padding) instead of the half-styled raw look the heavier
-    // overrides produced.
+    // Mirror sdpi-select's full styling stack so the dropdown looks identical
+    // to native `<sdpi-select>` siblings. sdpi-components scopes its rules
+    // through three layers in shadow DOM that we have to flatten here:
+    //   1. Base input reset on `button, input, select, textarea` —
+    //      `box-sizing: border-box; outline: 0; border: none; border-radius: 0;`
+    //      plus min-width / max-width 100% and the input font / colour.
+    //      Without these, the browser's default rounded border draws around
+    //      our `<select>` and it looks nothing like Mode.
+    //   2. Common input rule: `height: 30px` (--input-height).
+    //   3. The leaf select rule: background-color, padding, text-overflow,
+    //      focus shadow, disabled opacity.
+    // CSS variables from sdpi's `:host` block don't propagate into the light
+    // DOM, so the resolved values are inlined.
     const style = document.createElement("style");
-    style.textContent = `ird-voice-select select { width: 100%; }`;
+    style.textContent = `
+      ird-voice-select select {
+        box-sizing: border-box;
+        outline: 0;
+        border: none;
+        border-radius: 0;
+        min-width: 100%;
+        max-width: 100%;
+        color: #d8d8d8;
+        font-size: 9pt;
+        font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif,
+                     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        height: 30px;
+        background-color: #3d3d3d;
+        padding: 6px 0;
+        text-overflow: ellipsis;
+        width: 100%;
+      }
+      ird-voice-select select:focus { box-shadow: inset 0 0 1px #969696; }
+      ird-voice-select select:disabled { opacity: 0.5; }
+    `;
     document.head.appendChild(style);
     styleInjected = true;
   }

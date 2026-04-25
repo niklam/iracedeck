@@ -70,12 +70,31 @@ export class AudioDeviceSelect extends HTMLElement {
   private injectStyle(): void {
     if (styleInjected || typeof document === "undefined") return;
 
-    // Stretch to fill the row but otherwise let the browser's native dark
-    // <select> rendering show through — matches `<sdpi-select>` (chevron,
-    // background, padding) instead of the half-styled raw look the heavier
-    // overrides produced.
+    // Mirror sdpi-select's full styling stack — see voice-select.ts for the
+    // explanation of why we flatten the three layers and inline the
+    // resolved CSS-variable values.
     const style = document.createElement("style");
-    style.textContent = `ird-audio-device-select select { width: 100%; }`;
+    style.textContent = `
+      ird-audio-device-select select {
+        box-sizing: border-box;
+        outline: 0;
+        border: none;
+        border-radius: 0;
+        min-width: 100%;
+        max-width: 100%;
+        color: #d8d8d8;
+        font-size: 9pt;
+        font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif,
+                     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        height: 30px;
+        background-color: #3d3d3d;
+        padding: 6px 0;
+        text-overflow: ellipsis;
+        width: 100%;
+      }
+      ird-audio-device-select select:focus { box-shadow: inset 0 0 1px #969696; }
+      ird-audio-device-select select:disabled { opacity: 0.5; }
+    `;
     document.head.appendChild(style);
     styleInjected = true;
   }
