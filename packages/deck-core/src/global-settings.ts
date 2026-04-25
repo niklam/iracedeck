@@ -125,6 +125,15 @@ export const GlobalSettingsSchema = z
      * feature off. Default: 100.
      */
     radarVolume: z.coerce.number().min(0).max(100).default(100),
+    /**
+     * Active voice used by Race Engineer scenarios — the key under
+     * `voice/<voice>/` in `@iracedeck/audio-assets` (e.g., `"luca"`,
+     * `"titan"`). Substituted into scenario `base: "voice/{voice}"` at
+     * clip-resolution time. Empty string or unset means "no voice
+     * selected" — the plugin seeds the first available voice from the
+     * audio-assets manifest on startup. Persists across plugin restarts.
+     */
+    raceEngineerVoice: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
   })
   .passthrough();
 
@@ -307,6 +316,27 @@ export function getGlobalColors(): {
     graphic1Color: color("colorGraphic1Color"),
     graphic2Color: color("colorGraphic2Color"),
   };
+}
+
+/**
+ * Resolve the active Race Engineer voice key, falling back to the first
+ * entry in `availableVoices` if the persisted value is empty or missing
+ * from the available list (e.g. user picked "titan" earlier, the package
+ * was rebuilt without that voice).
+ *
+ * Returns `null` only if no voices are available at all — callers should
+ * suppress voice scenarios in that case.
+ */
+export function resolveActiveRaceEngineerVoice(availableVoices: readonly string[]): string | null {
+  if (availableVoices.length === 0) return null;
+
+  const chosen = currentSettings.raceEngineerVoice ?? "";
+
+  if (chosen.length > 0 && availableVoices.includes(chosen)) {
+    return chosen;
+  }
+
+  return availableVoices[0];
 }
 
 /**

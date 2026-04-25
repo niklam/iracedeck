@@ -6,6 +6,7 @@ import {
   getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
+  resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "./global-settings.js";
 import type { IDeckPlatformAdapter } from "./types.js";
@@ -164,5 +165,43 @@ describe("global-settings cache (synchronous update on local writes)", () => {
 
     // No throw; cache stays at the schema default.
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+  });
+});
+
+describe("resolveActiveRaceEngineerVoice", () => {
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("returns null when no voices are available", () => {
+    expect(resolveActiveRaceEngineerVoice([])).toBeNull();
+  });
+
+  it("returns the first voice when nothing is persisted", () => {
+    expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
+  });
+
+  it("returns the persisted voice when it's in the available list", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ raceEngineerVoice: "titan" });
+
+    expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("titan");
+  });
+
+  it("falls back to the first available voice when the persisted one is gone", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ raceEngineerVoice: "removed-voice" });
+
+    expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
+  });
+
+  it("treats empty string as 'no preference' and falls back to first", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ raceEngineerVoice: "" });
+
+    expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
   });
 });

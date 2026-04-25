@@ -45,6 +45,7 @@ describe("SimHub Service", () => {
       raceEngineerEnabled: true,
       radarEnabled: true,
       radarVolume: 100,
+      raceEngineerVoice: "",
     });
   });
 
@@ -139,6 +140,7 @@ describe("SimHub Service", () => {
         raceEngineerEnabled: true,
         radarEnabled: true,
         radarVolume: 100,
+        raceEngineerVoice: "",
       });
 
       initializeSimHub(mockLogger);
