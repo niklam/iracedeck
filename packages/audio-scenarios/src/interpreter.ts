@@ -28,14 +28,13 @@ import { silentLogger } from "@iracedeck/logger";
 
 import type { ResolvedStep, Scenario, ScenarioContext, ScenarioPriority } from "./dsl.js";
 import { applyBase, resolveStep } from "./dsl.js";
+// Manifest types + helpers live in `./manifest.js` to break a circular
+// import with `./validation.js`, which also needs `manifestVoices`.
+import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 import { validateScenario } from "./validation.js";
 
-/** Manifest shape the interpreter needs; matches `@iracedeck/audio-assets/manifest.json`. */
-export type AudioAssetsManifest = {
-  clips: string[];
-  ambientLoop: string;
-  ticks: { open: string; close: string };
-};
+// Re-export so existing consumers of `interpreter.js` keep their import paths.
+export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 
 export interface IScenarioEngine {
   defineScenario(s: Scenario): void;
@@ -106,24 +105,6 @@ const PRIORITY_ORDER: Record<ScenarioPriority, number> = {
   high: 2,
   urgent: 3,
 };
-
-/**
- * Derive the set of voice keys present in a manifest by inspecting paths
- * under `voice/<voice>/…`. Used when validating `{voice}`-templated paths.
- */
-export function manifestVoices(manifest: AudioAssetsManifest): Set<string> {
-  const voices = new Set<string>();
-
-  for (const clip of manifest.clips) {
-    if (!clip.startsWith("voice/")) continue;
-
-    const segments = clip.split("/");
-
-    if (segments.length >= 2 && segments[1].length > 0) voices.add(segments[1]);
-  }
-
-  return voices;
-}
 
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;

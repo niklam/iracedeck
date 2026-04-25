@@ -11,7 +11,7 @@
  */
 import type { ResolvedStep, Scenario } from "./dsl.js";
 import { applyBase } from "./dsl.js";
-import { type AudioAssetsManifest, manifestVoices } from "./interpreter.js";
+import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 
 type CompiledEntry = { raw: Scenario; resolvedSequence: ResolvedStep[] };
 
