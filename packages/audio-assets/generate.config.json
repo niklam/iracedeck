@@ -215,37 +215,37 @@
       {
         "name": "tires-on-fronts",
         "text": "front tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pitstop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-rears",
         "text": "rear tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pitstop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-lefts",
         "text": "both left side tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pitstop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-rights",
         "text": "both right side tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pitstop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-all",
         "text": "all tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pitstop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "at-the-next-stop",
         "text": "at the next pitstop.",
-        "previous_text": "We're changing all tires"
+        "previous_text": "We're changing all tires "
       }
     ],
     "names": [
