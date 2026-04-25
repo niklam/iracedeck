@@ -63,17 +63,23 @@ function loadDotenv(): void {
  * `apiKey` is injected separately at the call site (or omitted for hashing).
  */
 function buildSynthesizeOptions(config: Config, voice: Voice, entry: Entry): Omit<SynthesizeOptions, "apiKey"> {
+  // Resolve the 3-level voice_settings stack (config → voice → entry) and
+  // split off language_code so it ships as the top-level body field per the
+  // ElevenLabs API contract — `voice_settings` itself stays clean.
+  const merged = resolveVoiceSettings(config, voice, entry);
+  const { language_code, ...voice_settings } = merged;
+
   return {
     voice_id: voice.id,
     text: entry.text,
     model_id: config.model_id,
-    voice_settings: resolveVoiceSettings(config, voice),
+    voice_settings,
     seed: entry.seed,
     previous_text: entry.previous_text,
     next_text: entry.next_text,
     previous_request_ids: entry.previous_request_ids,
     next_request_ids: entry.next_request_ids,
-    language_code: config.language_code,
+    language_code,
     apply_text_normalization: config.apply_text_normalization,
     apply_language_text_normalization: config.apply_language_text_normalization,
     pronunciation_dictionary_locators: config.pronunciation_dictionary_locators,

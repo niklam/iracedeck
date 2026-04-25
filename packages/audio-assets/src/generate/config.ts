@@ -24,6 +24,12 @@ export const VoiceSettingsSchema = z.object({
   style: z.number().min(0).max(1).default(0),
   speed: z.number().min(0.7).max(1.2).default(1.0),
   use_speaker_boost: z.boolean().default(true),
+  // ElevenLabs accepts language_code as a top-level body field, but we group
+  // it here so it rides along with stability/speed/etc. and can be set at any
+  // level (config, voice, entry) — useful for per-entry overrides like
+  // `"language_code": "fi"` on a Finnish-name entry. It's extracted at
+  // request time and sent as a top-level body field per the API contract.
+  language_code: z.string().optional(),
 });
 
 export const PronunciationDictionaryLocatorSchema = z.object({
@@ -59,6 +65,10 @@ export const EntrySchema = z.object({
   // it into another entry's `previous_request_ids`.
   previous_request_ids: z.array(z.string()).max(3).optional(),
   next_request_ids: z.array(z.string()).max(3).optional(),
+  // Optional per-entry override. Shallow-merges on top of (config + voice)
+  // settings; useful for one-off pronunciation tweaks such as setting
+  // `language_code` for a single foreign-language name.
+  voice_settings: VoiceSettingsSchema.partial().optional(),
 });
 
 export const ConfigSchema = z.object({
@@ -68,7 +78,6 @@ export const ConfigSchema = z.object({
   // All of the below are optional. When omitted we don't send the field and
   // ElevenLabs uses its own default.
   output_format: z.string().optional(),
-  language_code: z.string().optional(),
   apply_text_normalization: ApplyTextNormalizationSchema.optional(),
   apply_language_text_normalization: z.boolean().optional(),
   enable_logging: z.boolean().optional(),
@@ -93,10 +102,14 @@ export function loadConfig(configPath: string): Config {
 }
 
 /**
- * Resolve the effective voice_settings for a voice — the top-level defaults
- * with any voice-level override shallow-merged on top. `VoiceSettings` is
- * flat, so shallow merge is sufficient.
+ * Resolve the effective voice_settings stack — config defaults, then per-voice
+ * override, then per-entry override. `VoiceSettings` is flat so a shallow
+ * merge at each level is sufficient.
  */
-export function resolveVoiceSettings(config: Config, voice: Voice): VoiceSettings {
-  return { ...config.voice_settings, ...(voice.voice_settings ?? {}) };
+export function resolveVoiceSettings(config: Config, voice: Voice, entry?: Entry): VoiceSettings {
+  return {
+    ...config.voice_settings,
+    ...(voice.voice_settings ?? {}),
+    ...(entry?.voice_settings ?? {}),
+  };
 }
