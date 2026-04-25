@@ -7,6 +7,10 @@ export const ManifestEntrySchema = z.object({
   model: z.string(),
   textPreview: z.string(),
   generatedAt: z.string(),
+  // ElevenLabs' request-id from the response header. Null when the provider
+  // didn't return one (shouldn't normally happen). Paste into another entry's
+  // previous_request_ids / next_request_ids to chain prosody context.
+  requestId: z.string().nullable().optional(),
 });
 
 export const ManifestSchema = z.object({
