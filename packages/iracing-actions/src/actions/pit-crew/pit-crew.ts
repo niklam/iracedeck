@@ -144,16 +144,52 @@ function readJsonStringArray(key: string): string[] {
 const RACE_ENGINEER_TEST_OPENERS = ["alright", "hi", "right", "so"] as const;
 
 /**
+ * Chain-play a sequence of clip paths on `AudioChannel.Voice`. Registers
+ * the next-step `onChannelComplete` before each `playOnChannel` so the
+ * sequence keeps stepping naturally as each clip ends. A failed
+ * `playOnChannel` (e.g. clip missing — likely until the user has run
+ * `pnpm --filter @iracedeck/audio-assets generate`) silently breaks the
+ * chain at that step rather than throwing; the user just hears the
+ * earlier clips.
+ */
+function playVoiceSequence(paths: readonly string[]): boolean {
+  if (paths.length === 0) return false;
+
+  let idx = 0;
+  const playStep = (): void => {
+    if (idx >= paths.length) return;
+
+    const path = paths[idx++];
+
+    if (idx < paths.length) {
+      getAudio().onChannelComplete(AudioChannel.Voice, playStep);
+    }
+
+    getAudio().playOnChannel(AudioChannel.Voice, path);
+  };
+
+  playStep();
+
+  return true;
+}
+
+/**
  * @internal Exported for testing.
  *
- * Play a short engineer-voice preview on `AudioChannel.Voice` using the
- * active voice + driver name: a random opener (`"alright"` etc.) chained
- * to the chosen driver-name clip via `onChannelComplete`. Lets the user
- * audition the voice + radio filter + current bus volume from the PI.
+ * Play the engineer-voice preview sequence on `AudioChannel.Voice`:
  *
- * Returns true once the opener is queued (the chained name plays via the
- * completion callback). Returns false only when no voice is available —
- * the test button silently no-ops in that case and the action logs.
+ *   <random opener>, <driver name>! Nice to meet you, I'm your Race Engineer!
+ *   Are you ready to race with me?
+ *
+ * Lets the user audition the active voice + radio filter + current bus
+ * volume from the PI. Skips the driver-name clip when no name is
+ * available (e.g. fresh install before names are pushed). The "welcome"
+ * clips need TTS generation — `pnpm --filter @iracedeck/audio-assets
+ * generate` produces them per voice. Until then the chain plays only
+ * the opener (+ name) and silently stops at the missing welcome step.
+ *
+ * Returns false only when no voice is available — the test button logs
+ * a warning in that case.
  */
 export function playRaceEngineerVoiceTest(): boolean {
   const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
@@ -161,23 +197,16 @@ export function playRaceEngineerVoiceTest(): boolean {
   if (!voice) return false;
 
   const opener = RACE_ENGINEER_TEST_OPENERS[Math.floor(Math.random() * RACE_ENGINEER_TEST_OPENERS.length)];
-  const openerPath = `voice/${voice}/openers/${opener}.mp3`;
   const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"));
-  const namePath = driverName ? `voice/${voice}/names/${driverName}.mp3` : null;
 
-  if (!namePath) {
-    return getAudio().playOnChannel(AudioChannel.Voice, openerPath);
-  }
+  const paths = [
+    `voice/${voice}/openers/${opener}.mp3`,
+    ...(driverName ? [`voice/${voice}/names/${driverName}.mp3`] : []),
+    `voice/${voice}/welcome/nice-to-meet-you.mp3`,
+    `voice/${voice}/welcome/ready-to-race.mp3`,
+  ];
 
-  // Chain opener → name. `onChannelComplete` fires once when the opener
-  // finishes; we register the next clip from there.
-  if (!getAudio().playOnChannel(AudioChannel.Voice, openerPath)) return false;
-
-  getAudio().onChannelComplete(AudioChannel.Voice, () => {
-    getAudio().playOnChannel(AudioChannel.Voice, namePath);
-  });
-
-  return true;
+  return playVoiceSequence(paths);
 }
 
 /**

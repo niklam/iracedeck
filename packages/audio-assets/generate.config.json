@@ -233,6 +233,19 @@
         "previous_text": "You must do this and that,"
       }
     ],
+    "welcome": [
+      {
+        "name": "nice-to-meet-you",
+        "text": "Nice to meet you, I'm your Race Engineer!",
+        "previous_text": "Alright, Niklas! ",
+        "next_text": " Are you ready to race?"
+      },
+      {
+        "name": "ready-to-race",
+        "text": "Are you ready to race with me?",
+        "previous_text": "I'm your Race Engineer! "
+      }
+    ],
     "numbers": [
       {
         "name": "1",
