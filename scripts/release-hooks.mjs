@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -77,6 +77,8 @@ for (const rel of manifestPaths) {
   console.log(`  Updated ${rel} → ${numericVersion}.0`);
 }
 
-// Stage all modified files
+// Stage all modified files. Use argv form (no shell) so package directory
+// names containing spaces or shell metacharacters can't break or inject into
+// the git invocation.
 const allPaths = [...packageJsonPaths, ...manifestPaths];
-execSync(`git add ${allPaths.join(" ")}`, { cwd: root, stdio: "inherit" });
+execFileSync("git", ["add", "--", ...allPaths], { cwd: root, stdio: "inherit" });
