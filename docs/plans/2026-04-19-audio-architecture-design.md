@@ -135,43 +135,46 @@ Six packages, clearly layered:
 
 ## 5. audio-assets layout
 
+> **2026-04-25 update (#441):** The original plan envisioned a `pit-engineer/` (later `pit-crew/`) consumer namespace alongside generic `sfx/`. That layout shipped with the feature and was then dropped in #441 §1: TTS-generated voice content moved under `voice/<voice>/` with the radio-engineer ffmpeg filter applied at build time, and `sfx/` stays as the only sibling. Scenarios reference voice content via a templated `base: "voice/{voice}"` so the active Race Engineer voice setting (§9) is substituted at playback time.
+
 ```text
 packages/audio-assets/
-  pit-engineer/
-    acknowledgment/              (was: acknowledgment/)
-    connector/                   (was: connector/)
-    flags/                       (was: flags/ at root — moved: engineer calls out flags)
-    fuel/                        (was: fuel-warnings/)
-    greeting/                    (was: radio-openers/ — spoken greetings. The branch's folder
-                                  name is misleading: the files are "alright", "hi", "right-then",
-                                  "so" — word-greetings, not PTT tick sounds)
-    incidents/                   (was: incidents/)
-    names/                       (was: names/ — driver-name slot fills)
-    overtake/                    (was: overtake/)
-    pitlane/                     (was: pitlane/)
-    reminder/                    (was: reminder/)
-    spotter/                     (was: spotter/)
-    tips/                        (was: tips/)
-    toggle/                      (was: toggle/)
-    extras/                      (new; personality one-offs like "wtf.mp3")
-  sfx/                           (was: sfx/ — stays generic; holds walkie-talkie PTT ticks
-                                  IRD-tick-open.mp3, IRD-tick-close.mp3, pit ambient loop.
-                                  If sfx turns out to be engineer-only in practice, easy to
-                                  move under pit-engineer/ later)
+  voice/                         TTS-generated engineer voices, one folder per voice key.
+    luca/
+      acknowledgment/            ack pool ("Okay.", "Got it.", "Roger that.", …)
+      flags/                     flag callouts (engineer calls out flags)
+      names/                     driver-name slot fills
+      numbers/                   1–100 for fuel/lap call-outs
+      openers/                   spoken greetings ("alright", "hi", "right", "so")
+      pit-actions/               pit-service callouts (fuel-on, tires-on-fronts, at-the-next-stop, …)
+      pit-limiter/               pit-limiter warnings + reminders
+      units/                     unit suffixes ("seconds", "litres", "kilograms", …)
+      welcome/                   multi-clip welcome flow openers
+    titan/
+      …                          (parallel structure)
+  sfx/                           Generic sound effects — shared across voices.
+    IRD-tick-open.mp3            walkie-talkie PTT tick (radio-frame open)
+    IRD-tick-close.mp3           walkie-talkie PTT tick (radio-frame close)
+    IRD-ambient-pit.mp3          pit-lane ambient loop under voice transmissions
+    radar/                       directional radar pings
+  generate.config.json           ElevenLabs TTS generator config (voices, groups, prosody anchors)
+  generate.manifest.json         Per-entry hash cache (skip re-generation if inputs unchanged)
+  manifest.json                  Built manifest consumed by audio-scenarios validation
   package.json
 ```
 
-Root has two kinds of entries: consumer namespaces (`pit-engineer/`) and generic categories (`sfx/`). A future "flag marshal" action or "UI sound" feature would add its own top-level namespace. `sfx/` stays generic; if it turns out to be engineer-only in practice, easy to move in later.
+Root has two kinds of entries: voice content under `voice/<voice>/` (radio-engineer filter applied at build time) and generic SFX under `sfx/` (passed through as-is). A future "flag marshal" action or "UI sound" feature can add its own top-level namespace, but voice clips for any consumer live under `voice/`.
 
-Scenarios reference clips by path relative to the package root. Paths are prefixed by an optional `base:` on the scenario. Leading `/` escapes the base for cross-namespace references:
+Scenarios reference clips by path relative to the package root. Paths are prefixed by an optional `base:` on the scenario; leading `/` escapes the base for cross-namespace references; and the `{voice}` token in either the base or a clip path is replaced at playback time with the active Race Engineer voice key:
 
 ```ts
 {
-  base: "pit-engineer",
+  base: "voice/{voice}",
   sequence: [
-    "greeting/alright.mp3",     // → pit-engineer/greeting/alright.mp3
-    "/sfx/IRD-tick-open.mp3",   // → sfx/IRD-tick-open.mp3  (leading slash = absolute)
-    "pool:greeting",            // pool reference, resolved separately
+    "@pit-crew.radio-open",         // include the radio-frame opener (sfx tick + ambient start)
+    "pool:acknowledgment",          // pool entries are full paths, no base applied
+    "pit-actions/tires-on.mp3",     // → voice/<voice>/pit-actions/tires-on.mp3
+    "/sfx/IRD-tick-open.mp3",       // → sfx/IRD-tick-open.mp3 (leading "/" escapes the base)
   ],
 }
 ```
@@ -200,8 +203,10 @@ flag.black.raised
 flag.white.raised
 flag.red.raised
 
-tireService.changed            payload: { added: string[]; removed: string[] }
+tireService.changed            payload: { added: string[]; removed: string[]; current: string[] }
+                               (debounced 500 ms; suppressed while in pit stall — see §6.3)
 pitService.toggled             payload: { service: "fuel" | "windshield" | "fastRepair"; on: boolean }
+                               (debounced 300 ms; suppressed while in pit stall — see §6.3)
 carControl.drsToggled          payload: { on: boolean }
 carControl.p2pToggled          payload: { on: boolean }
 carControl.limiterToggled      payload: { on: boolean }
@@ -231,7 +236,18 @@ fuel.lapsRemaining.crossed     payload: { threshold: number; laps: number }
                                // react to specific tiers (e.g., 5, 3, 1 laps remaining).
 ```
 
-### 6.3 Event envelope
+### 6.3 Pit-service debouncing + in-stall suppression
+
+The translator coalesces noisy pit-service signals so consumers see a clean stream of user-intent transitions:
+
+- **Per-bit debounce.** Each pit-service bit (fuel / windshield / fast-repair) tracks its own last-observed flip and emits only after the bit has been stable for `PIT_SERVICE_DEBOUNCE_MS` (300 ms). Tire bits use the same scheme but with `TIRE_DEBOUNCE_MS` (500 ms — longer because iRacing's "Lefts" / "Rights" / "Fronts" / "Rears" buttons emit multi-tick clear-then-set transitions that need to ride out before the final state is meaningful). Effects:
+  - Rapid taps that revert within the window stay silent (final state matches baseline → no emit).
+  - Multi-tap intent oscillations coalesce to a single emit reflecting the settled state.
+  - The `tireService.changed` payload carries `current: string[]` (the post-change tire set) so consumers can decide on the resulting state rather than reconstructing it from the deltas.
+- **In-stall suppression.** While `PlayerCarInPitStall` is true, the translator continuously syncs its baselines to the current state without emitting. iRacing flips the tire/service bits one-by-one as the crew completes each task during the stop — those aren't user intent and the engineer should stay silent during the actual service. On stall exit the baseline already reflects the post-service state so no spurious "tires off → tires on" cascade fires.
+- **Car-control toggles stay immediate.** DRS, P2P, and the pit limiter aren't pit-service bits — they're wheel-button activations / sensor-driven, so they bypass the debounce entirely and fire on the first observed change.
+
+### 6.4 Event envelope
 
 Every event carries the current-tick telemetry snapshot so conditionals in scenarios can peek anywhere without a separate state cache:
 
@@ -269,7 +285,8 @@ type Scenario = {
   priority?: "low" | "normal" | "high" | "urgent";   // default: normal
   cooldown?: number;                   // ms debounce (absent = no debounce)
   preempt?: boolean;                   // urgent: stop current voice clip on fire
-  base?: string;                       // path prefix for sequence entries
+  family?: string;                     // scenarios sharing a family preempt each other regardless of priority
+  base?: string;                       // path prefix for sequence entries; supports {voice} substitution
   sequence: Step[];
 };
 
@@ -448,10 +465,11 @@ type ScenarioContext = {
 2. Translator diffs against last tick; detects "entered approach zone, not exiting".
 3. `eventBus.publish({ event: "pitLane.approaching", telemetry, data: {} })`.
 4. `audio-scenarios` handler receives the event, looks up scenarios with `when.event === "pitLane.approaching"`, filters by `where` predicate.
-5. Per matched scenario: check cooldown, priority vs. currently-playing scenario, optional preempt.
+5. Per matched scenario: check cooldown, priority vs. currently-playing scenario, optional preempt, optional family preempt.
    - **Default (non-urgent scenario fires while another non-urgent is playing):** the new scenario is dropped, not queued. Voice lanes are single-stream — queuing would stale-play callouts seconds after their triggering event.
    - **Urgent + preempt:** stops the current clip mid-sentence and plays the urgent scenario.
    - **Urgent without preempt:** same as non-urgent default — dropped if something is playing.
+   - **Same family:** the new scenario stops the current clip mid-sentence and plays itself, regardless of priority. Used for scenario groups where a new event invalidates the in-flight callout (e.g., all tire-set scenarios share `family: "tire-service"`, so switching from "fronts" to "rears" mid-playback cancels the fronts callout and starts the rears one). Cross-family scenarios still respect the priority/preempt rules above.
 6. Resolve `sequence` step-by-step:
    - literal → path (applying `base` unless leading `/`)
    - var → call registered resolver
