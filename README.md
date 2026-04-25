@@ -212,7 +212,7 @@ See the existing actions for reference, or check `packages/iracing-plugin-stream
 
 ## Usage and license
 
-iRaceDeck is source-available and licensed under the [iRaceDeck Non-Commercial License](LICENSE).
+iRaceDeck is source-available and licensed under the [iRaceDeck Non-Commercial License v1.1](LICENSE).
 
 Free for personal and non-commercial use, including use in sim racing events and competitions.
 
@@ -230,6 +230,7 @@ The goal is simple:
 - Keep iRaceDeck free for sim racers, hobbyists, and the community
 - Allow people to build on top of it (profiles, icons, tools, integrations)
 - Prevent others from selling or commercializing the plugin itself without permission
+- Require that anyone who distributes a modified version of iRaceDeck makes their modifications publicly available, so the community keeps benefiting from improvements
 
 If you're just using, modifying, or contributing to iRaceDeck, nothing changes for you.
 

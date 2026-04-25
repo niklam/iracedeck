@@ -1,6 +1,6 @@
-iRaceDeck Non-Commercial License (v1.0)
+iRaceDeck Non-Commercial License (v1.1)
 
-Copyright (c) 2026 Niklas Lampén
+Copyright (c) 2025–2026 Niklas Lampén
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the “Software”), to use,
@@ -35,7 +35,22 @@ provided that:
 - modified versions are clearly marked as changed from the original;
 - modified versions must include a notice stating that they are based on the
   original iRaceDeck project and are not affiliated with or endorsed by the
-  original author.
+  original author;
+- if you distribute a modified version of the Software (whether as source
+  code, as a binary, or as part of a larger work), the complete corresponding
+  source code of the modifications to the Software must be publicly available
+  in a publicly accessible source repository (such as GitHub or GitLab) at the
+  time of distribution, and the distribution must include a clear reference to
+  that repository. The publicly available source code must be made available
+  under this license, or under a later version of this license published by
+  the original author.
+
+This source-availability obligation applies only to the Software and to
+derivatives of the Software. Other code that uses, links to, or bundles the
+Software without modifying its source is not subject to this obligation.
+
+Internal or private modifications that are not distributed are not subject
+to this obligation.
 
 4. Naming and Branding
 
