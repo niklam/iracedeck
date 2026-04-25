@@ -312,7 +312,7 @@ describe("sim-events-iracing translator", () => {
   });
 
   describe("toggles", () => {
-    it("emits pitService.toggled when fuel fill flag flips", () => {
+    it("emits pitService.toggled when fuel fill flag flips (after debounce)", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -321,10 +321,65 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      // Pit-service toggles are debounced — flush past the window.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"pitService.toggled">;
       expect(ev.data).toEqual({ service: "fuel", on: true });
+    });
+
+    it("coalesces rapid fuel toggles: on→off→on within debounce emits one final state", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      // User taps fuel rapidly — three observed flips, all within the debounce window.
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // Settle past the window with the final state.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      vi.useRealTimers();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"pitService.toggled">).data).toEqual({
+        service: "fuel",
+        on: true,
+      });
+    });
+
+    it("stays silent when a fuel toggle is reverted within the debounce window", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Baseline: fuel off. User toggles on then back off, all within window.
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+
+      // Settle.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      vi.useRealTimers();
+
+      // Final state matches baseline → no emit.
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it("emits carControl.drsToggled { on: true } on activation", () => {

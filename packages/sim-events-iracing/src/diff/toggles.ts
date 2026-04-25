@@ -15,9 +15,10 @@
  * Seeded on first tick (or when IsOnTrack is false) to avoid false
  * transitions on connect / garage returns.
  */
+import type { PitServiceKind } from "@iracedeck/event-bus";
 import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { TranslatorState } from "../state.js";
+import type { ServiceDebounceState, TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
 // Tire flag → human-readable name (matches pit-crew's TIRE_SHORT domain)
@@ -43,6 +44,57 @@ const TIRE_FLAGS_MASK =
  * @internal Exported for testing.
  */
 export const TIRE_DEBOUNCE_MS = 500;
+
+/**
+ * Debounce window for single-bit pit-service toggles (fuel, windshield,
+ * fast-repair). Same idea as the tire debounce: collapse the user's rapid
+ * intent oscillations (accidental tap-tap, mind-changing within a second)
+ * into a single emit reflecting the settled state. Shorter than the tire
+ * window because there's no multi-tick intermediate to ride out — only
+ * the user's settling time.
+ *
+ * @internal Exported for testing.
+ */
+export const PIT_SERVICE_DEBOUNCE_MS = 300;
+
+/**
+ * Debounce a single pit-service bit. Returns the new baseline value (true
+ * if set, false if cleared) — caller folds it back into the persisted
+ * baseline-flags integer. Mutates the per-service debounce state in place.
+ */
+function diffPitServiceBit(
+  service: PitServiceKind,
+  flagMask: number,
+  pitSvFlags: number,
+  baselineFlags: number,
+  debounce: ServiceDebounceState,
+  now: number,
+  emit: EmitFn,
+): boolean {
+  const current = (pitSvFlags & flagMask) !== 0;
+  const baseline = (baselineFlags & flagMask) !== 0;
+
+  if (current === baseline) {
+    debounce.pendingAt = 0;
+    debounce.lastSeen = current;
+
+    return baseline;
+  }
+
+  if (debounce.pendingAt === 0 || current !== debounce.lastSeen) {
+    debounce.pendingAt = now;
+    debounce.lastSeen = current;
+  }
+
+  if (now - debounce.pendingAt >= PIT_SERVICE_DEBOUNCE_MS) {
+    emit({ event: "pitService.toggled", data: { service, on: current } });
+    debounce.pendingAt = 0;
+
+    return current;
+  }
+
+  return baseline;
+}
 
 function tireSet(flags: number): Set<string> {
   const s = new Set<string>();
@@ -73,31 +125,44 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     state.lastDrsActive = drs;
     state.lastSeenTireFlags = currTireBits;
     state.lastTireChangeAt = 0;
+    state.fuelDebounce = { pendingAt: 0, lastSeen: (pitSvFlags & PitSvFlags.FuelFill) !== 0 };
+    state.windshieldDebounce = {
+      pendingAt: 0,
+      lastSeen: (pitSvFlags & PitSvFlags.WindshieldTearoff) !== 0,
+    };
+    state.fastRepairDebounce = { pendingAt: 0, lastSeen: (pitSvFlags & PitSvFlags.FastRepair) !== 0 };
 
     return;
   }
 
-  // ── Pit service (fuel / windshield / fast-repair) ──────────────────────
-  const prevFuel = (state.lastPitSvFlags & PitSvFlags.FuelFill) !== 0;
-  const currFuel = (pitSvFlags & PitSvFlags.FuelFill) !== 0;
-
-  if (prevFuel !== currFuel) {
-    emit({ event: "pitService.toggled", data: { service: "fuel", on: currFuel } });
-  }
-
-  const prevWindshield = (state.lastPitSvFlags & PitSvFlags.WindshieldTearoff) !== 0;
-  const currWindshield = (pitSvFlags & PitSvFlags.WindshieldTearoff) !== 0;
-
-  if (prevWindshield !== currWindshield) {
-    emit({ event: "pitService.toggled", data: { service: "windshield", on: currWindshield } });
-  }
-
-  const prevFastRepair = (state.lastPitSvFlags & PitSvFlags.FastRepair) !== 0;
-  const currFastRepair = (pitSvFlags & PitSvFlags.FastRepair) !== 0;
-
-  if (prevFastRepair !== currFastRepair) {
-    emit({ event: "pitService.toggled", data: { service: "fastRepair", on: currFastRepair } });
-  }
+  // ── Pit service (fuel / windshield / fast-repair, debounced) ───────────
+  const nextBaselineFuel = diffPitServiceBit(
+    "fuel",
+    PitSvFlags.FuelFill,
+    pitSvFlags,
+    state.lastPitSvFlags,
+    state.fuelDebounce,
+    now,
+    emit,
+  );
+  const nextBaselineWindshield = diffPitServiceBit(
+    "windshield",
+    PitSvFlags.WindshieldTearoff,
+    pitSvFlags,
+    state.lastPitSvFlags,
+    state.windshieldDebounce,
+    now,
+    emit,
+  );
+  const nextBaselineFastRepair = diffPitServiceBit(
+    "fastRepair",
+    PitSvFlags.FastRepair,
+    pitSvFlags,
+    state.lastPitSvFlags,
+    state.fastRepairDebounce,
+    now,
+    emit,
+  );
 
   // ── Tire service (4 tires, debounced) ──────────────────────────────────
   const baselineTireBits = state.lastPitSvFlags & TIRE_FLAGS_MASK;
@@ -137,7 +202,7 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     state.lastSeenTireFlags = currTireBits;
   }
 
-  // ── Car control toggles ────────────────────────────────────────────────
+  // ── Car control toggles (immediate — wheel button presses) ─────────────
   if (state.lastDrsActive !== drs) {
     emit({ event: "carControl.drsToggled", data: { on: drs } });
   }
@@ -150,8 +215,17 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     emit({ event: "carControl.limiterToggled", data: { on: limiter } });
   }
 
-  // Non-tire bits track current. Tire bits track baseline (advanced only on emit).
-  state.lastPitSvFlags = (pitSvFlags & ~TIRE_FLAGS_MASK) | nextBaselineTireBits;
+  // All pit-service bits (fuel, windshield, fast-repair, 4 tires) advance
+  // only when their respective debounce fires. Other bits in PitSvFlags pass
+  // through unchanged so any future non-debounced flag stays correct.
+  const PIT_SERVICE_BITS_MASK =
+    PitSvFlags.FuelFill | PitSvFlags.WindshieldTearoff | PitSvFlags.FastRepair | TIRE_FLAGS_MASK;
+  state.lastPitSvFlags =
+    (pitSvFlags & ~PIT_SERVICE_BITS_MASK) |
+    (nextBaselineFuel ? PitSvFlags.FuelFill : 0) |
+    (nextBaselineWindshield ? PitSvFlags.WindshieldTearoff : 0) |
+    (nextBaselineFastRepair ? PitSvFlags.FastRepair : 0) |
+    nextBaselineTireBits;
   state.lastPitSvCompound = pitSvCompound;
   state.lastLimiterActive = limiter;
   state.lastP2PActive = p2p;
