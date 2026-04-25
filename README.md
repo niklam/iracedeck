@@ -35,7 +35,7 @@
 | **Cockpit & Interface** | 5       | 33    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 5       | 87    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
-| **Pit Service**         | 4       | 15    | Fuel, tires, compounds, tearoff, fast repair                          |
+| **Pit Service**         | 3       | 15    | Fuel, tires, compounds, tearoff, fast repair                          |
 | **Car Setup**           | 7       | 44    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
 
