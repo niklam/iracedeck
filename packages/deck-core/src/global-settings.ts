@@ -134,6 +134,12 @@ export const GlobalSettingsSchema = z
      * audio-assets manifest on startup. Persists across plugin restarts.
      */
     raceEngineerVoice: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
+    /**
+     * Volume for the Race Engineer voice, 0–100 (mapped to 0.0–1.0 on
+     * `AudioBus.Voice`). Sliding to 0 silences voice scenarios without
+     * disabling the feature. Default: 100.
+     */
+    raceEngineerVolume: z.coerce.number().min(0).max(100).default(100),
   })
   .passthrough();
 
@@ -255,8 +261,15 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   // Parse + apply synchronously so the cache and listeners reflect the
   // new value immediately. The later `onDidReceiveGlobalSettings` echo
   // re-parses the same payload and reconciles as a no-op.
-  const applied = applyParsedSettings(GlobalSettingsSchema.parse(merged));
-  adapterRef.setGlobalSettings(applied);
+  applyParsedSettings(GlobalSettingsSchema.parse(merged));
+
+  // Send the LIVE cache, not the snapshot captured above. A listener
+  // fired by `applyParsedSettings` may itself call `updateGlobalSettings`,
+  // layering more partials on top — sending the snapshot would clobber
+  // those nested updates back to the snapshot's stale view (#441 bug:
+  // `_raceEngineerVoices` push from inside the audio-device push listener
+  // was being overwritten by the outer audio-device-only payload).
+  adapterRef.setGlobalSettings(currentSettings);
 }
 
 /**

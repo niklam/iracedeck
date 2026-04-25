@@ -101,47 +101,33 @@ export class VoiceSelect extends HTMLElement {
   }
 
   private hookSettings(): void {
-    if (!window.SDPIComponents) {
-      console.warn("[ird-voice-select] window.SDPIComponents missing at hook time");
-
-      return;
-    }
+    if (!window.SDPIComponents) return;
 
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
 
-    console.log(`[ird-voice-select] hooking setting=${settingKey} voices=${voicesKey}`);
-
     const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
       const v: unknown = value;
-      console.log(`[ird-voice-select] ${settingKey} =`, v);
       this.savedValue = v == null ? "" : String(v);
       this.applySavedValue();
     });
     this.saveToStreamDeck = save;
 
     window.SDPIComponents.useGlobalSettings(voicesKey, (value: string) => {
-      console.log(`[ird-voice-select] ${voicesKey} raw =`, value);
-
       if (!value) return;
 
       try {
         const list: unknown = JSON.parse(value);
 
-        if (!Array.isArray(list)) {
-          console.warn(`[ird-voice-select] ${voicesKey} parsed to non-array:`, list);
-
-          return;
-        }
+        if (!Array.isArray(list)) return;
 
         const voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
-        console.log(`[ird-voice-select] rendering options:`, voices);
 
         this.renderOptions(voices);
         this.voicesLoaded = true;
         this.applySavedValue();
-      } catch (err) {
-        console.warn(`[ird-voice-select] failed to parse ${voicesKey}:`, err);
+      } catch {
+        // ignore parse errors; dropdown keeps prior options
       }
     });
   }

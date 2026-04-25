@@ -205,7 +205,7 @@ function pushAudioDevicesIfChanged(): void {
 // derived from the bundled manifest and never changes at runtime, but we
 // still re-push on every PI appear (cheap; deduped via the cache below)
 // so a PI opened before the first global-settings echo still gets
-// populated. `lastPushedVoiceListJson` short-circuits the redundant pushes.
+// populated.
 const raceEngineerVoiceListJson = JSON.stringify(raceEngineerVoices);
 let lastPushedVoiceListJson = "";
 
