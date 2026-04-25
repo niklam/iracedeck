@@ -191,10 +191,10 @@ describe("PIT_CREW_UUID", () => {
 });
 
 describe("Settings (persisted legacy field stripping)", () => {
-  it("defaults mode to radar and direction to up", () => {
+  it("defaults mode to race-engineer and direction to up", () => {
     const parsed = Settings.parse({});
 
-    expect(parsed.mode).toBe("radar");
+    expect(parsed.mode).toBe("race-engineer");
     expect(parsed.direction).toBe("up");
   });
 

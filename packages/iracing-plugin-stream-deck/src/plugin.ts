@@ -16,6 +16,7 @@ import {
   initPluginConfig,
   onGlobalSettingsChange,
   type PluginConfig,
+  resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -139,10 +140,32 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
+// Derive the available Race Engineer voice keys from manifest paths
+// (`voice/<voice>/…`). Static for the lifetime of the plugin process — the
+// manifest is bundled at build time, so this doesn't change at runtime.
+const raceEngineerVoices = (() => {
+  const voices = new Set<string>();
+
+  for (const clip of audioAssetsManifest.clips) {
+    if (!clip.startsWith("voice/")) continue;
+
+    const segments = clip.split("/");
+
+    if (segments.length >= 2 && segments[1].length > 0) voices.add(segments[1]);
+  }
+
+  return Array.from(voices).sort();
+})();
+
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
-initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
+//
+// `getActiveVoice` resolves at clip-resolution time, so a PI voice change
+// takes effect on the next scenario fire without re-initialising the engine.
+initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"), () =>
+  resolveActiveRaceEngineerVoice(raceEngineerVoices),
+);
 registerPitCrew(eventBus);
 
 // Publish audio device list and apply saved device selection.
@@ -178,6 +201,21 @@ function pushAudioDevicesIfChanged(): void {
   updateGlobalSettings({ _audioDeviceList: json });
 }
 
+// Push the Race Engineer voices list to global settings. The payload is
+// derived from the bundled manifest and never changes at runtime, but we
+// still re-push on every PI appear (cheap; deduped via the cache below)
+// so a PI opened before the first global-settings echo still gets
+// populated. `lastPushedVoiceListJson` short-circuits the redundant pushes.
+const raceEngineerVoiceListJson = JSON.stringify(raceEngineerVoices);
+let lastPushedVoiceListJson = "";
+
+function pushRaceEngineerVoicesIfChanged(): void {
+  if (raceEngineerVoiceListJson === lastPushedVoiceListJson) return;
+
+  lastPushedVoiceListJson = raceEngineerVoiceListJson;
+  updateGlobalSettings({ _raceEngineerVoices: raceEngineerVoiceListJson });
+}
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -189,6 +227,8 @@ onGlobalSettingsChange((settings) => {
     initialDevicePushDone = true;
     pushAudioDevicesIfChanged();
   }
+
+  pushRaceEngineerVoicesIfChanged();
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
@@ -220,6 +260,7 @@ onGlobalSettingsChange((settings) => {
 // doesn't churn.
 adapter.onPropertyInspectorDidAppear(() => {
   pushAudioDevicesIfChanged();
+  pushRaceEngineerVoicesIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action

@@ -19,6 +19,9 @@ export { AudioDeviceSelect } from "./audio-device-select.js";
 // Audio Test - button that bumps a hidden per-action timestamp to trigger preview playback
 export { AudioTest } from "./audio-test.js";
 
+// Voice Select - global Race Engineer voice dropdown populated from a voices-list global
+export { VoiceSelect } from "./voice-select.js";
+
 // Color Picker - custom color picker with "not set" state and inline hex display
 export { ColorPicker } from "./color-picker.js";
 

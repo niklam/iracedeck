@@ -7,7 +7,8 @@
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
 		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="radar">
+			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
+				<option value="race-engineer">Race Engineer Toggle</option>
 				<option value="radar">Radar</option>
 				<option value="radar-volume">Radar Volume</option>
 			</sdpi-select>
@@ -30,6 +31,9 @@
 						'<ird-range-input setting="radarVolume" global min="0" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
 						'<ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>' +
 					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Race Engineer Voice">' +
+					'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Output Device">' +
 					'<ird-audio-device-select setting="audioOutputDevice" devices="_audioDeviceList" default-label="System Default"></ird-audio-device-select>' +
@@ -56,11 +60,11 @@
 					else directionItem.classList.add("hidden");
 				};
 
-				update(modeSelect.value || "radar");
+				update(modeSelect.value || "race-engineer");
 				modeSelect.addEventListener("change", (ev) => update(ev.target.value));
 				modeSelect.addEventListener("input", (ev) => update(ev.target.value));
 
-				let last = modeSelect.value || "radar";
+				let last = modeSelect.value || "race-engineer";
 				setInterval(() => {
 					const current = modeSelect.value;
 					if (current && current !== last) {
