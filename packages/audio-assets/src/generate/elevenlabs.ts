@@ -39,6 +39,9 @@ export interface SynthesizeResult {
 // stall a batch indefinitely.
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_ATTEMPTS = 3;
+// Cap on a server-supplied Retry-After value. Prevents a misbehaving response
+// (e.g. `Retry-After: 86400`) from stalling the batch for hours.
+const MAX_RETRY_AFTER_SEC = 60;
 
 /**
  * POST /v1/text-to-speech/{voice_id} — returns the MP3 bytes plus the
@@ -115,7 +118,8 @@ export async function synthesizeSpeech(options: SynthesizeOptions): Promise<Synt
 
     if (res.status === 429 && attempt < MAX_ATTEMPTS) {
       const rawRetryAfter = Number(res.headers.get("retry-after"));
-      const retryAfterSec = Number.isFinite(rawRetryAfter) && rawRetryAfter >= 0 ? rawRetryAfter : 5;
+      const parsed = Number.isFinite(rawRetryAfter) && rawRetryAfter >= 0 ? rawRetryAfter : 5;
+      const retryAfterSec = Math.min(parsed, MAX_RETRY_AFTER_SEC);
       await sleep(retryAfterSec * 1000);
       continue;
     }
