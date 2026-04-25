@@ -21,3 +21,6 @@ pnpm-lock.yaml
 
 # Python (not relevant for this project)
 Python/
+
+# Hand-formatted: compact one-line-per-entry layout for the TTS generator config.
+packages/audio-assets/generate.config.json

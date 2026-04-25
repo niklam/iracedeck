@@ -1,0 +1,839 @@
+{
+  "model_id": "eleven_multilingual_v2",
+  "voice_settings": {
+    "stability": 0.8,
+    "similarity_boost": 0.75,
+    "style": 0,
+    "speed": 1,
+    "use_speaker_boost": true
+  },
+  "voices": {
+    "luca": {
+      "id": "15CVCzDByBinCIoCblXo",
+      "label": "Luca",
+      "voice_settings": {
+        "speed": 0.9
+      }
+    },
+    "titan": {
+      "id": "dtSEyYGNJqjrtBArPCVZ",
+      "label": "Titan",
+      "voice_settings": {
+        "speed": 0.8,
+        "stability": 1,
+        "similarity_boost": 1
+      }
+    }
+  },
+  "groups": {
+    "units": [
+      {
+        "name": "km",
+        "text": "kilometers per hour",
+        "previous_text": "The car was going fifty-six"
+      },
+      {
+        "name": "mph",
+        "text": "miles per hour",
+        "previous_text": "The car was going fifty-six"
+      },
+      {
+        "name": "kg",
+        "text": "kilograms",
+        "previous_text": "The fuel weights twenty-five"
+      },
+      {
+        "name": "litres",
+        "text": "litres",
+        "previous_text": "We're fueling thirty-six"
+      },
+      {
+        "name": "seconds",
+        "text": "seconds",
+        "previous_text": "Pit stop took four"
+      },
+      {
+        "name": "minutes",
+        "text": "minutes",
+        "previous_text": "Pit stop took four"
+      },
+      {
+        "name": "hours",
+        "text": "hours",
+        "previous_text": "Pit stop took four"
+      }
+    ],
+    "openers": [
+      {
+        "name": "alright",
+        "text": "Alright,",
+        "next_text": " <break time=\"0.1s\" /> Niklas"
+      },
+      {
+        "name": "hi",
+        "text": "Hi,",
+        "next_text": " <break time=\"0.1s\" /> Niklas"
+      },
+      {
+        "name": "right",
+        "text": "Right,",
+        "next_text": " <break time=\"0.1s\" /> Niklas"
+      },
+      {
+        "name": "so",
+        "text": "So,",
+        "next_text": " <break time=\"0.1s\" /> Niklas"
+      }
+    ],
+    "flags": [
+      {
+        "name": "black-01",
+        "text": "Black flag! <break time=\"0.3s\" /> We have three laps to serve the penalty."
+      },
+      {
+        "name": "blue-01",
+        "text": "Blue flag! <break time=\"0.3s\" /> Faster car approaching."
+      },
+      {
+        "name": "blue-02",
+        "text": "Blue flag! <break time=\"0.3s\" /> Check your mirrors."
+      },
+      {
+        "name": "checkered-practise-01",
+        "text": "Checkered flag! <break time=\"0.3s\" /> Practise session is over."
+      },
+      {
+        "name": "checkered-qualifying-01",
+        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the qualifying session."
+      },
+      {
+        "name": "checkered-race-01",
+        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the race. <break time=\"0.3s\" /> Well done."
+      },
+      {
+        "name": "debris-01",
+        "text": "There's debris on track. <break time=\"0.3s\" /> Be careful!"
+      },
+      {
+        "name": "green-01",
+        "text": "Green flag!"
+      },
+      {
+        "name": "meatball-01",
+        "text": "We got the meatball flag."
+      },
+      {
+        "name": "red-01",
+        "text": "Red flag!"
+      },
+      {
+        "name": "white-01",
+        "text": "White flag!"
+      },
+      {
+        "name": "yellow-01",
+        "text": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!"
+      }
+    ],
+    "pit-limiter": [
+      {
+        "name": "pit-entry-001",
+        "text": "Pit entry. <break time=\"0.3s\" /> Mind the limit."
+      },
+      {
+        "name": "pit-entry-002",
+        "text": "Entering the pitlane. <break time=\"0.3s\" /> Mind the speed."
+      },
+      {
+        "name": "pit-limiter-001",
+        "text": "The pit limiter is off. <break time=\"0.3s\" /> Please, turn it on."
+      },
+      {
+        "name": "pit-limiter-002",
+        "text": "Before you go, turn on the pit limiter."
+      },
+      {
+        "name": "pit-limiter-warn-001",
+        "text": "You are speeding. <break time=\"0.3s\" /> Slow down."
+      },
+      {
+        "name": "pit-limiter-warn-002",
+        "text": "Over the limit. <break time=\"0.3s\" /> Lift!"
+      },
+      {
+        "name": "pit-limiter-reminder-001",
+        "text": "The pit lane speed limit is "
+      }
+    ],
+    "pit-actions": [
+      {
+        "name": "fuel-on",
+        "text": "We're refueling at the next stop."
+      },
+      {
+        "name": "fuel-off",
+        "text": "Skipping fuel. <break time=\"0.1s\" /> Straight back out."
+      },
+      {
+        "name": "tires-on",
+        "text": "We're changing"
+      },
+      {
+        "name": "tires-off",
+        "text": "Skipping tires at the next stop."
+      },
+      {
+        "name": "tires-on-fronts",
+        "text": "both front tires",
+        "previous_text": "We're changing",
+        "next_text": "at the next pit stop."
+      },
+      {
+        "name": "tires-on-rears",
+        "text": "both rear tires",
+        "previous_text": "We're changing",
+        "next_text": "at the next pit stop."
+      },
+      {
+        "name": "tires-on-lefts",
+        "text": "both left side tires",
+        "previous_text": "We're changing",
+        "next_text": "at the next pit stop."
+      },
+      {
+        "name": "tires-on-rights",
+        "text": "both right side tires",
+        "previous_text": "We're changing",
+        "next_text": "at the next pit stop."
+      },
+      {
+        "name": "tires-on-all",
+        "text": "all tires",
+        "previous_text": "We're changing",
+        "next_text": "at the next pit stop."
+      },
+      {
+        "name": "at-the-next-stop",
+        "text": "At the next stop",
+        "previous_text": "We're changing all tires <break time=\"0.1s\" />",
+        "next_text": "<break time=\"0.1s\" />No fuel."
+      }
+    ],
+    "names": [
+      {
+        "name": "oivindl",
+        "text": "Öivin",
+        "voice_settings": {
+          "language_code": "fi"
+        }
+      },
+      {
+        "name": "niklas",
+        "text": "Niklas",
+        "previous_text": "You must do this and that,"
+      }
+    ],
+    "numbers": [
+      {
+        "name": "1",
+        "text": "one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "2",
+        "text": "two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "3",
+        "text": "three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "4",
+        "text": "four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "5",
+        "text": "five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "6",
+        "text": "six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "7",
+        "text": "seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "8",
+        "text": "eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "9",
+        "text": "nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "10",
+        "text": "ten",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "11",
+        "text": "eleven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "12",
+        "text": "twelve",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "13",
+        "text": "thirteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "14",
+        "text": "fourteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "15",
+        "text": "fifteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "16",
+        "text": "sixteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "17",
+        "text": "seventeen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "18",
+        "text": "eighteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "19",
+        "text": "nineteen",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "20",
+        "text": "twenty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "21",
+        "text": "twenty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "22",
+        "text": "twenty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "23",
+        "text": "twenty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "24",
+        "text": "twenty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "25",
+        "text": "twenty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "26",
+        "text": "twenty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "27",
+        "text": "twenty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "28",
+        "text": "twenty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "29",
+        "text": "twenty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "30",
+        "text": "thirty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "31",
+        "text": "thirty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "32",
+        "text": "thirty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "33",
+        "text": "thirty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "34",
+        "text": "thirty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "35",
+        "text": "thirty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "36",
+        "text": "thirty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "37",
+        "text": "thirty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "38",
+        "text": "thirty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "39",
+        "text": "thirty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "40",
+        "text": "forty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "41",
+        "text": "forty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "42",
+        "text": "forty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "43",
+        "text": "forty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "44",
+        "text": "forty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "45",
+        "text": "forty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "46",
+        "text": "forty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "47",
+        "text": "forty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "48",
+        "text": "forty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "49",
+        "text": "forty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "50",
+        "text": "fifty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "51",
+        "text": "fifty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "52",
+        "text": "fifty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "53",
+        "text": "fifty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "54",
+        "text": "fifty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "55",
+        "text": "fifty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "56",
+        "text": "fifty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "57",
+        "text": "fifty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "58",
+        "text": "fifty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "59",
+        "text": "fifty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "60",
+        "text": "sixty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "61",
+        "text": "sixty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "62",
+        "text": "sixty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "63",
+        "text": "sixty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "64",
+        "text": "sixty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "65",
+        "text": "sixty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "66",
+        "text": "sixty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "67",
+        "text": "sixty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "68",
+        "text": "sixty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "69",
+        "text": "sixty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "70",
+        "text": "seventy",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "71",
+        "text": "seventy-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "72",
+        "text": "seventy-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "73",
+        "text": "seventy-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "74",
+        "text": "seventy-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "75",
+        "text": "seventy-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "76",
+        "text": "seventy-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "77",
+        "text": "seventy-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "78",
+        "text": "seventy-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "79",
+        "text": "seventy-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "80",
+        "text": "eighty",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "81",
+        "text": "eighty-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "82",
+        "text": "eighty-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "83",
+        "text": "eighty-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "84",
+        "text": "eighty-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "85",
+        "text": "eighty-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "86",
+        "text": "eighty-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "87",
+        "text": "eighty-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "88",
+        "text": "eighty-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "89",
+        "text": "eighty-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "90",
+        "text": "ninety",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "91",
+        "text": "ninety-one",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "92",
+        "text": "ninety-two",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "93",
+        "text": "ninety-three",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "94",
+        "text": "ninety-four",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "95",
+        "text": "ninety-five",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "96",
+        "text": "ninety-six",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "97",
+        "text": "ninety-seven",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "98",
+        "text": "ninety-eight",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "99",
+        "text": "ninety-nine",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      },
+      {
+        "name": "100",
+        "text": "one hundred",
+        "previous_text": "fueling ",
+        "next_text": " <break time=\"0.1s\" /> liters"
+      }
+    ]
+  }
+}

@@ -26,7 +26,11 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
 const OUTPUT_FILE = path.join(PACKAGE_ROOT, "manifest.json");
 
-const IGNORED_DIRS = new Set(["node_modules", "scripts"]);
+// `voice/` is the TTS-generator output tree (see src/generate/). It's not
+// shipped to plugins yet (see processAndCopyAudioAssetsPlugin's SKIP_FOLDERS),
+// so excluding it here keeps the committed manifest stable across local TTS
+// runs.
+const IGNORED_DIRS = new Set(["node_modules", "scripts", "voice"]);
 
 /**
  * Collect every .mp3 under `dir` (recursive) as a list of package-root-relative
@@ -77,6 +81,14 @@ function main() {
   console.log(`Clips: ${manifest.clips.length}`);
 }
 
-if (import.meta.url === `file://${process.argv[1].split(path.sep).join("/")}` || process.argv[1] === url.fileURLToPath(import.meta.url)) {
+// Direct-exec guard: only run main() when this file was executed as the entry
+// script. Tolerate missing argv[1] (e.g., when imported by a test runner) so
+// importing buildManifest() doesn't throw at module-eval time.
+const invokedPath = process.argv[1];
+if (
+  invokedPath &&
+  (import.meta.url === url.pathToFileURL(invokedPath).href ||
+    invokedPath === url.fileURLToPath(import.meta.url))
+) {
   main();
 }
