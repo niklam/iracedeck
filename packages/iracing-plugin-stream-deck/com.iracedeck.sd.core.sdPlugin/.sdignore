@@ -38,6 +38,9 @@
 **/node_modules/*/src/
 **/node_modules/@*/*/src/
 
+# Compiled test artifacts in shipped dist/ folders
+**/node_modules/**/dist/**/*.test.*
+
 # iRacing SDK reference projects and build scripts (not runtime artifacts)
 **/node_modules/@iracedeck/*/assets/
 **/node_modules/@iracedeck/*/scripts/
