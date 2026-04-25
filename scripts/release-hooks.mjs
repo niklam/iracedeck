@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const version = process.argv[2];
@@ -10,20 +10,31 @@ if (!version) {
 
 const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
 
-// Bump version in all packages/*/package.json
-const packageJsonPaths = [
-  "packages/iracing-actions/package.json",
-  "packages/deck-adapter-elgato/package.json",
-  "packages/deck-adapter-mirabox/package.json",
-  "packages/deck-core/package.json",
-  "packages/icons/package.json",
-  "packages/iracing-native/package.json",
-  "packages/iracing-sdk/package.json",
-  "packages/logger/package.json",
-  "packages/iracing-plugin-stream-deck/package.json",
-  "packages/iracing-plugin-mirabox/package.json",
-  "packages/website/package.json",
-];
+// Packages that intentionally track their own versions and must NOT be bumped
+// by the release process. Empty today — add the package name here if a
+// package ever decouples from the monorepo's shared version.
+const SKIPPED_PACKAGES = new Set();
+
+// Discover every workspace package under packages/* that declares a `version`.
+// Replaces the previous hardcoded list which silently skipped new packages
+// (see issue #435 — eight packages had drifted multiple minors behind because
+// they were never added to the static array).
+const packagesDir = join(root, "packages");
+const packageJsonPaths = readdirSync(packagesDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => `packages/${entry.name}/package.json`)
+  .filter((rel) => {
+    const filePath = join(root, rel);
+    if (!existsSync(filePath)) return false;
+    const pkg = JSON.parse(readFileSync(filePath, "utf-8"));
+    if (!pkg.version) return false;
+    if (SKIPPED_PACKAGES.has(pkg.name)) {
+      console.log(`  Skipping ${pkg.name} (opted out via SKIPPED_PACKAGES)`);
+      return false;
+    }
+    return true;
+  })
+  .sort();
 
 // Bump Version in manifest.json files. Elgato's manifest schema requires a
 // strict 4-part numeric format `{major}.{minor}.{patch}.{build}`
@@ -39,9 +50,12 @@ const manifestPaths = [
 // modify real package.json / manifest.json files and stage them with `git add`.
 // `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
 if (process.env.RELEASE_IT_DRY_RUN === "1") {
+  console.log(`  [dry-run] Would bump ${packageJsonPaths.length} package.json files to version ${version}:`);
+  for (const rel of packageJsonPaths) console.log(`    - ${rel}`);
   console.log(
-    `  [dry-run] Would bump ${packageJsonPaths.length} package.json files and ${manifestPaths.length} manifest.json files to version ${version}`,
+    `  [dry-run] Would bump ${manifestPaths.length} manifest.json files to version ${version.replace(/[-+].*$/, "")}.0:`,
   );
+  for (const rel of manifestPaths) console.log(`    - ${rel}`);
   process.exit(0);
 }
 
