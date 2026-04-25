@@ -87,14 +87,13 @@ importers:
   packages/audio-assets: {}
 
   packages/audio-native:
-    dependencies:
-      node-addon-api:
-        specifier: 8.7.0
-        version: 8.7.0
     devDependencies:
       '@types/node':
         specifier: 25.6.0
         version: 25.6.0
+      node-addon-api:
+        specifier: 8.7.0
+        version: 8.7.0
       node-gyp:
         specifier: 12.2.0
         version: 12.2.0
@@ -340,14 +339,13 @@ importers:
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.0)(yaml@2.8.3))
 
   packages/iracing-native:
-    dependencies:
-      node-addon-api:
-        specifier: 8.7.0
-        version: 8.7.0
     devDependencies:
       '@types/node':
         specifier: 25.6.0
         version: 25.6.0
+      node-addon-api:
+        specifier: 8.7.0
+        version: 8.7.0
       node-gyp:
         specifier: 12.2.0
         version: 12.2.0
