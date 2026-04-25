@@ -1,55 +1,56 @@
 /// <reference lib="dom" />
 /**
- * Race Engineer Voice Select Web Component for Stream Deck Property Inspector
+ * Driver Name Select Web Component for Stream Deck Property Inspector
  *
- * A styled `<select>` bound to a plugin-global setting that stores the
- * active Race Engineer voice key (e.g. `"luca"`, `"titan"`). Options come
- * from a second global setting (a JSON string array of voice keys) which
- * the plugin maintains by inspecting `voice/<voice>/…` paths in
- * `@iracedeck/audio-assets/manifest.json`.
+ * A `<select>` bound to a plugin-global setting that stores the driver
+ * name the engineer addresses the user as (e.g. `"niklas"`, `"oivindl"`).
+ * Options come from a second global setting (a JSON string array of name
+ * keys) which the plugin maintains by inspecting `voice/<voice>/names/…`
+ * paths in `@iracedeck/audio-assets/manifest.json`.
  *
- * If the persisted voice isn't in the current list (e.g. a TTS regen
- * removed it), the dropdown falls back to the first available voice and
- * persists that choice.
+ * Falls back to the first available name when the persisted value is
+ * gone (e.g. a TTS regen removed it) and persists the fallback so
+ * dropdown and setting stay in sync.
  *
  * Usage:
  * ```html
- * <sdpi-item label="Race Engineer Voice">
- *   <ird-voice-select
- *     setting="raceEngineerVoice"
- *     voices="_raceEngineerVoices"
- *   ></ird-voice-select>
+ * <sdpi-item label="Your Name">
+ *   <ird-name-select
+ *     setting="driverName"
+ *     names="_driverNames"
+ *   ></ird-name-select>
  * </sdpi-item>
  * ```
  *
  * Attributes:
- * - setting: Plugin-global setting key holding the chosen voice
- *   (default: `raceEngineerVoice`).
- * - voices: Plugin-global setting key holding the JSON array of available
- *   voice keys (default: `_raceEngineerVoices`).
+ * - setting: Plugin-global setting key holding the chosen name
+ *   (default: `driverName`).
+ * - names: Plugin-global setting key holding the JSON array of
+ *   available name keys (default: `_driverNames`).
  *
- * The plugin populates `voices` via `updateGlobalSettings({ [voicesKey]: JSON.stringify(list) })`.
+ * The plugin populates `names` via
+ * `updateGlobalSettings({ [namesKey]: JSON.stringify(list) })`.
  */
 
 let styleInjected = false;
 
-const DEFAULT_SETTING = "raceEngineerVoice";
-const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
+const DEFAULT_SETTING = "driverName";
+const DEFAULT_NAMES_SETTING = "_driverNames";
 
 function titleCase(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export class VoiceSelect extends HTMLElement {
+export class NameSelect extends HTMLElement {
   private select: HTMLSelectElement | null = null;
   private savedValue = "";
   private saveToStreamDeck: ((value: string) => void) | null = null;
   private _initialized = false;
-  // Mirror of audio-device-select's `devicesLoaded` guard: the chosen-voice
-  // callback routinely fires before the voices-list callback, and
-  // overwriting the saved key on that first apply would throw away the
-  // user's real selection.
-  private voicesLoaded = false;
+  // Mirror of voice-select / audio-device-select: the chosen-name callback
+  // routinely fires before the names-list callback, and overwriting the
+  // saved key on that first apply would throw away the user's real
+  // selection.
+  private namesLoaded = false;
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -65,12 +66,8 @@ export class VoiceSelect extends HTMLElement {
   private injectStyle(): void {
     if (styleInjected || typeof document === "undefined") return;
 
-    // Stretch to fill the row but otherwise let the browser's native dark
-    // <select> rendering show through — matches `<sdpi-select>` (chevron,
-    // background, padding) instead of the half-styled raw look the heavier
-    // overrides produced.
     const style = document.createElement("style");
-    style.textContent = `ird-voice-select select { width: 100%; }`;
+    style.textContent = `ird-name-select select { width: 100%; }`;
     document.head.appendChild(style);
     styleInjected = true;
   }
@@ -85,8 +82,6 @@ export class VoiceSelect extends HTMLElement {
     this.select?.addEventListener("change", (ev: Event) => {
       if (!this.select) return;
 
-      // Mirror audio-device-select: stop the bubbled native event so the
-      // host's own dispatch isn't seen twice by listeners.
       ev.stopPropagation();
 
       this.savedValue = this.select.value;
@@ -99,7 +94,7 @@ export class VoiceSelect extends HTMLElement {
     if (!window.SDPIComponents) return;
 
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
-    const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
+    const namesKey = this.getAttribute("names") ?? DEFAULT_NAMES_SETTING;
 
     const [, save] = window.SDPIComponents.useGlobalSettings(settingKey, (value: string) => {
       const v: unknown = value;
@@ -108,7 +103,7 @@ export class VoiceSelect extends HTMLElement {
     });
     this.saveToStreamDeck = save;
 
-    window.SDPIComponents.useGlobalSettings(voicesKey, (value: string) => {
+    window.SDPIComponents.useGlobalSettings(namesKey, (value: string) => {
       if (!value) return;
 
       try {
@@ -116,10 +111,10 @@ export class VoiceSelect extends HTMLElement {
 
         if (!Array.isArray(list)) return;
 
-        const voices = list.filter((v): v is string => typeof v === "string" && v.length > 0);
+        const names = list.filter((v): v is string => typeof v === "string" && v.length > 0);
 
-        this.renderOptions(voices);
-        this.voicesLoaded = true;
+        this.renderOptions(names);
+        this.namesLoaded = true;
         this.applySavedValue();
       } catch {
         // ignore parse errors; dropdown keeps prior options
@@ -127,15 +122,15 @@ export class VoiceSelect extends HTMLElement {
     });
   }
 
-  private renderOptions(voices: string[]): void {
+  private renderOptions(names: string[]): void {
     if (!this.select) return;
 
     this.select.replaceChildren();
 
-    for (const voice of voices) {
+    for (const name of names) {
       const opt = document.createElement("option");
-      opt.value = voice;
-      opt.textContent = titleCase(voice);
+      opt.value = name;
+      opt.textContent = titleCase(name);
       this.select.appendChild(opt);
     }
   }
@@ -151,12 +146,10 @@ export class VoiceSelect extends HTMLElement {
       return;
     }
 
-    // Saved value isn't in the list (cold start with no preference, or a
-    // voice was removed). Fall back to the first available voice.
     const fallback = this.select.options[0].value;
     this.select.value = fallback;
 
-    if (!this.voicesLoaded) return;
+    if (!this.namesLoaded) return;
 
     if (this.savedValue !== fallback) {
       this.savedValue = fallback;
@@ -166,7 +159,7 @@ export class VoiceSelect extends HTMLElement {
 }
 
 if (typeof customElements !== "undefined") {
-  if (!customElements.get("ird-voice-select")) {
-    customElements.define("ird-voice-select", VoiceSelect);
+  if (!customElements.get("ird-name-select")) {
+    customElements.define("ird-name-select", NameSelect);
   }
 }

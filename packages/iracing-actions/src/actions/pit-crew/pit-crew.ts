@@ -1,5 +1,5 @@
 import { playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
-import { AudioBus, getAudio } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
   CommonSettings,
@@ -18,6 +18,8 @@ import {
   type IDeckWillDisappearEvent,
   onGlobalSettingsChange,
   renderIconTemplate,
+  resolveActiveDriverName,
+  resolveActiveRaceEngineerVoice,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -94,6 +96,88 @@ function readRadarVolume(): number {
  */
 export function applyRadarVolume(): void {
   getAudio().setBusVolume(AudioBus.Alerts, readRadarVolume() / 100);
+}
+
+function readRaceEngineerVolume(): number {
+  const raw = (getGlobalSettings() as Record<string, unknown>).raceEngineerVolume;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
+
+  if (!Number.isFinite(n)) return VOLUME_MAX;
+
+  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
+}
+
+/**
+ * @internal Exported for testing.
+ *
+ * Copy the current global `raceEngineerVolume` onto `AudioBus.Voice`.
+ * Mirrors `applyRadarVolume` for the engineer voice channel.
+ */
+export function applyRaceEngineerVolume(): void {
+  getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
+}
+
+/**
+ * Read a JSON-array global-settings value (used for the runtime-pushed
+ * voice + driver-name lists). Returns an empty array if missing or
+ * malformed — callers treat that as "list not available yet" and skip
+ * the dependent path rather than throw.
+ */
+function readJsonStringArray(key: string): string[] {
+  const raw = (getGlobalSettings() as Record<string, unknown>)[key];
+
+  if (typeof raw !== "string" || raw.length === 0) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((v): v is string => typeof v === "string" && v.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** Opener clips used by the Race Engineer Test playback. Picks one at random
+ * to vary what the user hears across presses. */
+const RACE_ENGINEER_TEST_OPENERS = ["alright", "hi", "right", "so"] as const;
+
+/**
+ * @internal Exported for testing.
+ *
+ * Play a short engineer-voice preview on `AudioChannel.Voice` using the
+ * active voice + driver name: a random opener (`"alright"` etc.) chained
+ * to the chosen driver-name clip via `onChannelComplete`. Lets the user
+ * audition the voice + radio filter + current bus volume from the PI.
+ *
+ * Returns true once the opener is queued (the chained name plays via the
+ * completion callback). Returns false only when no voice is available —
+ * the test button silently no-ops in that case and the action logs.
+ */
+export function playRaceEngineerVoiceTest(): boolean {
+  const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+
+  if (!voice) return false;
+
+  const opener = RACE_ENGINEER_TEST_OPENERS[Math.floor(Math.random() * RACE_ENGINEER_TEST_OPENERS.length)];
+  const openerPath = `voice/${voice}/openers/${opener}.mp3`;
+  const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"));
+  const namePath = driverName ? `voice/${voice}/names/${driverName}.mp3` : null;
+
+  if (!namePath) {
+    return getAudio().playOnChannel(AudioChannel.Voice, openerPath);
+  }
+
+  // Chain opener → name. `onChannelComplete` fires once when the opener
+  // finishes; we register the next clip from there.
+  if (!getAudio().playOnChannel(AudioChannel.Voice, openerPath)) return false;
+
+  getAudio().onChannelComplete(AudioChannel.Voice, () => {
+    getAudio().playOnChannel(AudioChannel.Voice, namePath);
+  });
+
+  return true;
 }
 
 /**
@@ -267,6 +351,9 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
    */
   private readonly lastRadarTestTimestamps = new Map<string, number>();
 
+  /** Per-context baseline for the engineer-voice test button (mirrors radar). */
+  private readonly lastRaceEngineerTestTimestamps = new Map<string, number>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
@@ -277,9 +364,10 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.settingsCache.set(contextId, settings);
     this.visibleContexts.add(contextId);
 
-    // Seed test-button timestamp so the first onDidReceiveSettings doesn't
-    // replay the previous play when the PI rehydrates the hidden textfield.
+    // Seed test-button timestamps so the first onDidReceiveSettings doesn't
+    // replay the previous play when the PI rehydrates the hidden textfields.
     this.lastRadarTestTimestamps.set(contextId, Number(raw._testRadarVolume ?? 0));
+    this.lastRaceEngineerTestTimestamps.set(contextId, Number(raw._testRaceEngineerVoice ?? 0));
 
     // Re-render on any global-settings change — every mode depends on at
     // least one global, so every change can affect the rendered state bar
@@ -293,6 +381,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       onGlobalSettingsChange(() => {
         applyRadarVolume();
         applyRadarEnabled();
+        applyRaceEngineerVolume();
         void this.rerender(contextId);
       }),
     );
@@ -301,6 +390,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // the first mount sets the initial values; later mounts re-assert them.
     applyRadarVolume();
     applyRadarEnabled();
+    applyRaceEngineerVolume();
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
 
@@ -321,6 +411,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.settingsCache.delete(contextId);
     this.visibleContexts.delete(contextId);
     this.lastRadarTestTimestamps.delete(contextId);
+    this.lastRaceEngineerTestTimestamps.delete(contextId);
 
     await super.onWillDisappear(ev);
   }
@@ -347,6 +438,20 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     }
 
     this.lastRadarTestTimestamps.set(contextId, radarTestTimestamp);
+
+    // Same edge-trigger pattern for the engineer-voice Test button.
+    const voiceTestTimestamp = Number(raw._testRaceEngineerVoice ?? 0);
+    const lastVoiceTestTimestamp = this.lastRaceEngineerTestTimestamps.get(contextId) ?? 0;
+
+    if (voiceTestTimestamp > 0 && voiceTestTimestamp !== lastVoiceTestTimestamp) {
+      this.logger.info("Playing race engineer voice test");
+
+      if (!playRaceEngineerVoiceTest()) {
+        this.logger.warn("Race engineer voice test skipped — no voice available");
+      }
+    }
+
+    this.lastRaceEngineerTestTimestamps.set(contextId, voiceTestTimestamp);
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
   }

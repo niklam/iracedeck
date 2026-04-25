@@ -22,6 +22,9 @@ export { AudioTest } from "./audio-test.js";
 // Voice Select - global Race Engineer voice dropdown populated from a voices-list global
 export { VoiceSelect } from "./voice-select.js";
 
+// Name Select - global Race Engineer driver-name dropdown populated from a names-list global
+export { NameSelect } from "./name-select.js";
+
 // Color Picker - custom color picker with "not set" state and inline hex display
 export { ColorPicker } from "./color-picker.js";
 

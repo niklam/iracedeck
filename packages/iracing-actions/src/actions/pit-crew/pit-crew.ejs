@@ -26,14 +26,23 @@
 			accordionId: 'pitCrewAudio',
 			open: true,
 			content:
+				'<sdpi-item label="Race Engineer Voice">' +
+					'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Your Name">' +
+					'<ird-name-select setting="driverName" names="_driverNames"></ird-name-select>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Race Engineer Volume">' +
+					'<div style="display:flex;align-items:center;gap:8px;">' +
+						'<ird-range-input setting="raceEngineerVolume" global min="0" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
+						'<ird-audio-test target="test-race-engineer-voice-field" label="Test"></ird-audio-test>' +
+					'</div>' +
+				'</sdpi-item>' +
 				'<sdpi-item label="Radar Volume">' +
 					'<div style="display:flex;align-items:center;gap:8px;">' +
 						'<ird-range-input setting="radarVolume" global min="0" max="100" step="1" default="100" style="flex:1;"></ird-range-input>' +
 						'<ird-audio-test target="test-radar-field" label="Test"></ird-audio-test>' +
 					'</div>' +
-				'</sdpi-item>' +
-				'<sdpi-item label="Race Engineer Voice">' +
-					'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Output Device">' +
 					'<ird-audio-device-select setting="audioOutputDevice" devices="_audioDeviceList" default-label="System Default"></ird-audio-device-select>' +
@@ -42,6 +51,7 @@
 
 		<div style="display:none;">
 			<sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
+			<sdpi-textfield id="test-race-engineer-voice-field" setting="_testRaceEngineerVoice"></sdpi-textfield>
 		</div>
 
 		<script>

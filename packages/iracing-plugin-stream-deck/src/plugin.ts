@@ -157,6 +157,31 @@ const raceEngineerVoices = (() => {
   return Array.from(voices).sort();
 })();
 
+// Derive the available driver-name keys (the names the engineer will
+// address the user as) from `voice/<voice>/names/<name>.mp3` paths.
+// Sorted alphabetically so the PI dropdown is predictable. The set is
+// the union across voices — a name only present for one voice still
+// shows up; the test playback skips gracefully when the active voice
+// has no clip for the chosen name.
+const driverNames = (() => {
+  const names = new Set<string>();
+
+  for (const clip of audioAssetsManifest.clips) {
+    if (!clip.startsWith("voice/")) continue;
+
+    const segments = clip.split("/");
+
+    if (segments.length === 4 && segments[2] === "names") {
+      const file = segments[3];
+      const name = file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file;
+
+      if (name.length > 0) names.add(name);
+    }
+  }
+
+  return Array.from(names).sort();
+})();
+
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
@@ -201,11 +226,11 @@ function pushAudioDevicesIfChanged(): void {
   updateGlobalSettings({ _audioDeviceList: json });
 }
 
-// Push the Race Engineer voices list to global settings. The payload is
-// derived from the bundled manifest and never changes at runtime, but we
-// still re-push on every PI appear (cheap; deduped via the cache below)
-// so a PI opened before the first global-settings echo still gets
-// populated.
+// Push the Race Engineer voices + names lists to global settings. Both
+// payloads are derived from the bundled manifest and never change at
+// runtime, but we still re-push on every PI appear (cheap; deduped via
+// the caches below) so a PI opened before the first global-settings echo
+// still gets populated.
 const raceEngineerVoiceListJson = JSON.stringify(raceEngineerVoices);
 let lastPushedVoiceListJson = "";
 
@@ -214,6 +239,16 @@ function pushRaceEngineerVoicesIfChanged(): void {
 
   lastPushedVoiceListJson = raceEngineerVoiceListJson;
   updateGlobalSettings({ _raceEngineerVoices: raceEngineerVoiceListJson });
+}
+
+const driverNameListJson = JSON.stringify(driverNames);
+let lastPushedDriverNameListJson = "";
+
+function pushDriverNamesIfChanged(): void {
+  if (driverNameListJson === lastPushedDriverNameListJson) return;
+
+  lastPushedDriverNameListJson = driverNameListJson;
+  updateGlobalSettings({ _driverNames: driverNameListJson });
 }
 
 onGlobalSettingsChange((settings) => {
@@ -229,6 +264,7 @@ onGlobalSettingsChange((settings) => {
   }
 
   pushRaceEngineerVoicesIfChanged();
+  pushDriverNamesIfChanged();
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
@@ -261,6 +297,7 @@ onGlobalSettingsChange((settings) => {
 adapter.onPropertyInspectorDidAppear(() => {
   pushAudioDevicesIfChanged();
   pushRaceEngineerVoicesIfChanged();
+  pushDriverNamesIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action

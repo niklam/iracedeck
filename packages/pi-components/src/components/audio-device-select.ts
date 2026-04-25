@@ -70,17 +70,12 @@ export class AudioDeviceSelect extends HTMLElement {
   private injectStyle(): void {
     if (styleInjected || typeof document === "undefined") return;
 
+    // Stretch to fill the row but otherwise let the browser's native dark
+    // <select> rendering show through — matches `<sdpi-select>` (chevron,
+    // background, padding) instead of the half-styled raw look the heavier
+    // overrides produced.
     const style = document.createElement("style");
-    style.textContent = `
-      ird-audio-device-select select {
-        width: 100%;
-        padding: 4px;
-        background: #2a2a2a;
-        color: #c8c8c8;
-        border: 1px solid #555;
-        border-radius: 4px;
-      }
-    `;
+    style.textContent = `ird-audio-device-select select { width: 100%; }`;
     document.head.appendChild(style);
     styleInjected = true;
   }

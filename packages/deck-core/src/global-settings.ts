@@ -140,6 +140,15 @@ export const GlobalSettingsSchema = z
      * disabling the feature. Default: 100.
      */
     raceEngineerVolume: z.coerce.number().min(0).max(100).default(100),
+    /**
+     * Driver name the Race Engineer addresses the user as — the key
+     * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
+     * Substituted into welcome / pit-callout flows by referencing
+     * `voice/{voice}/names/{driverName}.mp3`. Empty string means "no
+     * name picked" — the plugin seeds the first available name on
+     * startup.
+     */
+    driverName: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
   })
   .passthrough();
 
@@ -350,6 +359,25 @@ export function resolveActiveRaceEngineerVoice(availableVoices: readonly string[
   }
 
   return availableVoices[0];
+}
+
+/**
+ * Resolve the active driver-name key (the name the engineer addresses
+ * the user as). Same fallback shape as `resolveActiveRaceEngineerVoice`:
+ * returns the persisted value when available, the first list entry as a
+ * graceful fallback, or `null` when no names exist (caller should skip
+ * name-dependent playback).
+ */
+export function resolveActiveDriverName(availableNames: readonly string[]): string | null {
+  if (availableNames.length === 0) return null;
+
+  const chosen = currentSettings.driverName ?? "";
+
+  if (chosen.length > 0 && availableNames.includes(chosen)) {
+    return chosen;
+  }
+
+  return availableNames[0];
 }
 
 /**
