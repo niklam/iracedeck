@@ -28,6 +28,33 @@
     }
   },
   "groups": {
+    "acknowledgment": [
+      {
+        "name": "okay",
+        "text": "Okay.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "got-it",
+        "text": "Got it.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "roger-that",
+        "text": "Roger that.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "copy-that",
+        "text": "Copy that.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "we-got-that",
+        "text": "We got that.",
+        "next_text": " Fuel on at the next stop."
+      }
+    ],
     "units": [
       {
         "name": "km",
