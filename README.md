@@ -112,7 +112,7 @@ packages/
 
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@iracedeck/iracing-actions`              | All 30 action implementations, platform-agnostic                                          |
+| `@iracedeck/iracing-actions`              | All 31 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
