@@ -13,6 +13,12 @@ export type MaterialSample = {
   material: number; // TrkSurf-like enum value
 };
 
+/** Per-service debounce tracker for single-bit pit-service toggles. */
+export type ServiceDebounceState = {
+  pendingAt: number; // 0 = stable; >0 = ms timestamp of most recent flip
+  lastSeen: boolean; // most recent observed bit value
+};
+
 export type TranslatorState = {
   // ── Pit lane / stall ────────────────────────────────────────────────────
   pitLaneInitialized: boolean;
@@ -28,11 +34,22 @@ export type TranslatorState = {
 
   // ── Toggles (pit service, car control) ──────────────────────────────────
   toggleStateInitialized: boolean;
-  lastPitSvFlags: number;
+  lastPitSvFlags: number; // For tire & pit-service bits this is the BASELINE (last emitted), not "previous tick".
   lastPitSvCompound: number;
   lastLimiterActive: boolean;
   lastP2PActive: boolean;
   lastDrsActive: boolean;
+  // Pit-service debounce — coalesce iRacing's multi-tick transitions and
+  // the user's rapid intent oscillations (e.g. accidental tap-tap on a
+  // button). Each service tracks its own last-seen value and the
+  // timestamp of the most recent flip; an event emits only after the bit
+  // has been stable for the debounce window.
+  fuelDebounce: ServiceDebounceState;
+  windshieldDebounce: ServiceDebounceState;
+  fastRepairDebounce: ServiceDebounceState;
+  // Tire debounce — same model but over a 4-bit set rather than a single bit.
+  lastSeenTireFlags: number; // most recent observed tire bits (any tick)
+  lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -90,6 +107,11 @@ export function createInitialState(): TranslatorState {
     lastLimiterActive: false,
     lastP2PActive: false,
     lastDrsActive: false,
+    fuelDebounce: { pendingAt: 0, lastSeen: false },
+    windshieldDebounce: { pendingAt: 0, lastSeen: false },
+    fastRepairDebounce: { pendingAt: 0, lastSeen: false },
+    lastSeenTireFlags: 0,
+    lastTireChangeAt: 0,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

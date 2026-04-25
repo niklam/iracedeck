@@ -28,14 +28,13 @@ import { silentLogger } from "@iracedeck/logger";
 
 import type { ResolvedStep, Scenario, ScenarioContext, ScenarioPriority } from "./dsl.js";
 import { applyBase, resolveStep } from "./dsl.js";
+// Manifest types + helpers live in `./manifest.js` to break a circular
+// import with `./validation.js`, which also needs `manifestVoices`.
+import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 import { validateScenario } from "./validation.js";
 
-/** Manifest shape the interpreter needs; matches `@iracedeck/audio-assets/manifest.json`. */
-export type AudioAssetsManifest = {
-  clips: string[];
-  ambientLoop: string;
-  ticks: { open: string; close: string };
-};
+// Re-export so existing consumers of `interpreter.js` keep their import paths.
+export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 
 export interface IScenarioEngine {
   defineScenario(s: Scenario): void;
@@ -112,17 +111,46 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly audio: IAudioService;
   private readonly manifest: AudioAssetsManifest;
   private readonly logger: ILogger;
+  /**
+   * Resolves the active Race Engineer voice key (e.g. `"luca"`) at clip-
+   * resolution time. Used to substitute `{voice}` placeholders in scenario
+   * `base` and pool clips. Returns `null` if no voice is selected.
+   */
+  private readonly getActiveVoice: () => string | null;
 
   private readonly scenarios = new Map<string, CompiledScenario>();
   private readonly pools = new Map<string, PoolState>();
   private readonly vars = new Map<string, () => string | null>();
   private readonly busState = new Map<AudioBus, BusState>();
 
-  constructor(eventBus: IEventBus, audio: IAudioService, manifest: AudioAssetsManifest, logger: ILogger) {
+  constructor(
+    eventBus: IEventBus,
+    audio: IAudioService,
+    manifest: AudioAssetsManifest,
+    logger: ILogger,
+    getActiveVoice: () => string | null = () => null,
+  ) {
     this.eventBus = eventBus;
     this.audio = audio;
     this.manifest = manifest;
     this.logger = logger;
+    this.getActiveVoice = getActiveVoice;
+  }
+
+  /**
+   * Substitute `{voice}` in a path with the active voice. No-op when the
+   * path has no placeholder. Returns the path unchanged when the placeholder
+   * is present but no voice is selected — the resulting malformed path
+   * (e.g. `voice//pit-actions/fuel-on.mp3`) will fail to play and surface
+   * loudly via the audio engine, which is the right behaviour: a templated
+   * scenario without a voice means the user hasn't picked one yet.
+   */
+  private substituteVoice(path: string): string {
+    if (!path.includes("{voice}")) return path;
+
+    const voice = this.getActiveVoice() ?? "";
+
+    return path.replace(/\{voice\}/g, voice);
   }
 
   // ── Definition API ──
@@ -174,7 +202,23 @@ class ScenarioEngine implements IScenarioEngine {
       this.logger.warn(`Pool "${name}" redefined`);
     }
 
-    const missing = clips.filter((c) => !this.manifest.clips.includes(c));
+    // For `{voice}`-templated clips we expand against every voice present in
+    // the manifest and require all variants to exist; this catches typos
+    // (`{voce}`) and missing-voice gaps at definition time, not at fire time.
+    const voices = manifestVoices(this.manifest);
+    const missing: string[] = [];
+
+    for (const clip of clips) {
+      if (clip.includes("{voice}")) {
+        for (const voice of voices) {
+          const resolved = clip.replace(/\{voice\}/g, voice);
+
+          if (!this.manifest.clips.includes(resolved)) missing.push(resolved);
+        }
+      } else if (!this.manifest.clips.includes(clip)) {
+        missing.push(clip);
+      }
+    }
 
     if (missing.length > 0) {
       this.logger.error(`Pool "${name}" rejected; unknown clips:\n  - ${missing.join("\n  - ")}`);
@@ -268,10 +312,16 @@ class ScenarioEngine implements IScenarioEngine {
       const running = this.scenarios.get(state.playingId);
       const runningPriority: ScenarioPriority = running?.raw.priority ?? "normal";
 
+      // Same-family preemption: a new event in a family invalidates the
+      // in-flight callout for that family (e.g. tire-set switch mid-playback).
+      const sameFamily =
+        entry.raw.family !== undefined && running !== undefined && entry.raw.family === running.raw.family;
+
       const canPreempt =
-        priority === "urgent" &&
-        entry.raw.preempt === true &&
-        PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority];
+        sameFamily ||
+        (priority === "urgent" &&
+          entry.raw.preempt === true &&
+          PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority]);
 
       if (canPreempt) {
         this.cancelActiveFire(state);
@@ -475,7 +525,7 @@ class ScenarioEngine implements IScenarioEngine {
     for (const step of steps) {
       switch (step.kind) {
         case "clip":
-          this.pushClip(out, applyBase(base, step.path), defaultChannel);
+          this.pushClip(out, this.substituteVoice(applyBase(base, step.path)), defaultChannel);
           break;
 
         case "var": {
@@ -483,7 +533,7 @@ class ScenarioEngine implements IScenarioEngine {
           const value = resolver ? resolver() : null;
           ctx.vars[step.name] = value;
 
-          if (value) this.pushClip(out, value, defaultChannel);
+          if (value) this.pushClip(out, this.substituteVoice(value), defaultChannel);
 
           break;
         }
@@ -491,7 +541,7 @@ class ScenarioEngine implements IScenarioEngine {
         case "pool": {
           const pick = this.pickFromPool(step.name, step.noRepeat);
 
-          if (pick) this.pushClip(out, pick, defaultChannel);
+          if (pick) this.pushClip(out, this.substituteVoice(pick), defaultChannel);
 
           break;
         }
@@ -613,12 +663,13 @@ export function initializeAudioScenarios(
   audio: IAudioService,
   manifest: AudioAssetsManifest,
   logger: ILogger = silentLogger,
+  getActiveVoice: () => string | null = () => null,
 ): IScenarioEngine {
   if (engine) {
     throw new Error("Audio scenarios already initialized. initializeAudioScenarios() should only be called once.");
   }
 
-  const built = new ScenarioEngine(eventBus, audio, manifest, logger);
+  const built = new ScenarioEngine(eventBus, audio, manifest, logger, getActiveVoice);
   logger.info("Audio scenarios initialized");
   engine = built;
 

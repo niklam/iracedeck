@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
-import { RADIO_ENGINEER_FILTER, VOICE_CATEGORIES } from "../presets.mjs";
+import { RADIO_ENGINEER_FILTER } from "../presets.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -18,12 +18,13 @@ const CACHE_ROOT = path.join(packageRoot, ".cache");
 
 // Top-level entries under packages/audio-assets/ that must never be copied
 // into the plugin's assets/audio/ output (tooling, package plumbing, our own
-// cache, and the TTS-generated tree which is not yet wired to ship).
-const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src", "voice"]);
-// The pit-crew/ tree groups every voice-line category. Subdirectories matching
-// VOICE_CATEGORIES are routed through the radio filter; anything else inside
-// pit-crew/ is copied unchanged.
-const VOICE_PARENT = "pit-crew";
+// cache).
+const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src"]);
+// The voice/ tree holds all radio-engineer voice clips, organised as
+// voice/<voice>/<category>/*.mp3. Every .mp3 under it (at any depth) gets
+// the radio filter; anything outside voice/ (currently sfx/) is copied
+// unchanged so SFX tones, ticks and squelch beeps stay clean.
+const VOICE_ROOT = "voice";
 
 function filterHash(chain) {
   return createHash("sha256").update(chain).digest("hex").slice(0, 8);
@@ -84,9 +85,9 @@ function cacheIsFresh(sourcePath, cachedPath) {
 
 /**
  * Rollup plugin. On generateBundle, copies `packages/audio-assets/` into the
- * plugin's `{sdPlugin}/assets/audio/` directory. MP3s in VOICE_CATEGORIES
- * pass through ffmpeg with RADIO_ENGINEER_FILTER applied; everything else is
- * copied unchanged.
+ * plugin's `{sdPlugin}/assets/audio/` directory. Every .mp3 under voice/
+ * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
+ * everything outside voice/ (currently sfx/) is copied unchanged.
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<filter-hash>/`
  * keyed on the filter chain so that a filter-string change invalidates the
@@ -104,7 +105,13 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
     async generateBundle() {
       if (!existsSync(audioAssetsPath)) return;
 
+      // Clear destRoot before recreating so renamed/removed top-level
+      // folders (e.g. the legacy `pit-crew/` after #441 §1) don't leak
+      // into the bundled output across incremental dev builds. The cache
+      // under `.cache/` is keyed by filter hash and lives outside
+      // destRoot, so this doesn't invalidate it.
       const destRoot = path.join(sdPlugin, "assets", "audio");
+      rmSync(destRoot, { recursive: true, force: true });
       mkdirSync(destRoot, { recursive: true });
 
       const tasks = [];
@@ -112,17 +119,24 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
       let cached = 0;
       let copiedAsIs = 0;
 
-      const queueVoiceCategory = (srcCategoryDir, destCategoryDir, cacheCategoryDir) => {
-        mkdirSync(destCategoryDir, { recursive: true });
-        mkdirSync(cacheCategoryDir, { recursive: true });
+      // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
+      // processing. Preserves directory structure under destRoot/cacheRoot.
+      const queueVoiceTree = (srcDir, destDir, cacheDir) => {
+        mkdirSync(destDir, { recursive: true });
+        mkdirSync(cacheDir, { recursive: true });
 
-        for (const fileEntry of readdirSync(srcCategoryDir, { withFileTypes: true })) {
-          if (!fileEntry.isFile()) continue;
-          if (!fileEntry.name.toLowerCase().endsWith(".mp3")) continue;
+        for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+          const srcPath = path.join(srcDir, entry.name);
 
-          const srcPath = path.join(srcCategoryDir, fileEntry.name);
-          const cachedPath = path.join(cacheCategoryDir, fileEntry.name);
-          const destPath = path.join(destCategoryDir, fileEntry.name);
+          if (entry.isDirectory()) {
+            queueVoiceTree(srcPath, path.join(destDir, entry.name), path.join(cacheDir, entry.name));
+            continue;
+          }
+
+          if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
+
+          const cachedPath = path.join(cacheDir, entry.name);
+          const destPath = path.join(destDir, entry.name);
 
           if (cacheIsFresh(srcPath, cachedPath)) {
             tasks.push(async () => {
@@ -141,9 +155,17 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
 
       const copyTreeAsIs = (srcDir, destDir) => {
         cpSync(srcDir, destDir, { recursive: true });
-        for (const f of readdirSync(srcDir, { withFileTypes: true })) {
-          if (f.isFile()) copiedAsIs++;
-        }
+        // cpSync copies recursively, so the counter has to walk recursively
+        // too — otherwise nested files (e.g. sfx/radar/*.mp3) get copied but
+        // not counted in the build summary.
+        const countFiles = (dir) => {
+          for (const f of readdirSync(dir, { withFileTypes: true })) {
+            if (f.isFile()) copiedAsIs++;
+            else if (f.isDirectory()) countFiles(path.join(dir, f.name));
+          }
+        };
+
+        countFiles(srcDir);
       };
 
       for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
@@ -152,28 +174,11 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
         const srcDir = path.join(audioAssetsPath, entry.name);
         const destDir = path.join(destRoot, entry.name);
 
-        if (entry.name !== VOICE_PARENT) {
+        if (entry.name === VOICE_ROOT) {
+          queueVoiceTree(srcDir, destDir, path.join(cacheRoot, VOICE_ROOT));
+        } else {
           mkdirSync(destDir, { recursive: true });
           copyTreeAsIs(srcDir, destDir);
-          continue;
-        }
-
-        // pit-crew/ → descend; voice categories get the radio filter, anything
-        // else under pit-crew/ is copied verbatim.
-        mkdirSync(destDir, { recursive: true });
-        for (const child of readdirSync(srcDir, { withFileTypes: true })) {
-          if (!child.isDirectory()) continue;
-
-          const srcChild = path.join(srcDir, child.name);
-          const destChild = path.join(destDir, child.name);
-
-          if (VOICE_CATEGORIES.has(child.name)) {
-            const cacheChild = path.join(cacheRoot, VOICE_PARENT, child.name);
-            queueVoiceCategory(srcChild, destChild, cacheChild);
-          } else {
-            mkdirSync(destChild, { recursive: true });
-            copyTreeAsIs(srcChild, destChild);
-          }
         }
       }
 

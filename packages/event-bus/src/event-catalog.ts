@@ -71,7 +71,7 @@ export type SimEventMap = {
   "flag.white.raised": SimEvent<"flag.white.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
 
-  "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[] }>;
+  "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;

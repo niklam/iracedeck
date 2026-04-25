@@ -26,11 +26,7 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
 const OUTPUT_FILE = path.join(PACKAGE_ROOT, "manifest.json");
 
-// `voice/` is the TTS-generator output tree (see src/generate/). It's not
-// shipped to plugins yet (see processAndCopyAudioAssetsPlugin's SKIP_FOLDERS),
-// so excluding it here keeps the committed manifest stable across local TTS
-// runs.
-const IGNORED_DIRS = new Set(["node_modules", "scripts", "voice"]);
+const IGNORED_DIRS = new Set(["node_modules", "scripts"]);
 
 /**
  * Collect every .mp3 under `dir` (recursive) as a list of package-root-relative

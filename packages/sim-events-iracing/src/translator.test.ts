@@ -312,7 +312,7 @@ describe("sim-events-iracing translator", () => {
   });
 
   describe("toggles", () => {
-    it("emits pitService.toggled when fuel fill flag flips", () => {
+    it("emits pitService.toggled when fuel fill flag flips (after debounce)", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -321,10 +321,116 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      // Pit-service toggles are debounced — flush past the window.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"pitService.toggled">;
       expect(ev.data).toEqual({ service: "fuel", on: true });
+    });
+
+    it("coalesces rapid fuel toggles: on→off→on within debounce emits one final state", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      // User taps fuel rapidly — three observed flips, all within the debounce window.
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // Settle past the window with the final state.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      vi.useRealTimers();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect((handler.mock.calls[0]![0] as SimEventOf<"pitService.toggled">).data).toEqual({
+        service: "fuel",
+        on: true,
+      });
+    });
+
+    it("suppresses pit-service emits while in pit stall (crew is working)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      bus.subscribe("tireService.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // On track, no pit selections — baseline.
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+
+      // Enter the stall. While stationary, iRacing flips the tire bits one
+      // by one as each tire swap completes — these are crew progress, not
+      // user intent. None of these ticks should emit anything.
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvFlags: PitSvFlags.LFTireChange }));
+      controller.__tick(
+        telemetry({ PlayerCarInPitStall: true, PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }),
+      );
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: true,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 1000);
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: true,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+      vi.useRealTimers();
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // Depart the stall. Baseline now reflects the post-service state, so a
+      // tick with the same flags emits nothing — no spurious "tires off"
+      // cascade.
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: false,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("stays silent when a fuel toggle is reverted within the debounce window", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Baseline: fuel off. User toggles on then back off, all within window.
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.FuelFill }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+
+      // Settle.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 400);
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      vi.useRealTimers();
+
+      // Final state matches baseline → no emit.
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it("emits carControl.drsToggled { on: true } on activation", () => {
@@ -341,7 +447,7 @@ describe("sim-events-iracing translator", () => {
       expect((handler.mock.calls[0]![0] as SimEventOf<"carControl.drsToggled">).data.on).toBe(true);
     });
 
-    it("emits tireService.changed with added list", () => {
+    it("emits tireService.changed with added list and current set", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -350,11 +456,50 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }));
+      // Tire changes are debounced — advance past TIRE_DEBOUNCE_MS and tick
+      // again with the same flags to flush.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
       expect(ev.data.added.sort()).toEqual(["LF", "RF"]);
       expect(ev.data.removed).toEqual([]);
+      expect(ev.data.current.sort()).toEqual(["LF", "RF"]);
+    });
+
+    it("coalesces a multi-tick side switch into one event (clear-all → set-target)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("tireService.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      // Seed with all four set, then iRacing's "Lefts" button: clears, then
+      // applies lefts in a separate tick. Both happen well within the
+      // debounce window so they should NOT each emit an event.
+      controller.__tick(telemetry({ PitSvFlags: allTires }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.LRTireChange }));
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // After the debounce window, a tick with the now-stable selection emits.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.LRTireChange }));
+      vi.useRealTimers();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
+      expect(ev.data.current.sort()).toEqual(["LF", "LR"]);
+      expect(ev.data.added).toEqual([]);
+      expect(ev.data.removed.sort()).toEqual(["RF", "RR"]);
     });
   });
 

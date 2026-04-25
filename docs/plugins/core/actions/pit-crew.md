@@ -14,6 +14,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 ## Behavior
 
 ### Button Press
+- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off, every voice scenario is suppressed at the audio layer (audio stops immediately).
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off.
 
@@ -21,10 +22,11 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Mode | Dropdown | Radar | Selects what the key press does |
+| Mode | Dropdown | Race Engineer Toggle | Selects what the key press does |
 | Direction | Dropdown | Up | Up / Down step, visible only when Mode = Radar Volume |
 
 ### Mode Options
+- **Race Engineer Toggle** - Toggles the engineer voice on/off
 - **Radar** - Toggles the directional proximity ticks on/off
 - **Radar Volume** - Steps the global Radar volume up or down
 
@@ -33,7 +35,13 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 - **Down** - Reduces Radar volume by 5 (min 0)
 
 ### Plugin-global Audio Settings (in the Pit Crew accordion, not under Global Settings)
-- **Radar Volume** (range 0–100, default 100) - slider + Test button. Shared across every Pit Crew instance.
+
+The Pit Crew Audio accordion in the action's Property Inspector hosts every plugin-wide audio control. Race Engineer settings appear first, Radar second, and the shared Output Device last.
+
+- **Race Engineer Voice** - dropdown of voices available under `voice/<voice>/` in `@iracedeck/audio-assets`. Substituted into scenario `base: "voice/{voice}"` at clip-resolution time so a swap takes effect on the next scenario fire. Falls back to the first available voice if the persisted choice is gone.
+- **Driver Name** - dropdown populated from clips under `voice/<voice>/names/` for the active voice. Picked into the welcome / test playback flows via the engine's variable resolver. Falls back to the first available name when the persisted choice is gone.
+- **Race Engineer Volume** (range 0–100, default 100) - slider that controls the Voice bus volume. Mirrored by a **Test** button that auditions a chained sequence (opener → driver name → "Nice to meet you" → "Let's win some races") in the picked voice at the picked volume, so the user can verify the mix without leaving the PI.
+- **Radar Volume** (range 0–100, default 100) - slider that controls the Alerts bus volume. Mirrored by its own **Test** button that fires a one-shot directional ping. Stepping to 0 mutes the radar without toggling the feature off.
 - **Output Device** - audio device used for the iRaceDeck audio engine; shared globally across the plugin. Persisted by the platform-stable device id (WASAPI endpoint ID on Windows), so the selection survives device-list reordering, replug, and OS audio-preference changes.
 
 ## Keyboard Simulation

@@ -1,8 +1,8 @@
 {
   "model_id": "eleven_multilingual_v2",
   "voice_settings": {
-    "stability": 0.8,
-    "similarity_boost": 0.75,
+    "stability": 1,
+    "similarity_boost": 1,
     "style": 0,
     "speed": 1,
     "use_speaker_boost": true
@@ -12,20 +12,49 @@
       "id": "15CVCzDByBinCIoCblXo",
       "label": "Luca",
       "voice_settings": {
-        "speed": 0.9
+        "speed": 0.85,
+        "stability": 1,
+        "similarity_boost": 1
       }
     },
     "titan": {
       "id": "dtSEyYGNJqjrtBArPCVZ",
       "label": "Titan",
       "voice_settings": {
-        "speed": 0.8,
+        "speed": 0.85,
         "stability": 1,
         "similarity_boost": 1
       }
     }
   },
   "groups": {
+    "acknowledgment": [
+      {
+        "name": "okay",
+        "text": "Okay.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "got-it",
+        "text": "Got it.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "roger-that",
+        "text": "Roger that.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "copy-that",
+        "text": "Copy that.",
+        "next_text": " Fuel on at the next stop."
+      },
+      {
+        "name": "we-got-that",
+        "text": "We got that.",
+        "next_text": " Fuel on at the next stop."
+      }
+    ],
     "units": [
       {
         "name": "km",
@@ -168,55 +197,55 @@
     "pit-actions": [
       {
         "name": "fuel-on",
-        "text": "We're refueling at the next stop."
+        "text": "We're refueling at the next pitstop."
       },
       {
         "name": "fuel-off",
-        "text": "Skipping fuel. <break time=\"0.1s\" /> Straight back out."
+        "text": "Skipping fueling at the next pitstop."
       },
       {
         "name": "tires-on",
-        "text": "We're changing"
+        "text": "We're changing",
+        "next_text": " all tires at the next pitstop."
       },
       {
         "name": "tires-off",
-        "text": "Skipping tires at the next stop."
+        "text": "Skipping tires at the next pitstop."
       },
       {
         "name": "tires-on-fronts",
-        "text": "both front tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "text": "front tires",
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-rears",
-        "text": "both rear tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "text": "rear tires",
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-lefts",
         "text": "both left side tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-rights",
         "text": "both right side tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "tires-on-all",
         "text": "all tires",
-        "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "previous_text": "We're changing ",
+        "next_text": " at the next pitstop."
       },
       {
         "name": "at-the-next-stop",
-        "text": "At the next stop",
-        "previous_text": "We're changing all tires <break time=\"0.1s\" />",
-        "next_text": "<break time=\"0.1s\" />No fuel."
+        "text": "at the next pitstop.",
+        "previous_text": "We're changing all tires "
       }
     ],
     "names": [
@@ -231,6 +260,24 @@
         "name": "niklas",
         "text": "Niklas",
         "previous_text": "You must do this and that,"
+      }
+    ],
+    "welcome": [
+      {
+        "name": "nice-to-meet-you",
+        "text": "Nice to meet you, <break time=\"0.2s\" />I'm your Race Engineer!",
+        "previous_text": "Alright, Niklas! ",
+        "next_text": " Are you ready to race?"
+      },
+      {
+        "name": "ready-to-race",
+        "text": "Are you ready to race with me?",
+        "previous_text": "I'm your Race Engineer! "
+      },
+      {
+        "name": "lets-win-races",
+        "text": "Let's win some races together!",
+        "previous_text": "I'm your Race Engineer! "
       }
     ],
     "numbers": [

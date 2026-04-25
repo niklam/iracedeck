@@ -125,6 +125,8 @@ export {
   onGlobalSettingsChange,
   updateGlobalSettings,
   isGlobalSettingsInitialized,
+  resolveActiveDriverName,
+  resolveActiveRaceEngineerVoice,
   _resetGlobalSettings,
 } from "./global-settings.js";
 

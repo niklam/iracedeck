@@ -23,6 +23,7 @@ import {
   initPluginConfig,
   onGlobalSettingsChange,
   type PluginConfig,
+  resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -143,10 +144,53 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
+// Derive the available Race Engineer voice keys from manifest paths
+// (`voice/<voice>/…`). Static for the lifetime of the plugin process.
+const raceEngineerVoices = (() => {
+  const voices = new Set<string>();
+
+  for (const clip of audioAssetsManifest.clips) {
+    if (!clip.startsWith("voice/")) continue;
+
+    const segments = clip.split("/");
+
+    if (segments.length >= 2 && segments[1].length > 0) voices.add(segments[1]);
+  }
+
+  return Array.from(voices).sort();
+})();
+
+// Derive the available driver-name keys (the names the engineer will
+// address the user as) from `voice/<voice>/names/<name>.mp3` paths,
+// alphabetically sorted. See iracing-plugin-stream-deck for notes.
+const driverNames = (() => {
+  const names = new Set<string>();
+
+  for (const clip of audioAssetsManifest.clips) {
+    if (!clip.startsWith("voice/")) continue;
+
+    const segments = clip.split("/");
+
+    if (segments.length === 4 && segments[2] === "names") {
+      const file = segments[3];
+      const name = file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file;
+
+      if (name.length > 0) names.add(name);
+    }
+  }
+
+  return Array.from(names).sort();
+})();
+
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI
 // toggles and Test buttons to setEnabled / fire).
-initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
+//
+// `getActiveVoice` resolves at clip-resolution time so a PI voice change
+// takes effect on the next scenario fire without re-initialising the engine.
+initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"), () =>
+  resolveActiveRaceEngineerVoice(raceEngineerVoices),
+);
 registerPitCrew(eventBus);
 
 // Publish audio device list and apply saved device selection.
@@ -171,6 +215,31 @@ function pushAudioDevicesIfChanged(): void {
   updateGlobalSettings({ _audioDeviceList: json });
 }
 
+// Push the Race Engineer voices + names lists to global settings. Both
+// payloads are derived from the bundled manifest and never change at
+// runtime, but we still re-push on every PI appear (cheap; deduped via
+// the caches below) so a PI opened before the first global-settings echo
+// still gets populated.
+const raceEngineerVoiceListJson = JSON.stringify(raceEngineerVoices);
+let lastPushedVoiceListJson = "";
+
+function pushRaceEngineerVoicesIfChanged(): void {
+  if (raceEngineerVoiceListJson === lastPushedVoiceListJson) return;
+
+  lastPushedVoiceListJson = raceEngineerVoiceListJson;
+  updateGlobalSettings({ _raceEngineerVoices: raceEngineerVoiceListJson });
+}
+
+const driverNameListJson = JSON.stringify(driverNames);
+let lastPushedDriverNameListJson = "";
+
+function pushDriverNamesIfChanged(): void {
+  if (driverNameListJson === lastPushedDriverNameListJson) return;
+
+  lastPushedDriverNameListJson = driverNameListJson;
+  updateGlobalSettings({ _driverNames: driverNameListJson });
+}
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
@@ -182,6 +251,9 @@ onGlobalSettingsChange((settings) => {
     initialDevicePushDone = true;
     pushAudioDevicesIfChanged();
   }
+
+  pushRaceEngineerVoicesIfChanged();
+  pushDriverNamesIfChanged();
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
@@ -209,6 +281,8 @@ onGlobalSettingsChange((settings) => {
 // doesn't churn.
 adapter.onPropertyInspectorDidAppear(() => {
   pushAudioDevicesIfChanged();
+  pushRaceEngineerVoicesIfChanged();
+  pushDriverNamesIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action

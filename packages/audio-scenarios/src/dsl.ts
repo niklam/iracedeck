@@ -68,6 +68,14 @@ export type Scenario = {
   cooldown?: number;
   /** If true and priority is "urgent", cancels the currently-playing scenario on the same bus. */
   preempt?: boolean;
+  /**
+   * Family identifier — scenarios sharing a `family` preempt each other on
+   * the same bus regardless of priority. Use this for groups where a new
+   * event invalidates a prior callout (e.g. all tire-set scenarios share
+   * `family: "tire"` so a new selection cancels the in-flight one).
+   * Scenarios without a family use the priority-based preempt rules only.
+   */
+  family?: string;
   /** Optional path prefix applied to clip/pool members; leading `/` on a path escapes it. */
   base?: string;
   sequence: Step[];

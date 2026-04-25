@@ -174,7 +174,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
-  diffToggles(self.state, telemetry, emit);
+  diffToggles(self.state, telemetry, now, emit);
   diffIncidents(self.state, telemetry, now, emit);
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);

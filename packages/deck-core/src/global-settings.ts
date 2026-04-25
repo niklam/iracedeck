@@ -125,6 +125,30 @@ export const GlobalSettingsSchema = z
      * feature off. Default: 100.
      */
     radarVolume: z.coerce.number().min(0).max(100).default(100),
+    /**
+     * Active voice used by Race Engineer scenarios — the key under
+     * `voice/<voice>/` in `@iracedeck/audio-assets` (e.g., `"luca"`,
+     * `"titan"`). Substituted into scenario `base: "voice/{voice}"` at
+     * clip-resolution time. Empty string or unset means "no voice
+     * selected" — the plugin seeds the first available voice from the
+     * audio-assets manifest on startup. Persists across plugin restarts.
+     */
+    raceEngineerVoice: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
+    /**
+     * Volume for the Race Engineer voice, 0–100 (mapped to 0.0–1.0 on
+     * `AudioBus.Voice`). Sliding to 0 silences voice scenarios without
+     * disabling the feature. Default: 100.
+     */
+    raceEngineerVolume: z.coerce.number().min(0).max(100).default(100),
+    /**
+     * Driver name the Race Engineer addresses the user as — the key
+     * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
+     * Substituted into welcome / pit-callout flows by referencing
+     * `voice/{voice}/names/{driverName}.mp3`. Empty string means "no
+     * name picked" — the plugin seeds the first available name on
+     * startup.
+     */
+    driverName: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
   })
   .passthrough();
 
@@ -246,8 +270,15 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   // Parse + apply synchronously so the cache and listeners reflect the
   // new value immediately. The later `onDidReceiveGlobalSettings` echo
   // re-parses the same payload and reconciles as a no-op.
-  const applied = applyParsedSettings(GlobalSettingsSchema.parse(merged));
-  adapterRef.setGlobalSettings(applied);
+  applyParsedSettings(GlobalSettingsSchema.parse(merged));
+
+  // Send the LIVE cache, not the snapshot captured above. A listener
+  // fired by `applyParsedSettings` may itself call `updateGlobalSettings`,
+  // layering more partials on top — sending the snapshot would clobber
+  // those nested updates back to the snapshot's stale view (#441 bug:
+  // `_raceEngineerVoices` push from inside the audio-device push listener
+  // was being overwritten by the outer audio-device-only payload).
+  adapterRef.setGlobalSettings(currentSettings);
 }
 
 /**
@@ -307,6 +338,46 @@ export function getGlobalColors(): {
     graphic1Color: color("colorGraphic1Color"),
     graphic2Color: color("colorGraphic2Color"),
   };
+}
+
+/**
+ * Resolve the active Race Engineer voice key, falling back to the first
+ * entry in `availableVoices` if the persisted value is empty or missing
+ * from the available list (e.g. user picked "titan" earlier, the package
+ * was rebuilt without that voice).
+ *
+ * Returns `null` only if no voices are available at all — callers should
+ * suppress voice scenarios in that case.
+ */
+export function resolveActiveRaceEngineerVoice(availableVoices: readonly string[]): string | null {
+  if (availableVoices.length === 0) return null;
+
+  const chosen = currentSettings.raceEngineerVoice ?? "";
+
+  if (chosen.length > 0 && availableVoices.includes(chosen)) {
+    return chosen;
+  }
+
+  return availableVoices[0];
+}
+
+/**
+ * Resolve the active driver-name key (the name the engineer addresses
+ * the user as). Same fallback shape as `resolveActiveRaceEngineerVoice`:
+ * returns the persisted value when available, the first list entry as a
+ * graceful fallback, or `null` when no names exist (caller should skip
+ * name-dependent playback).
+ */
+export function resolveActiveDriverName(availableNames: readonly string[]): string | null {
+  if (availableNames.length === 0) return null;
+
+  const chosen = currentSettings.driverName ?? "";
+
+  if (chosen.length > 0 && availableNames.includes(chosen)) {
+    return chosen;
+  }
+
+  return availableNames[0];
 }
 
 /**

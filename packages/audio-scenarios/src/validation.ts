@@ -11,7 +11,7 @@
  */
 import type { ResolvedStep, Scenario } from "./dsl.js";
 import { applyBase } from "./dsl.js";
-import type { AudioAssetsManifest } from "./interpreter.js";
+import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
 
 type CompiledEntry = { raw: Scenario; resolvedSequence: ResolvedStep[] };
 
@@ -25,6 +25,7 @@ export function validateScenario(
 ): string[] {
   const errors: string[] = [];
   const clipSet = new Set(manifest.clips);
+  const voices = manifestVoices(manifest);
 
   walk(resolved, s.base, new Set([s.id]));
 
@@ -36,7 +37,18 @@ export function validateScenario(
         case "clip": {
           const abs = applyBase(base, step.path);
 
-          if (!clipSet.has(abs)) errors.push(`unknown clip: ${abs}`);
+          if (abs.includes("{voice}")) {
+            // Templated — every voice in the manifest must have the resolved
+            // clip; if even one is missing this scenario can't safely run
+            // when the user picks that voice.
+            for (const voice of voices) {
+              const resolved = abs.replace(/\{voice\}/g, voice);
+
+              if (!clipSet.has(resolved)) errors.push(`unknown clip: ${resolved} (template: ${abs})`);
+            }
+          } else if (!clipSet.has(abs)) {
+            errors.push(`unknown clip: ${abs}`);
+          }
 
           break;
         }
