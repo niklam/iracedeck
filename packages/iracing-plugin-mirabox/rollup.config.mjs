@@ -241,7 +241,7 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/audio-native", "@iracedeck/audio-service", "@iracedeck/iracing-native", "yaml", "keysender", "ws"],
+	external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "yaml", "keysender", "ws"],
 	plugins: [
 		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
 		// Only applies to relative imports (starting with ".") within the actions package.
@@ -329,7 +329,6 @@ const config = {
 					type: "module",
 					dependencies: {
 						"@iracedeck/audio-native": "file:../../../audio-native",
-						"@iracedeck/audio-service": "file:../../../audio-service",
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						ws: "8.18.2",
 						yaml: "2.8.2",

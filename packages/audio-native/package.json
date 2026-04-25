@@ -18,11 +18,9 @@
     "src/*.cc",
     "src/*.h"
   ],
-  "dependencies": {
-    "node-addon-api": "8.7.0"
-  },
   "devDependencies": {
     "@types/node": "25.6.0",
+    "node-addon-api": "8.7.0",
     "node-gyp": "12.2.0",
     "rimraf": "6.1.3",
     "typescript": "5.9.3",
