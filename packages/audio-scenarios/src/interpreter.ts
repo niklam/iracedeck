@@ -312,10 +312,16 @@ class ScenarioEngine implements IScenarioEngine {
       const running = this.scenarios.get(state.playingId);
       const runningPriority: ScenarioPriority = running?.raw.priority ?? "normal";
 
+      // Same-family preemption: a new event in a family invalidates the
+      // in-flight callout for that family (e.g. tire-set switch mid-playback).
+      const sameFamily =
+        entry.raw.family !== undefined && running !== undefined && entry.raw.family === running.raw.family;
+
       const canPreempt =
-        priority === "urgent" &&
-        entry.raw.preempt === true &&
-        PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority];
+        sameFamily ||
+        (priority === "urgent" &&
+          entry.raw.preempt === true &&
+          PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority]);
 
       if (canPreempt) {
         this.cancelActiveFire(state);

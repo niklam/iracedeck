@@ -468,6 +468,59 @@ describe("priority", () => {
     expect(audio._stopped).toContain(AudioChannel.Voice);
   });
 
+  it("preempts a same-family playing scenario regardless of priority", () => {
+    engine.defineScenario({
+      id: "test.tire.fronts",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "normal",
+      family: "tire-service",
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.tire.rears",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "normal",
+      family: "tire-service",
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.tire.fronts"); // first clip starts
+    engine.fire("test.tire.rears"); // same family — preempts even at equal priority
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+  });
+
+  it("does NOT preempt a different-family playing scenario", () => {
+    engine.defineScenario({
+      id: "test.tire.fronts",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "normal",
+      family: "tire-service",
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.fuel.on",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "normal",
+      family: "pit-service.fuel", // different family
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.tire.fronts");
+    engine.fire("test.fuel.on"); // dropped — different family, equal priority
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
+  });
+
   it("defers a low-priority fire while busy and replays it when the bus goes idle", () => {
     engine.defineScenario({
       id: "test.high",

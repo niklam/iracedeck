@@ -48,6 +48,7 @@ function fuelScenario(on: boolean): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     priority: "normal",
+    family: "pit-service.fuel",
     sequence: toggleSequence([`pit-actions/fuel-${on ? "on" : "off"}.mp3`]),
   };
 }
@@ -105,6 +106,7 @@ function tireSetOnScenario(set: TireSet): Scenario {
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     priority: "normal",
+    family: "tire-service",
     sequence: toggleSequence([
       "pit-actions/tires-on.mp3",
       `pit-actions/tires-on-${set.name}.mp3`,
@@ -123,6 +125,7 @@ const TIRE_OFF_SCENARIO: Scenario = {
   bus: AudioBus.Voice,
   base: "voice/{voice}",
   priority: "normal",
+  family: "tire-service",
   sequence: toggleSequence(["pit-actions/tires-off.mp3"]),
 };
 
