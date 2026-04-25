@@ -25,7 +25,8 @@
 **/__pycache__/
 
 # Standalone Python distribution downloaded by node-gyp
-**/node_modules/@iracedeck/*/Python/
+**/node_modules/@iracedeck/audio-native/Python/
+**/node_modules/@iracedeck/iracing-native/Python/
 
 # Dev dependencies (nested in native modules)
 **/node_modules/typescript/
@@ -41,10 +42,15 @@
 # Compiled test artifacts in shipped dist/ folders
 **/node_modules/**/dist/**/*.test.*
 
-# iRacing SDK reference projects and build scripts (not runtime artifacts)
-**/node_modules/@iracedeck/*/assets/
-**/node_modules/@iracedeck/*/scripts/
-**/node_modules/@iracedeck/*/README.md
+# iRacing SDK reference projects and build scripts (not runtime artifacts).
+# Listed per-package on purpose: a wildcard like @iracedeck/*/ would silently
+# drop runtime files from any future @iracedeck package shipped via file: dep.
+**/node_modules/@iracedeck/audio-native/assets/
+**/node_modules/@iracedeck/audio-native/scripts/
+**/node_modules/@iracedeck/audio-native/README.md
+**/node_modules/@iracedeck/iracing-native/assets/
+**/node_modules/@iracedeck/iracing-native/scripts/
+**/node_modules/@iracedeck/iracing-native/README.md
 
 # Dev/build config files
 **/tsconfig.json
