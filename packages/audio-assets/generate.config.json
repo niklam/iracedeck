@@ -197,55 +197,55 @@
     "pit-actions": [
       {
         "name": "fuel-on",
-        "text": "We're refueling at the next stop."
+        "text": "We're refueling at the next pitstop."
       },
       {
         "name": "fuel-off",
-        "text": "Skipping fuel. <break time=\"0.1s\" /> Straight back out."
+        "text": "Skipping fueling at the next pitstop."
       },
       {
         "name": "tires-on",
-        "text": "We're changing"
+        "text": "We're changing",
+        "next_text": " all tires at the next pitstop."
       },
       {
         "name": "tires-off",
-        "text": "Skipping tires at the next stop."
+        "text": "Skipping tires at the next pitstop."
       },
       {
         "name": "tires-on-fronts",
-        "text": "both front tires",
+        "text": "front tires",
         "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "next_text": "at the next pitstop."
       },
       {
         "name": "tires-on-rears",
-        "text": "both rear tires",
+        "text": "rear tires",
         "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "next_text": "at the next pitstop."
       },
       {
         "name": "tires-on-lefts",
         "text": "both left side tires",
         "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "next_text": "at the next pitstop."
       },
       {
         "name": "tires-on-rights",
         "text": "both right side tires",
         "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "next_text": "at the next pitstop."
       },
       {
         "name": "tires-on-all",
         "text": "all tires",
         "previous_text": "We're changing",
-        "next_text": "at the next pit stop."
+        "next_text": "at the next pitstop."
       },
       {
         "name": "at-the-next-stop",
-        "text": "At the next stop",
-        "previous_text": "We're changing all tires <break time=\"0.1s\" />",
-        "next_text": "<break time=\"0.1s\" />No fuel."
+        "text": "at the next pitstop.",
+        "previous_text": "We're changing all tires"
       }
     ],
     "names": [

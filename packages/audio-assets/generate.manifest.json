@@ -1354,20 +1354,20 @@
       "requestId": "lTdiVncXdX9NdLpXKL94"
     },
     "voice/titan/pit-actions/fuel-on.mp3": {
-      "hash": "c16c55533b05fcc6",
+      "hash": "8652ec0f234e4dbe",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We're refueling at the next stop.",
-      "generatedAt": "2026-04-25T16:00:09.814Z",
-      "requestId": "rakklQDpzv9wLakBaRhH"
+      "textPreview": "We're refueling at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:33.454Z",
+      "requestId": "tDDbiPqIwLjB40Xnh1tZ"
     },
     "voice/titan/pit-actions/fuel-off.mp3": {
-      "hash": "fe53e83bfbfcb4bb",
+      "hash": "3cc4843a187bb969",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Skipping fuel. <break time=\"0.1s\" /> Straight back out.",
-      "generatedAt": "2026-04-25T16:00:10.784Z",
-      "requestId": "7KJHfnMm1H860BTcb7YA"
+      "textPreview": "Skipping fueling at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:34.450Z",
+      "requestId": "ocjPgRHiJ5CWM7E4QenY"
     },
     "voice/titan/flags/blue-02.mp3": {
       "hash": "ae117038d225f3c5",
@@ -1402,68 +1402,68 @@
       "requestId": "x207PIZp7ZSb2jZYyDwU"
     },
     "voice/titan/pit-actions/tires-on.mp3": {
-      "hash": "4fc5391c3746aeb6",
+      "hash": "439d6702868f207a",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "We're changing",
-      "generatedAt": "2026-04-25T16:00:11.660Z",
-      "requestId": "dhdeKv6y1iN8NaiZaa3m"
+      "generatedAt": "2026-04-25T18:08:35.438Z",
+      "requestId": "TFcUHW4wodx74puMa1nI"
     },
     "voice/titan/pit-actions/tires-off.mp3": {
-      "hash": "0ab3826e6e598f04",
+      "hash": "73f089c8b82a579e",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Skipping tires at the next stop.",
-      "generatedAt": "2026-04-25T16:00:12.594Z",
-      "requestId": "oVDrhlGTIuy3byofcmwV"
+      "textPreview": "Skipping tires at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:36.418Z",
+      "requestId": "0VMbHHoX15E63VRzw84z"
     },
     "voice/titan/pit-actions/tires-on-fronts.mp3": {
-      "hash": "23e3f953f81c64af",
+      "hash": "013f001ee7496b94",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "both front tires",
-      "generatedAt": "2026-04-25T16:00:13.608Z",
-      "requestId": "RgIUc6HVN8RpZ1Bprvqq"
+      "textPreview": "front tires",
+      "generatedAt": "2026-04-25T18:03:18.814Z",
+      "requestId": "tXAcQc0HFozOb4zPlLwG"
     },
     "voice/titan/pit-actions/tires-on-rears.mp3": {
-      "hash": "b96a1900f015ad20",
+      "hash": "ea63b3805f843b47",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "both rear tires",
-      "generatedAt": "2026-04-25T16:00:14.598Z",
-      "requestId": "zULJNOayQqhAQIXcrosh"
+      "textPreview": "rear tires",
+      "generatedAt": "2026-04-25T18:03:19.765Z",
+      "requestId": "T4Gkpq4TdqXUZXsyaeFR"
     },
     "voice/titan/pit-actions/tires-on-lefts.mp3": {
-      "hash": "987c56575e8b1022",
+      "hash": "3ff0e29c28fed281",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "both left side tires",
-      "generatedAt": "2026-04-25T16:00:15.597Z",
-      "requestId": "stwFNxIcu5xqkG8IxxRP"
+      "generatedAt": "2026-04-25T18:08:37.416Z",
+      "requestId": "bSioSrTIED0XirLnGNAY"
     },
     "voice/titan/pit-actions/tires-on-rights.mp3": {
-      "hash": "9c10fe29862cfbca",
+      "hash": "d89830c15b9abe8b",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "both right side tires",
-      "generatedAt": "2026-04-25T16:00:16.590Z",
-      "requestId": "g27UJbYuuuTOGB8simU3"
+      "generatedAt": "2026-04-25T18:03:22.029Z",
+      "requestId": "lsX70Hr7ELj32Oxij5Bt"
     },
     "voice/titan/pit-actions/tires-on-all.mp3": {
-      "hash": "b4759d93ed99357d",
+      "hash": "2a348f3c9c2f6d4d",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "all tires",
-      "generatedAt": "2026-04-25T16:00:17.563Z",
-      "requestId": "NpSUBXYeOClWplIJDOKZ"
+      "generatedAt": "2026-04-25T18:03:23.016Z",
+      "requestId": "7GU4j1NNlXYnMuj1aOOu"
     },
     "voice/titan/pit-actions/at-the-next-stop.mp3": {
-      "hash": "5adbd18c9f48bcb7",
+      "hash": "dbc9d5f8dbcc0e4f",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "At the next stop",
-      "generatedAt": "2026-04-25T16:00:18.881Z",
-      "requestId": "ruGUHULuVSXdam7X3Wu9"
+      "textPreview": "at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:38.399Z",
+      "requestId": "x1Acqzy5C7JDn3mCYj0T"
     },
     "voice/luca/units/km.mp3": {
       "hash": "7622a3afbef2dbd5",
@@ -1610,84 +1610,84 @@
       "requestId": "ejkRgsxdAX7YsWhY1ber"
     },
     "voice/luca/pit-actions/fuel-on.mp3": {
-      "hash": "8f5ec4aeee8c90d0",
+      "hash": "44bb294f192b069f",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We're refueling at the next stop.",
-      "generatedAt": "2026-04-25T15:59:27.290Z",
-      "requestId": "fTqKlPPa3nvArdSjd9cs"
+      "textPreview": "We're refueling at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:27.458Z",
+      "requestId": "Zr4ulCkFCGzt3hotHf3c"
     },
     "voice/luca/pit-actions/fuel-off.mp3": {
-      "hash": "b995df72b0c138a2",
+      "hash": "b324cf0f1258f036",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Skipping fuel. <break time=\"0.1s\" /> Straight back out.",
-      "generatedAt": "2026-04-25T15:59:28.257Z",
-      "requestId": "zEy6EhM7FBQDjA1QYQ0S"
+      "textPreview": "Skipping fueling at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:28.425Z",
+      "requestId": "OvcoXErV06Stn2Z8jDDE"
     },
     "voice/luca/pit-actions/tires-on.mp3": {
-      "hash": "cc7d86553512bcae",
+      "hash": "39cf6175de12784b",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "We're changing",
-      "generatedAt": "2026-04-25T15:59:29.110Z",
-      "requestId": "IO9gViMoypDjx6kTsMcA"
+      "generatedAt": "2026-04-25T18:08:29.419Z",
+      "requestId": "xbydtWwhIatf5201NXNz"
     },
     "voice/luca/pit-actions/tires-off.mp3": {
-      "hash": "bad0349a1904481b",
+      "hash": "cce80877105eda77",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Skipping tires at the next stop.",
-      "generatedAt": "2026-04-25T15:59:30.061Z",
-      "requestId": "0ALjsaGSYn69BiJuCxbq"
+      "textPreview": "Skipping tires at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:30.386Z",
+      "requestId": "mHAfGzsGSSaWXBlDIbRg"
     },
     "voice/luca/pit-actions/tires-on-fronts.mp3": {
-      "hash": "4f36a9f7e131ac6a",
+      "hash": "2037c5a7205ca539",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "both front tires",
-      "generatedAt": "2026-04-25T15:59:31.062Z",
-      "requestId": "7L5ZRFKo7VwDKvYGcP9h"
+      "textPreview": "front tires",
+      "generatedAt": "2026-04-25T18:03:13.634Z",
+      "requestId": "u8U9kK3Skmk5MymAqkyD"
     },
     "voice/luca/pit-actions/tires-on-rears.mp3": {
-      "hash": "4cb52b9bc91fb88c",
+      "hash": "c77f1a0827aad001",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "both rear tires",
-      "generatedAt": "2026-04-25T15:59:32.094Z",
-      "requestId": "LTujl01dlZkjHxHO46L5"
+      "textPreview": "rear tires",
+      "generatedAt": "2026-04-25T18:03:14.635Z",
+      "requestId": "sJf32UAFUZKO8bjVM5XS"
     },
     "voice/luca/pit-actions/tires-on-lefts.mp3": {
-      "hash": "4791ee41d4959c0f",
+      "hash": "7421082524f564b1",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "both left side tires",
-      "generatedAt": "2026-04-25T15:59:33.115Z",
-      "requestId": "SxuN0q9Y1pxWAtjI2bFd"
+      "generatedAt": "2026-04-25T18:08:31.414Z",
+      "requestId": "vxwKRTkmlJtcUvuyXxXR"
     },
     "voice/luca/pit-actions/tires-on-rights.mp3": {
-      "hash": "f53249dd12681a49",
+      "hash": "0a4b694bf22833fe",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "both right side tires",
-      "generatedAt": "2026-04-25T15:59:34.131Z",
-      "requestId": "CE5JhRZCxPwLQERANE3l"
+      "generatedAt": "2026-04-25T18:03:16.861Z",
+      "requestId": "FZRHEbL1CPk3O1NlsgG0"
     },
     "voice/luca/pit-actions/tires-on-all.mp3": {
-      "hash": "554a97dd87f02364",
+      "hash": "3b0bff04c9c3a66e",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "all tires",
-      "generatedAt": "2026-04-25T15:59:35.130Z",
-      "requestId": "gkXWLfKNpdsMNA2AcBHn"
+      "generatedAt": "2026-04-25T18:03:17.835Z",
+      "requestId": "FkMWU8rzh38yQlB4g9SZ"
     },
     "voice/luca/pit-actions/at-the-next-stop.mp3": {
-      "hash": "97fe764f61b22292",
+      "hash": "90c6016155c8e09f",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "At the next stop",
-      "generatedAt": "2026-04-25T15:59:36.504Z",
-      "requestId": "O4uv88UxCePXk2PUhkEz"
+      "textPreview": "at the next pitstop.",
+      "generatedAt": "2026-04-25T18:08:32.496Z",
+      "requestId": "nwiuI8rwpm8WZgU6rJg9"
     },
     "voice/luca/names/oivindl.mp3": {
       "hash": "8949a8586d1480ed",
