@@ -28,11 +28,16 @@ export type TranslatorState = {
 
   // ── Toggles (pit service, car control) ──────────────────────────────────
   toggleStateInitialized: boolean;
-  lastPitSvFlags: number;
+  lastPitSvFlags: number; // For tire bits this is the BASELINE (last emitted), not "previous tick".
   lastPitSvCompound: number;
   lastLimiterActive: boolean;
   lastP2PActive: boolean;
   lastDrsActive: boolean;
+  // Tire debounce — iRacing's side/front/rear buttons emit multi-tick state
+  // transitions (clear-all → set-target). We coalesce them so the scenario
+  // engine sees one event with the final set, not a spurious intermediate clear.
+  lastSeenTireFlags: number; // most recent observed tire bits (any tick)
+  lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -90,6 +95,8 @@ export function createInitialState(): TranslatorState {
     lastLimiterActive: false,
     lastP2PActive: false,
     lastDrsActive: false,
+    lastSeenTireFlags: 0,
+    lastTireChangeAt: 0,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

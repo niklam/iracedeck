@@ -1,23 +1,31 @@
 /**
  * Pit Crew scenario catalog registration.
  *
- * For the initial GA release of Pit Crew (#413), only the directional radar
- * is wired up (see issue #410). The voice-engineer scenarios (`WELCOME`,
- * `PIT_APPROACH`, flag/fuel/toggle/limiter/tip catalogs, etc.) stay on disk
- * and will be re-registered one at a time in follow-up PRs after per-feature
- * validation. Everything in this file is
- * intentionally minimal — the engine has no scenarios, no pools, and no
- * variables to resolve until those follow-ups land.
+ * As of #441 §4 the engine wires:
+ *   - The directional radar (state-driven tick loop, not expressible in the
+ *     scenario DSL — design doc §15)
+ *   - The acknowledgment pool (used by every voice toggle scenario)
+ *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
+ *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
+ *   - Tire toggle scenarios (5 set patterns + full clear via
+ *     `tireService.changed`)
  *
- * `registerPitCrew(bus)` today only wires the radar engine. The `bus`
- * is the event bus instance returned by `initializeEventBus(...)` — passed
- * through to `registerRadarEngine` so the radar engine and scenario
- * engine share the exact same bus. Must be called once per plugin startup,
- * after `initializeAudioScenarios(bus, ...)`.
+ * Other voice scenarios (welcome, pit-approach, flag/fuel-warning/incident
+ * alerts, limiter callouts, tips, windshield/fastRepair/drs/p2p toggles) stay
+ * on disk and are re-registered one at a time as their voice/ content lands.
+ *
+ * `bus` is the event bus instance returned by `initializeEventBus(...)`;
+ * passed through to `registerRadarEngine` so the radar engine and the
+ * scenario engine share the same bus. Must be called once per plugin
+ * startup, AFTER `initializeAudioScenarios(bus, …)`.
  */
 import type { IEventBus } from "@iracedeck/event-bus";
 
+import { getScenarioEngine } from "../../interpreter.js";
+import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
+import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
+import { FUEL_TOGGLE_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
 
 export {
   getRadarVisualState,
@@ -27,13 +35,17 @@ export {
   subscribeRadarVisualState,
 } from "./radar-engine.js";
 
-/**
- * Register the pit-crew scenario catalog with the scenario engine.
- *
- * The radar is a state-driven tick loop that the scenario DSL cannot
- * express (design doc §15). It's the only pit-crew feature registered
- * today — voice scenarios return in follow-up PRs (#410).
- */
 export function registerPitCrew(bus: IEventBus): void {
   registerRadarEngine(bus);
+
+  const engine = getScenarioEngine();
+
+  engine.definePool("acknowledgment", [...POOLS.acknowledgment]);
+
+  engine.defineScenario(RADIO_OPEN);
+  engine.defineScenario(RADIO_CLOSE);
+
+  for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
+
+  for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
 }

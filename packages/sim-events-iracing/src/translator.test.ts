@@ -341,7 +341,7 @@ describe("sim-events-iracing translator", () => {
       expect((handler.mock.calls[0]![0] as SimEventOf<"carControl.drsToggled">).data.on).toBe(true);
     });
 
-    it("emits tireService.changed with added list", () => {
+    it("emits tireService.changed with added list and current set", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -350,11 +350,50 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(telemetry({ PitSvFlags: 0 }));
       controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }));
+      // Tire changes are debounced — advance past TIRE_DEBOUNCE_MS and tick
+      // again with the same flags to flush.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
       expect(ev.data.added.sort()).toEqual(["LF", "RF"]);
       expect(ev.data.removed).toEqual([]);
+      expect(ev.data.current.sort()).toEqual(["LF", "RF"]);
+    });
+
+    it("coalesces a multi-tick side switch into one event (clear-all → set-target)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("tireService.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      // Seed with all four set, then iRacing's "Lefts" button: clears, then
+      // applies lefts in a separate tick. Both happen well within the
+      // debounce window so they should NOT each emit an event.
+      controller.__tick(telemetry({ PitSvFlags: allTires }));
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.LRTireChange }));
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // After the debounce window, a tick with the now-stable selection emits.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.LRTireChange }));
+      vi.useRealTimers();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
+      expect(ev.data.current.sort()).toEqual(["LF", "LR"]);
+      expect(ev.data.added).toEqual([]);
+      expect(ev.data.removed.sort()).toEqual(["RF", "RR"]);
     });
   });
 
