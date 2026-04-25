@@ -81,6 +81,14 @@ function main() {
   console.log(`Clips: ${manifest.clips.length}`);
 }
 
-if (import.meta.url === `file://${process.argv[1].split(path.sep).join("/")}` || process.argv[1] === url.fileURLToPath(import.meta.url)) {
+// Direct-exec guard: only run main() when this file was executed as the entry
+// script. Tolerate missing argv[1] (e.g., when imported by a test runner) so
+// importing buildManifest() doesn't throw at module-eval time.
+const invokedPath = process.argv[1];
+if (
+  invokedPath &&
+  (import.meta.url === url.pathToFileURL(invokedPath).href ||
+    invokedPath === url.fileURLToPath(import.meta.url))
+) {
   main();
 }
