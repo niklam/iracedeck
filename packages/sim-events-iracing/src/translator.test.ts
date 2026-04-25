@@ -360,6 +360,57 @@ describe("sim-events-iracing translator", () => {
       });
     });
 
+    it("suppresses pit-service emits while in pit stall (crew is working)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitService.toggled", handler);
+      bus.subscribe("tireService.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // On track, no pit selections — baseline.
+      controller.__tick(telemetry({ PitSvFlags: 0 }));
+
+      // Enter the stall. While stationary, iRacing flips the tire bits one
+      // by one as each tire swap completes — these are crew progress, not
+      // user intent. None of these ticks should emit anything.
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvFlags: 0 }));
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvFlags: PitSvFlags.LFTireChange }));
+      controller.__tick(
+        telemetry({ PlayerCarInPitStall: true, PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange }),
+      );
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: true,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 1000);
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: true,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+      vi.useRealTimers();
+
+      expect(handler).not.toHaveBeenCalled();
+
+      // Depart the stall. Baseline now reflects the post-service state, so a
+      // tick with the same flags emits nothing — no spurious "tires off"
+      // cascade.
+      controller.__tick(
+        telemetry({
+          PlayerCarInPitStall: false,
+          PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.FuelFill,
+        }),
+      );
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it("stays silent when a fuel toggle is reverted within the debounce window", () => {
       const controller = createMockController();
       const bus = getEventBus();

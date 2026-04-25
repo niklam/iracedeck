@@ -112,11 +112,18 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   const p2p = telemetry.P2P_Status === true;
   const drs = (telemetry.DRS_Status ?? 0) > 0;
   const isOnTrack = telemetry.IsOnTrack ?? false;
+  const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const pitSvCompound = telemetry.PitSvTireCompound ?? 0;
   const currTireBits = pitSvFlags & TIRE_FLAGS_MASK;
 
-  // First tick, or off-track — capture state silently.
-  if (!state.toggleStateInitialized || !isOnTrack) {
+  // Seed silently on first tick, off-track, or while in the pit stall.
+  // While the crew is servicing the car, iRacing flips tire/service bits
+  // one-by-one as each task completes — those aren't user-intent events
+  // and the engineer should stay silent during the stop. We continuously
+  // update the baseline so the bits reflect post-service state on stall
+  // exit (no spurious "tires off → tires on" cascade when the user
+  // departs).
+  if (!state.toggleStateInitialized || !isOnTrack || inPitStall) {
     state.toggleStateInitialized = true;
     state.lastPitSvFlags = pitSvFlags;
     state.lastPitSvCompound = pitSvCompound;
