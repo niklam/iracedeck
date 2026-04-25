@@ -1,22 +1,255 @@
 {
-  "model": "eleven_multilingual_v2",
-  "voiceSettings": {
-    "stability": 0.5,
+  "model_id": "eleven_flash_v2_5",
+  "voice_settings": {
+    "stability": 0.8,
     "similarity_boost": 0.75,
     "style": 0,
+    "speed": 1,
     "use_speaker_boost": true
   },
   "voices": {
-    "mike": {
-      "id": "7WggD3IoWTIPT19PNyrW",
-      "label": "Jarnathan Cross"
+    "luca": {
+      "id": "15CVCzDByBinCIoCblXo",
+      "label": "Luca",
+      "voice_settings": {
+        "speed": 0.9
+      }
+    },
+    "jessica": {
+      "id": "lxYfHSkYm1EzQzGhdbfc",
+      "label": "Jessica",
+      "voice_settings": {
+        "speed": 0.9
+      }
     }
   },
   "groups": {
+    "openers": [
+      {
+        "name": "alright",
+        "text": "Alright,",
+        "next_text": ", Luca. Here we go again."
+      },
+      {
+        "name": "hi",
+        "text": "Hi,",
+        "next_text": ", Luca. Here we go again."
+      },
+      {
+        "name": "right",
+        "text": "Right,",
+        "next_text": ", Luca. Here we go again."
+      },
+      {
+        "name": "so",
+        "text": "So,",
+        "next_text": ", Luca. Here we go again."
+      }
+    ],
+    "flags": [
+      {
+        "name": "black-01",
+        "text": "Black flag!"
+      },
+      {
+        "name": "blue-01",
+        "text": "Blue flag!"
+      },
+      {
+        "name": "checkered-01",
+        "text": "Checkered flag!"
+      },
+      {
+        "name": "debris-01",
+        "text": "There's debris on track. Be careful!"
+      },
+      {
+        "name": "green-01",
+        "text": "Green flag!"
+      },
+      {
+        "name": "meatball-01",
+        "text": "We got the meatball flag."
+      },
+      {
+        "name": "red-01",
+        "text": "Red flag!"
+      },
+      {
+        "name": "white-01",
+        "text": "White flag!"
+      },
+      {
+        "name": "yellow-01",
+        "text": "Yellow flag!"
+      }
+    ],
     "pit-limiter": [
       {
-        "name": "engage",
-        "text": "Engage pit limiter."
+        "name": "engage-pit-limiter-001",
+        "text": "Remember to engage pit limiter.",
+        "previous_text": "Luca, "
+      },
+      {
+        "name": "engage-pit-limiter-002",
+        "text": "The pit limiter is off. Please, turn it on.",
+        "previous_text": "Luca, "
+      },
+      {
+        "name": "engage-pit-limiter-003",
+        "text": "Before you go, turn on the pit limiter.",
+        "previous_text": "Luca, "
+      }
+    ],
+    "names": [
+      {
+        "name": "chris-starts-with",
+        "text": "Chris",
+        "next_text": ", you must do this and that."
+      },
+      {
+        "name": "dude-starts-with",
+        "text": "Dude",
+        "next_text": ", you must do this and that."
+      },
+      {
+        "name": "niklas-ends-with",
+        "text": "Niklas",
+        "previous_text": "You must do this and that,"
+      },
+      {
+        "name": "niklas-starts-with",
+        "text": "Niklas",
+        "next_text": ", you must do this and that."
+      },
+      {
+        "name": "hesham-starts-with",
+        "text": "Hesham",
+        "next_text": ", you must do this and that."
+      }
+    ],
+    "emotions": [
+      {
+        "name": "wtf",
+        "text": "What the fuck!"
+      }
+    ],
+    "numbers": [
+      {
+        "name": "0",
+        "text": "0."
+      },
+      {
+        "name": "1",
+        "text": "1."
+      },
+      {
+        "name": "2",
+        "text": "2."
+      },
+      {
+        "name": "3",
+        "text": "3."
+      },
+      {
+        "name": "4",
+        "text": "4."
+      },
+      {
+        "name": "5",
+        "text": "5."
+      },
+      {
+        "name": "6",
+        "text": "6."
+      },
+      {
+        "name": "7",
+        "text": "7."
+      },
+      {
+        "name": "8",
+        "text": "8."
+      },
+      {
+        "name": "9",
+        "text": "9."
+      },
+      {
+        "name": "10",
+        "text": "10."
+      },
+      {
+        "name": "11",
+        "text": "11."
+      },
+      {
+        "name": "12",
+        "text": "12."
+      },
+      {
+        "name": "13",
+        "text": "13."
+      },
+      {
+        "name": "14",
+        "text": "14."
+      },
+      {
+        "name": "15",
+        "text": "15."
+      },
+      {
+        "name": "16",
+        "text": "16."
+      },
+      {
+        "name": "17",
+        "text": "17."
+      },
+      {
+        "name": "18",
+        "text": "18."
+      },
+      {
+        "name": "19",
+        "text": "19."
+      },
+      {
+        "name": "20",
+        "text": "20."
+      },
+      {
+        "name": "30",
+        "text": "30."
+      },
+      {
+        "name": "40",
+        "text": "40."
+      },
+      {
+        "name": "50",
+        "text": "50."
+      },
+      {
+        "name": "60",
+        "text": "60."
+      },
+      {
+        "name": "70",
+        "text": "70."
+      },
+      {
+        "name": "80",
+        "text": "80."
+      },
+      {
+        "name": "90",
+        "text": "90."
+      },
+      {
+        "name": "100",
+        "text": "100."
       }
     ]
   }
