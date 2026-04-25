@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -105,7 +105,13 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
     async generateBundle() {
       if (!existsSync(audioAssetsPath)) return;
 
+      // Clear destRoot before recreating so renamed/removed top-level
+      // folders (e.g. the legacy `pit-crew/` after #441 §1) don't leak
+      // into the bundled output across incremental dev builds. The cache
+      // under `.cache/` is keyed by filter hash and lives outside
+      // destRoot, so this doesn't invalidate it.
       const destRoot = path.join(sdPlugin, "assets", "audio");
+      rmSync(destRoot, { recursive: true, force: true });
       mkdirSync(destRoot, { recursive: true });
 
       const tasks = [];
