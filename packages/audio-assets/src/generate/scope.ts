@@ -17,13 +17,20 @@ function flagToKey(flag: FlagName): keyof Scope {
 }
 
 function splitValue(flag: FlagName, raw: string): string[] {
-  const parts = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const parts = raw.split(",").map((s) => s.trim());
 
-  if (parts.length === 0) {
+  if (parts.length === 0 || parts.some((p) => p.length === 0)) {
     throw new Error(`${flag}: expected a name (got "${raw}")`);
+  }
+
+  // A leading "-" can only mean the user wrote `--group --dry-run` (forgetting
+  // the value) or `--group=-foo` (typo). Kebab keys can't start with "-" per
+  // the config schema, so any "-"-prefixed token is a CLI mistake — reject it
+  // here rather than letting the dry-run flag get silently consumed as a name.
+  const flagLike = parts.find((p) => p.startsWith("-"));
+
+  if (flagLike !== undefined) {
+    throw new Error(`${flag}: expected a name (got "${flagLike}", looks like a flag)`);
   }
 
   return parts;

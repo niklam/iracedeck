@@ -67,6 +67,14 @@ describe("parseScopeArgs", () => {
     expect(() => parseScopeArgs(["--group", " , , "])).toThrow(/--group: expected a name/);
   });
 
+  it("throws when --group is followed by another flag (does not swallow it)", () => {
+    expect(() => parseScopeArgs(["--group", "--dry-run"])).toThrow(/--group: expected a name.*looks like a flag/);
+  });
+
+  it("throws when a comma list contains an empty entry", () => {
+    expect(() => parseScopeArgs(["--group", "a,,b"])).toThrow(/--group: expected a name/);
+  });
+
   it("does not consume tokens that merely start with --group (e.g. --groups)", () => {
     const { scope, remaining } = parseScopeArgs(["--groups", "ack"]);
 

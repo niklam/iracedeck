@@ -57,9 +57,11 @@ pnpm --filter @iracedeck/audio-assets generate:manifest
 | `--voice <key>[,<key>...]` | Only iterate the named voices (e.g. `luca`). Repeatable. |
 | `--group <name>[,<name>...]` | Only iterate the named groups (e.g. `numbers`). Repeatable. |
 
-`--voice` and `--group` compose as an intersection. Manifest entries outside
-the filter are not touched, so a subsequent unscoped run still sees them as
-cache hits. Unknown names exit non-zero with the list of valid choices.
+`--voice` and `--group` accept either the space-separated form (`--voice luca`)
+or the equals form (`--voice=luca`). They compose as an intersection. Manifest
+entries outside the filter are not touched, so a subsequent unscoped run still
+sees them as cache hits. Unknown names exit non-zero with the list of valid
+choices.
 
 ### Examples
 
@@ -72,4 +74,7 @@ pnpm --filter @iracedeck/audio-assets generate --voice luca --group flags
 
 # Cost estimate before committing to an ElevenLabs run
 pnpm --filter @iracedeck/audio-assets generate --dry-run --group numbers
+
+# Equals form (interchangeable with the space-separated form)
+pnpm --filter @iracedeck/audio-assets generate --voice=luca --group=numbers
 ```
