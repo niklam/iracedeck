@@ -155,9 +155,17 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
 
       const copyTreeAsIs = (srcDir, destDir) => {
         cpSync(srcDir, destDir, { recursive: true });
-        for (const f of readdirSync(srcDir, { withFileTypes: true })) {
-          if (f.isFile()) copiedAsIs++;
-        }
+        // cpSync copies recursively, so the counter has to walk recursively
+        // too — otherwise nested files (e.g. sfx/radar/*.mp3) get copied but
+        // not counted in the build summary.
+        const countFiles = (dir) => {
+          for (const f of readdirSync(dir, { withFileTypes: true })) {
+            if (f.isFile()) copiedAsIs++;
+            else if (f.isDirectory()) countFiles(path.join(dir, f.name));
+          }
+        };
+
+        countFiles(srcDir);
       };
 
       for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
