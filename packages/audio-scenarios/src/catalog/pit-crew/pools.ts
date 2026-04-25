@@ -13,12 +13,14 @@
 
 export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // Acknowledgments that open toggle callouts ("copy that", "got it", ...).
+  // Voice-scoped via `{voice}` substitution — resolved at playback time from
+  // the active Race Engineer voice setting.
   acknowledgment: [
-    "pit-crew/acknowledgment/IRD-ack-okay.mp3",
-    "pit-crew/acknowledgment/IRD-ack-got-it.mp3",
-    "pit-crew/acknowledgment/IRD-ack-roger-that.mp3",
-    "pit-crew/acknowledgment/IRD-ack-copy-that.mp3",
-    "pit-crew/acknowledgment/IRD-ack-we-got-that.mp3",
+    "voice/{voice}/acknowledgment/okay.mp3",
+    "voice/{voice}/acknowledgment/got-it.mp3",
+    "voice/{voice}/acknowledgment/roger-that.mp3",
+    "voice/{voice}/acknowledgment/copy-that.mp3",
+    "voice/{voice}/acknowledgment/we-got-that.mp3",
   ],
 
   // Walkie-talkie "uh, yeah, copy that" style fragments inserted between voice
