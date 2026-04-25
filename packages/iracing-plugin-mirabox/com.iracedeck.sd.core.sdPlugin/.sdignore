@@ -15,8 +15,17 @@
 # MSBuild tracking logs
 *.tlog
 
+# node-gyp generated build files (only build/Release/*.node is needed at runtime)
+**/build/*.sln
+**/build/*.gypi
+**/build/*.vcxproj
+**/build/*.vcxproj.filters
+
 # Python bytecode cache (node-gyp)
 **/__pycache__/
+
+# Standalone Python distribution downloaded by node-gyp
+**/node_modules/@iracedeck/*/Python/
 
 # Dev dependencies (nested in native modules)
 **/node_modules/typescript/
@@ -28,6 +37,11 @@
 # Source files (already compiled)
 **/node_modules/*/src/
 **/node_modules/@*/*/src/
+
+# iRacing SDK reference projects and build scripts (not runtime artifacts)
+**/node_modules/@iracedeck/*/assets/
+**/node_modules/@iracedeck/*/scripts/
+**/node_modules/@iracedeck/*/README.md
 
 # Dev/build config files
 **/tsconfig.json
