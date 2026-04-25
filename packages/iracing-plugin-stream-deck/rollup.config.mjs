@@ -1,4 +1,5 @@
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import nodeResolve from "@rollup/plugin-node-resolve";
 import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
@@ -144,7 +145,7 @@ const config = {
 		},
 		inlineDynamicImports: true
 	},
-	external: ["@iracedeck/audio-native", "@iracedeck/audio-service", "@iracedeck/iracing-native", "yaml", "keysender"],
+	external: ["@iracedeck/audio-native", "@iracedeck/iracing-native", "yaml", "keysender"],
 	plugins: [
 		// Resolve .js imports to .ts files for the raw-TypeScript actions package.
 		// Only applies to relative imports (starting with ".") within the actions package.
@@ -160,6 +161,7 @@ const config = {
 			},
 		},
 		svgPlugin(),
+		json(),
 		replace({
 			preventAssignment: true,
 			values: {
@@ -262,7 +264,6 @@ const config = {
 					type: "module",
 					dependencies: {
 						"@iracedeck/audio-native": "file:../../../audio-native",
-						"@iracedeck/audio-service": "file:../../../audio-service",
 						"@iracedeck/iracing-native": "file:../../../iracing-native",
 						yaml: "2.8.2",
 					},

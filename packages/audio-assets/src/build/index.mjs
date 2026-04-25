@@ -16,9 +16,14 @@ export const audioAssetsPath = packageRoot;
 
 const CACHE_ROOT = path.join(packageRoot, ".cache");
 
-// Folders under packages/audio-assets/ that must never be copied into the
-// plugin's assets/audio/ output (tooling, package plumbing, our own cache).
-const SKIP_FOLDERS = new Set([".cache", "node_modules", "src"]);
+// Top-level entries under packages/audio-assets/ that must never be copied
+// into the plugin's assets/audio/ output (tooling, package plumbing, our own
+// cache, and the TTS-generated tree which is not yet wired to ship).
+const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src", "voice"]);
+// The pit-crew/ tree groups every voice-line category. Subdirectories matching
+// VOICE_CATEGORIES are routed through the radio filter; anything else inside
+// pit-crew/ is copied unchanged.
+const VOICE_PARENT = "pit-crew";
 
 function filterHash(chain) {
   return createHash("sha256").update(chain).digest("hex").slice(0, 8);
@@ -107,22 +112,8 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
       let cached = 0;
       let copiedAsIs = 0;
 
-      for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
-        if (!entry.isDirectory() || SKIP_FOLDERS.has(entry.name)) continue;
-
-        const srcCategoryDir = path.join(audioAssetsPath, entry.name);
-        const destCategoryDir = path.join(destRoot, entry.name);
+      const queueVoiceCategory = (srcCategoryDir, destCategoryDir, cacheCategoryDir) => {
         mkdirSync(destCategoryDir, { recursive: true });
-
-        if (!VOICE_CATEGORIES.has(entry.name)) {
-          cpSync(srcCategoryDir, destCategoryDir, { recursive: true });
-          for (const f of readdirSync(srcCategoryDir, { withFileTypes: true })) {
-            if (f.isFile()) copiedAsIs++;
-          }
-          continue;
-        }
-
-        const cacheCategoryDir = path.join(cacheRoot, entry.name);
         mkdirSync(cacheCategoryDir, { recursive: true });
 
         for (const fileEntry of readdirSync(srcCategoryDir, { withFileTypes: true })) {
@@ -144,6 +135,44 @@ export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
               copyFileSync(cachedPath, destPath);
               processed++;
             });
+          }
+        }
+      };
+
+      const copyTreeAsIs = (srcDir, destDir) => {
+        cpSync(srcDir, destDir, { recursive: true });
+        for (const f of readdirSync(srcDir, { withFileTypes: true })) {
+          if (f.isFile()) copiedAsIs++;
+        }
+      };
+
+      for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
+        if (!entry.isDirectory() || SKIP_FOLDERS.has(entry.name)) continue;
+
+        const srcDir = path.join(audioAssetsPath, entry.name);
+        const destDir = path.join(destRoot, entry.name);
+
+        if (entry.name !== VOICE_PARENT) {
+          mkdirSync(destDir, { recursive: true });
+          copyTreeAsIs(srcDir, destDir);
+          continue;
+        }
+
+        // pit-crew/ → descend; voice categories get the radio filter, anything
+        // else under pit-crew/ is copied verbatim.
+        mkdirSync(destDir, { recursive: true });
+        for (const child of readdirSync(srcDir, { withFileTypes: true })) {
+          if (!child.isDirectory()) continue;
+
+          const srcChild = path.join(srcDir, child.name);
+          const destChild = path.join(destDir, child.name);
+
+          if (VOICE_CATEGORIES.has(child.name)) {
+            const cacheChild = path.join(cacheRoot, VOICE_PARENT, child.name);
+            queueVoiceCategory(srcChild, destChild, cacheChild);
+          } else {
+            mkdirSync(destChild, { recursive: true });
+            copyTreeAsIs(srcChild, destChild);
           }
         }
       }

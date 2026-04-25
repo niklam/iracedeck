@@ -7,4 +7,13 @@
  */
 export type { EventHandler, IEventBus } from "./event-bus.js";
 export { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized } from "./event-bus.js";
-export type { EmptySimEventPayload, SimEvent, SimEventMap, SimEventName, SimEventOf } from "./event-catalog.js";
+export type {
+  EmptySimEventPayload,
+  FlagScope,
+  PitServiceKind,
+  SimEvent,
+  SimEventMap,
+  SimEventName,
+  SimEventOf,
+  RadarState,
+} from "./event-catalog.js";

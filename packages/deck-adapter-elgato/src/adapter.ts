@@ -168,6 +168,15 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     });
   }
 
+  onPropertyInspectorDidAppear(callback: () => void): void {
+    // streamDeck.ui.onDidAppear fires once per PI becoming visible, regardless
+    // of which action opens it. The payload carries action/context info; we
+    // only care that *some* PI opened, so the callback is parameterless.
+    this.sd.ui.onDidAppear(() => {
+      callback();
+    });
+  }
+
   createLogger(scope: string): ILogger {
     return createSDLogger(this.sd.logger.createScope(scope));
   }

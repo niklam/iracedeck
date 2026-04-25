@@ -60,11 +60,14 @@ Stops all 4 channels.
 ### `seekChannelRandom(channel: number): void`
 Seeks to a random position in the current sound (used for ambient loop variation).
 
-### `getAudioDevices(): Array<{ index: number, name: string, isDefault: boolean }>`
-Enumerates available audio playback devices.
+### `getAudioDevices(): Array<{ index: number, name: string, id: string, isDefault: boolean }>`
+Enumerates available audio playback devices. `id` is a hex-encoded `ma_device_id` — the platform-stable identifier (WASAPI endpoint ID on Windows, CoreAudio UID on macOS, etc.) suitable for persisting selection across sessions. `index` is the volatile enumeration position retained for backward compatibility.
 
 ### `setAudioDevice(deviceIndex: number): boolean`
-Switches audio output to a specific device. -1 for system default. Stops all sounds and reinitializes the engine.
+Switches audio output to a specific device by enumeration index. -1 for system default. Stops all sounds and reinitializes the engine. Prefer `setAudioDeviceById` for persisted selections.
+
+### `setAudioDeviceById(deviceId: string): boolean`
+Switches audio output to a device looked up by its stable `id` from `getAudioDevices`. Returns `false` if the id is not found in the current enumeration (e.g. unplugged device). On engine-init failure, falls back to the system default so the mixer remains usable. Use this for any selection that needs to survive replug or driver reset.
 
 ## Channel enum
 

@@ -14,8 +14,9 @@ function createMockNative(): AudioNative {
     setChannelEndCallback: vi.fn(),
     stopAllChannels: vi.fn(),
     seekChannelRandom: vi.fn(),
-    getAudioDevices: vi.fn(() => [{ index: 0, name: "Default Device", isDefault: true }]),
+    getAudioDevices: vi.fn(() => [{ index: 0, name: "Default Device", id: "default-id", isDefault: true }]),
     setAudioDevice: vi.fn(() => true),
+    setAudioDeviceById: vi.fn(() => true),
   } as unknown as AudioNative;
 }
 
@@ -120,6 +121,42 @@ describe("AudioService", () => {
       expect(result).toBe(false);
     });
 
+    it("prepends basePath to relative paths", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "sfx/IRD-tick-open.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(/[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]IRD-tick-open\.mp3$/),
+        false,
+        1.0,
+      );
+    });
+
+    it("leaves absolute paths untouched when basePath is set", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Radar, "/abs/path/clip.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Radar, "/abs/path/clip.mp3", false, 1.0);
+    });
+
+    it("leaves relative paths untouched when basePath is null", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      getAudio().playOnChannel(AudioChannel.Voice, "sfx/IRD-tick-open.mp3");
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Voice, "sfx/IRD-tick-open.mp3", false, 1.0);
+    });
+
+    it("throws when a relative path tries to escape basePath via ..", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "../../etc/passwd")).toThrow(/escapes basePath/);
+    });
+
     it("should stop channel", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
@@ -160,7 +197,7 @@ describe("AudioService", () => {
       (native.isChannelPlaying as ReturnType<typeof vi.fn>).mockReturnValue(true);
       initializeAudio(mockLogger as never, native);
       getAudio().init();
-      expect(getAudio().isChannelPlaying(AudioChannel.Spotter)).toBe(true);
+      expect(getAudio().isChannelPlaying(AudioChannel.Radar)).toBe(true);
     });
   });
 
@@ -262,6 +299,44 @@ describe("AudioService", () => {
       expect(onSeqComplete).not.toHaveBeenCalled();
     });
 
+    it("resolves sequence clips + connectors against basePath", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native, "/plugin/assets/audio");
+      getAudio().init();
+      getAudio().playVoiceSequence(["sfx/one.mp3", "sfx/two.mp3"], ["sfx/and.mp3"]);
+
+      const msgPattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]one\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(msgPattern),
+        false,
+        1.0,
+      );
+
+      endCallbacks[AudioChannel.Voice]();
+      const connectorPattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]and\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(connectorPattern),
+        false,
+        1.0,
+      );
+
+      endCallbacks[AudioChannel.Voice]();
+      const msg2Pattern = /[\\/]plugin[\\/]assets[\\/]audio[\\/]sfx[\\/]two\.mp3$/;
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        expect.stringMatching(msg2Pattern),
+        false,
+        1.0,
+      );
+    });
+
     it("should skip empty file array", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
@@ -269,6 +344,59 @@ describe("AudioService", () => {
       getAudio().playVoiceSequence([]);
       // playOnChannel should only have been called by init setup, not for empty sequence
       expect(native.playOnChannel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("device selection", () => {
+    it("getAudioDevices forwards the native enumeration with stable id", () => {
+      const native = createMockNative();
+      (native.getAudioDevices as ReturnType<typeof vi.fn>).mockReturnValue([
+        { index: 0, name: "Speakers", id: "AAAA", isDefault: true },
+        { index: 1, name: "Headset", id: "BBBB", isDefault: false },
+      ]);
+      initializeAudio(mockLogger as never, native);
+
+      expect(getAudio().getAudioDevices()).toEqual([
+        { index: 0, name: "Speakers", id: "AAAA", isDefault: true },
+        { index: 1, name: "Headset", id: "BBBB", isDefault: false },
+      ]);
+    });
+
+    it("setAudioDevice stops all channels and forwards the index", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      const ok = getAudio().setAudioDevice(-1);
+
+      expect(ok).toBe(true);
+      expect(native.stopAllChannels).toHaveBeenCalledTimes(1);
+      expect(native.setAudioDevice).toHaveBeenCalledWith(-1);
+    });
+
+    it("setAudioDeviceById stops all channels and forwards the id", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      const ok = getAudio().setAudioDeviceById("DEADBEEF");
+
+      expect(ok).toBe(true);
+      expect(native.stopAllChannels).toHaveBeenCalledTimes(1);
+      expect(native.setAudioDeviceById).toHaveBeenCalledWith("DEADBEEF");
+    });
+
+    it("setAudioDeviceById returns false (and does not throw) when the native layer rejects the id", () => {
+      const native = createMockNative();
+      (native.setAudioDeviceById as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const ok = getAudio().setAudioDeviceById("STALE-ID");
+
+      expect(ok).toBe(false);
     });
   });
 });

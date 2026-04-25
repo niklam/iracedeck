@@ -13,22 +13,23 @@ export const RADIO_ENGINEER_FILTER =
   "highpass=f=500,lowpass=f=2400,volume=22dB,asoftclip=type=hard,volume=-16dB,volume=4dB";
 
 /**
- * Subfolders of packages/audio-assets/ whose MP3s should be processed through
- * RADIO_ENGINEER_FILTER. Any other folder (currently just `sfx/`) is copied
- * unchanged — SFX tones, ticks and squelch beeps should not be radio-filtered.
+ * Subfolders of packages/audio-assets/pit-crew/ whose MP3s should be processed
+ * through RADIO_ENGINEER_FILTER. Anything outside pit-crew/ (currently just
+ * sfx/) is copied unchanged — SFX tones, ticks and squelch beeps should not
+ * be radio-filtered.
  */
 export const VOICE_CATEGORIES = new Set([
   "acknowledgment",
   "connector",
   "flags",
-  "fuel-warnings",
+  "fuel",
+  "greeting",
   "incidents",
   "names",
   "overtake",
   "pitlane",
-  "radio-openers",
+  "radar",
   "reminder",
-  "spotter",
   "tips",
   "toggle",
 ]);

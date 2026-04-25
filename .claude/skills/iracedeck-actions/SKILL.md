@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-The website currently documents **30 actions with 254 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
+The website currently documents **31 actions with 257 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -38,14 +38,14 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
-| Driving Controls | 5 | 27 | AI spotter, audio, black boxes, look direction, car control |
+| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 87 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Communication | 2 | 34 | Chat, macros (15), whisper, reply, race admin commands |
-| **Total** | **30** | **254** | |
+| **Total** | **31** | **257** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -67,6 +67,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
+| Pit Crew | 2 | radar (toggles the directional proximity tick loop), radar-volume (with Direction up/down; steps global radarVolume by ±5, clamped 0–100). A Race Engineer voice mode is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. |
 
 ### Cockpit & Interface
 

@@ -37,6 +37,19 @@ export type SimEvent<TEvent extends string, TData, TTelemetry = unknown> = {
 export type EmptySimEventPayload = Record<string, never>;
 
 /**
+ * Proximity radar state. Sim-agnostic string union so future translators
+ * (AC, rFactor, …) can emit the same `radar.changed` shape without
+ * redefining it.
+ */
+export type RadarState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
+
+/** Pit service toggle categories that can be individually enabled/disabled. */
+export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
+
+/** Flag scope — "local" is a sector/area yellow, "full" is a full-course yellow. */
+export type FlagScope = "local" | "full";
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -49,7 +62,7 @@ export type SimEventMap = {
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
 
-  "flag.yellow.raised": SimEvent<"flag.yellow.raised", EmptySimEventPayload>;
+  "flag.yellow.raised": SimEvent<"flag.yellow.raised", { scope: FlagScope }>;
   "flag.yellow.cleared": SimEvent<"flag.yellow.cleared", EmptySimEventPayload>;
   "flag.blue.raised": SimEvent<"flag.blue.raised", EmptySimEventPayload>;
   "flag.green.raised": SimEvent<"flag.green.raised", EmptySimEventPayload>;
@@ -58,28 +71,29 @@ export type SimEventMap = {
   "flag.white.raised": SimEvent<"flag.white.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
 
-  "tireService.changed": SimEvent<"tireService.changed", EmptySimEventPayload>;
-  "pitService.toggled": SimEvent<"pitService.toggled", EmptySimEventPayload>;
-  "carControl.drsToggled": SimEvent<"carControl.drsToggled", EmptySimEventPayload>;
-  "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", EmptySimEventPayload>;
-  "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", EmptySimEventPayload>;
+  "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[] }>;
+  "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
+  "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
+  "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;
+  "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;
   "limiter.dropped": SimEvent<"limiter.dropped", EmptySimEventPayload>;
   "limiter.missing": SimEvent<"limiter.missing", EmptySimEventPayload>;
   "limiter.speeding": SimEvent<"limiter.speeding", EmptySimEventPayload>;
 
-  "incident.occurred": SimEvent<"incident.occurred", EmptySimEventPayload>;
+  "incident.occurred": SimEvent<"incident.occurred", { delta: number }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;
   "offTrack.ended": SimEvent<"offTrack.ended", EmptySimEventPayload>;
 
-  "overtake.completed": SimEvent<"overtake.completed", EmptySimEventPayload>;
+  "overtake.completed": SimEvent<"overtake.completed", { carIdx: number; sustained: number }>;
 
   "driver.firstOnTrack": SimEvent<"driver.firstOnTrack", EmptySimEventPayload>;
-  "session.changed": SimEvent<"session.changed", EmptySimEventPayload>;
+  "session.changed": SimEvent<"session.changed", { from: number; to: number }>;
   "engine.startup": SimEvent<"engine.startup", EmptySimEventPayload>;
+  "lap.started": SimEvent<"lap.started", { lap: number }>;
 
   // ── Value-change events (§6.2) — emit new state when derived value changes
-  "spotter.changed": SimEvent<"spotter.changed", EmptySimEventPayload>;
-  "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", EmptySimEventPayload>;
+  "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;
+  "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", { threshold: number; laps: number }>;
 };
 
 /** All event names the catalog supports. */

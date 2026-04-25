@@ -39,6 +39,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@iracedeck/audio-native": resolve(__dirname, "packages/audio-native/src/index.ts"),
+      "@iracedeck/audio-scenarios/pit-crew": resolve(
+        __dirname,
+        "packages/audio-scenarios/src/catalog/pit-crew/index.ts",
+      ),
+      "@iracedeck/audio-scenarios": resolve(__dirname, "packages/audio-scenarios/src/index.ts"),
       "@iracedeck/audio-service": resolve(__dirname, "packages/audio-service/src/index.ts"),
       "@iracedeck/deck-core": resolve(__dirname, "packages/deck-core/src/index.ts"),
       "@iracedeck/event-bus": resolve(__dirname, "packages/event-bus/src/index.ts"),
@@ -46,6 +51,7 @@ export default defineConfig({
       "@iracedeck/iracing-sdk": resolve(__dirname, "packages/iracing-sdk/src/index.ts"),
       "@iracedeck/iracing-native": resolve(__dirname, "packages/iracing-native/src/index.ts"),
       "@iracedeck/logger": resolve(__dirname, "packages/logger/src/index.ts"),
+      "@iracedeck/sim-events-iracing": resolve(__dirname, "packages/sim-events-iracing/src/index.ts"),
     },
   },
   test: {

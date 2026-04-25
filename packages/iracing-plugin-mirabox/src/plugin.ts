@@ -6,12 +6,15 @@
  *
  * Mirrors the Elgato Stream Deck plugin initialization order.
  */
+import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
+import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
+import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
+  getController,
   initAppMonitor,
-  initEngineStartupAnimation,
   initGlobalSettings,
   initializeBindingDispatcher,
   initializeKeyboard,
@@ -22,6 +25,7 @@ import {
   type PluginConfig,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
+import { initializeEventBus } from "@iracedeck/event-bus";
 import {
   AI_SPOTTER_CONTROLS_UUID,
   AiSpotterControls,
@@ -49,9 +53,9 @@ import {
   LookDirection,
   MEDIA_CAPTURE_UUID,
   MediaCapture,
-  PIT_ENGINEER_UUID,
+  PIT_CREW_UUID,
   PIT_QUICK_ACTIONS_UUID,
-  PitEngineer,
+  PitCrew,
   PitQuickActions,
   RACE_ADMIN_UUID,
   RaceAdmin,
@@ -93,6 +97,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,6 +115,15 @@ const adapter = new VSDPlatformAdapter();
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
 
+// Initialize the event bus BEFORE any publisher (sim-events-iracing) or
+// subscriber (actions) exist. Must land before sdk translator + actions so
+// both sides can see the bus.
+const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
+
+// Translate sdkController ticks → semantic events on the bus. The only
+// package allowed to read `@iracedeck/iracing-sdk` for telemetry.
+initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
+
 // Initialize keyboard for hotkey actions with scan code support for non-US layouts
 const native = new IRacingNative();
 initializeKeyboard(
@@ -119,36 +133,82 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
 
-// Initialize audio engine for pit engineer voice playback
+// Initialize audio engine for pit crew voice playback.
+// Base path lets scenarios emit manifest-relative clip paths (e.g.
+// "sfx/IRD-tick-open.mp3") that audio-service prepends with the plugin's
+// assets/audio directory before passing them to the native engine.
+// Resolved from __binDir (→ <sdPlugin>/bin/) so lookup is stable
+// regardless of the launching process's cwd.
 const audioNative = new AudioNative();
-initializeAudio(adapter.createLogger("Audio"), audioNative);
+initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
-// Publish audio device list and apply saved device selection
-let audioDeviceInitialized = false;
-let currentAudioDevice = -1;
+// Initialize the scenario engine AFTER audio (so it can drive playback) but
+// BEFORE actions register (so actions see a ready engine when they wire PI
+// toggles and Test buttons to setEnabled / fire).
+initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"));
+registerPitCrew(eventBus);
+
+// Publish audio device list and apply saved device selection.
+// See `iracing-plugin-stream-deck/src/plugin.ts` for the persistence
+// contract (id-based; empty string = System Default; legacy values fall
+// back to default without rewriting the persisted setting) and the
+// recursion-safety note around the listener re-entry.
+let initialDevicePushDone = false;
+let currentAudioDeviceId: string = "";
+// Cache the last pushed payload so identical re-enumerations (the common
+// case on repeated PI re-opens with no hardware change) don't churn the
+// sdpi-components data source and force a full dropdown re-render.
+let lastPushedDeviceListJson = "";
+
+function pushAudioDevicesIfChanged(): void {
+  const devices = getAudio().getAudioDevices();
+  const json = JSON.stringify(devices);
+
+  if (json === lastPushedDeviceListJson) return;
+
+  lastPushedDeviceListJson = json;
+  updateGlobalSettings({ _audioDeviceList: json });
+}
+
 onGlobalSettingsChange((settings) => {
   const s = settings as Record<string, unknown>;
 
-  // Publish device list for PI consumption (once, on first settings receipt)
-  if (!audioDeviceInitialized) {
-    const devices = getAudio().getAudioDevices();
-    updateGlobalSettings({ _audioDeviceList: JSON.stringify(devices) });
+  // First time settings arrive, seed the device list so the PI sees the
+  // initial enumeration without needing to be opened first. After this
+  // the PI-appear hook drives refreshes — `initialDevicePushDone` is just
+  // a one-shot gate, not a "never refresh" latch.
+  if (!initialDevicePushDone) {
+    initialDevicePushDone = true;
+    pushAudioDevicesIfChanged();
   }
 
   // Apply audio output device (on startup and when changed from PI)
   const saved = s.audioOutputDevice;
-  const deviceIndex = saved !== undefined && saved !== null && saved !== "" ? Number(saved) : -1;
+  const deviceId = typeof saved === "string" ? saved : "";
 
-  if (deviceIndex !== currentAudioDevice) {
-    currentAudioDevice = deviceIndex;
+  if (deviceId === currentAudioDeviceId) return;
 
-    if (deviceIndex !== -1 || audioDeviceInitialized) {
-      getAudio().setAudioDevice(deviceIndex);
+  currentAudioDeviceId = deviceId;
+
+  if (deviceId === "") {
+    getAudio().setAudioDevice(-1);
+  } else {
+    const ok = getAudio().setAudioDeviceById(deviceId);
+
+    if (!ok) {
+      getAudio().setAudioDevice(-1);
     }
   }
+});
 
-  audioDeviceInitialized = true;
+// Re-enumerate audio devices on every PI open so a headset plugged in
+// after VSD Craft booted appears without a full restart. The
+// `pushAudioDevicesIfChanged` guard short-circuits the common case (PI
+// reopened, no hardware changed) so the sdpi-components data source
+// doesn't churn.
+adapter.onPropertyInspectorDidAppear(() => {
+  pushAudioDevicesIfChanged();
 });
 
 // Initialize window focus service for focusing iRacing before any action
@@ -185,7 +245,7 @@ adapter.registerAction(FORCE_FEEDBACK_UUID, new ForceFeedback(adapter.createLogg
 adapter.registerAction(FUEL_SERVICE_UUID, new FuelService(adapter.createLogger("FuelService")));
 adapter.registerAction(LOOK_DIRECTION_UUID, new LookDirection(adapter.createLogger("LookDirection")));
 adapter.registerAction(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger("MediaCapture")));
-adapter.registerAction(PIT_ENGINEER_UUID, new PitEngineer(adapter.createLogger("PitEngineer")));
+adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew")));
 adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
 adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
 adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
@@ -215,9 +275,6 @@ initializeSimHub(adapter.createLogger("SimHub"));
 
 // Initialize binding dispatcher AFTER SimHub so isReady can check reachability
 initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
-
-// Initialize engine startup animation (after SDK, before connect)
-initEngineStartupAnimation(adapter.createLogger("EngineStartupAnimation"));
 
 // Initialize app monitor for iRacing process detection
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));

@@ -6,7 +6,7 @@
  *   Channel 0 (Ambient) — pit lane background noise loop
  *   Channel 1 (SFX)     — walkie-talkie open/close ticks
  *   Channel 2 (Voice)   — engineer messages, reminders, toggles
- *   Channel 3 (Spotter) — directional spotter ticks
+ *   Channel 3 (Radar) — directional radar ticks
  *
  * Also provides a voice sequence engine that chains audio clips with
  * random connector words ("and", "also", "plus") between them.
@@ -26,6 +26,7 @@
 import type { AudioNative } from "@iracedeck/audio-native";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
+import path from "node:path";
 
 // ─── Channel enum ────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ export enum AudioChannel {
   Ambient = 0,
   SFX = 1,
   Voice = 2,
-  Spotter = 3,
+  Radar = 3,
 }
 
 // ─── Bus system ──────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ export enum AudioBus {
   Voice = 0,
   /** Pit/track ambient loops + walkie ticks and non-voice SFX. */
   Background = 1,
-  /** Directional spotter calls; independent from engineer audio. */
+  /** Directional radar calls; independent from engineer audio. */
   Alerts = 2,
 }
 
@@ -65,14 +66,14 @@ const CHANNEL_BUS_MAP: Readonly<Record<AudioChannel, AudioBus>> = {
   [AudioChannel.Ambient]: AudioBus.Background,
   [AudioChannel.SFX]: AudioBus.Background,
   [AudioChannel.Voice]: AudioBus.Voice,
-  [AudioChannel.Spotter]: AudioBus.Alerts,
+  [AudioChannel.Radar]: AudioBus.Alerts,
 };
 
 const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.Ambient]: 0.8,
   [AudioChannel.SFX]: 0.7,
   [AudioChannel.Voice]: 1.0,
-  [AudioChannel.Spotter]: 1.0,
+  [AudioChannel.Radar]: 1.0,
 };
 
 // ─── Voice sequence state ────────────────────────────────────────────────────
@@ -146,10 +147,18 @@ export interface IAudioService {
   seekChannelRandom(channel: AudioChannel): void;
 
   /** Get list of available audio output devices. */
-  getAudioDevices(): Array<{ index: number; name: string; isDefault: boolean }>;
+  getAudioDevices(): Array<{ index: number; name: string; id: string; isDefault: boolean }>;
 
   /** Switch to a specific audio output device. -1 for system default. Returns true on success. */
   setAudioDevice(deviceIndex: number): boolean;
+
+  /**
+   * Switch to a device looked up by its stable `id` from
+   * {@link getAudioDevices}. Use this for any persisted selection — `id`
+   * survives device-list reordering, replug, and OS audio reconfiguration.
+   * Returns false if the id isn't in the current enumeration.
+   */
+  setAudioDeviceById(deviceId: string): boolean;
 }
 
 // ─── Implementation ──────────────────────────────────────────────────────────
@@ -157,6 +166,7 @@ export interface IAudioService {
 class AudioService implements IAudioService {
   private logger: ILogger;
   private native: AudioNative;
+  private readonly basePath: string | null;
   private engineReady = false;
 
   // Voice sequence state
@@ -176,9 +186,10 @@ class AudioService implements IAudioService {
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
 
-  constructor(logger: ILogger, native: AudioNative) {
+  constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
     this.logger = logger;
     this.native = native;
+    this.basePath = basePath;
 
     // Register persistent native end callbacks for all channels.
     // These dispatch to the JS-level one-shot callbacks.
@@ -219,9 +230,39 @@ class AudioService implements IAudioService {
   playOnChannel(channel: AudioChannel, filePath: string, loop = false): boolean {
     if (!this.engineReady) return false;
 
-    this.logger.debug(`Play ch${channel}: ${filePath}${loop ? " (loop)" : ""}`);
+    const resolved = this.resolvePath(filePath);
+    this.logger.debug(`Play ch${channel}: ${resolved}${loop ? " (loop)" : ""}`);
 
-    return this.native.playOnChannel(channel, filePath, loop, this.channelVolumes[channel]);
+    return this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+  }
+
+  /**
+   * Resolve a clip path against the service's configured base path. Absolute
+   * paths pass through unchanged, so callers that build their own absolute
+   * paths (e.g. the radar engine) still work. Callers passing manifest-
+   * relative paths (e.g. the scenario interpreter emitting
+   * `sfx/IRD-tick-open.mp3`) get prefixed with the base so the native layer
+   * receives a filesystem path it can actually open.
+   *
+   * Rejects paths that escape the base via `..` segments. The scenario DSL
+   * only emits manifest slugs (no traversal), so a rejection here means a
+   * scenario author or a malformed manifest tried to reach outside the
+   * audio-assets directory — almost certainly a bug worth failing loud on.
+   */
+  private resolvePath(filePath: string): string {
+    if (path.isAbsolute(filePath)) return filePath;
+
+    if (!this.basePath) return filePath;
+
+    const base = path.resolve(this.basePath);
+    const resolved = path.resolve(base, filePath);
+    const rel = path.relative(base, resolved);
+
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error(`Audio clip path escapes basePath: ${filePath}`);
+    }
+
+    return resolved;
   }
 
   stopChannel(channel: AudioChannel): void {
@@ -312,7 +353,7 @@ class AudioService implements IAudioService {
     this.native.seekChannelRandom(channel);
   }
 
-  getAudioDevices(): Array<{ index: number; name: string; isDefault: boolean }> {
+  getAudioDevices(): Array<{ index: number; name: string; id: string; isDefault: boolean }> {
     return this.native.getAudioDevices();
   }
 
@@ -326,9 +367,44 @@ class AudioService implements IAudioService {
     const ok = this.native.setAudioDevice(deviceIndex);
 
     if (ok) {
-      this.logger.info(`Audio output device switched to index ${deviceIndex}`);
+      this.logger.info("Audio output device switched");
+      this.logger.debug(`Device index: ${deviceIndex}`);
     } else {
-      this.logger.error(`Failed to switch audio output device to index ${deviceIndex}`);
+      this.logger.error("Failed to switch audio output device");
+      this.logger.debug(`Failed device index: ${deviceIndex}`);
+    }
+
+    return ok;
+  }
+
+  setAudioDeviceById(deviceId: string): boolean {
+    // Stop all active playback before switching
+    this.cancelVoiceSequence();
+    this.native.stopAllChannels();
+
+    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+
+    const ok = this.native.setAudioDeviceById(deviceId);
+
+    if (ok) {
+      this.logger.info("Audio output device switched by id");
+      this.logger.debug(`Device id: ${deviceId}`);
+    } else {
+      // The native layer returns false for three distinct reasons:
+      // (a) the id isn't in the current enumeration (stale / unplugged /
+      // legacy value), (b) the hex string is malformed, or (c) the engine
+      // reinit failed. Distinguish (a) from (b)+(c) by re-checking the
+      // enumeration so the operator log is truthful. Caller decides how
+      // to recover (typically fall back to system default).
+      const exists = this.native.getAudioDevices().some((d) => d.id === deviceId);
+
+      if (exists) {
+        this.logger.error("Failed to switch audio output device by id (engine reinit failed)");
+      } else {
+        this.logger.warn("Audio output device id not found in current enumeration");
+      }
+
+      this.logger.debug(`Device id: ${deviceId}`);
     }
 
     return ok;
@@ -382,7 +458,12 @@ class AudioService implements IAudioService {
       const connector = this.pickConnector();
       this.voiceSeqState = VoiceSeqState.PlayingConnector;
       this.logger.debug(`Playing connector: ${connector}`);
-      this.native.playOnChannel(AudioChannel.Voice, connector, false, this.channelVolumes[AudioChannel.Voice]);
+      this.native.playOnChannel(
+        AudioChannel.Voice,
+        this.resolvePath(connector),
+        false,
+        this.channelVolumes[AudioChannel.Voice],
+      );
     } else {
       // No connectors — play next message directly
       this.playCurrentMessage();
@@ -397,7 +478,12 @@ class AudioService implements IAudioService {
   private playCurrentMessage(): void {
     const file = this.voiceSeqFiles[this.voiceSeqIndex];
     this.logger.debug(`Playing message ${this.voiceSeqIndex + 1}/${this.voiceSeqFiles.length}: ${file}`);
-    this.native.playOnChannel(AudioChannel.Voice, file, false, this.channelVolumes[AudioChannel.Voice]);
+    this.native.playOnChannel(
+      AudioChannel.Voice,
+      this.resolvePath(file),
+      false,
+      this.channelVolumes[AudioChannel.Voice],
+    );
   }
 
   private pickConnector(): string {
@@ -423,13 +509,25 @@ let audioService: AudioService | null = null;
 /**
  * Initialize the audio service singleton with an AudioNative instance.
  * Call once at plugin startup, then call getAudio().init() to start the engine.
+ *
+ * `basePath` is prepended to every manifest-relative clip path passed to
+ * `playOnChannel` / `playVoiceSequence` (absolute paths pass through
+ * unchanged). Typically the plugin passes `path.join(process.cwd(),
+ * "assets", "audio")` so scenarios can emit short namespace-relative paths
+ * like `sfx/IRD-tick-open.mp3` and the native layer still gets a real
+ * filesystem path. Pass `null` to disable resolution (useful in tests that
+ * inject a fake AudioNative and don't care where the path points).
  */
-export function initializeAudio(logger: ILogger = silentLogger, native: AudioNative): IAudioService {
+export function initializeAudio(
+  logger: ILogger = silentLogger,
+  native: AudioNative,
+  basePath: string | null = null,
+): IAudioService {
   if (audioService) {
     throw new Error("Audio service already initialized. initializeAudio() should only be called once.");
   }
 
-  audioService = new AudioService(logger, native);
+  audioService = new AudioService(logger, native, basePath);
   logger.info("Audio service initialized");
 
   return audioService;

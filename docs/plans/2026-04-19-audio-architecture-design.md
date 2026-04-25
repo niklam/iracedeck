@@ -1,8 +1,10 @@
 # Audio architecture design
 
-**Status:** Proposed. Work lands on `feature/pit-engineer`: each stage branches off that feature branch and merges back into it. `feature/pit-engineer` → `master` is one final PR containing both the Pit Engineer feature and this architecture, closing #375 and #376 together.
+> **2026-04-22 update (#413):** This document predates the Pit Engineer → **Pit Crew** rebrand and the "Spotter" → **Radar** rename. References below to "pit-engineer" / "spotter" refer to the older names of what now ship as Pit Crew / Race Engineer (voice) and Radar (directional ticks). The architectural layers and scenario-DSL design described here are unchanged by the rename; only labels move. Active sections (§10 testing, §12 release cadence, §13 GA scope) have been updated; historical refactor narrative (§1–§9, §11) keeps the original terminology so it stays consistent with the commits that implemented each stage.
+
+**Status:** Proposed. Work lands on `feature/pit-crew` (branch renamed from `feature/pit-engineer` alongside #413): each stage branches off that feature branch and merges back into it. `feature/pit-crew` → `master` is one final PR containing both the Pit Crew action and this architecture, closing #375 and #376 together.
 **Date:** 2026-04-19.
-**Issue:** #376. Ships together with #375 (Pit Engineer).
+**Issue:** #376. Ships together with #375 (Pit Crew).
 
 ---
 
@@ -436,7 +438,7 @@ type ScenarioContext = {
 8. Register scenario catalogs (pit-engineer, future others)
 9. Register iracing-actions (PitEngineer, etc.) on the adapter
 10. initGlobalSettings(adapter, logger)
-11. ... rest of today's init (SimHub, BindingDispatcher, EngineStartup, AppMonitor)
+11. ... rest of today's init (SimHub, BindingDispatcher, AppMonitor)
 12. adapter.connect()
 ```
 
@@ -499,8 +501,8 @@ type ScenarioContext = {
   - Conditional branching given synthetic `ScenarioContext`
   - Include composition (including cycle detection)
   - Cooldown enforcement, priority ordering, preemption of in-flight
-- **`@iracedeck/audio-scenarios` — catalog tests.** Each scenario catalog gets its own test file that feeds canned events and asserts the resolved clip sequence. `audio-service` is faked — no real audio plays. **This is the big win:** scenario behavior is testable without mocking `@iracedeck/deck-core` wholesale (the approach the current `pit-engineer.test.ts` is forced into).
-- **`PitEngineer` action** — shrinks dramatically. Tests verify: PI toggle subscribes/unsubscribes the right scenarios, volume slider calls `bus.setVolume`, Test button fires the right scenario, welcome-test plays the welcome scenario.
+- **`@iracedeck/audio-scenarios` — catalog tests.** Each scenario catalog gets its own test file that feeds canned events and asserts the resolved clip sequence. `audio-service` is faked — no real audio plays. **This is the big win:** scenario behavior is testable without mocking `@iracedeck/deck-core` wholesale (the approach `pit-crew.test.ts` is forced into for the Stream Deck surface).
+- **`PitCrew` action** — Tests verify per mode: (a) Race Engineer toggle flips `raceEngineerEnabled` in global settings without touching the Radar gate; (b) Radar toggle flips `radarEnabled` synchronously via `setRadarEnabled` (so the tick loop stops/starts immediately) and writes to global settings; (c) Radar Volume up/down steps `radarVolume` by 5, clamps at 5/100, and writes to `AudioBus.Alerts`; (d) the Test button invokes `playRadarTest`; (e) independent-gate regression: Race Engineer off + Radar on still ticks, and vice versa. Voice-scenario assertions (welcome/pit-lane/flag/etc.) come back with their follow-up PRs (#410).
 - **Plugin wiring** — smoke test that startup order produces a ready event bus + working audio-service + scenarios subscribed to the bus.
 
 ---
@@ -566,11 +568,13 @@ This stage does two related things; split into two commits inside the same PR fo
 - After each port: delete the corresponding handler from `pit-engineer.ts`, confirm tests pass.
 - Commit per scenario group: `refactor(pit-engineer): port pit-lane scenarios to audio-scenarios (#376)`, etc.
 
-### Stage 7 — Shrink `PitEngineer` action
+### Stage 7 — Shrink `PitEngineer` action ✅
 
-- After all scenarios are ported, `pit-engineer.ts` becomes: button, PI, settings, icon. Target: under 400 LOC.
+- After all scenarios are ported, `pit-engineer.ts` becomes: button, PI, settings, icon. Target: under 400 LOC. **Landed at 380 LOC (#401).**
 - All module-level `let` globals deleted (their roles are now owned by scenarios / sim-events-iracing / audio-service).
-- Commit: `refactor(pit-engineer): shrink action to thin shell over audio-scenarios (#376)`.
+- Commit: `refactor(pit-engineer): shrink action to thin shell over audio-scenarios (#401)`.
+- Master on/off stored as a plugin-global setting (`pitEngineerEnabled`) so the flag persists across restarts and is readable by every action instance without module state.
+- The spotter tick loop — the one imperative piece the DSL cannot yet express (see §15) — moved to `packages/audio-scenarios/src/catalog/pit-engineer/spotter-engine.ts`. Registered alongside `registerPitEngineer(bus)` and exposed via `setSpotterEnabled` / `playSpotterTest` / `subscribeSpotterVisualState` so the action stays stateless.
 
 Each stage is a single logical commit; each lands as its own PR into `feature/pit-engineer`. Tests run and pass at every stage. Stage 6 may split into multiple per-scenario-group commits inside a single PR.
 
@@ -580,9 +584,9 @@ Each stage is a single logical commit; each lands as its own PR into `feature/pi
 
 This plan governs **architecture**, not **feature release cadence**. The two axes are orthogonal.
 
-- **Every stage preserves user-visible behavior on `feature/pit-engineer`.** A scenario that plays on the branch today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports are refactors, not new-scenario introductions.
-- **First GA release exclusions.** When `feature/pit-engineer` → `master` lands, the **directional spotter** (proximity beeps when a car is alongside) and **toggle confirmations** ("ok, we're changing all tires") ship **default-off**; they flip on in later releases after race-test validation. Remaining engineer scenarios (approach, service reminder, stall departure, exit, flag alerts, incident alerts, overtake, tips, fuel warnings, pit limiter, welcome) ship with their existing defaults from the feature branch.
-- **Follow-up tracking.** Optional "pit engineer (beta)" gate, race-test signoff format, and the default-flip cadence for held-back scenarios are tracked in a separate issue filed alongside the final `feature/pit-engineer` → `master` merge. Not part of this PR.
+- **Every stage preserves user-visible behavior on `feature/pit-crew`** (branch renamed from `feature/pit-engineer` in #413). A scenario that plays on the branch today plays the same way after stage 6 ports it to the DSL — same trigger, same clips, same default PI toggle state. Stage-6 ports are refactors, not new-scenario introductions.
+- **First GA release scope (updated #410 + #413).** The Pit Crew action ships as a multi-mode Stream Deck action with three modes: Race Engineer (voice toggle), Radar (directional tick toggle), and Radar Volume Up/Down. **Radar is the only feature that produces audio on day 1** — voice-engineer scenarios (welcome, pit-lane callouts, flag alerts, incident alerts, overtake + racing tips, toggle confirmations, pit-limiter warnings, fuel warnings) are not registered with the scenario engine; the Race Engineer toggle flips a global flag that those scenarios will read when they return in follow-up PRs. Race Engineer and Radar have independent on/off globals (`raceEngineerEnabled`, `radarEnabled`) so silencing the voice engineer doesn't kill the proximity alerts. Both ship default-on.
+- **Follow-up tracking.** Voice-engineer features return one at a time in dedicated PRs after individual validation. Race Engineer Volume Up/Down modes land alongside the first voice-scenario PR (adding them now would be dead UI). Issues get filed when the work is scheduled — no placeholder issues today.
 
 ---
 
@@ -632,20 +636,25 @@ End-to-end (after all stages):
 ```bash
 pnpm install
 pnpm lint
-pnpm test            # expect the pit-engineer.test.ts count to drop; scenario tests appear in audio-scenarios
+pnpm test            # pit-crew.test.ts covers the multi-mode surface; scenario tests live in audio-scenarios
 pnpm build           # both plugins
 pnpm --filter @iracedeck/iracing-plugin-stream-deck pack:plugin
 pnpm --filter @iracedeck/iracing-plugin-mirabox pack:plugin
 ```
 
-Runtime smoke test on Windows:
+Runtime smoke test on Windows (initial GA scope — Radar audible only, per §13 / #410 / #413):
 
-1. Start Stream Deck (or VSD Craft) with a Pit Engineer button bound.
-2. Toggle engineer on. Confirm welcome message plays when you hit the track.
-3. Drive into pit lane. Confirm approach + service reminder + exit callouts fire in the same order as before.
-4. Induce a yellow flag (multiplayer or replay). Confirm flag alert fires.
-5. Trigger each sub-feature checkbox in the PI — enable, hear a callout, disable, silence.
-6. Test the volume sliders and device dropdown — behavior identical to today.
+1. Start Stream Deck (or VSD Craft) with four Pit Crew buttons bound, one per mode: Race Engineer, Radar, Radar Volume Up, Radar Volume Down.
+2. Open the PI on each — confirm the Mode dropdown with three entries (Race Engineer, Radar, Radar Volume), the Direction dropdown (visible only when Mode = Radar Volume), a global Radar Volume slider + Test, a global Output Device dropdown, and the standard title/color/border/graphic + common settings. No old Pit Engineer / Spotter fields.
+3. Press the Race Engineer button — `raceEngineerEnabled` flips in global settings; status bar flips green ↔ red across every Pit Crew instance showing the Race Engineer mode. With voice scenarios unregistered per #410, no audio plays — the only observable effect is the icon state.
+4. Press the Radar button — `radarEnabled` flips; `setRadarEnabled` is called synchronously so the directional tick loop stops/starts immediately in a live session.
+5. Confirm **no** voice audio plays on welcome (first-on-track), flag raises, pit-lane transitions, stall departure, pit exit, service reminders, incidents, overtakes, racing tips, toggle confirmations, pit-limiter states, or fuel-threshold crossings. Those scenarios are still not registered with the scenario engine; their catalogs return with their follow-up PRs.
+6. Press Radar Volume Up / Down — `radarVolume` increments/decrements by 5 on `AudioBus.Alerts`; clamps at 5/100; key icon reflects the new percentage.
+7. Press the Radar Test button in any PI — confirm the left → right → both preview plays on `AudioChannel.Radar`.
+8. Swap Output Device — confirm the preview plays on the selected device. Voice (engineer) and Background buses are not driven today; any follow-up PR re-introducing a voice feature re-wires them.
+9. Independent-gate check: set Race Engineer off + Radar on → ticks still play. Set Race Engineer on + Radar off → silence.
+
+Voice-scenario smoke tests (welcome, pit-lane, flag alerts, etc.) return alongside the follow-up PRs that re-register each scenario; they are deferred for the initial GA signoff.
 
 Runtime on macOS (mock path):
 

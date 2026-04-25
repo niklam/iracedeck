@@ -279,4 +279,125 @@ describe("ird-range-input", () => {
       expect((withDefault as HTMLInputElement).value).toBe("");
     });
   });
+
+  describe("settings hook value coercion", () => {
+    /**
+     * Test stub for window.SDPIComponents that exposes the value listener so
+     * tests can simulate the host delivering different value types (number,
+     * string, null, undefined, "") to the persistence callback.
+     */
+    function installSDPIStub(): { emit: (value: unknown) => void } {
+      let listener: ((value: string) => void) | null = null;
+      const makeHook = (_key: string, callback: (value: string) => void) => {
+        listener = callback;
+
+        return [() => Promise.resolve(""), () => undefined];
+      };
+
+      (window as unknown as Record<string, unknown>).SDPIComponents = {
+        useSettings: makeHook,
+        useGlobalSettings: makeHook,
+      };
+
+      return {
+        emit: (value) => {
+          // The runtime can deliver non-string types even though the type
+          // annotation in key-binding-utils.ts says (value: string).
+          listener?.(value as string);
+        },
+      };
+    }
+
+    function createWithSetting(defaultAttr = "100"): {
+      el: HTMLElement;
+      rangeInput: HTMLInputElement;
+      numberInput: HTMLInputElement;
+    } {
+      while (document.body.firstChild) {
+        document.body.removeChild(document.body.firstChild);
+      }
+
+      const el = document.createElement("ird-range-input");
+      el.setAttribute("min", "0");
+      el.setAttribute("max", "100");
+      el.setAttribute("default", defaultAttr);
+      el.setAttribute("setting", "radarVolume");
+      document.body.appendChild(el);
+
+      return {
+        el,
+        rangeInput: el.querySelector('input[type="range"]') as HTMLInputElement,
+        numberInput: el.querySelector('input[type="number"]') as HTMLInputElement,
+      };
+    }
+
+    it("displays 0 when callback fires with the number 0 (not the default)", () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("100");
+
+      stub.emit(0);
+
+      expect((el as HTMLInputElement).value).toBe("0");
+      expect(rangeInput.value).toBe("0");
+      expect(numberInput.value).toBe("0");
+    });
+
+    it('displays 0 when callback fires with the string "0"', () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("100");
+
+      stub.emit("0");
+
+      expect((el as HTMLInputElement).value).toBe("0");
+      expect(rangeInput.value).toBe("0");
+      expect(numberInput.value).toBe("0");
+    });
+
+    it("falls back to default attribute when callback fires with empty string", () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("75");
+
+      stub.emit("");
+
+      expect((el as HTMLInputElement).value).toBe("");
+      expect(rangeInput.value).toBe("75");
+      expect(numberInput.value).toBe("75");
+    });
+
+    it("falls back to default attribute when callback fires with null", () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("75");
+
+      stub.emit(null);
+
+      expect((el as HTMLInputElement).value).toBe("");
+      expect(rangeInput.value).toBe("75");
+      expect(numberInput.value).toBe("75");
+    });
+
+    it("falls back to default attribute when callback fires with undefined", () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("75");
+
+      stub.emit(undefined);
+
+      expect((el as HTMLInputElement).value).toBe("");
+      expect(rangeInput.value).toBe("75");
+      expect(numberInput.value).toBe("75");
+    });
+
+    it("displays the value after host echoes back a real 0 (regression: radar volume snap-to-100)", () => {
+      const stub = installSDPIStub();
+      const { el, rangeInput, numberInput } = createWithSetting("100");
+
+      // Simulate a sequence: user has 5, presses Down, host echoes 0
+      stub.emit(5);
+      expect((el as HTMLInputElement).value).toBe("5");
+
+      stub.emit(0);
+      expect((el as HTMLInputElement).value).toBe("0");
+      expect(rangeInput.value).toBe("0");
+      expect(numberInput.value).toBe("0");
+    });
+  });
 });

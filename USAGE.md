@@ -1,13 +1,13 @@
 # Usage
 
 iRaceDeck is free and source-available, licensed under the
-[iRaceDeck Non-Commercial License](LICENSE).
+[iRaceDeck Non-Commercial License v1.1](LICENSE).
 
 ## What's Allowed
 
 - Personal use — racing, streaming, testing, tinkering
 - Use in any racing session, event, league, or competition (including commercial events)
-- Modifying the plugin for your own use
+- Modifying the plugin for your own or your team's private use (no source-availability requirement when modifications aren't distributed)
 - Contributing to the project (see [CONTRIBUTING.md](CONTRIBUTING.md))
 - Creating and selling content designed for use with iRaceDeck (such as Stream Deck profiles, icon packs, or configurations), as long as iRaceDeck itself is not included, modified, or redistributed as part of the offering
 
@@ -17,6 +17,7 @@ iRaceDeck is free and source-available, licensed under the
 - Distributing iRaceDeck as part of a paid product or service
 - Using iRaceDeck to provide a competing product or service
 - Charging for access to or use of iRaceDeck itself
+- Distributing a modified version of iRaceDeck without making the modified source code publicly available
 
 ## Commercial Use
 
@@ -37,6 +38,12 @@ as long as the plugin itself is not redistributed or commercialized.
 
 iRaceDeck moved from MIT to the iRaceDeck Non-Commercial License to protect the
 project from commercial exploitation — not to restrict the community that built it.
+
+License v1.1 adds a source-availability requirement for distributed modifications:
+if you publish a modified version of iRaceDeck, your modifications have to be
+publicly available too. This closes the loophole that would let someone fork the
+project and ship a closed-source version. Private modifications you keep to
+yourself or your team are unaffected.
 
 If you're a sim racer, a hobbyist, or someone who just wants to contribute,
 nothing has changed for you. The contributor license exists to keep future

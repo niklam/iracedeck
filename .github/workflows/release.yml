@@ -18,6 +18,7 @@ jobs:
     secrets: inherit
   deploy-website:
     needs: [build-streamdeck, build-mirabox]
+    if: ${{ !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/firebase-hosting-release.yml
     secrets: inherit
     with:
