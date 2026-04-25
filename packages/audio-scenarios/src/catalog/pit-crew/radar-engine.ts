@@ -21,11 +21,11 @@ type ActiveState = Exclude<RadarVisualState, "clear">;
 type RadarListener = (state: RadarVisualState) => void;
 
 const RADAR_AUDIO: Record<ActiveState, string> = {
-  left: "pit-crew/radar/IRD-radar-left.mp3",
-  right: "pit-crew/radar/IRD-radar-right.mp3",
-  both: "pit-crew/radar/IRD-radar-both.mp3",
-  "two-left": "pit-crew/radar/IRD-radar-left.mp3",
-  "two-right": "pit-crew/radar/IRD-radar-right.mp3",
+  left: "sfx/radar/IRD-radar-left.mp3",
+  right: "sfx/radar/IRD-radar-right.mp3",
+  both: "sfx/radar/IRD-radar-both.mp3",
+  "two-left": "sfx/radar/IRD-radar-left.mp3",
+  "two-right": "sfx/radar/IRD-radar-right.mp3",
 };
 
 // Single-car states tick at 250 ms (matches the legacy 4 Hz cadence).
@@ -41,9 +41,9 @@ const RADAR_TICK_INTERVALS: Readonly<Record<ActiveState, number>> = {
 };
 
 const RADAR_TEST_SEQUENCE: readonly string[] = [
-  "pit-crew/radar/IRD-radar-left.mp3",
-  "pit-crew/radar/IRD-radar-right.mp3",
-  "pit-crew/radar/IRD-radar-both.mp3",
+  "sfx/radar/IRD-radar-left.mp3",
+  "sfx/radar/IRD-radar-right.mp3",
+  "sfx/radar/IRD-radar-both.mp3",
 ];
 
 const RADAR_TEST_GAP_MS = 250;
