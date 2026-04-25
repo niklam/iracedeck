@@ -203,7 +203,7 @@ export function playRaceEngineerVoiceTest(): boolean {
     `voice/${voice}/openers/${opener}.mp3`,
     ...(driverName ? [`voice/${voice}/names/${driverName}.mp3`] : []),
     `voice/${voice}/welcome/nice-to-meet-you.mp3`,
-    `voice/${voice}/welcome/ready-to-race.mp3`,
+    `voice/${voice}/welcome/lets-win-races.mp3`,
   ];
 
   return playVoiceSequence(paths);

@@ -1,8 +1,8 @@
 {
   "model_id": "eleven_multilingual_v2",
   "voice_settings": {
-    "stability": 0.8,
-    "similarity_boost": 0.75,
+    "stability": 1,
+    "similarity_boost": 1,
     "style": 0,
     "speed": 1,
     "use_speaker_boost": true
@@ -12,14 +12,16 @@
       "id": "15CVCzDByBinCIoCblXo",
       "label": "Luca",
       "voice_settings": {
-        "speed": 0.9
+        "speed": 0.85,
+        "stability": 1,
+        "similarity_boost": 1
       }
     },
     "titan": {
       "id": "dtSEyYGNJqjrtBArPCVZ",
       "label": "Titan",
       "voice_settings": {
-        "speed": 0.8,
+        "speed": 0.85,
         "stability": 1,
         "similarity_boost": 1
       }
@@ -236,13 +238,18 @@
     "welcome": [
       {
         "name": "nice-to-meet-you",
-        "text": "Nice to meet you, I'm your Race Engineer!",
+        "text": "Nice to meet you, <break time=\"0.2s\" />I'm your Race Engineer!",
         "previous_text": "Alright, Niklas! ",
         "next_text": " Are you ready to race?"
       },
       {
         "name": "ready-to-race",
         "text": "Are you ready to race with me?",
+        "previous_text": "I'm your Race Engineer! "
+      },
+      {
+        "name": "lets-win-races",
+        "text": "Let's win some races together!",
         "previous_text": "I'm your Race Engineer! "
       }
     ],
