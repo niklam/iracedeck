@@ -160,8 +160,16 @@
         "text": "White flag!"
       },
       {
-        "name": "yellow-01",
+        "name": "yellow-local-01",
         "text": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!"
+      },
+      {
+        "name": "yellow-full-01",
+        "text": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed."
+      },
+      {
+        "name": "yellow-cleared-01",
+        "text": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon."
       }
     ],
     "pit-limiter": [

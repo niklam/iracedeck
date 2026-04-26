@@ -289,14 +289,6 @@
       "generatedAt": "2026-04-25T15:59:18.739Z",
       "requestId": "9NPGkiw3utJO96r0aP4l"
     },
-    "voice/luca/flags/yellow-01.mp3": {
-      "hash": "d0e7a886b01d3ed5",
-      "voiceId": "15CVCzDByBinCIoCblXo",
-      "model": "eleven_multilingual_v2",
-      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
-      "generatedAt": "2026-04-25T15:59:19.704Z",
-      "requestId": "p33KLBl4rg9P52BBxXGz"
-    },
     "voice/luca/openers/alright.mp3": {
       "hash": "5177d63ea75212d6",
       "voiceId": "15CVCzDByBinCIoCblXo",
@@ -440,14 +432,6 @@
       "textPreview": "White flag!",
       "generatedAt": "2026-04-25T16:00:01.212Z",
       "requestId": "8lXFcm1e9XjjFkKLeIwk"
-    },
-    "voice/titan/flags/yellow-01.mp3": {
-      "hash": "f36c9c1fc328bd45",
-      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
-      "model": "eleven_multilingual_v2",
-      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
-      "generatedAt": "2026-04-25T16:00:02.221Z",
-      "requestId": "LLuXVLlvYkMwD84461xG"
     },
     "voice/titan/pit-limiter/pit-entry-001.mp3": {
       "hash": "ad6493e889c63676",
@@ -2560,6 +2544,54 @@
       "textPreview": "Switching to wets at the next pitstop.",
       "generatedAt": "2026-04-26T10:30:14.901Z",
       "requestId": "Pxzw4PiNvssI4xeEfH3g"
+    },
+    "voice/luca/flags/yellow-local-01.mp3": {
+      "hash": "d0e7a886b01d3ed5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
+      "generatedAt": "2026-04-26T11:19:53.722Z",
+      "requestId": "aPQwitsZrHqbBoWnTZAJ"
+    },
+    "voice/luca/flags/yellow-full-01.mp3": {
+      "hash": "7b77792d002bfac9",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed.",
+      "generatedAt": "2026-04-26T11:19:54.701Z",
+      "requestId": "s3TWYfarrcxh51LGt8gW"
+    },
+    "voice/luca/flags/yellow-cleared-01.mp3": {
+      "hash": "93d11efac6b9b418",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon.",
+      "generatedAt": "2026-04-26T11:19:55.679Z",
+      "requestId": "3JkLvjFfJiqzFp1u2RBa"
+    },
+    "voice/titan/flags/yellow-local-01.mp3": {
+      "hash": "f36c9c1fc328bd45",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
+      "generatedAt": "2026-04-26T11:19:56.947Z",
+      "requestId": "weHgcxn2o2PQFU2oHemS"
+    },
+    "voice/titan/flags/yellow-full-01.mp3": {
+      "hash": "06868b1f5604c64f",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed.",
+      "generatedAt": "2026-04-26T11:19:57.913Z",
+      "requestId": "Xrb1mFtAk8XzYDY1oJQ4"
+    },
+    "voice/titan/flags/yellow-cleared-01.mp3": {
+      "hash": "6ef8b6532cde52d9",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon.",
+      "generatedAt": "2026-04-26T11:19:58.904Z",
+      "requestId": "cD31aCOwTD756oU6AZCA"
     }
   }
 }
