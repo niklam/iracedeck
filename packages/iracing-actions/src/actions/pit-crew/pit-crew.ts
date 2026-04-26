@@ -197,7 +197,7 @@ export function playRaceEngineerVoiceTest(): boolean {
   if (!voice) return false;
 
   const opener = RACE_ENGINEER_TEST_OPENERS[Math.floor(Math.random() * RACE_ENGINEER_TEST_OPENERS.length)];
-  const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"));
+  const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"), "driver");
 
   const paths = [
     `voice/${voice}/openers/${opener}.mp3`,

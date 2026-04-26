@@ -379,6 +379,366 @@
     ],
     "names": [
       {
+        "name": "adam",
+        "text": "Adam",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "al",
+        "text": "Al",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "andre",
+        "text": "André",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "andrew",
+        "text": "Andrew",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "andy",
+        "text": "Andy",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "bob",
+        "text": "Bob",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "boss",
+        "text": "Boss",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "brenton",
+        "text": "Brenton",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "casey",
+        "text": "Casey",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "champ",
+        "text": "Champ",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "chris",
+        "text": "Chris",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "cole",
+        "text": "Cole",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "daniel",
+        "text": "Daniel",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "dave",
+        "text": "Dave",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "david",
+        "text": "David",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "driver",
+        "text": "Driver",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "felix",
+        "text": "Felix",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "fredrich",
+        "text": "Fredrich",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "glen",
+        "text": "Glen",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "hector",
+        "text": "Hector",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "hesham",
+        "text": "Hesham",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "ivan",
+        "text": "Ivan",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "jace",
+        "text": "Jace",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "johan",
+        "text": "Johan",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "jorge",
+        "text": "Jorge",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "jose",
+        "text": "Jose",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "justin",
+        "text": "Justin",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "kev",
+        "text": "Kev",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "kevin",
+        "text": "Kevin",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "kris",
+        "text": "Kris",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "lee",
+        "text": "Lee",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "lorenzo",
+        "text": "Lorenzo",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "marcus",
+        "text": "Marcus",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "mark",
+        "text": "Mark",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "mate",
+        "text": "Mate",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "matt",
+        "text": "Matt",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "matthew",
+        "text": "Matthew",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "miquel",
+        "text": "Miquel",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "nick",
+        "text": "Nick",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "niklas",
+        "text": "Niklas",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
         "name": "oivindl",
         "text": "Öivin",
         "voice_settings": {
@@ -391,8 +751,80 @@
         ]
       },
       {
-        "name": "niklas",
-        "text": "Niklas",
+        "name": "pablo",
+        "text": "Pablo",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "patrick",
+        "text": "Patrick",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "raymond",
+        "text": "Raymond",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "rich",
+        "text": "Rich",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "rob",
+        "text": "Rob",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "shawn",
+        "text": "Shawn",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "tim",
+        "text": "Tim",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "ville",
+        "text": "Ville",
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
+      },
+      {
+        "name": "zeus",
+        "text": "Zeus",
         "previous_request_ids": [
           "openers/hi",
           "openers/alright",

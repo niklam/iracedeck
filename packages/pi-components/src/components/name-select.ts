@@ -27,6 +27,9 @@
  *   (default: `driverName`).
  * - names: Plugin-global setting key holding the JSON array of
  *   available name keys (default: `_driverNames`).
+ * - default: Preferred fallback name when the persisted value is empty
+ *   or missing from the available list. Used in place of the
+ *   alphabetically-first option when present in the list. Optional.
  *
  * The plugin populates `names` via
  * `updateGlobalSettings({ [namesKey]: JSON.stringify(list) })`.
@@ -169,7 +172,7 @@ export class NameSelect extends HTMLElement {
       return;
     }
 
-    const fallback = this.select.options[0].value;
+    const fallback = this.resolveFallback();
     this.select.value = fallback;
 
     if (!this.namesLoaded) return;
@@ -178,6 +181,20 @@ export class NameSelect extends HTMLElement {
       this.savedValue = fallback;
       this.saveToStreamDeck?.(fallback);
     }
+  }
+
+  private resolveFallback(): string {
+    if (!this.select) return "";
+
+    const preferred = this.getAttribute("default") ?? "";
+
+    if (preferred.length > 0) {
+      const match = Array.from(this.select.options).find((opt) => opt.value === preferred);
+
+      if (match) return match.value;
+    }
+
+    return this.select.options[0].value;
   }
 }
 

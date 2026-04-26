@@ -6,6 +6,7 @@ import {
   getGlobalSettings,
   initGlobalSettings,
   onGlobalSettingsChange,
+  resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "./global-settings.js";
@@ -203,5 +204,51 @@ describe("resolveActiveRaceEngineerVoice", () => {
     mock.echo!({ raceEngineerVoice: "" });
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
+  });
+});
+
+describe("resolveActiveDriverName", () => {
+  beforeEach(() => {
+    _resetGlobalSettings();
+  });
+
+  it("returns null when no names are available", () => {
+    expect(resolveActiveDriverName([])).toBeNull();
+  });
+
+  it("returns the first name when nothing is persisted and no default given", () => {
+    expect(resolveActiveDriverName(["adam", "niklas"])).toBe("adam");
+  });
+
+  it("returns the persisted name when it's in the available list", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ driverName: "niklas" });
+
+    expect(resolveActiveDriverName(["adam", "niklas"])).toBe("niklas");
+  });
+
+  it("prefers the supplied default over the alphabetically-first name when nothing is persisted", () => {
+    expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("driver");
+  });
+
+  it("ignores the supplied default when it's missing from the available list", () => {
+    expect(resolveActiveDriverName(["adam", "niklas"], "driver")).toBe("adam");
+  });
+
+  it("prefers the persisted name over the supplied default", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ driverName: "niklas" });
+
+    expect(resolveActiveDriverName(["adam", "driver", "niklas"], "driver")).toBe("niklas");
+  });
+
+  it("falls back to the supplied default when the persisted name is gone", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ driverName: "removed" });
+
+    expect(resolveActiveDriverName(["adam", "driver"], "driver")).toBe("driver");
   });
 });
