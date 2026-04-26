@@ -28,3 +28,39 @@ export function manifestVoices(manifest: AudioAssetsManifest): Set<string> {
 
   return voices;
 }
+
+/**
+ * Sorted array of available Race Engineer voice keys (e.g. `"luca"`,
+ * `"titan"`) — the keys the plugin offers in the PI dropdown and seeds
+ * `raceEngineerVoice` from. Thin wrapper over {@link manifestVoices} that
+ * normalizes the result for UI use.
+ */
+export function scanRaceEngineerVoices(manifest: AudioAssetsManifest): string[] {
+  return Array.from(manifestVoices(manifest)).sort();
+}
+
+/**
+ * Sorted array of available driver-name keys (the names the engineer can
+ * address the user as) derived from `voice/<voice>/names/<name>.mp3`
+ * paths. The set is the union across voices — a name only present for one
+ * voice still shows up; runtime playback skips gracefully when the active
+ * voice has no clip for the chosen name.
+ */
+export function scanDriverNames(manifest: AudioAssetsManifest): string[] {
+  const names = new Set<string>();
+
+  for (const clip of manifest.clips) {
+    if (!clip.startsWith("voice/")) continue;
+
+    const segments = clip.split("/");
+
+    if (segments.length === 4 && segments[2] === "names") {
+      const file = segments[3];
+      const name = file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file;
+
+      if (name.length > 0) names.add(name);
+    }
+  }
+
+  return Array.from(names).sort();
+}

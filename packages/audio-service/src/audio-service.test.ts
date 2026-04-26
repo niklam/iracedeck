@@ -226,6 +226,273 @@ describe("AudioService", () => {
     });
   });
 
+  describe("playback observer", () => {
+    it("fires onStart with the resolved path when a clip plays", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(onStart).toHaveBeenCalledWith(AudioChannel.Voice, "/msg.mp3");
+    });
+
+    it("does not fire onStart when the native engine rejects the play", () => {
+      const native = createMockNative();
+      (native.playOnChannel as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it("fires onComplete when the native end callback fires", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      // Mark the channel active first — onComplete is gated on the
+      // start/end pairing now, so an unsolicited native end on an idle
+      // channel is intentionally a no-op.
+      getAudio().playOnChannel(AudioChannel.Radar, "/tick.mp3");
+
+      endCallbacks[AudioChannel.Radar]();
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Radar);
+    });
+
+    it("clears the observer when set to null", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().setPlaybackObserver(null);
+      getAudio().playOnChannel(AudioChannel.SFX, "/tick.mp3");
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it("isolates observer errors from the caller", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      getAudio().setPlaybackObserver({
+        onStart: () => {
+          throw new Error("observer boom");
+        },
+      });
+
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3")).not.toThrow();
+    });
+
+    it("fires onComplete before the voice-sequence engine schedules the next clip", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const events: string[] = [];
+      getAudio().setPlaybackObserver({
+        onStart: (ch, path) => events.push(`start:${ch}:${path}`),
+        onComplete: (ch) => events.push(`complete:${ch}`),
+      });
+
+      getAudio().playVoiceSequence(["/msg1.mp3", "/msg2.mp3"]);
+      // First message fires start
+      expect(events).toEqual([`start:${AudioChannel.Voice}:/msg1.mp3`]);
+
+      // Native end fires for msg1 → observer must see complete BEFORE next start
+      events.length = 0;
+      endCallbacks[AudioChannel.Voice]();
+
+      expect(events[0]).toBe(`complete:${AudioChannel.Voice}`);
+      expect(events[1]).toBe(`start:${AudioChannel.Voice}:/msg2.mp3`);
+    });
+
+    it("fires onComplete from stopChannel so looping channels go idle in monitors", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannel(AudioChannel.Ambient, "/loop.mp3", true);
+      getAudio().stopChannel(AudioChannel.Ambient);
+
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Ambient);
+    });
+
+    it("fires onComplete for every active channel from stopAllChannels", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      // Bring every channel to the active state first — idle channels
+      // intentionally don't fire onComplete on stop now.
+      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+        getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
+      }
+
+      getAudio().stopAllChannels();
+
+      expect(onComplete).toHaveBeenCalledTimes(4);
+
+      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+        expect(onComplete).toHaveBeenCalledWith(ch);
+      }
+    });
+
+    it("fires onComplete for every active channel when switching audio device by index", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+        getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
+      }
+
+      getAudio().setAudioDevice(2);
+
+      expect(onComplete).toHaveBeenCalledTimes(4);
+    });
+
+    it("fires onComplete for every active channel when switching audio device by id", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+        getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
+      }
+
+      getAudio().setAudioDeviceById("default-id");
+
+      expect(onComplete).toHaveBeenCalledTimes(4);
+    });
+
+    it("does not fire onComplete for stopChannel on an already-idle channel", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().stopChannel(AudioChannel.SFX);
+
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("does not fire onComplete on stopAllChannels when nothing is playing", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().stopAllChannels();
+
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("stopChannel(Voice) cancels the active voice sequence so a deferred native end can't resume it", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      // Start a 3-clip sequence so the voice-sequence state machine has
+      // pending messages. Pre-fix: stopChannel(Voice) cleared the
+      // observer state but left voiceSeqState armed; a deferred native
+      // end echo would then schedule msg2 via handleVoiceEnd and the
+      // mock native.playOnChannel would be called for "/msg2.mp3".
+      getAudio().playVoiceSequence(["/msg1.mp3", "/msg2.mp3", "/msg3.mp3"]);
+      const playsBeforeStop = (native.playOnChannel as ReturnType<typeof vi.fn>).mock.calls.length;
+
+      getAudio().stopChannel(AudioChannel.Voice);
+
+      // Native engine echoes its end callback after the manual stop.
+      endCallbacks[AudioChannel.Voice]();
+
+      // No additional play was scheduled — the sequence was cancelled.
+      const playsAfterStop = (native.playOnChannel as ReturnType<typeof vi.fn>).mock.calls.length;
+      expect(playsAfterStop).toBe(playsBeforeStop);
+    });
+
+    it("destroy() drains active channels and resets channelActive so a re-init starts clean", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannel(AudioChannel.Ambient, "/loop.mp3", true);
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      getAudio().destroy();
+
+      // Both active channels notified on teardown.
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Ambient);
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Voice);
+
+      // After destroy + observer detached, a stale native end echo for any
+      // channel must not fire a synthetic onComplete (channelActive cleared).
+      onComplete.mockClear();
+      getAudio().stopChannel(AudioChannel.Ambient);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it("does not double-fire onComplete when native end callback follows manual stop", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannel(AudioChannel.Ambient, "/loop.mp3", true);
+      getAudio().stopChannel(AudioChannel.Ambient);
+      // Native engine echoes its end callback after the manual stop.
+      endCallbacks[AudioChannel.Ambient]();
+
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("voice sequence", () => {
     it("should play single file without connectors", () => {
       const native = createMockNative();

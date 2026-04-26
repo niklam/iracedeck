@@ -84,6 +84,32 @@ enum VoiceSeqState {
   PlayingConnector,
 }
 
+// ─── Playback observer ───────────────────────────────────────────────────────
+
+/**
+ * Persistent observer for playback start/complete events across all channels.
+ *
+ * Distinct from {@link IAudioService.onChannelComplete}: that API is a
+ * one-shot per-channel callback used internally by callers that need to
+ * chain plays. The observer here is a single non-mutating subscription
+ * intended for monitoring (logging, telemetry, dev-tool live readouts) —
+ * it fires for every clip on every channel and never gets cleared by the
+ * audio engine.
+ *
+ * Both callbacks are optional so observers can subscribe to just starts or
+ * just completions without nullable shims at the call site.
+ */
+export interface PlaybackObserver {
+  /**
+   * Fired after the native engine has accepted a play call. `filePath` is
+   * the absolute filesystem path the native layer received (after base-
+   * path resolution), so observers can correlate with the source clip.
+   */
+  onStart?(channel: AudioChannel, filePath: string): void;
+  /** Fired when a clip finishes playing on the given channel. */
+  onComplete?(channel: AudioChannel): void;
+}
+
 // ─── Public interface ────────────────────────────────────────────────────────
 
 export interface IAudioService {
@@ -159,6 +185,14 @@ export interface IAudioService {
    * Returns false if the id isn't in the current enumeration.
    */
   setAudioDeviceById(deviceId: string): boolean;
+
+  /**
+   * Register (or clear, with `null`) a persistent observer that fires
+   * every time a clip starts or finishes on any channel. There is one
+   * observer at a time — the harness and any other monitor share. Pass
+   * `null` to remove the current observer.
+   */
+  setPlaybackObserver(observer: PlaybackObserver | null): void;
 }
 
 // ─── Implementation ──────────────────────────────────────────────────────────
@@ -185,6 +219,16 @@ class AudioService implements IAudioService {
 
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
+
+  // Per-channel "is something currently playing on this channel" tracker. Set
+  // when a play call succeeds, cleared on any teardown path (natural end,
+  // manual stop, voice-sequence end). Gates `notifyPlaybackEnd` so we don't
+  // emit synthetic completions on already-idle channels and don't double-fire
+  // when the native engine echoes an end callback after a manual stop.
+  private channelActive: boolean[] = [false, false, false, false];
+
+  // Persistent observer for clip start/complete on any channel.
+  private playbackObserver: PlaybackObserver | null = null;
 
   constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
     this.logger = logger;
@@ -219,7 +263,16 @@ class AudioService implements IAudioService {
   }
 
   destroy(): void {
+    // Drain active channels through the public path so observers see each
+    // channel transition to idle before the native engine goes away.
+    // `stopAllChannels` calls `cancelVoiceSequence` and clears
+    // `channelActive` per channel — the explicit `fill(false)` is a belt-
+    // and-suspenders reset for any future code path that bypasses
+    // `stopAllChannels`.
+    if (this.engineReady) this.stopAllChannels();
+
     this.cancelVoiceSequence();
+    this.channelActive.fill(false);
     this.native.destroyAudioEngine();
     this.engineReady = false;
     this.logger.info("Audio engine destroyed");
@@ -233,7 +286,11 @@ class AudioService implements IAudioService {
     const resolved = this.resolvePath(filePath);
     this.logger.debug(`Play ch${channel}: ${resolved}${loop ? " (loop)" : ""}`);
 
-    return this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+    const ok = this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+
+    if (ok) this.notifyPlaybackStart(channel, resolved);
+
+    return ok;
   }
 
   /**
@@ -266,15 +323,40 @@ class AudioService implements IAudioService {
   }
 
   stopChannel(channel: AudioChannel): void {
+    // Stopping the Voice channel mid-sequence must reset the voice-
+    // sequence state machine. Otherwise a deferred native end callback
+    // can hit `handleVoiceEnd` and schedule the next connector or message
+    // even though the caller asked us to stop. `stopAllChannels` already
+    // does this; this is the same defence for the per-channel API.
+    if (channel === AudioChannel.Voice) this.cancelVoiceSequence();
+
     this.native.stopChannel(channel);
     this.channelCallbacks[channel] = null;
+
+    // Manual stop: native engine doesn't fire its end callback, so notify
+    // observers explicitly. Looping channels (Ambient) would otherwise stay
+    // "active" forever in any monitor that tracks start/complete. Gated on
+    // `channelActive` so already-idle channels don't emit synthetic
+    // completions, and a deferred native end callback after a manual stop
+    // doesn't double-fire (handleChannelEnd checks the same flag).
+    if (this.channelActive[channel]) {
+      this.channelActive[channel] = false;
+      this.notifyPlaybackEnd(channel);
+    }
   }
 
   stopAllChannels(): void {
     this.cancelVoiceSequence();
     this.native.stopAllChannels();
 
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    for (let i = 0; i < 4; i++) {
+      this.channelCallbacks[i] = null;
+
+      if (this.channelActive[i]) {
+        this.channelActive[i] = false;
+        this.notifyPlaybackEnd(i as AudioChannel);
+      }
+    }
   }
 
   setChannelVolume(channel: AudioChannel, volume: number): void {
@@ -358,11 +440,11 @@ class AudioService implements IAudioService {
   }
 
   setAudioDevice(deviceIndex: number): boolean {
-    // Stop all active playback before switching
-    this.cancelVoiceSequence();
-    this.native.stopAllChannels();
-
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    // Stop all active playback before switching. Use the public method so
+    // observers see each channel transition to idle — bypassing this and
+    // hitting `native.stopAllChannels()` directly would leave looping
+    // channels (Ambient) showing as "active" forever in any monitor.
+    this.stopAllChannels();
 
     const ok = this.native.setAudioDevice(deviceIndex);
 
@@ -378,11 +460,10 @@ class AudioService implements IAudioService {
   }
 
   setAudioDeviceById(deviceId: string): boolean {
-    // Stop all active playback before switching
-    this.cancelVoiceSequence();
-    this.native.stopAllChannels();
-
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    // Stop all active playback before switching. Same reasoning as
+    // `setAudioDevice` — go through the public method so observers see
+    // every channel go idle.
+    this.stopAllChannels();
 
     const ok = this.native.setAudioDeviceById(deviceId);
 
@@ -410,9 +491,24 @@ class AudioService implements IAudioService {
     return ok;
   }
 
+  setPlaybackObserver(observer: PlaybackObserver | null): void {
+    this.playbackObserver = observer;
+  }
+
   // ── Internal ──
 
   private handleChannelEnd(channel: number): void {
+    // Notify "complete" BEFORE the voice-sequence engine schedules the next
+    // clip. Otherwise the observer sees [start clip2, complete Voice] in
+    // that order and any monitor flips the channel back to idle even
+    // though the next clip is already playing (#448 audio activity bug).
+    // Gated on `channelActive` so a deferred native end callback after a
+    // manual stop doesn't double-fire.
+    if (this.channelActive[channel]) {
+      this.channelActive[channel] = false;
+      this.notifyPlaybackEnd(channel as AudioChannel);
+    }
+
     // Voice channel has special handling for sequence engine
     if (channel === AudioChannel.Voice) {
       this.handleVoiceEnd();
@@ -424,6 +520,36 @@ class AudioService implements IAudioService {
     if (cb) {
       this.channelCallbacks[channel] = null;
       cb();
+    }
+  }
+
+  private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {
+    // Single chokepoint for "a clip just started". Marking active here
+    // guarantees every play site (including the voice-sequence engine
+    // paths that go through `native.playOnChannel` directly) keeps
+    // `channelActive` in sync with reality.
+    this.channelActive[channel] = true;
+
+    const observer = this.playbackObserver;
+
+    if (!observer?.onStart) return;
+
+    try {
+      observer.onStart(channel, filePath);
+    } catch (err) {
+      this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private notifyPlaybackEnd(channel: AudioChannel): void {
+    const observer = this.playbackObserver;
+
+    if (!observer?.onComplete) return;
+
+    try {
+      observer.onComplete(channel);
+    } catch (err) {
+      this.logger.warn(`Playback observer onComplete threw: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -458,12 +584,15 @@ class AudioService implements IAudioService {
       const connector = this.pickConnector();
       this.voiceSeqState = VoiceSeqState.PlayingConnector;
       this.logger.debug(`Playing connector: ${connector}`);
-      this.native.playOnChannel(
+      const resolved = this.resolvePath(connector);
+      const ok = this.native.playOnChannel(
         AudioChannel.Voice,
-        this.resolvePath(connector),
+        resolved,
         false,
         this.channelVolumes[AudioChannel.Voice],
       );
+
+      if (ok) this.notifyPlaybackStart(AudioChannel.Voice, resolved);
     } else {
       // No connectors — play next message directly
       this.playCurrentMessage();
@@ -478,12 +607,10 @@ class AudioService implements IAudioService {
   private playCurrentMessage(): void {
     const file = this.voiceSeqFiles[this.voiceSeqIndex];
     this.logger.debug(`Playing message ${this.voiceSeqIndex + 1}/${this.voiceSeqFiles.length}: ${file}`);
-    this.native.playOnChannel(
-      AudioChannel.Voice,
-      this.resolvePath(file),
-      false,
-      this.channelVolumes[AudioChannel.Voice],
-    );
+    const resolved = this.resolvePath(file);
+    const ok = this.native.playOnChannel(AudioChannel.Voice, resolved, false, this.channelVolumes[AudioChannel.Voice]);
+
+    if (ok) this.notifyPlaybackStart(AudioChannel.Voice, resolved);
   }
 
   private pickConnector(): string {

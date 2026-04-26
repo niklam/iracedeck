@@ -1,0 +1,13 @@
+{
+  "OnPitRoad": false,
+  "PlayerCarInPitStall": true,
+  "IsOnTrack": false,
+  "PlayerTrackSurface": 0,
+  "Speed": 0,
+  "RPM": 0,
+  "Lap": 0,
+  "FuelLevel": 75,
+  "SessionFlags": 0,
+  "PitSvFlags": 15,
+  "EngineWarnings": 0
+}

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iRaceDeck Scenario Harness</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header id="topbar">
+      <div class="topbar-group">
+        <span class="brand">iRaceDeck Scenario Harness</span>
+      </div>
+      <div class="topbar-group">
+        <label class="toggle">
+          <input type="checkbox" id="connected-toggle" />
+          <span>Connected</span>
+        </label>
+        <label class="slider">
+          <span>Tick</span>
+          <input type="range" id="tick-rate" min="50" max="1000" step="50" value="250" />
+          <span class="value" id="tick-rate-value">250 ms</span>
+        </label>
+        <button id="tick-pause">Pause</button>
+        <button id="tick-once">Tick Now</button>
+      </div>
+      <div class="topbar-group">
+        <span class="event-count">events: <span id="event-count">0</span></span>
+        <button id="clear-log">Clear log</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="column">
+        <div class="panel">
+          <h2>Telemetry</h2>
+          <div class="preset-row" id="telemetry-presets"></div>
+          <textarea id="telemetry-json" rows="10" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="telemetry-apply-patch">Apply as Patch</button>
+            <button id="telemetry-apply-snapshot">Replace Snapshot</button>
+            <button id="telemetry-refresh">Refresh from Server</button>
+          </div>
+          <p class="hint">Paste JSON. "Apply as Patch" merges; "Replace Snapshot" overwrites the whole snapshot.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Session Info</h2>
+          <div class="preset-row" id="session-presets"></div>
+          <textarea id="session-json" rows="6" spellcheck="false"></textarea>
+          <div class="actions">
+            <button id="session-apply">Apply</button>
+            <button id="session-clear">Clear (null)</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Global Settings</h2>
+          <div class="settings-grid" id="settings-grid"></div>
+          <div class="actions">
+            <button id="settings-refresh">Refresh from Server</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="column">
+        <div class="panel">
+          <h2>Scenario Shortcuts</h2>
+          <div id="shortcuts" class="shortcuts"></div>
+          <p class="hint">One-click triggers for the registered Pit Crew scenarios. Each fires a fully-formed <code>bus.publish</code>.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Event Log</h2>
+          <div id="event-log" class="log"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Audio Activity</h2>
+          <div class="audio-grid">
+            <div class="audio-row" data-channel="0"><span class="audio-name">Ambient</span><span class="audio-clip">idle</span></div>
+            <div class="audio-row" data-channel="1"><span class="audio-name">SFX</span><span class="audio-clip">idle</span></div>
+            <div class="audio-row" data-channel="2"><span class="audio-name">Voice</span><span class="audio-clip">idle</span></div>
+            <div class="audio-row" data-channel="3"><span class="audio-name">Radar</span><span class="audio-clip">idle</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Raw Event Injector</h2>
+          <div class="injector">
+            <select id="injector-event"></select>
+            <textarea id="injector-payload" rows="4" spellcheck="false"></textarea>
+            <button id="injector-fire">Fire Event</button>
+            <p class="hint" id="injector-description"></p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

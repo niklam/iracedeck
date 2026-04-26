@@ -70,6 +70,18 @@ export type SimEventMap = {
   "flag.black.raised": SimEvent<"flag.black.raised", EmptySimEventPayload>;
   "flag.white.raised": SimEvent<"flag.white.raised", EmptySimEventPayload>;
   "flag.red.raised": SimEvent<"flag.red.raised", EmptySimEventPayload>;
+  /**
+   * Track-debris flag (`Flags.Debris`). Persistent until the flag drops;
+   * we only fire on the raised transition since downstream consumers
+   * today (engineer voice callouts) don't need a paired clear event.
+   */
+  "flag.debris.raised": SimEvent<"flag.debris.raised", EmptySimEventPayload>;
+  /**
+   * Meatball flag — orange-and-black ("come to pits, your car has a
+   * problem"). Maps to iRacing's `Flags.Repair` bit. Same single-edge
+   * shape as the other driver-targeted flags.
+   */
+  "flag.meatball.raised": SimEvent<"flag.meatball.raised", EmptySimEventPayload>;
 
   "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
