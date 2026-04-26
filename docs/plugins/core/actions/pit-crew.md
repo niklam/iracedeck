@@ -14,7 +14,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 ## Behavior
 
 ### Button Press
-- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off, every voice scenario is suppressed at the audio layer (audio stops immediately).
+- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off, both `AudioBus.Voice` (engineer messages, acks, toggle confirmations) and `AudioBus.Background` (pit ambient loop and walkie-talkie SFX) are zeroed synchronously, so any in-flight clip silences on the same key press. `AudioBus.Alerts` (radar) is intentionally untouched — radar has its own toggle. Re-enabling restores Voice to the configured `Race Engineer Volume` and Background to unity.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off.
 

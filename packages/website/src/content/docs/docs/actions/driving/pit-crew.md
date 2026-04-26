@@ -15,7 +15,7 @@ Select the mode from the **Mode** dropdown in the Property Inspector. For the Ra
 
 ### Race Engineer Toggle
 
-The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-global settings, suppressing every voice scenario at the audio layer when off (audio stops immediately).
+The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-global settings. When off, both the engineer voice (Voice bus — messages, acknowledgments, toggle confirmations) and the pit ambience (Background bus — pit ambient loop and walkie-talkie SFX) are silenced synchronously, so any in-flight clip cuts off on the same key press. Radar ticks are unaffected — they have their own toggle. Re-enabling restores Voice to the configured Race Engineer Volume and Background to its default mix.
 
 #### Details
 

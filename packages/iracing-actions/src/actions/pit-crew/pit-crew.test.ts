@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // statements. Vitest transforms `vi.mock(...)` to run before any import at
 // module init, so the mocks still apply to the action import below.
 import {
+  applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
   generatePitCrewSvg,
@@ -272,6 +273,39 @@ describe("applyRadarEnabled", () => {
   });
 });
 
+describe("applyRaceEngineerAudio", () => {
+  it("copies raceEngineerVolume onto AudioBus.Voice and unities AudioBus.Background when enabled", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 60 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.6);
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 1);
+  });
+
+  it("zeroes both Voice and Background when disabled, regardless of raceEngineerVolume", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, raceEngineerVolume: 90 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
+  });
+
+  it("never touches AudioBus.Alerts (radar has its own gate)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, raceEngineerVolume: 75 });
+    applyRaceEngineerAudio();
+
+    const alertsCalls = hoisted.setBusVolume.mock.calls.filter(([bus]) => bus === 2);
+    expect(alertsCalls).toHaveLength(0);
+  });
+
+  it("defaults raceEngineerVolume to 100% when the global is missing", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 1);
+  });
+});
+
 describe("PitCrew action", () => {
   describe("onWillAppear", () => {
     it("subscribes to global-settings changes so icons re-render on any feature flip", async () => {
@@ -390,6 +424,45 @@ describe("PitCrew action", () => {
       const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
       expect(updates).not.toContain("radarEnabled");
       expect(updates).not.toContain("radarVolume");
+    });
+
+    it("synchronously silences Voice and Background buses when disabling (#457)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 80, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
+    });
+
+    it("leaves AudioBus.Alerts (radar) audible when Race Engineer is disabled (#457)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 80, radarVolume: 75 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      // The toggle must not zero the radar bus. `applyRadarVolume` is
+      // unrelated and is not called from `toggleRaceEngineer`, so no
+      // Alerts-bus write is expected on this code path.
+      const alertsCalls = hoisted.setBusVolume.mock.calls.filter(([bus]) => bus === 2);
+      expect(alertsCalls).toHaveLength(0);
+    });
+
+    it("restores Voice volume and unmutes Background when re-enabling (#457)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, raceEngineerVolume: 65, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.65);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 1);
     });
   });
 

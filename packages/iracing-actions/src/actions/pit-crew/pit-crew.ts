@@ -110,11 +110,21 @@ function readRaceEngineerVolume(): number {
 /**
  * @internal Exported for testing.
  *
- * Copy the current global `raceEngineerVolume` onto `AudioBus.Voice`.
- * Mirrors `applyRadarVolume` for the engineer voice channel.
+ * Apply the Race Engineer master gate to the relevant audio buses:
+ *   - `AudioBus.Voice` — engineer voice clips, acks, toggle confirmations.
+ *   - `AudioBus.Background` — pit ambient loop and walkie-talkie SFX.
+ *
+ * When the gate is on, Voice tracks `raceEngineerVolume`; Background sits
+ * at unity (its per-channel mix ratios already keep it under the voice).
+ * When the gate is off, both buses are silenced. `AudioBus.Alerts` (radar)
+ * is intentionally untouched — it has its own toggle.
  */
-export function applyRaceEngineerVolume(): void {
-  getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
+export function applyRaceEngineerAudio(): void {
+  const enabled = isRaceEngineerEnabled();
+  const voice = readRaceEngineerVolume() / 100;
+
+  getAudio().setBusVolume(AudioBus.Voice, enabled ? voice : 0);
+  getAudio().setBusVolume(AudioBus.Background, enabled ? 1 : 0);
 }
 
 /**
@@ -410,7 +420,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       onGlobalSettingsChange(() => {
         applyRadarVolume();
         applyRadarEnabled();
-        applyRaceEngineerVolume();
+        applyRaceEngineerAudio();
         void this.rerender(contextId);
       }),
     );
@@ -419,7 +429,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // the first mount sets the initial values; later mounts re-assert them.
     applyRadarVolume();
     applyRadarEnabled();
-    applyRaceEngineerVolume();
+    applyRaceEngineerAudio();
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
 
@@ -507,9 +517,12 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     const next = !isRaceEngineerEnabled();
     this.logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
     updateGlobalSettings({ raceEngineerEnabled: next });
-    // Voice scenarios are unregistered today (#410). When they come back in
-    // follow-up PRs, their catalog code will read the same global flag via
-    // `engine.setEnabled`. No audio output hinges on the action here.
+    // Mirror the radar pattern: apply the gate to Voice + Background
+    // synchronously so an in-flight engineer clip is silenced on the same
+    // tick the user pressed the key. Relying on the global-settings
+    // round-trip echo would let a clip continue for the IPC round trip,
+    // and the user perceives the toggle as broken.
+    applyRaceEngineerAudio();
   }
 
   private toggleRadar(): void {
