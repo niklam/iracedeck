@@ -39,7 +39,10 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/flags/blue-01.mp3",
     "voice/{voice}/flags/blue-02.mp3",
   ],
-  "flag-white": ["voice/{voice}/flags/white-01.mp3"],
+  "flag-white": [
+    "voice/{voice}/flags/white-01.mp3",
+    "voice/{voice}/flags/white-02.mp3",
+  ],
   "flag-red": ["voice/{voice}/flags/red-01.mp3"],
   "flag-black": ["voice/{voice}/flags/black-01.mp3"],
   "flag-debris": ["voice/{voice}/flags/debris-01.mp3"],

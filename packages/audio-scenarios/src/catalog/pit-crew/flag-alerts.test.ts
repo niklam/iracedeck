@@ -125,6 +125,7 @@ const FLAG_CLIP_NAMES = [
   "blue-01",
   "blue-02",
   "white-01",
+  "white-02",
   "red-01",
   "black-01",
   "checkered-practise-01",
@@ -261,12 +262,6 @@ describe("FLAG_ALERTS triggers", () => {
       expected: "voice/luca/flags/yellow-cleared-01.mp3",
     },
     {
-      label: "white",
-      event: "flag.white.raised" as const,
-      data: {},
-      expected: "voice/luca/flags/white-01.mp3",
-    },
-    {
       label: "red",
       event: "flag.red.raised" as const,
       data: {},
@@ -331,12 +326,22 @@ describe("FLAG_ALERTS triggers", () => {
     );
   });
 
-  it("substitutes the active voice — switching voice changes resolved path", () => {
-    activeVoice = "titan";
+  it("white draws from the flag-white pool (one of the two recorded variants)", () => {
     bus.publishEvent("flag.white.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/titan/flags/white-01.mp3");
+    const played = voiceClipsPlayed();
+    expect(played.includes("voice/luca/flags/white-01.mp3") || played.includes("voice/luca/flags/white-02.mp3")).toBe(
+      true,
+    );
+  });
+
+  it("substitutes the active voice — switching voice changes resolved path", () => {
+    activeVoice = "titan";
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/titan/flags/red-01.mp3");
   });
 });
 
@@ -370,13 +375,13 @@ describe("FLAG_ALERTS preemption", () => {
 
   it("a newer non-meatball flag preempts a previous one (family share)", () => {
     bus.publishEvent("flag.yellow.cleared", {});
-    // Same tick: white.raised arrives. White uses a single-clip pool so
-    // the assertion stays deterministic regardless of the green-pool
-    // rotation order.
-    bus.publishEvent("flag.white.raised", {});
+    // Same tick: red.raised arrives. Red uses a single-clip pool so
+    // the assertion stays deterministic regardless of multi-variant
+    // pool rotation order.
+    bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/flags/white-01.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/flags/red-01.mp3");
   });
 });
 
