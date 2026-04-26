@@ -2560,6 +2560,774 @@
       "textPreview": "Switching to wets at the next pitstop.",
       "generatedAt": "2026-04-26T10:30:14.901Z",
       "requestId": "Pxzw4PiNvssI4xeEfH3g"
+    },
+    "voice/luca/names/adam.mp3": {
+      "hash": "1bf0b22736b09bf0",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Adam",
+      "generatedAt": "2026-04-26T11:37:12.029Z",
+      "requestId": "dFJkR2NEpUbhWbtDvOoF"
+    },
+    "voice/luca/names/al.mp3": {
+      "hash": "6dab26c5e5139c08",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Al",
+      "generatedAt": "2026-04-26T11:37:12.852Z",
+      "requestId": "6dVuzdvPI0F3IXbXGL8v"
+    },
+    "voice/luca/names/andre.mp3": {
+      "hash": "ffdfbe91ef101ee5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "André",
+      "generatedAt": "2026-04-26T11:37:13.677Z",
+      "requestId": "IyYqsOl3Pwe6v5cJ84Fr"
+    },
+    "voice/luca/names/andrew.mp3": {
+      "hash": "a74a91369146669f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Andrew",
+      "generatedAt": "2026-04-26T11:37:14.515Z",
+      "requestId": "JvFWb5kTQ67EsBX8FNbH"
+    },
+    "voice/luca/names/andy.mp3": {
+      "hash": "f6ab0711361f90a9",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Andy",
+      "generatedAt": "2026-04-26T11:37:15.364Z",
+      "requestId": "NbYzwmYI0B8UfPvcOAUp"
+    },
+    "voice/luca/names/bob.mp3": {
+      "hash": "4b0461dc90dc69d5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Bob",
+      "generatedAt": "2026-04-26T11:37:16.216Z",
+      "requestId": "UZxJVtBUMaUtYFqCtZbp"
+    },
+    "voice/luca/names/boss.mp3": {
+      "hash": "7bb98e1463ec487d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Boss",
+      "generatedAt": "2026-04-26T11:37:17.019Z",
+      "requestId": "qEHWHTfRARlNtN7LNLsY"
+    },
+    "voice/luca/names/brenton.mp3": {
+      "hash": "0e90df87a1f12b21",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Brenton",
+      "generatedAt": "2026-04-26T11:37:17.847Z",
+      "requestId": "4Zc5IG1KS2gT411qPutV"
+    },
+    "voice/luca/names/casey.mp3": {
+      "hash": "51de85c670f4be82",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Casey",
+      "generatedAt": "2026-04-26T11:37:18.665Z",
+      "requestId": "A3YY1291q58PB1vZG1ih"
+    },
+    "voice/luca/names/champ.mp3": {
+      "hash": "2a6f46f359c4538d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Champ",
+      "generatedAt": "2026-04-26T11:37:19.508Z",
+      "requestId": "rdTXXnd0B8CHGVe4xhvW"
+    },
+    "voice/luca/names/chris.mp3": {
+      "hash": "ca5c1175429cf93f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Chris",
+      "generatedAt": "2026-04-26T11:37:20.338Z",
+      "requestId": "0ouLP6jyW4BDEBzRvxu5"
+    },
+    "voice/luca/names/cole.mp3": {
+      "hash": "bde95fbaf13125aa",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Cole",
+      "generatedAt": "2026-04-26T11:37:21.128Z",
+      "requestId": "rNJqOYFj5xoV0IT4e4gM"
+    },
+    "voice/luca/names/daniel.mp3": {
+      "hash": "512175591cdf90ac",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Daniel",
+      "generatedAt": "2026-04-26T11:37:21.961Z",
+      "requestId": "lvGda3adPYkPUu2z0hQs"
+    },
+    "voice/luca/names/dave.mp3": {
+      "hash": "301cd646e2f6b3d7",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Dave",
+      "generatedAt": "2026-04-26T11:37:22.782Z",
+      "requestId": "AShTSoD8QqYM8I2DeTBs"
+    },
+    "voice/luca/names/david.mp3": {
+      "hash": "53b44a1258da7d88",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "David",
+      "generatedAt": "2026-04-26T11:37:23.607Z",
+      "requestId": "GrtKKvReNtD9sjfayvM1"
+    },
+    "voice/luca/names/driver.mp3": {
+      "hash": "1284dd433092f543",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Driver",
+      "generatedAt": "2026-04-26T11:37:24.457Z",
+      "requestId": "CiNMRe8HntVVKddQRQrt"
+    },
+    "voice/luca/names/felix.mp3": {
+      "hash": "bdfcd6c4cd31f048",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Felix",
+      "generatedAt": "2026-04-26T11:37:25.300Z",
+      "requestId": "rE6rMlJUP4LnXMFbGSCx"
+    },
+    "voice/luca/names/fredrich.mp3": {
+      "hash": "588fe3b6cf85d61c",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Fredrich",
+      "generatedAt": "2026-04-26T11:37:26.123Z",
+      "requestId": "9DkG8zhIji0Qw2i39qea"
+    },
+    "voice/luca/names/glen.mp3": {
+      "hash": "14d261541908bffe",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Glen",
+      "generatedAt": "2026-04-26T11:37:26.990Z",
+      "requestId": "dEjR5fEY7lmlM8uGcjpQ"
+    },
+    "voice/luca/names/hector.mp3": {
+      "hash": "41513fca38e9aa29",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Hector",
+      "generatedAt": "2026-04-26T11:37:27.835Z",
+      "requestId": "2tj1N9NUtGXIRVSrm1Cf"
+    },
+    "voice/luca/names/hesham.mp3": {
+      "hash": "32b79fb1e007a3e1",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Hesham",
+      "generatedAt": "2026-04-26T11:37:28.665Z",
+      "requestId": "RU4AegAOO87hcfvfwJ77"
+    },
+    "voice/luca/names/ivan.mp3": {
+      "hash": "6dbcb741b0f2fc5a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Ivan",
+      "generatedAt": "2026-04-26T11:37:29.496Z",
+      "requestId": "40joM3Wd66SPxeXxy72P"
+    },
+    "voice/luca/names/jace.mp3": {
+      "hash": "46587335093e1447",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jace",
+      "generatedAt": "2026-04-26T11:37:30.308Z",
+      "requestId": "BS2dDGr6glnVlTOf6zPU"
+    },
+    "voice/luca/names/johan.mp3": {
+      "hash": "2e0c733fa4f39426",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Johan",
+      "generatedAt": "2026-04-26T11:37:31.131Z",
+      "requestId": "a9rZejpP3b5P8wTX2bbu"
+    },
+    "voice/luca/names/jorge.mp3": {
+      "hash": "405251f0fe8fc275",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jorge",
+      "generatedAt": "2026-04-26T11:37:31.967Z",
+      "requestId": "XGzSePGmOb9YSJikUAaG"
+    },
+    "voice/luca/names/jose.mp3": {
+      "hash": "90941c60d11650eb",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jose",
+      "generatedAt": "2026-04-26T11:37:32.969Z",
+      "requestId": "21zb3TM0JJGPoAckaHhq"
+    },
+    "voice/luca/names/justin.mp3": {
+      "hash": "93b2fd85ce1c36c5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Justin",
+      "generatedAt": "2026-04-26T11:37:33.782Z",
+      "requestId": "56nGJGrgxpQv0wGYToRS"
+    },
+    "voice/luca/names/kev.mp3": {
+      "hash": "e1f9052a007ea7f6",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kev",
+      "generatedAt": "2026-04-26T11:37:34.617Z",
+      "requestId": "vaRILJq2RtTTj2wMLYTN"
+    },
+    "voice/luca/names/kevin.mp3": {
+      "hash": "f07f537fda52a780",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kevin",
+      "generatedAt": "2026-04-26T11:37:35.443Z",
+      "requestId": "83L6YygBxBGL2gdaEvyJ"
+    },
+    "voice/luca/names/kris.mp3": {
+      "hash": "fdd5e863fb44a4f7",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kris",
+      "generatedAt": "2026-04-26T11:37:36.249Z",
+      "requestId": "MshYGvxpyLLQTRnnsreD"
+    },
+    "voice/luca/names/lee.mp3": {
+      "hash": "c5e3fd0270c2e372",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Lee",
+      "generatedAt": "2026-04-26T11:37:37.064Z",
+      "requestId": "ratsBVg5UzY5hiSYC0md"
+    },
+    "voice/luca/names/lorenzo.mp3": {
+      "hash": "878aca76cb794783",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Lorenzo",
+      "generatedAt": "2026-04-26T11:37:37.904Z",
+      "requestId": "3ve8BOF7xXvbLhQ7B4Jg"
+    },
+    "voice/luca/names/marcus.mp3": {
+      "hash": "58bc3d8479e0520e",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Marcus",
+      "generatedAt": "2026-04-26T11:37:38.721Z",
+      "requestId": "umt05A4wDolcFqTs4pq2"
+    },
+    "voice/luca/names/mark.mp3": {
+      "hash": "585faa51d1aa2df5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Mark",
+      "generatedAt": "2026-04-26T11:37:39.545Z",
+      "requestId": "W1btdKptZvtYnJZw1fuc"
+    },
+    "voice/luca/names/mate.mp3": {
+      "hash": "e488a081538e4d80",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Mate",
+      "generatedAt": "2026-04-26T11:37:40.405Z",
+      "requestId": "PKWMJAFtsIyRipBY48ak"
+    },
+    "voice/luca/names/matt.mp3": {
+      "hash": "60aa109b49cca10f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Matt",
+      "generatedAt": "2026-04-26T11:37:41.242Z",
+      "requestId": "dzuGia8mQwqs3QTsZGc5"
+    },
+    "voice/luca/names/matthew.mp3": {
+      "hash": "205ee7f3033725ce",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Matthew",
+      "generatedAt": "2026-04-26T11:37:42.093Z",
+      "requestId": "C2ET6oUesSLZb2a4RHFd"
+    },
+    "voice/luca/names/miquel.mp3": {
+      "hash": "8a772ed28d22813a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Miquel",
+      "generatedAt": "2026-04-26T11:37:42.919Z",
+      "requestId": "LfC90vlzwq0lwSF91D89"
+    },
+    "voice/luca/names/nick.mp3": {
+      "hash": "8729ffeff085dd45",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Nick",
+      "generatedAt": "2026-04-26T11:37:43.714Z",
+      "requestId": "tWCH6neDsOEYXMqgx5RP"
+    },
+    "voice/luca/names/pablo.mp3": {
+      "hash": "6d630ef541500608",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Pablo",
+      "generatedAt": "2026-04-26T11:37:45.038Z",
+      "requestId": "pGGmIbETvJozCVD4Hl9W"
+    },
+    "voice/luca/names/patrick.mp3": {
+      "hash": "c371eef266236ad1",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Patrick",
+      "generatedAt": "2026-04-26T11:37:45.860Z",
+      "requestId": "hHwp4mPv5PdEoKHqE75T"
+    },
+    "voice/luca/names/raymond.mp3": {
+      "hash": "a41fca36acf0de32",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Raymond",
+      "generatedAt": "2026-04-26T11:37:46.698Z",
+      "requestId": "L838bKrPgQ5msvbMaXlZ"
+    },
+    "voice/luca/names/rich.mp3": {
+      "hash": "48c07be9b676ec9a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Rich",
+      "generatedAt": "2026-04-26T11:37:47.514Z",
+      "requestId": "qqNM3I1lgu0mBpWuw4ac"
+    },
+    "voice/luca/names/rob.mp3": {
+      "hash": "6f8c4d66f5c2a255",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Rob",
+      "generatedAt": "2026-04-26T11:37:48.343Z",
+      "requestId": "ADgGBjyQNSkWnxIt1yAG"
+    },
+    "voice/luca/names/shawn.mp3": {
+      "hash": "a61c25eefa266285",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Shawn",
+      "generatedAt": "2026-04-26T11:37:49.153Z",
+      "requestId": "a36SHqPywLINWPtZk6i3"
+    },
+    "voice/luca/names/tim.mp3": {
+      "hash": "f9aca2fa1c644675",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Tim",
+      "generatedAt": "2026-04-26T11:37:49.961Z",
+      "requestId": "Co4fJaBhgMsYVifzmLRN"
+    },
+    "voice/luca/names/ville.mp3": {
+      "hash": "df3053180f6faac3",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Ville",
+      "generatedAt": "2026-04-26T11:37:50.823Z",
+      "requestId": "446MYMRQ8e5itc3tMiFw"
+    },
+    "voice/luca/names/zeus.mp3": {
+      "hash": "ff5bca98b6c67a8f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Zeus",
+      "generatedAt": "2026-04-26T11:37:51.654Z",
+      "requestId": "VWxiW4WmZinXkmAAwIYu"
+    },
+    "voice/titan/names/adam.mp3": {
+      "hash": "b6f4ebb258edac4a",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Adam",
+      "generatedAt": "2026-04-26T11:37:52.550Z",
+      "requestId": "LkmQYlEwGtRAgow33rnV"
+    },
+    "voice/titan/names/al.mp3": {
+      "hash": "d301b9eaf1797812",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Al",
+      "generatedAt": "2026-04-26T11:37:53.372Z",
+      "requestId": "ydiwVvHpqkICvBp0qEEy"
+    },
+    "voice/titan/names/andre.mp3": {
+      "hash": "4bc5d421e7cb318a",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "André",
+      "generatedAt": "2026-04-26T11:37:54.214Z",
+      "requestId": "HiPecoN2qN2DiI1GB2wV"
+    },
+    "voice/titan/names/andrew.mp3": {
+      "hash": "7f80c4fb6c3742b0",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Andrew",
+      "generatedAt": "2026-04-26T11:37:55.019Z",
+      "requestId": "UL2nNim6hWFXC9B31Kf6"
+    },
+    "voice/titan/names/andy.mp3": {
+      "hash": "cab40ac8cb3b9c84",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Andy",
+      "generatedAt": "2026-04-26T11:37:55.872Z",
+      "requestId": "UkgyJICqLNaYsq0i54UX"
+    },
+    "voice/titan/names/bob.mp3": {
+      "hash": "151026b3a22f7784",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Bob",
+      "generatedAt": "2026-04-26T11:37:56.720Z",
+      "requestId": "dIJGcT4KKhgGcNunz3H5"
+    },
+    "voice/titan/names/boss.mp3": {
+      "hash": "553ade4ce31f82f9",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Boss",
+      "generatedAt": "2026-04-26T11:37:57.529Z",
+      "requestId": "4jXtjbPY6b6bmC6lXAeL"
+    },
+    "voice/titan/names/brenton.mp3": {
+      "hash": "03ad146e49b8c130",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Brenton",
+      "generatedAt": "2026-04-26T11:37:58.384Z",
+      "requestId": "Xf1PXB69ctWLTPLfZ751"
+    },
+    "voice/titan/names/casey.mp3": {
+      "hash": "4131ce0dbb591123",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Casey",
+      "generatedAt": "2026-04-26T11:37:59.199Z",
+      "requestId": "SwxUWyuC8sMVKEWFvSex"
+    },
+    "voice/titan/names/champ.mp3": {
+      "hash": "07eeb3d5056a8dae",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Champ",
+      "generatedAt": "2026-04-26T11:38:00.032Z",
+      "requestId": "bY66YpAujmWp7iWOCJES"
+    },
+    "voice/titan/names/chris.mp3": {
+      "hash": "a367e67e41ac146a",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Chris",
+      "generatedAt": "2026-04-26T11:38:00.849Z",
+      "requestId": "slMXZqu7NfOh9gtva0D1"
+    },
+    "voice/titan/names/cole.mp3": {
+      "hash": "b345d7fb35af7872",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Cole",
+      "generatedAt": "2026-04-26T11:38:01.678Z",
+      "requestId": "XNAgaiFuv9RN3V4Cu8er"
+    },
+    "voice/titan/names/daniel.mp3": {
+      "hash": "9c729a2d731a7bba",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Daniel",
+      "generatedAt": "2026-04-26T11:38:02.549Z",
+      "requestId": "u3jVONR93ff0OjZ3el5t"
+    },
+    "voice/titan/names/dave.mp3": {
+      "hash": "7e59594049242745",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Dave",
+      "generatedAt": "2026-04-26T11:38:03.384Z",
+      "requestId": "crgbY9fkJaNwIPlOE9Eq"
+    },
+    "voice/titan/names/david.mp3": {
+      "hash": "19ab82bb93536d76",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "David",
+      "generatedAt": "2026-04-26T11:38:04.200Z",
+      "requestId": "7kFV7cLK96YyAwUDpG1X"
+    },
+    "voice/titan/names/driver.mp3": {
+      "hash": "39600029a0df3680",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Driver",
+      "generatedAt": "2026-04-26T11:38:05.015Z",
+      "requestId": "VkG1kRztGQekxYx0rnB9"
+    },
+    "voice/titan/names/felix.mp3": {
+      "hash": "b72396435681d89b",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Felix",
+      "generatedAt": "2026-04-26T11:38:05.862Z",
+      "requestId": "XxUMBWdXO2AuY8mOsEjc"
+    },
+    "voice/titan/names/fredrich.mp3": {
+      "hash": "0adb95b84bc0dc43",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Fredrich",
+      "generatedAt": "2026-04-26T11:38:06.693Z",
+      "requestId": "SQTakhIMRzgnZNdKQnyC"
+    },
+    "voice/titan/names/glen.mp3": {
+      "hash": "2605c4816f9bb6d8",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Glen",
+      "generatedAt": "2026-04-26T11:38:07.536Z",
+      "requestId": "PMfrwCCW4fKrygu3EbPT"
+    },
+    "voice/titan/names/hector.mp3": {
+      "hash": "53aa0c9ffba02137",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Hector",
+      "generatedAt": "2026-04-26T11:38:08.365Z",
+      "requestId": "vqIpkAYKn7KyNkAsLvUb"
+    },
+    "voice/titan/names/hesham.mp3": {
+      "hash": "0e414fc8bb6e75ee",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Hesham",
+      "generatedAt": "2026-04-26T11:38:09.181Z",
+      "requestId": "aw3g1eyxv6vdBJltEzfE"
+    },
+    "voice/titan/names/ivan.mp3": {
+      "hash": "01d5f44ea32d1418",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Ivan",
+      "generatedAt": "2026-04-26T11:38:09.981Z",
+      "requestId": "KwMWUHb4gDhI4TSTzCI2"
+    },
+    "voice/titan/names/jace.mp3": {
+      "hash": "6d432f8e087312d8",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jace",
+      "generatedAt": "2026-04-26T11:38:10.798Z",
+      "requestId": "aactf3CoVVMdIsLwFFi2"
+    },
+    "voice/titan/names/johan.mp3": {
+      "hash": "0dec8b6638d7b29b",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Johan",
+      "generatedAt": "2026-04-26T11:38:11.608Z",
+      "requestId": "m4eMLqBRQvuppaOITflE"
+    },
+    "voice/titan/names/jorge.mp3": {
+      "hash": "e4e9f22c7fc09db3",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jorge",
+      "generatedAt": "2026-04-26T11:38:12.426Z",
+      "requestId": "wgEjEgg5cn8FdtXkrZoQ"
+    },
+    "voice/titan/names/jose.mp3": {
+      "hash": "14d2f6d58e394cbd",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Jose",
+      "generatedAt": "2026-04-26T11:38:13.264Z",
+      "requestId": "43EF5Wd0BJSRMPru9Air"
+    },
+    "voice/titan/names/justin.mp3": {
+      "hash": "a410513a45d2a92c",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Justin",
+      "generatedAt": "2026-04-26T11:38:14.096Z",
+      "requestId": "PRIV07H6AaN6msycThx1"
+    },
+    "voice/titan/names/kev.mp3": {
+      "hash": "9434a46f34b6dddd",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kev",
+      "generatedAt": "2026-04-26T11:38:14.908Z",
+      "requestId": "FjbtOHrK5brzmlBhjnDG"
+    },
+    "voice/titan/names/kevin.mp3": {
+      "hash": "f0147f3f379f822d",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kevin",
+      "generatedAt": "2026-04-26T11:38:15.726Z",
+      "requestId": "FqFfzC5NazSTHAEacjZt"
+    },
+    "voice/titan/names/kris.mp3": {
+      "hash": "b0587ce11bb44eb8",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Kris",
+      "generatedAt": "2026-04-26T11:38:16.540Z",
+      "requestId": "38jMpf8R6RC3xBtcjmLY"
+    },
+    "voice/titan/names/lee.mp3": {
+      "hash": "7222edb5940efd0b",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Lee",
+      "generatedAt": "2026-04-26T11:38:17.396Z",
+      "requestId": "Kf5nWYoNiAoeOYojW4YG"
+    },
+    "voice/titan/names/lorenzo.mp3": {
+      "hash": "c3594d15f5c47a9d",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Lorenzo",
+      "generatedAt": "2026-04-26T11:38:18.246Z",
+      "requestId": "Vgddoyxo9sdF1sGVyKpS"
+    },
+    "voice/titan/names/marcus.mp3": {
+      "hash": "57f1523c54235c88",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Marcus",
+      "generatedAt": "2026-04-26T11:38:19.094Z",
+      "requestId": "KVhqX39DHTt8meXleXuf"
+    },
+    "voice/titan/names/mark.mp3": {
+      "hash": "f0b512359a6d3173",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Mark",
+      "generatedAt": "2026-04-26T11:38:19.904Z",
+      "requestId": "fu148dliBa1sRxZr05Yk"
+    },
+    "voice/titan/names/mate.mp3": {
+      "hash": "20e1a3c54fb385d4",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Mate",
+      "generatedAt": "2026-04-26T11:38:20.713Z",
+      "requestId": "oHtjG6KZzXbtourT5mzK"
+    },
+    "voice/titan/names/matt.mp3": {
+      "hash": "b1de3e85ff22e72e",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Matt",
+      "generatedAt": "2026-04-26T11:38:21.526Z",
+      "requestId": "IHiYQsFb4Q6Y93WhB65n"
+    },
+    "voice/titan/names/matthew.mp3": {
+      "hash": "dac8ec2aa7e3bb4f",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Matthew",
+      "generatedAt": "2026-04-26T11:38:22.362Z",
+      "requestId": "670Qp1yvgI3jVRZkiBB2"
+    },
+    "voice/titan/names/miquel.mp3": {
+      "hash": "72d9f01b90fb217d",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Miquel",
+      "generatedAt": "2026-04-26T11:38:23.177Z",
+      "requestId": "cxwFUZobLMHAbNSObb3I"
+    },
+    "voice/titan/names/nick.mp3": {
+      "hash": "bd6d787488e21ff4",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Nick",
+      "generatedAt": "2026-04-26T11:38:24.020Z",
+      "requestId": "6gxlJpjNp7WJtRZOXufs"
+    },
+    "voice/titan/names/pablo.mp3": {
+      "hash": "55111f4420951268",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Pablo",
+      "generatedAt": "2026-04-26T11:38:24.873Z",
+      "requestId": "hEoj7plrHIRXdUktjHrQ"
+    },
+    "voice/titan/names/patrick.mp3": {
+      "hash": "95017957df1c897d",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Patrick",
+      "generatedAt": "2026-04-26T11:38:25.688Z",
+      "requestId": "zKNWeg0umiTtuNWoiBAN"
+    },
+    "voice/titan/names/raymond.mp3": {
+      "hash": "b2ed59212e3d86b7",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Raymond",
+      "generatedAt": "2026-04-26T11:38:26.511Z",
+      "requestId": "RN1PCH5zt94D3EOVkovK"
+    },
+    "voice/titan/names/rich.mp3": {
+      "hash": "2fdf8a0b0a351566",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Rich",
+      "generatedAt": "2026-04-26T11:38:27.318Z",
+      "requestId": "yKKbNycFubEnnBBoWbMU"
+    },
+    "voice/titan/names/rob.mp3": {
+      "hash": "0ebbcbd3e36305ec",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Rob",
+      "generatedAt": "2026-04-26T11:38:28.163Z",
+      "requestId": "Vum99Xb0Z9kuNCYMGcxq"
+    },
+    "voice/titan/names/shawn.mp3": {
+      "hash": "bbac11647b8b8167",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Shawn",
+      "generatedAt": "2026-04-26T11:38:28.981Z",
+      "requestId": "9NvK1p6R6F0ABZYhdtGH"
+    },
+    "voice/titan/names/tim.mp3": {
+      "hash": "7b64b9c714516a58",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Tim",
+      "generatedAt": "2026-04-26T11:38:29.827Z",
+      "requestId": "VgqOJxZ73iF2uk9zogCH"
+    },
+    "voice/titan/names/ville.mp3": {
+      "hash": "5593d51c3c5ee035",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Ville",
+      "generatedAt": "2026-04-26T11:38:30.667Z",
+      "requestId": "KZcOaE9m3m6AJAimYbhk"
+    },
+    "voice/titan/names/zeus.mp3": {
+      "hash": "03ae893fa0acc7b6",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Zeus",
+      "generatedAt": "2026-04-26T11:38:31.483Z",
+      "requestId": "Lo7GzNBnNwmXQyD5Exan"
     }
   }
 }

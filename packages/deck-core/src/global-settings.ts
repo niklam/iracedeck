@@ -363,18 +363,24 @@ export function resolveActiveRaceEngineerVoice(availableVoices: readonly string[
 
 /**
  * Resolve the active driver-name key (the name the engineer addresses
- * the user as). Same fallback shape as `resolveActiveRaceEngineerVoice`:
- * returns the persisted value when available, the first list entry as a
- * graceful fallback, or `null` when no names exist (caller should skip
- * name-dependent playback).
+ * the user as). Returns the persisted value when present in the list,
+ * otherwise `defaultName` if supplied and present in the list, otherwise
+ * the first list entry, or `null` when no names exist (caller should
+ * skip name-dependent playback). `defaultName` mirrors the `default`
+ * attribute on `<ird-name-select>` so the UI dropdown and runtime
+ * playback agree on the fallback even before the user opens the PI.
  */
-export function resolveActiveDriverName(availableNames: readonly string[]): string | null {
+export function resolveActiveDriverName(availableNames: readonly string[], defaultName?: string): string | null {
   if (availableNames.length === 0) return null;
 
   const chosen = currentSettings.driverName ?? "";
 
   if (chosen.length > 0 && availableNames.includes(chosen)) {
     return chosen;
+  }
+
+  if (defaultName !== undefined && defaultName.length > 0 && availableNames.includes(defaultName)) {
+    return defaultName;
   }
 
   return availableNames[0];
