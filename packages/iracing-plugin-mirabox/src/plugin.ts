@@ -8,7 +8,7 @@
  */
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
-import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
+import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
 import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
@@ -144,43 +144,10 @@ const audioNative = new AudioNative();
 initializeAudio(adapter.createLogger("Audio"), audioNative, join(__binDir, "..", "assets", "audio"));
 getAudio().init();
 
-// Derive the available Race Engineer voice keys from manifest paths
-// (`voice/<voice>/…`). Static for the lifetime of the plugin process.
-const raceEngineerVoices = (() => {
-  const voices = new Set<string>();
-
-  for (const clip of audioAssetsManifest.clips) {
-    if (!clip.startsWith("voice/")) continue;
-
-    const segments = clip.split("/");
-
-    if (segments.length >= 2 && segments[1].length > 0) voices.add(segments[1]);
-  }
-
-  return Array.from(voices).sort();
-})();
-
-// Derive the available driver-name keys (the names the engineer will
-// address the user as) from `voice/<voice>/names/<name>.mp3` paths,
-// alphabetically sorted. See iracing-plugin-stream-deck for notes.
-const driverNames = (() => {
-  const names = new Set<string>();
-
-  for (const clip of audioAssetsManifest.clips) {
-    if (!clip.startsWith("voice/")) continue;
-
-    const segments = clip.split("/");
-
-    if (segments.length === 4 && segments[2] === "names") {
-      const file = segments[3];
-      const name = file.endsWith(".mp3") ? file.slice(0, -".mp3".length) : file;
-
-      if (name.length > 0) names.add(name);
-    }
-  }
-
-  return Array.from(names).sort();
-})();
+// Derive the available Race Engineer voices and driver-name keys from
+// the manifest. Static for the lifetime of the plugin process.
+const raceEngineerVoices = scanRaceEngineerVoices(audioAssetsManifest);
+const driverNames = scanDriverNames(audioAssetsManifest);
 
 // Initialize the scenario engine AFTER audio (so it can drive playback) but
 // BEFORE actions register (so actions see a ready engine when they wire PI

@@ -15,4 +15,5 @@ export {
   initializeAudioScenarios,
   isAudioScenariosInitialized,
 } from "./interpreter.js";
+export { manifestVoices, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
 export { validateScenario } from "./validation.js";

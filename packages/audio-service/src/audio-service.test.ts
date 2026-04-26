@@ -226,6 +226,77 @@ describe("AudioService", () => {
     });
   });
 
+  describe("playback observer", () => {
+    it("fires onStart with the resolved path when a clip plays", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(onStart).toHaveBeenCalledWith(AudioChannel.Voice, "/msg.mp3");
+    });
+
+    it("does not fire onStart when the native engine rejects the play", () => {
+      const native = createMockNative();
+      (native.playOnChannel as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it("fires onComplete when the native end callback fires", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      endCallbacks[AudioChannel.Radar]();
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Radar);
+    });
+
+    it("clears the observer when set to null", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onStart = vi.fn();
+      getAudio().setPlaybackObserver({ onStart });
+      getAudio().setPlaybackObserver(null);
+      getAudio().playOnChannel(AudioChannel.SFX, "/tick.mp3");
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it("isolates observer errors from the caller", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      getAudio().setPlaybackObserver({
+        onStart: () => {
+          throw new Error("observer boom");
+        },
+      });
+
+      expect(() => getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3")).not.toThrow();
+    });
+  });
+
   describe("voice sequence", () => {
     it("should play single file without connectors", () => {
       const native = createMockNative();

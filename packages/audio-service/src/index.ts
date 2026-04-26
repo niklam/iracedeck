@@ -13,4 +13,5 @@ export {
   type IAudioService,
   initializeAudio,
   isAudioInitialized,
+  type PlaybackObserver,
 } from "./audio-service.js";

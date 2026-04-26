@@ -84,6 +84,32 @@ enum VoiceSeqState {
   PlayingConnector,
 }
 
+// ─── Playback observer ───────────────────────────────────────────────────────
+
+/**
+ * Persistent observer for playback start/complete events across all channels.
+ *
+ * Distinct from {@link IAudioService.onChannelComplete}: that API is a
+ * one-shot per-channel callback used internally by callers that need to
+ * chain plays. The observer here is a single non-mutating subscription
+ * intended for monitoring (logging, telemetry, dev-tool live readouts) —
+ * it fires for every clip on every channel and never gets cleared by the
+ * audio engine.
+ *
+ * Both callbacks are optional so observers can subscribe to just starts or
+ * just completions without nullable shims at the call site.
+ */
+export interface PlaybackObserver {
+  /**
+   * Fired after the native engine has accepted a play call. `filePath` is
+   * the absolute filesystem path the native layer received (after base-
+   * path resolution), so observers can correlate with the source clip.
+   */
+  onStart?(channel: AudioChannel, filePath: string): void;
+  /** Fired when a clip finishes playing on the given channel. */
+  onComplete?(channel: AudioChannel): void;
+}
+
 // ─── Public interface ────────────────────────────────────────────────────────
 
 export interface IAudioService {
@@ -159,6 +185,14 @@ export interface IAudioService {
    * Returns false if the id isn't in the current enumeration.
    */
   setAudioDeviceById(deviceId: string): boolean;
+
+  /**
+   * Register (or clear, with `null`) a persistent observer that fires
+   * every time a clip starts or finishes on any channel. There is one
+   * observer at a time — the harness and any other monitor share. Pass
+   * `null` to remove the current observer.
+   */
+  setPlaybackObserver(observer: PlaybackObserver | null): void;
 }
 
 // ─── Implementation ──────────────────────────────────────────────────────────
@@ -185,6 +219,9 @@ class AudioService implements IAudioService {
 
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
+
+  // Persistent observer for clip start/complete on any channel.
+  private playbackObserver: PlaybackObserver | null = null;
 
   constructor(logger: ILogger, native: AudioNative, basePath: string | null) {
     this.logger = logger;
@@ -233,7 +270,11 @@ class AudioService implements IAudioService {
     const resolved = this.resolvePath(filePath);
     this.logger.debug(`Play ch${channel}: ${resolved}${loop ? " (loop)" : ""}`);
 
-    return this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+    const ok = this.native.playOnChannel(channel, resolved, loop, this.channelVolumes[channel]);
+
+    if (ok) this.notifyPlaybackStart(channel, resolved);
+
+    return ok;
   }
 
   /**
@@ -410,6 +451,10 @@ class AudioService implements IAudioService {
     return ok;
   }
 
+  setPlaybackObserver(observer: PlaybackObserver | null): void {
+    this.playbackObserver = observer;
+  }
+
   // ── Internal ──
 
   private handleChannelEnd(channel: number): void {
@@ -424,6 +469,32 @@ class AudioService implements IAudioService {
     if (cb) {
       this.channelCallbacks[channel] = null;
       cb();
+    }
+
+    this.notifyPlaybackEnd(channel as AudioChannel);
+  }
+
+  private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {
+    const observer = this.playbackObserver;
+
+    if (!observer?.onStart) return;
+
+    try {
+      observer.onStart(channel, filePath);
+    } catch (err) {
+      this.logger.warn(`Playback observer onStart threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private notifyPlaybackEnd(channel: AudioChannel): void {
+    const observer = this.playbackObserver;
+
+    if (!observer?.onComplete) return;
+
+    try {
+      observer.onComplete(channel);
+    } catch (err) {
+      this.logger.warn(`Playback observer onComplete threw: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -458,12 +529,15 @@ class AudioService implements IAudioService {
       const connector = this.pickConnector();
       this.voiceSeqState = VoiceSeqState.PlayingConnector;
       this.logger.debug(`Playing connector: ${connector}`);
-      this.native.playOnChannel(
+      const resolved = this.resolvePath(connector);
+      const ok = this.native.playOnChannel(
         AudioChannel.Voice,
-        this.resolvePath(connector),
+        resolved,
         false,
         this.channelVolumes[AudioChannel.Voice],
       );
+
+      if (ok) this.notifyPlaybackStart(AudioChannel.Voice, resolved);
     } else {
       // No connectors — play next message directly
       this.playCurrentMessage();
@@ -478,12 +552,10 @@ class AudioService implements IAudioService {
   private playCurrentMessage(): void {
     const file = this.voiceSeqFiles[this.voiceSeqIndex];
     this.logger.debug(`Playing message ${this.voiceSeqIndex + 1}/${this.voiceSeqFiles.length}: ${file}`);
-    this.native.playOnChannel(
-      AudioChannel.Voice,
-      this.resolvePath(file),
-      false,
-      this.channelVolumes[AudioChannel.Voice],
-    );
+    const resolved = this.resolvePath(file);
+    const ok = this.native.playOnChannel(AudioChannel.Voice, resolved, false, this.channelVolumes[AudioChannel.Voice]);
+
+    if (ok) this.notifyPlaybackStart(AudioChannel.Voice, resolved);
   }
 
   private pickConnector(): string {
