@@ -144,11 +144,21 @@ export class MockSDKController {
     }
   }
 
-  /** Start the auto-tick loop. No-op if already running. */
+  /**
+   * Start the auto-tick loop. If already running and a new `intervalMs` is
+   * provided, reroutes through `setTickInterval` so the timer's cadence
+   * actually changes — without this, calling `start(500)` while already
+   * ticking at 250 ms would update the recorded interval but keep the
+   * timer firing at the old rate.
+   */
   start(intervalMs?: number): void {
-    if (intervalMs !== undefined) this.tickIntervalMs = intervalMs;
+    if (this.timer !== null) {
+      if (intervalMs !== undefined) this.setTickInterval(intervalMs);
 
-    if (this.timer !== null) return;
+      return;
+    }
+
+    if (intervalMs !== undefined) this.tickIntervalMs = intervalMs;
 
     this.timer = setInterval(() => this.tickOnce(), this.tickIntervalMs);
     this.broadcastState();

@@ -17,7 +17,7 @@ export type EventTemplate = {
   data: Record<string, unknown>;
 };
 
-export const EVENT_TEMPLATES: readonly EventTemplate[] = [
+export const EVENT_TEMPLATES = [
   // ── Pit lane / stall ──
   { name: "pitLane.approaching", description: "Approaching pit entry", data: {} },
   { name: "pitLane.entered", description: "Crossed onto pit road", data: {} },
@@ -80,7 +80,7 @@ export const EVENT_TEMPLATES: readonly EventTemplate[] = [
     description: "Crossed a fuel-laps-remaining threshold",
     data: { threshold: 5, laps: 4.6 },
   },
-];
+] as const satisfies readonly EventTemplate[];
 
 export const ALL_EVENT_NAMES: readonly SimEventName[] = EVENT_TEMPLATES.map((t) => t.name);
 

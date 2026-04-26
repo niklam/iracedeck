@@ -220,6 +220,13 @@ class AudioService implements IAudioService {
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
   private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
 
+  // Per-channel "is something currently playing on this channel" tracker. Set
+  // when a play call succeeds, cleared on any teardown path (natural end,
+  // manual stop, voice-sequence end). Gates `notifyPlaybackEnd` so we don't
+  // emit synthetic completions on already-idle channels and don't double-fire
+  // when the native engine echoes an end callback after a manual stop.
+  private channelActive: boolean[] = [false, false, false, false];
+
   // Persistent observer for clip start/complete on any channel.
   private playbackObserver: PlaybackObserver | null = null;
 
@@ -309,10 +316,17 @@ class AudioService implements IAudioService {
   stopChannel(channel: AudioChannel): void {
     this.native.stopChannel(channel);
     this.channelCallbacks[channel] = null;
+
     // Manual stop: native engine doesn't fire its end callback, so notify
     // observers explicitly. Looping channels (Ambient) would otherwise stay
-    // "active" forever in any monitor that tracks start/complete.
-    this.notifyPlaybackEnd(channel);
+    // "active" forever in any monitor that tracks start/complete. Gated on
+    // `channelActive` so already-idle channels don't emit synthetic
+    // completions, and a deferred native end callback after a manual stop
+    // doesn't double-fire (handleChannelEnd checks the same flag).
+    if (this.channelActive[channel]) {
+      this.channelActive[channel] = false;
+      this.notifyPlaybackEnd(channel);
+    }
   }
 
   stopAllChannels(): void {
@@ -321,7 +335,11 @@ class AudioService implements IAudioService {
 
     for (let i = 0; i < 4; i++) {
       this.channelCallbacks[i] = null;
-      this.notifyPlaybackEnd(i as AudioChannel);
+
+      if (this.channelActive[i]) {
+        this.channelActive[i] = false;
+        this.notifyPlaybackEnd(i as AudioChannel);
+      }
     }
   }
 
@@ -468,7 +486,12 @@ class AudioService implements IAudioService {
     // clip. Otherwise the observer sees [start clip2, complete Voice] in
     // that order and any monitor flips the channel back to idle even
     // though the next clip is already playing (#448 audio activity bug).
-    this.notifyPlaybackEnd(channel as AudioChannel);
+    // Gated on `channelActive` so a deferred native end callback after a
+    // manual stop doesn't double-fire.
+    if (this.channelActive[channel]) {
+      this.channelActive[channel] = false;
+      this.notifyPlaybackEnd(channel as AudioChannel);
+    }
 
     // Voice channel has special handling for sequence engine
     if (channel === AudioChannel.Voice) {
@@ -485,6 +508,12 @@ class AudioService implements IAudioService {
   }
 
   private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {
+    // Single chokepoint for "a clip just started". Marking active here
+    // guarantees every play site (including the voice-sequence engine
+    // paths that go through `native.playOnChannel` directly) keeps
+    // `channelActive` in sync with reality.
+    this.channelActive[channel] = true;
+
     const observer = this.playbackObserver;
 
     if (!observer?.onStart) return;

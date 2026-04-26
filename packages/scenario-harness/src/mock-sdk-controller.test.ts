@@ -194,6 +194,25 @@ describe("MockSDKController", () => {
 
       expect(callback.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
+
+    it("start(intervalMs) while already running updates the running cadence", () => {
+      vi.useFakeTimers();
+      const controller = new MockSDKController({ tickIntervalMs: 1000 });
+      controller.setConnected(true);
+      controller.start();
+      const callback = vi.fn();
+      controller.subscribe("test", callback);
+      callback.mockClear();
+
+      // Pre-fix: this only updated the recorded interval; the timer kept
+      // firing at 1000 ms. Post-fix: routed through setTickInterval and
+      // the timer rearms at 50 ms.
+      controller.start(50);
+      vi.advanceTimersByTime(160);
+
+      expect(callback.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(controller.getState().tickIntervalMs).toBe(50);
+    });
   });
 
   describe("state listener", () => {
