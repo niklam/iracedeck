@@ -187,7 +187,7 @@ function sfxClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
 }
 
-function findScenario(id: string): SimEventOf<SimEventName> extends never ? never : (typeof FLAG_ALERTS)[number] {
+function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
   const s = FLAG_ALERTS.find((x) => x.id === id);
 
   if (!s) throw new Error(`No flag scenario with id "${id}"`);
@@ -293,7 +293,9 @@ describe("FLAG_ALERTS triggers", () => {
     bus.publishEvent(event, data as never);
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain(expected);
+    // Strict equality (not toContain) so an accidental duplicate fire
+    // or an extra voice clip in the sequence would surface here.
+    expect(voiceClipsPlayed()).toEqual([expected]);
   });
 
   it("yellow.raised with scope='local' does NOT play the full-yellow clip", () => {
@@ -345,16 +347,14 @@ describe("FLAG_ALERTS triggers", () => {
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/titan/flags/red-01.mp3");
+    expect(voiceClipsPlayed()).toEqual(["voice/titan/flags/red-01.mp3"]);
   });
 
   it("wraps the callout in the radio frame (open + close ticks on the SFX channel)", () => {
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
-    const sfx = sfxClipsPlayed();
-    expect(sfx).toContain("sfx/IRD-tick-open.mp3");
-    expect(sfx).toContain("sfx/IRD-tick-close.mp3");
+    expect(sfxClipsPlayed()).toEqual(["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3"]);
   });
 });
 
