@@ -137,8 +137,8 @@ Skill files (`iracedeck-actions`) describe actions, not scenarios, and don't nee
 - After live generation: `voice/luca/flags/` and `voice/titan/flags/` each contain `yellow-local-01.mp3`, `yellow-full-01.mp3`, `yellow-cleared-01.mp3`; `yellow-01.mp3` is absent.
 - Scenario harness (`pnpm --filter @iracedeck/scenario-harness dev`):
   - All 11 flag buttons fire the engineer voice and use the radio frame.
-  - Click "Yellow (local)" then "Yellow (full)": full-yellow preempts the local clip mid-message (family preemption).
-  - Click "Yellow (local)", then immediately click "Meatball" while the line is still playing: meatball preempts mid-message (urgent + preempt).
-  - Click "Meatball", then immediately click "Yellow (local)": yellow does NOT cancel meatball; meatball plays out (no shared family).
-  - Click "Checkered" with the harness's session type set to Practice / Qualifying / Race in turn — each plays the matching variant.
-  - Click "Yellow (local)" → "Yellow Cleared" → "Green" in quick succession: family preemption keeps only the most recent callout audible.
+  - Trigger "Yellow (local)" then "Yellow (full)": full-yellow preempts the local clip mid-message (family preemption).
+  - Start "Yellow (local)", then immediately fire "Meatball" while the line is still playing: meatball preempts mid-message (urgent + preempt).
+  - Reverse the order — fire "Meatball", then "Yellow (local)" — and meatball plays out untouched (no shared family).
+  - Set the harness session type to Practice / Qualifying / Race in turn, then trigger "Checkered" each time — each plays the matching variant.
+  - Run "Yellow (local)" → "Yellow Cleared" → "Green" in quick succession: family preemption keeps only the most recent callout audible.

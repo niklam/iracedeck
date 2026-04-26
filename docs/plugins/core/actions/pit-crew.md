@@ -1,6 +1,6 @@
 # Pit Crew
 
-Multi-mode action covering the iRaceDeck pit-side audio framework. The initial release exposes only the directional Radar proximity ticks. A Race Engineer voice feature is planned and will return to the Mode dropdown in a follow-up release alongside its voice scenarios.
+Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), and **Radar Volume** (steps the radar volume up or down). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, and the full set of flag transitions described below.
 
 ## Properties
 

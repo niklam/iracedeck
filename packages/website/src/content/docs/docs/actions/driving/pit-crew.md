@@ -74,4 +74,3 @@ Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compou
 ## Notes
 
 - "AI Spotter Controls" is a separate action that wraps iRacing's own built-in AI Spotter voice. It uses iRacing SDK commands and a different audio source. Pit Crew's Radar is an iRaceDeck-owned non-vocal proximity tick and does not overlap with iRacing's spotter voice.
-- Race Engineer Volume Up / Down modes will be added alongside the first voice scenarios.
