@@ -422,6 +422,34 @@ describe("AudioService", () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it("stopChannel(Voice) cancels the active voice sequence so a deferred native end can't resume it", () => {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      // Start a 3-clip sequence so the voice-sequence state machine has
+      // pending messages. Pre-fix: stopChannel(Voice) cleared the
+      // observer state but left voiceSeqState armed; a deferred native
+      // end echo would then schedule msg2 via handleVoiceEnd and the
+      // mock native.playOnChannel would be called for "/msg2.mp3".
+      getAudio().playVoiceSequence(["/msg1.mp3", "/msg2.mp3", "/msg3.mp3"]);
+      const playsBeforeStop = (native.playOnChannel as ReturnType<typeof vi.fn>).mock.calls.length;
+
+      getAudio().stopChannel(AudioChannel.Voice);
+
+      // Native engine echoes its end callback after the manual stop.
+      endCallbacks[AudioChannel.Voice]();
+
+      // No additional play was scheduled — the sequence was cancelled.
+      const playsAfterStop = (native.playOnChannel as ReturnType<typeof vi.fn>).mock.calls.length;
+      expect(playsAfterStop).toBe(playsBeforeStop);
+    });
+
     it("destroy() drains active channels and resets channelActive so a re-init starts clean", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);

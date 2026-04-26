@@ -323,6 +323,13 @@ class AudioService implements IAudioService {
   }
 
   stopChannel(channel: AudioChannel): void {
+    // Stopping the Voice channel mid-sequence must reset the voice-
+    // sequence state machine. Otherwise a deferred native end callback
+    // can hit `handleVoiceEnd` and schedule the next connector or message
+    // even though the caller asked us to stop. `stopAllChannels` already
+    // does this; this is the same defence for the per-channel API.
+    if (channel === AudioChannel.Voice) this.cancelVoiceSequence();
+
     this.native.stopChannel(channel);
     this.channelCallbacks[channel] = null;
 
