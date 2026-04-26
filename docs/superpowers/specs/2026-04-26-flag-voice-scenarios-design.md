@@ -135,7 +135,6 @@ Skill files (`iracedeck-actions`) describe actions, not scenarios, and don't nee
 - Pace-car / safety-car-specific announcements — not flag events.
 - Visual flag-state updates on key icons — separate from the audio path.
 - Adding more than two variants to any flag pool — `green`, `blue`, and `white` ship with two each; further variants are a one-line append in `pools.ts` per voice in a follow-up.
-- Migrating the still-pending toggle scenarios (`PENDING_TOGGLE_SCENARIOS`: windshield / fastRepair / drs / p2p) — separate issue.
 
 ## Verification
 
