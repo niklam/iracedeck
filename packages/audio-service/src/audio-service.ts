@@ -263,7 +263,16 @@ class AudioService implements IAudioService {
   }
 
   destroy(): void {
+    // Drain active channels through the public path so observers see each
+    // channel transition to idle before the native engine goes away.
+    // `stopAllChannels` calls `cancelVoiceSequence` and clears
+    // `channelActive` per channel — the explicit `fill(false)` is a belt-
+    // and-suspenders reset for any future code path that bypasses
+    // `stopAllChannels`.
+    if (this.engineReady) this.stopAllChannels();
+
     this.cancelVoiceSequence();
+    this.channelActive.fill(false);
     this.native.destroyAudioEngine();
     this.engineReady = false;
     this.logger.info("Audio engine destroyed");

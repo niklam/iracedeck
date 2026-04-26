@@ -422,6 +422,28 @@ describe("AudioService", () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it("destroy() drains active channels and resets channelActive so a re-init starts clean", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannel(AudioChannel.Ambient, "/loop.mp3", true);
+      getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+      getAudio().destroy();
+
+      // Both active channels notified on teardown.
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Ambient);
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Voice);
+
+      // After destroy + observer detached, a stale native end echo for any
+      // channel must not fire a synthetic onComplete (channelActive cleared).
+      onComplete.mockClear();
+      getAudio().stopChannel(AudioChannel.Ambient);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it("does not double-fire onComplete when native end callback follows manual stop", () => {
       const native = createMockNative();
       const endCallbacks: Record<number, () => void> = {};
