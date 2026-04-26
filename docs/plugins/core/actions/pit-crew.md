@@ -26,6 +26,17 @@ When the engineer is enabled, the Pit Crew catalog confirms every meaningful pit
 - **Tire selection** — exhaustive across the 15 non-empty 4-corner combinations: the 5 standard preset patterns (all / fronts / rears / lefts / rights), all 4 single-corner picks, both diagonals (LF + RR, RF + LR), and all 4 three-corner combos (skip LF / RF / LR / RR). Clearing the selection plays a "skipping tires" callout.
 - **Tire compound** — dry / wet switches play a dedicated compound line. iRacing forces all four tire bits on at the same instant the compound flips; the translator suppresses the cascading tire-set event so only the compound callout plays.
 
+Flag transitions are also voiced — every flag the iRacing translator publishes gets a dedicated engineer callout:
+
+- **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
+- **Yellow cleared** — engineer announces when the yellow drops.
+- **Green** — race-restart / race-on callout.
+- **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
+- **White** — final-lap alert.
+- **Red / Black / Debris** — single dedicated callout each.
+- **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
+- **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
+
 ## Settings
 
 | Setting | Type | Default | Description |
