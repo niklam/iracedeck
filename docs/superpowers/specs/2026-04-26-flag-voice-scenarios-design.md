@@ -14,11 +14,19 @@ The issue lists meatball as priority #1 — drivers may not see the flag overlay
 
 Under `groups.flags`:
 
-- Rename existing `yellow-01` → `yellow-local-01` (keeps current text "Yellow flag! Mind the slow cars!"). Aligns with the `<color>-<qualifier>-NN` convention already used by checkered.
+- Rename existing `yellow-01` → `yellow-local-01` (text "Yellow flag! Mind the slow cars!"). Aligns with the `<color>-<qualifier>-NN` convention already used by checkered.
 - Add `yellow-full-01` — text: `"Full course yellow! <break time="0.3s" /> Pace car deployed."`
 - Add `yellow-cleared-01` — text: `"Yellow's cleared. <break time="0.3s" /> Back to green soon."`
+- Refresh the engineer wording on previously terse single-clip entries so the calls feel like a real engineer:
+  - `green-01` → `"Green flag! Green flag! Push now!"`
+  - `meatball-01` → `"We got the meatball flag. We'll need to pit for repairs."`
+  - `red-01` → `"Red flag. Session stopped. Slow down, drive safely back to the pit."`
+  - `white-01` → `"White flag. Last lap. Bring it home."`
+- Add second variants for the flags where back-to-back fires read most loop-y:
+  - `green-02` — `"Green! Green! Green! Go! Go! Go!"`
+  - `white-02` — `"Last lap. Clean and tidy."`
 
-Then run `pnpm --filter @iracedeck/audio-assets generate --group flags` to produce the three new MP3s per voice (~6 ElevenLabs calls), followed by `pnpm --filter @iracedeck/audio-assets generate:manifest` to refresh the runtime `manifest.json`.
+Then run `pnpm --filter @iracedeck/audio-assets generate --group flags` to (re)produce the affected MP3s per voice, followed by `pnpm --filter @iracedeck/audio-assets generate:manifest` to refresh the runtime `manifest.json`.
 
 ### 2. Scenario catalog (`packages/audio-scenarios/src/catalog/pit-crew/flag-alerts.ts` — full rewrite)
 
@@ -29,23 +37,25 @@ Family strategy:
 - All non-meatball flag scenarios share `family: "flag"`. Per the DSL contract this means a new flag callout preempts the in-flight one regardless of priority — yellow → green race restart no longer plays both back-to-back; whichever flag fires last wins.
 - Meatball is excluded from the family. We want it to preempt anything in flight (handled by `priority: "urgent"` + `preempt: true`), but we do NOT want a routine yellow to cancel a still-playing meatball — leaving it out of the `flag` family achieves both.
 
+**Pool-driven everywhere.** Every flag scenario draws from a pool defined in `pools.ts` — even single-clip flags. Adding a future variant becomes a one-line append in `pools.ts` instead of a scenario rewrite. Multi-element pools rotate with no-repeat per pool (matching `acknowledgment`); single-element pools resolve deterministically.
+
 Scenario definitions:
 
 | id | Trigger | Sequence body | Priority | Family |
 |---|---|---|---|---|
-| `pit-crew.flag-yellow-local` | `flag.yellow.raised` where `data.scope === "local"` | `flags/yellow-local-01.mp3` | normal | flag |
-| `pit-crew.flag-yellow-full` | `flag.yellow.raised` where `data.scope === "full"` | `flags/yellow-full-01.mp3` | normal | flag |
-| `pit-crew.flag-yellow-cleared` | `flag.yellow.cleared` | `flags/yellow-cleared-01.mp3` | normal | flag |
-| `pit-crew.flag-green` | `flag.green.raised` | `flags/green-01.mp3` | normal | flag |
-| `pit-crew.flag-blue` | `flag.blue.raised` | `pool: "flag-blue"` | normal | flag |
-| `pit-crew.flag-white` | `flag.white.raised` | `flags/white-01.mp3` | normal | flag |
-| `pit-crew.flag-red` | `flag.red.raised` | `flags/red-01.mp3` | normal | flag |
-| `pit-crew.flag-black` | `flag.black.raised` | `flags/black-01.mp3` | normal | flag |
-| `pit-crew.flag-checkered` | `flag.checkered.raised` | `if`-step on `getSessionType()` → `practise` / `qualifying` / `race` clip | normal | flag |
-| `pit-crew.flag-debris` | `flag.debris.raised` | `flags/debris-01.mp3` | normal | flag |
-| `pit-crew.flag-meatball` | `flag.meatball.raised` | `flags/meatball-01.mp3` | **urgent** + `preempt: true` | _(none)_ |
+| `pit-crew.flag-yellow-local` | `flag.yellow.raised` where `data.scope === "local"` | `pool:flag-yellow-local` | normal | flag |
+| `pit-crew.flag-yellow-full` | `flag.yellow.raised` where `data.scope === "full"` | `pool:flag-yellow-full` | normal | flag |
+| `pit-crew.flag-yellow-cleared` | `flag.yellow.cleared` | `pool:flag-yellow-cleared` | normal | flag |
+| `pit-crew.flag-green` | `flag.green.raised` | `pool:flag-green` (2 variants) | normal | flag |
+| `pit-crew.flag-blue` | `flag.blue.raised` | `pool:flag-blue` (2 variants) | normal | flag |
+| `pit-crew.flag-white` | `flag.white.raised` | `pool:flag-white` (2 variants) | normal | flag |
+| `pit-crew.flag-red` | `flag.red.raised` | `pool:flag-red` | normal | flag |
+| `pit-crew.flag-black` | `flag.black.raised` | `pool:flag-black` | normal | flag |
+| `pit-crew.flag-checkered` | `flag.checkered.raised` | `if`-step on `getSessionType()` → `pool:flag-checkered-practise` / `-qualifying` / `-race` | normal | flag |
+| `pit-crew.flag-debris` | `flag.debris.raised` | `pool:flag-debris` | normal | flag |
+| `pit-crew.flag-meatball` | `flag.meatball.raised` | `pool:flag-meatball` | **urgent** + `preempt: true` | _(none)_ |
 
-Blue uses a pool to randomize between `blue-01` and `blue-02`. Add an entry to the existing `POOLS` registry in `pit-crew/pools.ts`:
+All pool definitions live in `pit-crew/pools.ts` alongside the existing `acknowledgment` pool, named with the `flag-` prefix so they group together and `index.ts` can register them in a single loop. Pool clips include the full `voice/{voice}/...` path because pool resolution does NOT apply the calling scenario's `base` (pool clip paths are resolved verbatim except for `{voice}` substitution against the manifest). For example, the blue pool:
 
 ```typescript
 "flag-blue": [
@@ -54,24 +64,18 @@ Blue uses a pool to randomize between `blue-01` and `blue-02`. Add an entry to t
 ],
 ```
 
-Pool clips include the full `voice/{voice}/...` path because pool resolution does NOT apply the calling scenario's `base` (pool clip paths are resolved verbatim except for `{voice}` substitution against the manifest). Register it from `index.ts` next to the `acknowledgment` line:
-
-```typescript
-engine.definePool("flag-blue", [...POOLS["flag-blue"]]);
-```
-
 Checkered uses nested `if` steps on `getSessionType()` (imported from `@iracedeck/sim-events-iracing` — already a workspace dep of `@iracedeck/audio-scenarios`). The DSL's `if` step takes one predicate with `then` / optional `else`, so a three-way branch nests:
 
 ```typescript
-sequence: toggleSequence([
+sequence: flagSequence([
   {
     if: () => getSessionType() === "Practice",
-    then: ["flags/checkered-practise-01.mp3"],
+    then: ["pool:flag-checkered-practise"],
     else: [
       {
         if: () => getSessionType().includes("Qualify"),
-        then: ["flags/checkered-qualifying-01.mp3"],
-        else: ["flags/checkered-race-01.mp3"],
+        then: ["pool:flag-checkered-qualifying"],
+        else: ["pool:flag-checkered-race"],
       },
     ],
   },
@@ -80,20 +84,22 @@ sequence: toggleSequence([
 
 Branching rules:
 
-- `"Practice"` → `flags/checkered-practise-01.mp3`
-- contains `"Qualify"` (matches both `"Open Qualify"` and `"Lone Qualify"`) → `flags/checkered-qualifying-01.mp3`
-- everything else (default — `"Race"`, empty string, unknown) → `flags/checkered-race-01.mp3`
+- `"Practice"` → `pool:flag-checkered-practise`
+- contains `"Qualify"` (matches both `"Open Qualify"` and `"Lone Qualify"`) → `pool:flag-checkered-qualifying`
+- everything else (default — `"Race"`, empty string, unknown) → `pool:flag-checkered-race`
 
 The `getSessionType()` calls are inside predicate closures so they resolve at fire time, not module-load time. Two calls per fire is acceptable (zero-cost lookup of an in-memory snapshot).
 
-Export `FLAG_ALERTS: readonly Scenario[]` from `flag-alerts.ts`. The blue pool lives in `pools.ts`, not `flag-alerts.ts`, so all pool definitions stay in one place.
+Export `FLAG_ALERTS: readonly Scenario[]` from `flag-alerts.ts`, plus `FLAG_POOL_NAMES: readonly string[]` derived from `Object.keys(POOLS).filter(n => n.startsWith("flag-"))` so pool registration in `index.ts` stays in sync with whatever `pools.ts` defines (no parallel hand-maintained list).
 
 ### 3. Registration (`packages/audio-scenarios/src/catalog/pit-crew/index.ts`)
 
-Import `FLAG_ALERTS`. Add the pool registration next to `acknowledgment`, then a loop over `FLAG_ALERTS` after the tire compound loop:
+Import `FLAG_ALERTS` and `FLAG_POOL_NAMES`. Add the pool registration loop next to `acknowledgment`, then a loop over `FLAG_ALERTS` after the tire compound loop:
 
 ```typescript
-engine.definePool("flag-blue", [...POOLS["flag-blue"]]);
+engine.definePool("acknowledgment", [...POOLS.acknowledgment]);
+
+for (const name of FLAG_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
 
 // ... existing scenario loops ...
 
@@ -112,7 +118,8 @@ Mirror the structure of `toggle-confirmations.test.ts`. Cases:
 - Meatball scenario has `priority: "urgent"` and `preempt: true`.
 - All non-meatball flag scenarios have `family: "flag"`.
 - Checkered `if`-step picks the right clip for `"Race"`, `"Practice"`, `"Open Qualify"`, `"Lone Qualify"`, and unknown session types. Mock `getSessionType` via `vi.mock("@iracedeck/sim-events-iracing", ...)`.
-- Blue scenario references the pool `flag-blue`. Add a parallel test in `pools.test.ts` (or extend an existing pool sanity test) that `POOLS["flag-blue"]` contains both clip paths.
+- Multi-variant pools (`flag-blue`, `flag-green`, `flag-white`): assert the played clip is one of the recorded variants (rotation order is non-deterministic per fire).
+- `FLAG_POOL_NAMES` lists every `flag-`-prefixed key in `POOLS`, and every name maps to a non-empty pool entry (sanity check that the derivation stays in sync).
 
 ### 5. Plugin docs
 
@@ -127,7 +134,7 @@ Skill files (`iracedeck-actions`) describe actions, not scenarios, and don't nee
 - Sector-aware yellow flag callouts (`"yellow, sector 3"`) — needs sector resolution work first.
 - Pace-car / safety-car-specific announcements — not flag events.
 - Visual flag-state updates on key icons — separate from the audio path.
-- Adding new variants to existing single-clip flags (red, white, etc.) — current single clips are sufficient; variant pools can land later as new audio is recorded.
+- Adding more than two variants to any flag pool — `green`, `blue`, and `white` ship with two each; further variants are a one-line append in `pools.ts` per voice in a follow-up.
 - Migrating the still-pending toggle scenarios (`PENDING_TOGGLE_SCENARIOS`: windshield / fastRepair / drs / p2p) — separate issue.
 
 ## Verification

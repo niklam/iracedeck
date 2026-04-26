@@ -183,6 +183,10 @@ function voiceClipsPlayed(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
 }
 
+function sfxClipsPlayed(): string[] {
+  return audio._played.filter((p) => p.channel === AudioChannel.SFX).map((p) => p.path);
+}
+
 function findScenario(id: string): SimEventOf<SimEventName> extends never ? never : (typeof FLAG_ALERTS)[number] {
   const s = FLAG_ALERTS.find((x) => x.id === id);
 
@@ -342,6 +346,15 @@ describe("FLAG_ALERTS triggers", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain("voice/titan/flags/red-01.mp3");
+  });
+
+  it("wraps the callout in the radio frame (open + close ticks on the SFX channel)", () => {
+    bus.publishEvent("flag.red.raised", {});
+    flush(audio);
+
+    const sfx = sfxClipsPlayed();
+    expect(sfx).toContain("sfx/IRD-tick-open.mp3");
+    expect(sfx).toContain("sfx/IRD-tick-close.mp3");
   });
 });
 
