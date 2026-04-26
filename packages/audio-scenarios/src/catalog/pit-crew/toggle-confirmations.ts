@@ -7,7 +7,7 @@
  * talkie feel where the engineer confirms the request before echoing the
  * state change.
  *
- * **Registered today:**
+ * Registered scenarios:
  *   - `FUEL_TOGGLE_SCENARIOS` — fuel on/off via `pitService.toggled`
  *   - `TIRE_TOGGLE_SCENARIOS` — every meaningful tire-set selection via
  *     `tireService.changed`: the 5 standard patterns (all/fronts/rears/
@@ -15,12 +15,6 @@
  *     three-corner combos, and the full-clear ("skip tires") case
  *   - `TIRE_COMPOUND_SCENARIOS` — dry/wet compound switches via
  *     `tireService.compoundChanged`
- *
- * **Pending migration (NOT registered):** `PENDING_TOGGLE_SCENARIOS` —
- * windshield, fastRepair, drs, p2p. Their clips still point at the deleted
- * `pit-crew/` tree; each gets its own voice/ content batch in a follow-up
- * issue. Definitions kept as templates for those PRs. (DRS / P2P do not
- * belong in pit-actions; relocating them is a separate cleanup.)
  *
  * All registered scenarios use `priority: "normal"` so pit-lane callouts
  * still take precedence.
@@ -210,74 +204,3 @@ function compoundScenario(to: 0 | 1): Scenario {
 }
 
 export const TIRE_COMPOUND_SCENARIOS: readonly Scenario[] = [compoundScenario(0), compoundScenario(1)];
-
-// ── Pending migration (NOT registered) ──────────────────────────────────
-// TODO(#441 follow-up): clips below still reference the deleted pit-crew/
-// tree. Each (windshield / fastRepair / drs / p2p) needs its own voice/
-// content batch (mirroring acknowledgment in #441 §3) before migration.
-// Definitions kept as templates for the migration PRs.
-
-type PitServiceLegacy = "windshield" | "fastRepair";
-
-const LEGACY_PIT_SERVICE_CLIP: Record<PitServiceLegacy, { on: string; off: string }> = {
-  windshield: {
-    on: "pit-crew/toggle/IRD-toggle-windshield-on.mp3",
-    off: "pit-crew/toggle/IRD-toggle-windshield-off.mp3",
-  },
-  fastRepair: {
-    on: "pit-crew/toggle/IRD-toggle-fast-repair-on.mp3",
-    off: "pit-crew/toggle/IRD-toggle-fast-repair-off.mp3",
-  },
-};
-
-function legacyPitServiceScenario(service: PitServiceLegacy, on: boolean): Scenario {
-  const clip = (on ? LEGACY_PIT_SERVICE_CLIP[service].on : LEGACY_PIT_SERVICE_CLIP[service].off).replace(
-    /^pit-crew\//,
-    "",
-  );
-
-  return {
-    id: `pit-crew.toggle-${service}-${on ? "on" : "off"}`,
-    when: {
-      event: "pitService.toggled",
-      where: (e) => {
-        const data = (e as SimEventOf<"pitService.toggled">).data;
-
-        return data.service === service && data.on === on;
-      },
-    },
-    channel: AudioChannel.Voice,
-    bus: AudioBus.Voice,
-    base: "pit-crew",
-    priority: "normal",
-    sequence: toggleSequence([clip]),
-  };
-}
-
-function legacyCarControlScenario(kind: "drs" | "p2p", on: boolean): Scenario {
-  const event = kind === "drs" ? "carControl.drsToggled" : "carControl.p2pToggled";
-
-  return {
-    id: `pit-crew.toggle-${kind}-${on ? "on" : "off"}`,
-    when: {
-      event,
-      where: (e) => (e as SimEventOf<"carControl.drsToggled" | "carControl.p2pToggled">).data.on === on,
-    },
-    channel: AudioChannel.Voice,
-    bus: AudioBus.Voice,
-    base: "pit-crew",
-    priority: "normal",
-    sequence: toggleSequence([`toggle/IRD-toggle-${kind}-${on ? "on" : "off"}.mp3`]),
-  };
-}
-
-export const PENDING_TOGGLE_SCENARIOS: readonly Scenario[] = [
-  legacyPitServiceScenario("windshield", true),
-  legacyPitServiceScenario("windshield", false),
-  legacyPitServiceScenario("fastRepair", true),
-  legacyPitServiceScenario("fastRepair", false),
-  legacyCarControlScenario("drs", true),
-  legacyCarControlScenario("drs", false),
-  legacyCarControlScenario("p2p", true),
-  legacyCarControlScenario("p2p", false),
-];
