@@ -1,0 +1,54 @@
+{
+  "WeekendInfo": {
+    "TrackName": "tsukuba 2kfull",
+    "TrackDisplayName": "Tsukuba Circuit 2k Full",
+    "TrackID": 324,
+    "TrackPitSpeedLimit": "60.00 kph",
+    "EventType": "Race"
+  },
+  "SessionInfo": {
+    "Sessions": [
+      {
+        "SessionNum": 0,
+        "SessionType": "Lone Qualify",
+        "SessionName": "QUALIFY",
+        "SessionLaps": "unlimited",
+        "SessionTime": "1200.0000 sec"
+      }
+    ]
+  },
+  "DriverInfo": {
+    "DriverCarIdx": 0,
+    "PaceCarIdx": -1,
+    "DriverHeadAngle": 0,
+    "Drivers": [
+      {
+        "CarIdx": 0,
+        "UserName": "Player Driver",
+        "AbbrevName": "Driver, P.",
+        "Initials": "PD",
+        "UserID": 1000000,
+        "TeamID": 0,
+        "TeamName": "Player Driver",
+        "CarNumber": "42",
+        "CarNumberRaw": 42,
+        "CarNumberst": "042",
+        "CarPath": "superformulasf23 toyota",
+        "CarID": 171,
+        "CarClassID": 0,
+        "CarIsPaceCar": 0,
+        "CarIsAI": 0,
+        "CarIsElectric": 0,
+        "CarScreenName": "Super Formula SF23 - Toyota",
+        "IRating": 2400,
+        "LicLevel": 13,
+        "LicSubLevel": 350,
+        "LicString": "B 3.50",
+        "LicColor": 6802246,
+        "IsSpectator": 0,
+        "CurDriverIncidentCount": 0,
+        "TeamIncidentCount": 0
+      }
+    ]
+  }
+}

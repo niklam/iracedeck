@@ -12,7 +12,6 @@
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
 import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
-import path from "node:path";
 
 export type RadarVisualState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
 
@@ -60,10 +59,6 @@ let testSequenceInFlight = false;
 let testSequenceGeneration = 0;
 const listeners = new Set<RadarListener>();
 
-function resolveAudioPath(file: string): string {
-  return path.join(process.cwd(), "assets", "audio", file);
-}
-
 function stopTickLoop(): void {
   if (tickTimer !== null) {
     clearTimeout(tickTimer);
@@ -80,7 +75,7 @@ function startTickLoop(state: ActiveState): void {
     // If the audio engine isn't ready, playOnChannel returns false — don't
     // reschedule a timer in that case; the next radar.changed event will
     // retry the loop once the system is healthy.
-    if (!getAudio().playOnChannel(AudioChannel.Radar, resolveAudioPath(file))) return;
+    if (!getAudio().playOnChannel(AudioChannel.Radar, file)) return;
 
     tickTimer = setTimeout(fire, interval);
   };
@@ -258,7 +253,7 @@ export function playRadarTest(): void {
     // completion callback will never fire, so clear the guard here and
     // resume the live loop; a future press after audio comes up will
     // start fresh.
-    if (!getAudio().playOnChannel(AudioChannel.Radar, resolveAudioPath(file))) {
+    if (!getAudio().playOnChannel(AudioChannel.Radar, file)) {
       finishTest();
     }
   };

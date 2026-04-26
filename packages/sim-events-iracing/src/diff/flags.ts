@@ -13,7 +13,7 @@ import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-type FlagKey = "green" | "yellow" | "blue" | "black" | "red" | "white" | "checkered";
+type FlagKey = "green" | "yellow" | "blue" | "black" | "red" | "white" | "checkered" | "debris" | "meatball";
 
 function resolveActiveFlags(sessionFlags: number): { flags: Set<FlagKey>; yellowScope: FlagScope | null } {
   const flags = new Set<FlagKey>();
@@ -38,6 +38,11 @@ function resolveActiveFlags(sessionFlags: number): { flags: Set<FlagKey>; yellow
   if (hasFlag(sessionFlags, Flags.White)) flags.add("white");
 
   if (hasFlag(sessionFlags, Flags.Checkered)) flags.add("checkered");
+
+  if (hasFlag(sessionFlags, Flags.Debris)) flags.add("debris");
+
+  // Meatball ("come in to pits, you have damage") — `Flags.Repair` in the SDK enum.
+  if (hasFlag(sessionFlags, Flags.Repair)) flags.add("meatball");
 
   // Race-start sets both green and blue bits — suppress blue.
   if (flags.has("green") && flags.has("blue")) flags.delete("blue");
@@ -82,6 +87,12 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, emit
           break;
         case "checkered":
           emit({ event: "flag.checkered.raised", data: {} });
+          break;
+        case "debris":
+          emit({ event: "flag.debris.raised", data: {} });
+          break;
+        case "meatball":
+          emit({ event: "flag.meatball.raised", data: {} });
           break;
       }
     }

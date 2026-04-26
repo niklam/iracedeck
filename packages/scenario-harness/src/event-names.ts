@@ -34,6 +34,8 @@ export const EVENT_TEMPLATES: readonly EventTemplate[] = [
   { name: "flag.black.raised", description: "Black flag", data: {} },
   { name: "flag.white.raised", description: "White flag (final lap)", data: {} },
   { name: "flag.red.raised", description: "Red flag (session stopped)", data: {} },
+  { name: "flag.debris.raised", description: "Debris on track", data: {} },
+  { name: "flag.meatball.raised", description: "Meatball flag (orange-and-black, come to pits)", data: {} },
 
   // ── Service / car control toggles ──
   {
@@ -90,5 +92,9 @@ export const ALL_EVENT_NAMES: readonly SimEventName[] = EVENT_TEMPLATES.map((t) 
 
 type CoveredNames = (typeof EVENT_TEMPLATES)[number]["name"];
 type Diff = Exclude<SimEventName, CoveredNames> | Exclude<CoveredNames, SimEventName>;
-const _coverageCheck: [Diff] extends [never] ? true : Diff = true as never;
+// When `Diff` is non-never (an event name in the catalog is missing here, or
+// vice versa), the inferred type for `_coverageCheck` becomes `never`, and
+// `true` is not assignable to `never` — the file fails to compile, listing
+// the missing/extra names in the error.
+const _coverageCheck: [Diff] extends [never] ? true : never = true;
 void _coverageCheck;

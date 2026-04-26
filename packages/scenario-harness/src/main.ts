@@ -9,9 +9,9 @@
  */
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
-import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
-import { initializeAudio } from "@iracedeck/audio-service";
-import { initGlobalSettings, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
+import { registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
+import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -34,6 +34,15 @@ function resolvePackageRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
 
   return resolve(here, "..");
+}
+
+/** Coerce a settings value to a 0..100 volume integer. Mirrors pit-crew. */
+function clampVolume(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : 100;
+
+  if (!Number.isFinite(n)) return 100;
+
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 async function main(): Promise<void> {
@@ -67,6 +76,48 @@ async function main(): Promise<void> {
   // scenario engine on the very first tick.
   initGlobalSettings(adapter, logger.createScope("GlobalSettings"));
 
+  // ── Settings → radar/audio sync ─────────────────────────────────────────
+  // The production Pit Crew action does this on mount + on every settings
+  // change. The harness has no actions, so we wire the same plumbing
+  // here: the radar engine ships disabled, and bus volumes default to
+  // 1.0 — neither matches the seeded `radarEnabled: true` /
+  // `radarVolume: 100` until something pushes the values down. Same for
+  // `audioOutputDevice` — the device selector setting is only meaningful
+  // if something routes it to the audio engine.
+  let currentAudioDeviceId = "";
+  const applyAudioSettings = (settings: Record<string, unknown>): void => {
+    const radarEnabled = settings.radarEnabled !== false;
+    setRadarEnabled(radarEnabled);
+
+    const radarVol = clampVolume(settings.radarVolume);
+    audio.setBusVolume(AudioBus.Alerts, radarVol / 100);
+
+    const voiceVol = clampVolume(settings.raceEngineerVolume);
+    audio.setBusVolume(AudioBus.Voice, voiceVol / 100);
+
+    const desiredDevice = typeof settings.audioOutputDevice === "string" ? settings.audioOutputDevice : "";
+
+    if (desiredDevice !== currentAudioDeviceId) {
+      currentAudioDeviceId = desiredDevice;
+
+      if (desiredDevice === "") {
+        audio.setAudioDevice(-1);
+      } else {
+        const ok = audio.setAudioDeviceById(desiredDevice);
+
+        // Stale or unplugged id: fall back to system default. Mirrors
+        // the plugin's behaviour — we do NOT rewrite the persisted
+        // setting, so the device re-binds automatically when it
+        // reappears in the enumeration.
+        if (!ok) audio.setAudioDevice(-1);
+      }
+    }
+  };
+  applyAudioSettings(adapter.readSettings());
+  const unsubscribeSettings = onGlobalSettingsChange((settings) =>
+    applyAudioSettings(settings as Record<string, unknown>),
+  );
+
   // ── Mock controller starts ticking ───────────────────────────────────────
   controller.start();
 
@@ -87,6 +138,7 @@ async function main(): Promise<void> {
   // ── Graceful shutdown ───────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`Received ${signal}, shutting down`);
+    unsubscribeSettings();
     controller.stop();
 
     try {

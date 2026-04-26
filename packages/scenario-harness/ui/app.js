@@ -7,15 +7,52 @@
 
 const $ = (id) => document.getElementById(id);
 const MAX_LOG_ENTRIES = 500;
+const SETTINGS_STORAGE_KEY = "iracedeck-harness-settings-v1";
 
 const state = {
   controller: null,
   settings: {},
   eventTemplates: [],
+  shortcuts: [],
   presets: { telemetry: [], session: [] },
   audioDevices: [],
   eventCount: 0,
 };
+
+// ── Settings persistence (localStorage) ───────────────────────────────────
+// User-tunable global settings persist across browser reloads AND harness
+// restarts. The harness server is in-memory only — it re-seeds defaults on
+// every boot. We bridge that gap by:
+//   1. On page load, before the first /api/state, posting the persisted
+//      settings to /api/settings so the seeded values get overwritten.
+//   2. On every settings update broadcast (WS or HTTP response), writing
+//      the latest server-truth back to localStorage.
+//
+// `_`-prefixed keys are server-derived (voice/driver name lists, audio
+// device list) and never persisted — they're refreshed from the manifest
+// every boot, and forcing stale values back would break the UI.
+
+function loadPersistedSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSettings(settings) {
+  if (!settings || typeof settings !== "object") return;
+  const filtered = Object.fromEntries(
+    Object.entries(settings).filter(([key]) => !key.startsWith("_")),
+  );
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch {
+    // Quota exceeded or storage unavailable — fail open; the harness
+    // still works, just without persistence in this browser.
+  }
+}
 
 // ── HTTP ──────────────────────────────────────────────────────────────────
 
@@ -251,6 +288,52 @@ function renderInjector() {
   syncInjectorPayload();
 }
 
+function renderShortcuts() {
+  const container = $("shortcuts");
+  container.innerHTML = "";
+
+  // Group shortcuts by category, preserving the original ordering of both
+  // categories and items within them.
+  const order = [];
+  const grouped = new Map();
+  for (const s of state.shortcuts) {
+    if (!grouped.has(s.category)) {
+      grouped.set(s.category, []);
+      order.push(s.category);
+    }
+    grouped.get(s.category).push(s);
+  }
+
+  for (const category of order) {
+    const wrap = document.createElement("div");
+    wrap.className = "shortcut-category";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = category;
+    wrap.appendChild(h3);
+
+    const buttons = document.createElement("div");
+    buttons.className = "shortcut-buttons";
+
+    for (const s of grouped.get(category)) {
+      const btn = document.createElement("button");
+      btn.textContent = s.label;
+      if (s.description) btn.title = s.description;
+      btn.addEventListener("click", async () => {
+        try {
+          await post("/api/bus/publish", { event: s.event, data: s.data });
+        } catch (e) {
+          alert(`Shortcut "${s.label}" failed: ${e.message}`);
+        }
+      });
+      buttons.appendChild(btn);
+    }
+
+    wrap.appendChild(buttons);
+    container.appendChild(wrap);
+  }
+}
+
 function syncInjectorPayload() {
   const name = $("injector-event").value;
   const tmpl = state.eventTemplates.find((t) => t.name === name);
@@ -340,6 +423,7 @@ function connectWebSocket() {
         renderSession();
       } else if (msg.section === "settings") {
         state.settings = msg.value;
+        persistSettings(msg.value);
         renderSettings();
       } else if (msg.section === "audioDevices") {
         state.audioDevices = msg.value;
@@ -438,12 +522,27 @@ function wire() {
 
 (async function boot() {
   try {
+    // Push any persisted settings BEFORE the first /api/state, so the
+    // initial render reflects them rather than the harness's seeded
+    // defaults. Failures here (e.g., a stale localStorage shape) fall
+    // through to defaults rather than blocking boot.
+    const persisted = loadPersistedSettings();
+    if (persisted && Object.keys(persisted).length > 0) {
+      try {
+        await post("/api/settings", { patch: persisted });
+      } catch (e) {
+        console.warn("Failed to apply persisted settings; falling back to defaults:", e.message);
+      }
+    }
+
     const initial = await get("/api/state");
     state.controller = initial.controller;
     state.settings = initial.settings;
     state.eventTemplates = initial.eventTemplates;
+    state.shortcuts = initial.shortcuts ?? [];
     state.presets = initial.presets;
     state.audioDevices = initial.audio.devices;
+    persistSettings(initial.settings);
 
     renderTopbar();
     renderTelemetry();
@@ -451,6 +550,7 @@ function wire() {
     renderPresets();
     renderSettings();
     renderInjector();
+    renderShortcuts();
     wire();
     connectWebSocket();
   } catch (e) {

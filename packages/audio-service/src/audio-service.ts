@@ -309,13 +309,20 @@ class AudioService implements IAudioService {
   stopChannel(channel: AudioChannel): void {
     this.native.stopChannel(channel);
     this.channelCallbacks[channel] = null;
+    // Manual stop: native engine doesn't fire its end callback, so notify
+    // observers explicitly. Looping channels (Ambient) would otherwise stay
+    // "active" forever in any monitor that tracks start/complete.
+    this.notifyPlaybackEnd(channel);
   }
 
   stopAllChannels(): void {
     this.cancelVoiceSequence();
     this.native.stopAllChannels();
 
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    for (let i = 0; i < 4; i++) {
+      this.channelCallbacks[i] = null;
+      this.notifyPlaybackEnd(i as AudioChannel);
+    }
   }
 
   setChannelVolume(channel: AudioChannel, volume: number): void {
@@ -399,11 +406,11 @@ class AudioService implements IAudioService {
   }
 
   setAudioDevice(deviceIndex: number): boolean {
-    // Stop all active playback before switching
-    this.cancelVoiceSequence();
-    this.native.stopAllChannels();
-
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    // Stop all active playback before switching. Use the public method so
+    // observers see each channel transition to idle — bypassing this and
+    // hitting `native.stopAllChannels()` directly would leave looping
+    // channels (Ambient) showing as "active" forever in any monitor.
+    this.stopAllChannels();
 
     const ok = this.native.setAudioDevice(deviceIndex);
 
@@ -419,11 +426,10 @@ class AudioService implements IAudioService {
   }
 
   setAudioDeviceById(deviceId: string): boolean {
-    // Stop all active playback before switching
-    this.cancelVoiceSequence();
-    this.native.stopAllChannels();
-
-    for (let i = 0; i < 4; i++) this.channelCallbacks[i] = null;
+    // Stop all active playback before switching. Same reasoning as
+    // `setAudioDevice` — go through the public method so observers see
+    // every channel go idle.
+    this.stopAllChannels();
 
     const ok = this.native.setAudioDeviceById(deviceId);
 
@@ -458,6 +464,12 @@ class AudioService implements IAudioService {
   // ── Internal ──
 
   private handleChannelEnd(channel: number): void {
+    // Notify "complete" BEFORE the voice-sequence engine schedules the next
+    // clip. Otherwise the observer sees [start clip2, complete Voice] in
+    // that order and any monitor flips the channel back to idle even
+    // though the next clip is already playing (#448 audio activity bug).
+    this.notifyPlaybackEnd(channel as AudioChannel);
+
     // Voice channel has special handling for sequence engine
     if (channel === AudioChannel.Voice) {
       this.handleVoiceEnd();
@@ -470,8 +482,6 @@ class AudioService implements IAudioService {
       this.channelCallbacks[channel] = null;
       cb();
     }
-
-    this.notifyPlaybackEnd(channel as AudioChannel);
   }
 
   private notifyPlaybackStart(channel: AudioChannel, filePath: string): void {

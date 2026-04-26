@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { ALL_EVENT_NAMES, EVENT_TEMPLATES } from "./event-names.js";
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import type { MockSDKController } from "./mock-sdk-controller.js";
+import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 5750;
@@ -152,6 +153,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
         busVolumes: audioBusVolumeMap(ctx.audio),
       },
       eventTemplates: EVENT_TEMPLATES,
+      shortcuts: SCENARIO_SHORTCUTS,
       presets: {
         telemetry: telemetryPresets.map((p) => p.name),
         session: sessionPresets.map((p) => p.name),
