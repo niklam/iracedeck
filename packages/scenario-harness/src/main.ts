@@ -86,7 +86,10 @@ async function main(): Promise<void> {
   // if something routes it to the audio engine.
   let currentAudioDeviceId = "";
   const applyAudioSettings = (settings: Record<string, unknown>): void => {
-    const radarEnabled = settings.radarEnabled !== false;
+    // Match the production Pit Crew helper's `=== true` semantic so the
+    // harness behaves identically to the shipped plugin (radar off until
+    // explicitly enabled — #378).
+    const radarEnabled = settings.radarEnabled === true;
     setRadarEnabled(radarEnabled);
 
     const radarVol = clampVolume(settings.radarVolume);

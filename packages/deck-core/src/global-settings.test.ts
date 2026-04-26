@@ -85,20 +85,22 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 
   it("matches the toggle pattern used by Pit Crew (read → flip → write → read)", () => {
-    // Simulates toggleRadar: reads isRadarEnabled(), flips, writes.
+    // Simulates toggleRadar: reads isRadarEnabled(), flips, writes. The
+    // production helper uses `=== true` (default-off semantic, #378), so
+    // the first read on an unset cache returns false → flip → write true.
     const readFlipWrite = () => {
-      const current = (getGlobalSettings() as Record<string, unknown>).radarEnabled !== false;
+      const current = (getGlobalSettings() as Record<string, unknown>).radarEnabled === true;
       updateGlobalSettings({ radarEnabled: !current });
     };
-
-    readFlipWrite();
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
 
     readFlipWrite();
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
 
     readFlipWrite();
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+
+    readFlipWrite();
+    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
   });
 
   it("applies the same behaviour to raceEngineerEnabled (same toggle code path)", () => {
@@ -131,7 +133,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     // not just the caller's bare partial.
     expect(sent).toMatchObject({
       radarEnabled: false,
-      raceEngineerEnabled: true,
+      raceEngineerEnabled: false,
       radarVolume: 100,
       disableWhenDisconnected: true,
       focusIRacingWindow: false,
@@ -162,10 +164,10 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     _resetGlobalSettings();
     // Not calling initGlobalSettings — adapterRef stays null.
 
-    updateGlobalSettings({ radarEnabled: false });
+    updateGlobalSettings({ radarEnabled: true });
 
-    // No throw; cache stays at the schema default.
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+    // No throw; cache stays at the schema default (false per #378).
+    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
   });
 });
 
