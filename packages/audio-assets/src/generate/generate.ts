@@ -9,6 +9,26 @@
  * are fetched from the ElevenLabs TTS API and written to
  * packages/audio-assets/voice/<voice>/<group>/<name>.mp3.
  *
+ * Request-id chains
+ *   `previous_request_ids` and `next_request_ids` array elements may be
+ *   either:
+ *     - a `<group>/<entry-name>` reference (e.g. `"acknowledgment/got-it"`)
+ *       resolved at generate-time to that clip's `requestId` for the
+ *       current voice from generate.manifest.json, or
+ *     - a raw ElevenLabs request-id string (no `/`, passed through verbatim).
+ *   References are resolved per-voice — the same chain block produces a
+ *   per-voice link without duplication. The resolved IDs feed the
+ *   audio-affecting hash, so a re-cut dependency cascades into a hash
+ *   change for every dependent and they re-cut on the next run.
+ *
+ *   Run dependencies before dependents, either by ordering groups in the
+ *   config so deps come first, or by scoping with `--voice <v> --group <g>`.
+ *   A reference whose target is missing from the manifest fails that entry
+ *   loudly with the offending ref, the lookup path, and a suggested command.
+ *
+ *   Unknown reference names (typos) are caught at config-parse time with a
+ *   list of valid `<group>/<entry-name>` candidates.
+ *
  * Environment:
  *   ELEVENLABS_API_KEY — required unless --dry-run is passed
  *
@@ -41,9 +61,9 @@ import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
-import { type Config, type Entry, loadConfig, resolveVoiceSettings, type Voice } from "./config.ts";
+import { type Config, type Entry, loadConfig, resolveRequestIds, resolveVoiceSettings, type Voice } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
-import { loadManifest, saveManifest } from "./manifest.ts";
+import { loadManifest, type Manifest, saveManifest } from "./manifest.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -73,8 +93,19 @@ function loadDotenv(): void {
  * Construct the complete `synthesizeSpeech` options for one entry, resolving
  * global config + per-voice override + per-entry fields in that order.
  * `apiKey` is injected separately at the call site (or omitted for hashing).
+ *
+ * `<group>/<entry-name>` references in `previous_request_ids` /
+ * `next_request_ids` are resolved against the manifest for `voiceName` here,
+ * so the resolved IDs feed both the API call and the audio-affecting hash —
+ * a re-cut dependency cascades into a hash change for every dependent.
  */
-function buildSynthesizeOptions(config: Config, voice: Voice, entry: Entry): Omit<SynthesizeOptions, "apiKey"> {
+function buildSynthesizeOptions(
+  config: Config,
+  voiceName: string,
+  voice: Voice,
+  entry: Entry,
+  manifest: Manifest,
+): Omit<SynthesizeOptions, "apiKey"> {
   // Resolve the 3-level voice_settings stack (config → voice → entry) and
   // split off language_code so it ships as the top-level body field per the
   // ElevenLabs API contract — `voice_settings` itself stays clean.
@@ -89,8 +120,8 @@ function buildSynthesizeOptions(config: Config, voice: Voice, entry: Entry): Omi
     seed: entry.seed,
     previous_text: entry.previous_text,
     next_text: entry.next_text,
-    previous_request_ids: entry.previous_request_ids,
-    next_request_ids: entry.next_request_ids,
+    previous_request_ids: resolveRequestIds(entry.previous_request_ids, voiceName, manifest),
+    next_request_ids: resolveRequestIds(entry.next_request_ids, voiceName, manifest),
     language_code,
     apply_text_normalization: config.apply_text_normalization,
     apply_language_text_normalization: config.apply_language_text_normalization,
@@ -183,9 +214,21 @@ async function main(): Promise<void> {
       for (const entry of entries) {
         const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
         const absPath = path.join(packageRoot, relPath);
-        const synthOptions = buildSynthesizeOptions(config, voice, entry);
-        const hash = entryHash(synthOptions);
 
+        let synthOptions: Omit<SynthesizeOptions, "apiKey">;
+
+        try {
+          synthOptions = buildSynthesizeOptions(config, voiceName, voice, entry, manifest);
+        } catch (err) {
+          // Reference resolution failure (missing dep in manifest, etc.).
+          // Treat as a per-entry failure so the rest of the run continues.
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[generate] ${relPath}  —  FAILED: ${message}`);
+          failed++;
+          continue;
+        }
+
+        const hash = entryHash(synthOptions);
         const manifestEntry = manifest.entries[relPath];
 
         if (manifestEntry?.hash === hash && existsSync(absPath)) {

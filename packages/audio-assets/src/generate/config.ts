@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
+import type { Manifest } from "./manifest.ts";
+
 // Voice and group keys must start with a letter — they're category labels and
 // never purely numeric in practice.
 const kebab = z.string().regex(/^[a-z][a-z0-9-]*$/, "must be lowercase kebab-case (a-z, 0-9, dashes)");
@@ -61,8 +63,13 @@ export const EntrySchema = z.object({
   previous_text: textual.optional(),
   next_text: textual.optional(),
   // Request IDs of previously-generated clips to improve cross-line continuity.
-  // Each generation's request ID is captured in the manifest so you can paste
-  // it into another entry's `previous_request_ids`.
+  // Each element is either a `<group>/<entry-name>` reference (resolved at
+  // generate-time against `generate.manifest.json` for the current voice) or a
+  // raw ElevenLabs request-id string. The `/` is the disambiguator: any string
+  // containing it is treated as a reference, anything else passes through to
+  // ElevenLabs verbatim. References are resolved per-voice so the same chain
+  // block produces a per-voice link without duplication. See
+  // `validateReferences` and `resolveRequestIds`.
   previous_request_ids: z.array(z.string()).max(3).optional(),
   next_request_ids: z.array(z.string()).max(3).optional(),
   // Optional per-entry override. Shallow-merges on top of (config + voice)
@@ -97,8 +104,11 @@ export type ApplyTextNormalization = z.infer<typeof ApplyTextNormalizationSchema
 export function loadConfig(configPath: string): Config {
   const raw = readFileSync(configPath, "utf-8");
   const json = JSON.parse(raw);
+  const config = ConfigSchema.parse(json);
 
-  return ConfigSchema.parse(json);
+  validateReferences(config);
+
+  return config;
 }
 
 /**
@@ -112,4 +122,104 @@ export function resolveVoiceSettings(config: Config, voice: Voice, entry?: Entry
     ...(voice.voice_settings ?? {}),
     ...(entry?.voice_settings ?? {}),
   };
+}
+
+/**
+ * Reference-syntax test: any element of `previous_request_ids` /
+ * `next_request_ids` containing a forward slash is a `<group>/<entry-name>`
+ * reference; anything else is a raw ElevenLabs request-id (which never
+ * contains `/`).
+ */
+export function isReference(idOrRef: string): boolean {
+  return idOrRef.includes("/");
+}
+
+/**
+ * Cross-entry validation: reject any `<group>/<entry-name>` reference that
+ * doesn't point to a known entry in the same config (typo guard). Raw IDs
+ * (no `/`) are passed through untouched. Errors list valid candidates so a
+ * typo is easy to fix without grepping the file.
+ *
+ * Runs once per `loadConfig`, before any manifest lookup or API call, so
+ * config-shape errors surface immediately and aren't hidden behind a long
+ * generation run.
+ */
+export function validateReferences(config: Config): void {
+  const candidates = new Set<string>();
+
+  for (const [groupName, entries] of Object.entries(config.groups)) {
+    for (const entry of entries) {
+      candidates.add(`${groupName}/${entry.name}`);
+    }
+  }
+
+  for (const [groupName, entries] of Object.entries(config.groups)) {
+    for (const entry of entries) {
+      for (const field of ["previous_request_ids", "next_request_ids"] as const) {
+        const ids = entry[field];
+
+        if (!ids) continue;
+
+        for (const id of ids) {
+          if (!isReference(id)) continue;
+
+          if (!candidates.has(id)) {
+            const valid = [...candidates].sort().join("\n  ");
+
+            throw new Error(
+              `Invalid ${field} reference "${id}" on entry "${groupName}/${entry.name}". ` +
+                `No such entry. Valid <group>/<entry-name> candidates:\n  ${valid}`,
+            );
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Resolve `<group>/<entry-name>` references in a request-id list to the
+ * matching `requestId` from `generate.manifest.json` for the given voice.
+ * Raw IDs (no `/`) pass through unchanged.
+ *
+ * Resolution is per-voice: the same reference produces `luca`'s requestId
+ * for voice `luca`, `titan`'s requestId for voice `titan`. The dependency
+ * must already exist in the manifest (run `--voice <v> --group <dep-group>`
+ * first, or order dependencies before dependents in the config so a single
+ * full run completes them in the right order).
+ *
+ * Returns `undefined` when given `undefined` so callers can still drop the
+ * field from the request body when no chain context is configured.
+ */
+export function resolveRequestIds(
+  ids: string[] | undefined,
+  voiceName: string,
+  manifest: Manifest,
+): string[] | undefined {
+  if (!ids) return undefined;
+
+  return ids.map((id) => {
+    if (!isReference(id)) return id;
+
+    const key = `voice/${voiceName}/${id}.mp3`;
+    const target = manifest.entries[key];
+
+    if (!target) {
+      throw new Error(
+        `Reference "${id}" for voice "${voiceName}" has no matching entry in generate.manifest.json ` +
+          `(looked up "${key}"). Generate the dependency first, e.g. ` +
+          `\`pnpm --filter @iracedeck/audio-assets generate --voice ${voiceName} --group ${id.split("/")[0]}\`.`,
+      );
+    }
+
+    if (!target.requestId) {
+      throw new Error(
+        `Reference "${id}" for voice "${voiceName}" resolved to manifest entry "${key}" but it has no ` +
+          `requestId (likely generated before request-id capture, or the provider didn't return one). ` +
+          `Re-cut the dependency with \`--voice ${voiceName} --group ${id.split("/")[0]}\` to refresh it.`,
+      );
+    }
+
+    return target.requestId;
+  });
 }

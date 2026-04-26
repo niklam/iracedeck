@@ -2,12 +2,12 @@
   "version": 1,
   "entries": {
     "voice/luca/names/niklas.mp3": {
-      "hash": "814b200ed6e6aae2",
+      "hash": "5578059e6eda1ff5",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "Niklas",
-      "generatedAt": "2026-04-25T15:59:38.425Z",
-      "requestId": "a0JzxtNayCcJBgIpywzF"
+      "generatedAt": "2026-04-25T19:40:51.693Z",
+      "requestId": "uLKtJMGmTstf4dS4OhHi"
     },
     "voice/luca/numbers/1.mp3": {
       "hash": "4e6cd7e509257b75",
@@ -298,36 +298,36 @@
       "requestId": "p33KLBl4rg9P52BBxXGz"
     },
     "voice/luca/openers/alright.mp3": {
-      "hash": "75174fa4754a9a1b",
+      "hash": "ff589cf8579d83a7",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Alright,",
-      "generatedAt": "2026-04-25T15:59:05.393Z",
-      "requestId": "kWn29tEwqFG7JYKuFMU0"
+      "textPreview": "Alright",
+      "generatedAt": "2026-04-25T19:28:43.779Z",
+      "requestId": "FnGG6xJCEoTJhHLCdhdF"
     },
     "voice/luca/openers/hi.mp3": {
-      "hash": "2c62737a8b0254d6",
+      "hash": "9d642041555c5926",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Hi,",
-      "generatedAt": "2026-04-25T15:59:06.363Z",
-      "requestId": "grjpLJJEvm1ncZO57AEY"
+      "textPreview": "Hi",
+      "generatedAt": "2026-04-25T19:28:44.773Z",
+      "requestId": "qD603KcpR4pXvAv16hju"
     },
     "voice/luca/openers/so.mp3": {
-      "hash": "c786a0fa43e03edc",
+      "hash": "fcb2b17083efa597",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "So,",
-      "generatedAt": "2026-04-25T15:59:08.361Z",
-      "requestId": "ncZB3EAj5pOxYIO1UdiL"
+      "textPreview": "So",
+      "generatedAt": "2026-04-25T19:28:46.746Z",
+      "requestId": "lCgEaMCbdCz0RwQ43MiK"
     },
     "voice/luca/openers/right.mp3": {
-      "hash": "42a5e68beb304f6f",
+      "hash": "2f3a3a6de6ec3ffb",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Right,",
-      "generatedAt": "2026-04-25T15:59:07.357Z",
-      "requestId": "G4nw33Aczz6eyf5UQjTd"
+      "textPreview": "Right",
+      "generatedAt": "2026-04-25T19:28:45.758Z",
+      "requestId": "zBbmauicCSxBDk0uv7yu"
     },
     "voice/titan/units/km.mp3": {
       "hash": "e96ff5d94bb193ec",
@@ -354,36 +354,36 @@
       "requestId": "7HvU8QZ14o6Xp0wcxxpL"
     },
     "voice/titan/openers/alright.mp3": {
-      "hash": "9e166ab73684cc73",
+      "hash": "ae9de5981858b5b0",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Alright,",
-      "generatedAt": "2026-04-25T15:59:47.983Z",
-      "requestId": "yVnuZ2uct1aaZyqRT0Me"
+      "textPreview": "Alright",
+      "generatedAt": "2026-04-25T19:28:47.748Z",
+      "requestId": "TSPccnbEYI9KwGooDawH"
     },
     "voice/titan/openers/hi.mp3": {
-      "hash": "2113ebb189517254",
+      "hash": "dc4a850861856058",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Hi,",
-      "generatedAt": "2026-04-25T15:59:48.915Z",
-      "requestId": "4gUCvEx48tfIlUv7Sk7a"
+      "textPreview": "Hi",
+      "generatedAt": "2026-04-25T19:28:48.698Z",
+      "requestId": "TuGdw3kyJDyADlUvVd38"
     },
     "voice/titan/openers/right.mp3": {
-      "hash": "006bd7512814dab2",
+      "hash": "eacb9b228e95fcce",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Right,",
-      "generatedAt": "2026-04-25T15:59:49.840Z",
-      "requestId": "iA9nD07HfA9pGm8ZfoVC"
+      "textPreview": "Right",
+      "generatedAt": "2026-04-25T19:28:49.669Z",
+      "requestId": "IonWvYdttnsRkinjxkqL"
     },
     "voice/titan/openers/so.mp3": {
-      "hash": "1514dfd284940ba7",
+      "hash": "d10b65c02c952682",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "So,",
-      "generatedAt": "2026-04-25T15:59:50.761Z",
-      "requestId": "pcdF6VlMByzrK7oJj7JA"
+      "textPreview": "So",
+      "generatedAt": "2026-04-25T19:28:50.620Z",
+      "requestId": "CAuXusuTnbIAT0Dc4J10"
     },
     "voice/titan/flags/black-01.mp3": {
       "hash": "fac08371833eafca",
@@ -506,20 +506,20 @@
       "requestId": "nvNoYeSo47vgDXV6i3Si"
     },
     "voice/titan/names/oivindl.mp3": {
-      "hash": "a9ef7081eec70486",
+      "hash": "e0a883348b25984c",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "Öivin",
-      "generatedAt": "2026-04-25T15:55:35.909Z",
-      "requestId": "ahOA5mJSIfiK0tAFTADb"
+      "generatedAt": "2026-04-25T19:40:59.491Z",
+      "requestId": "PNUhGJzbQa692cN42tfj"
     },
     "voice/titan/names/niklas.mp3": {
-      "hash": "02e21c46347867dd",
+      "hash": "1d2ff1ed2115c5a6",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "Niklas",
-      "generatedAt": "2026-04-25T16:00:19.833Z",
-      "requestId": "kqZlxMR41mEWZiqh7BN0"
+      "generatedAt": "2026-04-25T19:41:00.333Z",
+      "requestId": "rTp8ZcBNtX0fYzuZAltO"
     },
     "voice/titan/units/litres.mp3": {
       "hash": "8477ad8d774f324e",
@@ -1402,12 +1402,12 @@
       "requestId": "x207PIZp7ZSb2jZYyDwU"
     },
     "voice/titan/pit-actions/tires-on.mp3": {
-      "hash": "439d6702868f207a",
+      "hash": "b4e655d81c7179c7",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "We're changing",
-      "generatedAt": "2026-04-25T18:08:35.438Z",
-      "requestId": "TFcUHW4wodx74puMa1nI"
+      "generatedAt": "2026-04-25T19:40:52.722Z",
+      "requestId": "APksZOMyirH8oavrXFDX"
     },
     "voice/titan/pit-actions/tires-off.mp3": {
       "hash": "73f089c8b82a579e",
@@ -1418,52 +1418,52 @@
       "requestId": "0VMbHHoX15E63VRzw84z"
     },
     "voice/titan/pit-actions/tires-on-fronts.mp3": {
-      "hash": "7caacdc07d5187ba",
+      "hash": "d4173aaf7f7f47a4",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "front tires",
-      "generatedAt": "2026-04-25T18:50:45.672Z",
-      "requestId": "jwvGYono3x7OjNKclmYV"
+      "generatedAt": "2026-04-25T19:40:53.697Z",
+      "requestId": "KptBH0xOzHzmkAWkoX1d"
     },
     "voice/titan/pit-actions/tires-on-rears.mp3": {
-      "hash": "b8812e0a805baf1d",
+      "hash": "b69105ead243d915",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "rear tires",
-      "generatedAt": "2026-04-25T18:50:46.663Z",
-      "requestId": "O5Zp1tWiTXuxwqV5MZ3e"
+      "generatedAt": "2026-04-25T19:40:54.665Z",
+      "requestId": "1vsob5cbt7DAuuT81Eix"
     },
     "voice/titan/pit-actions/tires-on-lefts.mp3": {
-      "hash": "e17e8581d2c6d06a",
+      "hash": "39cef0550ced3ce9",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "both left side tires",
-      "generatedAt": "2026-04-25T18:50:47.672Z",
-      "requestId": "CK8T597erk6baFrPvA1a"
+      "generatedAt": "2026-04-25T19:40:55.757Z",
+      "requestId": "5jJohABaxkye8Rix20ab"
     },
     "voice/titan/pit-actions/tires-on-rights.mp3": {
-      "hash": "e458db7cb8d4f9f2",
+      "hash": "026550d64c31bdfd",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "both right side tires",
-      "generatedAt": "2026-04-25T18:50:48.690Z",
-      "requestId": "Sbve6jascZ5GZoo07Yau"
+      "generatedAt": "2026-04-25T19:40:56.759Z",
+      "requestId": "ChIGT8051PG1k5DORiOx"
     },
     "voice/titan/pit-actions/tires-on-all.mp3": {
-      "hash": "d2be93ebc8e4f259",
+      "hash": "39857751b0d75c0e",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "all tires",
-      "generatedAt": "2026-04-25T18:50:49.651Z",
-      "requestId": "M3VBXry5OjvcYfqDIDrS"
+      "generatedAt": "2026-04-25T19:40:57.705Z",
+      "requestId": "K8A8jkRhhgC8BHFmF3k8"
     },
     "voice/titan/pit-actions/at-the-next-stop.mp3": {
-      "hash": "ab166e7b87b7ba72",
+      "hash": "ed25cfc089d5fd3e",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "at the next pitstop.",
-      "generatedAt": "2026-04-25T18:50:50.652Z",
-      "requestId": "YxoKKC9TVitOqAQsGRbP"
+      "generatedAt": "2026-04-25T19:40:58.639Z",
+      "requestId": "1O0d1Ufdr80qE16hj0Q3"
     },
     "voice/luca/units/km.mp3": {
       "hash": "7622a3afbef2dbd5",
@@ -1626,12 +1626,12 @@
       "requestId": "OvcoXErV06Stn2Z8jDDE"
     },
     "voice/luca/pit-actions/tires-on.mp3": {
-      "hash": "39cf6175de12784b",
+      "hash": "3861d2f0e1e07583",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "We're changing",
-      "generatedAt": "2026-04-25T18:08:29.419Z",
-      "requestId": "xbydtWwhIatf5201NXNz"
+      "generatedAt": "2026-04-25T19:40:44.072Z",
+      "requestId": "zF5phV0NprfRYEI5EIUR"
     },
     "voice/luca/pit-actions/tires-off.mp3": {
       "hash": "cce80877105eda77",
@@ -1642,60 +1642,60 @@
       "requestId": "mHAfGzsGSSaWXBlDIbRg"
     },
     "voice/luca/pit-actions/tires-on-fronts.mp3": {
-      "hash": "5a491e905472e9dd",
+      "hash": "667b01efe42c8663",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "front tires",
-      "generatedAt": "2026-04-25T18:50:39.527Z",
-      "requestId": "YHs6NklmM2aj1EIgkZ1i"
+      "generatedAt": "2026-04-25T19:40:45.048Z",
+      "requestId": "8jSTgWAPccmOptj9hShT"
     },
     "voice/luca/pit-actions/tires-on-rears.mp3": {
-      "hash": "b2c6d07db41770ac",
+      "hash": "2a13e3e5b9acaf51",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "rear tires",
-      "generatedAt": "2026-04-25T18:50:40.516Z",
-      "requestId": "nTuu7hgI5GytacGOydYU"
+      "generatedAt": "2026-04-25T19:40:46.000Z",
+      "requestId": "Gs7YpjN1FKQnyhmE3jbm"
     },
     "voice/luca/pit-actions/tires-on-lefts.mp3": {
-      "hash": "47c2229782c7a685",
+      "hash": "79fe65a7be3ea641",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "both left side tires",
-      "generatedAt": "2026-04-25T18:50:41.546Z",
-      "requestId": "OyYaKUQ1wrvD1AmwH8fM"
+      "generatedAt": "2026-04-25T19:40:47.017Z",
+      "requestId": "SSSaIVcUPumkhxAqJFuK"
     },
     "voice/luca/pit-actions/tires-on-rights.mp3": {
-      "hash": "fe82752ac89a7442",
+      "hash": "ae741eae31174f3e",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "both right side tires",
-      "generatedAt": "2026-04-25T18:50:42.659Z",
-      "requestId": "Ni09pXAqjLXfhLA4HYjB"
+      "generatedAt": "2026-04-25T19:40:48.027Z",
+      "requestId": "LKuPw7RbJMatCLsVX5mM"
     },
     "voice/luca/pit-actions/tires-on-all.mp3": {
-      "hash": "6eeceb27d8d4bf7f",
+      "hash": "71b5fa88f18a751c",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "all tires",
-      "generatedAt": "2026-04-25T18:50:43.662Z",
-      "requestId": "0yA5WCGsII9pOe1OebFw"
+      "generatedAt": "2026-04-25T19:40:48.996Z",
+      "requestId": "pblDIPm9gH0NoPfOhVP8"
     },
     "voice/luca/pit-actions/at-the-next-stop.mp3": {
-      "hash": "3c93a6cb2f4c9c6e",
+      "hash": "beb7c18284412a34",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "at the next pitstop.",
-      "generatedAt": "2026-04-25T18:50:44.663Z",
-      "requestId": "ZjMnKg9DDp3Fp3iHzi4s"
+      "generatedAt": "2026-04-25T19:40:50.055Z",
+      "requestId": "Vc7SatAySz8PZIv7mTDU"
     },
     "voice/luca/names/oivindl.mp3": {
-      "hash": "8949a8586d1480ed",
+      "hash": "66968ef20dc458a1",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "Öivin",
-      "generatedAt": "2026-04-25T15:59:37.523Z",
-      "requestId": "OJiFV5sIXuM2xCAiMOKr"
+      "generatedAt": "2026-04-25T19:40:50.859Z",
+      "requestId": "1l89X3tJ7lOS47xdhxXx"
     },
     "voice/luca/numbers/21.mp3": {
       "hash": "29c6e06be7be225a",
@@ -2282,12 +2282,12 @@
       "requestId": "xm7iMRCkng3jc43PHPaY"
     },
     "voice/luca/welcome/ready-to-race.mp3": {
-      "hash": "3ff0b65629bdd97b",
+      "hash": "0b07f8cc5cbae856",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "Are you ready to race with me?",
-      "generatedAt": "2026-04-25T15:59:40.565Z",
-      "requestId": "Uc9T6MB2zUT2qhsYvfSZ"
+      "generatedAt": "2026-04-25T19:21:33.621Z",
+      "requestId": "24AZOtVcN3c95J6z6fI8"
     },
     "voice/titan/welcome/nice-to-meet-you.mp3": {
       "hash": "ca966f1d20141d45",
@@ -2298,28 +2298,28 @@
       "requestId": "QJB5WZW63mkxYL5OpOWU"
     },
     "voice/titan/welcome/ready-to-race.mp3": {
-      "hash": "5b3c31ac6e4d3447",
+      "hash": "600c87793bd075c2",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "Are you ready to race with me?",
-      "generatedAt": "2026-04-25T16:00:21.980Z",
-      "requestId": "D3GLhOhn2eiha4yqMkvK"
+      "generatedAt": "2026-04-25T19:21:41.581Z",
+      "requestId": "99JMw7Zpn4PuzuCjM9HX"
     },
     "voice/luca/welcome/lets-win-races.mp3": {
-      "hash": "754bec344a67280f",
+      "hash": "87a2f712b43f421c",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
       "textPreview": "Let's win some races together!",
-      "generatedAt": "2026-04-25T16:10:00.976Z",
-      "requestId": "gWHVtjrtZggHYmN8vI7U"
+      "generatedAt": "2026-04-25T19:21:34.633Z",
+      "requestId": "p2djEPmdUOVbdxl9B9bj"
     },
     "voice/titan/welcome/lets-win-races.mp3": {
-      "hash": "b81c7d0648449b17",
+      "hash": "31686334dc095f15",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
       "textPreview": "Let's win some races together!",
-      "generatedAt": "2026-04-25T16:10:02.052Z",
-      "requestId": "8PwW0ioMEAA0p7g5HZTZ"
+      "generatedAt": "2026-04-25T19:21:42.648Z",
+      "requestId": "FvkueIBy0ajH7PTbQhLO"
     },
     "voice/luca/acknowledgment/okay.mp3": {
       "hash": "0597a62ec98861c4",

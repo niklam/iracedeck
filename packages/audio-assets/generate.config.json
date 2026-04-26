@@ -95,23 +95,35 @@
     "openers": [
       {
         "name": "alright",
-        "text": "Alright,",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Alright",
+        "next_text": " <break time=\"0.1s\" /> Niklas",
+        "next_request_ids": [
+          "names/niklas"
+        ]
       },
       {
         "name": "hi",
-        "text": "Hi,",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Hi",
+        "next_text": " <break time=\"0.1s\" /> Niklas",
+        "next_request_ids": [
+          "names/niklas"
+        ]
       },
       {
         "name": "right",
-        "text": "Right,",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Right",
+        "next_text": " <break time=\"0.1s\" /> Niklas",
+        "next_request_ids": [
+          "names/niklas"
+        ]
       },
       {
         "name": "so",
-        "text": "So,",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "So",
+        "next_text": " <break time=\"0.1s\" /> Niklas",
+        "next_request_ids": [
+          "names/niklas"
+        ]
       }
     ],
     "flags": [
@@ -206,7 +218,11 @@
       {
         "name": "tires-on",
         "text": "We're changing",
-        "next_text": " all tires at the next pitstop."
+        "next_request_ids": [
+          "pit-actions/tires-on-lefts",
+          "pit-actions/tires-on-rights",
+          "pit-actions/tires-on-all"
+        ]
       },
       {
         "name": "tires-off",
@@ -215,37 +231,59 @@
       {
         "name": "tires-on-fronts",
         "text": "front tires",
-        "previous_text": "We're changing ",
-        "next_text": " at the next pitstop."
+        "previous_request_ids": [
+          "pit-actions/tires-on"
+        ],
+        "next_request_ids": [
+          "pit-actions/at-the-next-stop"
+        ]
       },
       {
         "name": "tires-on-rears",
         "text": "rear tires",
-        "previous_text": "We're changing ",
-        "next_text": " at the next pitstop."
+        "previous_request_ids": [
+          "pit-actions/tires-on"
+        ],
+        "next_request_ids": [
+          "pit-actions/at-the-next-stop"
+        ]
       },
       {
         "name": "tires-on-lefts",
         "text": "both left side tires",
-        "previous_text": "We're changing ",
-        "next_text": " at the next pitstop."
+        "previous_request_ids": [
+          "pit-actions/tires-on"
+        ],
+        "next_request_ids": [
+          "pit-actions/at-the-next-stop"
+        ]
       },
       {
         "name": "tires-on-rights",
         "text": "both right side tires",
-        "previous_text": "We're changing ",
-        "next_text": " at the next pitstop."
+        "previous_request_ids": [
+          "pit-actions/tires-on"
+        ],
+        "next_request_ids": [
+          "pit-actions/at-the-next-stop"
+        ]
       },
       {
         "name": "tires-on-all",
         "text": "all tires",
-        "previous_text": "We're changing ",
-        "next_text": " at the next pitstop."
+        "previous_request_ids": [
+          "pit-actions/tires-on"
+        ],
+        "next_request_ids": [
+          "pit-actions/at-the-next-stop"
+        ]
       },
       {
         "name": "at-the-next-stop",
         "text": "at the next pitstop.",
-        "previous_text": "We're changing all tires "
+        "previous_request_ids": [
+          "pit-actions/tires-on-all"
+        ]
       }
     ],
     "names": [
@@ -254,12 +292,21 @@
         "text": "Öivin",
         "voice_settings": {
           "language_code": "fi"
-        }
+        },
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
       },
       {
         "name": "niklas",
         "text": "Niklas",
-        "previous_text": "You must do this and that,"
+        "previous_request_ids": [
+          "openers/hi",
+          "openers/alright",
+          "acknowledgment/roger-that"
+        ]
       }
     ],
     "welcome": [
@@ -272,12 +319,18 @@
       {
         "name": "ready-to-race",
         "text": "Are you ready to race with me?",
-        "previous_text": "I'm your Race Engineer! "
+        "previous_text": "I'm your Race Engineer! ",
+        "previous_request_ids": [
+          "welcome/nice-to-meet-you"
+        ]
       },
       {
         "name": "lets-win-races",
         "text": "Let's win some races together!",
-        "previous_text": "I'm your Race Engineer! "
+        "previous_text": "I'm your Race Engineer! ",
+        "previous_request_ids": [
+          "welcome/nice-to-meet-you"
+        ]
       }
     ],
     "numbers": [
