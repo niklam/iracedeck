@@ -44,6 +44,11 @@ export const EVENT_TEMPLATES = [
     data: { added: ["LF"], removed: [], current: ["LF"] },
   },
   {
+    name: "tireService.compoundChanged",
+    description: "Pit-service tire compound changed (iRacing: 0=dry, 1=wet)",
+    data: { from: 0, to: 1 },
+  },
+  {
     name: "pitService.toggled",
     description: "Pit service toggled (fuel/windshield/fastRepair)",
     data: { service: "fuel", on: true },

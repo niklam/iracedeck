@@ -1,14 +1,15 @@
 /**
  * Pit Crew scenario catalog registration.
  *
- * As of #441 §4 the engine wires:
+ * The engine wires:
  *   - The directional radar (state-driven tick loop, not expressible in the
  *     scenario DSL — design doc §15)
  *   - The acknowledgment pool (used by every voice toggle scenario)
  *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
  *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
- *   - Tire toggle scenarios (5 set patterns + full clear via
- *     `tireService.changed`)
+ *   - Tire toggle scenarios (every meaningful tire-set selection, including
+ *     singles, diagonals, and three-corner combos, via `tireService.changed`)
+ *   - Tire compound scenarios (dry/wet via `tireService.compoundChanged`)
  *
  * Other voice scenarios (welcome, pit-approach, flag/fuel-warning/incident
  * alerts, limiter callouts, tips, windshield/fastRepair/drs/p2p toggles) stay
@@ -25,7 +26,7 @@ import { getScenarioEngine } from "../../interpreter.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
-import { FUEL_TOGGLE_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
+import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
 
 export {
   getRadarVisualState,
@@ -48,4 +49,6 @@ export function registerPitCrew(bus: IEventBus): void {
   for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
 
   for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
+
+  for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
 }

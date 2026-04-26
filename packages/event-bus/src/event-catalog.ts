@@ -84,6 +84,14 @@ export type SimEventMap = {
   "flag.meatball.raised": SimEvent<"flag.meatball.raised", EmptySimEventPayload>;
 
   "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
+  /**
+   * Tire compound selection changed in pit service. `from`/`to` are
+   * sim-defined numeric ids — the bus stays sim-agnostic and lets each
+   * translator define its own number space. iRacing uses `0=dry, 1=wet`
+   * (per `iracing-sdk/README.md` / `pit.tireCompound(compound)`); future
+   * adapters may expose richer compound rosters.
+   */
+  "tireService.compoundChanged": SimEvent<"tireService.compoundChanged", { from: number; to: number }>;
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;

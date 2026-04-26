@@ -96,34 +96,22 @@
       {
         "name": "alright",
         "text": "Alright",
-        "next_text": " <break time=\"0.1s\" /> Niklas",
-        "next_request_ids": [
-          "names/niklas"
-        ]
+        "next_text": " <break time=\"0.1s\" /> Niklas"
       },
       {
         "name": "hi",
         "text": "Hi",
-        "next_text": " <break time=\"0.1s\" /> Niklas",
-        "next_request_ids": [
-          "names/niklas"
-        ]
+        "next_text": " <break time=\"0.1s\" /> Niklas"
       },
       {
         "name": "right",
         "text": "Right",
-        "next_text": " <break time=\"0.1s\" /> Niklas",
-        "next_request_ids": [
-          "names/niklas"
-        ]
+        "next_text": " <break time=\"0.1s\" /> Niklas"
       },
       {
         "name": "so",
         "text": "So",
-        "next_text": " <break time=\"0.1s\" /> Niklas",
-        "next_request_ids": [
-          "names/niklas"
-        ]
+        "next_text": " <break time=\"0.1s\" /> Niklas"
       }
     ],
     "flags": [
@@ -216,73 +204,160 @@
         "text": "Skipping fueling at the next pitstop."
       },
       {
-        "name": "tires-on",
-        "text": "We're changing",
-        "next_request_ids": [
-          "pit-actions/tires-on-lefts",
-          "pit-actions/tires-on-rights",
-          "pit-actions/tires-on-all"
-        ]
-      },
-      {
         "name": "tires-off",
         "text": "Skipping tires at the next pitstop."
       },
       {
         "name": "tires-on-fronts",
-        "text": "front tires",
+        "text": "We'll change the front tires at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on"
-        ],
-        "next_request_ids": [
-          "pit-actions/at-the-next-stop"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       },
       {
         "name": "tires-on-rears",
-        "text": "rear tires",
+        "text": "We'll change the rear tires at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on"
-        ],
-        "next_request_ids": [
-          "pit-actions/at-the-next-stop"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       },
       {
         "name": "tires-on-lefts",
-        "text": "both left side tires",
+        "text": "We'll change both left side tires at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on"
-        ],
-        "next_request_ids": [
-          "pit-actions/at-the-next-stop"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       },
       {
         "name": "tires-on-rights",
-        "text": "both right side tires",
+        "text": "We'll change both right side tires at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on"
-        ],
-        "next_request_ids": [
-          "pit-actions/at-the-next-stop"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       },
       {
         "name": "tires-on-all",
-        "text": "all tires",
+        "text": "We'll change all tires at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on"
-        ],
-        "next_request_ids": [
-          "pit-actions/at-the-next-stop"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       },
       {
-        "name": "at-the-next-stop",
-        "text": "at the next pitstop.",
+        "name": "tires-on-lf",
+        "text": "We'll change the left-front at the next pitstop.",
         "previous_request_ids": [
-          "pit-actions/tires-on-all"
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-rf",
+        "text": "We'll change the right-front at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-lr",
+        "text": "We'll change the left-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-rr",
+        "text": "We'll change the right-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-lf-rr",
+        "text": "We'll change the left-front and right-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-rf-lr",
+        "text": "We'll change the right-front and left-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-skip-lf",
+        "text": "We'll change everything but the left-front at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-skip-rf",
+        "text": "We'll change everything but the right-front at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-skip-lr",
+        "text": "We'll change everything but the left-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-on-skip-rr",
+        "text": "We'll change everything but the right-rear at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-compound-dry",
+        "text": "Switching to dry compound at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
+        ]
+      },
+      {
+        "name": "tires-compound-wet",
+        "text": "Switching to wets at the next pitstop.",
+        "previous_request_ids": [
+          "acknowledgment/okay",
+          "acknowledgment/roger-that",
+          "acknowledgment/got-it"
         ]
       }
     ],

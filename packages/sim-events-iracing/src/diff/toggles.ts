@@ -9,6 +9,11 @@
  *     based on the resulting state (vs. trying to reconstruct it from the
  *     deltas, which fails for mid-transition events like a side-switch
  *     emitted as two ticks).
+ *   - tireService.compoundChanged { from, to } — when PitSvTireCompound
+ *     changes. iRacing flips compound atomically and force-sets all four
+ *     tire bits in the same tick; we suppress the cascading
+ *     tireService.changed for that transition so the compound voice line
+ *     is the single canonical confirmation (see the compound block).
  *   - carControl.drsToggled / p2pToggled / limiterToggled { on } — on
  *     respective bit changes.
  *
@@ -171,9 +176,32 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
     emit,
   );
 
+  // ── Tire compound (immediate; no debounce — single discrete value) ─────
+  // iRacing flips compound atomically in one tick and force-sets all four
+  // tire bits as part of the same operation. Emit the compound event and
+  // absorb the cascading tire-set diff so the compound voice line is the
+  // single canonical confirmation (otherwise the engineer would also call
+  // out "all four tires" 500 ms later).
+  let compoundJustChanged = false;
+
+  if (state.lastPitSvCompound !== pitSvCompound) {
+    emit({
+      event: "tireService.compoundChanged",
+      data: { from: state.lastPitSvCompound, to: pitSvCompound },
+    });
+    compoundJustChanged = true;
+  }
+
   // ── Tire service (4 tires, debounced) ──────────────────────────────────
-  const baselineTireBits = state.lastPitSvFlags & TIRE_FLAGS_MASK;
+  const baselineTireBits = compoundJustChanged ? currTireBits : state.lastPitSvFlags & TIRE_FLAGS_MASK;
   let nextBaselineTireBits = baselineTireBits;
+
+  if (compoundJustChanged) {
+    // Realign the debounce to post-compound tire state so the next genuine
+    // user toggle is diffed against it, not against the pre-compound bits.
+    state.lastSeenTireFlags = currTireBits;
+    state.lastTireChangeAt = 0;
+  }
 
   if (currTireBits !== baselineTireBits) {
     // Track when we last *observed* a flag flip to anchor the debounce.
