@@ -71,11 +71,14 @@ type Mode = PitCrewSettings["mode"];
 // ─── Global-state helpers ─────────────────────────────────────────────────────
 
 function isRaceEngineerEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled !== false;
+  // Both feature gates default to off — fresh installs and never-toggled
+  // setups stay quiet until the user opts in. Only an explicit `true`
+  // (set when the user presses the toggle) enables the feature.
+  return (getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled === true;
 }
 
 function isRadarEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).radarEnabled !== false;
+  return (getGlobalSettings() as Record<string, unknown>).radarEnabled === true;
 }
 
 function readRadarVolume(): number {

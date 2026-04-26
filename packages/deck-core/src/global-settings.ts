@@ -99,25 +99,27 @@ export const GlobalSettingsSchema = z
       .default(true),
     /**
      * On/off for the Race Engineer voice (Pit Crew action, Race Engineer
-     * mode). Toggled by pressing the Race Engineer button — gates every
-     * engineer voice scenario via `setEnabled` so audio stops immediately
-     * when off. Persists across plugin restarts. Default: true.
+     * mode). Toggled by pressing the Race Engineer button — when off, the
+     * Voice and Background audio buses are zeroed so any in-flight clip
+     * silences immediately. Persists across plugin restarts. Default: false
+     * — fresh installs stay quiet until the user opts in (issue #378).
      */
     raceEngineerEnabled: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
-      .default(true),
+      .default(false),
     /**
      * On/off for the directional Radar proximity ticks (Pit Crew action,
      * Radar mode). Toggled by pressing the Radar button — independent from
      * Race Engineer so silencing the voice to talk to teammates on Discord
      * doesn't kill the proximity alerts. Persists across plugin restarts.
-     * Default: true.
+     * Default: false — fresh installs stay quiet until the user opts in
+     * (issue #378).
      */
     radarEnabled: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
-      .default(true),
+      .default(false),
     /**
      * Volume for the directional Radar ticks, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Alerts`). Stepped by the Radar Volume Up/Down modes of the
