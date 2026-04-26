@@ -2442,12 +2442,12 @@
       "requestId": "Wm77P1KFx74qsHFILnbP"
     },
     "voice/luca/pit-actions/tires-on-skip-rr.mp3": {
-      "hash": "d191b04c71228b6d",
+      "hash": "f2c8c683683fd216",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We'll change everything but the right-rear tire at the next pitstop.",
-      "generatedAt": "2026-04-26T09:30:48.873Z",
-      "requestId": "TWj3XadnddDT9usAVlrZ"
+      "textPreview": "We'll change everything but the right-rear at the next pitstop.",
+      "generatedAt": "2026-04-26T10:43:09.496Z",
+      "requestId": "UtfitBwGowUsmnd0upIq"
     },
     "voice/luca/pit-actions/tires-compound-dry.mp3": {
       "hash": "246c0e54320cf328",
@@ -2538,12 +2538,12 @@
       "requestId": "TXU0HZijuaolZM17WfcF"
     },
     "voice/titan/pit-actions/tires-on-skip-rr.mp3": {
-      "hash": "4877bbb189d7f65c",
+      "hash": "8299b5b0bc2bef34",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We'll change everything but the right-rear tire at the next pitstop.",
-      "generatedAt": "2026-04-26T10:30:12.911Z",
-      "requestId": "1sepBitGXnD4GBg5941S"
+      "textPreview": "We'll change everything but the right-rear at the next pitstop.",
+      "generatedAt": "2026-04-26T10:43:10.570Z",
+      "requestId": "KW3X6XpuT4pf2PjTJHdJ"
     },
     "voice/titan/pit-actions/tires-compound-dry.mp3": {
       "hash": "a6a3d2e822e7f0c0",

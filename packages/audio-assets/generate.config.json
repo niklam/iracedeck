@@ -335,7 +335,7 @@
       },
       {
         "name": "tires-on-skip-rr",
-        "text": "We'll change everything but the right-rear tire at the next pitstop.",
+        "text": "We'll change everything but the right-rear at the next pitstop.",
         "previous_request_ids": [
           "acknowledgment/okay",
           "acknowledgment/roger-that",
