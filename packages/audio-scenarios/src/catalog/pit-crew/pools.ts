@@ -23,6 +23,14 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/acknowledgment/we-got-that.mp3",
   ],
 
+  // Blue flag callout variants — alternates between the two recorded lines
+  // ("faster car approaching" / "check your mirrors") so repeated blue-flag
+  // events don't sound like the same loop. Voice-scoped via `{voice}`.
+  "flag-blue": [
+    "voice/{voice}/flags/blue-01.mp3",
+    "voice/{voice}/flags/blue-02.mp3",
+  ],
+
   // Walkie-talkie "uh, yeah, copy that" style fragments inserted between voice
   // clips in multi-message sequences. The special `{ connector: true }` step
   // draws from this pool.
