@@ -93,3 +93,12 @@ The available compounds depend on the car — most cars have DRY and WET, while 
 #### Settings
 
 - No additional settings
+
+---
+
+## Race Engineer voice confirmations
+
+When the Pit Crew action's race engineer is enabled, every tire-service change is acknowledged on the radio:
+
+- **Tire selection** — every meaningful 4-corner combination has a dedicated callout: all four, fronts, rears, lefts, rights, every single corner (LF / RF / LR / RR), both diagonals (LF + RR, RF + LR), and every "all but one" three-corner combo (skip LF / RF / LR / RR). Clearing the selection plays the "skipping tires" line.
+- **Compound switch** — flipping the compound between dry and wet plays a dedicated confirmation. iRacing forces all four tire bits on when the compound changes, but the engineer only calls out the compound switch — there is no duplicate "all four tires" line.

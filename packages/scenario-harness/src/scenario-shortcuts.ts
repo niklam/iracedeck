@@ -86,9 +86,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   tireSet("rears", "Rears", ["LR", "RR"]),
   tireSet("lefts", "Lefts", ["LF", "LR"]),
   tireSet("rights", "Rights", ["RF", "RR"]),
-  // Single corners — match no registered scenario today, so firing these
-  // stays silent. Useful for verifying the event itself fires correctly
-  // and for testing future single-corner scenarios as they land.
+  // Single corners (intentional puncture-only changes).
   tireSet("lf", "LF only", ["LF"]),
   tireSet("rf", "RF only", ["RF"]),
   tireSet("lr", "LR only", ["LR"]),
@@ -103,6 +101,23 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   tireSet("skip-lr", "All except LR", ["LF", "RF", "RR"]),
   tireSet("skip-rf", "All except RF", ["LF", "LR", "RR"]),
   tireSet("skip-lf", "All except LF", ["RF", "LR", "RR"]),
+  // Compound switches (iRacing exposes 0=dry / 1=wet).
+  {
+    id: "compound-dry",
+    category: "Tire Service",
+    label: "Compound → DRY",
+    description: "Switch the pit-service compound to dry",
+    event: "tireService.compoundChanged",
+    data: { from: 1, to: 0 },
+  },
+  {
+    id: "compound-wet",
+    category: "Tire Service",
+    label: "Compound → WET",
+    description: "Switch the pit-service compound to wet",
+    event: "tireService.compoundChanged",
+    data: { from: 0, to: 1 },
+  },
 
   // ── Pit Lane ──
   { id: "pit-approaching", category: "Pit Lane", label: "Approaching", event: "pitLane.approaching", data: {} },

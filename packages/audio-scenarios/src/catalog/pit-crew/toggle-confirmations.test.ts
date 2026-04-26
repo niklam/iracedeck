@@ -7,7 +7,7 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
-import { FUEL_TOGGLE_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
+import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -123,14 +123,24 @@ const manifest: AudioAssetsManifest = {
       `voice/${v}/acknowledgment/we-got-that.mp3`,
       `voice/${v}/pit-actions/fuel-on.mp3`,
       `voice/${v}/pit-actions/fuel-off.mp3`,
-      `voice/${v}/pit-actions/tires-on.mp3`,
       `voice/${v}/pit-actions/tires-off.mp3`,
       `voice/${v}/pit-actions/tires-on-all.mp3`,
       `voice/${v}/pit-actions/tires-on-fronts.mp3`,
       `voice/${v}/pit-actions/tires-on-rears.mp3`,
       `voice/${v}/pit-actions/tires-on-lefts.mp3`,
       `voice/${v}/pit-actions/tires-on-rights.mp3`,
-      `voice/${v}/pit-actions/at-the-next-stop.mp3`,
+      `voice/${v}/pit-actions/tires-on-lf.mp3`,
+      `voice/${v}/pit-actions/tires-on-rf.mp3`,
+      `voice/${v}/pit-actions/tires-on-lr.mp3`,
+      `voice/${v}/pit-actions/tires-on-rr.mp3`,
+      `voice/${v}/pit-actions/tires-on-lf-rr.mp3`,
+      `voice/${v}/pit-actions/tires-on-rf-lr.mp3`,
+      `voice/${v}/pit-actions/tires-on-skip-lf.mp3`,
+      `voice/${v}/pit-actions/tires-on-skip-rf.mp3`,
+      `voice/${v}/pit-actions/tires-on-skip-lr.mp3`,
+      `voice/${v}/pit-actions/tires-on-skip-rr.mp3`,
+      `voice/${v}/pit-actions/tires-compound-dry.mp3`,
+      `voice/${v}/pit-actions/tires-compound-wet.mp3`,
     ]),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
@@ -162,6 +172,8 @@ beforeEach(() => {
   for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
 
   for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
+
+  for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
 });
 
 afterEach(() => {
@@ -208,20 +220,33 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
 });
 
 describe("TIRE_TOGGLE_SCENARIOS", () => {
+  // Coverage is exhaustive across the 15 non-empty 4-corner combinations.
+  // The empty-set case is exercised separately below via TIRE_OFF_SCENARIO.
   it.each([
+    // Standard 5
     { name: "all", current: ["LF", "RF", "LR", "RR"] },
     { name: "fronts", current: ["LF", "RF"] },
     { name: "rears", current: ["LR", "RR"] },
     { name: "lefts", current: ["LF", "LR"] },
     { name: "rights", current: ["RF", "RR"] },
+    // Singles
+    { name: "lf", current: ["LF"] },
+    { name: "rf", current: ["RF"] },
+    { name: "lr", current: ["LR"] },
+    { name: "rr", current: ["RR"] },
+    // Diagonals
+    { name: "lf-rr", current: ["LF", "RR"] },
+    { name: "rf-lr", current: ["RF", "LR"] },
+    // Three-corner combos (skip the named tire)
+    { name: "skip-rr", current: ["LF", "RF", "LR"] },
+    { name: "skip-lr", current: ["LF", "RF", "RR"] },
+    { name: "skip-rf", current: ["LF", "LR", "RR"] },
+    { name: "skip-lf", current: ["RF", "LR", "RR"] },
   ])("plays $name set callout for current=$current", ({ name, current }) => {
     bus.publishEvent("tireService.changed", { added: current, removed: [], current });
     flush(audio);
 
-    const played = voiceClipsPlayed();
-    expect(played).toContain("voice/luca/pit-actions/tires-on.mp3");
-    expect(played).toContain(`voice/luca/pit-actions/tires-on-${name}.mp3`);
-    expect(played).toContain("voice/luca/pit-actions/at-the-next-stop.mp3");
+    expect(voiceClipsPlayed()).toContain(`voice/luca/pit-actions/tires-on-${name}.mp3`);
   });
 
   it("plays tires-off only when current set is empty", () => {
@@ -251,19 +276,6 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
     expect(played).toContain("voice/luca/pit-actions/tires-on-rears.mp3");
   });
 
-  it("plays the matching set on a mixed delta (LF off + RR on lands on diagonal — silent)", () => {
-    // Diagonal isn't a known pattern; current=[LF,RR] doesn't match any
-    // set. No callout — by design.
-    bus.publishEvent("tireService.changed", {
-      added: ["RR"],
-      removed: ["LR"],
-      current: ["LF", "RR"],
-    });
-    flush(audio);
-
-    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/tires-on.mp3");
-  });
-
   it("plays the matching set when a side-switch lands on a known pattern (fronts → lefts)", () => {
     bus.publishEvent("tireService.changed", {
       added: ["LR"],
@@ -274,24 +286,28 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
 
     expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/tires-on-lefts.mp3");
   });
+});
 
-  it("does not fire any tire scenario for a single-tire current state", () => {
-    bus.publishEvent("tireService.changed", { added: ["LF"], removed: [], current: ["LF"] });
+describe("TIRE_COMPOUND_SCENARIOS", () => {
+  it("fires the dry-compound callout when to=0", () => {
+    bus.publishEvent("tireService.compoundChanged", { from: 1, to: 0 });
     flush(audio);
 
-    const played = voiceClipsPlayed();
-    expect(played).not.toContain("voice/luca/pit-actions/tires-on.mp3");
-    expect(played).not.toContain("voice/luca/pit-actions/tires-off.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/tires-compound-dry.mp3");
   });
 
-  it("does not fire for an unrecognized 3-tire combo (current=LF+RF+RR)", () => {
-    bus.publishEvent("tireService.changed", {
-      added: ["RR"],
-      removed: [],
-      current: ["LF", "RF", "RR"],
-    });
+  it("fires the wet-compound callout when to=1", () => {
+    bus.publishEvent("tireService.compoundChanged", { from: 0, to: 1 });
     flush(audio);
 
-    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/tires-on.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/tires-compound-wet.mp3");
+  });
+
+  it("substitutes the active voice for compound switches", () => {
+    activeVoice = "titan";
+    bus.publishEvent("tireService.compoundChanged", { from: 0, to: 1 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/tires-compound-wet.mp3");
   });
 });

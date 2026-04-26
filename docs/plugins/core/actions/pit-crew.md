@@ -18,6 +18,14 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. The initial r
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off.
 
+### Race Engineer voice coverage
+
+When the engineer is enabled, the Pit Crew catalog confirms every meaningful pit-service change made via the Tire Service / Pit Service actions:
+
+- **Fuel** — separate on / off callouts.
+- **Tire selection** — exhaustive across the 15 non-empty 4-corner combinations: the 5 standard preset patterns (all / fronts / rears / lefts / rights), all 4 single-corner picks, both diagonals (LF + RR, RF + LR), and all 4 three-corner combos (skip LF / RF / LR / RR). Clearing the selection plays a "skipping tires" callout.
+- **Tire compound** — dry / wet switches play a dedicated compound line. iRacing forces all four tire bits on at the same instant the compound flips; the translator suppresses the cascading tire-set event so only the compound callout plays.
+
 ## Settings
 
 | Setting | Type | Default | Description |

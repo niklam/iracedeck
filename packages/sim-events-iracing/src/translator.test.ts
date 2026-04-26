@@ -501,6 +501,113 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data.added).toEqual([]);
       expect(ev.data.removed.sort()).toEqual(["RF", "RR"]);
     });
+
+    it("emits tireService.compoundChanged when PitSvTireCompound flips dry → wet", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("tireService.compoundChanged", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvTireCompound: 0 }));
+      controller.__tick(telemetry({ PitSvTireCompound: 1 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.compoundChanged">;
+      expect(ev.data).toEqual({ from: 0, to: 1 });
+    });
+
+    it("emits tireService.compoundChanged when PitSvTireCompound flips wet → dry", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("tireService.compoundChanged", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvTireCompound: 1 }));
+      controller.__tick(telemetry({ PitSvTireCompound: 0 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.compoundChanged">;
+      expect(ev.data).toEqual({ from: 1, to: 0 });
+    });
+
+    it("suppresses the cascading tireService.changed when compound flips and forces all four tire bits", () => {
+      // iRacing flips compound atomically and force-sets all four tire bits
+      // in the same tick. The compound voice line is the canonical
+      // confirmation; we should NOT also emit a "tires-on-all" change.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const compoundHandler = vi.fn();
+      const tireHandler = vi.fn();
+      bus.subscribe("tireService.compoundChanged", compoundHandler);
+      bus.subscribe("tireService.changed", tireHandler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      // Compound flip + cascading tire-flag set in the same tick.
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+      // Past the tire debounce — no stale tire-set event should appear.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+      vi.useRealTimers();
+
+      expect(compoundHandler).toHaveBeenCalledTimes(1);
+      expect(tireHandler).not.toHaveBeenCalled();
+    });
+
+    it("still emits tireService.changed for genuine post-compound tire toggles", () => {
+      // After a compound flip absorbs the cascading "all four" baseline,
+      // a subsequent user-driven tire deselection (e.g. dropping the rears)
+      // must still produce a normal tireService.changed event.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const tireHandler = vi.fn();
+      bus.subscribe("tireService.changed", tireHandler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      // Compound flip (suppressed cascading change).
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+      // User drops the rears.
+      controller.__tick(
+        telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange, PitSvTireCompound: 1 }),
+      );
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(
+        telemetry({ PitSvFlags: PitSvFlags.LFTireChange | PitSvFlags.RFTireChange, PitSvTireCompound: 1 }),
+      );
+      vi.useRealTimers();
+
+      expect(tireHandler).toHaveBeenCalledTimes(1);
+      const ev = tireHandler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
+      expect(ev.data.current.sort()).toEqual(["LF", "RF"]);
+      expect(ev.data.removed.sort()).toEqual(["LR", "RR"]);
+    });
+
+    it("suppresses tireService.compoundChanged while in pit stall (crew is working)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("tireService.compoundChanged", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PitSvTireCompound: 0 }));
+      // Enter the stall — every tick re-seeds state including compound.
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvTireCompound: 0 }));
+      // iRacing flips the compound mid-service; this is crew progress, not user intent.
+      controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvTireCompound: 1 }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 
   describe("limiter", () => {

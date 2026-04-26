@@ -7,15 +7,20 @@
  * talkie feel where the engineer confirms the request before echoing the
  * state change.
  *
- * **Registered today (#441 §4):**
+ * **Registered today:**
  *   - `FUEL_TOGGLE_SCENARIOS` — fuel on/off via `pitService.toggled`
- *   - `TIRE_TOGGLE_SCENARIOS` — tire set add (5 patterns) + full clear via
- *     `tireService.changed`
+ *   - `TIRE_TOGGLE_SCENARIOS` — every meaningful tire-set selection via
+ *     `tireService.changed`: the 5 standard patterns (all/fronts/rears/
+ *     lefts/rights), all 4 single-corner picks, both diagonals, all 4
+ *     three-corner combos, and the full-clear ("skip tires") case
+ *   - `TIRE_COMPOUND_SCENARIOS` — dry/wet compound switches via
+ *     `tireService.compoundChanged`
  *
  * **Pending migration (NOT registered):** `PENDING_TOGGLE_SCENARIOS` —
  * windshield, fastRepair, drs, p2p. Their clips still point at the deleted
  * `pit-crew/` tree; each gets its own voice/ content batch in a follow-up
- * issue. Definitions kept as templates for those PRs.
+ * issue. Definitions kept as templates for those PRs. (DRS / P2P do not
+ * belong in pit-actions; relocating them is a separate cleanup.)
  *
  * All registered scenarios use `priority: "normal"` so pit-lane callouts
  * still take precedence.
@@ -67,20 +72,55 @@ export const FUEL_TOGGLE_SCENARIOS: readonly Scenario[] = [fuelScenario(true), f
  * tires" scenario). Filtering on `current` produces the right callout
  * regardless of how the user got there — including direct side-switches.
  *
- * Single-tire selections and unusual combos (diagonals, three-tire sets)
- * match no pattern and stay silent by design.
+ * Coverage is exhaustive across the 16 possible 4-corner combinations:
+ *   - empty set → `TIRE_OFF_SCENARIO` ("skip tires")
+ *   - 1 corner  → 4 single-corner scenarios (`lf` / `rf` / `lr` / `rr`)
+ *   - 2 corners → 6 scenarios: fronts / rears / lefts / rights /
+ *                 diagonals (`lf-rr`, `rf-lr`)
+ *   - 3 corners → 4 "all except X" scenarios (`skip-lf` / `skip-rf` /
+ *                 `skip-lr` / `skip-rr`)
+ *   - 4 corners → `all`
  */
 type TireSet = {
-  name: "all" | "fronts" | "rears" | "lefts" | "rights";
+  name:
+    | "all"
+    | "fronts"
+    | "rears"
+    | "lefts"
+    | "rights"
+    | "lf"
+    | "rf"
+    | "lr"
+    | "rr"
+    | "lf-rr"
+    | "rf-lr"
+    | "skip-rr"
+    | "skip-lr"
+    | "skip-rf"
+    | "skip-lf";
   tires: ReadonlyArray<string>;
 };
 
 const TIRE_SET_PATTERNS: ReadonlyArray<TireSet> = [
+  // Standard 5 patterns (iRacing's preset buttons).
   { name: "all", tires: ["LF", "RF", "LR", "RR"] },
   { name: "fronts", tires: ["LF", "RF"] },
   { name: "rears", tires: ["LR", "RR"] },
   { name: "lefts", tires: ["LF", "LR"] },
   { name: "rights", tires: ["RF", "RR"] },
+  // Single-corner picks (intentional puncture-only changes).
+  { name: "lf", tires: ["LF"] },
+  { name: "rf", tires: ["RF"] },
+  { name: "lr", tires: ["LR"] },
+  { name: "rr", tires: ["RR"] },
+  // Diagonals (setup tests, asymmetric wear).
+  { name: "lf-rr", tires: ["LF", "RR"] },
+  { name: "rf-lr", tires: ["RF", "LR"] },
+  // Three-corner combos (skip one fresh corner).
+  { name: "skip-rr", tires: ["LF", "RF", "LR"] },
+  { name: "skip-lr", tires: ["LF", "RF", "RR"] },
+  { name: "skip-rf", tires: ["LF", "LR", "RR"] },
+  { name: "skip-lf", tires: ["RF", "LR", "RR"] },
 ];
 
 function setMatches(actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean {
@@ -108,9 +148,7 @@ function tireSetOnScenario(set: TireSet): Scenario {
     priority: "normal",
     family: "tire-service",
     sequence: toggleSequence([
-      "pit-actions/tires-on.mp3",
       `pit-actions/tires-on-${set.name}.mp3`,
-      "pit-actions/at-the-next-stop.mp3",
     ]),
   };
 }
@@ -133,6 +171,45 @@ export const TIRE_TOGGLE_SCENARIOS: readonly Scenario[] = [
   ...TIRE_SET_PATTERNS.map(tireSetOnScenario),
   TIRE_OFF_SCENARIO,
 ];
+
+// ── Tire compound switching (registered) ────────────────────────────────
+
+/**
+ * Tire-compound switch confirmations. Filters on the resulting compound
+ * id from `tireService.compoundChanged`. iRacing exposes `0=dry, 1=wet`
+ * via the pit-service compound toggle (per `iracing-sdk/README.md` —
+ * `pit.tireCompound(compound)`). Other sims may emit a richer compound
+ * roster; for now we cover the iRacing-supported pair.
+ *
+ * Shares `family: "tire-service"` with the tire-set scenarios so a tire
+ * pick immediately after a compound flip preempts cleanly. The translator
+ * suppresses the cascading "all four tires" event that iRacing fires
+ * alongside a compound flip, so the compound voice line is the single
+ * canonical confirmation for the dry↔wet transition.
+ */
+const TIRE_COMPOUND_LABEL: Record<0 | 1, "dry" | "wet"> = { 0: "dry", 1: "wet" };
+
+function compoundScenario(to: 0 | 1): Scenario {
+  const name = TIRE_COMPOUND_LABEL[to];
+
+  return {
+    id: `pit-crew.tire-compound-${name}`,
+    when: {
+      event: "tireService.compoundChanged",
+      where: (e) => (e as SimEventOf<"tireService.compoundChanged">).data.to === to,
+    },
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    priority: "normal",
+    family: "tire-service",
+    sequence: toggleSequence([
+      `pit-actions/tires-compound-${name}.mp3`,
+    ]),
+  };
+}
+
+export const TIRE_COMPOUND_SCENARIOS: readonly Scenario[] = [compoundScenario(0), compoundScenario(1)];
 
 // ── Pending migration (NOT registered) ──────────────────────────────────
 // TODO(#441 follow-up): clips below still reference the deleted pit-crew/
