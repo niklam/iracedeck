@@ -14,7 +14,8 @@
           "libraries": ["ole32.lib"],
           "msvs_settings": {
             "VCCLCompilerTool": {
-              "DisableSpecificWarnings": ["4244", "4267", "4996"]
+              "DisableSpecificWarnings": ["4244", "4267", "4996"],
+              "DebugInformationFormat": "1"
             }
           }
         }]
