@@ -37,12 +37,23 @@
  * plugin's MIRABOX_PLUGINS_DIR setup).
  *
  * Flags:
- *   --dry-run    Report which entries would be generated / skipped without
- *                calling the API, writing files, or updating the manifest.
+ *   --dry-run                       Report which entries would be generated /
+ *                                   skipped without calling the API, writing
+ *                                   files, or updating the manifest.
+ *   --voice <key>[,<key>...]        Only iterate the named voices. Repeatable;
+ *                                   --voice luca --voice titan == --voice luca,titan.
+ *   --group <name>[,<name>...]      Only iterate the named groups. Repeatable.
+ *
+ * Voice and group filters compose as an intersection: --voice luca --group
+ * numbers only touches voice/luca/numbers/. Manifest entries outside the
+ * filter are left untouched, so a subsequent unscoped run still sees them
+ * as cache hits. Unknown names exit non-zero with the list of valid choices.
  *
  * Usage (from repo root):
  *   pnpm --filter @iracedeck/audio-assets generate
  *   pnpm --filter @iracedeck/audio-assets generate:dry-run
+ *   pnpm --filter @iracedeck/audio-assets generate --group acknowledgment
+ *   pnpm --filter @iracedeck/audio-assets generate --voice luca --group numbers
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -53,6 +64,7 @@ import url from "node:url";
 import { type Config, type Entry, loadConfig, resolveRequestIds, resolveVoiceSettings, type Voice } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
 import { loadManifest, type Manifest, saveManifest } from "./manifest.ts";
+import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "../..");
@@ -154,7 +166,17 @@ function textPreview(text: string, max = 60): string {
 async function main(): Promise<void> {
   loadDotenv();
 
-  const dryRun = process.argv.slice(2).includes("--dry-run");
+  let scope: Scope;
+  let remaining: string[];
+
+  try {
+    ({ scope, remaining } = parseScopeArgs(process.argv.slice(2)));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  const dryRun = remaining.includes("--dry-run");
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   if (!dryRun && !apiKey) {
@@ -163,7 +185,19 @@ async function main(): Promise<void> {
   }
 
   const config = loadConfig(CONFIG_PATH);
+
+  try {
+    validateScope(scope, config);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   const manifest = loadManifest(MANIFEST_PATH);
+
+  const scopeSummary = formatScope(scope);
+
+  if (scopeSummary) console.log(`[scope] ${scopeSummary}`);
 
   if (dryRun) console.log("[dry-run] No API calls, no file writes, no manifest changes.");
 
@@ -172,7 +206,11 @@ async function main(): Promise<void> {
   let failed = 0;
 
   for (const [voiceName, voice] of Object.entries(config.voices)) {
+    if (scope.voices && !scope.voices.includes(voiceName)) continue;
+
     for (const [groupName, entries] of Object.entries(config.groups)) {
+      if (scope.groups && !scope.groups.includes(groupName)) continue;
+
       for (const entry of entries) {
         const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
         const absPath = path.join(packageRoot, relPath);
