@@ -266,20 +266,20 @@
       "requestId": "HGS7CKsJLDCqP6vQiCqo"
     },
     "voice/luca/flags/meatball-01.mp3": {
-      "hash": "bb15231d9185f876",
+      "hash": "cc7f08a6c0d7e8ff",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We got the meatball flag. We need to pit for repairs.",
-      "generatedAt": "2026-04-26T11:32:02.739Z",
-      "requestId": "L9WjfXqNVwm2kpCzYCif"
+      "textPreview": "We got the meatball flag. We'll need to pit for repairs.",
+      "generatedAt": "2026-04-26T11:47:06.285Z",
+      "requestId": "NMtSS2v6ipvfuRpeNoJR"
     },
     "voice/luca/flags/red-01.mp3": {
-      "hash": "3fd2b775eae69ed7",
+      "hash": "35313a9c47f518dc",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Red flag! ",
-      "generatedAt": "2026-04-26T11:32:03.569Z",
-      "requestId": "GLUvh96stsMOOgz1YGEG"
+      "textPreview": "Red flag. Session stopped. Slow down, drive safely back to the pit.",
+      "generatedAt": "2026-04-26T11:47:07.449Z",
+      "requestId": "aUWCO9wDz076b0sWIY82"
     },
     "voice/luca/flags/white-01.mp3": {
       "hash": "846fa93ac4fdcebd",
@@ -410,20 +410,20 @@
       "requestId": "VMn5mWVDGLoMjTztmpxs"
     },
     "voice/titan/flags/meatball-01.mp3": {
-      "hash": "ce6da54ac6d3d380",
+      "hash": "333b8a9e613a9be6",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We got the meatball flag. We need to pit for repairs.",
-      "generatedAt": "2026-04-26T11:32:07.524Z",
-      "requestId": "W5TquwSyQMeVFOnBANlS"
+      "textPreview": "We got the meatball flag. We'll need to pit for repairs.",
+      "generatedAt": "2026-04-26T11:47:09.377Z",
+      "requestId": "VlOYfwDWAWtlrS1gUpYP"
     },
     "voice/titan/flags/red-01.mp3": {
-      "hash": "badaed65e12beaf0",
+      "hash": "37d9028f7f7f9ae2",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Red flag! ",
-      "generatedAt": "2026-04-26T11:32:08.361Z",
-      "requestId": "X7HKuYEgCCe9HYTHkvj7"
+      "textPreview": "Red flag. Session stopped. Slow down, drive safely back to the pit.",
+      "generatedAt": "2026-04-26T11:47:10.543Z",
+      "requestId": "PamxCHM20rvg0wUV7aUi"
     },
     "voice/titan/flags/white-01.mp3": {
       "hash": "04eca49e75c71e1f",
@@ -2608,6 +2608,22 @@
       "textPreview": "Green! Green! Green! Go! Go! Go!",
       "generatedAt": "2026-04-26T11:32:06.483Z",
       "requestId": "j9Ll6mwg7hjGRI74ViNS"
+    },
+    "voice/luca/flags/white-02.mp3": {
+      "hash": "7aae97e90a0fe6f4",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Last lap. Clean and tidy.",
+      "generatedAt": "2026-04-26T11:47:08.348Z",
+      "requestId": "qIHT93cRdIBTaIyPp4QF"
+    },
+    "voice/titan/flags/white-02.mp3": {
+      "hash": "bba7b81a361af4bd",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Last lap. Clean and tidy.",
+      "generatedAt": "2026-04-26T11:47:11.460Z",
+      "requestId": "ZPae34I4Z3LKb6LGnlbi"
     }
   }
 }
