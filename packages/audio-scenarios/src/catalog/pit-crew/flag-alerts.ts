@@ -36,6 +36,7 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { POOLS } from "./pools.js";
 
 function flagSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
@@ -154,24 +155,10 @@ export const FLAG_ALERTS: readonly Scenario[] = [
 export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_ALERTS.map((s) => s.id);
 
 /**
- * Pool names referenced by the flag-alerts scenarios. `index.ts` registers
- * each via `engine.definePool(name, [...POOLS[name]])`. Keeping the list
- * here (rather than enumerating in `index.ts`) keeps the pool/scenario
- * surface in one place — adding a new flag scenario is two appends:
- * one pool entry in `pools.ts` and one name here.
+ * Pool names referenced by the flag-alerts scenarios. Derived from the
+ * single source of truth in `pools.ts` by filtering keys with the
+ * `flag-` prefix, so adding or renaming a pool there automatically
+ * flows through `registerPitCrew()` without a parallel list to keep
+ * in sync.
  */
-export const FLAG_POOL_NAMES: readonly string[] = [
-  "flag-yellow-local",
-  "flag-yellow-full",
-  "flag-yellow-cleared",
-  "flag-green",
-  "flag-blue",
-  "flag-white",
-  "flag-red",
-  "flag-black",
-  "flag-debris",
-  "flag-meatball",
-  "flag-checkered-practise",
-  "flag-checkered-qualifying",
-  "flag-checkered-race",
-];
+export const FLAG_POOL_NAMES: readonly string[] = Object.keys(POOLS).filter((name) => name.startsWith("flag-"));

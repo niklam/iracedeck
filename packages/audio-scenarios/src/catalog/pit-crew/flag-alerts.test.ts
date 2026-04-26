@@ -363,14 +363,22 @@ describe("FLAG_ALERTS checkered session-type branch", () => {
 });
 
 describe("FLAG_ALERTS preemption", () => {
+  // The Voice channel only sees flag voice clips in these tests (the
+  // radio frame uses SFX + Ambient channels). So `voiceClipsPlayed()`
+  // is the chronological list of flag callouts; asserting on the last
+  // entry proves the second event's callout is what the engineer
+  // ultimately settles on, not just one of several lines that played.
+  function lastVoiceClip(): string | undefined {
+    return voiceClipsPlayed().at(-1);
+  }
+
   it("meatball preempts an in-flight non-meatball flag callout", () => {
     bus.publishEvent("flag.yellow.raised", { scope: "local" });
     // Don't flush — local yellow is still mid-playback.
     bus.publishEvent("flag.meatball.raised", {});
     flush(audio);
 
-    // Meatball clip must have been queued onto the Voice channel.
-    expect(voiceClipsPlayed()).toContain("voice/luca/flags/meatball-01.mp3");
+    expect(lastVoiceClip()).toBe("voice/luca/flags/meatball-01.mp3");
   });
 
   it("a newer non-meatball flag preempts a previous one (family share)", () => {
@@ -381,7 +389,7 @@ describe("FLAG_ALERTS preemption", () => {
     bus.publishEvent("flag.red.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/flags/red-01.mp3");
+    expect(lastVoiceClip()).toBe("voice/luca/flags/red-01.mp3");
   });
 });
 
