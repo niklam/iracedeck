@@ -4,6 +4,13 @@
  * (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so the engineer voice
  * sounds like every other Pit Crew message.
  *
+ * **Pool-driven clips.** Every flag scenario draws from a pool defined in
+ * `pools.ts` (e.g. `pool:flag-yellow-local`, `pool:flag-blue`) — even the
+ * single-clip flags. The interpreter rotates multi-element pools and
+ * resolves single-element pools deterministically, so behavior is
+ * unchanged today, but adding a variant later is a one-line append in
+ * `pools.ts` instead of a scenario rewrite.
+ *
  * **Family preemption.** All non-meatball flag scenarios share
  * `family: "flag"` so a newer flag callout supersedes the in-flight one
  * (yellow → green at restart no longer plays both back-to-back; whichever
@@ -22,11 +29,7 @@
  * variants — practice, qualifying, race — because the engineer's wording
  * differs per session ("that's it for the race, well done" only fits
  * after a race). The scenario nests `if`-step branches on
- * `getSessionType()` to pick the right variant at fire time.
- *
- * **Blue variants.** Drawn from the `flag-blue` pool defined in
- * `pools.ts`, alternating between the two recorded blue lines so
- * back-to-back blue flags don't sound looped.
+ * `getSessionType()` to pick the right pool at fire time.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -51,7 +54,7 @@ function flagScenario(id: string, body: Step[]): Scenario {
 }
 
 const YELLOW_LOCAL: Scenario = {
-  ...flagScenario("yellow-local", ["flags/yellow-local-01.mp3"]),
+  ...flagScenario("yellow-local", ["pool:flag-yellow-local"]),
   when: {
     event: "flag.yellow.raised",
     where: (e) => (e as SimEventOf<"flag.yellow.raised">).data.scope === "local",
@@ -59,7 +62,7 @@ const YELLOW_LOCAL: Scenario = {
 };
 
 const YELLOW_FULL: Scenario = {
-  ...flagScenario("yellow-full", ["flags/yellow-full-01.mp3"]),
+  ...flagScenario("yellow-full", ["pool:flag-yellow-full"]),
   when: {
     event: "flag.yellow.raised",
     where: (e) => (e as SimEventOf<"flag.yellow.raised">).data.scope === "full",
@@ -67,12 +70,12 @@ const YELLOW_FULL: Scenario = {
 };
 
 const YELLOW_CLEARED: Scenario = {
-  ...flagScenario("yellow-cleared", ["flags/yellow-cleared-01.mp3"]),
+  ...flagScenario("yellow-cleared", ["pool:flag-yellow-cleared"]),
   when: { event: "flag.yellow.cleared" },
 };
 
 const GREEN: Scenario = {
-  ...flagScenario("green", ["flags/green-01.mp3"]),
+  ...flagScenario("green", ["pool:flag-green"]),
   when: { event: "flag.green.raised" },
 };
 
@@ -82,17 +85,17 @@ const BLUE: Scenario = {
 };
 
 const WHITE: Scenario = {
-  ...flagScenario("white", ["flags/white-01.mp3"]),
+  ...flagScenario("white", ["pool:flag-white"]),
   when: { event: "flag.white.raised" },
 };
 
 const RED: Scenario = {
-  ...flagScenario("red", ["flags/red-01.mp3"]),
+  ...flagScenario("red", ["pool:flag-red"]),
   when: { event: "flag.red.raised" },
 };
 
 const BLACK: Scenario = {
-  ...flagScenario("black", ["flags/black-01.mp3"]),
+  ...flagScenario("black", ["pool:flag-black"]),
   when: { event: "flag.black.raised" },
 };
 
@@ -100,12 +103,12 @@ const CHECKERED: Scenario = {
   ...flagScenario("checkered", [
     {
       if: () => getSessionType() === "Practice",
-      then: ["flags/checkered-practise-01.mp3"],
+      then: ["pool:flag-checkered-practise"],
       else: [
         {
           if: () => getSessionType().includes("Qualify"),
-          then: ["flags/checkered-qualifying-01.mp3"],
-          else: ["flags/checkered-race-01.mp3"],
+          then: ["pool:flag-checkered-qualifying"],
+          else: ["pool:flag-checkered-race"],
         },
       ],
     },
@@ -114,7 +117,7 @@ const CHECKERED: Scenario = {
 };
 
 const DEBRIS: Scenario = {
-  ...flagScenario("debris", ["flags/debris-01.mp3"]),
+  ...flagScenario("debris", ["pool:flag-debris"]),
   when: { event: "flag.debris.raised" },
 };
 
@@ -131,7 +134,7 @@ const MEATBALL: Scenario = {
   base: "voice/{voice}",
   priority: "urgent",
   preempt: true,
-  sequence: flagSequence(["flags/meatball-01.mp3"]),
+  sequence: flagSequence(["pool:flag-meatball"]),
 };
 
 export const FLAG_ALERTS: readonly Scenario[] = [
@@ -149,3 +152,26 @@ export const FLAG_ALERTS: readonly Scenario[] = [
 ];
 
 export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_ALERTS.map((s) => s.id);
+
+/**
+ * Pool names referenced by the flag-alerts scenarios. `index.ts` registers
+ * each via `engine.definePool(name, [...POOLS[name]])`. Keeping the list
+ * here (rather than enumerating in `index.ts`) keeps the pool/scenario
+ * surface in one place — adding a new flag scenario is two appends:
+ * one pool entry in `pools.ts` and one name here.
+ */
+export const FLAG_POOL_NAMES: readonly string[] = [
+  "flag-yellow-local",
+  "flag-yellow-full",
+  "flag-yellow-cleared",
+  "flag-green",
+  "flag-blue",
+  "flag-white",
+  "flag-red",
+  "flag-black",
+  "flag-debris",
+  "flag-meatball",
+  "flag-checkered-practise",
+  "flag-checkered-qualifying",
+  "flag-checkered-race",
+];

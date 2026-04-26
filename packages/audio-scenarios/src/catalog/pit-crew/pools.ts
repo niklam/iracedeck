@@ -23,13 +23,33 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/acknowledgment/we-got-that.mp3",
   ],
 
-  // Blue flag callout variants — alternates between the two recorded lines
-  // ("faster car approaching" / "check your mirrors") so repeated blue-flag
-  // events don't sound like the same loop. Voice-scoped via `{voice}`.
+  // Flag callout pools. Every flag scenario draws from a pool — even the
+  // single-clip flags — so adding a variant later becomes a one-line
+  // append here instead of restructuring the scenario. Multi-element
+  // pools rotate (no-repeat shared per-pool); single-element pools are
+  // deterministic. All voice-scoped via `{voice}`.
+  "flag-yellow-local": ["voice/{voice}/flags/yellow-local-01.mp3"],
+  "flag-yellow-full": ["voice/{voice}/flags/yellow-full-01.mp3"],
+  "flag-yellow-cleared": ["voice/{voice}/flags/yellow-cleared-01.mp3"],
+  "flag-green": [
+    "voice/{voice}/flags/green-01.mp3",
+    "voice/{voice}/flags/green-02.mp3",
+  ],
   "flag-blue": [
     "voice/{voice}/flags/blue-01.mp3",
     "voice/{voice}/flags/blue-02.mp3",
   ],
+  "flag-white": ["voice/{voice}/flags/white-01.mp3"],
+  "flag-red": ["voice/{voice}/flags/red-01.mp3"],
+  "flag-black": ["voice/{voice}/flags/black-01.mp3"],
+  "flag-debris": ["voice/{voice}/flags/debris-01.mp3"],
+  "flag-meatball": ["voice/{voice}/flags/meatball-01.mp3"],
+  // Checkered branches on getSessionType() at fire time, so each session
+  // type gets its own pool. Future variants for any single session type
+  // append to that pool only.
+  "flag-checkered-practise": ["voice/{voice}/flags/checkered-practise-01.mp3"],
+  "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
+  "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],
 
   // Walkie-talkie "uh, yeah, copy that" style fragments inserted between voice
   // clips in multi-message sequences. The special `{ connector: true }` step

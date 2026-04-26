@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { FLAG_ALERTS, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
+import { FLAG_ALERTS, FLAG_POOL_NAMES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
@@ -121,6 +121,7 @@ const FLAG_CLIP_NAMES = [
   "yellow-full-01",
   "yellow-cleared-01",
   "green-01",
+  "green-02",
   "blue-01",
   "blue-02",
   "white-01",
@@ -163,7 +164,8 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  engine.definePool("flag-blue", [...POOLS["flag-blue"]]);
+  for (const name of FLAG_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
+
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
@@ -259,12 +261,6 @@ describe("FLAG_ALERTS triggers", () => {
       expected: "voice/luca/flags/yellow-cleared-01.mp3",
     },
     {
-      label: "green",
-      event: "flag.green.raised" as const,
-      data: {},
-      expected: "voice/luca/flags/green-01.mp3",
-    },
-    {
       label: "white",
       event: "flag.white.raised" as const,
       data: {},
@@ -325,12 +321,22 @@ describe("FLAG_ALERTS triggers", () => {
     );
   });
 
-  it("substitutes the active voice — switching voice changes resolved path", () => {
-    activeVoice = "titan";
+  it("green draws from the flag-green pool (one of the two recorded variants)", () => {
     bus.publishEvent("flag.green.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/titan/flags/green-01.mp3");
+    const played = voiceClipsPlayed();
+    expect(played.includes("voice/luca/flags/green-01.mp3") || played.includes("voice/luca/flags/green-02.mp3")).toBe(
+      true,
+    );
+  });
+
+  it("substitutes the active voice — switching voice changes resolved path", () => {
+    activeVoice = "titan";
+    bus.publishEvent("flag.white.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/titan/flags/white-01.mp3");
   });
 });
 
@@ -364,10 +370,39 @@ describe("FLAG_ALERTS preemption", () => {
 
   it("a newer non-meatball flag preempts a previous one (family share)", () => {
     bus.publishEvent("flag.yellow.cleared", {});
-    // Same tick: green.raised arrives.
-    bus.publishEvent("flag.green.raised", {});
+    // Same tick: white.raised arrives. White uses a single-clip pool so
+    // the assertion stays deterministic regardless of the green-pool
+    // rotation order.
+    bus.publishEvent("flag.white.raised", {});
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/flags/green-01.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/flags/white-01.mp3");
+  });
+});
+
+describe("FLAG_POOL_NAMES", () => {
+  it("lists every flag pool that pools.ts defines for flag scenarios", () => {
+    expect(FLAG_POOL_NAMES).toEqual([
+      "flag-yellow-local",
+      "flag-yellow-full",
+      "flag-yellow-cleared",
+      "flag-green",
+      "flag-blue",
+      "flag-white",
+      "flag-red",
+      "flag-black",
+      "flag-debris",
+      "flag-meatball",
+      "flag-checkered-practise",
+      "flag-checkered-qualifying",
+      "flag-checkered-race",
+    ]);
+  });
+
+  it("every name has a non-empty pool entry in POOLS", () => {
+    for (const name of FLAG_POOL_NAMES) {
+      expect(POOLS[name]).toBeDefined();
+      expect(POOLS[name].length).toBeGreaterThan(0);
+    }
   });
 });

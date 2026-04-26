@@ -27,7 +27,7 @@
 import type { IEventBus } from "@iracedeck/event-bus";
 
 import { getScenarioEngine } from "../../interpreter.js";
-import { FLAG_ALERTS } from "./flag-alerts.js";
+import { FLAG_ALERTS, FLAG_POOL_NAMES } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -47,7 +47,8 @@ export function registerPitCrew(bus: IEventBus): void {
   const engine = getScenarioEngine();
 
   engine.definePool("acknowledgment", [...POOLS.acknowledgment]);
-  engine.definePool("flag-blue", [...POOLS["flag-blue"]]);
+
+  for (const name of FLAG_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
 
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
