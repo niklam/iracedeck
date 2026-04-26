@@ -145,23 +145,39 @@
       },
       {
         "name": "green-01",
-        "text": "Green flag!"
+        "text": "Green flag! Green flag! Push now!"
+      },
+      {
+        "name": "green-02",
+        "text": "Green! Green! Green! Go! Go! Go!"
       },
       {
         "name": "meatball-01",
-        "text": "We got the meatball flag."
+        "text": "We got the meatball flag. We'll need to pit for repairs."
       },
       {
         "name": "red-01",
-        "text": "Red flag!"
+        "text": "Red flag. Session stopped. Slow down, drive safely back to the pit."
       },
       {
         "name": "white-01",
-        "text": "White flag!"
+        "text": "White flag. Last lap. Bring it home."
       },
       {
-        "name": "yellow-01",
+        "name": "white-02",
+        "text": "Last lap. Clean and tidy."
+      },
+      {
+        "name": "yellow-local-01",
         "text": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!"
+      },
+      {
+        "name": "yellow-full-01",
+        "text": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed."
+      },
+      {
+        "name": "yellow-cleared-01",
+        "text": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon."
       }
     ],
     "pit-limiter": [

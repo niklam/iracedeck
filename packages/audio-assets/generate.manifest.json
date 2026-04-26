@@ -258,44 +258,36 @@
       "requestId": "FvT2ppAwygB4kt47L6oT"
     },
     "voice/luca/flags/green-01.mp3": {
-      "hash": "d8d70203c52db968",
+      "hash": "48ad389a70e5c851",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Green flag!",
-      "generatedAt": "2026-04-25T15:59:16.147Z",
-      "requestId": "sk04eT6WdCrVCEx7sAPJ"
+      "textPreview": "Green flag! Green flag! Push now!",
+      "generatedAt": "2026-04-26T11:32:00.723Z",
+      "requestId": "HGS7CKsJLDCqP6vQiCqo"
     },
     "voice/luca/flags/meatball-01.mp3": {
-      "hash": "fb15141c8480a157",
+      "hash": "cc7f08a6c0d7e8ff",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We got the meatball flag.",
-      "generatedAt": "2026-04-25T15:59:17.051Z",
-      "requestId": "ZXtShH7TEy7Lj5spwHt3"
+      "textPreview": "We got the meatball flag. We'll need to pit for repairs.",
+      "generatedAt": "2026-04-26T11:47:06.285Z",
+      "requestId": "NMtSS2v6ipvfuRpeNoJR"
     },
     "voice/luca/flags/red-01.mp3": {
-      "hash": "43d8460214d7915d",
+      "hash": "35313a9c47f518dc",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Red flag!",
-      "generatedAt": "2026-04-25T15:59:17.902Z",
-      "requestId": "AsYiiOZAl8ZDgogDWOKc"
+      "textPreview": "Red flag. Session stopped. Slow down, drive safely back to the pit.",
+      "generatedAt": "2026-04-26T11:47:07.449Z",
+      "requestId": "aUWCO9wDz076b0sWIY82"
     },
     "voice/luca/flags/white-01.mp3": {
-      "hash": "f4b760f034e4eb38",
+      "hash": "846fa93ac4fdcebd",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_multilingual_v2",
-      "textPreview": "White flag!",
-      "generatedAt": "2026-04-25T15:59:18.739Z",
-      "requestId": "9NPGkiw3utJO96r0aP4l"
-    },
-    "voice/luca/flags/yellow-01.mp3": {
-      "hash": "d0e7a886b01d3ed5",
-      "voiceId": "15CVCzDByBinCIoCblXo",
-      "model": "eleven_multilingual_v2",
-      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
-      "generatedAt": "2026-04-25T15:59:19.704Z",
-      "requestId": "p33KLBl4rg9P52BBxXGz"
+      "textPreview": "White flag. Last lap. Bring it home.",
+      "generatedAt": "2026-04-26T11:32:04.527Z",
+      "requestId": "9Ahjlwg01Z3257kD8i7s"
     },
     "voice/luca/openers/alright.mp3": {
       "hash": "5177d63ea75212d6",
@@ -410,44 +402,36 @@
       "requestId": "wVAzjF5oBzbsbn6OqXZw"
     },
     "voice/titan/flags/green-01.mp3": {
-      "hash": "7f569204bd101477",
+      "hash": "a54139899f9ee893",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Green flag!",
-      "generatedAt": "2026-04-25T15:59:58.685Z",
-      "requestId": "LseWLJL6UwQm45aVUnma"
+      "textPreview": "Green flag! Green flag! Push now!",
+      "generatedAt": "2026-04-26T11:32:05.458Z",
+      "requestId": "VMn5mWVDGLoMjTztmpxs"
     },
     "voice/titan/flags/meatball-01.mp3": {
-      "hash": "b0dc2c13765e1472",
+      "hash": "333b8a9e613a9be6",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "We got the meatball flag.",
-      "generatedAt": "2026-04-25T15:59:59.558Z",
-      "requestId": "GTU69wldAjooa5lBl441"
+      "textPreview": "We got the meatball flag. We'll need to pit for repairs.",
+      "generatedAt": "2026-04-26T11:47:09.377Z",
+      "requestId": "VlOYfwDWAWtlrS1gUpYP"
     },
     "voice/titan/flags/red-01.mp3": {
-      "hash": "60841e8413cd36ba",
+      "hash": "37d9028f7f7f9ae2",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "Red flag!",
-      "generatedAt": "2026-04-25T16:00:00.394Z",
-      "requestId": "WPqZ4KPY5npVIECd2oMh"
+      "textPreview": "Red flag. Session stopped. Slow down, drive safely back to the pit.",
+      "generatedAt": "2026-04-26T11:47:10.543Z",
+      "requestId": "PamxCHM20rvg0wUV7aUi"
     },
     "voice/titan/flags/white-01.mp3": {
-      "hash": "c6747a700188ba2e",
+      "hash": "04eca49e75c71e1f",
       "voiceId": "dtSEyYGNJqjrtBArPCVZ",
       "model": "eleven_multilingual_v2",
-      "textPreview": "White flag!",
-      "generatedAt": "2026-04-25T16:00:01.212Z",
-      "requestId": "8lXFcm1e9XjjFkKLeIwk"
-    },
-    "voice/titan/flags/yellow-01.mp3": {
-      "hash": "f36c9c1fc328bd45",
-      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
-      "model": "eleven_multilingual_v2",
-      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
-      "generatedAt": "2026-04-25T16:00:02.221Z",
-      "requestId": "LLuXVLlvYkMwD84461xG"
+      "textPreview": "White flag. Last lap. Bring it home.",
+      "generatedAt": "2026-04-26T11:32:09.301Z",
+      "requestId": "SKZ8TLMJvyEfHctWnvWq"
     },
     "voice/titan/pit-limiter/pit-entry-001.mp3": {
       "hash": "ad6493e889c63676",
@@ -2560,6 +2544,86 @@
       "textPreview": "Switching to wets at the next pitstop.",
       "generatedAt": "2026-04-26T10:30:14.901Z",
       "requestId": "Pxzw4PiNvssI4xeEfH3g"
+    },
+    "voice/luca/flags/yellow-local-01.mp3": {
+      "hash": "d0e7a886b01d3ed5",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
+      "generatedAt": "2026-04-26T11:19:53.722Z",
+      "requestId": "aPQwitsZrHqbBoWnTZAJ"
+    },
+    "voice/luca/flags/yellow-full-01.mp3": {
+      "hash": "7b77792d002bfac9",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed.",
+      "generatedAt": "2026-04-26T11:19:54.701Z",
+      "requestId": "s3TWYfarrcxh51LGt8gW"
+    },
+    "voice/luca/flags/yellow-cleared-01.mp3": {
+      "hash": "93d11efac6b9b418",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon.",
+      "generatedAt": "2026-04-26T11:19:55.679Z",
+      "requestId": "3JkLvjFfJiqzFp1u2RBa"
+    },
+    "voice/titan/flags/yellow-local-01.mp3": {
+      "hash": "f36c9c1fc328bd45",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!",
+      "generatedAt": "2026-04-26T11:19:56.947Z",
+      "requestId": "weHgcxn2o2PQFU2oHemS"
+    },
+    "voice/titan/flags/yellow-full-01.mp3": {
+      "hash": "06868b1f5604c64f",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed.",
+      "generatedAt": "2026-04-26T11:19:57.913Z",
+      "requestId": "Xrb1mFtAk8XzYDY1oJQ4"
+    },
+    "voice/titan/flags/yellow-cleared-01.mp3": {
+      "hash": "6ef8b6532cde52d9",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon.",
+      "generatedAt": "2026-04-26T11:19:58.904Z",
+      "requestId": "cD31aCOwTD756oU6AZCA"
+    },
+    "voice/luca/flags/green-02.mp3": {
+      "hash": "8778ead1da8b852b",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Green! Green! Green! Go! Go! Go!",
+      "generatedAt": "2026-04-26T11:32:01.669Z",
+      "requestId": "qdhcbGSjIpO5maZdRR0P"
+    },
+    "voice/titan/flags/green-02.mp3": {
+      "hash": "a4fbe107590269a2",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Green! Green! Green! Go! Go! Go!",
+      "generatedAt": "2026-04-26T11:32:06.483Z",
+      "requestId": "j9Ll6mwg7hjGRI74ViNS"
+    },
+    "voice/luca/flags/white-02.mp3": {
+      "hash": "7aae97e90a0fe6f4",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Last lap. Clean and tidy.",
+      "generatedAt": "2026-04-26T11:47:08.348Z",
+      "requestId": "qIHT93cRdIBTaIyPp4QF"
+    },
+    "voice/titan/flags/white-02.mp3": {
+      "hash": "bba7b81a361af4bd",
+      "voiceId": "dtSEyYGNJqjrtBArPCVZ",
+      "model": "eleven_multilingual_v2",
+      "textPreview": "Last lap. Clean and tidy.",
+      "generatedAt": "2026-04-26T11:47:11.460Z",
+      "requestId": "ZPae34I4Z3LKb6LGnlbi"
     },
     "voice/luca/names/adam.mp3": {
       "hash": "1bf0b22736b09bf0",
