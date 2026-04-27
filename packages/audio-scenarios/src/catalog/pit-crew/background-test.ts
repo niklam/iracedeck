@@ -24,6 +24,7 @@ const AMBIENT_LOOP = "sfx/IRD-ambient-pit.mp3";
 const TEST_DURATION_MS = 2500;
 
 let testInFlight = false;
+let testTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function playBackgroundTest(onComplete?: () => void): void {
   if (testInFlight) return;
@@ -35,10 +36,11 @@ export function playBackgroundTest(onComplete?: () => void): void {
   audio.playOnChannel(AudioChannel.SFX, TICK_OPEN);
   audio.playOnChannel(AudioChannel.Ambient, AMBIENT_LOOP, true);
 
-  setTimeout(() => {
+  testTimer = setTimeout(() => {
     audio.stopChannel(AudioChannel.Ambient);
     audio.playOnChannel(AudioChannel.SFX, TICK_CLOSE);
     testInFlight = false;
+    testTimer = null;
     onComplete?.();
   }, TEST_DURATION_MS);
 }
@@ -56,5 +58,10 @@ export function isBackgroundTestInFlight(): boolean {
 
 /** Reset internal state. @internal — for tests. */
 export function _resetBackgroundTest(): void {
+  if (testTimer !== null) {
+    clearTimeout(testTimer);
+    testTimer = null;
+  }
+
   testInFlight = false;
 }

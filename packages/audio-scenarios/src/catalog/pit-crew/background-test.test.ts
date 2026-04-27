@@ -74,4 +74,24 @@ describe("playBackgroundTest", () => {
     playBackgroundTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledWith(SFX, TICK_OPEN);
   });
+
+  it("clears the pending close-tick timer when reset (no post-reset side effects)", () => {
+    const onComplete = vi.fn();
+    playBackgroundTest(onComplete);
+    hoisted.playOnChannel.mockClear();
+    hoisted.stopChannel.mockClear();
+
+    _resetBackgroundTest();
+    vi.advanceTimersByTime(TEST_DURATION_MS * 2);
+
+    // After reset, the queued close-tick / ambient stop / onComplete must NOT
+    // fire — otherwise mocked audio calls leak across tests.
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+    expect(hoisted.stopChannel).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+
+    // The flag is also cleared so a fresh playBackgroundTest can start.
+    playBackgroundTest();
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(SFX, TICK_OPEN);
+  });
 });
