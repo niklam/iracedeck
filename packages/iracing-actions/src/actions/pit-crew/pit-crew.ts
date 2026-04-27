@@ -1,4 +1,4 @@
-import { playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import { playBackgroundTest, playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -408,6 +408,9 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   /** Per-context baseline for the engineer-voice test button (mirrors radar). */
   private readonly lastRaceEngineerTestTimestamps = new Map<string, number>();
 
+  /** Per-context baseline for the Background Volume test button (issue #471). */
+  private readonly lastBackgroundTestTimestamps = new Map<string, number>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<PitCrewSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
@@ -422,6 +425,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // replay the previous play when the PI rehydrates the hidden textfields.
     this.lastRadarTestTimestamps.set(contextId, Number(raw._testRadarVolume ?? 0));
     this.lastRaceEngineerTestTimestamps.set(contextId, Number(raw._testRaceEngineerVoice ?? 0));
+    this.lastBackgroundTestTimestamps.set(contextId, Number(raw._testBackgroundVolume ?? 0));
 
     // Re-render on any global-settings change — every mode depends on at
     // least one global, so every change can affect the rendered state bar
@@ -466,6 +470,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.visibleContexts.delete(contextId);
     this.lastRadarTestTimestamps.delete(contextId);
     this.lastRaceEngineerTestTimestamps.delete(contextId);
+    this.lastBackgroundTestTimestamps.delete(contextId);
 
     await super.onWillDisappear(ev);
   }
@@ -506,6 +511,22 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     }
 
     this.lastRaceEngineerTestTimestamps.set(contextId, voiceTestTimestamp);
+
+    // Same edge-trigger pattern for the Background Volume Test button
+    // (#471). Force the Background bus to the slider value first so the
+    // preview is audible even when the Race Engineer master gate would
+    // otherwise hold it at 0; the test's onComplete restores the
+    // gate-correct state via applyRaceEngineerAudio().
+    const backgroundTestTimestamp = Number(raw._testBackgroundVolume ?? 0);
+    const lastBackgroundTestTimestamp = this.lastBackgroundTestTimestamps.get(contextId) ?? 0;
+
+    if (backgroundTestTimestamp > 0 && backgroundTestTimestamp !== lastBackgroundTestTimestamp) {
+      this.logger.info("Playing background test: tick-open + ambient + tick-close");
+      getAudio().setBusVolume(AudioBus.Background, readBackgroundVolume() / 100);
+      playBackgroundTest(() => applyRaceEngineerAudio());
+    }
+
+    this.lastBackgroundTestTimestamps.set(contextId, backgroundTestTimestamp);
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
   }

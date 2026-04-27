@@ -28,6 +28,7 @@ const hoisted = vi.hoisted(() => {
 
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
+  const playBackgroundTest = vi.fn();
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -48,6 +49,7 @@ const hoisted = vi.hoisted(() => {
     getAudio,
     setRadarEnabled,
     playRadarTest,
+    playBackgroundTest,
     updateGlobalSettings,
     getGlobalSettings,
     globalSettingsListeners,
@@ -72,6 +74,7 @@ vi.mock("../../icons/status-bar.js", () => ({
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
+  playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
 }));
@@ -392,6 +395,50 @@ describe("PitCrew action", () => {
       // Different timestamp string — must trigger.
       await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: "1710000000500" }) as never);
       expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
+    });
+
+    it("invokes playBackgroundTest when _testBackgroundVolume timestamp changes (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 70 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 42 }) as never);
+
+      expect(hoisted.playBackgroundTest).toHaveBeenCalledTimes(1);
+      // Background bus is forced to backgroundVolume/100 so the preview is
+      // audible even when the Race Engineer master gate would otherwise
+      // hold it at 0.
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.7);
+    });
+
+    it("does not re-fire playBackgroundTest on unrelated settings echoes (#471)", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
+
+      expect(hoisted.playBackgroundTest).not.toHaveBeenCalled();
+    });
+
+    it("restores the Race Engineer audio gate after the background test completes (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 80 });
+      hoisted.playBackgroundTest.mockImplementation((onComplete?: () => void) => {
+        onComplete?.();
+      });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 1 }) as never);
+
+      // The forced-audible push (backgroundVolume/100) plus the post-test
+      // applyRaceEngineerAudio() restore (Voice=0, Background=0 because
+      // Race Engineer is off) must both have run.
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.8);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
     });
   });
 
