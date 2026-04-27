@@ -274,7 +274,7 @@ describe("applyRadarEnabled", () => {
 });
 
 describe("applyRaceEngineerAudio", () => {
-  it("copies raceEngineerVolume onto AudioBus.Voice and unities AudioBus.Background when enabled", () => {
+  it("copies raceEngineerVolume onto AudioBus.Voice and Background defaults to 100% when enabled", () => {
     hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 60 });
     applyRaceEngineerAudio();
 
@@ -303,6 +303,27 @@ describe("applyRaceEngineerAudio", () => {
     applyRaceEngineerAudio();
 
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 1);
+  });
+
+  it("copies backgroundVolume onto AudioBus.Background when enabled (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 40 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.4);
+  });
+
+  it("zeroes Background when Race Engineer is disabled, regardless of backgroundVolume (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 80 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
+  });
+
+  it("defaults backgroundVolume to 100% when the global is missing (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 1);
   });
 });
 
@@ -388,6 +409,19 @@ describe("PitCrew action", () => {
 
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.25);
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
+    });
+
+    it("pushes a backgroundVolume change onto AudioBus.Background live (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+      vi.clearAllMocks();
+
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 30 });
+
+      for (const listener of hoisted.globalSettingsListeners) listener();
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.3);
     });
   });
 

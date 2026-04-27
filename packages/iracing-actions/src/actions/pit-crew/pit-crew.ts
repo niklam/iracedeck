@@ -110,6 +110,15 @@ function readRaceEngineerVolume(): number {
   return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
 }
 
+function readBackgroundVolume(): number {
+  const raw = (getGlobalSettings() as Record<string, unknown>).backgroundVolume;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
+
+  if (!Number.isFinite(n)) return VOLUME_MAX;
+
+  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
+}
+
 /**
  * @internal Exported for testing.
  *
@@ -117,17 +126,20 @@ function readRaceEngineerVolume(): number {
  *   - `AudioBus.Voice` — engineer voice clips, acks, toggle confirmations.
  *   - `AudioBus.Background` — pit ambient loop and walkie-talkie SFX.
  *
- * When the gate is on, Voice tracks `raceEngineerVolume`; Background sits
- * at unity (its per-channel mix ratios already keep it under the voice).
- * When the gate is off, both buses are silenced. `AudioBus.Alerts` (radar)
- * is intentionally untouched — it has its own toggle.
+ * When the gate is on, Voice tracks `raceEngineerVolume` and Background
+ * tracks `backgroundVolume` (issue #471 — separate slider so users with
+ * audio-processing sensitivities can dial the background under the voice
+ * without losing it entirely). When the gate is off, both buses are
+ * silenced. `AudioBus.Alerts` (radar) is intentionally untouched — it
+ * has its own toggle.
  */
 export function applyRaceEngineerAudio(): void {
   const enabled = isRaceEngineerEnabled();
   const voice = readRaceEngineerVolume() / 100;
+  const background = readBackgroundVolume() / 100;
 
   getAudio().setBusVolume(AudioBus.Voice, enabled ? voice : 0);
-  getAudio().setBusVolume(AudioBus.Background, enabled ? 1 : 0);
+  getAudio().setBusVolume(AudioBus.Background, enabled ? background : 0);
 }
 
 /**

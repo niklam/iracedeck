@@ -47,6 +47,7 @@ describe("SimHub Service", () => {
       radarVolume: 100,
       raceEngineerVoice: "",
       raceEngineerVolume: 100,
+      backgroundVolume: 100,
       driverName: "",
     });
   });
@@ -144,6 +145,7 @@ describe("SimHub Service", () => {
         radarVolume: 100,
         raceEngineerVoice: "",
         raceEngineerVolume: 100,
+        backgroundVolume: 100,
         driverName: "",
       });
 
