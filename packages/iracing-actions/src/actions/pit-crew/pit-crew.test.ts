@@ -413,6 +413,34 @@ describe("playVoiceSequence", () => {
     // synchronously so any in-flight flag the caller is tracking gets cleared.
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
+
+  it("does not fire onComplete a second time if a stale playStep callback is re-entered (#471)", () => {
+    // CodeRabbit follow-up: after a mid-chain failure we still left the
+    // `onChannelComplete(playStep)` registration live in the audio service.
+    // If a later, unrelated Voice clip plays through the engine, the engine
+    // re-fires playStep — which would either resume the abandoned sequence
+    // or fire onComplete a second time. The `finished` guard makes playStep
+    // idempotent.
+    const onComplete = vi.fn();
+    hoisted.playOnChannel.mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+    playVoiceSequence(["a.mp3", "b.mp3"], onComplete);
+
+    // First registration happens at this point (before first clip plays).
+    const firstCb = hoisted.onChannelComplete.mock.calls[0][1] as () => void;
+
+    // First clip ends → playStep tries clip 2, which fails → onComplete fires once
+    // (and a SECOND registration happens just before the failed play).
+    firstCb();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    // Simulate the stale re-entry: the second registration is fired later by
+    // the engine when some unrelated Voice clip completes. The `finished`
+    // guard must make this a no-op — onComplete must NOT fire again.
+    const staleCb = hoisted.onChannelComplete.mock.calls[1][1] as () => void;
+    staleCb();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("PitCrew action", () => {

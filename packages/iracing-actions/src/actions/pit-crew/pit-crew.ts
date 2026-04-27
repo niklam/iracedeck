@@ -210,9 +210,28 @@ export function playVoiceSequence(paths: readonly string[], onComplete?: () => v
   if (paths.length === 0) return false;
 
   let idx = 0;
+  let finished = false;
+
+  // Idempotent terminal — guards against `onComplete` firing twice (once via
+  // the failure path below and again if a stale `playStep` registration is
+  // re-entered by a later, unrelated Voice completion).
+  const finish = (): void => {
+    if (finished) return;
+
+    finished = true;
+    onComplete?.();
+  };
+
   const playStep = (): void => {
+    // A previous step may have already finished (e.g. mid-chain playback
+    // failure). The completion callback registered before that failure is
+    // still live in `audio-service`; if any later Voice clip plays through
+    // the engine, it will re-fire `playStep`. Bail out so we don't try to
+    // resume an abandoned sequence.
+    if (finished) return;
+
     if (idx >= paths.length) {
-      onComplete?.();
+      finish();
 
       return;
     }
@@ -234,7 +253,7 @@ export function playVoiceSequence(paths: readonly string[], onComplete?: () => v
     // it synchronously so callers (and any in-flight flag they're tracking)
     // can clean up.
     if (!ok) {
-      onComplete?.();
+      finish();
     }
   };
 
