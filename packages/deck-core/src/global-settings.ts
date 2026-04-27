@@ -143,6 +143,18 @@ export const GlobalSettingsSchema = z
      */
     raceEngineerVolume: z.coerce.number().min(0).max(100).default(100),
     /**
+     * Volume for the pit ambience and walkie-talkie SFX, 0–100 (mapped to
+     * 0.0–1.0 on `AudioBus.Background`, which carries both the ambient
+     * loop and the radio open/close SFX). Defaults to 35 — the ambient
+     * loop and walkie-talkie ticks are loud relative to the engineer
+     * voice at unity, so the out-of-the-box mix favours intelligibility
+     * (especially for users with audio-processing sensitivities). Only
+     * takes effect while Race Engineer is enabled — when the engineer
+     * is off, Background is muted to 0 regardless of this value
+     * (issue #471).
+     */
+    backgroundVolume: z.coerce.number().min(0).max(100).default(35),
+    /**
      * Driver name the Race Engineer addresses the user as — the key
      * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).
      * Substituted into welcome / pit-callout flows by referencing

@@ -6,12 +6,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // statements. Vitest transforms `vi.mock(...)` to run before any import at
 // module init, so the mocks still apply to the action import below.
 import {
+  _setRaceEngineerTestInFlightForTests,
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
+  playVoiceSequence,
   Settings,
 } from "./pit-crew.js";
 
@@ -24,10 +26,14 @@ import {
 
 const hoisted = vi.hoisted(() => {
   const setBusVolume = vi.fn();
-  const getAudio = vi.fn(() => ({ setBusVolume }));
+  const playOnChannel = vi.fn<(...args: unknown[]) => boolean>().mockReturnValue(true);
+  const onChannelComplete = vi.fn();
+  const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, onChannelComplete }));
 
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
+  const playBackgroundTest = vi.fn();
+  const isBackgroundTestInFlight = vi.fn(() => false);
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -45,9 +51,13 @@ const hoisted = vi.hoisted(() => {
 
   return {
     setBusVolume,
+    playOnChannel,
+    onChannelComplete,
     getAudio,
     setRadarEnabled,
     playRadarTest,
+    playBackgroundTest,
+    isBackgroundTestInFlight,
     updateGlobalSettings,
     getGlobalSettings,
     globalSettingsListeners,
@@ -72,12 +82,15 @@ vi.mock("../../icons/status-bar.js", () => ({
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
+  isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
+  playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
   AudioBus: { Voice: 0, Background: 1, Alerts: 2 },
+  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3 },
   getAudio: hoisted.getAudio,
 }));
 
@@ -168,6 +181,9 @@ type TestInputs = {
   /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
    *  accept both to exercise the coercion path. */
   _testRadarVolume?: number | string;
+  /** Same shape for the engineer-voice and Background Volume Test buttons. */
+  _testRaceEngineerVoice?: number | string;
+  _testBackgroundVolume?: number | string;
 };
 
 function buildAppearEvent(settings: TestInputs = {}, actionId = "ctx-1"): unknown {
@@ -274,7 +290,7 @@ describe("applyRadarEnabled", () => {
 });
 
 describe("applyRaceEngineerAudio", () => {
-  it("copies raceEngineerVolume onto AudioBus.Voice and unities AudioBus.Background when enabled", () => {
+  it("copies raceEngineerVolume onto AudioBus.Voice and Background defaults to 100% when enabled", () => {
     hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 60 });
     applyRaceEngineerAudio();
 
@@ -303,6 +319,127 @@ describe("applyRaceEngineerAudio", () => {
     applyRaceEngineerAudio();
 
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 1);
+  });
+
+  it("copies backgroundVolume onto AudioBus.Background when enabled (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 40 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.4);
+  });
+
+  it("zeroes Background when Race Engineer is disabled, regardless of backgroundVolume (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 80 });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
+  });
+
+  it("falls back to 100% when backgroundVolume is missing from the live settings cache (#471)", () => {
+    // The Zod schema default is 35 (so a fresh install starts at 35), but
+    // readBackgroundVolume's defensive runtime fallback is VOLUME_MAX so an
+    // unparsed/empty cache during very early startup doesn't accidentally
+    // mute the bus. Same shape as readRaceEngineerVolume / readRadarVolume.
+    hoisted.setGlobalSettings({ raceEngineerEnabled: true });
+    applyRaceEngineerAudio();
+
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 1);
+  });
+
+  it("keeps Background at backgroundVolume/100 while a Background test is in flight, even with RE off (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 60 });
+    hoisted.isBackgroundTestInFlight.mockReturnValueOnce(true);
+
+    applyRaceEngineerAudio();
+
+    // Without the bypass, RE-off would push Background to 0 mid-preview
+    // when the global-settings listener fires (e.g. user dragging the
+    // Background slider). The in-flight signal keeps the bus tracking the
+    // slider value so the preview stays audible and live-updates.
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.6);
+  });
+
+  it("keeps Voice at raceEngineerVolume/100 while a Race Engineer test is in flight, even with RE off (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, raceEngineerVolume: 70 });
+    _setRaceEngineerTestInFlightForTests(true);
+
+    try {
+      applyRaceEngineerAudio();
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.7);
+    } finally {
+      _setRaceEngineerTestInFlightForTests(false);
+    }
+  });
+});
+
+describe("playVoiceSequence", () => {
+  it("fires onComplete after the chain ends naturally", () => {
+    const onComplete = vi.fn();
+    hoisted.playOnChannel.mockReturnValue(true);
+
+    expect(playVoiceSequence(["a.mp3", "b.mp3"], onComplete)).toBe(true);
+
+    // Simulate native engine firing channel-complete after each clip.
+    // Each step registers the NEXT step's callback before playing, so we
+    // pull the latest registration after each invocation.
+    const fireLastRegistered = (): void => {
+      const calls = hoisted.onChannelComplete.mock.calls;
+      const cb = calls[calls.length - 1][1] as () => void;
+      cb();
+    };
+
+    fireLastRegistered(); // first clip ends → playStep runs second clip
+    fireLastRegistered(); // second clip ends → playStep hits idx>=length, fires onComplete
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onComplete and stops chaining when playOnChannel returns false mid-sequence (#471)", () => {
+    // CodeRabbit-flagged scenario: a missing clip mid-chain would otherwise
+    // leave raceEngineerTestInFlight stuck true forever (the native callback
+    // never fires for a failed play, so the chain hangs).
+    const onComplete = vi.fn();
+    hoisted.playOnChannel
+      .mockReturnValueOnce(true) // first clip plays
+      .mockReturnValueOnce(false); // second clip fails
+
+    expect(playVoiceSequence(["a.mp3", "b.mp3"], onComplete)).toBe(true);
+
+    // Simulate native engine firing channel-complete for the first clip.
+    const completionCallbacks = hoisted.onChannelComplete.mock.calls.map(([, cb]) => cb as () => void);
+    completionCallbacks[0]();
+
+    // The second clip's playOnChannel returned false; onComplete must fire
+    // synchronously so any in-flight flag the caller is tracking gets cleared.
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire onComplete a second time if a stale playStep callback is re-entered (#471)", () => {
+    // CodeRabbit follow-up: after a mid-chain failure we still left the
+    // `onChannelComplete(playStep)` registration live in the audio service.
+    // If a later, unrelated Voice clip plays through the engine, the engine
+    // re-fires playStep — which would either resume the abandoned sequence
+    // or fire onComplete a second time. The `finished` guard makes playStep
+    // idempotent.
+    const onComplete = vi.fn();
+    hoisted.playOnChannel.mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+    playVoiceSequence(["a.mp3", "b.mp3"], onComplete);
+
+    // First registration happens at this point (before first clip plays).
+    const firstCb = hoisted.onChannelComplete.mock.calls[0][1] as () => void;
+
+    // First clip ends → playStep tries clip 2, which fails → onComplete fires once
+    // (and a SECOND registration happens just before the failed play).
+    firstCb();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    // Simulate the stale re-entry: the second registration is fired later by
+    // the engine when some unrelated Voice clip completes. The `finished`
+    // guard must make this a no-op — onComplete must NOT fire again.
+    const staleCb = hoisted.onChannelComplete.mock.calls[1][1] as () => void;
+    staleCb();
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -372,6 +509,50 @@ describe("PitCrew action", () => {
       await action.onDidReceiveSettings(buildAppearEvent({ _testRadarVolume: "1710000000500" }) as never);
       expect(hoisted.playRadarTest).toHaveBeenCalledTimes(1);
     });
+
+    it("invokes playBackgroundTest when _testBackgroundVolume timestamp changes (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 70 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 42 }) as never);
+
+      expect(hoisted.playBackgroundTest).toHaveBeenCalledTimes(1);
+      // Background bus is forced to backgroundVolume/100 so the preview is
+      // audible even when the Race Engineer master gate would otherwise
+      // hold it at 0.
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.7);
+    });
+
+    it("does not re-fire playBackgroundTest on unrelated settings echoes (#471)", async () => {
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 100 }) as never);
+
+      expect(hoisted.playBackgroundTest).not.toHaveBeenCalled();
+    });
+
+    it("restores the Race Engineer audio gate after the background test completes (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 80 });
+      hoisted.playBackgroundTest.mockImplementation((onComplete?: () => void) => {
+        onComplete?.();
+      });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ _testBackgroundVolume: 0 }) as never);
+      vi.clearAllMocks();
+
+      await action.onDidReceiveSettings(buildAppearEvent({ _testBackgroundVolume: 1 }) as never);
+
+      // The forced-audible push (backgroundVolume/100) plus the post-test
+      // applyRaceEngineerAudio() restore (Voice=0, Background=0 because
+      // Race Engineer is off) must both have run.
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.8);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
+    });
   });
 
   describe("global-settings listener re-syncs live audio", () => {
@@ -388,6 +569,19 @@ describe("PitCrew action", () => {
 
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.25);
       expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(false);
+    });
+
+    it("pushes a backgroundVolume change onto AudioBus.Background live (#471)", async () => {
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent() as never);
+      vi.clearAllMocks();
+
+      hoisted.setGlobalSettings({ raceEngineerEnabled: true, raceEngineerVolume: 100, backgroundVolume: 30 });
+
+      for (const listener of hoisted.globalSettingsListeners) listener();
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.3);
     });
   });
 

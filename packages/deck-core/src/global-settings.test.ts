@@ -135,6 +135,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
       radarEnabled: false,
       raceEngineerEnabled: false,
       radarVolume: 100,
+      backgroundVolume: 35,
       disableWhenDisconnected: true,
       focusIRacingWindow: false,
       enableFuelingOnChange: true,

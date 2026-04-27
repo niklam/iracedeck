@@ -33,6 +33,7 @@ import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
 
+export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
 export {
   getRadarVisualState,
   playRadarTest,
