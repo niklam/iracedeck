@@ -43,6 +43,17 @@ export function playBackgroundTest(onComplete?: () => void): void {
   }, TEST_DURATION_MS);
 }
 
+/**
+ * Whether a Background test preview is currently playing. The Pit Crew
+ * action checks this before letting the Race Engineer master gate mute
+ * `AudioBus.Background` — without the bypass, sliding the Background
+ * Volume slider mid-preview would push the bus back to 0 (RE off case)
+ * and cut the preview off mid-tick.
+ */
+export function isBackgroundTestInFlight(): boolean {
+  return testInFlight;
+}
+
 /** Reset internal state. @internal — for tests. */
 export function _resetBackgroundTest(): void {
   testInFlight = false;

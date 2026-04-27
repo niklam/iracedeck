@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // statements. Vitest transforms `vi.mock(...)` to run before any import at
 // module init, so the mocks still apply to the action import below.
 import {
+  _setRaceEngineerTestInFlightForTests,
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
@@ -29,6 +30,7 @@ const hoisted = vi.hoisted(() => {
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
   const playBackgroundTest = vi.fn();
+  const isBackgroundTestInFlight = vi.fn(() => false);
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -50,6 +52,7 @@ const hoisted = vi.hoisted(() => {
     setRadarEnabled,
     playRadarTest,
     playBackgroundTest,
+    isBackgroundTestInFlight,
     updateGlobalSettings,
     getGlobalSettings,
     globalSettingsListeners,
@@ -74,6 +77,7 @@ vi.mock("../../icons/status-bar.js", () => ({
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
+  isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
   playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
@@ -327,6 +331,31 @@ describe("applyRaceEngineerAudio", () => {
     applyRaceEngineerAudio();
 
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 1);
+  });
+
+  it("keeps Background at backgroundVolume/100 while a Background test is in flight, even with RE off (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, backgroundVolume: 60 });
+    hoisted.isBackgroundTestInFlight.mockReturnValueOnce(true);
+
+    applyRaceEngineerAudio();
+
+    // Without the bypass, RE-off would push Background to 0 mid-preview
+    // when the global-settings listener fires (e.g. user dragging the
+    // Background slider). The in-flight signal keeps the bus tracking the
+    // slider value so the preview stays audible and live-updates.
+    expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0.6);
+  });
+
+  it("keeps Voice at raceEngineerVolume/100 while a Race Engineer test is in flight, even with RE off (#471)", () => {
+    hoisted.setGlobalSettings({ raceEngineerEnabled: false, raceEngineerVolume: 70 });
+    _setRaceEngineerTestInFlightForTests(true);
+
+    try {
+      applyRaceEngineerAudio();
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.7);
+    } finally {
+      _setRaceEngineerTestInFlightForTests(false);
+    }
   });
 });
 

@@ -1,4 +1,9 @@
-import { playBackgroundTest, playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import {
+  isBackgroundTestInFlight,
+  playBackgroundTest,
+  playRadarTest,
+  setRadarEnabled,
+} from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -120,6 +125,20 @@ function readBackgroundVolume(): number {
 }
 
 /**
+ * Whether the Race Engineer voice Test preview is currently playing.
+ * Tracked at module scope so the global-settings listener (which calls
+ * `applyRaceEngineerAudio` whenever any global changes) doesn't re-mute
+ * `AudioBus.Voice` mid-preview when Race Engineer is off — moving the
+ * volume slider during the test would otherwise cut it off.
+ */
+let raceEngineerTestInFlight = false;
+
+/** @internal Exposed for testing. */
+export function _setRaceEngineerTestInFlightForTests(value: boolean): void {
+  raceEngineerTestInFlight = value;
+}
+
+/**
  * @internal Exported for testing.
  *
  * Apply the Race Engineer master gate to the relevant audio buses:
@@ -130,16 +149,25 @@ function readBackgroundVolume(): number {
  * tracks `backgroundVolume` (issue #471 — separate slider so users with
  * audio-processing sensitivities can dial the background under the voice
  * without losing it entirely). When the gate is off, both buses are
- * silenced. `AudioBus.Alerts` (radar) is intentionally untouched — it
- * has its own toggle.
+ * silenced UNLESS a slider Test preview is currently playing — Test
+ * buttons are explicit "I want to hear this regardless of the master
+ * gate" actions, mirroring how the Radar Test always plays at the
+ * configured radar volume even when the radar gate is off. Without the
+ * bypass, dragging the volume slider mid-preview (which fires the
+ * global-settings listener → `applyRaceEngineerAudio`) would push the
+ * bus back to 0 and cut the test off. `AudioBus.Alerts` (radar) is
+ * intentionally untouched — it has its own toggle.
  */
 export function applyRaceEngineerAudio(): void {
   const enabled = isRaceEngineerEnabled();
   const voice = readRaceEngineerVolume() / 100;
   const background = readBackgroundVolume() / 100;
 
-  getAudio().setBusVolume(AudioBus.Voice, enabled ? voice : 0);
-  getAudio().setBusVolume(AudioBus.Background, enabled ? background : 0);
+  const voiceUnmuted = enabled || raceEngineerTestInFlight;
+  const backgroundUnmuted = enabled || isBackgroundTestInFlight();
+
+  getAudio().setBusVolume(AudioBus.Voice, voiceUnmuted ? voice : 0);
+  getAudio().setBusVolume(AudioBus.Background, backgroundUnmuted ? background : 0);
 }
 
 /**
@@ -177,18 +205,24 @@ const RACE_ENGINEER_TEST_OPENERS = ["alright", "hi", "right", "so"] as const;
  * chain at that step rather than throwing; the user just hears the
  * earlier clips.
  */
-function playVoiceSequence(paths: readonly string[]): boolean {
+function playVoiceSequence(paths: readonly string[], onComplete?: () => void): boolean {
   if (paths.length === 0) return false;
 
   let idx = 0;
   const playStep = (): void => {
-    if (idx >= paths.length) return;
+    if (idx >= paths.length) {
+      onComplete?.();
+
+      return;
+    }
 
     const path = paths[idx++];
 
-    if (idx < paths.length) {
-      getAudio().onChannelComplete(AudioChannel.Voice, playStep);
-    }
+    // Always register the next-step callback — when `idx` has reached the
+    // end on the next invocation, `playStep` will fire `onComplete`. Without
+    // this on the last clip, the chain ends silently and callers can't tell
+    // the preview is over (used by the RE Volume Test in-flight tracking).
+    getAudio().onChannelComplete(AudioChannel.Voice, playStep);
 
     getAudio().playOnChannel(AudioChannel.Voice, path);
   };
@@ -216,7 +250,7 @@ function playVoiceSequence(paths: readonly string[]): boolean {
  * Returns false only when no voice is available — the test button logs
  * a warning in that case.
  */
-export function playRaceEngineerVoiceTest(): boolean {
+export function playRaceEngineerVoiceTest(onComplete?: () => void): boolean {
   const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
 
   if (!voice) return false;
@@ -231,7 +265,7 @@ export function playRaceEngineerVoiceTest(): boolean {
     `voice/${voice}/welcome/lets-win-races.mp3`,
   ];
 
-  return playVoiceSequence(paths);
+  return playVoiceSequence(paths, onComplete);
 }
 
 /**
@@ -505,7 +539,22 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     if (voiceTestTimestamp > 0 && voiceTestTimestamp !== lastVoiceTestTimestamp) {
       this.logger.info("Playing race engineer voice test");
 
-      if (!playRaceEngineerVoiceTest()) {
+      // Force the Voice bus to the slider value so the preview is audible
+      // even when Race Engineer is off (the master gate would otherwise
+      // hold it at 0). Set the in-flight flag first so any global-settings
+      // listener firing mid-preview (e.g. user dragging the volume slider)
+      // doesn't re-mute the bus via applyRaceEngineerAudio.
+      _setRaceEngineerTestInFlightForTests(true);
+      getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
+
+      const started = playRaceEngineerVoiceTest(() => {
+        _setRaceEngineerTestInFlightForTests(false);
+        applyRaceEngineerAudio();
+      });
+
+      if (!started) {
+        _setRaceEngineerTestInFlightForTests(false);
+        applyRaceEngineerAudio();
         this.logger.warn("Race engineer voice test skipped — no voice available");
       }
     }
@@ -513,10 +562,10 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.lastRaceEngineerTestTimestamps.set(contextId, voiceTestTimestamp);
 
     // Same edge-trigger pattern for the Background Volume Test button
-    // (#471). Force the Background bus to the slider value first so the
-    // preview is audible even when the Race Engineer master gate would
-    // otherwise hold it at 0; the test's onComplete restores the
-    // gate-correct state via applyRaceEngineerAudio().
+    // (#471). isBackgroundTestInFlight (set inside playBackgroundTest)
+    // bypasses the Background-mute branch of applyRaceEngineerAudio while
+    // the preview is playing, so dragging the slider mid-preview updates
+    // the bus volume live instead of cutting the test off.
     const backgroundTestTimestamp = Number(raw._testBackgroundVolume ?? 0);
     const lastBackgroundTestTimestamp = this.lastBackgroundTestTimestamps.get(contextId) ?? 0;
 
