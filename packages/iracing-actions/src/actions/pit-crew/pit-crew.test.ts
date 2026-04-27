@@ -13,6 +13,7 @@ import {
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
+  playVoiceSequence,
   Settings,
 } from "./pit-crew.js";
 
@@ -25,7 +26,9 @@ import {
 
 const hoisted = vi.hoisted(() => {
   const setBusVolume = vi.fn();
-  const getAudio = vi.fn(() => ({ setBusVolume }));
+  const playOnChannel = vi.fn<(...args: unknown[]) => boolean>().mockReturnValue(true);
+  const onChannelComplete = vi.fn();
+  const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, onChannelComplete }));
 
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
@@ -48,6 +51,8 @@ const hoisted = vi.hoisted(() => {
 
   return {
     setBusVolume,
+    playOnChannel,
+    onChannelComplete,
     getAudio,
     setRadarEnabled,
     playRadarTest,
@@ -85,6 +90,7 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
 
 vi.mock("@iracedeck/audio-service", () => ({
   AudioBus: { Voice: 0, Background: 1, Alerts: 2 },
+  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3 },
   getAudio: hoisted.getAudio,
 }));
 
@@ -175,6 +181,9 @@ type TestInputs = {
   /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
    *  accept both to exercise the coercion path. */
   _testRadarVolume?: number | string;
+  /** Same shape for the engineer-voice and Background Volume Test buttons. */
+  _testRaceEngineerVoice?: number | string;
+  _testBackgroundVolume?: number | string;
 };
 
 function buildAppearEvent(settings: TestInputs = {}, actionId = "ctx-1"): unknown {
@@ -360,6 +369,49 @@ describe("applyRaceEngineerAudio", () => {
     } finally {
       _setRaceEngineerTestInFlightForTests(false);
     }
+  });
+});
+
+describe("playVoiceSequence", () => {
+  it("fires onComplete after the chain ends naturally", () => {
+    const onComplete = vi.fn();
+    hoisted.playOnChannel.mockReturnValue(true);
+
+    expect(playVoiceSequence(["a.mp3", "b.mp3"], onComplete)).toBe(true);
+
+    // Simulate native engine firing channel-complete after each clip.
+    // Each step registers the NEXT step's callback before playing, so we
+    // pull the latest registration after each invocation.
+    const fireLastRegistered = (): void => {
+      const calls = hoisted.onChannelComplete.mock.calls;
+      const cb = calls[calls.length - 1][1] as () => void;
+      cb();
+    };
+
+    fireLastRegistered(); // first clip ends → playStep runs second clip
+    fireLastRegistered(); // second clip ends → playStep hits idx>=length, fires onComplete
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onComplete and stops chaining when playOnChannel returns false mid-sequence (#471)", () => {
+    // CodeRabbit-flagged scenario: a missing clip mid-chain would otherwise
+    // leave raceEngineerTestInFlight stuck true forever (the native callback
+    // never fires for a failed play, so the chain hangs).
+    const onComplete = vi.fn();
+    hoisted.playOnChannel
+      .mockReturnValueOnce(true) // first clip plays
+      .mockReturnValueOnce(false); // second clip fails
+
+    expect(playVoiceSequence(["a.mp3", "b.mp3"], onComplete)).toBe(true);
+
+    // Simulate native engine firing channel-complete for the first clip.
+    const completionCallbacks = hoisted.onChannelComplete.mock.calls.map(([, cb]) => cb as () => void);
+    completionCallbacks[0]();
+
+    // The second clip's playOnChannel returned false; onComplete must fire
+    // synchronously so any in-flight flag the caller is tracking gets cleared.
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
 

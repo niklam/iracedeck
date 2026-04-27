@@ -205,7 +205,8 @@ const RACE_ENGINEER_TEST_OPENERS = ["alright", "hi", "right", "so"] as const;
  * chain at that step rather than throwing; the user just hears the
  * earlier clips.
  */
-function playVoiceSequence(paths: readonly string[], onComplete?: () => void): boolean {
+/** @internal Exported for testing the chain-completion + failure paths. */
+export function playVoiceSequence(paths: readonly string[], onComplete?: () => void): boolean {
   if (paths.length === 0) return false;
 
   let idx = 0;
@@ -224,7 +225,17 @@ function playVoiceSequence(paths: readonly string[], onComplete?: () => void): b
     // the preview is over (used by the RE Volume Test in-flight tracking).
     getAudio().onChannelComplete(AudioChannel.Voice, playStep);
 
-    getAudio().playOnChannel(AudioChannel.Voice, path);
+    const ok = getAudio().playOnChannel(AudioChannel.Voice, path);
+
+    // If the clip failed to start (e.g. file missing — likely until the
+    // user has run `pnpm --filter @iracedeck/audio-assets generate`), the
+    // native layer never fires the channel-complete callback, so the chain
+    // would otherwise hang forever and `onComplete` would never run. Fire
+    // it synchronously so callers (and any in-flight flag they're tracking)
+    // can clean up.
+    if (!ok) {
+      onComplete?.();
+    }
   };
 
   playStep();
