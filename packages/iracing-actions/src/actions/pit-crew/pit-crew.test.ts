@@ -326,7 +326,11 @@ describe("applyRaceEngineerAudio", () => {
     expect(hoisted.setBusVolume).toHaveBeenCalledWith(1, 0);
   });
 
-  it("defaults backgroundVolume to 100% when the global is missing (#471)", () => {
+  it("falls back to 100% when backgroundVolume is missing from the live settings cache (#471)", () => {
+    // The Zod schema default is 35 (so a fresh install starts at 35), but
+    // readBackgroundVolume's defensive runtime fallback is VOLUME_MAX so an
+    // unparsed/empty cache during very early startup doesn't accidentally
+    // mute the bus. Same shape as readRaceEngineerVolume / readRadarVolume.
     hoisted.setGlobalSettings({ raceEngineerEnabled: true });
     applyRaceEngineerAudio();
 
