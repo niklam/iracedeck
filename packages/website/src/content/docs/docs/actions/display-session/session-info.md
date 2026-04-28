@@ -13,7 +13,7 @@ Display real-time session data on your Stream Deck button. Each mode shows diffe
 
 ### Font Size
 
-Override the size of the rendered session value. Leave blank to use the automatic size for the selected mode and value length.
+Override the size of the rendered session value. Accepts values from 5 to 36, interpreted as pixels. Leave blank to use the automatic size for the selected mode and value length.
 
 ## Modes
 
@@ -31,7 +31,7 @@ Show the live incident count. The icon flashes red when a new incident is receiv
 
 #### Settings
 
-- **Font Size** — Optional value-size override. Leave blank for automatic sizing.
+- **Font Size** — See **Shared Settings** above for Font Size details.
 
 ---
 
@@ -47,7 +47,7 @@ Display the session time remaining. The icon flashes when less than 5 minutes re
 
 #### Settings
 
-- **Font Size** — Optional value-size override. Leave blank for automatic sizing.
+- **Font Size** — See **Shared Settings** above for Font Size details.
 
 ---
 
@@ -63,7 +63,7 @@ Show the current lap number.
 
 #### Settings
 
-- **Font Size** — Optional value-size override. Leave blank for automatic sizing.
+- **Font Size** — See **Shared Settings** above for Font Size details.
 
 ---
 
@@ -84,7 +84,7 @@ Display the current race position. Optionally shows total cars (e.g., `3/24`) by
 
 #### Setting: Font Size
 
-Optional value-size override. Leave blank for automatic sizing.
+See **Shared Settings** above for Font Size details.
 
 ---
 
@@ -105,7 +105,7 @@ Show fuel amount or fuel percentage remaining.
 
 #### Setting: Font Size
 
-Optional value-size override. Leave blank for automatic sizing.
+See **Shared Settings** above for Font Size details.
 
 ---
 
@@ -121,4 +121,4 @@ Display currently active flags with the corresponding colors and a pulsing anima
 
 #### Settings
 
-- **Font Size** — Optional value-size override. Leave blank for automatic sizing.
+- **Font Size** — See **Shared Settings** above for Font Size details.
