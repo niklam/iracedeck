@@ -163,6 +163,67 @@ export const GlobalSettingsSchema = z
      * startup.
      */
     driverName: z.preprocess((val) => (val === undefined || val === null ? "" : val), z.string().default("")),
+    /**
+     * Per-callout opt-in toggles (issue #467). Each subject the Race
+     * Engineer announces has its own boolean — when false, that specific
+     * callout is suppressed at event-arrival time so currently playing
+     * announcements continue uninterrupted but no new callout of that
+     * subject fires until the user re-enables it. All default to true so
+     * existing users automatically receive any newly added callout
+     * subject in a future release (forward-compat by default — the load-
+     * bearing reason this is per-item booleans rather than an array).
+     *
+     * Naming convention: `callout<Polarity><Family><Subject>`. Polarity
+     * is always positive (`Enabled`); the family noun (`Flag`,
+     * `PitAction`, …) groups every member of the family for grep. The
+     * canonical id↔key mapping lives in `@iracedeck/audio-scenarios`
+     * (`FLAG_CALLOUT_SETTING_KEYS`). See `.claude/rules/global-settings.md`
+     * for the full convention.
+     */
+    calloutEnabledFlagYellowLocal: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagYellowFull: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagYellowCleared: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagGreen: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagBlue: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagWhite: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagRed: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagBlack: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagCheckered: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagDebris: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagMeatball: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
   })
   .passthrough();
 

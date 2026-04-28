@@ -2,11 +2,12 @@ import streamDeck from "@elgato/streamdeck";
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
-import { registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
+import { FLAG_CALLOUT_SETTING_KEYS, type FlagCalloutId, registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
   getController,
+  getGlobalSettings,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -155,7 +156,16 @@ const driverNames = scanDriverNames(audioAssetsManifest);
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"), () =>
   resolveActiveRaceEngineerVoice(raceEngineerVoices),
 );
-registerPitCrew(eventBus);
+// Pass a live-reading closure so per-flag opt-ins (issue #467) take
+// effect mid-session without re-registering scenarios. The gate runs
+// at event-arrival time inside the scenario engine, before fire/expand,
+// so toggling a flag off does NOT cut a callout that is already
+// playing — only future events of that color are suppressed.
+registerPitCrew(
+  eventBus,
+  (id: FlagCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
+  adapter.createLogger("PitCrewScenarios"),
+);
 
 // Publish audio device list and apply saved device selection.
 //
