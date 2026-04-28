@@ -44,6 +44,10 @@ const LITERS_PER_GALLON = 3.78541;
 
 const SessionInfoSettings = CommonSettings.extend({
   mode: z.enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags"]).default("incidents"),
+  fontSize: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? undefined : val),
+    z.coerce.number().min(5).max(36).optional(),
+  ),
   positionShowTotal: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
@@ -129,7 +133,8 @@ export function generateSessionInfoSvg(
     flags: "FLAGS",
   };
   const actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
-  const valueFontSizeNum = settings.mode === "incidents" ? 48 : value.length > 5 ? 28 : 36;
+  const autoValueFontSizeNum = settings.mode === "incidents" ? 48 : value.length > 5 ? 28 : 36;
+  const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : autoValueFontSizeNum;
   const valueFontSize = String(valueFontSizeNum);
   const valueY = String(88 + (valueFontSizeNum - 44) / 3);
 

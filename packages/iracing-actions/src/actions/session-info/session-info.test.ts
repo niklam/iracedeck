@@ -89,6 +89,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 function defaultSettings(
   overrides: Partial<{
     mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags";
+    fontSize: number;
     positionShowTotal: boolean;
     fuelFormat: "amount" | "percentage";
   }> = {},
@@ -420,6 +421,13 @@ describe("SessionInfo", () => {
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("48");
+    });
+
+    it("should use custom value font size when configured", () => {
+      const result = generateSessionInfoSvg(defaultSettings({ fontSize: 20 }), "0x", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("40");
     });
 
     it("should use font size 36 for short time values (144x144)", () => {

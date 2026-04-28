@@ -812,7 +812,8 @@
       "Tooltip": "Display live session data (incidents, time, laps, position, fuel, flags)",
       "PropertyInspectorPath": "ui/session-info.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Information"
       ],
       "States": [
         {
@@ -829,7 +830,8 @@
       "Tooltip": "Display live telemetry values using custom templates",
       "PropertyInspectorPath": "ui/telemetry-display.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Information"
       ],
       "States": [
         {
