@@ -55,24 +55,38 @@
 				'</sdpi-item>'
 		}) %>
 
+		<%
+			// Source-of-truth list for the Race Engineer flag callouts.
+			// Add a new entry here and the 2-column grid below auto-rebalances
+			// (rows = ceil(N / 2), grid-auto-flow: column → fills column 1 top
+			// to bottom, then column 2). Stays at exactly two columns no matter
+			// how the list grows.
+			var flagCallouts = [
+				{ setting: "calloutEnabledFlagYellowLocal",   label: "Yellow (local)" },
+				{ setting: "calloutEnabledFlagYellowFull",    label: "Yellow (full course)" },
+				{ setting: "calloutEnabledFlagYellowCleared", label: "Yellow cleared" },
+				{ setting: "calloutEnabledFlagGreen",         label: "Green" },
+				{ setting: "calloutEnabledFlagBlue",          label: "Blue" },
+				{ setting: "calloutEnabledFlagWhite",         label: "White" },
+				{ setting: "calloutEnabledFlagRed",           label: "Red" },
+				{ setting: "calloutEnabledFlagBlack",         label: "Black" },
+				{ setting: "calloutEnabledFlagCheckered",     label: "Checkered" },
+				{ setting: "calloutEnabledFlagDebris",        label: "Debris" },
+				{ setting: "calloutEnabledFlagMeatball",      label: "Meatball" },
+			];
+			var flagCalloutRowCount = Math.ceil(flagCallouts.length / 2);
+			var flagCalloutCheckboxes = flagCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
 			accordionId: 'raceEngineerCallouts',
 			open: false,
 			content:
 				'<sdpi-item label="Flags">' +
-					'<div style="display:grid;grid-template-rows:repeat(6,auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
-						'<sdpi-checkbox setting="calloutEnabledFlagYellowLocal" label="Yellow (local)" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagYellowFull" label="Yellow (full course)" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagYellowCleared" label="Yellow cleared" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagGreen" label="Green" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagBlue" label="Blue" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagWhite" label="White" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagRed" label="Red" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagBlack" label="Black" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagCheckered" label="Checkered" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagDebris" label="Debris" global default="true"></sdpi-checkbox>' +
-						'<sdpi-checkbox setting="calloutEnabledFlagMeatball" label="Meatball" global default="true"></sdpi-checkbox>' +
+					'<div style="display:grid;grid-template-rows:repeat(' + flagCalloutRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						flagCalloutCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
