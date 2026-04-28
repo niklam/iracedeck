@@ -76,6 +76,18 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch) continue to fire on the relevant Tire Service / Pit Service action presses.
 
+## Race Engineer Callouts (per-subject opt-in/out)
+
+Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
+
+Under **Flags**, all 11 flag callouts are toggleable, all enabled by default:
+
+- **Yellow (local)**, **Yellow (full course)**, **Yellow cleared**
+- **Green**, **Blue**, **White**, **Red**, **Black**
+- **Checkered**, **Debris**, **Meatball**
+
+Disabling a flag also disables its preemption — a disabled callout can't interrupt one already playing. When **Meatball** is disabled, no meatball callout fires; the flag itself is still active in iRacing and you'll still see the on-screen indicator.
+
 ## Notes
 
 - "AI Spotter Controls" is a separate action that wraps iRacing's own built-in AI Spotter voice. It uses iRacing SDK commands and a different audio source. Pit Crew's Radar is an iRaceDeck-owned non-vocal proximity tick and does not overlap with iRacing's spotter voice.

@@ -55,6 +55,28 @@
 				'</sdpi-item>'
 		}) %>
 
+		<%- include('accordion', {
+			title: 'Race Engineer Callouts',
+			accordionId: 'raceEngineerCallouts',
+			open: false,
+			content:
+				'<sdpi-item label="Flags">' +
+					'<div style="display:grid;grid-template-rows:repeat(6,auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						'<sdpi-checkbox setting="calloutEnabledFlagYellowLocal" label="Yellow (local)" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagYellowFull" label="Yellow (full course)" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagYellowCleared" label="Yellow cleared" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagGreen" label="Green" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagBlue" label="Blue" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagWhite" label="White" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagRed" label="Red" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagBlack" label="Black" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagCheckered" label="Checkered" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagDebris" label="Debris" global default="true"></sdpi-checkbox>' +
+						'<sdpi-checkbox setting="calloutEnabledFlagMeatball" label="Meatball" global default="true"></sdpi-checkbox>' +
+					'</div>' +
+				'</sdpi-item>'
+		}) %>
+
 		<div style="display:none;">
 			<sdpi-textfield id="test-radar-field" setting="_testRadarVolume"></sdpi-textfield>
 			<sdpi-textfield id="test-race-engineer-voice-field" setting="_testRaceEngineerVoice"></sdpi-textfield>

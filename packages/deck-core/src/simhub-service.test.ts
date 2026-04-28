@@ -49,6 +49,17 @@ describe("SimHub Service", () => {
       raceEngineerVolume: 100,
       backgroundVolume: 100,
       driverName: "",
+      calloutEnabledFlagYellowLocal: true,
+      calloutEnabledFlagYellowFull: true,
+      calloutEnabledFlagYellowCleared: true,
+      calloutEnabledFlagGreen: true,
+      calloutEnabledFlagBlue: true,
+      calloutEnabledFlagWhite: true,
+      calloutEnabledFlagRed: true,
+      calloutEnabledFlagBlack: true,
+      calloutEnabledFlagCheckered: true,
+      calloutEnabledFlagDebris: true,
+      calloutEnabledFlagMeatball: true,
     });
   });
 
@@ -147,6 +158,17 @@ describe("SimHub Service", () => {
         raceEngineerVolume: 100,
         backgroundVolume: 100,
         driverName: "",
+        calloutEnabledFlagYellowLocal: true,
+        calloutEnabledFlagYellowFull: true,
+        calloutEnabledFlagYellowCleared: true,
+        calloutEnabledFlagGreen: true,
+        calloutEnabledFlagBlue: true,
+        calloutEnabledFlagWhite: true,
+        calloutEnabledFlagRed: true,
+        calloutEnabledFlagBlack: true,
+        calloutEnabledFlagCheckered: true,
+        calloutEnabledFlagDebris: true,
+        calloutEnabledFlagMeatball: true,
       });
 
       initializeSimHub(mockLogger);

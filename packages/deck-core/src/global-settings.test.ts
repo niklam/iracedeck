@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
+  GlobalSettingsSchema,
   initGlobalSettings,
   onGlobalSettingsChange,
   resolveActiveDriverName,
@@ -169,6 +170,42 @@ describe("global-settings cache (synchronous update on local writes)", () => {
 
     // No throw; cache stays at the schema default (false per #378).
     expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+  });
+});
+
+describe("flag-callout opt-in defaults (issue #467)", () => {
+  const FLAG_KEYS = [
+    "calloutEnabledFlagYellowLocal",
+    "calloutEnabledFlagYellowFull",
+    "calloutEnabledFlagYellowCleared",
+    "calloutEnabledFlagGreen",
+    "calloutEnabledFlagBlue",
+    "calloutEnabledFlagWhite",
+    "calloutEnabledFlagRed",
+    "calloutEnabledFlagBlack",
+    "calloutEnabledFlagCheckered",
+    "calloutEnabledFlagDebris",
+    "calloutEnabledFlagMeatball",
+  ] as const;
+
+  it.each(FLAG_KEYS)("%s defaults to true", (key) => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed[key]).toBe(true);
+  });
+
+  it.each(FLAG_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+    expect(parsed[key]).toBe(false);
+  });
+
+  it.each(FLAG_KEYS)("%s accepts boolean false directly", (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: false }) as Record<string, unknown>;
+    expect(parsed[key]).toBe(false);
+  });
+
+  it.each(FLAG_KEYS)('%s coerces the literal string "true" to boolean true', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "true" }) as Record<string, unknown>;
+    expect(parsed[key]).toBe(true);
   });
 });
 

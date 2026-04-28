@@ -23,9 +23,19 @@
  * passed through to `registerRadarEngine` so the radar engine and the
  * scenario engine share the same bus. Must be called once per plugin
  * startup, AFTER `initializeAudioScenarios(bus, …)`.
+ *
+ * `getFlagCalloutEnabled` is consulted on every flag event arrival to
+ * decide whether to fire the callout (issue #467). It is read live, so
+ * a user toggling a flag off mid-session takes effect on the very next
+ * event of that color — without cancelling a callout already playing,
+ * because the gate runs before `attemptFire` (which owns expansion,
+ * preemption, and channel playback). Default `() => true` preserves
+ * legacy behavior for callers that don't pass the closure (e.g. tests).
  */
 import type { IEventBus } from "@iracedeck/event-bus";
+import type { ILogger } from "@iracedeck/logger";
 
+import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 import { FLAG_ALERTS, FLAG_POOL_NAMES } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
@@ -42,7 +52,62 @@ export {
   subscribeRadarVisualState,
 } from "./radar-engine.js";
 
-export function registerPitCrew(bus: IEventBus): void {
+/**
+ * Stable identifier for each user-toggleable flag callout (issue #467).
+ * One id per scenario in `FLAG_ALERTS`; the trailing segment of the
+ * scenario id minus the `pit-crew.flag-` prefix.
+ */
+export type FlagCalloutId =
+  | "yellow-local"
+  | "yellow-full"
+  | "yellow-cleared"
+  | "green"
+  | "blue"
+  | "white"
+  | "red"
+  | "black"
+  | "checkered"
+  | "debris"
+  | "meatball";
+
+/**
+ * Canonical mapping from `FlagCalloutId` to its plugin-global setting
+ * key in `GlobalSettingsSchema`. Plugin entry points use this to read
+ * the live opt-in for each flag without duplicating the key strings.
+ */
+export const FLAG_CALLOUT_SETTING_KEYS: Record<FlagCalloutId, string> = {
+  "yellow-local": "calloutEnabledFlagYellowLocal",
+  "yellow-full": "calloutEnabledFlagYellowFull",
+  "yellow-cleared": "calloutEnabledFlagYellowCleared",
+  green: "calloutEnabledFlagGreen",
+  blue: "calloutEnabledFlagBlue",
+  white: "calloutEnabledFlagWhite",
+  red: "calloutEnabledFlagRed",
+  black: "calloutEnabledFlagBlack",
+  checkered: "calloutEnabledFlagCheckered",
+  debris: "calloutEnabledFlagDebris",
+  meatball: "calloutEnabledFlagMeatball",
+};
+
+const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
+  "pit-crew.flag-yellow-local": "yellow-local",
+  "pit-crew.flag-yellow-full": "yellow-full",
+  "pit-crew.flag-yellow-cleared": "yellow-cleared",
+  "pit-crew.flag-green": "green",
+  "pit-crew.flag-blue": "blue",
+  "pit-crew.flag-white": "white",
+  "pit-crew.flag-red": "red",
+  "pit-crew.flag-black": "black",
+  "pit-crew.flag-checkered": "checkered",
+  "pit-crew.flag-debris": "debris",
+  "pit-crew.flag-meatball": "meatball",
+};
+
+export function registerPitCrew(
+  bus: IEventBus,
+  getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
+  logger?: ILogger,
+): void {
   registerRadarEngine(bus);
 
   const engine = getScenarioEngine();
@@ -60,5 +125,50 @@ export function registerPitCrew(bus: IEventBus): void {
 
   for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
 
-  for (const s of FLAG_ALERTS) engine.defineScenario(s);
+  for (const s of FLAG_ALERTS) {
+    engine.defineScenario(wrapFlagScenario(s, getFlagCalloutEnabled, logger));
+  }
+}
+
+/**
+ * Wrap a flag scenario's `where:` predicate so the user's plugin-global
+ * opt-in is consulted on every event arrival. The wrapper short-circuits
+ * BEFORE `attemptFire`, so disabling a flag while its callout is already
+ * playing does NOT cut playback — only future events are suppressed.
+ *
+ * Throws if the scenario id is missing from `SCENARIO_ID_TO_FLAG_ID`,
+ * which would mean a new flag scenario was added without registering its
+ * id mapping (better to fail loudly at startup than silently leak the
+ * unmapped flag past the toggle).
+ */
+function wrapFlagScenario(
+  s: Scenario,
+  getFlagCalloutEnabled: (id: FlagCalloutId) => boolean,
+  logger: ILogger | undefined,
+): Scenario {
+  const flagId = SCENARIO_ID_TO_FLAG_ID[s.id];
+
+  if (!flagId) {
+    throw new Error(`registerPitCrew: no FlagCalloutId mapping for scenario "${s.id}"`);
+  }
+
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getFlagCalloutEnabled(flagId)) {
+          logger?.debug(`flag callout suppressed: ${flagId}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
 }
