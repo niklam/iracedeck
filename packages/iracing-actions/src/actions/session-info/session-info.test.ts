@@ -80,7 +80,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     textColor: "#ffffff",
   })),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.backgroundColor || ""}|${data.titleContent || ""}|${data.value || ""}|${data.valueFontSize || ""}|${data.valueY || ""}|${data.textColor || ""}</svg>`;
+    return `<svg>${data.backgroundColor || ""}|${data.titleContent || ""}|<text font-size="${data.valueFontSize || ""}" y="${data.valueY || ""}" fill="${data.textColor || ""}">${data.value || ""}</text></svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -427,7 +427,7 @@ describe("SessionInfo", () => {
       const result = generateSessionInfoSvg(defaultSettings({ fontSize: 20 }), "0x", false);
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("40");
+      expect(decoded).toContain('font-size="40"');
     });
 
     it("should use font size 36 for short time values (144x144)", () => {
