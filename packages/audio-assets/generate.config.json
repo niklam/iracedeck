@@ -126,7 +126,8 @@
       },
       {
         "name": "debris-03",
-        "text": "The track might be slippery here! Focus!"
+        "text": "The track might be slippery here! Focus!",
+        "seed": 4
       },
       {
         "name": "green-01",
