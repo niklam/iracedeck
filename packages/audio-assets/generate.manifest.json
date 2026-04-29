@@ -6,8 +6,8 @@
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
       "textPreview": "Niklas",
-      "generatedAt": "2026-04-28T19:29:02.499Z",
-      "requestId": "s17EuoI758BAzZYu2a39"
+      "generatedAt": "2026-04-29T15:31:35.233Z",
+      "requestId": "g3qD0KKOQttoHgWwVDGM"
     },
     "voice/luca/flags/black-01.mp3": {
       "hash": "7485e9e13ff359a9",
@@ -2750,16 +2750,16 @@
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
       "textPreview": "Remember the pit limiter! ahem...",
-      "generatedAt": "2026-04-29T14:34:41.917Z",
-      "requestId": "rerVxizPCcVHfZSj1ZCi"
+      "generatedAt": "2026-04-29T17:36:56.884Z",
+      "requestId": "n6aoJoTfgRgUJ8ANWmK3"
     },
     "voice/luca/pit-readback/opener-exit.mp3": {
-      "hash": "872abacfe283d60e",
+      "hash": "5e57ee7b3eeca50f",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
-      "textPreview": "To confirm:",
-      "generatedAt": "2026-04-29T11:28:20.709Z",
-      "requestId": "Fq52ZmgPhO3IVYVYdDLa"
+      "textPreview": "At the next pitstop",
+      "generatedAt": "2026-04-29T15:51:27.161Z",
+      "requestId": "Uhcgm3RTSjzIsyz6w3B3"
     },
     "voice/luca/pit-readback/empty-fallback.mp3": {
       "hash": "b857534b1482e760",
@@ -2930,28 +2930,28 @@
       "requestId": "uBCXhNrjiiZ45iCKPO6F"
     },
     "voice/luca/pit-readback/fast-repair-on.mp3": {
-      "hash": "cc280ac42ab04806",
+      "hash": "bd72653cfe671a0d",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
-      "textPreview": "ahem..Additionally, we're doing fast repair,",
-      "generatedAt": "2026-04-29T15:06:58.295Z",
-      "requestId": "xQiMLCVCenKc6cEeRICb"
+      "textPreview": "ahem..Additionally, we're doing fast repairs to any damage you might have,",
+      "generatedAt": "2026-04-29T17:51:24.211Z",
+      "requestId": "JaGUSCbUPH3Mw9C1Gbok"
     },
     "voice/luca/pit-readback/fast-repair-off.mp3": {
       "hash": "8708ab1b42814042",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
       "textPreview": "ahem..We're not doing fast repair",
-      "generatedAt": "2026-04-29T14:45:31.826Z",
-      "requestId": "npzgtGcAs0nBwA1ruMNA"
+      "generatedAt": "2026-04-29T15:37:29.153Z",
+      "requestId": "7iuPVnoQz5F28966X99L"
     },
     "voice/luca/pit-readback/windshield-on.mp3": {
-      "hash": "2a99200b5ae9a574",
+      "hash": "5706ea76246bb38a",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
       "textPreview": "and we're cleaning the windshield.",
-      "generatedAt": "2026-04-29T14:45:58.265Z",
-      "requestId": "tQrcIrOvJDr7PtDtDVBb"
+      "generatedAt": "2026-04-29T15:51:49.725Z",
+      "requestId": "GfZ23i21uT1ztl1JFjPE"
     },
     "voice/luca/pit-readback/windshield-off.mp3": {
       "hash": "f7a378cdc37f774d",
@@ -2962,12 +2962,12 @@
       "requestId": "1et9ZTLFwEgrycHvLqxL"
     },
     "voice/luca/pit-readback/closer-exit.mp3": {
-      "hash": "c94bb36af6f5752e",
+      "hash": "b15737e380e4ca18",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
-      "textPreview": "Good stop. Back to work.",
-      "generatedAt": "2026-04-29T11:28:35.918Z",
-      "requestId": "wfsUVw2tELxmM8E6AuJ4"
+      "textPreview": "This was a good stop!",
+      "generatedAt": "2026-04-29T15:34:43.184Z",
+      "requestId": "LuEG5k95Kvy1eGVBcEbl"
     },
     "voice/luca/pit-readback/connector-and.mp3": {
       "hash": "56ccc9ac29d2eb02",

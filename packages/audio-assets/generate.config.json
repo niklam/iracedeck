@@ -305,7 +305,8 @@
       },
       {
         "name": "opener-exit",
-        "text": "To confirm:"
+        "text": "At the next pitstop",
+        "seed": 9
       },
       {
         "name": "empty-fallback",
@@ -395,7 +396,7 @@
       },
       {
         "name": "fast-repair-on",
-        "text": "ahem..Additionally, we're doing fast repair,"
+        "text": "ahem..Additionally, we're doing fast repairs to any damage you might have,"
       },
       {
         "name": "fast-repair-off",
@@ -405,16 +406,12 @@
       {
         "name": "windshield-on",
         "text": "and we're cleaning the windshield.",
-        "seed": 3
+        "seed": 4
       },
       {
         "name": "windshield-off",
         "text": "and we're leaving windshield as-is.",
         "seed": 4
-      },
-      {
-        "name": "closer-exit",
-        "text": "Good stop. Back to work."
       }
     ],
     "names": [
