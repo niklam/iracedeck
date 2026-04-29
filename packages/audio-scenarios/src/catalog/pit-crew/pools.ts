@@ -42,6 +42,17 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "pit-action-fuel-off": ["voice/{voice}/pit-actions/fuel-off-01.mp3"],
   "pit-action-tires-off": ["voice/{voice}/pit-actions/tires-off-01.mp3"],
 
+  // Pit-readback connectors (issue #476). The readback scenarios join
+  // their slot picks via `"pool:connector"` so the recap reads like a
+  // sentence ("…taking fuel, and four tires, plus fast repair…"). Pool
+  // rotation gives variety across the multiple connector hits in a
+  // single readback.
+  connector: [
+    "voice/{voice}/pit-readback/connector-and.mp3",
+    "voice/{voice}/pit-readback/connector-also.mp3",
+    "voice/{voice}/pit-readback/connector-plus.mp3",
+  ],
+
   // Flag callout pools. Every flag scenario draws from a pool — even the
   // single-clip flags — so adding a variant later becomes a one-line
   // append here instead of restructuring the scenario. Multi-element

@@ -293,6 +293,136 @@
         "text": "Switching to wets at the next pitstop."
       }
     ],
+    "pit-readback": [
+      {
+        "name": "opener-entry",
+        "text": "We're"
+      },
+      {
+        "name": "opener-entry-limiter",
+        "text": "Don't forget your limiter. We're"
+      },
+      {
+        "name": "opener-exit",
+        "text": "To confirm:"
+      },
+      {
+        "name": "empty-fallback",
+        "text": "Not changing tires, not refueling."
+      },
+      {
+        "name": "fuel-on",
+        "text": "taking fuel"
+      },
+      {
+        "name": "fuel-off",
+        "text": "no fuel"
+      },
+      {
+        "name": "tires-all",
+        "text": "four tires"
+      },
+      {
+        "name": "tires-fronts",
+        "text": "front tires"
+      },
+      {
+        "name": "tires-rears",
+        "text": "rear tires"
+      },
+      {
+        "name": "tires-lefts",
+        "text": "left side tires"
+      },
+      {
+        "name": "tires-rights",
+        "text": "right side tires"
+      },
+      {
+        "name": "tires-lf",
+        "text": "left front only"
+      },
+      {
+        "name": "tires-rf",
+        "text": "right front only"
+      },
+      {
+        "name": "tires-lr",
+        "text": "left rear only"
+      },
+      {
+        "name": "tires-rr",
+        "text": "right rear only"
+      },
+      {
+        "name": "tires-lf-rr",
+        "text": "left front and right rear"
+      },
+      {
+        "name": "tires-rf-lr",
+        "text": "right front and left rear"
+      },
+      {
+        "name": "tires-skip-lf",
+        "text": "three tires, skipping left front"
+      },
+      {
+        "name": "tires-skip-rf",
+        "text": "three tires, skipping right front"
+      },
+      {
+        "name": "tires-skip-lr",
+        "text": "three tires, skipping left rear"
+      },
+      {
+        "name": "tires-skip-rr",
+        "text": "three tires, skipping right rear"
+      },
+      {
+        "name": "tires-off",
+        "text": "no tires"
+      },
+      {
+        "name": "compound-dry",
+        "text": "changing to dry slicks"
+      },
+      {
+        "name": "compound-wet",
+        "text": "changing to wets"
+      },
+      {
+        "name": "fast-repair-on",
+        "text": "fast repair"
+      },
+      {
+        "name": "fast-repair-off",
+        "text": "no fast repair"
+      },
+      {
+        "name": "windshield-on",
+        "text": "cleaning the windshield"
+      },
+      {
+        "name": "windshield-off",
+        "text": "no windshield"
+      },
+      {
+        "name": "closer-exit",
+        "text": "Good stop. Back to work."
+      },
+      {
+        "name": "connector-and",
+        "text": "and"
+      },
+      {
+        "name": "connector-also",
+        "text": "also"
+      },
+      {
+        "name": "connector-plus",
+        "text": "plus"
+      }
+    ],
     "names": [
       {
         "name": "adam",

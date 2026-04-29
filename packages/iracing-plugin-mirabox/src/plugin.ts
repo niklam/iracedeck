@@ -9,7 +9,13 @@
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
-import { FLAG_CALLOUT_SETTING_KEYS, type FlagCalloutId, registerPitCrew } from "@iracedeck/audio-scenarios/pit-crew";
+import {
+  FLAG_CALLOUT_SETTING_KEYS,
+  type FlagCalloutId,
+  PIT_READBACK_CALLOUT_SETTING_KEYS,
+  type PitReadbackCalloutId,
+  registerPitCrew,
+} from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
@@ -168,6 +174,11 @@ registerPitCrew(
   eventBus,
   (id: FlagCalloutId) => (getGlobalSettings() as Record<string, unknown>)[FLAG_CALLOUT_SETTING_KEYS[id]] !== false,
   adapter.createLogger("PitCrewScenarios"),
+  // Pit-service readback opt-in (issue #476) — same live-read pattern as
+  // flag callouts: gate at event arrival so disabling mid-readback only
+  // suppresses future fires.
+  (id: PitReadbackCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_READBACK_CALLOUT_SETTING_KEYS[id]] !== false,
 );
 
 // Publish audio device list and apply saved device selection.

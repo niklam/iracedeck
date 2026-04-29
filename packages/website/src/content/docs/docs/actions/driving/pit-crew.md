@@ -76,6 +76,17 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch) continue to fire on the relevant Tire Service / Pit Service action presses.
 
+## Pit Service Readback
+
+Per-toggle confirmations alone fall short when several services are queued back-to-back — only the most recent one is heard in full and you lose the holistic picture of what's queued. The pit-service readback fixes that with a coherent recap at two key moments:
+
+- **Pit entry** — as you roll onto pit road the engineer reads the queued plan: *"Don't forget your limiter. We're taking fuel, four tires, and cleaning the windshield."* The limiter pre-opener only plays when the limiter isn't already engaged.
+- **Pit exit** — a few seconds after you leave pit road the engineer plays a short *"To confirm: …"* recap of what was serviced. The settle delay keeps the line from colliding with the limiter / pit-exit chatter.
+
+The readback is composed from per-slot clips (opener, fuel, tires-or-compound, fast repair, windshield, closer) joined by a small set of connector words ("and", "also", "plus") so the catalog stays bounded. While you're still on pit road, toggling a service refires the readback so the recap reflects the latest plan — the running readback is preempted and replaced wholesale, distinct from the per-toggle confirmations which merge live.
+
+When nothing is queued, the engineer plays a dedicated *"Not changing tires, not refueling."* line instead of stitching a series of negatives.
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
@@ -87,6 +98,13 @@ Under **Flags**, all 11 flag callouts are toggleable, all enabled by default:
 - **Checkered**, **Debris**, **Meatball**
 
 Disabling a flag also disables its preemption — a disabled callout can't interrupt one already playing. When **Meatball** is disabled, no meatball callout fires; the flag itself is still active in iRacing and you'll still see the on-screen indicator.
+
+Under **Pit Service Readback**, both readback callouts are toggleable independently:
+
+- **Pit entry** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
+- **Pit exit** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
+
+Disabling either does not affect the other — and per-toggle confirmations (fuel on/off, tire-set selections, compound switches) continue regardless.
 
 ## Notes
 

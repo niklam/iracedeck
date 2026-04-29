@@ -28,6 +28,7 @@ import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
+import { diffPitReadback } from "./diff/pit-readback.js";
 import { diffRadar } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -175,6 +176,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
   diffToggles(self.state, telemetry, now, emit);
+  // diffPitReadback runs after diffToggles so it sees the per-tick toggle
+  // emissions (`pitService.toggled` / `tireService.changed` /
+  // `tireService.compoundChanged`) in `pending` — those signal user intent
+  // and trigger an `entry-refire` readback.
+  diffPitReadback(self.state, telemetry, now, emit, pending);
   diffIncidents(self.state, telemetry, now, emit);
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);

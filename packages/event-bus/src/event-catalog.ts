@@ -61,6 +61,33 @@ export type SimEventMap = {
   "pitLane.exited": SimEvent<"pitLane.exited", EmptySimEventPayload>;
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
+  /**
+   * Pit-service readback request (issue #476). Fired by the sim translator
+   * at three moments during a pit stop:
+   *   - "entry"        — first onPitRoad off→on transition
+   *   - "entry-refire" — any pit-service / tire-service / compound toggle
+   *                      while still on pit road, so the running readback
+   *                      is preempted and replaced with the new snapshot
+   *   - "exit"         — pitLane.exited + a settle delay (default 4500 ms)
+   * The full snapshot is captured at the trigger moment so the readback
+   * scenario stays pure (no live telemetry reads from inside the DSL).
+   *
+   * `compoundChange` is non-null only when the queued compound differs
+   * from the player's currently-fitted compound — matches the existing
+   * `isCompoundChange` semantics in `service-reminder.ts`.
+   */
+  "pitService.readbackRequested": SimEvent<
+    "pitService.readbackRequested",
+    {
+      reason: "entry" | "entry-refire" | "exit";
+      fuel: { queued: boolean };
+      tires: { lf: boolean; rf: boolean; lr: boolean; rr: boolean };
+      compoundChange: { from: number; to: number } | null;
+      fastRepair: { queued: boolean; available: boolean };
+      windshield: { queued: boolean; available: boolean };
+      limiterEngaged: boolean;
+    }
+  >;
 
   "flag.yellow.raised": SimEvent<"flag.yellow.raised", { scope: FlagScope }>;
   "flag.yellow.cleared": SimEvent<"flag.yellow.cleared", EmptySimEventPayload>;

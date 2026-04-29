@@ -224,6 +224,23 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * Pit-service readback opt-ins (issue #476). Two subjects: the
+     * "We're …" callout on pit entry and the "To confirm: …" callout
+     * after pit exit. Same forward-compat semantics as flag callouts —
+     * default `true` so existing users receive the readback without
+     * editing settings, opt-out toggles them off at event-arrival
+     * time without cutting in-flight playback. Canonical id↔key
+     * mapping in `PIT_READBACK_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledPitReadbackEntry: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitReadbackExit: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
   })
   .passthrough();
 
