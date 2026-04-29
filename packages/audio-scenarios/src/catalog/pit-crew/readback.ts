@@ -33,7 +33,11 @@
  *                          when the series doesn't offer fast repair.
  *   5. Windshield       — "cleaning the windshield" / "no windshield",
  *                          or omitted when not applicable.
- *   6. Closer (exit)    — short tail clip, exit only.
+ *   6. Closer (exit)    — short tail clip + driver name, exit only.
+ *                          The driver name is resolved live via the
+ *                          `driverName` var registered in
+ *                          `registerPitCrew`; a missing/unset name
+ *                          drops the step silently.
  *
  * Empty-snapshot fallback: when fuel + tires + extras all resolve to
  * "omit"/"no", the dedicated empty-fallback clip plays alone instead
@@ -229,8 +233,13 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
           ...tireCompoundSlotSteps(),
           ...fastRepairSlotSteps(),
           ...windshieldSlotSteps(),
-          // Slot 6 — closer (exit only).
-          ...(isEntry ? [] : [{ clip: clipPath("closer-exit.mp3") } as Step]),
+          // Slot 6 — closer (exit only). The closer is followed by the
+          // driver name (resolved live from global settings via the
+          // `driverName` var registered in `registerPitCrew`) so the
+          // engineer signs off addressing the driver: "Good stop. Back
+          // to work. Niklas." When no driver name is configured the var
+          // resolver returns null and the step contributes nothing.
+          ...(isEntry ? [] : ([{ clip: clipPath("closer-exit.mp3") }, { var: "driverName" }] as Step[])),
         ],
       },
       "@pit-crew.radio-close",

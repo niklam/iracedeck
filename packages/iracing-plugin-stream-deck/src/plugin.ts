@@ -23,6 +23,7 @@ import {
   initPluginConfig,
   onGlobalSettingsChange,
   type PluginConfig,
+  resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
@@ -176,6 +177,9 @@ registerPitCrew(
   // suppresses future fires.
   (id: PitReadbackCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_READBACK_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Active driver name for the readback exit closer. Resolved live so
+  // a PI name change takes effect on the next readback.
+  () => resolveActiveDriverName(driverNames),
 );
 
 // Publish audio device list and apply saved device selection.

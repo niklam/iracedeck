@@ -212,6 +212,7 @@ const OTHER_CLIP_NAMES = [
   "voice/luca/flags/checkered-practise-01.mp3",
   "voice/luca/flags/checkered-qualifying-01.mp3",
   "voice/luca/flags/checkered-race-01.mp3",
+  "voice/luca/names/niklas.mp3",
 ];
 
 const manifest: AudioAssetsManifest = {
@@ -256,9 +257,12 @@ function fireReadback(snapshot: Snapshot): void {
   flush(audio);
 }
 
+let activeDriverName: string | null = null;
+
 beforeEach(() => {
   flagsEnabled = new Map();
   readbackEnabled = new Map();
+  activeDriverName = null;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -268,6 +272,7 @@ beforeEach(() => {
     (id) => flagsEnabled.get(id) ?? true,
     mockLogger as never,
     (id) => readbackEnabled.get(id) ?? true,
+    () => activeDriverName,
   );
 });
 
@@ -353,6 +358,37 @@ describe("pit readback scenarios", () => {
       fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
       const entryPaths = voicePaths().slice();
       expect(entryPaths.some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(false);
+    });
+
+    it("plays the driver name immediately after closer-exit", () => {
+      activeDriverName = "niklas";
+      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
+
+      const paths = voicePaths();
+      const closerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/closer-exit.mp3"));
+      const nameIdx = paths.findIndex(
+        (p) => p.endsWith("/voice/luca/names/niklas.mp3") || p.endsWith("voice/luca/names/niklas.mp3"),
+      );
+
+      expect(closerIdx).toBeGreaterThanOrEqual(0);
+      expect(nameIdx).toBeGreaterThanOrEqual(0);
+      expect(nameIdx).toBe(closerIdx + 1);
+    });
+
+    it("omits the driver-name step silently when no name is configured", () => {
+      activeDriverName = null;
+      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/closer-exit.mp3"))).toBe(true);
+      expect(paths.some((p) => p.includes("/names/"))).toBe(false);
+    });
+
+    it("does not play the driver name on entry readback", () => {
+      activeDriverName = "niklas";
+      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
+
+      expect(voicePaths().some((p) => p.includes("/names/"))).toBe(false);
     });
   });
 
