@@ -1,5 +1,5 @@
 {
-  "model_id": "eleven_multilingual_v2",
+  "model_id": "eleven_v3",
   "voice_settings": {
     "stability": 1,
     "similarity_boost": 1,
@@ -13,17 +13,10 @@
       "label": "Luca",
       "voice_settings": {
         "speed": 0.85,
-        "stability": 1,
-        "similarity_boost": 1
-      }
-    },
-    "titan": {
-      "id": "dtSEyYGNJqjrtBArPCVZ",
-      "label": "Titan",
-      "voice_settings": {
-        "speed": 0.85,
-        "stability": 1,
-        "similarity_boost": 1
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+        "use_speaker_boost": true,
+        "style": 0
       }
     }
   },
@@ -31,87 +24,71 @@
     "acknowledgment": [
       {
         "name": "okay",
-        "text": "Okay.",
-        "next_text": " Fuel on at the next stop."
+        "text": "Okay."
       },
       {
         "name": "got-it",
-        "text": "Got it.",
-        "next_text": " Fuel on at the next stop."
+        "text": "Got it."
       },
       {
         "name": "roger-that",
-        "text": "Roger that.",
-        "next_text": " Fuel on at the next stop."
+        "text": "Roger that."
       },
       {
         "name": "copy-that",
-        "text": "Copy that.",
-        "next_text": " Fuel on at the next stop."
+        "text": "Copy that."
       },
       {
         "name": "we-got-that",
-        "text": "We got that.",
-        "next_text": " Fuel on at the next stop."
+        "text": "We got that."
       }
     ],
     "units": [
       {
         "name": "km",
-        "text": "kilometers per hour",
-        "previous_text": "The car was going fifty-six"
+        "text": "kilometers per hour"
       },
       {
         "name": "mph",
-        "text": "miles per hour",
-        "previous_text": "The car was going fifty-six"
+        "text": "miles per hour"
       },
       {
         "name": "kg",
-        "text": "kilograms",
-        "previous_text": "The fuel weights twenty-five"
+        "text": "kilograms"
       },
       {
         "name": "litres",
-        "text": "litres",
-        "previous_text": "We're fueling thirty-six"
+        "text": "litres"
       },
       {
         "name": "seconds",
-        "text": "seconds",
-        "previous_text": "Pit stop took four"
+        "text": "seconds"
       },
       {
         "name": "minutes",
-        "text": "minutes",
-        "previous_text": "Pit stop took four"
+        "text": "minutes"
       },
       {
         "name": "hours",
-        "text": "hours",
-        "previous_text": "Pit stop took four"
+        "text": "hours"
       }
     ],
     "openers": [
       {
         "name": "alright",
-        "text": "Alright",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Alright"
       },
       {
         "name": "hi",
-        "text": "Hi",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Hi"
       },
       {
         "name": "right",
-        "text": "Right",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "Right"
       },
       {
         "name": "so",
-        "text": "So",
-        "next_text": " <break time=\"0.1s\" /> Niklas"
+        "text": "So"
       }
     ],
     "flags": [
@@ -121,11 +98,11 @@
       },
       {
         "name": "blue-01",
-        "text": "Blue flag! <break time=\"0.3s\" /> Faster car approaching."
+        "text": "Blue flag! <break time=\"0.3s\" /> Faster car approaching!"
       },
       {
         "name": "blue-02",
-        "text": "Blue flag! <break time=\"0.3s\" /> Check your mirrors."
+        "text": "Blue flag! <break time=\"0.3s\" /> Check your mirrors!"
       },
       {
         "name": "checkered-practise-01",
@@ -137,15 +114,23 @@
       },
       {
         "name": "checkered-race-01",
-        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the race. <break time=\"0.3s\" /> Well done."
+        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the race. <break time=\"0.3s\" /> Well done!"
       },
       {
         "name": "debris-01",
         "text": "There's debris on track. <break time=\"0.3s\" /> Be careful!"
       },
       {
+        "name": "debris-02",
+        "text": "There's dirt on the track! Watch out!"
+      },
+      {
+        "name": "debris-03",
+        "text": "The track might be slippery here! Focus!"
+      },
+      {
         "name": "green-01",
-        "text": "Green flag! Green flag! Push now!"
+        "text": "Green flag, Green flag! Push now!"
       },
       {
         "name": "green-02",
@@ -153,31 +138,31 @@
       },
       {
         "name": "meatball-01",
-        "text": "We got the meatball flag. We'll need to pit for repairs."
+        "text": "We got the meatball flag... We'll need to pit for repairs."
       },
       {
         "name": "red-01",
-        "text": "Red flag. Session stopped. Slow down, drive safely back to the pit."
+        "text": "Red flag! Red flag! Session stopped. Slow down, drive safely back to the pit."
       },
       {
         "name": "white-01",
-        "text": "White flag. Last lap. Bring it home."
+        "text": "White flag! Last lap! Bring it home!"
       },
       {
         "name": "white-02",
-        "text": "Last lap. Clean and tidy."
+        "text": "White flag! It's the last lap! Clean and tidy now!"
       },
       {
         "name": "yellow-local-01",
-        "text": "Yellow flag! <break time=\"0.3s\" /> Mind the slow cars!"
+        "text": "Yellow flag! Mind the slow cars!"
       },
       {
         "name": "yellow-full-01",
-        "text": "Full course yellow! <break time=\"0.3s\" /> Pace car deployed."
+        "text": "Full course yellow! Pace car will be deployed."
       },
       {
         "name": "yellow-cleared-01",
-        "text": "Yellow's cleared. <break time=\"0.3s\" /> Back to green soon."
+        "text": "Yellow's cleared, back to green soon. Be ready!"
       }
     ],
     "pit-limiter": [
@@ -212,1250 +197,314 @@
     ],
     "pit-actions": [
       {
-        "name": "fuel-on",
+        "name": "got-it",
+        "text": "Got it."
+      },
+      {
+        "name": "roger-that",
+        "text": "Roger that.",
+        "seed": 2
+      },
+      {
+        "name": "copy-that",
+        "text": "Copy that.",
+        "seed": 4
+      },
+      {
+        "name": "fuel-on-01",
         "text": "We're refueling at the next pitstop."
       },
       {
-        "name": "fuel-off",
-        "text": "Skipping fueling at the next pitstop."
+        "name": "fuel-off-01",
+        "text": "We're skipping fuel at the next pitstop."
       },
       {
-        "name": "tires-off",
-        "text": "Skipping tires at the next pitstop."
+        "name": "tires-off-01",
+        "text": "We're skipping tires at the next pitstop."
       },
       {
         "name": "tires-on-fronts",
-        "text": "We'll change the front tires at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the front tires at the next pitstop."
       },
       {
         "name": "tires-on-rears",
-        "text": "We'll change the rear tires at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the rear tires at the next pitstop."
       },
       {
         "name": "tires-on-lefts",
-        "text": "We'll change both left side tires at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change both left side tires at the next pitstop."
       },
       {
         "name": "tires-on-rights",
-        "text": "We'll change both right side tires at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change both right side tires at the next pitstop."
       },
       {
         "name": "tires-on-all",
-        "text": "We'll change all tires at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change all tires at the next pitstop."
       },
       {
         "name": "tires-on-lf",
-        "text": "We'll change the left-front at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the left-front at the next pitstop."
       },
       {
         "name": "tires-on-rf",
-        "text": "We'll change the right-front at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the right-front at the next pitstop."
       },
       {
         "name": "tires-on-lr",
-        "text": "We'll change the left-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the left-rear at the next pitstop."
       },
       {
         "name": "tires-on-rr",
-        "text": "We'll change the right-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the right-rear at the next pitstop."
       },
       {
         "name": "tires-on-lf-rr",
-        "text": "We'll change the left-front and right-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the left-front and right-rear at the next pitstop."
       },
       {
         "name": "tires-on-rf-lr",
-        "text": "We'll change the right-front and left-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change the right-front and left-rear at the next pitstop."
       },
       {
         "name": "tires-on-skip-lf",
-        "text": "We'll change everything but the left-front at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change everything but the left-front at the next pitstop."
       },
       {
         "name": "tires-on-skip-rf",
-        "text": "We'll change everything but the right-front at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change everything but the right-front at the next pitstop."
       },
       {
         "name": "tires-on-skip-lr",
-        "text": "We'll change everything but the left-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change everything but the left-rear at the next pitstop."
       },
       {
         "name": "tires-on-skip-rr",
-        "text": "We'll change everything but the right-rear at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "We'll change everything but the right-rear at the next pitstop."
       },
       {
         "name": "tires-compound-dry",
-        "text": "Switching to dry compound at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "text": "Switching to dry compound at the next pitstop."
       },
       {
         "name": "tires-compound-wet",
-        "text": "Switching to wets at the next pitstop.",
-        "previous_request_ids": [
-          "acknowledgment/okay",
-          "acknowledgment/roger-that",
-          "acknowledgment/got-it"
-        ]
+        "seed": 2,
+        "text": "Switching to wets at the next pitstop."
       }
     ],
     "names": [
       {
         "name": "adam",
-        "text": "Adam",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Adam"
       },
       {
         "name": "al",
-        "text": "Al",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Al"
       },
       {
         "name": "andre",
-        "text": "André",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "André"
       },
       {
         "name": "andrew",
-        "text": "Andrew",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Andrew"
       },
       {
         "name": "andy",
-        "text": "Andy",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Andy"
       },
       {
         "name": "bob",
-        "text": "Bob",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Bob"
       },
       {
         "name": "boss",
-        "text": "Boss",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Boss"
       },
       {
         "name": "brenton",
-        "text": "Brenton",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Brenton"
       },
       {
         "name": "casey",
-        "text": "Casey",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Casey"
       },
       {
         "name": "champ",
-        "text": "Champ",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Champ"
       },
       {
         "name": "chris",
-        "text": "Chris",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Chris"
       },
       {
         "name": "cole",
-        "text": "Cole",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Cole"
       },
       {
         "name": "daniel",
-        "text": "Daniel",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Daniel"
       },
       {
         "name": "dave",
-        "text": "Dave",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Dave"
       },
       {
         "name": "david",
-        "text": "David",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "David"
       },
       {
         "name": "driver",
-        "text": "Driver",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Driver"
       },
       {
         "name": "felix",
-        "text": "Felix",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Felix"
       },
       {
         "name": "fredrich",
-        "text": "Fredrich",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Fredrich"
       },
       {
         "name": "glen",
-        "text": "Glen",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Glen"
       },
       {
         "name": "hector",
-        "text": "Hector",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Hector"
       },
       {
         "name": "hesham",
-        "text": "Hesham",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Hesham"
       },
       {
         "name": "ivan",
-        "text": "Ivan",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Ivan"
       },
       {
         "name": "jace",
-        "text": "Jace",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Jace"
       },
       {
         "name": "johan",
-        "text": "Johan",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Johan"
       },
       {
         "name": "jorge",
-        "text": "Jorge",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Jorge"
       },
       {
         "name": "jose",
-        "text": "Jose",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Jose"
       },
       {
         "name": "justin",
-        "text": "Justin",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Justin"
       },
       {
         "name": "kev",
-        "text": "Kev",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Kev"
       },
       {
         "name": "kevin",
-        "text": "Kevin",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Kevin"
       },
       {
         "name": "kris",
-        "text": "Kris",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Kris"
       },
       {
         "name": "lee",
-        "text": "Lee",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Lee"
       },
       {
         "name": "lorenzo",
-        "text": "Lorenzo",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Lorenzo"
       },
       {
         "name": "marcus",
-        "text": "Marcus",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Marcus"
       },
       {
         "name": "mark",
-        "text": "Mark",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Mark"
       },
       {
         "name": "mate",
-        "text": "Mate",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Mate"
       },
       {
         "name": "matt",
-        "text": "Matt",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Matt"
       },
       {
         "name": "matthew",
-        "text": "Matthew",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Matthew"
       },
       {
         "name": "miquel",
-        "text": "Miquel",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Miquel"
       },
       {
         "name": "nick",
-        "text": "Nick",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Nick"
       },
       {
         "name": "niklas",
-        "text": "Niklas",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Niklas"
       },
       {
         "name": "oivindl",
         "text": "Öivin",
         "voice_settings": {
           "language_code": "fi"
-        },
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        }
       },
       {
         "name": "pablo",
-        "text": "Pablo",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Pablo"
       },
       {
         "name": "patrick",
-        "text": "Patrick",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Patrick"
       },
       {
         "name": "raymond",
-        "text": "Raymond",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Raymond"
       },
       {
         "name": "rich",
-        "text": "Rich",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Rich"
       },
       {
         "name": "rob",
-        "text": "Rob",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Rob"
       },
       {
         "name": "shawn",
-        "text": "Shawn",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Shawn"
       },
       {
         "name": "tim",
-        "text": "Tim",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Tim"
       },
       {
         "name": "ville",
-        "text": "Ville",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Ville"
       },
       {
         "name": "zeus",
-        "text": "Zeus",
-        "previous_request_ids": [
-          "openers/hi",
-          "openers/alright",
-          "acknowledgment/roger-that"
-        ]
+        "text": "Zeus"
       }
     ],
     "welcome": [
       {
-        "name": "nice-to-meet-you",
-        "text": "Nice to meet you, <break time=\"0.2s\" />I'm your Race Engineer!",
-        "previous_text": "Alright, Niklas! ",
-        "next_text": " Are you ready to race?"
+        "name": "hello",
+        "text": "Hello"
       },
       {
-        "name": "ready-to-race",
-        "text": "Are you ready to race with me?",
-        "previous_text": "I'm your Race Engineer! ",
-        "previous_request_ids": [
-          "welcome/nice-to-meet-you"
-        ]
-      },
-      {
-        "name": "lets-win-races",
-        "text": "Let's win some races together!",
-        "previous_text": "I'm your Race Engineer! ",
-        "previous_request_ids": [
-          "welcome/nice-to-meet-you"
-        ]
-      }
-    ],
-    "numbers": [
-      {
-        "name": "1",
-        "text": "one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "2",
-        "text": "two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "3",
-        "text": "three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "4",
-        "text": "four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "5",
-        "text": "five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "6",
-        "text": "six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "7",
-        "text": "seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "8",
-        "text": "eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "9",
-        "text": "nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "10",
-        "text": "ten",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "11",
-        "text": "eleven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "12",
-        "text": "twelve",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "13",
-        "text": "thirteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "14",
-        "text": "fourteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "15",
-        "text": "fifteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "16",
-        "text": "sixteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "17",
-        "text": "seventeen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "18",
-        "text": "eighteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "19",
-        "text": "nineteen",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "20",
-        "text": "twenty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "21",
-        "text": "twenty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "22",
-        "text": "twenty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "23",
-        "text": "twenty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "24",
-        "text": "twenty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "25",
-        "text": "twenty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "26",
-        "text": "twenty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "27",
-        "text": "twenty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "28",
-        "text": "twenty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "29",
-        "text": "twenty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "30",
-        "text": "thirty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "31",
-        "text": "thirty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "32",
-        "text": "thirty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "33",
-        "text": "thirty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "34",
-        "text": "thirty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "35",
-        "text": "thirty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "36",
-        "text": "thirty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "37",
-        "text": "thirty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "38",
-        "text": "thirty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "39",
-        "text": "thirty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "40",
-        "text": "forty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "41",
-        "text": "forty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "42",
-        "text": "forty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "43",
-        "text": "forty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "44",
-        "text": "forty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "45",
-        "text": "forty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "46",
-        "text": "forty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "47",
-        "text": "forty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "48",
-        "text": "forty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "49",
-        "text": "forty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "50",
-        "text": "fifty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "51",
-        "text": "fifty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "52",
-        "text": "fifty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "53",
-        "text": "fifty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "54",
-        "text": "fifty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "55",
-        "text": "fifty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "56",
-        "text": "fifty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "57",
-        "text": "fifty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "58",
-        "text": "fifty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "59",
-        "text": "fifty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "60",
-        "text": "sixty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "61",
-        "text": "sixty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "62",
-        "text": "sixty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "63",
-        "text": "sixty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "64",
-        "text": "sixty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "65",
-        "text": "sixty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "66",
-        "text": "sixty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "67",
-        "text": "sixty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "68",
-        "text": "sixty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "69",
-        "text": "sixty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "70",
-        "text": "seventy",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "71",
-        "text": "seventy-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "72",
-        "text": "seventy-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "73",
-        "text": "seventy-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "74",
-        "text": "seventy-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "75",
-        "text": "seventy-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "76",
-        "text": "seventy-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "77",
-        "text": "seventy-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "78",
-        "text": "seventy-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "79",
-        "text": "seventy-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "80",
-        "text": "eighty",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "81",
-        "text": "eighty-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "82",
-        "text": "eighty-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "83",
-        "text": "eighty-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "84",
-        "text": "eighty-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "85",
-        "text": "eighty-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "86",
-        "text": "eighty-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "87",
-        "text": "eighty-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "88",
-        "text": "eighty-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "89",
-        "text": "eighty-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "90",
-        "text": "ninety",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "91",
-        "text": "ninety-one",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "92",
-        "text": "ninety-two",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "93",
-        "text": "ninety-three",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "94",
-        "text": "ninety-four",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "95",
-        "text": "ninety-five",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "96",
-        "text": "ninety-six",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "97",
-        "text": "ninety-seven",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "98",
-        "text": "ninety-eight",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "99",
-        "text": "ninety-nine",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
-      },
-      {
-        "name": "100",
-        "text": "one hundred",
-        "previous_text": "fueling ",
-        "next_text": " <break time=\"0.1s\" /> liters"
+        "name": "greeting-01",
+        "text": "Nice to meet you! I'm your Race Engineer! Are you ready to race? Let's win some races together!"
       }
     ]
   }

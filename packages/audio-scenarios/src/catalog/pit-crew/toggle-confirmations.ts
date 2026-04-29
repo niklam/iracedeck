@@ -2,10 +2,12 @@
  * Toggle-confirmation scenarios — short engineer voice lines played when the
  * driver toggles a pit-service option or an on-board driver-aid (DRS / P2P).
  *
- * Flow: `@radio-open → pool:acknowledgment → <toggle clip(s)> → @radio-close`.
- * The acknowledgment pool (copy that / got it / …) preserves the walkie
- * talkie feel where the engineer confirms the request before echoing the
- * state change.
+ * Flow: `@radio-open → pool:pit-action-acknowledgment → <toggle clip(s)> → @radio-close`.
+ * The pit-action ack pool (got it / roger that / copy that) preserves the
+ * walkie-talkie feel where the engineer confirms the request before echoing
+ * the state change. It's a separate pool from the generic `acknowledgment`
+ * one so the two rotations advance independently — see `pools.ts` for the
+ * rationale.
  *
  * Registered scenarios:
  *   - `FUEL_TOGGLE_SCENARIOS` — fuel on/off via `pitService.toggled`
@@ -27,7 +29,7 @@ import type { Scenario } from "../../dsl.js";
 // ── Shared sequence wrapper ─────────────────────────────────────────────
 
 function toggleSequence(steps: Scenario["sequence"]): Scenario["sequence"] {
-  return ["@pit-crew.radio-open", "pool:acknowledgment", ...steps, "@pit-crew.radio-close"];
+  return ["@pit-crew.radio-open", "pool:pit-action-acknowledgment", ...steps, "@pit-crew.radio-close"];
 }
 
 // ── Fuel toggle (registered) ────────────────────────────────────────────
@@ -48,7 +50,7 @@ function fuelScenario(on: boolean): Scenario {
     base: "voice/{voice}",
     priority: "normal",
     family: "pit-service.fuel",
-    sequence: toggleSequence([`pit-actions/fuel-${on ? "on" : "off"}.mp3`]),
+    sequence: toggleSequence([`pool:pit-action-fuel-${on ? "on" : "off"}`]),
   };
 }
 
@@ -158,7 +160,7 @@ const TIRE_OFF_SCENARIO: Scenario = {
   base: "voice/{voice}",
   priority: "normal",
   family: "tire-service",
-  sequence: toggleSequence(["pit-actions/tires-off.mp3"]),
+  sequence: toggleSequence(["pool:pit-action-tires-off"]),
 };
 
 export const TIRE_TOGGLE_SCENARIOS: readonly Scenario[] = [

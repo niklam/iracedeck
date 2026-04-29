@@ -132,6 +132,8 @@ const FLAG_CLIP_NAMES = [
   "checkered-qualifying-01",
   "checkered-race-01",
   "debris-01",
+  "debris-02",
+  "debris-03",
   "meatball-01",
 ] as const;
 
@@ -278,12 +280,6 @@ describe("FLAG_ALERTS triggers", () => {
       expected: "voice/luca/flags/black-01.mp3",
     },
     {
-      label: "debris",
-      event: "flag.debris.raised" as const,
-      data: {},
-      expected: "voice/luca/flags/debris-01.mp3",
-    },
-    {
       label: "meatball",
       event: "flag.meatball.raised" as const,
       data: {},
@@ -340,6 +336,15 @@ describe("FLAG_ALERTS triggers", () => {
     expect(played.includes("voice/luca/flags/white-01.mp3") || played.includes("voice/luca/flags/white-02.mp3")).toBe(
       true,
     );
+  });
+
+  it("debris draws from the flag-debris pool (one of the three recorded variants)", () => {
+    bus.publishEvent("flag.debris.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).toHaveLength(1);
+    expect(played[0]).toMatch(/voice\/luca\/flags\/debris-0[123]\.mp3$/);
   });
 
   it("substitutes the active voice — switching voice changes resolved path", () => {

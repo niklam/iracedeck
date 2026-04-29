@@ -192,10 +192,6 @@ function readJsonStringArray(key: string): string[] {
   }
 }
 
-/** Opener clips used by the Race Engineer Test playback. Picks one at random
- * to vary what the user hears across presses. */
-const RACE_ENGINEER_TEST_OPENERS = ["alright", "hi", "right", "so"] as const;
-
 /**
  * Chain-play a sequence of clip paths on `AudioChannel.Voice`. Registers
  * the next-step `onChannelComplete` before each `playOnChannel` so the
@@ -267,15 +263,14 @@ export function playVoiceSequence(paths: readonly string[], onComplete?: () => v
  *
  * Play the engineer-voice preview sequence on `AudioChannel.Voice`:
  *
- *   <random opener>, <driver name>! Nice to meet you, I'm your Race Engineer!
- *   Are you ready to race with me?
+ *   <driver name>? <combined greeting clip>
  *
  * Lets the user audition the active voice + radio filter + current bus
  * volume from the PI. Skips the driver-name clip when no name is
- * available (e.g. fresh install before names are pushed). The "welcome"
- * clips need TTS generation — `pnpm --filter @iracedeck/audio-assets
- * generate` produces them per voice. Until then the chain plays only
- * the opener (+ name) and silently stops at the missing welcome step.
+ * available (e.g. fresh install before names are pushed). `greeting-01`
+ * needs TTS generation — `pnpm --filter @iracedeck/audio-assets generate`
+ * produces it per voice. Until then `playVoiceSequence` silently stops
+ * at the missing step.
  *
  * Returns false only when no voice is available — the test button logs
  * a warning in that case.
@@ -285,14 +280,11 @@ export function playRaceEngineerVoiceTest(onComplete?: () => void): boolean {
 
   if (!voice) return false;
 
-  const opener = RACE_ENGINEER_TEST_OPENERS[Math.floor(Math.random() * RACE_ENGINEER_TEST_OPENERS.length)];
   const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"), "driver");
 
   const paths = [
-    `voice/${voice}/openers/${opener}.mp3`,
     ...(driverName ? [`voice/${voice}/names/${driverName}.mp3`] : []),
-    `voice/${voice}/welcome/nice-to-meet-you.mp3`,
-    `voice/${voice}/welcome/lets-win-races.mp3`,
+    `voice/${voice}/welcome/greeting-01.mp3`,
   ];
 
   return playVoiceSequence(paths, onComplete);

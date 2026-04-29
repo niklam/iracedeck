@@ -121,9 +121,12 @@ const manifest: AudioAssetsManifest = {
       `voice/${v}/acknowledgment/roger-that.mp3`,
       `voice/${v}/acknowledgment/copy-that.mp3`,
       `voice/${v}/acknowledgment/we-got-that.mp3`,
-      `voice/${v}/pit-actions/fuel-on.mp3`,
-      `voice/${v}/pit-actions/fuel-off.mp3`,
-      `voice/${v}/pit-actions/tires-off.mp3`,
+      `voice/${v}/pit-actions/got-it.mp3`,
+      `voice/${v}/pit-actions/roger-that.mp3`,
+      `voice/${v}/pit-actions/copy-that.mp3`,
+      `voice/${v}/pit-actions/fuel-on-01.mp3`,
+      `voice/${v}/pit-actions/fuel-off-01.mp3`,
+      `voice/${v}/pit-actions/tires-off-01.mp3`,
       `voice/${v}/pit-actions/tires-on-all.mp3`,
       `voice/${v}/pit-actions/tires-on-fronts.mp3`,
       `voice/${v}/pit-actions/tires-on-rears.mp3`,
@@ -165,7 +168,10 @@ beforeEach(() => {
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
 
-  engine.definePool("acknowledgment", [...POOLS.acknowledgment]);
+  engine.definePool("pit-action-acknowledgment", [...POOLS["pit-action-acknowledgment"]]);
+  engine.definePool("pit-action-fuel-on", [...POOLS["pit-action-fuel-on"]]);
+  engine.definePool("pit-action-fuel-off", [...POOLS["pit-action-fuel-off"]]);
+  engine.definePool("pit-action-tires-off", [...POOLS["pit-action-tires-off"]]);
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
@@ -191,14 +197,14 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-on.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-on-01.mp3");
   });
 
   it("fires fuel-off when pitService.toggled { fuel, on: false }", () => {
     bus.publishEvent("pitService.toggled", { service: "fuel", on: false });
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-off.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
 
   it("ignores pitService.toggled for other services (windshield)", () => {
@@ -206,8 +212,8 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     // None of the registered fuel scenarios should match.
-    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-on.mp3");
-    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-off.mp3");
+    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-on-01.mp3");
+    expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
 
   it("substitutes the active voice — switching voice changes resolved path", () => {
@@ -215,7 +221,7 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/fuel-on.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/fuel-on-01.mp3");
   });
 });
 
@@ -257,7 +263,7 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
     });
     flush(audio);
 
-    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/tires-off.mp3");
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/tires-off-01.mp3");
   });
 
   it("does NOT play tires-off on a side-switch that removes some tires (lefts → rights via clear-all event)", () => {
@@ -272,7 +278,7 @@ describe("TIRE_TOGGLE_SCENARIOS", () => {
     flush(audio);
 
     const played = voiceClipsPlayed();
-    expect(played).not.toContain("voice/luca/pit-actions/tires-off.mp3");
+    expect(played).not.toContain("voice/luca/pit-actions/tires-off-01.mp3");
     expect(played).toContain("voice/luca/pit-actions/tires-on-rears.mp3");
   });
 
