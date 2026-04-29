@@ -300,7 +300,8 @@
       },
       {
         "name": "opener-entry-limiter",
-        "text": "Don't forget your limiter! During this pitstop..."
+        "text": "Remember the pit limiter! ahem...",
+        "seed": 4
       },
       {
         "name": "opener-exit",
@@ -308,103 +309,108 @@
       },
       {
         "name": "empty-fallback",
-        "text": "Not changing tires, not refueling!"
+        "text": "We're not changing tires, and we're not refueling!"
       },
       {
         "name": "fuel-on",
-        "text": "We're refueling!"
+        "text": "We're refueling"
       },
       {
         "name": "fuel-off",
-        "text": "We're not taking fuel!"
+        "text": "We're not refueling",
+        "seed": 3
       },
       {
         "name": "tires-all",
-        "text": "Changing all tires!"
+        "text": "and we're changing all tires!"
       },
       {
         "name": "tires-fronts",
-        "text": "front tires"
+        "text": "and we're changing front tires"
       },
       {
         "name": "tires-rears",
-        "text": "rear tires"
+        "text": "and we're changing rear tires"
       },
       {
         "name": "tires-lefts",
-        "text": "left side tires"
+        "text": "and we're changing left side tires"
       },
       {
         "name": "tires-rights",
-        "text": "right side tires"
+        "text": "and we're changing right side tires"
       },
       {
         "name": "tires-lf",
-        "text": "left front only"
+        "text": "and we're changing left front only"
       },
       {
         "name": "tires-rf",
-        "text": "right front only"
+        "text": "and we're changing right front only"
       },
       {
         "name": "tires-lr",
-        "text": "left rear only"
+        "text": "and we're changing left rear only"
       },
       {
         "name": "tires-rr",
-        "text": "right rear only"
+        "text": "and we're changing right rear only"
       },
       {
         "name": "tires-lf-rr",
-        "text": "left front and right rear"
+        "text": "and we're changing left front and right rear"
       },
       {
         "name": "tires-rf-lr",
-        "text": "right front and left rear"
+        "text": "and we're changing right front and left rear"
       },
       {
         "name": "tires-skip-lf",
-        "text": "three tires, skipping left front"
+        "text": "and we're changing three tires, skipping left front"
       },
       {
         "name": "tires-skip-rf",
-        "text": "three tires, skipping right front"
+        "text": "and we're changing three tires, skipping right front"
       },
       {
         "name": "tires-skip-lr",
-        "text": "three tires, skipping left rear"
+        "text": "and we're changing three tires, skipping left rear"
       },
       {
         "name": "tires-skip-rr",
-        "text": "three tires, skipping right rear"
+        "text": "and we're changing three tires, skipping right rear"
       },
       {
         "name": "tires-off",
-        "text": "And, we're not changing tires!"
+        "text": "and, we're not changing tires!",
+        "seed": 2
       },
       {
         "name": "compound-dry",
-        "text": "changing to dry slicks"
+        "text": "and, we're changing to dries."
       },
       {
         "name": "compound-wet",
-        "text": "changing to wets"
+        "text": "and, we're changing to wets."
       },
       {
         "name": "fast-repair-on",
-        "text": "fast repair"
+        "text": "ahem..Additionally, we're doing fast repair,"
       },
       {
         "name": "fast-repair-off",
-        "text": "no fast repair"
+        "text": "ahem..We're not doing fast repair",
+        "seed": 3
       },
       {
         "name": "windshield-on",
-        "text": "cleaning the windshield"
+        "text": "and we're cleaning the windshield.",
+        "seed": 3
       },
       {
         "name": "windshield-off",
-        "text": "no windshield"
+        "text": "and we're leaving windshield as-is.",
+        "seed": 4
       },
       {
         "name": "closer-exit",
