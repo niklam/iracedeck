@@ -28,6 +28,7 @@ import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
+import { diffPitReadback } from "./diff/pit-readback.js";
 import { diffRadar } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -44,6 +45,8 @@ type TranslatorInstance = {
   /** Cached pit speed limit (m/s) parsed from session YAML. 0 = not parsed. */
   pitSpeedLimitMps: number;
   pitSpeedLimitKey: string;
+  /** Tracks the `IsReplayPlaying` edge so we can reset state on transition. */
+  lastTickInReplay: boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -70,6 +73,7 @@ export function initializeSimEventsIracing(
     latestTelemetry: null,
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
+    lastTickInReplay: false,
   };
 
   instance = self;
@@ -114,6 +118,21 @@ export function isSimEventsIracingInitialized(): boolean {
 }
 
 /**
+ * Whether per-toggle pit-action confirmation scenarios are currently
+ * allowed to fire (issue #476). Returns `false` while the cooldown set
+ * by `pitLane.exited` (4500 ms) or by entering the pre-start grid window
+ * (5000 ms) is still in effect — pit-actions stay silent during those
+ * windows so iRacing's phantom flag-cascade emissions and the pending
+ * readbacks don't double up. Plugin entry-points pass this as the
+ * `getPitActionsAllowed` closure to `registerPitCrew`.
+ */
+export function isPitActionsAllowed(): boolean {
+  if (!instance) return true;
+
+  return Date.now() >= instance.state.pitActionCooldownUntil;
+}
+
+/**
  * Reset the translator singleton.
  * @internal Exported for test isolation only.
  */
@@ -155,6 +174,40 @@ function handleDisconnect(self: TranslatorInstance): void {
 }
 
 function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
+  // Suppress every semantic event while iRacing is in replay mode. The
+  // engineer voice should be quiet whenever the user isn't actively in
+  // the car — replay scrubbing fires phantom flag transitions and pit
+  // toggles as the timeline jumps, which would queue audio that has no
+  // relationship to the live session. Mirrors the existing
+  // disconnect-resets-state pattern so when replay ends the diff
+  // modules' first-tick / off-track seed branches reseed cleanly.
+  if (telemetry.IsReplayPlaying === true) {
+    if (!self.lastTickInReplay) {
+      // Publish the radar teardown signal before resetting state so the
+      // radar engine receives a clear edge — otherwise it stays latched
+      // through replay (the tick loop runs until it sees a `clear`).
+      // Mirrors `handleDisconnect()`.
+      if (self.state.radarState !== "clear") {
+        publish(
+          self,
+          { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
+          telemetry,
+          Date.now(),
+        );
+      }
+
+      self.state = createInitialState();
+      self.lastTickInReplay = true;
+    }
+
+    return;
+  }
+
+  if (self.lastTickInReplay) {
+    self.state = createInitialState();
+    self.lastTickInReplay = false;
+  }
+
   const now = Date.now();
   const pending: PendingEvent[] = [];
   const emit = (ev: PendingEvent): void => {
@@ -175,6 +228,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
   diffToggles(self.state, telemetry, now, emit);
+  // diffPitReadback runs after diffToggles so it sees the per-tick toggle
+  // emissions (`pitService.toggled` / `tireService.changed` /
+  // `tireService.compoundChanged`) in `pending` — those signal user intent
+  // and trigger an `entry-refire` readback.
+  diffPitReadback(self.state, telemetry, now, emit, pending);
   diffIncidents(self.state, telemetry, now, emit);
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);

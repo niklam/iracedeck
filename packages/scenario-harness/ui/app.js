@@ -434,6 +434,95 @@ function connectWebSocket() {
   ws.addEventListener("close", () => setTimeout(connectWebSocket, 1000));
 }
 
+// ── Pit Service Readback composer ─────────────────────────────────────────
+//
+// Lets the user assemble a `pitService.readbackRequested` payload by
+// twiddling per-corner tire toggles, fuel/FR/windshield queue+availability
+// flags, and the player vs queued tire compound. The composed snapshot
+// fires through the same `/api/bus/publish` endpoint the shortcut buttons
+// use, so the production audio scenarios receive it identically.
+
+const TIRE_PRESETS = {
+  all: { lf: true, rf: true, lr: true, rr: true },
+  fronts: { lf: true, rf: true, lr: false, rr: false },
+  rears: { lf: false, rf: false, lr: true, rr: true },
+  lefts: { lf: true, rf: false, lr: true, rr: false },
+  rights: { lf: false, rf: true, lr: false, rr: true },
+  none: { lf: false, rf: false, lr: false, rr: false },
+};
+
+function readReadbackSnapshot() {
+  const reason = $("readback-reason").value;
+  const tires = {
+    lf: $("readback-tire-lf").checked,
+    rf: $("readback-tire-rf").checked,
+    lr: $("readback-tire-lr").checked,
+    rr: $("readback-tire-rr").checked,
+  };
+  const currentCompound = Number(
+    document.querySelector('input[name="readback-compound-current"]:checked')?.value ?? "0",
+  );
+  const queuedCompoundRaw = document.querySelector('input[name="readback-compound-queued"]:checked')?.value ?? "";
+  const compoundChange =
+    queuedCompoundRaw === "" || Number(queuedCompoundRaw) === currentCompound
+      ? null
+      : { from: currentCompound, to: Number(queuedCompoundRaw) };
+
+  return {
+    reason,
+    fuel: { queued: $("readback-fuel-queued").checked },
+    tires,
+    compoundChange,
+    fastRepair: {
+      queued: $("readback-fr-queued").checked,
+      available: $("readback-fr-available").checked,
+    },
+    windshield: {
+      queued: $("readback-ws-queued").checked,
+      available: $("readback-ws-available").checked,
+    },
+    limiterEngaged: $("readback-limiter").checked,
+  };
+}
+
+function applyTirePreset(presetId) {
+  const preset = TIRE_PRESETS[presetId];
+  if (!preset) return;
+  $("readback-tire-lf").checked = preset.lf;
+  $("readback-tire-rf").checked = preset.rf;
+  $("readback-tire-lr").checked = preset.lr;
+  $("readback-tire-rr").checked = preset.rr;
+}
+
+function wireReadbackComposer() {
+  for (const btn of document.querySelectorAll("[data-readback-preset]")) {
+    btn.addEventListener("click", () => applyTirePreset(btn.dataset.readbackPreset));
+  }
+
+  const amount = $("readback-fuel-amount");
+  const amountValue = $("readback-fuel-amount-value");
+  amount.addEventListener("input", () => {
+    amountValue.textContent = `${amount.value} L`;
+  });
+
+  $("readback-fire").addEventListener("click", async () => {
+    const data = readReadbackSnapshot();
+    try {
+      await post("/api/bus/publish", { event: "pitService.readbackRequested", data });
+    } catch (e) {
+      alert(`Readback fire failed: ${e.message}`);
+    }
+  });
+
+  $("readback-black-flag").addEventListener("click", async () => {
+    try {
+      await post("/api/bus/publish", { event: "flag.black.raised", data: {} });
+    } catch (e) {
+      alert(`Black-flag publish failed: ${e.message}`);
+    }
+  });
+}
+
 // ── Wire up controls ──────────────────────────────────────────────────────
 
 function wire() {
@@ -552,6 +641,7 @@ function wire() {
     renderInjector();
     renderShortcuts();
     wire();
+    wireReadbackComposer();
     connectWebSocket();
   } catch (e) {
     document.body.innerHTML = `<pre style="padding:20px;color:#ff6b6b;">Failed to load harness: ${e.message}</pre>`;

@@ -495,6 +495,39 @@ describe("priority", () => {
     expect(audio._stopped).toContain(AudioChannel.Voice);
   });
 
+  it("preempts a low-priority playing scenario when a normal-priority fire arrives, then replays it", () => {
+    engine.defineScenario({
+      id: "test.low.readback",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "low",
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.normal.flag",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      priority: "normal",
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.low.readback"); // first clip starts
+    engine.fire("test.normal.flag"); // normal preempts low
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    // First low clip plays, then normal preempts (Voice channel stopped),
+    // then normal plays its clip, then the deferred low replays from the
+    // top once the bus goes idle.
+    expect(paths).toEqual([
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/reminder/fuel.mp3",
+      "pit-crew/greeting/a.mp3",
+      "pit-crew/greeting/b.mp3",
+    ]);
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+  });
+
   it("does NOT preempt a different-family playing scenario", () => {
     engine.defineScenario({
       id: "test.tire.fronts",

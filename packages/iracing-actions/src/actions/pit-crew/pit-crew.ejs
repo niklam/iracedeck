@@ -78,6 +78,18 @@
 			var flagCalloutCheckboxes = flagCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Pit-service readback opt-ins (issue #476). Same source-of-truth
+			// 2-column grid as flag callouts — adding a row here is the only
+			// place to extend.
+			var pitReadbackCallouts = [
+				{ setting: "calloutEnabledPitReadbackEntry", label: "Pit entry" },
+				{ setting: "calloutEnabledPitReadbackExit",  label: "Pit exit" },
+			];
+			var pitReadbackRowCount = Math.ceil(pitReadbackCallouts.length / 2);
+			var pitReadbackCheckboxes = pitReadbackCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -87,6 +99,11 @@
 				'<sdpi-item label="Flags">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + flagCalloutRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						flagCalloutCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Pit Service Readback">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + pitReadbackRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						pitReadbackCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>

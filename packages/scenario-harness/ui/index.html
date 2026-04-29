@@ -71,6 +71,106 @@
         </div>
 
         <div class="panel">
+          <h2>Pit Service Readback</h2>
+          <div class="readback-composer">
+            <div class="readback-row">
+              <label class="readback-label" for="readback-reason">Reason</label>
+              <select id="readback-reason">
+                <option value="entry">entry</option>
+                <option value="entry-refire">entry-refire</option>
+                <option value="exit">exit</option>
+              </select>
+            </div>
+
+            <div class="readback-section">
+              <h3>Fuel</h3>
+              <div class="readback-row">
+                <label class="readback-checkbox">
+                  <input type="checkbox" id="readback-fuel-queued" />
+                  <span>Queued</span>
+                </label>
+                <label class="readback-slider">
+                  <span>Amount</span>
+                  <input type="range" id="readback-fuel-amount" min="0" max="100" step="1" value="25" />
+                  <span class="value" id="readback-fuel-amount-value">25 L</span>
+                </label>
+              </div>
+              <p class="hint">Amount is informational — the v1 payload carries only the boolean (issue defers numeric volume).</p>
+            </div>
+
+            <div class="readback-section">
+              <h3>Tires</h3>
+              <div class="readback-tires">
+                <label class="readback-checkbox"><input type="checkbox" id="readback-tire-lf" /><span>LF</span></label>
+                <label class="readback-checkbox"><input type="checkbox" id="readback-tire-rf" /><span>RF</span></label>
+                <label class="readback-checkbox"><input type="checkbox" id="readback-tire-lr" /><span>LR</span></label>
+                <label class="readback-checkbox"><input type="checkbox" id="readback-tire-rr" /><span>RR</span></label>
+              </div>
+              <div class="readback-tire-presets">
+                <button data-readback-preset="all" type="button">All</button>
+                <button data-readback-preset="fronts" type="button">Fronts</button>
+                <button data-readback-preset="rears" type="button">Rears</button>
+                <button data-readback-preset="lefts" type="button">Lefts</button>
+                <button data-readback-preset="rights" type="button">Rights</button>
+                <button data-readback-preset="none" type="button">None</button>
+              </div>
+            </div>
+
+            <div class="readback-section">
+              <h3>Compound</h3>
+              <div class="readback-row">
+                <span class="readback-label">Current (fitted)</span>
+                <label class="readback-radio"><input type="radio" name="readback-compound-current" value="0" checked /><span>Dry</span></label>
+                <label class="readback-radio"><input type="radio" name="readback-compound-current" value="1" /><span>Wet</span></label>
+              </div>
+              <div class="readback-row">
+                <span class="readback-label">Queued (changing to)</span>
+                <label class="readback-radio"><input type="radio" name="readback-compound-queued" value="" checked /><span>No change</span></label>
+                <label class="readback-radio"><input type="radio" name="readback-compound-queued" value="0" /><span>Dry</span></label>
+                <label class="readback-radio"><input type="radio" name="readback-compound-queued" value="1" /><span>Wet</span></label>
+              </div>
+              <p class="hint">When current = queued the snapshot's <code>compoundChange</code> is <code>null</code>. Compound change implicitly covers all four tires.</p>
+            </div>
+
+            <div class="readback-section">
+              <h3>Fast Repair</h3>
+              <div class="readback-row">
+                <label class="readback-checkbox"><input type="checkbox" id="readback-fr-queued" /><span>Queued</span></label>
+                <label class="readback-checkbox"><input type="checkbox" id="readback-fr-available" checked /><span>Available</span></label>
+              </div>
+            </div>
+
+            <div class="readback-section">
+              <h3>Windshield</h3>
+              <div class="readback-row">
+                <label class="readback-checkbox"><input type="checkbox" id="readback-ws-queued" /><span>Queued</span></label>
+                <label class="readback-checkbox"><input type="checkbox" id="readback-ws-available" checked /><span>Available</span></label>
+              </div>
+            </div>
+
+            <div class="readback-section">
+              <h3>Limiter</h3>
+              <div class="readback-row">
+                <label class="readback-checkbox"><input type="checkbox" id="readback-limiter" /><span>Engaged</span></label>
+                <p class="hint">When unchecked, the entry callout plays the limiter pre-opener ("Don't forget your limiter…").</p>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button id="readback-fire" class="primary" type="button">Fire Readback</button>
+            </div>
+
+            <div class="readback-section">
+              <h3>Black Flag</h3>
+              <p class="hint">No scenario flow consumes this yet, but the harness exposes the trigger so future flows can be authored against it.</p>
+              <div class="actions">
+                <button id="readback-black-flag" type="button">Raise Black Flag</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
           <h2>Event Log</h2>
           <div id="event-log" class="log"></div>
         </div>

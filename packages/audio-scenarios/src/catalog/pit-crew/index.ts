@@ -44,6 +44,7 @@ import { FLAG_ALERTS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
+import { PIT_READBACK_SCENARIOS, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
@@ -54,6 +55,7 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
+export { PIT_READBACK_CALLOUT_SETTING_KEYS, type PitReadbackCalloutId, PIT_READBACK_SCENARIOS } from "./readback.js";
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
@@ -110,6 +112,14 @@ export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
   logger?: ILogger,
+  getPitReadbackEnabled: (id: PitReadbackCalloutId) => boolean = () => true,
+  // Allow / suppress per-toggle pit-action confirmations (issue #476).
+  // Plugins wire this to `isPitActionsAllowed()` from
+  // `@iracedeck/sim-events-iracing` so the cooldowns set by `pitLane.exited`
+  // and pre-start grid entry silence the toggle callouts during those
+  // windows. Default `() => true` preserves legacy behavior for tests
+  // that don't supply a closure.
+  getPitActionsAllowed: () => boolean = () => true,
 ): void {
   registerRadarEngine(bus);
 
@@ -122,37 +132,81 @@ export function registerPitCrew(
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
-  for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
+  for (const s of FUEL_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
-  for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
+  for (const s of TIRE_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
-  for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
+  for (const s of TIRE_COMPOUND_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
   for (const s of FLAG_ALERTS) {
-    engine.defineScenario(wrapFlagScenario(s, getFlagCalloutEnabled, logger));
+    engine.defineScenario(
+      wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger),
+    );
+  }
+
+  for (const s of PIT_READBACK_SCENARIOS) {
+    engine.defineScenario(
+      wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+    );
   }
 }
 
 /**
- * Wrap a flag scenario's `where:` predicate so the user's plugin-global
- * opt-in is consulted on every event arrival. The wrapper short-circuits
- * BEFORE `attemptFire`, so disabling a flag while its callout is already
+ * Wrap a scenario's `where:` predicate so the user's plugin-global opt-in
+ * is consulted on every event arrival. The wrapper short-circuits BEFORE
+ * `attemptFire`, so disabling a callout while its scenario is already
  * playing does NOT cut playback — only future events are suppressed.
  *
- * Throws if the scenario id is missing from `SCENARIO_ID_TO_FLAG_ID`,
- * which would mean a new flag scenario was added without registering its
- * id mapping (better to fail loudly at startup than silently leak the
- * unmapped flag past the toggle).
+ * Generic over the callout id type so flags (issue #467) and pit-readback
+ * callouts (issue #476) share one wrapper. Throws if the scenario id is
+ * missing from the id mapping — better to fail loudly at startup than
+ * silently leak the unmapped scenario past the toggle.
  */
-function wrapFlagScenario(
+/**
+ * Wrap a per-toggle pit-action scenario so the cooldown set by
+ * `pitLane.exited` / pre-start grid entry suppresses fires during the
+ * cooldown window. Same gate-at-event-arrival shape as
+ * `wrapCalloutScenario`, but global rather than per-id.
+ */
+function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: ILogger | undefined): Scenario {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getAllowed()) {
+          logger?.debug(`pit-action suppressed (cooldown active): ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
+function wrapCalloutScenario<TId extends string>(
   s: Scenario,
-  getFlagCalloutEnabled: (id: FlagCalloutId) => boolean,
+  scenarioIdToCalloutId: Record<string, TId>,
+  getCalloutEnabled: (id: TId) => boolean,
+  description: string,
   logger: ILogger | undefined,
 ): Scenario {
-  const flagId = SCENARIO_ID_TO_FLAG_ID[s.id];
+  const calloutId = scenarioIdToCalloutId[s.id];
 
-  if (!flagId) {
-    throw new Error(`registerPitCrew: no FlagCalloutId mapping for scenario "${s.id}"`);
+  if (!calloutId) {
+    throw new Error(`registerPitCrew: no callout id mapping for scenario "${s.id}"`);
   }
 
   if (!s.when) return s;
@@ -164,8 +218,8 @@ function wrapFlagScenario(
     when: {
       event: s.when.event,
       where: (ev) => {
-        if (!getFlagCalloutEnabled(flagId)) {
-          logger?.debug(`flag callout suppressed: ${flagId}`);
+        if (!getCalloutEnabled(calloutId)) {
+          logger?.debug(`${description} suppressed: ${calloutId}`);
 
           return false;
         }

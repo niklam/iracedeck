@@ -19,6 +19,23 @@ export type ServiceDebounceState = {
   lastSeen: boolean; // most recent observed bit value
 };
 
+/**
+ * Committed pit-service snapshot used by the pit-readback diff (issue #476).
+ * Captured on `pitLane.entered` and refreshed on every user-intent toggle
+ * event (`pitService.toggled` / `tireService.changed` / `tireService.compoundChanged`)
+ * so it reflects the driver's intent — not the bit-cleared post-service
+ * state visible at exit. Held in state so the delayed pit-exit fire reads
+ * the same snapshot the entry / refire emits used.
+ */
+export type PitReadbackCommittedSnapshot = {
+  fuel: { queued: boolean };
+  tires: { lf: boolean; rf: boolean; lr: boolean; rr: boolean };
+  compoundChange: { from: number; to: number } | null;
+  fastRepair: { queued: boolean; available: boolean };
+  windshield: { queued: boolean; available: boolean };
+  limiterEngaged: boolean;
+};
+
 export type TranslatorState = {
   // ── Pit lane / stall ────────────────────────────────────────────────────
   pitLaneInitialized: boolean;
@@ -50,6 +67,35 @@ export type TranslatorState = {
   // Tire debounce — same model but over a 4-bit set rather than a single bit.
   lastSeenTireFlags: number; // most recent observed tire bits (any tick)
   lastTireChangeAt: number; // 0 = stable; >0 = ms timestamp of most recent tire flag flip
+
+  // ── Pit-service readback (issue #476) ──────────────────────────────────
+  pitReadbackInitialized: boolean;
+  pitReadbackPrevOnPitRoad: boolean;
+  pitReadbackExitFireAt: number; // 0 = none scheduled; >0 = ms timestamp to emit at
+  /**
+   * Pit-action confirmation cooldown. While `now < pitActionCooldownUntil`,
+   * per-toggle confirmation scenarios stay silent. Set on `pitLane.exited`
+   * (matches the readback exit delay so pit-actions don't blurt over the
+   * pending "to confirm" beat) and on pre-start transitions (so iRacing's
+   * grid-load pit-flag seeding doesn't fire phantom callouts).
+   */
+  pitActionCooldownUntil: number;
+  /**
+   * Pre-start auto-readback. Set on the pre-start enter transition and
+   * fires once `now >= pitReadbackPreStartFireAt`. The snapshot is
+   * built fresh from current telemetry at fire time so any toggle the
+   * user makes during the muted-pit-actions window is reflected in
+   * the recap (otherwise the user could change fuel/tires on the grid
+   * and still hear a stale plan from grid entry).
+   */
+  pitReadbackPreStartFireAt: number;
+  /**
+   * Tracks the iRacing pre-start state (`PaceMode === SingleFileStart |
+   * DoubleFileStart` AND `SessionState === ParadeLaps | Warmup |
+   * GetInCar`) for edge detection. Reference: `ir_isPreStart()` in the
+   * iRacing pit-board project.
+   */
+  lastTickInPreStart: boolean;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -112,6 +158,13 @@ export function createInitialState(): TranslatorState {
     fastRepairDebounce: { pendingAt: 0, lastSeen: false },
     lastSeenTireFlags: 0,
     lastTireChangeAt: 0,
+
+    pitReadbackInitialized: false,
+    pitReadbackPrevOnPitRoad: false,
+    pitReadbackExitFireAt: 0,
+    pitActionCooldownUntil: 0,
+    pitReadbackPreStartFireAt: 0,
+    lastTickInPreStart: false,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

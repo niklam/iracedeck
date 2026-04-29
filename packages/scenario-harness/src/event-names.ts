@@ -24,6 +24,19 @@ export const EVENT_TEMPLATES = [
   { name: "pitLane.exited", description: "Left pit road", data: {} },
   { name: "pitStall.entered", description: "Stopped in your pit stall", data: {} },
   { name: "pitStall.departed", description: "Left pit stall", data: {} },
+  {
+    name: "pitService.readbackRequested",
+    description: "Engineer pit-service readback (entry / refire / exit)",
+    data: {
+      reason: "entry",
+      fuel: { queued: true },
+      tires: { lf: true, rf: true, lr: true, rr: true },
+      compoundChange: null,
+      fastRepair: { queued: false, available: true },
+      windshield: { queued: false, available: true },
+      limiterEngaged: false,
+    },
+  },
 
   // ── Flags ──
   { name: "flag.yellow.raised", description: "Yellow flag raised", data: { scope: "local" } },

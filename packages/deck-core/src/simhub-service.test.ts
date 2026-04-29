@@ -60,6 +60,8 @@ describe("SimHub Service", () => {
       calloutEnabledFlagCheckered: true,
       calloutEnabledFlagDebris: true,
       calloutEnabledFlagMeatball: true,
+      calloutEnabledPitReadbackEntry: true,
+      calloutEnabledPitReadbackExit: true,
     });
   });
 
@@ -169,6 +171,8 @@ describe("SimHub Service", () => {
         calloutEnabledFlagCheckered: true,
         calloutEnabledFlagDebris: true,
         calloutEnabledFlagMeatball: true,
+        calloutEnabledPitReadbackEntry: true,
+        calloutEnabledPitReadbackExit: true,
       });
 
       initializeSimHub(mockLogger);

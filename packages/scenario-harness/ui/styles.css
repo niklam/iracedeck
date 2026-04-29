@@ -345,3 +345,95 @@ input[type="range"] {
   border-radius: 3px;
   font-size: 11px;
 }
+
+.readback-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.readback-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.readback-section h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.readback-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.readback-label {
+  color: var(--text-dim);
+  min-width: 110px;
+}
+
+.readback-checkbox,
+.readback-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.readback-checkbox input,
+.readback-radio input {
+  cursor: pointer;
+}
+
+.readback-tires {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.readback-tire-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.readback-tire-presets button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.readback-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.readback-slider .value {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  min-width: 48px;
+  text-align: right;
+}
+
+.readback-composer select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}

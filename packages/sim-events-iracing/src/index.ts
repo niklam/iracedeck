@@ -11,6 +11,7 @@ export {
   getLatestTelemetry,
   getSessionType,
   initializeSimEventsIracing,
+  isPitActionsAllowed,
   isSimEventsIracingInitialized,
 } from "./translator.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";

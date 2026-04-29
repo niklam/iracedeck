@@ -6,8 +6,8 @@
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
       "textPreview": "Niklas",
-      "generatedAt": "2026-04-28T19:29:02.499Z",
-      "requestId": "s17EuoI758BAzZYu2a39"
+      "generatedAt": "2026-04-29T15:31:35.233Z",
+      "requestId": "g3qD0KKOQttoHgWwVDGM"
     },
     "voice/luca/flags/black-01.mp3": {
       "hash": "7485e9e13ff359a9",
@@ -2736,6 +2736,262 @@
       "textPreview": "Nice to meet you! I'm your Race Engineer! Are you ready to race? Let's win some…",
       "generatedAt": "2026-04-28T19:35:46.708Z",
       "requestId": "HsyIpP0hM3FaoLbqk9Jc"
+    },
+    "voice/luca/pit-readback/opener-entry.mp3": {
+      "hash": "6d4501768ede186d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "During this pitstop...",
+      "generatedAt": "2026-04-29T14:34:23.034Z",
+      "requestId": "pDiTtgkzgDfHvSh5B0Gg"
+    },
+    "voice/luca/pit-readback/opener-entry-limiter.mp3": {
+      "hash": "f9b5c286f8c00e3b",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "Remember the pit limiter! ahem...",
+      "generatedAt": "2026-04-29T17:36:56.884Z",
+      "requestId": "n6aoJoTfgRgUJ8ANWmK3"
+    },
+    "voice/luca/pit-readback/opener-exit.mp3": {
+      "hash": "5e57ee7b3eeca50f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "At the next pitstop",
+      "generatedAt": "2026-04-29T15:51:27.161Z",
+      "requestId": "Uhcgm3RTSjzIsyz6w3B3"
+    },
+    "voice/luca/pit-readback/empty-fallback.mp3": {
+      "hash": "b857534b1482e760",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We're not changing tires, and we're not refueling!",
+      "generatedAt": "2026-04-29T14:20:15.811Z",
+      "requestId": "rX6qddLbdFvNEXNFy4DV"
+    },
+    "voice/luca/pit-readback/fuel-on.mp3": {
+      "hash": "17495ef8f72dc361",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We're refueling",
+      "generatedAt": "2026-04-29T14:18:44.487Z",
+      "requestId": "clnvvr4gWGl1IQNf2wIc"
+    },
+    "voice/luca/pit-readback/fuel-off.mp3": {
+      "hash": "2acf0fb2aca01ea1",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We're not refueling",
+      "generatedAt": "2026-04-29T14:51:17.801Z",
+      "requestId": "NU2tGSjhJpL9zyTxfqdD"
+    },
+    "voice/luca/pit-readback/tires-all.mp3": {
+      "hash": "914024991823296a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing all tires!",
+      "generatedAt": "2026-04-29T14:52:53.621Z",
+      "requestId": "yl4gWr6cxLQ61xI2DtOB"
+    },
+    "voice/luca/pit-readback/tires-fronts.mp3": {
+      "hash": "5a7fcd5842e08c65",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing front tires",
+      "generatedAt": "2026-04-29T14:52:54.265Z",
+      "requestId": "5SkhDk3jGuW4eEwSCWCF"
+    },
+    "voice/luca/pit-readback/tires-rears.mp3": {
+      "hash": "2f2d62cff511906b",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing rear tires",
+      "generatedAt": "2026-04-29T14:52:54.885Z",
+      "requestId": "kpTzOOwca6MQlUE1o0ID"
+    },
+    "voice/luca/pit-readback/tires-lefts.mp3": {
+      "hash": "c808e1bc35fbe079",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing left side tires",
+      "generatedAt": "2026-04-29T14:52:55.657Z",
+      "requestId": "VLP4NHdwDR5AquG9z7Us"
+    },
+    "voice/luca/pit-readback/tires-rights.mp3": {
+      "hash": "cab4debd7126b46f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing right side tires",
+      "generatedAt": "2026-04-29T14:52:56.390Z",
+      "requestId": "iyMTyH7bCFCxiYrQoAhJ"
+    },
+    "voice/luca/pit-readback/tires-lf.mp3": {
+      "hash": "1ea32c664898482c",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing left front only",
+      "generatedAt": "2026-04-29T14:52:57.068Z",
+      "requestId": "E8Ag0O35afvvucDs5nQf"
+    },
+    "voice/luca/pit-readback/tires-rf.mp3": {
+      "hash": "ac7bf39b06949594",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing right front only",
+      "generatedAt": "2026-04-29T14:52:57.821Z",
+      "requestId": "QNjaruo0aD8rQ0QT9rIg"
+    },
+    "voice/luca/pit-readback/tires-lr.mp3": {
+      "hash": "a2de354b9382d17a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing left rear only",
+      "generatedAt": "2026-04-29T14:52:58.524Z",
+      "requestId": "0wI1piYamIdkRbt8guuS"
+    },
+    "voice/luca/pit-readback/tires-rr.mp3": {
+      "hash": "59fbe6a02412ca43",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing right rear only",
+      "generatedAt": "2026-04-29T14:52:59.321Z",
+      "requestId": "D8xZXIjvxexlMrIuzAPb"
+    },
+    "voice/luca/pit-readback/tires-lf-rr.mp3": {
+      "hash": "171c17d88ad9547f",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing left front and right rear",
+      "generatedAt": "2026-04-29T14:53:00.012Z",
+      "requestId": "x2K615zMJIfKIT1mpr9J"
+    },
+    "voice/luca/pit-readback/tires-rf-lr.mp3": {
+      "hash": "9e8ff24c98cfa245",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing right front and left rear",
+      "generatedAt": "2026-04-29T14:53:00.659Z",
+      "requestId": "k1DdhOela2DQcRiTRCUA"
+    },
+    "voice/luca/pit-readback/tires-skip-lf.mp3": {
+      "hash": "16fd1660cf914012",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing three tires, skipping left front",
+      "generatedAt": "2026-04-29T14:53:01.350Z",
+      "requestId": "xRcNTHA1lu3rN61nnscS"
+    },
+    "voice/luca/pit-readback/tires-skip-rf.mp3": {
+      "hash": "d40b6ca5075ebdff",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing three tires, skipping right front",
+      "generatedAt": "2026-04-29T14:53:02.223Z",
+      "requestId": "s1pIh5HTtD7eZyOPtYZS"
+    },
+    "voice/luca/pit-readback/tires-skip-lr.mp3": {
+      "hash": "4b3efe161e1b7480",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing three tires, skipping left rear",
+      "generatedAt": "2026-04-29T14:53:03.092Z",
+      "requestId": "kmLPnqWQNj03lrjZVCqd"
+    },
+    "voice/luca/pit-readback/tires-skip-rr.mp3": {
+      "hash": "38f6f2c809fbfe83",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're changing three tires, skipping right rear",
+      "generatedAt": "2026-04-29T14:52:08.321Z",
+      "requestId": "inlcrn9kcvGNofMEEN2G"
+    },
+    "voice/luca/pit-readback/tires-off.mp3": {
+      "hash": "6a4b64167d994672",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and, we're not changing tires!",
+      "generatedAt": "2026-04-29T14:37:32.151Z",
+      "requestId": "vIXjQs9Mu4XIwvoe0FLv"
+    },
+    "voice/luca/pit-readback/compound-dry.mp3": {
+      "hash": "d982dcb969baf2cd",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and, we're changing to dries.",
+      "generatedAt": "2026-04-29T14:56:31.887Z",
+      "requestId": "t1uzgkNw02pZXFdpafjz"
+    },
+    "voice/luca/pit-readback/compound-wet.mp3": {
+      "hash": "ce9f32681f7311e6",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and, we're changing to wets.",
+      "generatedAt": "2026-04-29T14:56:32.607Z",
+      "requestId": "uBCXhNrjiiZ45iCKPO6F"
+    },
+    "voice/luca/pit-readback/fast-repair-on.mp3": {
+      "hash": "bd72653cfe671a0d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "ahem..Additionally, we're doing fast repairs to any damage you might have,",
+      "generatedAt": "2026-04-29T17:51:24.211Z",
+      "requestId": "JaGUSCbUPH3Mw9C1Gbok"
+    },
+    "voice/luca/pit-readback/fast-repair-off.mp3": {
+      "hash": "8708ab1b42814042",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "ahem..We're not doing fast repair",
+      "generatedAt": "2026-04-29T15:37:29.153Z",
+      "requestId": "7iuPVnoQz5F28966X99L"
+    },
+    "voice/luca/pit-readback/windshield-on.mp3": {
+      "hash": "5706ea76246bb38a",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're cleaning the windshield.",
+      "generatedAt": "2026-04-29T15:51:49.725Z",
+      "requestId": "GfZ23i21uT1ztl1JFjPE"
+    },
+    "voice/luca/pit-readback/windshield-off.mp3": {
+      "hash": "f7a378cdc37f774d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and we're leaving windshield as-is.",
+      "generatedAt": "2026-04-29T14:54:02.607Z",
+      "requestId": "1et9ZTLFwEgrycHvLqxL"
+    },
+    "voice/luca/pit-readback/closer-exit.mp3": {
+      "hash": "b15737e380e4ca18",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "This was a good stop!",
+      "generatedAt": "2026-04-29T15:34:43.184Z",
+      "requestId": "LuEG5k95Kvy1eGVBcEbl"
+    },
+    "voice/luca/pit-readback/connector-and.mp3": {
+      "hash": "56ccc9ac29d2eb02",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "and",
+      "generatedAt": "2026-04-29T11:28:36.253Z",
+      "requestId": "H3P2xLQtPWDTOocODSFP"
+    },
+    "voice/luca/pit-readback/connector-also.mp3": {
+      "hash": "5342865b0837a6eb",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "also",
+      "generatedAt": "2026-04-29T11:28:36.664Z",
+      "requestId": "LRR0SMHim4sWpJTTr3WO"
+    },
+    "voice/luca/pit-readback/connector-plus.mp3": {
+      "hash": "4df067a5f3e593ef",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "plus",
+      "generatedAt": "2026-04-29T11:28:37.094Z",
+      "requestId": "m1Xar6A0DfMxfq9T9VpZ"
     }
   }
 }

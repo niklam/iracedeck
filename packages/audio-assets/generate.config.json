@@ -293,6 +293,127 @@
         "text": "Switching to wets at the next pitstop."
       }
     ],
+    "pit-readback": [
+      {
+        "name": "opener-entry",
+        "text": "During this pitstop..."
+      },
+      {
+        "name": "opener-entry-limiter",
+        "text": "Remember the pit limiter! ahem...",
+        "seed": 4
+      },
+      {
+        "name": "opener-exit",
+        "text": "At the next pitstop",
+        "seed": 9
+      },
+      {
+        "name": "empty-fallback",
+        "text": "We're not changing tires, and we're not refueling!"
+      },
+      {
+        "name": "fuel-on",
+        "text": "We're refueling"
+      },
+      {
+        "name": "fuel-off",
+        "text": "We're not refueling",
+        "seed": 3
+      },
+      {
+        "name": "tires-all",
+        "text": "and we're changing all tires!"
+      },
+      {
+        "name": "tires-fronts",
+        "text": "and we're changing front tires"
+      },
+      {
+        "name": "tires-rears",
+        "text": "and we're changing rear tires"
+      },
+      {
+        "name": "tires-lefts",
+        "text": "and we're changing left side tires"
+      },
+      {
+        "name": "tires-rights",
+        "text": "and we're changing right side tires"
+      },
+      {
+        "name": "tires-lf",
+        "text": "and we're changing left front only"
+      },
+      {
+        "name": "tires-rf",
+        "text": "and we're changing right front only"
+      },
+      {
+        "name": "tires-lr",
+        "text": "and we're changing left rear only"
+      },
+      {
+        "name": "tires-rr",
+        "text": "and we're changing right rear only"
+      },
+      {
+        "name": "tires-lf-rr",
+        "text": "and we're changing left front and right rear"
+      },
+      {
+        "name": "tires-rf-lr",
+        "text": "and we're changing right front and left rear"
+      },
+      {
+        "name": "tires-skip-lf",
+        "text": "and we're changing three tires, skipping left front"
+      },
+      {
+        "name": "tires-skip-rf",
+        "text": "and we're changing three tires, skipping right front"
+      },
+      {
+        "name": "tires-skip-lr",
+        "text": "and we're changing three tires, skipping left rear"
+      },
+      {
+        "name": "tires-skip-rr",
+        "text": "and we're changing three tires, skipping right rear"
+      },
+      {
+        "name": "tires-off",
+        "text": "and, we're not changing tires!",
+        "seed": 2
+      },
+      {
+        "name": "compound-dry",
+        "text": "and, we're changing to dries."
+      },
+      {
+        "name": "compound-wet",
+        "text": "and, we're changing to wets."
+      },
+      {
+        "name": "fast-repair-on",
+        "text": "ahem..Additionally, we're doing fast repairs to any damage you might have,"
+      },
+      {
+        "name": "fast-repair-off",
+        "text": "ahem..We're not doing fast repair",
+        "seed": 3
+      },
+      {
+        "name": "windshield-on",
+        "text": "and we're cleaning the windshield.",
+        "seed": 4
+      },
+      {
+        "name": "windshield-off",
+        "text": "and we're leaving windshield as-is.",
+        "seed": 4
+      }
+    ],
     "names": [
       {
         "name": "adam",
