@@ -329,7 +329,13 @@ class ScenarioEngine implements IScenarioEngine {
       // preempts them. The preempted low fire is captured into
       // `deferredLowFire` so it replays once the bus goes idle, mirroring
       // the existing busy-bus deferral path.
-      const preemptsLow = runningPriority === "low" && priority !== "low";
+      //
+      // Same-family preemption is a wholesale replacement (the new entry
+      // invalidates the old one), so we exclude it from the low-fire
+      // stash even when the new entry happens to have higher priority —
+      // otherwise the older snapshot would replay after the newer
+      // family member completes, contradicting the family semantic.
+      const preemptsLow = !sameFamily && runningPriority === "low" && priority !== "low";
 
       const canPreempt =
         sameFamily ||
