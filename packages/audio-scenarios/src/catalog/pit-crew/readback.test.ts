@@ -159,9 +159,6 @@ const READBACK_CLIP_NAMES = [
   "windshield-on",
   "windshield-off",
   "closer-exit",
-  "connector-and",
-  "connector-also",
-  "connector-plus",
 ] as const;
 
 // Other catalog clips referenced by scenarios sharing the engine. Required
@@ -503,8 +500,8 @@ describe("pit readback scenarios", () => {
     });
   });
 
-  describe("connectors", () => {
-    it("interleaves connector clips between slot picks", () => {
+  describe("slot composition", () => {
+    it("emits each populated slot back-to-back without glue clips", () => {
       fireReadback(
         snap({
           reason: "entry",
@@ -512,15 +509,23 @@ describe("pit readback scenarios", () => {
           tires: { lf: true, rf: true, lr: true, rr: true },
           fastRepair: { queued: true, available: true },
           windshield: { queued: true, available: true },
+          limiterEngaged: true,
         }),
       );
 
-      const connectorHits = voicePaths().filter((p) => p.includes("/pit-readback/connector-"));
-      // Slots: opener + fuel + tires + FR + windshield. Three connectors
-      // should fire (one before each of tires / FR / windshield) — fuel
-      // is the first non-opener slot and also takes a connector since it
-      // sits behind the opener.
-      expect(connectorHits.length).toBeGreaterThanOrEqual(3);
+      const readbackPaths = voicePaths()
+        .filter((p) => p.includes("/pit-readback/"))
+        .map((p) => p.split("/pit-readback/")[1]);
+
+      // Opener → fuel → tires → fast-repair → windshield, in that order,
+      // with no intervening connector clips.
+      expect(readbackPaths).toEqual([
+        "opener-entry.mp3",
+        "fuel-on.mp3",
+        "tires-all.mp3",
+        "fast-repair-on.mp3",
+        "windshield-on.mp3",
+      ]);
     });
   });
 });

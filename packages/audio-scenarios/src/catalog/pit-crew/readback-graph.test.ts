@@ -16,9 +16,8 @@
  * recorded slot sequences to compute distinct predecessor / successor
  * slot sets.
  *
- * Connectors and radio-frame clips (`/sfx/IRD-tick-*`) are excluded — the
- * connector pool is the many-to-many glue between slots and is not part
- * of the outer graph.
+ * Radio-frame clips (`/sfx/IRD-tick-*`) are excluded — they're shared by
+ * every scenario and aren't part of the outer slot graph.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
@@ -172,9 +171,6 @@ const READBACK_CLIP_NAMES = [
   "windshield-on",
   "windshield-off",
   "closer-exit",
-  "connector-and",
-  "connector-also",
-  "connector-plus",
 ] as const;
 
 const OTHER_CLIP_NAMES = [
@@ -301,19 +297,14 @@ function recordSequence(snapshot: Snapshot): string[] {
   flush();
 
   // Filter to readback clips only (drop the radio-frame ticks and any
-  // ambient noise). Keep connectors so we can verify they're not the
-  // adjacent neighbour for our predecessor/successor counts — connectors
-  // are excluded from the constraint downstream.
+  // ambient noise).
   return audio._played.map((p) => readbackClipsFromPath(p.path)).filter((n): n is string => n !== null);
 }
 
 /**
- * Bucket a clip name into its outer-graph slot id. Returns null for
- * connectors so they're skipped from neighbour analysis.
+ * Bucket a clip name into its outer-graph slot id.
  */
-function slotOf(clipName: string): string | null {
-  if (clipName.startsWith("connector-")) return null;
-
+function slotOf(clipName: string): string {
   if (clipName.startsWith("opener-")) return "opener";
 
   if (clipName === "empty-fallback") return "empty-fallback";
@@ -348,15 +339,13 @@ describe("pit-readback path-graph invariant", () => {
     }
 
     function record(seq: string[]): void {
-      // Map clips to slots, drop connectors (slotOf returns null), and
-      // collapse runs of the same slot (a single slot picks at most one
-      // clip per fire, so this is just defensive against future fanout).
+      // Map clips to slots and collapse runs of the same slot (a single
+      // slot picks at most one clip per fire, so this is just defensive
+      // against future fanout).
       const slots: string[] = [];
 
       for (const clip of seq) {
         const slot = slotOf(clip);
-
-        if (slot === null) continue;
 
         if (slots[slots.length - 1] !== slot) slots.push(slot);
       }

@@ -9,10 +9,10 @@
  *
  * Both scenarios are pure slot compositions over the event payload (no
  * live telemetry reads from inside the DSL). Each slot picks zero or one
- * clip based on the snapshot, and slots are joined by the `connector`
- * pool ("and" / "also" / "plus"). Slots that resolve to "omit" contribute
- * nothing; slots that resolve to a clip are preceded by a connector iff
- * something earlier in the sequence has already played.
+ * clip based on the snapshot; slots that resolve to "omit" contribute
+ * nothing. There are no connectors between slots — the slot clips are
+ * authored with consistent lead-in / lead-out so they flow naturally
+ * back-to-back.
  *
  * Slot order:
  *   1. Opener           — entry: "We're …" or "Don't forget your limiter.
@@ -101,6 +101,16 @@ function clipPath(filename: string): string {
   return `${READBACK_BASE}/${filename}`;
 }
 
+function fuelSlotSteps(): Step[] {
+  return [
+    {
+      if: (ctx) => payload(ctx).fuel.queued,
+      then: [clipPath("fuel-on.mp3")],
+      else: [clipPath("fuel-off.mp3")],
+    },
+  ];
+}
+
 /**
  * Build the tire/compound slot. Mutually exclusive cases:
  *   - compound change (dry / wet) — implicitly covers all four tires
@@ -109,22 +119,18 @@ function clipPath(filename: string): string {
  */
 function tireCompoundSlotSteps(): Step[] {
   return [
-    // Compound dry
     {
       if: (ctx) => payload(ctx).compoundChange?.to === 0,
       then: [clipPath("compound-dry.mp3")],
     },
-    // Compound wet
     {
       if: (ctx) => payload(ctx).compoundChange?.to === 1,
       then: [clipPath("compound-wet.mp3")],
     },
-    // Pattern picks (one fires per snapshot when compound stays the same)
     ...TIRE_PATTERN_CLIPS.map<Step>(({ match, clip }) => ({
       if: (ctx) => payload(ctx).compoundChange === null && match(payload(ctx).tires),
       then: [clipPath(clip)],
     })),
-    // No tires
     {
       if: (ctx) => payload(ctx).compoundChange === null && !hasAnyTire(payload(ctx)),
       then: [clipPath("tires-off.mp3")],
@@ -132,38 +138,15 @@ function tireCompoundSlotSteps(): Step[] {
   ];
 }
 
-function fuelSlotSteps(): Step[] {
-  return [
-    {
-      if: (ctx) => payload(ctx).fuel.queued,
-      then: ["pool:connector", clipPath("fuel-on.mp3")],
-      else: ["pool:connector", clipPath("fuel-off.mp3")],
-    },
-  ];
-}
-
-/**
- * Tire/compound slot prefixed by a connector. Exactly one branch fires per
- * snapshot (compound dry / wet / one of 15 patterns / no tires), so the
- * connector glues the slot's pick to whatever played before it.
- */
-function tireCompoundSlotWithConnector(): Step[] {
-  return tireCompoundSlotSteps().map<Step>((step) => {
-    if (typeof step !== "object" || !("if" in step)) return step;
-
-    return { if: step.if, then: ["pool:connector", ...step.then], else: step.else };
-  });
-}
-
 function fastRepairSlotSteps(): Step[] {
   return [
     {
       if: (ctx) => payload(ctx).fastRepair.available && payload(ctx).fastRepair.queued,
-      then: ["pool:connector", clipPath("fast-repair-on.mp3")],
+      then: [clipPath("fast-repair-on.mp3")],
     },
     {
       if: (ctx) => payload(ctx).fastRepair.available && !payload(ctx).fastRepair.queued,
-      then: ["pool:connector", clipPath("fast-repair-off.mp3")],
+      then: [clipPath("fast-repair-off.mp3")],
     },
   ];
 }
@@ -172,11 +155,11 @@ function windshieldSlotSteps(): Step[] {
   return [
     {
       if: (ctx) => payload(ctx).windshield.available && payload(ctx).windshield.queued,
-      then: ["pool:connector", clipPath("windshield-on.mp3")],
+      then: [clipPath("windshield-on.mp3")],
     },
     {
       if: (ctx) => payload(ctx).windshield.available && !payload(ctx).windshield.queued,
-      then: ["pool:connector", clipPath("windshield-off.mp3")],
+      then: [clipPath("windshield-off.mp3")],
     },
   ];
 }
@@ -219,15 +202,14 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
                 else: [clipPath("opener-entry.mp3")],
               }
             : { clip: clipPath("opener-exit.mp3") },
-          // Slots 2-5 — every body branch starts with a connector. Slot 1
-          // (opener) already played, so the first sub-clip needs to be
-          // glued via a connector.
+          // Slots 2-5 — each fires zero or one clip; the slot clips are
+          // authored with consistent lead-in / lead-out so they flow
+          // naturally back-to-back without explicit connector glue.
           ...fuelSlotSteps(),
-          ...tireCompoundSlotWithConnector(),
+          ...tireCompoundSlotSteps(),
           ...fastRepairSlotSteps(),
           ...windshieldSlotSteps(),
-          // Slot 6 — closer (exit only). No connector — the closer is its
-          // own beat, intentionally separated by silence rather than glue.
+          // Slot 6 — closer (exit only).
           ...(isEntry ? [] : [{ clip: clipPath("closer-exit.mp3") } as Step]),
         ],
       },

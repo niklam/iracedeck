@@ -296,11 +296,11 @@
     "pit-readback": [
       {
         "name": "opener-entry",
-        "text": "We're"
+        "text": "During this pitstop..."
       },
       {
         "name": "opener-entry-limiter",
-        "text": "Don't forget your limiter. We're"
+        "text": "Don't forget your limiter! During this pitstop..."
       },
       {
         "name": "opener-exit",
@@ -308,19 +308,19 @@
       },
       {
         "name": "empty-fallback",
-        "text": "Not changing tires, not refueling."
+        "text": "Not changing tires, not refueling!"
       },
       {
         "name": "fuel-on",
-        "text": "taking fuel"
+        "text": "We're refueling!"
       },
       {
         "name": "fuel-off",
-        "text": "no fuel"
+        "text": "We're not taking fuel!"
       },
       {
         "name": "tires-all",
-        "text": "four tires"
+        "text": "Changing all tires!"
       },
       {
         "name": "tires-fronts",
@@ -380,7 +380,7 @@
       },
       {
         "name": "tires-off",
-        "text": "no tires"
+        "text": "And, we're not changing tires!"
       },
       {
         "name": "compound-dry",
@@ -409,18 +409,6 @@
       {
         "name": "closer-exit",
         "text": "Good stop. Back to work."
-      },
-      {
-        "name": "connector-and",
-        "text": "and"
-      },
-      {
-        "name": "connector-also",
-        "text": "also"
-      },
-      {
-        "name": "connector-plus",
-        "text": "plus"
       }
     ],
     "names": [
