@@ -314,10 +314,22 @@ describe("pit readback scenarios", () => {
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
     });
 
-    it("entry-refire reason fires the entry scenario", () => {
+    it("entry-refire reason fires the entry scenario but skips the opener", () => {
       fireReadback(snap({ reason: "entry-refire", fuel: { queued: true } }));
 
-      expect(voicePaths().some((p) => p.includes("/pit-readback/"))).toBe(true);
+      const paths = voicePaths();
+      // Slot content still plays on a refire so the recap reflects the
+      // updated snapshot, but the opener is silent — the driver heard
+      // the carrier sentence already on the initial entry.
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
+    });
+
+    it("entry-refire skips the limiter pre-opener even when limiter is not engaged", () => {
+      fireReadback(snap({ reason: "entry-refire", fuel: { queued: true }, limiterEngaged: false }));
+
+      expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
     });
 
     it("does not fire the exit scenario", () => {

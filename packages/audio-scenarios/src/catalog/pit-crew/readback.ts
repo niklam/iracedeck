@@ -16,12 +16,16 @@
  *
  * Slot order:
  *   1. Opener           — exit: "To confirm:".
- *                         entry: an optional limiter pre-opener
+ *                         entry (initial): an optional limiter pre-opener
  *                         ("Don't forget your limiter.") fires when
  *                         `limiterEngaged === false`, followed by the
  *                         always-on `opener-entry` ("We're …"). The two
  *                         are separate clips so the regular opener fires
- *                         every entry regardless of limiter state.
+ *                         every initial entry regardless of limiter state.
+ *                         entry-refire: opener slots are skipped — the
+ *                         driver already heard the carrier sentence on
+ *                         the initial entry, so a mid-lane refire just
+ *                         replays the slot content.
  *   2. Fuel             — "taking fuel" / "no fuel".
  *   3. Tires / compound — exactly one of: a tire-pattern clip (15 options),
  *                          a compound-change clip (2), or "no tires".
@@ -201,14 +205,21 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
           // Opener.
           //   Entry: optional limiter pre-opener fires when the limiter
           //   isn't engaged, then the always-on `opener-entry` follows.
+          //     Both are gated on `reason === "entry"` — refires
+          //     (`entry-refire`) skip the opener entirely so we don't
+          //     hear "During this pitstop…" twice when the user toggles
+          //     a service mid-lane and the readback re-plays.
           //   Exit: a single `opener-exit` clip.
           ...(isEntry
             ? ([
                 {
-                  if: (ctx) => !payload(ctx).limiterEngaged,
+                  if: (ctx) => payload(ctx).reason === "entry" && !payload(ctx).limiterEngaged,
                   then: [clipPath("opener-entry-limiter.mp3")],
                 },
-                { clip: clipPath("opener-entry.mp3") },
+                {
+                  if: (ctx) => payload(ctx).reason === "entry",
+                  then: [clipPath("opener-entry.mp3")],
+                },
               ] as Step[])
             : [{ clip: clipPath("opener-exit.mp3") } as Step]),
           // Slots 2-5 — each fires zero or one clip; the slot clips are
