@@ -155,44 +155,29 @@ export function diffPitReadback(
   const wasOnPitRoad = state.pitReadbackPrevOnPitRoad;
   const wasInPreStart = state.lastTickInPreStart;
 
-  // Pending exit fire whose delay has elapsed? Reads telemetry FRESH at
-  // fire time — the user might have toggled services after pulling out
-  // of the stall (or the crew might have completed work), so the recap
-  // reflects what's actually queued at the moment the engineer speaks
-  // rather than a frozen snapshot from earlier in the visit.
-  if (state.pitReadbackExitFireAt > 0 && now >= state.pitReadbackExitFireAt) {
-    const exitSnap = buildSnapshot(telemetry);
-    emit({
-      event: "pitService.readbackRequested",
-      data: { reason: "exit", ...exitSnap },
-    });
-    state.pitReadbackExitFireAt = 0;
-  }
-
   // Pending pre-start fire whose delay has elapsed? Only fires while still
   // in pre-start — if the user dropped out (e.g. left the car / session
-  // changed) the queued readback is dropped silently.
-  if (
-    state.pitReadbackPreStartFireAt > 0 &&
-    now >= state.pitReadbackPreStartFireAt &&
-    state.pitReadbackPreStartSnapshot &&
-    inPreStart
-  ) {
+  // changed) the queued readback is dropped silently. Reads telemetry
+  // FRESH at fire time so a user toggle during the 5 s grid window
+  // (when pit-action confirmations are muted) is still reflected.
+  if (state.pitReadbackPreStartFireAt > 0 && now >= state.pitReadbackPreStartFireAt && inPreStart) {
+    const preStartSnap = buildSnapshot(telemetry);
     emit({
       event: "pitService.readbackRequested",
-      data: { reason: "entry", ...state.pitReadbackPreStartSnapshot },
+      data: { reason: "entry", ...preStartSnap },
     });
     state.pitReadbackPreStartFireAt = 0;
-    state.pitReadbackPreStartSnapshot = null;
   } else if (state.pitReadbackPreStartFireAt > 0 && !inPreStart) {
     // Left pre-start before the timer elapsed — cancel.
     state.pitReadbackPreStartFireAt = 0;
-    state.pitReadbackPreStartSnapshot = null;
   }
 
   if (!wasOnPitRoad && onPitRoad) {
     // Off → on: cancel any stale scheduled exit (re-entry within the delay
-    // window) and emit the entry readback.
+    // window) and emit the entry readback. Doing this BEFORE the
+    // exit-fire dispatch below ensures a tick that lands past the exit
+    // deadline AND off→on re-entry fires only the entry readback, never
+    // both in the same tick.
     state.pitReadbackExitFireAt = 0;
 
     const snap = buildSnapshot(telemetry);
@@ -212,15 +197,29 @@ export function diffPitReadback(
     state.pitReadbackExitFireAt = now + PIT_READBACK_EXIT_DELAY_MS;
 
     state.pitActionCooldownUntil = Math.max(state.pitActionCooldownUntil, now + PIT_READBACK_EXIT_DELAY_MS);
+  } else if (state.pitReadbackExitFireAt > 0 && now >= state.pitReadbackExitFireAt && !onPitRoad) {
+    // Pending exit fire whose delay has elapsed AND the car is still
+    // off pit road (i.e. no re-entry happened first). Reads telemetry
+    // FRESH at fire time — the user might have toggled services after
+    // pulling out of the stall, so the recap reflects what's actually
+    // queued at the moment the engineer speaks rather than a frozen
+    // snapshot from earlier in the visit.
+    const exitSnap = buildSnapshot(telemetry);
+    emit({
+      event: "pitService.readbackRequested",
+      data: { reason: "exit", ...exitSnap },
+    });
+    state.pitReadbackExitFireAt = 0;
   }
 
   if (!wasInPreStart && inPreStart) {
     // Just entered the formation / grid window. Mute pit-action callouts
     // for the cooldown duration and schedule the auto-readback so the
     // driver hears the queued plan unprompted before the green flag.
+    // The snapshot is built fresh at fire time — no need to capture
+    // here.
     state.pitActionCooldownUntil = Math.max(state.pitActionCooldownUntil, now + PIT_READBACK_PRESTART_DELAY_MS);
     state.pitReadbackPreStartFireAt = now + PIT_READBACK_PRESTART_DELAY_MS;
-    state.pitReadbackPreStartSnapshot = buildSnapshot(telemetry);
   }
 
   state.pitReadbackPrevOnPitRoad = onPitRoad;

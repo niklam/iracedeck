@@ -183,6 +183,19 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // modules' first-tick / off-track seed branches reseed cleanly.
   if (telemetry.IsReplayPlaying === true) {
     if (!self.lastTickInReplay) {
+      // Publish the radar teardown signal before resetting state so the
+      // radar engine receives a clear edge — otherwise it stays latched
+      // through replay (the tick loop runs until it sees a `clear`).
+      // Mirrors `handleDisconnect()`.
+      if (self.state.radarState !== "clear") {
+        publish(
+          self,
+          { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
+          telemetry,
+          Date.now(),
+        );
+      }
+
       self.state = createInitialState();
       self.lastTickInReplay = true;
     }

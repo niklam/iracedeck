@@ -342,9 +342,21 @@ class ScenarioEngine implements IScenarioEngine {
         if (preemptsLow && state.activeFire) {
           // Stash the preempted low fire so it replays after the
           // higher-priority scenario completes. Same shape as the
-          // busy-bus deferral — id + original event.
-          state.deferredLowFire = { id: state.activeFire.id, event: state.activeFire.event };
-          this.logger.debug(`Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; deferred for replay`);
+          // busy-bus deferral — id + original event. If a newer low
+          // fire is already queued (arrived while this one was
+          // running) keep it; the established "most-recent low wins"
+          // semantic should not be silently flipped by preemption
+          // dropping the newer queued fire in favour of the older
+          // running one.
+          if (state.deferredLowFire === null) {
+            state.deferredLowFire = { id: state.activeFire.id, event: state.activeFire.event };
+            this.logger.debug(`Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; deferred for replay`);
+          } else {
+            this.logger.debug(
+              `Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; ` +
+                `dropped (newer low "${state.deferredLowFire.id}" already queued)`,
+            );
+          }
         }
 
         this.cancelActiveFire(state);

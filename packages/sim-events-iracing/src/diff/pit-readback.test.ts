@@ -284,11 +284,12 @@ describe("diffPitReadback — exit", () => {
     );
 
     const readbacks = readbackEvents(events);
-    // Either the exit fired then entry, or just entry — but exit must
-    // have been cancelled either way. The contract: at most one entry
-    // event on a single off→on transition.
-    const entries = readbacks.filter((e) => "data" in e && (e.data as { reason: string }).reason === "entry");
-    expect(entries).toHaveLength(1);
+    // The off→on transition must take precedence over the overdue exit
+    // — exactly one event fires this tick, and it's the entry. Asserting
+    // the full shape (length + reason) catches a regression where both
+    // exit and entry fire in the same tick.
+    expect(readbacks).toHaveLength(1);
+    expect(readbacks[0]?.data).toMatchObject({ reason: "entry" });
     expect(state.pitReadbackExitFireAt).toBe(0);
   });
 });

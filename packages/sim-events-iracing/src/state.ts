@@ -82,12 +82,13 @@ export type TranslatorState = {
   pitActionCooldownUntil: number;
   /**
    * Pre-start auto-readback. Set on the pre-start enter transition and
-   * fires once `now >= pitReadbackPreStartFireAt`. The committed snapshot
-   * is captured at the transition moment so the readback reflects what
-   * was queued going into the formation lap.
+   * fires once `now >= pitReadbackPreStartFireAt`. The snapshot is
+   * built fresh from current telemetry at fire time so any toggle the
+   * user makes during the muted-pit-actions window is reflected in
+   * the recap (otherwise the user could change fuel/tires on the grid
+   * and still hear a stale plan from grid entry).
    */
   pitReadbackPreStartFireAt: number;
-  pitReadbackPreStartSnapshot: PitReadbackCommittedSnapshot | null;
   /**
    * Tracks the iRacing pre-start state (`PaceMode === SingleFileStart |
    * DoubleFileStart` AND `SessionState === ParadeLaps | Warmup |
@@ -163,7 +164,6 @@ export function createInitialState(): TranslatorState {
     pitReadbackExitFireAt: 0,
     pitActionCooldownUntil: 0,
     pitReadbackPreStartFireAt: 0,
-    pitReadbackPreStartSnapshot: null,
     lastTickInPreStart: false,
 
     limiterInitialized: false,

@@ -239,6 +239,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -250,6 +251,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 type Snapshot = SimEventMap["pitService.readbackRequested"]["data"];
@@ -287,6 +289,12 @@ function flush(): void {
   for (let i = 0; i < 60; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
     audio._triggerChannelEnd(AudioChannel.SFX);
+    // Advance fake timers so the 300 ms `{ pause: 300 }` step between
+    // the tire/compound slot and fast-repair / windshield extras
+    // actually elapses — without this the sequence stops at the pause
+    // and the `extras` slot is never reached, so the invariant test
+    // never sees those edges.
+    vi.advanceTimersByTime(1000);
   }
 }
 
