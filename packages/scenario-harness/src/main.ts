@@ -11,12 +11,7 @@ import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
-import {
-  initGlobalSettings,
-  onGlobalSettingsChange,
-  resolveActiveDriverName,
-  resolveActiveRaceEngineerVoice,
-} from "@iracedeck/deck-core";
+import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -69,15 +64,12 @@ async function main(): Promise<void> {
   // ── Audio scenarios ──────────────────────────────────────────────────────
   const adapter = new MockPlatformAdapter(logger);
   const manifest = getAudioAssetsManifest();
-  const { raceEngineerVoices, driverNames } = seedGlobalSettings(adapter);
+  const { raceEngineerVoices } = seedGlobalSettings(adapter);
 
   initializeAudioScenarios(eventBus, audio, manifest, logger.createScope("AudioScenarios"), () =>
     resolveActiveRaceEngineerVoice(raceEngineerVoices),
   );
-  // Pass the driver-name resolver as the 5th arg so the readback exit
-  // closer addresses the driver by name (issue #476). Other closures
-  // keep their defaults — the harness has no per-callout opt-out UI.
-  registerPitCrew(eventBus, undefined, undefined, undefined, () => resolveActiveDriverName(driverNames));
+  registerPitCrew(eventBus);
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the

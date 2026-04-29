@@ -33,11 +33,6 @@
  *                          when the series doesn't offer fast repair.
  *   5. Windshield       — "cleaning the windshield" / "no windshield",
  *                          or omitted when not applicable.
- *   6. Closer (exit)    — short tail clip + driver name, exit only.
- *                          The driver name is resolved live via the
- *                          `driverName` var registered in
- *                          `registerPitCrew`; a missing/unset name
- *                          drops the step silently.
  *
  * Empty-snapshot fallback: when fuel + tires + extras all resolve to
  * "omit"/"no", the dedicated empty-fallback clip plays alone instead
@@ -224,16 +219,18 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
                 },
                 ...fuelSlotSteps(),
                 ...tireCompoundSlotSteps(),
+                // Brief beat after the tire/compound callout so the
+                // optional fast-repair / windshield extras don't crowd
+                // the longest slot in the recap.
+                { pause: 300 },
                 ...fastRepairSlotSteps(),
                 ...windshieldSlotSteps(),
               ],
             },
           ] as Step[])
-        : // Exit: opener + body + closer + driver name. Empty-snapshot
-          // keeps the bookends so the engineer still says "To confirm:
-          // … not changing tires, not refueling. Good stop. Back to
-          // work. Niklas." rather than dropping straight into the
-          // fallback clip.
+        : // Exit: opener + body. Empty-snapshot still keeps the opener
+          // so the engineer says "To confirm: … not changing tires, not
+          // refueling." rather than dropping straight into the fallback.
           ([
             { clip: clipPath("opener-exit.mp3") },
             {
@@ -242,16 +239,14 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
               else: [
                 ...fuelSlotSteps(),
                 ...tireCompoundSlotSteps(),
+                // Brief beat after the tire/compound callout so the
+                // optional fast-repair / windshield extras don't crowd
+                // the longest slot in the recap.
+                { pause: 300 },
                 ...fastRepairSlotSteps(),
                 ...windshieldSlotSteps(),
               ],
             },
-            { clip: clipPath("closer-exit.mp3") },
-            // Driver-name var (resolved live from global settings via
-            // `registerPitCrew`'s `driverName` var). When no driver
-            // name is configured the resolver returns null and the
-            // step contributes nothing — the closer drops cleanly.
-            { var: "driverName" },
           ] as Step[])),
       "@pit-crew.radio-close",
     ],

@@ -113,11 +113,6 @@ export function registerPitCrew(
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
   logger?: ILogger,
   getPitReadbackEnabled: (id: PitReadbackCalloutId) => boolean = () => true,
-  // Resolve the active driver-name key (e.g. `"niklas"`) for the
-  // pit-readback exit closer. Returns `null` when no name is configured
-  // — the `{ var: "driverName" }` step then plays nothing, so the
-  // closer drops cleanly without a hanging "…" beat.
-  getActiveDriverName: () => string | null = () => null,
 ): void {
   registerRadarEngine(bus);
 
@@ -125,14 +120,6 @@ export function registerPitCrew(
 
   Object.entries(POOLS).forEach(([key, value]) => {
     engine.definePool(key, value as string[]);
-  });
-
-  // Driver-name var. Resolves on every fire so a PI driver-name change
-  // takes effect on the next readback without re-registering scenarios.
-  engine.defineVar("driverName", () => {
-    const name = getActiveDriverName();
-
-    return name ? `voice/{voice}/names/${name}.mp3` : null;
   });
 
   engine.defineScenario(RADIO_OPEN);

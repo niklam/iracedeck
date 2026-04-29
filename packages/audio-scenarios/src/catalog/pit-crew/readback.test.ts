@@ -124,6 +124,10 @@ function flush(audio: FakeAudio, iterations = 60): void {
   for (let i = 0; i < iterations; i++) {
     audio._triggerChannelEnd(AudioChannel.Voice);
     audio._triggerChannelEnd(AudioChannel.SFX);
+    // Advance fake timers so any pending `pause` step ({ pause: ms }
+    // uses setTimeout) progresses without blocking the synchronous
+    // flush loop.
+    vi.advanceTimersByTime(1000);
   }
 }
 
@@ -158,7 +162,6 @@ const READBACK_CLIP_NAMES = [
   "fast-repair-off",
   "windshield-on",
   "windshield-off",
-  "closer-exit",
 ] as const;
 
 // Other catalog clips referenced by scenarios sharing the engine. Required
@@ -212,7 +215,6 @@ const OTHER_CLIP_NAMES = [
   "voice/luca/flags/checkered-practise-01.mp3",
   "voice/luca/flags/checkered-qualifying-01.mp3",
   "voice/luca/flags/checkered-race-01.mp3",
-  "voice/luca/names/niklas.mp3",
 ];
 
 const manifest: AudioAssetsManifest = {
@@ -257,12 +259,10 @@ function fireReadback(snapshot: Snapshot): void {
   flush(audio);
 }
 
-let activeDriverName: string | null = null;
-
 beforeEach(() => {
+  vi.useFakeTimers();
   flagsEnabled = new Map();
   readbackEnabled = new Map();
-  activeDriverName = null;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -272,7 +272,6 @@ beforeEach(() => {
     (id) => flagsEnabled.get(id) ?? true,
     mockLogger as never,
     (id) => readbackEnabled.get(id) ?? true,
-    () => activeDriverName,
   );
 });
 
@@ -280,6 +279,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("pit readback scenarios", () => {
@@ -340,55 +340,23 @@ describe("pit readback scenarios", () => {
     it("does not fire the exit scenario", () => {
       fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
 
-      expect(voicePaths().some((p) => p.endsWith("/pit-readback/closer-exit.mp3"))).toBe(false);
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(false);
     });
   });
 
   describe("exit readback", () => {
-    it("fires on exit reason with closer", () => {
+    it("fires on exit reason with the exit opener", () => {
       fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(true);
-      expect(paths.some((p) => p.endsWith("/pit-readback/closer-exit.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(true);
     });
 
     it("does not fire on entry / entry-refire reasons", () => {
       fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
       const entryPaths = voicePaths().slice();
       expect(entryPaths.some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(false);
-    });
-
-    it("plays the driver name immediately after closer-exit", () => {
-      activeDriverName = "niklas";
-      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
-
-      const paths = voicePaths();
-      const closerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/closer-exit.mp3"));
-      const nameIdx = paths.findIndex(
-        (p) => p.endsWith("/voice/luca/names/niklas.mp3") || p.endsWith("voice/luca/names/niklas.mp3"),
-      );
-
-      expect(closerIdx).toBeGreaterThanOrEqual(0);
-      expect(nameIdx).toBeGreaterThanOrEqual(0);
-      expect(nameIdx).toBe(closerIdx + 1);
-    });
-
-    it("omits the driver-name step silently when no name is configured", () => {
-      activeDriverName = null;
-      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
-
-      const paths = voicePaths();
-      expect(paths.some((p) => p.endsWith("/pit-readback/closer-exit.mp3"))).toBe(true);
-      expect(paths.some((p) => p.includes("/names/"))).toBe(false);
-    });
-
-    it("does not play the driver name on entry readback", () => {
-      activeDriverName = "niklas";
-      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
-
-      expect(voicePaths().some((p) => p.includes("/names/"))).toBe(false);
     });
   });
 
@@ -404,20 +372,15 @@ describe("pit readback scenarios", () => {
       expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
     });
 
-    it("exit keeps opener + closer + driver name around the empty-fallback", () => {
-      activeDriverName = "niklas";
+    it("exit keeps the opener around the empty-fallback", () => {
       fireReadback(snap({ reason: "exit" }));
 
       const paths = voicePaths();
       const openerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-exit.mp3"));
       const fallbackIdx = paths.findIndex((p) => p.endsWith("/pit-readback/empty-fallback.mp3"));
-      const closerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/closer-exit.mp3"));
-      const nameIdx = paths.findIndex((p) => p.endsWith("voice/luca/names/niklas.mp3"));
 
       expect(openerIdx).toBeGreaterThanOrEqual(0);
       expect(fallbackIdx).toBeGreaterThan(openerIdx);
-      expect(closerIdx).toBeGreaterThan(fallbackIdx);
-      expect(nameIdx).toBe(closerIdx + 1);
       expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(false);
       expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
     });
@@ -588,8 +551,9 @@ describe("pit readback scenarios", () => {
         .filter((p) => p.includes("/pit-readback/"))
         .map((p) => p.split("/pit-readback/")[1]);
 
-      // Opener → fuel → tires → fast-repair → windshield, in that order,
-      // with no intervening connector clips.
+      // Opener → fuel → tires → fast-repair → windshield, in that order.
+      // The 300 ms pause between tires and the extras isn't a clip so
+      // doesn't appear in the played-paths list.
       expect(readbackPaths).toEqual([
         "opener-entry.mp3",
         "fuel-on.mp3",

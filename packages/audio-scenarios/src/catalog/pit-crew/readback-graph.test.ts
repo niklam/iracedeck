@@ -170,7 +170,6 @@ const READBACK_CLIP_NAMES = [
   "fast-repair-off",
   "windshield-on",
   "windshield-off",
-  "closer-exit",
 ] as const;
 
 const OTHER_CLIP_NAMES = [
@@ -303,11 +302,10 @@ function recordSequence(snapshot: Snapshot): string[] {
 
 /**
  * Bucket a clip name into its outer-graph slot id. Optional / fallback
- * clips that all share the "may-or-may-not-fire body tail" prosodic
- * envelope (fast-repair, windshield, empty-fallback) collapse into one
- * `extras` slot — they're recorded with consistent lead-in / lead-out
- * so they're acoustically interchangeable as the predecessor of the
- * closer.
+ * clips that share the "may-or-may-not-fire body tail" prosodic envelope
+ * (fast-repair, windshield, empty-fallback) collapse into one `extras`
+ * slot — they're recorded with consistent lead-in / lead-out so they're
+ * acoustically interchangeable as the tail of the readback.
  */
 function slotOf(clipName: string): string {
   if (clipName.startsWith("opener-")) return "opener";
@@ -319,8 +317,6 @@ function slotOf(clipName: string): string {
   if (clipName.startsWith("fast-repair-") || clipName.startsWith("windshield-") || clipName === "empty-fallback") {
     return "extras";
   }
-
-  if (clipName === "closer-exit") return "closer";
 
   throw new Error(`Unbucketed clip: ${clipName}`);
 }
