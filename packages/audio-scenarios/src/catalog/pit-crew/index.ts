@@ -3,8 +3,10 @@
  *
  * The engine wires:
  *   - The directional radar (state-driven tick loop, not expressible in the
- *     scenario DSL — design doc §15)
- *   - The acknowledgment + flag-blue pools (used by toggle / flag scenarios)
+ *     scenario DSL)
+ *   - All pools defined in `pools.ts`, registered en masse via
+ *     `Object.entries(POOLS)` (acknowledgment, pit-action acknowledgment,
+ *     per-action pit-action callouts, flag callouts)
  *   - The radio-frame include scenarios (`@pit-crew.radio-open` / `…close`)
  *   - Fuel toggle scenarios (on/off via `pitService.toggled`)
  *   - Tire toggle scenarios (every meaningful tire-set selection, including
@@ -16,8 +18,9 @@
  *
  * Other voice scenarios (welcome, pit-approach, fuel-warning, incident
  * alerts, limiter callouts, tips, windshield/fastRepair/drs/p2p toggles)
- * stay on disk and are re-registered one at a time as their voice/ content
- * lands.
+ * are not currently registered; they'll be added one at a time as their
+ * `voice/{voice}/…` content is generated and the corresponding pools and
+ * scenarios are reintroduced.
  *
  * `bus` is the event bus instance returned by `initializeEventBus(...)`;
  * passed through to `registerRadarEngine` so the radar engine and the
@@ -37,7 +40,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
-import { FLAG_ALERTS, FLAG_POOL_NAMES } from "./flag-alerts.js";
+import { FLAG_ALERTS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -112,9 +115,9 @@ export function registerPitCrew(
 
   const engine = getScenarioEngine();
 
-  engine.definePool("acknowledgment", [...POOLS.acknowledgment]);
-
-  for (const name of FLAG_POOL_NAMES) engine.definePool(name, [...POOLS[name]]);
+  Object.entries(POOLS).forEach(([key, value]) => {
+    engine.definePool(key, value as string[]);
+  });
 
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);

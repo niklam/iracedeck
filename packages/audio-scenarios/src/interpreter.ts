@@ -616,7 +616,22 @@ class ScenarioEngine implements IScenarioEngine {
   private pickFromPool(name: string, noRepeat: boolean): string | null {
     const pool = this.pools.get(name);
 
-    if (!pool || pool.clips.length === 0) return null;
+    if (!pool) {
+      // Surfaces a class of bug that's otherwise silent: a scenario references
+      // a pool that was never registered (or was removed without updating the
+      // scenario). `defineScenario` validation catches this for scenarios
+      // defined ahead of fire time, but not for pools that vanish later or
+      // for `connector` step types whose pool is implicit.
+      this.logger.error(`pickFromPool: unknown pool "${name}" — step skipped, clip will not play`);
+
+      return null;
+    }
+
+    if (pool.clips.length === 0) {
+      this.logger.error(`pickFromPool: pool "${name}" is empty — step skipped, clip will not play`);
+
+      return null;
+    }
 
     let idx = Math.floor(Math.random() * pool.clips.length);
 

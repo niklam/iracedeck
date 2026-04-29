@@ -150,6 +150,8 @@ const FLAG_CLIP_NAMES = [
   "checkered-qualifying-01",
   "checkered-race-01",
   "debris-01",
+  "debris-02",
+  "debris-03",
   "meatball-01",
 ] as const;
 
@@ -392,7 +394,9 @@ describe("registerPitCrew live gating", () => {
     enabled.set("debris", true);
     bus.publishEvent("flag.debris.raised", {} as never);
     flush(audio);
-    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/flags/debris-01.mp3`]);
+    const played = voiceClipsPlayed();
+    expect(played).toHaveLength(1);
+    expect(played[0]).toMatch(new RegExp(`^voice/${VOICE}/flags/debris-0[123]\\.mp3$`));
   });
 
   it("yellow scope predicate still works when both yellow flags are enabled", () => {
