@@ -302,20 +302,23 @@ function recordSequence(snapshot: Snapshot): string[] {
 }
 
 /**
- * Bucket a clip name into its outer-graph slot id.
+ * Bucket a clip name into its outer-graph slot id. Optional / fallback
+ * clips that all share the "may-or-may-not-fire body tail" prosodic
+ * envelope (fast-repair, windshield, empty-fallback) collapse into one
+ * `extras` slot — they're recorded with consistent lead-in / lead-out
+ * so they're acoustically interchangeable as the predecessor of the
+ * closer.
  */
 function slotOf(clipName: string): string {
   if (clipName.startsWith("opener-")) return "opener";
-
-  if (clipName === "empty-fallback") return "empty-fallback";
 
   if (clipName === "fuel-on" || clipName === "fuel-off") return "fuel";
 
   if (clipName.startsWith("tires-") || clipName.startsWith("compound-")) return "tires-or-compound";
 
-  if (clipName.startsWith("fast-repair-")) return "fast-repair";
-
-  if (clipName.startsWith("windshield-")) return "windshield";
+  if (clipName.startsWith("fast-repair-") || clipName.startsWith("windshield-") || clipName === "empty-fallback") {
+    return "extras";
+  }
 
   if (clipName === "closer-exit") return "closer";
 

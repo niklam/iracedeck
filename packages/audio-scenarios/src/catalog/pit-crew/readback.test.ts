@@ -393,13 +393,31 @@ describe("pit readback scenarios", () => {
   });
 
   describe("empty snapshot", () => {
-    it("plays only the empty-fallback (no opener / no slots)", () => {
+    it("entry plays only the empty-fallback (no opener / no slots)", () => {
       fireReadback(snap({ reason: "entry" }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith("/pit-readback/empty-fallback.mp3"))).toBe(true);
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(false);
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
+    });
+
+    it("exit keeps opener + closer + driver name around the empty-fallback", () => {
+      activeDriverName = "niklas";
+      fireReadback(snap({ reason: "exit" }));
+
+      const paths = voicePaths();
+      const openerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-exit.mp3"));
+      const fallbackIdx = paths.findIndex((p) => p.endsWith("/pit-readback/empty-fallback.mp3"));
+      const closerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/closer-exit.mp3"));
+      const nameIdx = paths.findIndex((p) => p.endsWith("voice/luca/names/niklas.mp3"));
+
+      expect(openerIdx).toBeGreaterThanOrEqual(0);
+      expect(fallbackIdx).toBeGreaterThan(openerIdx);
+      expect(closerIdx).toBeGreaterThan(fallbackIdx);
+      expect(nameIdx).toBe(closerIdx + 1);
       expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(false);
       expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
     });

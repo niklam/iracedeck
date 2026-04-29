@@ -200,22 +200,20 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
     family: "pit-readback",
     sequence: [
       "@pit-crew.radio-open",
-      // Empty-snapshot fast path. Skips opener entirely so we don't hear
-      // "We're … and that's it" — the empty-fallback clip stands alone.
-      {
-        if: (ctx) => !hasAnyService(payload(ctx)),
-        then: [clipPath("empty-fallback.mp3")],
-        else: [
-          // Opener.
-          //   Entry: optional limiter pre-opener fires when the limiter
-          //   isn't engaged, then the always-on `opener-entry` follows.
-          //     Both are gated on `reason === "entry"` — refires
-          //     (`entry-refire`) skip the opener entirely so we don't
-          //     hear "During this pitstop…" twice when the user toggles
-          //     a service mid-lane and the readback re-plays.
-          //   Exit: a single `opener-exit` clip.
-          ...(isEntry
-            ? ([
+      ...(isEntry
+        ? // Entry: empty-snapshot fast path stands alone — no opener, no
+          // closer. Avoids "We're … and that's it" awkwardness on entry
+          // where there's no closing beat to balance the bare opener.
+          ([
+            {
+              if: (ctx) => !hasAnyService(payload(ctx)),
+              then: [clipPath("empty-fallback.mp3")],
+              else: [
+                // Opener slots — gated on `reason === "entry"` so refires
+                // (`entry-refire`) skip the carrier sentence and replay
+                // only the slot content. The limiter pre-opener also
+                // gates on `limiterEngaged === false` so the engineer
+                // only nudges the limiter when it actually needs nudging.
                 {
                   if: (ctx) => payload(ctx).reason === "entry" && !payload(ctx).limiterEngaged,
                   then: [clipPath("opener-entry-limiter.mp3")],
@@ -224,24 +222,37 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
                   if: (ctx) => payload(ctx).reason === "entry",
                   then: [clipPath("opener-entry.mp3")],
                 },
-              ] as Step[])
-            : [{ clip: clipPath("opener-exit.mp3") } as Step]),
-          // Slots 2-5 — each fires zero or one clip; the slot clips are
-          // authored with consistent lead-in / lead-out so they flow
-          // naturally back-to-back without explicit connector glue.
-          ...fuelSlotSteps(),
-          ...tireCompoundSlotSteps(),
-          ...fastRepairSlotSteps(),
-          ...windshieldSlotSteps(),
-          // Slot 6 — closer (exit only). The closer is followed by the
-          // driver name (resolved live from global settings via the
-          // `driverName` var registered in `registerPitCrew`) so the
-          // engineer signs off addressing the driver: "Good stop. Back
-          // to work. Niklas." When no driver name is configured the var
-          // resolver returns null and the step contributes nothing.
-          ...(isEntry ? [] : ([{ clip: clipPath("closer-exit.mp3") }, { var: "driverName" }] as Step[])),
-        ],
-      },
+                ...fuelSlotSteps(),
+                ...tireCompoundSlotSteps(),
+                ...fastRepairSlotSteps(),
+                ...windshieldSlotSteps(),
+              ],
+            },
+          ] as Step[])
+        : // Exit: opener + body + closer + driver name. Empty-snapshot
+          // keeps the bookends so the engineer still says "To confirm:
+          // … not changing tires, not refueling. Good stop. Back to
+          // work. Niklas." rather than dropping straight into the
+          // fallback clip.
+          ([
+            { clip: clipPath("opener-exit.mp3") },
+            {
+              if: (ctx) => !hasAnyService(payload(ctx)),
+              then: [clipPath("empty-fallback.mp3")],
+              else: [
+                ...fuelSlotSteps(),
+                ...tireCompoundSlotSteps(),
+                ...fastRepairSlotSteps(),
+                ...windshieldSlotSteps(),
+              ],
+            },
+            { clip: clipPath("closer-exit.mp3") },
+            // Driver-name var (resolved live from global settings via
+            // `registerPitCrew`'s `driverName` var). When no driver
+            // name is configured the resolver returns null and the
+            // step contributes nothing — the closer drops cleanly.
+            { var: "driverName" },
+          ] as Step[])),
       "@pit-crew.radio-close",
     ],
   };
