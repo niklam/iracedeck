@@ -15,7 +15,7 @@ import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVo
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
-import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+import { initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,7 +69,9 @@ async function main(): Promise<void> {
   initializeAudioScenarios(eventBus, audio, manifest, logger.createScope("AudioScenarios"), () =>
     resolveActiveRaceEngineerVoice(raceEngineerVoices),
   );
-  registerPitCrew(eventBus);
+  // Wire the pit-action cooldown so the harness sees the same suppression
+  // window the production plugins do. Other closures keep their defaults.
+  registerPitCrew(eventBus, undefined, undefined, undefined, () => isPitActionsAllowed());
 
   // ── deck-core global-settings pipeline ──────────────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the

@@ -30,7 +30,7 @@
  * stall branch in `diffToggles` silently absorbs the crew's bit-clears),
  * which is exactly the signal we want.
  */
-import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, PaceMode, PitSvFlags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { PitReadbackCommittedSnapshot, TranslatorState } from "../state.js";
 import type { EmitFn, PendingEvent } from "./types.js";
@@ -39,11 +39,45 @@ import type { EmitFn, PendingEvent } from "./types.js";
  * Settle delay between `pitLane.exited` and the "to confirm" readback fire.
  * Mid-range of the user's 3-6 s window; long enough to not collide with the
  * limiter / pit-exit voice chatter, short enough to feel like a coherent
- * follow-up to the pit stop.
+ * follow-up to the pit stop. The pit-action confirmation cooldown after
+ * pit-lane exit shares this window so per-toggle confirmations don't blurt
+ * over the pending readback.
  *
  * @internal Exported for testing.
  */
 export const PIT_READBACK_EXIT_DELAY_MS = 4500;
+
+/**
+ * Pre-start grace window. Counts from the moment iRacing transitions into
+ * pre-start (PaceMode = single/double-file start AND SessionState =
+ * ParadeLaps | Warmup | GetInCar). During this window the per-toggle
+ * confirmation scenarios stay silent so iRacing's grid-load pit-flag
+ * seeding doesn't surface as phantom "we're refueling" callouts. The
+ * auto-readback fires at the end of the window so the driver hears the
+ * queued plan before the green flag.
+ *
+ * @internal Exported for testing.
+ */
+export const PIT_READBACK_PRESTART_DELAY_MS = 5000;
+
+/**
+ * iRacing pre-start detection. Mirrors the `ir_isPreStart()` helper from
+ * the open-source pit-board project — `PaceMode` alone is unreliable
+ * because iRacing doesn't reset it to `NotPacing` once the green drops,
+ * so we AND it with the session-state phases that bracket the formation
+ * lap.
+ */
+function isInPreStart(telemetry: TelemetryData): boolean {
+  const paceMode = telemetry.PaceMode ?? -1;
+  const sessionState = telemetry.SessionState ?? -1;
+  const inFormationPace = paceMode === PaceMode.SingleFileStart || paceMode === PaceMode.DoubleFileStart;
+  const inGridSessionState =
+    sessionState === SessionState.ParadeLaps ||
+    sessionState === SessionState.Warmup ||
+    sessionState === SessionState.GetInCar;
+
+  return inFormationPace && inGridSessionState;
+}
 
 const TIRE_FLAGS_MASK =
   PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
@@ -107,30 +141,53 @@ export function diffPitReadback(
   // tick — it carries the CURRENT tick's value. We track our own previous
   // value so we can detect off→on / on→off transitions.
   const onPitRoad = state.lastOnPitRoad;
+  const inPreStart = isInPreStart(telemetry);
 
   if (!state.pitReadbackInitialized) {
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = onPitRoad;
     state.pitReadbackExitFireAt = 0;
-    // If the translator boots while the car is already on pit road, seed
-    // the committed snapshot so a refire / exit later this lane visit has
-    // something to publish. We don't synthesize an "entry" event from the
-    // seed — no transition happened.
-    state.pitReadbackCommittedSnapshot = onPitRoad ? buildSnapshot(telemetry) : null;
+    state.lastTickInPreStart = inPreStart;
 
     return;
   }
 
   const wasOnPitRoad = state.pitReadbackPrevOnPitRoad;
+  const wasInPreStart = state.lastTickInPreStart;
 
-  // Pending exit fire whose delay has elapsed?
-  if (state.pitReadbackExitFireAt > 0 && now >= state.pitReadbackExitFireAt && state.pitReadbackCommittedSnapshot) {
+  // Pending exit fire whose delay has elapsed? Reads telemetry FRESH at
+  // fire time — the user might have toggled services after pulling out
+  // of the stall (or the crew might have completed work), so the recap
+  // reflects what's actually queued at the moment the engineer speaks
+  // rather than a frozen snapshot from earlier in the visit.
+  if (state.pitReadbackExitFireAt > 0 && now >= state.pitReadbackExitFireAt) {
+    const exitSnap = buildSnapshot(telemetry);
     emit({
       event: "pitService.readbackRequested",
-      data: { reason: "exit", ...state.pitReadbackCommittedSnapshot },
+      data: { reason: "exit", ...exitSnap },
     });
     state.pitReadbackExitFireAt = 0;
-    state.pitReadbackCommittedSnapshot = null;
+  }
+
+  // Pending pre-start fire whose delay has elapsed? Only fires while still
+  // in pre-start — if the user dropped out (e.g. left the car / session
+  // changed) the queued readback is dropped silently.
+  if (
+    state.pitReadbackPreStartFireAt > 0 &&
+    now >= state.pitReadbackPreStartFireAt &&
+    state.pitReadbackPreStartSnapshot &&
+    inPreStart
+  ) {
+    emit({
+      event: "pitService.readbackRequested",
+      data: { reason: "entry", ...state.pitReadbackPreStartSnapshot },
+    });
+    state.pitReadbackPreStartFireAt = 0;
+    state.pitReadbackPreStartSnapshot = null;
+  } else if (state.pitReadbackPreStartFireAt > 0 && !inPreStart) {
+    // Left pre-start before the timer elapsed — cancel.
+    state.pitReadbackPreStartFireAt = 0;
+    state.pitReadbackPreStartSnapshot = null;
   }
 
   if (!wasOnPitRoad && onPitRoad) {
@@ -139,24 +196,33 @@ export function diffPitReadback(
     state.pitReadbackExitFireAt = 0;
 
     const snap = buildSnapshot(telemetry);
-    state.pitReadbackCommittedSnapshot = snap;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry", ...snap } });
   } else if (onPitRoad && pending.some((p) => USER_TOGGLE_EVENTS.has(p.event))) {
-    // While on pit road, any user-intent toggle event refreshes the
-    // committed snapshot and refires the readback. Family preemption
-    // (`family: "pit-readback"`) cuts the in-flight readback cleanly.
+    // While on pit road, any user-intent toggle event refires the
+    // readback. Family preemption (`family: "pit-readback"`) cuts the
+    // in-flight readback cleanly.
     const snap = buildSnapshot(telemetry);
-    state.pitReadbackCommittedSnapshot = snap;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry-refire", ...snap } });
   } else if (wasOnPitRoad && !onPitRoad) {
-    // On → off: schedule the delayed "to confirm" fire. Reuses the last
-    // committed snapshot — by this tick `PitSvFlags` may have cleared
-    // (crew finished service), but the snapshot still carries the queued
-    // intent from earlier in the visit.
-    if (state.pitReadbackCommittedSnapshot) {
-      state.pitReadbackExitFireAt = now + PIT_READBACK_EXIT_DELAY_MS;
-    }
+    // On → off: schedule the delayed "to confirm" fire. The snapshot is
+    // built fresh at fire time so a user toggle late in the visit
+    // (e.g. cancelling tires while sitting in the box) is reflected
+    // in the recap. Pit-action confirmations stay silent for the same
+    // window so they don't blurt over the pending readback.
+    state.pitReadbackExitFireAt = now + PIT_READBACK_EXIT_DELAY_MS;
+
+    state.pitActionCooldownUntil = Math.max(state.pitActionCooldownUntil, now + PIT_READBACK_EXIT_DELAY_MS);
+  }
+
+  if (!wasInPreStart && inPreStart) {
+    // Just entered the formation / grid window. Mute pit-action callouts
+    // for the cooldown duration and schedule the auto-readback so the
+    // driver hears the queued plan unprompted before the green flag.
+    state.pitActionCooldownUntil = Math.max(state.pitActionCooldownUntil, now + PIT_READBACK_PRESTART_DELAY_MS);
+    state.pitReadbackPreStartFireAt = now + PIT_READBACK_PRESTART_DELAY_MS;
+    state.pitReadbackPreStartSnapshot = buildSnapshot(telemetry);
   }
 
   state.pitReadbackPrevOnPitRoad = onPitRoad;
+  state.lastTickInPreStart = inPreStart;
 }

@@ -113,6 +113,13 @@ export function registerPitCrew(
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
   logger?: ILogger,
   getPitReadbackEnabled: (id: PitReadbackCalloutId) => boolean = () => true,
+  // Allow / suppress per-toggle pit-action confirmations (issue #476).
+  // Plugins wire this to `isPitActionsAllowed()` from
+  // `@iracedeck/sim-events-iracing` so the cooldowns set by `pitLane.exited`
+  // and pre-start grid entry silence the toggle callouts during those
+  // windows. Default `() => true` preserves legacy behavior for tests
+  // that don't supply a closure.
+  getPitActionsAllowed: () => boolean = () => true,
 ): void {
   registerRadarEngine(bus);
 
@@ -125,11 +132,17 @@ export function registerPitCrew(
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
-  for (const s of FUEL_TOGGLE_SCENARIOS) engine.defineScenario(s);
+  for (const s of FUEL_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
-  for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
+  for (const s of TIRE_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
-  for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
+  for (const s of TIRE_COMPOUND_SCENARIOS) {
+    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+  }
 
   for (const s of FLAG_ALERTS) {
     engine.defineScenario(
@@ -155,6 +168,34 @@ export function registerPitCrew(
  * missing from the id mapping — better to fail loudly at startup than
  * silently leak the unmapped scenario past the toggle.
  */
+/**
+ * Wrap a per-toggle pit-action scenario so the cooldown set by
+ * `pitLane.exited` / pre-start grid entry suppresses fires during the
+ * cooldown window. Same gate-at-event-arrival shape as
+ * `wrapCalloutScenario`, but global rather than per-id.
+ */
+function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: ILogger | undefined): Scenario {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getAllowed()) {
+          logger?.debug(`pit-action suppressed (cooldown active): ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
 function wrapCalloutScenario<TId extends string>(
   s: Scenario,
   scenarioIdToCalloutId: Record<string, TId>,

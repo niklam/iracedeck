@@ -146,27 +146,29 @@ function tireCompoundSlotSteps(): Step[] {
 }
 
 function fastRepairSlotSteps(): Step[] {
+  // Only mention fast repair when it's queued. Skipping the negative
+  // ("no fast repair") sidesteps the false positive on undamaged cars
+  // — iRacing doesn't expose pre-stall damage in telemetry, so we
+  // can't gate on actual need; the queue bit alone is the only honest
+  // signal we have, and it's a positive-only callout.
   return [
     {
-      if: (ctx) => payload(ctx).fastRepair.available && payload(ctx).fastRepair.queued,
+      if: (ctx) => payload(ctx).fastRepair.queued,
       then: [clipPath("fast-repair-on.mp3")],
-    },
-    {
-      if: (ctx) => payload(ctx).fastRepair.available && !payload(ctx).fastRepair.queued,
-      then: [clipPath("fast-repair-off.mp3")],
     },
   ];
 }
 
 function windshieldSlotSteps(): Step[] {
+  // Only mention windshield when it's queued. Skipping the negative
+  // ("no windshield") sidesteps the open-wheel false-positive — formula
+  // / indycar / dirt cars don't have a windshield to clean, and iRacing
+  // doesn't expose an "is windshield service available" signal in
+  // telemetry to gate on.
   return [
     {
-      if: (ctx) => payload(ctx).windshield.available && payload(ctx).windshield.queued,
+      if: (ctx) => payload(ctx).windshield.queued,
       then: [clipPath("windshield-on.mp3")],
-    },
-    {
-      if: (ctx) => payload(ctx).windshield.available && !payload(ctx).windshield.queued,
-      then: [clipPath("windshield-off.mp3")],
     },
   ];
 }
@@ -196,23 +198,23 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
     sequence: [
       "@pit-crew.radio-open",
       ...(isEntry
-        ? // Entry: empty-snapshot fast path stands alone — no opener, no
-          // closer. Avoids "We're … and that's it" awkwardness on entry
-          // where there's no closing beat to balance the bare opener.
+        ? // Entry: limiter pre-opener fires unconditionally (when the
+          // limiter isn't engaged on the initial entry) — the warning
+          // matters whether or not the driver has any services queued.
+          // After that, empty-snapshot collapses to the fallback clip;
+          // non-empty plays the regular opener + slots.
           ([
+            {
+              if: (ctx) => payload(ctx).reason === "entry" && !payload(ctx).limiterEngaged,
+              then: [clipPath("opener-entry-limiter.mp3")],
+            },
             {
               if: (ctx) => !hasAnyService(payload(ctx)),
               then: [clipPath("empty-fallback.mp3")],
               else: [
-                // Opener slots — gated on `reason === "entry"` so refires
+                // Opener — gated on `reason === "entry"` so refires
                 // (`entry-refire`) skip the carrier sentence and replay
-                // only the slot content. The limiter pre-opener also
-                // gates on `limiterEngaged === false` so the engineer
-                // only nudges the limiter when it actually needs nudging.
-                {
-                  if: (ctx) => payload(ctx).reason === "entry" && !payload(ctx).limiterEngaged,
-                  then: [clipPath("opener-entry-limiter.mp3")],
-                },
+                // only the slot content.
                 {
                   if: (ctx) => payload(ctx).reason === "entry",
                   then: [clipPath("opener-entry.mp3")],

@@ -98,7 +98,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+import { initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -176,6 +176,10 @@ registerPitCrew(
   // suppresses future fires.
   (id: PitReadbackCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_READBACK_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Pit-action confirmation cooldown (issue #476). Suppresses per-toggle
+  // callouts during the 4500 ms post-pit-exit window and the 5000 ms
+  // pre-start grid window so phantom flag-cascade events don't surface.
+  () => isPitActionsAllowed(),
 );
 
 // Publish audio device list and apply saved device selection.

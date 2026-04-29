@@ -47,7 +47,6 @@ describe("diffPitReadback — seeding", () => {
 
     expect(readbackEvents(events)).toHaveLength(0);
     expect(state.pitReadbackInitialized).toBe(true);
-    expect(state.pitReadbackCommittedSnapshot).toBeNull();
   });
 
   it("does not synthesize an entry event when booted while already on pit road", () => {
@@ -58,9 +57,6 @@ describe("diffPitReadback — seeding", () => {
     diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, []);
 
     expect(readbackEvents(events)).toHaveLength(0);
-    // But the snapshot should be seeded so a subsequent exit has data.
-    expect(state.pitReadbackCommittedSnapshot).not.toBeNull();
-    expect(state.pitReadbackCommittedSnapshot?.fuel.queued).toBe(true);
   });
 });
 
@@ -156,14 +152,6 @@ describe("diffPitReadback — refire", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = true;
-    state.pitReadbackCommittedSnapshot = {
-      fuel: { queued: false },
-      tires: { lf: false, rf: false, lr: false, rr: false },
-      compoundChange: null,
-      fastRepair: { queued: false, available: true },
-      windshield: { queued: false, available: true },
-      limiterEngaged: false,
-    };
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
@@ -208,14 +196,6 @@ describe("diffPitReadback — exit", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = true;
-    state.pitReadbackCommittedSnapshot = {
-      fuel: { queued: true },
-      tires: { lf: true, rf: true, lr: true, rr: true },
-      compoundChange: null,
-      fastRepair: { queued: false, available: true },
-      windshield: { queued: false, available: true },
-      limiterEngaged: false,
-    };
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
@@ -225,44 +205,53 @@ describe("diffPitReadback — exit", () => {
     expect(state.pitReadbackExitFireAt).toBe(1000 + PIT_READBACK_EXIT_DELAY_MS);
   });
 
-  it("emits the exit readback after the delay has elapsed", () => {
+  it("emits the exit readback with FRESH telemetry once the delay has elapsed", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
-    state.pitReadbackCommittedSnapshot = {
-      fuel: { queued: true },
-      tires: { lf: true, rf: true, lr: true, rr: true },
-      compoundChange: null,
-      fastRepair: { queued: false, available: true },
-      windshield: { queued: false, available: true },
-      limiterEngaged: false,
-    };
     const fireDeadline = 1000 + PIT_READBACK_EXIT_DELAY_MS;
     state.pitReadbackExitFireAt = fireDeadline;
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), fireDeadline, emit, []);
+    // Telemetry at fire moment shows fuel still queued (e.g. user just
+    // toggled it back on while sitting in pit, or kept it queued for
+    // the next stop). The exit recap reflects this CURRENT state, not
+    // a frozen snapshot from earlier in the visit.
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), fireDeadline, emit, []);
 
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
     expect(readbacks[0]?.data).toMatchObject({ reason: "exit", fuel: { queued: true } });
     expect(state.pitReadbackExitFireAt).toBe(0);
-    expect(state.pitReadbackCommittedSnapshot).toBeNull();
+  });
+
+  it("emits an empty exit recap when nothing is queued at fire time", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = false;
+    const fireDeadline = 1000 + PIT_READBACK_EXIT_DELAY_MS;
+    state.pitReadbackExitFireAt = fireDeadline;
+    state.lastOnPitRoad = false;
+
+    const { events, emit } = collect();
+    // All bits cleared by the time the exit fire elapses — the user
+    // toggled tires off mid-stall, fuel was completed, etc.
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), fireDeadline, emit, []);
+
+    const readbacks = readbackEvents(events);
+    expect(readbacks).toHaveLength(1);
+    expect(readbacks[0]?.data).toMatchObject({
+      reason: "exit",
+      fuel: { queued: false },
+      tires: { lf: false, rf: false, lr: false, rr: false },
+    });
   });
 
   it("does not emit while the delay is still running", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
-    state.pitReadbackCommittedSnapshot = {
-      fuel: { queued: true },
-      tires: { lf: false, rf: false, lr: false, rr: false },
-      compoundChange: null,
-      fastRepair: { queued: false, available: true },
-      windshield: { queued: false, available: true },
-      limiterEngaged: false,
-    };
     // pitReadbackExitFireAt is the ABSOLUTE fire time (now + delay), so a
     // tick that lands one ms before the deadline must not emit yet.
     const fireDeadline = 1000 + PIT_READBACK_EXIT_DELAY_MS;
@@ -280,14 +269,6 @@ describe("diffPitReadback — exit", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
-    state.pitReadbackCommittedSnapshot = {
-      fuel: { queued: true },
-      tires: { lf: false, rf: false, lr: false, rr: false },
-      compoundChange: null,
-      fastRepair: { queued: false, available: true },
-      windshield: { queued: false, available: true },
-      limiterEngaged: false,
-    };
     state.pitReadbackExitFireAt = 1000;
     state.lastOnPitRoad = true; // back on pit road
 

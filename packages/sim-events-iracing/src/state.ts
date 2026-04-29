@@ -71,8 +71,30 @@ export type TranslatorState = {
   // ── Pit-service readback (issue #476) ──────────────────────────────────
   pitReadbackInitialized: boolean;
   pitReadbackPrevOnPitRoad: boolean;
-  pitReadbackCommittedSnapshot: PitReadbackCommittedSnapshot | null;
   pitReadbackExitFireAt: number; // 0 = none scheduled; >0 = ms timestamp to emit at
+  /**
+   * Pit-action confirmation cooldown. While `now < pitActionCooldownUntil`,
+   * per-toggle confirmation scenarios stay silent. Set on `pitLane.exited`
+   * (matches the readback exit delay so pit-actions don't blurt over the
+   * pending "to confirm" beat) and on pre-start transitions (so iRacing's
+   * grid-load pit-flag seeding doesn't fire phantom callouts).
+   */
+  pitActionCooldownUntil: number;
+  /**
+   * Pre-start auto-readback. Set on the pre-start enter transition and
+   * fires once `now >= pitReadbackPreStartFireAt`. The committed snapshot
+   * is captured at the transition moment so the readback reflects what
+   * was queued going into the formation lap.
+   */
+  pitReadbackPreStartFireAt: number;
+  pitReadbackPreStartSnapshot: PitReadbackCommittedSnapshot | null;
+  /**
+   * Tracks the iRacing pre-start state (`PaceMode === SingleFileStart |
+   * DoubleFileStart` AND `SessionState === ParadeLaps | Warmup |
+   * GetInCar`) for edge detection. Reference: `ir_isPreStart()` in the
+   * iRacing pit-board project.
+   */
+  lastTickInPreStart: boolean;
 
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
@@ -138,8 +160,11 @@ export function createInitialState(): TranslatorState {
 
     pitReadbackInitialized: false,
     pitReadbackPrevOnPitRoad: false,
-    pitReadbackCommittedSnapshot: null,
     pitReadbackExitFireAt: 0,
+    pitActionCooldownUntil: 0,
+    pitReadbackPreStartFireAt: 0,
+    pitReadbackPreStartSnapshot: null,
+    lastTickInPreStart: false,
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

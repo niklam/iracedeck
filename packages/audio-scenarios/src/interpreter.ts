@@ -88,6 +88,13 @@ type ActiveFire = {
    * scenarios running on other buses.
    */
   usedChannels: ReadonlySet<AudioChannel>;
+  /**
+   * Triggering event retained so a `low`-priority fire that gets
+   * preempted by a higher-priority scenario can be deferred and replayed
+   * with the same `ctx.data` / `ctx.telemetry` it would have seen
+   * originally. Mirrors the existing `DeferredFire.event` shape.
+   */
+  event: SimEventOf<SimEventName> | null;
 };
 
 /**
@@ -317,13 +324,29 @@ class ScenarioEngine implements IScenarioEngine {
       const sameFamily =
         entry.raw.family !== undefined && running !== undefined && entry.raw.family === running.raw.family;
 
+      // `low`-priority scenarios are background commentary by design
+      // (pit-readback, service-reminder) — anything higher than `low`
+      // preempts them. The preempted low fire is captured into
+      // `deferredLowFire` so it replays once the bus goes idle, mirroring
+      // the existing busy-bus deferral path.
+      const preemptsLow = runningPriority === "low" && priority !== "low";
+
       const canPreempt =
         sameFamily ||
+        preemptsLow ||
         (priority === "urgent" &&
           entry.raw.preempt === true &&
           PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority]);
 
       if (canPreempt) {
+        if (preemptsLow && state.activeFire) {
+          // Stash the preempted low fire so it replays after the
+          // higher-priority scenario completes. Same shape as the
+          // busy-bus deferral — id + original event.
+          state.deferredLowFire = { id: state.activeFire.id, event: state.activeFire.event };
+          this.logger.debug(`Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; deferred for replay`);
+        }
+
         this.cancelActiveFire(state);
       } else {
         if (priority === "low") {
@@ -387,6 +410,7 @@ class ScenarioEngine implements IScenarioEngine {
       cancelled: false,
       pauseTimer: null,
       usedChannels: collectUsedChannels(ops),
+      event,
     };
 
     this.logger.info(`Playing scenario "${entry.raw.id}"`);

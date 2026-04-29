@@ -361,15 +361,29 @@ describe("pit readback scenarios", () => {
   });
 
   describe("empty snapshot", () => {
-    it("entry plays only the empty-fallback (no opener / no slots)", () => {
-      fireReadback(snap({ reason: "entry" }));
+    it("entry empty plays the limiter pre-opener (when not engaged) + fallback, no opener / no slots", () => {
+      fireReadback(snap({ reason: "entry", limiterEngaged: false }));
+
+      const paths = voicePaths();
+      const limiterIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"));
+      const fallbackIdx = paths.findIndex((p) => p.endsWith("/pit-readback/empty-fallback.mp3"));
+
+      // Limiter pre-opener fires before the empty-fallback so the engineer
+      // still nudges the limiter even when nothing is queued.
+      expect(limiterIdx).toBeGreaterThanOrEqual(0);
+      expect(fallbackIdx).toBeGreaterThan(limiterIdx);
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
+    });
+
+    it("entry empty with limiter engaged plays only the empty-fallback (no openers)", () => {
+      fireReadback(snap({ reason: "entry", limiterEngaged: true }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith("/pit-readback/empty-fallback.mp3"))).toBe(true);
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(false);
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
-      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-on.mp3"))).toBe(false);
-      expect(paths.some((p) => p.endsWith("/pit-readback/fuel-off.mp3"))).toBe(false);
     });
 
     it("exit keeps the opener around the empty-fallback", () => {
@@ -469,13 +483,13 @@ describe("pit readback scenarios", () => {
   });
 
   describe("fast repair / windshield slots", () => {
-    it("omits both slots when neither is available", () => {
+    it("stays silent on both fast-repair and windshield when neither is queued", () => {
       fireReadback(
         snap({
           reason: "entry",
           fuel: { queued: true },
-          fastRepair: { queued: true, available: false },
-          windshield: { queued: true, available: false },
+          fastRepair: { queued: false, available: true },
+          windshield: { queued: false, available: true },
         }),
       );
 
@@ -486,7 +500,7 @@ describe("pit readback scenarios", () => {
       expect(paths.some((p) => p.endsWith("/pit-readback/windshield-off.mp3"))).toBe(false);
     });
 
-    it("plays fast-repair-on when queued and available", () => {
+    it("plays fast-repair-on when queued", () => {
       fireReadback(
         snap({
           reason: "entry",
@@ -498,7 +512,7 @@ describe("pit readback scenarios", () => {
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(true);
     });
 
-    it("plays windshield-off when not queued but available", () => {
+    it("stays silent on windshield when not queued (no false 'no windshield' on open-wheel cars)", () => {
       fireReadback(
         snap({
           reason: "entry",
@@ -507,7 +521,8 @@ describe("pit readback scenarios", () => {
         }),
       );
 
-      expect(voicePaths().some((p) => p.endsWith("/pit-readback/windshield-off.mp3"))).toBe(true);
+      expect(voicePaths().some((p) => p.endsWith("/pit-readback/windshield-off.mp3"))).toBe(false);
+      expect(voicePaths().some((p) => p.endsWith("/pit-readback/windshield-on.mp3"))).toBe(false);
     });
   });
 
