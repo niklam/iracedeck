@@ -279,7 +279,7 @@ afterEach(() => {
 
 describe("pit readback scenarios", () => {
   describe("entry readback", () => {
-    it("fires on entry reason and plays the entry opener (limiter already engaged)", () => {
+    it("fires on entry reason and plays the entry opener", () => {
       fireReadback(
         snap({
           reason: "entry",
@@ -295,14 +295,19 @@ describe("pit readback scenarios", () => {
       expect(paths.some((p) => p.endsWith("/pit-readback/tires-all.mp3"))).toBe(true);
     });
 
-    it("plays the limiter pre-opener when limiter is not engaged", () => {
+    it("prepends the limiter pre-opener when limiter is not engaged, then plays opener-entry", () => {
       fireReadback(snap({ reason: "entry", fuel: { queued: true }, limiterEngaged: false }));
 
-      expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(true);
-      expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(false);
+      const paths = voicePaths();
+      const limiterIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"));
+      const openerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-entry.mp3"));
+
+      expect(limiterIdx).toBeGreaterThanOrEqual(0);
+      expect(openerIdx).toBeGreaterThanOrEqual(0);
+      expect(limiterIdx).toBeLessThan(openerIdx);
     });
 
-    it("uses the plain opener when limiter is already engaged", () => {
+    it("plays only opener-entry (no limiter pre-opener) when limiter is already engaged", () => {
       fireReadback(snap({ reason: "entry", fuel: { queued: true }, limiterEngaged: true }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(true);

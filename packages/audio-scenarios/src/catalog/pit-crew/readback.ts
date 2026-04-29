@@ -15,9 +15,13 @@
  * back-to-back.
  *
  * Slot order:
- *   1. Opener           — entry: "We're …" or "Don't forget your limiter.
- *                          We're …" (limiter pre-opener fires only when
- *                          `limiterEngaged === false`); exit: "To confirm:".
+ *   1. Opener           — exit: "To confirm:".
+ *                         entry: an optional limiter pre-opener
+ *                         ("Don't forget your limiter.") fires when
+ *                         `limiterEngaged === false`, followed by the
+ *                         always-on `opener-entry` ("We're …"). The two
+ *                         are separate clips so the regular opener fires
+ *                         every entry regardless of limiter state.
  *   2. Fuel             — "taking fuel" / "no fuel".
  *   3. Tires / compound — exactly one of: a tire-pattern clip (15 options),
  *                          a compound-change clip (2), or "no tires".
@@ -194,14 +198,19 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
         if: (ctx) => !hasAnyService(payload(ctx)),
         then: [clipPath("empty-fallback.mp3")],
         else: [
-          // Opener
-          isEntry
-            ? {
-                if: (ctx) => !payload(ctx).limiterEngaged,
-                then: [clipPath("opener-entry-limiter.mp3")],
-                else: [clipPath("opener-entry.mp3")],
-              }
-            : { clip: clipPath("opener-exit.mp3") },
+          // Opener.
+          //   Entry: optional limiter pre-opener fires when the limiter
+          //   isn't engaged, then the always-on `opener-entry` follows.
+          //   Exit: a single `opener-exit` clip.
+          ...(isEntry
+            ? ([
+                {
+                  if: (ctx) => !payload(ctx).limiterEngaged,
+                  then: [clipPath("opener-entry-limiter.mp3")],
+                },
+                { clip: clipPath("opener-entry.mp3") },
+              ] as Step[])
+            : [{ clip: clipPath("opener-exit.mp3") } as Step]),
           // Slots 2-5 — each fires zero or one clip; the slot clips are
           // authored with consistent lead-in / lead-out so they flow
           // naturally back-to-back without explicit connector glue.
