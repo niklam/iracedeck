@@ -183,6 +183,9 @@ registerPitCrew(
   // callouts during the 4500 ms post-pit-exit window and the 5000 ms
   // pre-start grid window so phantom flag-cascade events don't surface.
   () => isPitActionsAllowed(),
+  // User opt-in for the per-toggle pit-service request confirmations
+  // (issue #468). Live read so the toggle takes effect mid-session.
+  () => (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
 );
 
 // Publish audio device list and apply saved device selection.
