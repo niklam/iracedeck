@@ -273,25 +273,31 @@ onGlobalSettingsChange((settings) => {
 
   // Mirror "On startup" PI edits into the runtime toggles immediately so
   // checking the box has visible effect mid-session, not just at next
-  // restart. Skip the first arrival — the startup one-shot above already
-  // wrote the runtime keys. Re-entries triggered by our own
-  // updateGlobalSettings calls land here with unchanged *OnStartup
-  // values so the comparison short-circuits and there's no feedback
-  // loop.
+  // restart. The trackers MUST be updated before the recursive
+  // `updateGlobalSettings` call: that call synchronously re-fires every
+  // listener (including this one), and a stale tracker on re-entry would
+  // diff "changed → changed" forever, blowing the stack and aborting the
+  // listener chain in a partial state. Updating first means the re-entry
+  // sees a fresh tracker, the diff comes up unchanged, and the recursion
+  // unwinds cleanly. First-arrival is detected by the null sentinel and
+  // skips the runtime sync — the startup one-shot above already wrote
+  // both runtime keys.
+  const previousRaceEngineerEnabledOnStartup = lastSeenRaceEngineerEnabledOnStartup;
+  lastSeenRaceEngineerEnabledOnStartup = settings.raceEngineerEnabledOnStartup;
+
   if (
-    lastSeenRaceEngineerEnabledOnStartup !== null &&
-    settings.raceEngineerEnabledOnStartup !== lastSeenRaceEngineerEnabledOnStartup
+    previousRaceEngineerEnabledOnStartup !== null &&
+    settings.raceEngineerEnabledOnStartup !== previousRaceEngineerEnabledOnStartup
   ) {
     updateGlobalSettings({ raceEngineerEnabled: settings.raceEngineerEnabledOnStartup });
   }
 
-  lastSeenRaceEngineerEnabledOnStartup = settings.raceEngineerEnabledOnStartup;
+  const previousRadarEnabledOnStartup = lastSeenRadarEnabledOnStartup;
+  lastSeenRadarEnabledOnStartup = settings.radarEnabledOnStartup;
 
-  if (lastSeenRadarEnabledOnStartup !== null && settings.radarEnabledOnStartup !== lastSeenRadarEnabledOnStartup) {
+  if (previousRadarEnabledOnStartup !== null && settings.radarEnabledOnStartup !== previousRadarEnabledOnStartup) {
     updateGlobalSettings({ radarEnabled: settings.radarEnabledOnStartup });
   }
-
-  lastSeenRadarEnabledOnStartup = settings.radarEnabledOnStartup;
 
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
