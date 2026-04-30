@@ -3002,12 +3002,12 @@
       "requestId": "Cn3q0u8rNNtx0epDN7f7"
     },
     "voice/luca/pit-actions/windshield-off.mp3": {
-      "hash": "681b77dafa2a44b3",
+      "hash": "eb7a423dd027579b",
       "voiceId": "15CVCzDByBinCIoCblXo",
       "model": "eleven_v3",
-      "textPreview": "We're skipping the windshield clean at the next pitstop.",
-      "generatedAt": "2026-04-30T13:28:47.584Z",
-      "requestId": "L5SMayILhOEiPw1nr3GE"
+      "textPreview": "We're not cleaning the windshield at the next pitstop.",
+      "generatedAt": "2026-04-30T14:00:01.304Z",
+      "requestId": "gdUeXQMEgSuiqnlpj5Io"
     },
     "voice/luca/pit-actions/fast-repair-on.mp3": {
       "hash": "19f3ea61f94adde7",
