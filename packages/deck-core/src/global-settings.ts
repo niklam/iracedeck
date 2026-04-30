@@ -125,8 +125,9 @@ export const GlobalSettingsSchema = z
      * On every plugin start, after the first global-settings arrival, the
      * plugin copies these values into the runtime keys above — overriding
      * whatever the user toggled in the previous session. Editing these
-     * during a running session takes effect on the next plugin start, not
-     * immediately. Default false — fresh installs stay quiet on startup
+     * during a running session is also mirrored immediately into the
+     * runtime keys, so the checkbox has visible effect without waiting
+     * for a restart. Default false — fresh installs stay quiet on startup
      * (matches the runtime keys' fresh-install posture from #378).
      */
     raceEngineerEnabledOnStartup: z
