@@ -1,8 +1,0 @@
-# CodeRabbit configuration.
-# Auto-review runs on the default branch (master) automatically; this file
-# extends the set to additional base branches. Entries are regex patterns.
-# See: https://docs.coderabbit.ai/configuration/auto-review
-reviews:
-  auto_review:
-    base_branches:
-      - "feature/pit-engineer"
