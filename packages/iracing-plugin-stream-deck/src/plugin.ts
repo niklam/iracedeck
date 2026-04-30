@@ -199,6 +199,7 @@ registerPitCrew(
 // arrival of `audioOutputDevice = ""` would look like a transition and
 // fire a redundant `setAudioDevice(-1)` (an engine teardown + reopen).
 let initialDevicePushDone = false;
+let startupDefaultsApplied = false;
 let currentAudioDeviceId: string = "";
 // Cache the last pushed payload so identical re-enumerations (the common
 // case on repeated PI re-opens with no hardware change) don't churn the
@@ -250,6 +251,19 @@ onGlobalSettingsChange((settings) => {
   if (!initialDevicePushDone) {
     initialDevicePushDone = true;
     pushAudioDevicesIfChanged();
+  }
+
+  // Apply per-feature "On startup" defaults (issue #482). Overrides any
+  // runtime value the previous session's button toggles persisted. The
+  // Pit Crew action's own onGlobalSettingsChange listener picks up the
+  // echoed runtime keys and re-applies them to the audio buses / radar
+  // engine, so no further wiring is needed here.
+  if (!startupDefaultsApplied) {
+    startupDefaultsApplied = true;
+    updateGlobalSettings({
+      raceEngineerEnabled: settings.raceEngineerEnabledOnStartup,
+      radarEnabled: settings.radarEnabledOnStartup,
+    });
   }
 
   pushRaceEngineerVoicesIfChanged();
