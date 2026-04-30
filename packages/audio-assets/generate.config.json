@@ -298,7 +298,7 @@
       },
       {
         "name": "windshield-off",
-        "text": "We're skipping the windshield clean at the next pitstop."
+        "text": "We're not cleaning the windshield at the next pitstop."
       },
       {
         "name": "fast-repair-on",
