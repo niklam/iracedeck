@@ -200,6 +200,11 @@ registerPitCrew(
 // fire a redundant `setAudioDevice(-1)` (an engine teardown + reopen).
 let initialDevicePushDone = false;
 let startupDefaultsApplied = false;
+// Previous-value trackers for the "On startup" PI checkboxes. Null until
+// the first global-settings arrival; on subsequent arrivals a value
+// change drives an immediate runtime-key sync (issue #482).
+let lastSeenRaceEngineerEnabledOnStartup: boolean | null = null;
+let lastSeenRadarEnabledOnStartup: boolean | null = null;
 let currentAudioDeviceId: string = "";
 // Cache the last pushed payload so identical re-enumerations (the common
 // case on repeated PI re-opens with no hardware change) don't churn the
@@ -265,6 +270,28 @@ onGlobalSettingsChange((settings) => {
       radarEnabled: settings.radarEnabledOnStartup,
     });
   }
+
+  // Mirror "On startup" PI edits into the runtime toggles immediately so
+  // checking the box has visible effect mid-session, not just at next
+  // restart. Skip the first arrival — the startup one-shot above already
+  // wrote the runtime keys. Re-entries triggered by our own
+  // updateGlobalSettings calls land here with unchanged *OnStartup
+  // values so the comparison short-circuits and there's no feedback
+  // loop.
+  if (
+    lastSeenRaceEngineerEnabledOnStartup !== null &&
+    settings.raceEngineerEnabledOnStartup !== lastSeenRaceEngineerEnabledOnStartup
+  ) {
+    updateGlobalSettings({ raceEngineerEnabled: settings.raceEngineerEnabledOnStartup });
+  }
+
+  lastSeenRaceEngineerEnabledOnStartup = settings.raceEngineerEnabledOnStartup;
+
+  if (lastSeenRadarEnabledOnStartup !== null && settings.radarEnabledOnStartup !== lastSeenRadarEnabledOnStartup) {
+    updateGlobalSettings({ radarEnabled: settings.radarEnabledOnStartup });
+  }
+
+  lastSeenRadarEnabledOnStartup = settings.radarEnabledOnStartup;
 
   pushRaceEngineerVoicesIfChanged();
   pushDriverNamesIfChanged();
