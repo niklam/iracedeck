@@ -199,6 +199,12 @@ registerPitCrew(
 // arrival of `audioOutputDevice = ""` would look like a transition and
 // fire a redundant `setAudioDevice(-1)` (an engine teardown + reopen).
 let initialDevicePushDone = false;
+let startupDefaultsApplied = false;
+// Previous-value trackers for the "On startup" PI checkboxes. Null until
+// the first global-settings arrival; on subsequent arrivals a value
+// change drives an immediate runtime-key sync (issue #482).
+let lastSeenRaceEngineerEnabledOnStartup: boolean | null = null;
+let lastSeenRadarEnabledOnStartup: boolean | null = null;
 let currentAudioDeviceId: string = "";
 // Cache the last pushed payload so identical re-enumerations (the common
 // case on repeated PI re-opens with no hardware change) don't churn the
@@ -250,6 +256,47 @@ onGlobalSettingsChange((settings) => {
   if (!initialDevicePushDone) {
     initialDevicePushDone = true;
     pushAudioDevicesIfChanged();
+  }
+
+  // Apply per-feature "On startup" defaults (issue #482). Overrides any
+  // runtime value the previous session's button toggles persisted. The
+  // Pit Crew action's own onGlobalSettingsChange listener picks up the
+  // echoed runtime keys and re-applies them to the audio buses / radar
+  // engine, so no further wiring is needed here.
+  if (!startupDefaultsApplied) {
+    startupDefaultsApplied = true;
+    updateGlobalSettings({
+      raceEngineerEnabled: settings.raceEngineerEnabledOnStartup,
+      radarEnabled: settings.radarEnabledOnStartup,
+    });
+  }
+
+  // Mirror "On startup" PI edits into the runtime toggles immediately so
+  // checking the box has visible effect mid-session, not just at next
+  // restart. The trackers MUST be updated before the recursive
+  // `updateGlobalSettings` call: that call synchronously re-fires every
+  // listener (including this one), and a stale tracker on re-entry would
+  // diff "changed → changed" forever, blowing the stack and aborting the
+  // listener chain in a partial state. Updating first means the re-entry
+  // sees a fresh tracker, the diff comes up unchanged, and the recursion
+  // unwinds cleanly. First-arrival is detected by the null sentinel and
+  // skips the runtime sync — the startup one-shot above already wrote
+  // both runtime keys.
+  const previousRaceEngineerEnabledOnStartup = lastSeenRaceEngineerEnabledOnStartup;
+  lastSeenRaceEngineerEnabledOnStartup = settings.raceEngineerEnabledOnStartup;
+
+  if (
+    previousRaceEngineerEnabledOnStartup !== null &&
+    settings.raceEngineerEnabledOnStartup !== previousRaceEngineerEnabledOnStartup
+  ) {
+    updateGlobalSettings({ raceEngineerEnabled: settings.raceEngineerEnabledOnStartup });
+  }
+
+  const previousRadarEnabledOnStartup = lastSeenRadarEnabledOnStartup;
+  lastSeenRadarEnabledOnStartup = settings.radarEnabledOnStartup;
+
+  if (previousRadarEnabledOnStartup !== null && settings.radarEnabledOnStartup !== previousRadarEnabledOnStartup) {
+    updateGlobalSettings({ radarEnabled: settings.radarEnabledOnStartup });
   }
 
   pushRaceEngineerVoicesIfChanged();

@@ -121,6 +121,24 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
+     * Startup defaults for `raceEngineerEnabled` / `radarEnabled` (issue #482).
+     * On every plugin start, after the first global-settings arrival, the
+     * plugin copies these values into the runtime keys above — overriding
+     * whatever the user toggled in the previous session. Editing these
+     * during a running session is also mirrored immediately into the
+     * runtime keys, so the checkbox has visible effect without waiting
+     * for a restart. Default false — fresh installs stay quiet on startup
+     * (matches the runtime keys' fresh-install posture from #378).
+     */
+    raceEngineerEnabledOnStartup: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    radarEnabledOnStartup: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    /**
      * Volume for the directional Radar ticks, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Alerts`). Stepped by the Radar Volume Up/Down modes of the
      * Pit Crew action; sliding to 0 mutes the radar without toggling the

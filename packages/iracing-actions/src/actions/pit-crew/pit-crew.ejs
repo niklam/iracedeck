@@ -22,10 +22,15 @@
 		</sdpi-item>
 
 		<%- include('accordion', {
-			title: 'Pit Crew Audio',
-			accordionId: 'pitCrewAudio',
+			title: 'Pit Crew Settings',
+			accordionId: 'pitCrewSettings',
 			open: true,
 			content:
+				'<sdpi-item label="On startup">' +
+					'<sdpi-checkbox setting="raceEngineerEnabledOnStartup" label="Race Engineer enabled" global></sdpi-checkbox>' +
+					'<br>' +
+					'<sdpi-checkbox setting="radarEnabledOnStartup" label="Radar enabled" global></sdpi-checkbox>' +
+				'</sdpi-item>' +
 				'<sdpi-item label="Race Engineer Voice">' +
 					'<ird-voice-select setting="raceEngineerVoice" voices="_raceEngineerVoices"></ird-voice-select>' +
 				'</sdpi-item>' +
