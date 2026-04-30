@@ -17,6 +17,10 @@
  *     three-corner combos, and the full-clear ("skip tires") case
  *   - `TIRE_COMPOUND_SCENARIOS` — dry/wet compound switches via
  *     `tireService.compoundChanged`
+ *   - `WINDSHIELD_TOGGLE_SCENARIOS` — windshield-tearoff on/off via
+ *     `pitService.toggled`
+ *   - `FAST_REPAIR_TOGGLE_SCENARIOS` — fast-repair on/off via
+ *     `pitService.toggled`
  *
  * All registered scenarios use `priority: "normal"` so pit-lane callouts
  * still take precedence.
@@ -206,3 +210,51 @@ function compoundScenario(to: 0 | 1): Scenario {
 }
 
 export const TIRE_COMPOUND_SCENARIOS: readonly Scenario[] = [compoundScenario(0), compoundScenario(1)];
+
+// ── Windshield tearoff (registered) ─────────────────────────────────────
+
+function windshieldScenario(on: boolean): Scenario {
+  return {
+    id: `pit-crew.toggle-windshield-${on ? "on" : "off"}`,
+    when: {
+      event: "pitService.toggled",
+      where: (e) => {
+        const data = (e as SimEventOf<"pitService.toggled">).data;
+
+        return data.service === "windshield" && data.on === on;
+      },
+    },
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    priority: "normal",
+    family: "pit-service.windshield",
+    sequence: toggleSequence([`pit-actions/windshield-${on ? "on" : "off"}.mp3`]),
+  };
+}
+
+export const WINDSHIELD_TOGGLE_SCENARIOS: readonly Scenario[] = [windshieldScenario(true), windshieldScenario(false)];
+
+// ── Fast repair (registered) ────────────────────────────────────────────
+
+function fastRepairScenario(on: boolean): Scenario {
+  return {
+    id: `pit-crew.toggle-fast-repair-${on ? "on" : "off"}`,
+    when: {
+      event: "pitService.toggled",
+      where: (e) => {
+        const data = (e as SimEventOf<"pitService.toggled">).data;
+
+        return data.service === "fastRepair" && data.on === on;
+      },
+    },
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    priority: "normal",
+    family: "pit-service.fast-repair",
+    sequence: toggleSequence([`pit-actions/fast-repair-${on ? "on" : "off"}.mp3`]),
+  };
+}
+
+export const FAST_REPAIR_TOGGLE_SCENARIOS: readonly Scenario[] = [fastRepairScenario(true), fastRepairScenario(false)];

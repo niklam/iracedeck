@@ -29,6 +29,8 @@ When the engineer is enabled, the Pit Crew catalog confirms every meaningful pit
 - **Fuel** — separate on / off callouts.
 - **Tire selection** — exhaustive across the 15 non-empty 4-corner combinations: the 5 standard preset patterns (all / fronts / rears / lefts / rights), all 4 single-corner picks, both diagonals (LF + RR, RF + LR), and all 4 three-corner combos (skip LF / RF / LR / RR). Clearing the selection plays a "skipping tires" callout.
 - **Tire compound** — dry / wet switches play a dedicated compound line. iRacing forces all four tire bits on at the same instant the compound flips; the translator suppresses the cascading tire-set event so only the compound callout plays.
+- **Windshield tearoff** — separate on / off callouts on each toggle.
+- **Fast repair** — separate on / off callouts on each toggle.
 
 Flag transitions are also voiced — every flag the iRacing translator publishes gets a dedicated engineer callout:
 

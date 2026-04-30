@@ -291,6 +291,22 @@
         "name": "tires-compound-wet",
         "seed": 2,
         "text": "Switching to wets at the next pitstop."
+      },
+      {
+        "name": "windshield-on",
+        "text": "We'll clean the windshield at the next pitstop."
+      },
+      {
+        "name": "windshield-off",
+        "text": "We're skipping the windshield clean at the next pitstop."
+      },
+      {
+        "name": "fast-repair-on",
+        "text": "We'll do a fast repair at the next pitstop."
+      },
+      {
+        "name": "fast-repair-off",
+        "text": "We're skipping fast repair at the next pitstop."
       }
     ],
     "pit-readback": [
