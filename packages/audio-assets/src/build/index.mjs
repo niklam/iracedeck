@@ -84,109 +84,120 @@ function cacheIsFresh(sourcePath, cachedPath) {
 }
 
 /**
- * Rollup plugin. On generateBundle, copies `packages/audio-assets/` into the
- * plugin's `{sdPlugin}/assets/audio/` directory. Every .mp3 under voice/
+ * Copies `packages/audio-assets/` into `destRoot`. Every .mp3 under voice/
  * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
- * everything outside voice/ (currently sfx/) is copied unchanged.
+ * everything outside voice/ (currently sfx/, ambient/) is copied unchanged.
  *
  * Processed outputs are cached at `packages/audio-assets/.cache/<filter-hash>/`
  * keyed on the filter chain so that a filter-string change invalidates the
  * cache automatically. Per-file invalidation is mtime-based (rebuild if the
- * source MP3 is newer than its cached counterpart).
+ * source MP3 is newer than its cached counterpart). The Rollup plugin and
+ * the scenario harness both call this — the cache is shared across them.
+ *
+ * `logger` is an optional `(msg: string) => void` for build-summary output.
  */
-export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
+export async function processAndCopyAudioAssets({ destRoot, logger } = {}) {
+  if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
+  if (!existsSync(audioAssetsPath)) return;
+
   const ffmpegPath = require("ffmpeg-static");
   const hash = filterHash(RADIO_ENGINEER_FILTER);
   const cacheRoot = path.join(CACHE_ROOT, hash);
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
+  // Clear destRoot before recreating so renamed/removed top-level folders
+  // (e.g. the legacy `pit-crew/` after #441 §1) don't leak into the output
+  // across incremental builds. The cache under `.cache/` is keyed by filter
+  // hash and lives outside destRoot, so this doesn't invalidate it.
+  rmSync(destRoot, { recursive: true, force: true });
+  mkdirSync(destRoot, { recursive: true });
+
+  const tasks = [];
+  let processed = 0;
+  let cached = 0;
+  let copiedAsIs = 0;
+
+  // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
+  // processing. Preserves directory structure under destRoot/cacheRoot.
+  const queueVoiceTree = (srcDir, destDir, cacheDir) => {
+    mkdirSync(destDir, { recursive: true });
+    mkdirSync(cacheDir, { recursive: true });
+
+    for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+      const srcPath = path.join(srcDir, entry.name);
+
+      if (entry.isDirectory()) {
+        queueVoiceTree(srcPath, path.join(destDir, entry.name), path.join(cacheDir, entry.name));
+        continue;
+      }
+
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
+
+      const cachedPath = path.join(cacheDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+
+      if (cacheIsFresh(srcPath, cachedPath)) {
+        tasks.push(async () => {
+          copyFileSync(cachedPath, destPath);
+          cached++;
+        });
+      } else {
+        tasks.push(async () => {
+          await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+          copyFileSync(cachedPath, destPath);
+          processed++;
+        });
+      }
+    }
+  };
+
+  const copyTreeAsIs = (srcDir, destDir) => {
+    cpSync(srcDir, destDir, { recursive: true });
+    // cpSync copies recursively, so the counter has to walk recursively
+    // too — otherwise nested files (e.g. sfx/radar/*.mp3) get copied but
+    // not counted in the build summary.
+    const countFiles = (dir) => {
+      for (const f of readdirSync(dir, { withFileTypes: true })) {
+        if (f.isFile()) copiedAsIs++;
+        else if (f.isDirectory()) countFiles(path.join(dir, f.name));
+      }
+    };
+
+    countFiles(srcDir);
+  };
+
+  for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || SKIP_FOLDERS.has(entry.name)) continue;
+
+    const srcDir = path.join(audioAssetsPath, entry.name);
+    const destDir = path.join(destRoot, entry.name);
+
+    if (entry.name === VOICE_ROOT) {
+      queueVoiceTree(srcDir, destDir, path.join(cacheRoot, VOICE_ROOT));
+    } else {
+      mkdirSync(destDir, { recursive: true });
+      copyTreeAsIs(srcDir, destDir);
+    }
+  }
+
+  await runWithConcurrency(tasks, concurrency);
+
+  logger?.(
+    `Audio assets: ${processed} processed, ${cached} cache-hit, ${copiedAsIs} copied as-is (filter hash ${hash})`,
+  );
+}
+
+/**
+ * Rollup plugin. On generateBundle, processes and copies the audio assets
+ * into `{sdPlugin}/assets/audio/`. Thin wrapper around
+ * `processAndCopyAudioAssets`.
+ */
+export function processAndCopyAudioAssetsPlugin({ sdPlugin }) {
   return {
     name: "process-and-copy-audio-assets",
     async generateBundle() {
-      if (!existsSync(audioAssetsPath)) return;
-
-      // Clear destRoot before recreating so renamed/removed top-level
-      // folders (e.g. the legacy `pit-crew/` after #441 §1) don't leak
-      // into the bundled output across incremental dev builds. The cache
-      // under `.cache/` is keyed by filter hash and lives outside
-      // destRoot, so this doesn't invalidate it.
       const destRoot = path.join(sdPlugin, "assets", "audio");
-      rmSync(destRoot, { recursive: true, force: true });
-      mkdirSync(destRoot, { recursive: true });
-
-      const tasks = [];
-      let processed = 0;
-      let cached = 0;
-      let copiedAsIs = 0;
-
-      // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
-      // processing. Preserves directory structure under destRoot/cacheRoot.
-      const queueVoiceTree = (srcDir, destDir, cacheDir) => {
-        mkdirSync(destDir, { recursive: true });
-        mkdirSync(cacheDir, { recursive: true });
-
-        for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-          const srcPath = path.join(srcDir, entry.name);
-
-          if (entry.isDirectory()) {
-            queueVoiceTree(srcPath, path.join(destDir, entry.name), path.join(cacheDir, entry.name));
-            continue;
-          }
-
-          if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
-
-          const cachedPath = path.join(cacheDir, entry.name);
-          const destPath = path.join(destDir, entry.name);
-
-          if (cacheIsFresh(srcPath, cachedPath)) {
-            tasks.push(async () => {
-              copyFileSync(cachedPath, destPath);
-              cached++;
-            });
-          } else {
-            tasks.push(async () => {
-              await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
-              copyFileSync(cachedPath, destPath);
-              processed++;
-            });
-          }
-        }
-      };
-
-      const copyTreeAsIs = (srcDir, destDir) => {
-        cpSync(srcDir, destDir, { recursive: true });
-        // cpSync copies recursively, so the counter has to walk recursively
-        // too — otherwise nested files (e.g. sfx/radar/*.mp3) get copied but
-        // not counted in the build summary.
-        const countFiles = (dir) => {
-          for (const f of readdirSync(dir, { withFileTypes: true })) {
-            if (f.isFile()) copiedAsIs++;
-            else if (f.isDirectory()) countFiles(path.join(dir, f.name));
-          }
-        };
-
-        countFiles(srcDir);
-      };
-
-      for (const entry of readdirSync(audioAssetsPath, { withFileTypes: true })) {
-        if (!entry.isDirectory() || SKIP_FOLDERS.has(entry.name)) continue;
-
-        const srcDir = path.join(audioAssetsPath, entry.name);
-        const destDir = path.join(destRoot, entry.name);
-
-        if (entry.name === VOICE_ROOT) {
-          queueVoiceTree(srcDir, destDir, path.join(cacheRoot, VOICE_ROOT));
-        } else {
-          mkdirSync(destDir, { recursive: true });
-          copyTreeAsIs(srcDir, destDir);
-        }
-      }
-
-      await runWithConcurrency(tasks, concurrency);
-
-      this.info?.(
-        `Audio assets: ${processed} processed, ${cached} cache-hit, ${copiedAsIs} copied as-is (filter hash ${hash})`,
-      );
+      await processAndCopyAudioAssets({ destRoot, logger: this.info?.bind(this) });
     },
   };
 }
