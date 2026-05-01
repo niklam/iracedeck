@@ -509,8 +509,16 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("tireService.compoundChanged", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      controller.__tick(telemetry({ PitSvTireCompound: 0 }));
-      controller.__tick(telemetry({ PitSvTireCompound: 1 }));
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      // iRacing always force-sets all four tire bits in the same tick as a
+      // user-initiated compound flip; the translator gates the
+      // compoundChanged emit on that cascade so an isolated compound bit
+      // change (e.g. side-effect of clear-tires, issue #484) does NOT
+      // mis-fire.
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.compoundChanged">;
@@ -524,8 +532,11 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("tireService.compoundChanged", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      controller.__tick(telemetry({ PitSvTireCompound: 1 }));
-      controller.__tick(telemetry({ PitSvTireCompound: 0 }));
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 0 }));
 
       expect(handler).toHaveBeenCalledTimes(1);
       const ev = handler.mock.calls[0]![0] as SimEventOf<"tireService.compoundChanged">;
@@ -607,6 +618,62 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ PlayerCarInPitStall: true, PitSvTireCompound: 1 }));
 
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    // Issue #484 — "clear tires" with a non-default compound queued.
+    // iRacing resets the compound bit back to the car default in the same
+    // tick that all four tire bits clear. That's a side-effect of the
+    // clear, not a user-initiated compound flip: emitting
+    // tireService.compoundChanged would mis-fire a "switching to dry"
+    // callout and would suppress the legitimate "tires cleared" event.
+    // The translator distinguishes the two cases by inspecting the
+    // post-tick tire bits — `TIRE_FLAGS_MASK` for a real compound flip,
+    // `0` for the clear cascade.
+    it("issue #484: clearing tires with a non-default compound suppresses compoundChanged and emits tireService.changed", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const compoundHandler = vi.fn();
+      const tireHandler = vi.fn();
+      bus.subscribe("tireService.compoundChanged", compoundHandler);
+      bus.subscribe("tireService.changed", tireHandler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const allTires =
+        PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
+
+      // Seed: dry, no tires queued.
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      // User switches to wet — compound flips, all four tires force-set.
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+      // Past the tire debounce so any cascading tireService.changed would
+      // have surfaced by now.
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: allTires, PitSvTireCompound: 1 }));
+
+      // Sanity: the genuine compound flip fired exactly once and was the
+      // sole tire-related event.
+      expect(compoundHandler).toHaveBeenCalledTimes(1);
+      expect(tireHandler).not.toHaveBeenCalled();
+
+      // User presses "clear tires". iRacing clears all four tire bits AND
+      // resets compound to the car default (0 / dry) in the same tick.
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      // Past the debounce so the cleared tires surface.
+      vi.setSystemTime(Date.now() + 600);
+      controller.__tick(telemetry({ PitSvFlags: 0, PitSvTireCompound: 0 }));
+      vi.useRealTimers();
+
+      // The clear must NOT count as a second compound flip — the user
+      // didn't switch back to dry, the clear reset it as a side-effect.
+      expect(compoundHandler).toHaveBeenCalledTimes(1);
+
+      // The clear must produce a tireService.changed with empty current
+      // (the "tires cleared" / "skip tires" callout fires off this).
+      expect(tireHandler).toHaveBeenCalledTimes(1);
+      const ev = tireHandler.mock.calls[0]![0] as SimEventOf<"tireService.changed">;
+      expect(ev.data.current).toEqual([]);
+      expect(ev.data.removed.sort()).toEqual(["LF", "LR", "RF", "RR"]);
     });
   });
 

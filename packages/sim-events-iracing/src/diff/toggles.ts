@@ -182,9 +182,18 @@ export function diffToggles(state: TranslatorState, telemetry: TelemetryData, no
   // absorb the cascading tire-set diff so the compound voice line is the
   // single canonical confirmation (otherwise the engineer would also call
   // out "all four tires" 500 ms later).
+  //
+  // Issue #484: a "clear tires" press also flips the compound bit (iRacing
+  // resets compound to the car default as a side-effect of clearing pit
+  // service) but with `currTireBits === 0` instead of `TIRE_FLAGS_MASK`.
+  // That isn't a user-initiated compound change — it's a consequence of
+  // the clear — so emitting "switching to dry" would be misleading and
+  // would also suppress the legitimate "tires cleared" callout. Gate the
+  // compound emit on the all-four-tires cascade so only genuine user
+  // compound flips fire the compound voice line.
   let compoundJustChanged = false;
 
-  if (state.lastPitSvCompound !== pitSvCompound) {
+  if (state.lastPitSvCompound !== pitSvCompound && currTireBits === TIRE_FLAGS_MASK) {
     emit({
       event: "tireService.compoundChanged",
       data: { from: state.lastPitSvCompound, to: pitSvCompound },
