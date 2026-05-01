@@ -19,23 +19,6 @@ export type ServiceDebounceState = {
   lastSeen: boolean; // most recent observed bit value
 };
 
-/**
- * Committed pit-service snapshot used by the pit-readback diff (issue #476).
- * Captured on `pitLane.entered` and refreshed on every user-intent toggle
- * event (`pitService.toggled` / `tireService.changed` / `tireService.compoundChanged`)
- * so it reflects the driver's intent — not the bit-cleared post-service
- * state visible at exit. Held in state so the delayed pit-exit fire reads
- * the same snapshot the entry / refire emits used.
- */
-export type PitReadbackCommittedSnapshot = {
-  fuel: { queued: boolean };
-  tires: { lf: boolean; rf: boolean; lr: boolean; rr: boolean };
-  compoundChange: { from: number; to: number } | null;
-  fastRepair: { queued: boolean; available: boolean };
-  windshield: { queued: boolean; available: boolean };
-  limiterEngaged: boolean;
-};
-
 export type TranslatorState = {
   // ── Pit lane / stall ────────────────────────────────────────────────────
   pitLaneInitialized: boolean;

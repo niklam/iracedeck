@@ -1,14 +1,20 @@
 /**
- * Pit-service readback scenario tests (issue #476).
+ * Pit-service readback scenario tests (issue #476, #481).
  *
  * Pins the slot-resolution behavior, family preemption on refire, and
  * per-callout opt-out gating. Drives the scenarios through the real
  * scenario engine so we exercise validation and the same expansion path
  * production uses.
+ *
+ * Issue #481 changed the data flow: the queued-services snapshot is no
+ * longer carried on the event payload; the audio scenarios read it from
+ * a resolver closure at fire time. These tests set the closure's source
+ * (`currentSnapshot`) before publishing the event so each fire sees the
+ * intended state.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -233,11 +239,11 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let flagsEnabled: Map<FlagCalloutId, boolean>;
 let readbackEnabled: Map<PitReadbackCalloutId, boolean>;
+let currentSnapshot: PitReadbackSnapshot | null;
 
-type Snapshot = SimEventMap["pitService.readbackRequested"]["data"];
+type Reason = SimEventMap["pitService.readbackRequested"]["data"]["reason"];
 
-const EMPTY_SNAPSHOT: Snapshot = {
-  reason: "entry",
+const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fuel: { queued: false },
   tires: { lf: false, rf: false, lr: false, rr: false },
   compoundChange: null,
@@ -246,7 +252,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   limiterEngaged: false,
 };
 
-function snap(overrides: Partial<Snapshot>): Snapshot {
+function snap(overrides: Partial<PitReadbackSnapshot>): PitReadbackSnapshot {
   return { ...EMPTY_SNAPSHOT, ...overrides };
 }
 
@@ -254,8 +260,15 @@ function voicePaths(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
 }
 
-function fireReadback(snapshot: Snapshot): void {
-  bus.publishEvent("pitService.readbackRequested", snapshot);
+/**
+ * Fire a readback by setting the resolver's snapshot then publishing the
+ * (slim) event. Mirrors production: the diff publishes only `reason`,
+ * the audio scenario reads the queued-services state via the resolver
+ * at fire time.
+ */
+function fireReadback(reason: Reason, snapshot: PitReadbackSnapshot): void {
+  currentSnapshot = snapshot;
+  bus.publishEvent("pitService.readbackRequested", { reason });
   flush(audio);
 }
 
@@ -263,6 +276,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   flagsEnabled = new Map();
   readbackEnabled = new Map();
+  currentSnapshot = null;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -272,6 +286,9 @@ beforeEach(() => {
     (id) => flagsEnabled.get(id) ?? true,
     mockLogger as never,
     (id) => readbackEnabled.get(id) ?? true,
+    undefined,
+    undefined,
+    () => currentSnapshot,
   );
 });
 
@@ -286,8 +303,8 @@ describe("pit readback scenarios", () => {
   describe("entry readback", () => {
     it("fires on entry reason and plays the entry opener", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fuel: { queued: true },
           tires: { lf: true, rf: true, lr: true, rr: true },
           limiterEngaged: true,
@@ -301,7 +318,7 @@ describe("pit readback scenarios", () => {
     });
 
     it("prepends the limiter pre-opener when limiter is not engaged, then plays opener-entry", () => {
-      fireReadback(snap({ reason: "entry", fuel: { queued: true }, limiterEngaged: false }));
+      fireReadback("entry", snap({ fuel: { queued: true }, limiterEngaged: false }));
 
       const paths = voicePaths();
       const limiterIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"));
@@ -313,14 +330,14 @@ describe("pit readback scenarios", () => {
     });
 
     it("plays only opener-entry (no limiter pre-opener) when limiter is already engaged", () => {
-      fireReadback(snap({ reason: "entry", fuel: { queued: true }, limiterEngaged: true }));
+      fireReadback("entry", snap({ fuel: { queued: true }, limiterEngaged: true }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(true);
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
     });
 
     it("entry-refire reason fires the entry scenario but skips the opener", () => {
-      fireReadback(snap({ reason: "entry-refire", fuel: { queued: true } }));
+      fireReadback("entry-refire", snap({ fuel: { queued: true } }));
 
       const paths = voicePaths();
       // Slot content still plays on a refire so the recap reflects the
@@ -332,13 +349,13 @@ describe("pit readback scenarios", () => {
     });
 
     it("entry-refire skips the limiter pre-opener even when limiter is not engaged", () => {
-      fireReadback(snap({ reason: "entry-refire", fuel: { queued: true }, limiterEngaged: false }));
+      fireReadback("entry-refire", snap({ fuel: { queued: true }, limiterEngaged: false }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
     });
 
     it("does not fire the exit scenario", () => {
-      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
+      fireReadback("entry", snap({ fuel: { queued: true } }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(false);
     });
@@ -346,7 +363,7 @@ describe("pit readback scenarios", () => {
 
   describe("exit readback", () => {
     it("fires on exit reason with the exit opener", () => {
-      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
+      fireReadback("exit", snap({ fuel: { queued: true } }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(true);
@@ -354,7 +371,7 @@ describe("pit readback scenarios", () => {
     });
 
     it("does not fire on entry / entry-refire reasons", () => {
-      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
+      fireReadback("entry", snap({ fuel: { queued: true } }));
       const entryPaths = voicePaths().slice();
       expect(entryPaths.some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(false);
     });
@@ -362,7 +379,7 @@ describe("pit readback scenarios", () => {
 
   describe("empty snapshot", () => {
     it("entry empty plays the limiter pre-opener (when not engaged) + fallback, no opener / no slots", () => {
-      fireReadback(snap({ reason: "entry", limiterEngaged: false }));
+      fireReadback("entry", snap({ limiterEngaged: false }));
 
       const paths = voicePaths();
       const limiterIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"));
@@ -378,7 +395,7 @@ describe("pit readback scenarios", () => {
     });
 
     it("entry empty with limiter engaged plays only the empty-fallback (no openers)", () => {
-      fireReadback(snap({ reason: "entry", limiterEngaged: true }));
+      fireReadback("entry", snap({ limiterEngaged: true }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith("/pit-readback/empty-fallback.mp3"))).toBe(true);
@@ -387,7 +404,7 @@ describe("pit readback scenarios", () => {
     });
 
     it("exit keeps the opener around the empty-fallback", () => {
-      fireReadback(snap({ reason: "exit" }));
+      fireReadback("exit", snap({}));
 
       const paths = voicePaths();
       const openerIdx = paths.findIndex((p) => p.endsWith("/pit-readback/opener-exit.mp3"));
@@ -401,8 +418,8 @@ describe("pit readback scenarios", () => {
 
     it("treats an unavailable-only fast-repair queue as empty", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fastRepair: { queued: true, available: false },
         }),
       );
@@ -412,7 +429,7 @@ describe("pit readback scenarios", () => {
   });
 
   describe("tire pattern slot", () => {
-    type Tires = Snapshot["tires"];
+    type Tires = PitReadbackSnapshot["tires"];
 
     const PATTERNS: ReadonlyArray<[Tires, string]> = [
       [{ lf: true, rf: true, lr: true, rr: true }, "tires-all.mp3"],
@@ -433,7 +450,7 @@ describe("pit readback scenarios", () => {
     ];
 
     it.each(PATTERNS)("pattern %j resolves to %s", (tires, expectedClip) => {
-      fireReadback(snap({ reason: "entry", tires }));
+      fireReadback("entry", snap({ tires }));
 
       const paths = voicePaths();
       expect(paths.some((p) => p.endsWith(`/pit-readback/${expectedClip}`))).toBe(true);
@@ -446,7 +463,7 @@ describe("pit readback scenarios", () => {
     });
 
     it("falls back to tires-off when no bits are set and no compound change", () => {
-      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
+      fireReadback("entry", snap({ fuel: { queued: true } }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/tires-off.mp3"))).toBe(true);
     });
@@ -455,8 +472,8 @@ describe("pit readback scenarios", () => {
   describe("compound slot", () => {
     it("plays compound-dry and skips the tire-pattern slot", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           tires: { lf: true, rf: true, lr: true, rr: true },
           compoundChange: { from: 1, to: 0 },
         }),
@@ -469,8 +486,8 @@ describe("pit readback scenarios", () => {
 
     it("plays compound-wet and skips the tire-pattern slot", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           tires: { lf: true, rf: true, lr: true, rr: true },
           compoundChange: { from: 0, to: 1 },
         }),
@@ -485,8 +502,8 @@ describe("pit readback scenarios", () => {
   describe("fast repair / windshield slots", () => {
     it("stays silent on both fast-repair and windshield when neither is queued", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fuel: { queued: true },
           fastRepair: { queued: false, available: true },
           windshield: { queued: false, available: true },
@@ -502,8 +519,8 @@ describe("pit readback scenarios", () => {
 
     it("plays fast-repair-on when queued", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fuel: { queued: true },
           fastRepair: { queued: true, available: true },
         }),
@@ -514,8 +531,8 @@ describe("pit readback scenarios", () => {
 
     it("stays silent on windshield when not queued (no false 'no windshield' on open-wheel cars)", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fuel: { queued: true },
           windshield: { queued: false, available: true },
         }),
@@ -529,21 +546,21 @@ describe("pit readback scenarios", () => {
   describe("opt-out gating", () => {
     it("entry callout suppressed when opt-out is off", () => {
       readbackEnabled.set("pit-readback-entry", false);
-      fireReadback(snap({ reason: "entry", fuel: { queued: true } }));
+      fireReadback("entry", snap({ fuel: { queued: true } }));
 
       expect(voicePaths().some((p) => p.includes("/pit-readback/"))).toBe(false);
     });
 
     it("exit callout suppressed when opt-out is off", () => {
       readbackEnabled.set("pit-readback-exit", false);
-      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
+      fireReadback("exit", snap({ fuel: { queued: true } }));
 
       expect(voicePaths().some((p) => p.includes("/pit-readback/"))).toBe(false);
     });
 
     it("entry off does not affect exit", () => {
       readbackEnabled.set("pit-readback-entry", false);
-      fireReadback(snap({ reason: "exit", fuel: { queued: true } }));
+      fireReadback("exit", snap({ fuel: { queued: true } }));
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-exit.mp3"))).toBe(true);
     });
@@ -552,8 +569,8 @@ describe("pit readback scenarios", () => {
   describe("slot composition", () => {
     it("emits each populated slot back-to-back without glue clips", () => {
       fireReadback(
+        "entry",
         snap({
-          reason: "entry",
           fuel: { queued: true },
           tires: { lf: true, rf: true, lr: true, rr: true },
           fastRepair: { queued: true, available: true },
@@ -576,6 +593,85 @@ describe("pit readback scenarios", () => {
         "fast-repair-on.mp3",
         "windshield-on.mp3",
       ]);
+    });
+  });
+
+  // Issue #481 regression: a low-priority readback that gets stashed in
+  // `deferredLowFire` (busy-bus or higher-priority preempt) must speak the
+  // CURRENT queued-services state when it eventually replays — not the
+  // state captured at the moment the original event was emitted. The bug
+  // before #481 was that the snapshot rode on the event payload, so the
+  // deferred replay walked stale data. With the resolver pulled at fire
+  // time, the replay reads whatever the user has queued NOW.
+  describe("deferred-replay snapshot freshness (issue #481)", () => {
+    it("uses the latest snapshot when a busy-bus deferred low fire replays", () => {
+      // 1. Stash an "all four tires" snapshot the first event would see.
+      currentSnapshot = snap({ fuel: { queued: true }, tires: { lf: true, rf: true, lr: true, rr: true } });
+
+      // 2. Pre-occupy the bus with a normal-priority fuel-toggle confirmation
+      //    so the readback can't fire immediately and gets deferred.
+      bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+
+      // 3. Publish the readback while the bus is still busy with the
+      //    fuel-toggle. The interpreter stashes it in `deferredLowFire` —
+      //    no clips play yet for the readback.
+      bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+
+      // 4. Sim state changes between event emit and deferred replay: the
+      //    user toggles tires down to FRONTS only.
+      currentSnapshot = snap({
+        fuel: { queued: true },
+        tires: { lf: true, rf: true, lr: false, rr: false },
+      });
+
+      // 5. Drain the bus. Toggle confirmation finishes, deferred replay
+      //    runs against the CURRENT snapshot.
+      flush(audio);
+
+      const readbackPaths = voicePaths()
+        .filter((p) => p.includes("/pit-readback/"))
+        .map((p) => p.split("/pit-readback/")[1]);
+
+      // The replay must reflect the post-toggle state (fronts only).
+      // Pre-#481 the deferred fire walked the stale "all four" snapshot
+      // and mis-spoke the tire pattern.
+      expect(readbackPaths).toContain("tires-fronts.mp3");
+      expect(readbackPaths).not.toContain("tires-all.mp3");
+    });
+
+    it("uses the latest snapshot when a higher-priority preempt stashes the readback", () => {
+      // 1. Set the snapshot the original event would have captured.
+      currentSnapshot = snap({ fuel: { queued: true }, tires: { lf: true, rf: true, lr: true, rr: true } });
+
+      // 2. Fire the low-priority readback. It starts playing immediately
+      //    (radio-open → opener → …).
+      bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
+
+      // 3. Mid-playback, fire a normal-priority toggle confirmation
+      //    belonging to a different family. The interpreter preempts
+      //    the running readback and stashes its event in
+      //    `deferredLowFire` for replay once the toggle completes.
+      bus.publishEvent("pitService.toggled", { service: "fuel", on: false });
+
+      // 4. While the toggle confirmation plays, the user changes the
+      //    queue (e.g. cancels two tires). The replay must reflect this.
+      currentSnapshot = snap({
+        fuel: { queued: true },
+        tires: { lf: true, rf: true, lr: false, rr: false },
+      });
+
+      // 5. Drain — toggle finishes, deferred readback replays.
+      flush(audio);
+
+      const readbackPaths = voicePaths()
+        .filter((p) => p.includes("/pit-readback/"))
+        .map((p) => p.split("/pit-readback/")[1]);
+
+      // Both the original (pre-empted) and the replay run inside one
+      // flush window; the replay's tire pattern must be the post-toggle
+      // one. Pre-#481 the replay re-expanded the stashed event's frozen
+      // snapshot and reported "tires-all".
+      expect(readbackPaths).toContain("tires-fronts.mp3");
     });
   });
 });

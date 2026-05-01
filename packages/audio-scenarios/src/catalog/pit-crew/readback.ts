@@ -1,5 +1,5 @@
 /**
- * Pit-service readback scenarios — issue #476.
+ * Pit-service readback scenarios — issue #476, #481.
  *
  * Two scenarios driven by `pitService.readbackRequested` (one per `reason`
  * value the sim translator emits):
@@ -7,12 +7,18 @@
  *   - `pit-crew.pit-readback-entry`  — fires on `entry` and `entry-refire`.
  *   - `pit-crew.pit-readback-exit`   — fires on `exit`.
  *
- * Both scenarios are pure slot compositions over the event payload (no
- * live telemetry reads from inside the DSL). Each slot picks zero or one
- * clip based on the snapshot; slots that resolve to "omit" contribute
- * nothing. There are no connectors between slots — the slot clips are
- * authored with consistent lead-in / lead-out so they flow naturally
- * back-to-back.
+ * Each slot picks zero or one clip based on the queued-services snapshot;
+ * slots that resolve to "omit" contribute nothing. There are no connectors
+ * between slots — the slot clips are authored with consistent lead-in /
+ * lead-out so they flow naturally back-to-back.
+ *
+ * The snapshot is resolved at fire time via the `getSnapshot` closure
+ * (issue #481) — NOT pulled from the event payload. The event carries
+ * only the trigger `reason`. Reading at fire time keeps the recap fresh
+ * when the scenario engine deferred the fire (busy-bus low-priority hold
+ * or urgent-flag preempt that stashed the readback for replay) — the
+ * snapshot frozen at emit time would be stale by the time the engineer
+ * actually speaks.
  *
  * Slot order:
  *   1. Opener           — exit: "To confirm:".
@@ -36,36 +42,45 @@
  *
  * Empty-snapshot fallback: when fuel + tires + extras all resolve to
  * "omit"/"no", the dedicated empty-fallback clip plays alone instead
- * of stitching a series of negatives.
+ * of stitching a series of negatives. A null snapshot (translator has
+ * no telemetry yet) is treated as empty.
  *
  * Family preemption: both scenarios share `family: "pit-readback"` so a
  * refire (mid-lane toggle) replaces the running readback wholesale —
  * distinct from #464's per-toggle stitching, which merges live.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf } from "@iracedeck/event-bus";
+import type { PitReadbackSnapshot, SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, ScenarioContext, Step } from "../../dsl.js";
 
-type ReadbackPayload = SimEventOf<"pitService.readbackRequested">["data"];
+type ReadbackEventData = SimEventOf<"pitService.readbackRequested">["data"];
 
-function payload(ctx: ScenarioContext): ReadbackPayload {
-  return ctx.data as ReadbackPayload;
+function reasonOf(ctx: ScenarioContext): ReadbackEventData["reason"] {
+  return (ctx.data as ReadbackEventData).reason;
 }
 
-function hasAnyTire(p: ReadbackPayload): boolean {
-  return p.tires.lf || p.tires.rf || p.tires.lr || p.tires.rr;
+function hasAnyTire(t: PitReadbackSnapshot["tires"]): boolean {
+  return t.lf || t.rf || t.lr || t.rr;
 }
 
-function hasAnyService(p: ReadbackPayload): boolean {
+function hasAnyService(s: PitReadbackSnapshot): boolean {
   return (
-    p.fuel.queued ||
-    hasAnyTire(p) ||
-    p.compoundChange !== null ||
-    (p.fastRepair.available && p.fastRepair.queued) ||
-    (p.windshield.available && p.windshield.queued)
+    s.fuel.queued ||
+    hasAnyTire(s.tires) ||
+    s.compoundChange !== null ||
+    (s.fastRepair.available && s.fastRepair.queued) ||
+    (s.windshield.available && s.windshield.queued)
   );
 }
+
+/**
+ * Resolver for the queued-services snapshot. Returns `null` when no
+ * snapshot is available (translator hasn't seen telemetry yet); the
+ * predicates treat null as the empty snapshot, which collapses to the
+ * fallback clip rather than fabricating a "no fuel, no tires" recap.
+ */
+export type ReadbackSnapshotResolver = () => PitReadbackSnapshot | null;
 
 /**
  * 15-way exhaustive tire-pattern lookup. Mirrors the names already used by
@@ -74,7 +89,7 @@ function hasAnyService(p: ReadbackPayload): boolean {
  * so at most one entry resolves true per snapshot.
  */
 const TIRE_PATTERN_CLIPS: ReadonlyArray<{
-  match: (t: ReadbackPayload["tires"]) => boolean;
+  match: (t: PitReadbackSnapshot["tires"]) => boolean;
   clip: string;
 }> = [
   // 4 corners
@@ -108,10 +123,25 @@ function clipPath(filename: string): string {
   return `${READBACK_BASE}/${filename}`;
 }
 
-function fuelSlotSteps(): Step[] {
+/**
+ * The empty snapshot — used when the resolver returns `null` (translator
+ * has no live telemetry yet). Treating this as the canonical "nothing
+ * queued" view collapses the readback to the empty-fallback clip rather
+ * than fabricating a "no fuel, no tires" string.
+ */
+const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
+  fuel: { queued: false },
+  tires: { lf: false, rf: false, lr: false, rr: false },
+  compoundChange: null,
+  fastRepair: { queued: false, available: false },
+  windshield: { queued: false, available: false },
+  limiterEngaged: false,
+};
+
+function fuelSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
   return [
     {
-      if: (ctx) => payload(ctx).fuel.queued,
+      if: () => (getSnap() ?? EMPTY_SNAPSHOT).fuel.queued,
       then: [clipPath("fuel-on.mp3")],
       else: [clipPath("fuel-off.mp3")],
     },
@@ -124,28 +154,36 @@ function fuelSlotSteps(): Step[] {
  *   - any tire bits set with no compound change — pick from the 15 patterns
  *   - tires explicitly skipped (no bits, no compound) — "no tires"
  */
-function tireCompoundSlotSteps(): Step[] {
+function tireCompoundSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
   return [
     {
-      if: (ctx) => payload(ctx).compoundChange?.to === 0,
+      if: () => (getSnap() ?? EMPTY_SNAPSHOT).compoundChange?.to === 0,
       then: [clipPath("compound-dry.mp3")],
     },
     {
-      if: (ctx) => payload(ctx).compoundChange?.to === 1,
+      if: () => (getSnap() ?? EMPTY_SNAPSHOT).compoundChange?.to === 1,
       then: [clipPath("compound-wet.mp3")],
     },
     ...TIRE_PATTERN_CLIPS.map<Step>(({ match, clip }) => ({
-      if: (ctx) => payload(ctx).compoundChange === null && match(payload(ctx).tires),
+      if: () => {
+        const s = getSnap() ?? EMPTY_SNAPSHOT;
+
+        return s.compoundChange === null && match(s.tires);
+      },
       then: [clipPath(clip)],
     })),
     {
-      if: (ctx) => payload(ctx).compoundChange === null && !hasAnyTire(payload(ctx)),
+      if: () => {
+        const s = getSnap() ?? EMPTY_SNAPSHOT;
+
+        return s.compoundChange === null && !hasAnyTire(s.tires);
+      },
       then: [clipPath("tires-off.mp3")],
     },
   ];
 }
 
-function fastRepairSlotSteps(): Step[] {
+function fastRepairSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
   // Only mention fast repair when it's queued. Skipping the negative
   // ("no fast repair") sidesteps the false positive on undamaged cars
   // — iRacing doesn't expose pre-stall damage in telemetry, so we
@@ -153,13 +191,13 @@ function fastRepairSlotSteps(): Step[] {
   // signal we have, and it's a positive-only callout.
   return [
     {
-      if: (ctx) => payload(ctx).fastRepair.queued,
+      if: () => (getSnap() ?? EMPTY_SNAPSHOT).fastRepair.queued,
       then: [clipPath("fast-repair-on.mp3")],
     },
   ];
 }
 
-function windshieldSlotSteps(): Step[] {
+function windshieldSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
   // Only mention windshield when it's queued. Skipping the negative
   // ("no windshield") sidesteps the open-wheel false-positive — formula
   // / indycar / dirt cars don't have a windshield to clean, and iRacing
@@ -167,13 +205,13 @@ function windshieldSlotSteps(): Step[] {
   // telemetry to gate on.
   return [
     {
-      if: (ctx) => payload(ctx).windshield.queued,
+      if: () => (getSnap() ?? EMPTY_SNAPSHOT).windshield.queued,
       then: [clipPath("windshield-on.mp3")],
     },
   ];
 }
 
-function readbackScenario(reason: "entry" | "exit"): Scenario {
+function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotResolver): Scenario {
   const isEntry = reason === "entry";
 
   return {
@@ -205,28 +243,28 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
           // non-empty plays the regular opener + slots.
           ([
             {
-              if: (ctx) => payload(ctx).reason === "entry" && !payload(ctx).limiterEngaged,
+              if: (ctx) => reasonOf(ctx) === "entry" && !(getSnap() ?? EMPTY_SNAPSHOT).limiterEngaged,
               then: [clipPath("opener-entry-limiter.mp3")],
             },
             {
-              if: (ctx) => !hasAnyService(payload(ctx)),
+              if: () => !hasAnyService(getSnap() ?? EMPTY_SNAPSHOT),
               then: [clipPath("empty-fallback.mp3")],
               else: [
                 // Opener — gated on `reason === "entry"` so refires
                 // (`entry-refire`) skip the carrier sentence and replay
                 // only the slot content.
                 {
-                  if: (ctx) => payload(ctx).reason === "entry",
+                  if: (ctx) => reasonOf(ctx) === "entry",
                   then: [clipPath("opener-entry.mp3")],
                 },
-                ...fuelSlotSteps(),
-                ...tireCompoundSlotSteps(),
+                ...fuelSlotSteps(getSnap),
+                ...tireCompoundSlotSteps(getSnap),
                 // Brief beat after the tire/compound callout so the
                 // optional fast-repair / windshield extras don't crowd
                 // the longest slot in the recap.
                 { pause: 300 },
-                ...fastRepairSlotSteps(),
-                ...windshieldSlotSteps(),
+                ...fastRepairSlotSteps(getSnap),
+                ...windshieldSlotSteps(getSnap),
               ],
             },
           ] as Step[])
@@ -236,17 +274,17 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
           ([
             { clip: clipPath("opener-exit.mp3") },
             {
-              if: (ctx) => !hasAnyService(payload(ctx)),
+              if: () => !hasAnyService(getSnap() ?? EMPTY_SNAPSHOT),
               then: [clipPath("empty-fallback.mp3")],
               else: [
-                ...fuelSlotSteps(),
-                ...tireCompoundSlotSteps(),
+                ...fuelSlotSteps(getSnap),
+                ...tireCompoundSlotSteps(getSnap),
                 // Brief beat after the tire/compound callout so the
                 // optional fast-repair / windshield extras don't crowd
                 // the longest slot in the recap.
                 { pause: 300 },
-                ...fastRepairSlotSteps(),
-                ...windshieldSlotSteps(),
+                ...fastRepairSlotSteps(getSnap),
+                ...windshieldSlotSteps(getSnap),
               ],
             },
           ] as Step[])),
@@ -255,10 +293,15 @@ function readbackScenario(reason: "entry" | "exit"): Scenario {
   };
 }
 
-export const PIT_READBACK_ENTRY: Scenario = readbackScenario("entry");
-export const PIT_READBACK_EXIT: Scenario = readbackScenario("exit");
-
-export const PIT_READBACK_SCENARIOS: readonly Scenario[] = [PIT_READBACK_ENTRY, PIT_READBACK_EXIT];
+/**
+ * Build both pit-readback scenarios bound to a snapshot resolver. The
+ * resolver is invoked at fire time inside every conditional `if` predicate
+ * so deferred replays read the *current* queued-services state, not the
+ * one captured when the event was emitted (issue #481).
+ */
+export function buildPitReadbackScenarios(getSnapshot: ReadbackSnapshotResolver): readonly Scenario[] {
+  return [readbackScenario("entry", getSnapshot), readbackScenario("exit", getSnapshot)];
+}
 
 /**
  * Stable identifier for each user-toggleable pit-readback callout. Two

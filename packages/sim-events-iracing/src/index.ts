@@ -9,6 +9,7 @@
 export {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getReadbackSnapshot,
   getSessionType,
   initializeSimEventsIracing,
   isPitActionsAllowed,

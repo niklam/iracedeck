@@ -21,7 +21,7 @@
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -237,14 +237,16 @@ const manifest: AudioAssetsManifest = {
 
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
+let currentSnapshot: PitReadbackSnapshot | null;
 
 beforeEach(() => {
   vi.useFakeTimers();
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
+  currentSnapshot = null;
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(bus, undefined, mockLogger as never);
+  registerPitCrew(bus, undefined, mockLogger as never, undefined, undefined, undefined, () => currentSnapshot);
 });
 
 afterEach(() => {
@@ -254,9 +256,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-type Snapshot = SimEventMap["pitService.readbackRequested"]["data"];
+type Reason = SimEventMap["pitService.readbackRequested"]["data"]["reason"];
 
-const TIRE_PATTERNS: ReadonlyArray<Snapshot["tires"]> = [
+const TIRE_PATTERNS: ReadonlyArray<PitReadbackSnapshot["tires"]> = [
   { lf: false, rf: false, lr: false, rr: false }, // none
   { lf: true, rf: true, lr: true, rr: true },
   { lf: true, rf: true, lr: false, rr: false },
@@ -275,7 +277,11 @@ const TIRE_PATTERNS: ReadonlyArray<Snapshot["tires"]> = [
   { lf: false, rf: false, lr: false, rr: true },
 ];
 
-const COMPOUND_OPTIONS: ReadonlyArray<Snapshot["compoundChange"]> = [null, { from: 0, to: 1 }, { from: 1, to: 0 }];
+const COMPOUND_OPTIONS: ReadonlyArray<PitReadbackSnapshot["compoundChange"]> = [
+  null,
+  { from: 0, to: 1 },
+  { from: 1, to: 0 },
+];
 
 const BOOLS = [false, true] as const;
 
@@ -298,9 +304,12 @@ function flush(): void {
   }
 }
 
-function recordSequence(snapshot: Snapshot): string[] {
+function recordSequence(reason: Reason, snapshot: PitReadbackSnapshot): string[] {
   audio._reset();
-  bus.publishEvent("pitService.readbackRequested", snapshot);
+  // Publish only `reason` per issue #481; the audio scenarios pull the
+  // queued-services snapshot via the resolver closure at fire time.
+  currentSnapshot = snapshot;
+  bus.publishEvent("pitService.readbackRequested", { reason });
   flush();
 
   // Filter to readback clips only (drop the radio-frame ticks and any
@@ -368,7 +377,7 @@ describe("pit-readback path-graph invariant", () => {
       }
     }
 
-    const reasons: ReadonlyArray<Snapshot["reason"]> = ["entry", "exit"];
+    const reasons: ReadonlyArray<Reason> = ["entry", "exit"];
 
     for (const reason of reasons) {
       for (const tires of TIRE_PATTERNS) {
@@ -388,8 +397,7 @@ describe("pit-readback path-graph invariant", () => {
                     if (wsQ && !wsAvail) continue;
 
                     for (const limiter of BOOLS) {
-                      const seq = recordSequence({
-                        reason,
+                      const seq = recordSequence(reason, {
                         fuel: { queued: fuelQ },
                         tires,
                         compoundChange,
