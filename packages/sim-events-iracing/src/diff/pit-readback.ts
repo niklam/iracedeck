@@ -1,27 +1,23 @@
 /**
- * Pit-service readback diff (issue #476).
+ * Pit-service readback diff (issue #476, #481).
  *
- * Emits `pitService.readbackRequested` at three moments during a pit stop,
- * each carrying a committed snapshot of the queued services so the
- * downstream `pit-readback-{entry,exit}` audio scenarios stay pure (no
- * live telemetry reads from inside the DSL):
+ * Emits `pitService.readbackRequested` at three moments during a pit stop:
  *
  *   - "entry"        — `OnPitRoad` off→on transition. The engineer starts
  *                      the readback as the car rolls onto pit road.
  *   - "entry-refire" — any user-intent pit-service toggle while still on
  *                      pit road. The running readback (family
- *                      `"pit-readback"`) is preempted and replaced with
- *                      the new snapshot.
+ *                      `"pit-readback"`) is preempted and replaced.
  *   - "exit"         — `OnPitRoad` on→off, plus `PIT_READBACK_EXIT_DELAY_MS`
  *                      settle delay so the "to confirm" beat doesn't
  *                      collide with the limiter / pit-exit chatter.
  *
- * Snapshot capture is decoupled from live telemetry at exit: `committed`
- * is captured on entry and refreshed on every user-intent toggle event,
- * but never on bit-cleared transitions (which represent the crew finishing
- * service, not the driver un-queueing). At exit time we reuse the last
- * committed snapshot so the readback faithfully recaps what was queued —
- * even though `PitSvFlags` itself has cleared.
+ * Issue #481: the queued-services snapshot is NOT carried on the event
+ * payload anymore — only the trigger `reason` is. Audio scenarios pull a
+ * fresh snapshot from `getReadbackSnapshot()` at fire time so the recap
+ * reflects current telemetry even when the scenario engine deferred the
+ * fire (busy-bus low-priority hold, urgent-flag preemption that stashes
+ * the readback for replay, or in-stall toggling between emit and replay).
  *
  * User-intent detection: this module runs after `diffToggles` in the
  * tick pipeline, so it inspects the per-tick `pending` queue for
@@ -30,9 +26,10 @@
  * stall branch in `diffToggles` silently absorbs the crew's bit-clears),
  * which is exactly the signal we want.
  */
+import type { PitReadbackSnapshot } from "@iracedeck/event-bus";
 import { EngineWarnings, PaceMode, PitSvFlags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { PitReadbackCommittedSnapshot, TranslatorState } from "../state.js";
+import type { TranslatorState } from "../state.js";
 import type { EmitFn, PendingEvent } from "./types.js";
 
 /**
@@ -82,7 +79,12 @@ function isInPreStart(telemetry: TelemetryData): boolean {
 const TIRE_FLAGS_MASK =
   PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
 
-function buildSnapshot(telemetry: TelemetryData): PitReadbackCommittedSnapshot {
+/**
+ * Build the queued-services snapshot from current telemetry. Public so
+ * the translator's `getReadbackSnapshot()` can reuse it — audio scenarios
+ * call that resolver at fire time (issue #481).
+ */
+export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   const flags = telemetry.PitSvFlags ?? 0;
   const compound = telemetry.PitSvTireCompound ?? 0;
   const playerCompound = telemetry.PlayerTireCompound ?? 0;
@@ -118,12 +120,6 @@ function buildSnapshot(telemetry: TelemetryData): PitReadbackCommittedSnapshot {
   };
 }
 
-/**
- * @internal Exported for testing — confirms the snapshot shape the
- * readback scenarios consume.
- */
-export { buildSnapshot };
-
 const USER_TOGGLE_EVENTS = new Set<PendingEvent["event"]>([
   "pitService.toggled",
   "tireService.changed",
@@ -157,15 +153,11 @@ export function diffPitReadback(
 
   // Pending pre-start fire whose delay has elapsed? Only fires while still
   // in pre-start — if the user dropped out (e.g. left the car / session
-  // changed) the queued readback is dropped silently. Reads telemetry
-  // FRESH at fire time so a user toggle during the 5 s grid window
-  // (when pit-action confirmations are muted) is still reflected.
+  // changed) the queued readback is dropped silently. The snapshot itself
+  // is read fresh by the audio scenario at fire time via the resolver
+  // closure (issue #481).
   if (state.pitReadbackPreStartFireAt > 0 && now >= state.pitReadbackPreStartFireAt && inPreStart) {
-    const preStartSnap = buildSnapshot(telemetry);
-    emit({
-      event: "pitService.readbackRequested",
-      data: { reason: "entry", ...preStartSnap },
-    });
+    emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
     state.pitReadbackPreStartFireAt = 0;
   } else if (state.pitReadbackPreStartFireAt > 0 && !inPreStart) {
     // Left pre-start before the timer elapsed — cancel.
@@ -179,36 +171,23 @@ export function diffPitReadback(
     // deadline AND off→on re-entry fires only the entry readback, never
     // both in the same tick.
     state.pitReadbackExitFireAt = 0;
-
-    const snap = buildSnapshot(telemetry);
-    emit({ event: "pitService.readbackRequested", data: { reason: "entry", ...snap } });
+    emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
   } else if (onPitRoad && pending.some((p) => USER_TOGGLE_EVENTS.has(p.event))) {
     // While on pit road, any user-intent toggle event refires the
     // readback. Family preemption (`family: "pit-readback"`) cuts the
     // in-flight readback cleanly.
-    const snap = buildSnapshot(telemetry);
-    emit({ event: "pitService.readbackRequested", data: { reason: "entry-refire", ...snap } });
+    emit({ event: "pitService.readbackRequested", data: { reason: "entry-refire" } });
   } else if (wasOnPitRoad && !onPitRoad) {
-    // On → off: schedule the delayed "to confirm" fire. The snapshot is
-    // built fresh at fire time so a user toggle late in the visit
-    // (e.g. cancelling tires while sitting in the box) is reflected
-    // in the recap. Pit-action confirmations stay silent for the same
-    // window so they don't blurt over the pending readback.
+    // On → off: schedule the delayed "to confirm" fire. Pit-action
+    // confirmations stay silent for the same window so they don't blurt
+    // over the pending readback.
     state.pitReadbackExitFireAt = now + PIT_READBACK_EXIT_DELAY_MS;
 
     state.pitActionCooldownUntil = Math.max(state.pitActionCooldownUntil, now + PIT_READBACK_EXIT_DELAY_MS);
   } else if (state.pitReadbackExitFireAt > 0 && now >= state.pitReadbackExitFireAt && !onPitRoad) {
     // Pending exit fire whose delay has elapsed AND the car is still
-    // off pit road (i.e. no re-entry happened first). Reads telemetry
-    // FRESH at fire time — the user might have toggled services after
-    // pulling out of the stall, so the recap reflects what's actually
-    // queued at the moment the engineer speaks rather than a frozen
-    // snapshot from earlier in the visit.
-    const exitSnap = buildSnapshot(telemetry);
-    emit({
-      event: "pitService.readbackRequested",
-      data: { reason: "exit", ...exitSnap },
-    });
+    // off pit road (i.e. no re-entry happened first).
+    emit({ event: "pitService.readbackRequested", data: { reason: "exit" } });
     state.pitReadbackExitFireAt = 0;
   }
 

@@ -36,8 +36,15 @@
  * because the gate runs before `attemptFire` (which owns expansion,
  * preemption, and channel playback). Default `() => true` preserves
  * legacy behavior for callers that don't pass the closure (e.g. tests).
+ *
+ * `getReadbackSnapshot` is consulted at fire time inside every conditional
+ * predicate of the pit-readback scenarios (issue #481). Plugins wire it
+ * to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing` so a
+ * deferred-replay readback (busy-bus low-priority hold or urgent-flag
+ * preempt) speaks the *current* queued-services state, not the one
+ * frozen into the original event payload.
  */
-import type { IEventBus } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 
 import type { Scenario } from "../../dsl.js";
@@ -46,7 +53,7 @@ import { FLAG_ALERTS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
-import { PIT_READBACK_SCENARIOS, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
+import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -63,7 +70,12 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
-export { PIT_READBACK_CALLOUT_SETTING_KEYS, type PitReadbackCalloutId, PIT_READBACK_SCENARIOS } from "./readback.js";
+export {
+  buildPitReadbackScenarios,
+  PIT_READBACK_CALLOUT_SETTING_KEYS,
+  type PitReadbackCalloutId,
+  type ReadbackSnapshotResolver,
+} from "./readback.js";
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
@@ -135,6 +147,15 @@ export function registerPitCrew(
   // from `getPitActionsAllowed` (engine-internal cooldown vs persistent
   // user preference) so they can move independently.
   getPitServiceRequestsEnabled: () => boolean = () => true,
+  // Pit-readback queued-services snapshot (issue #481). Plugins wire this
+  // to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing`, which
+  // builds a snapshot from the latest telemetry tick. Read at fire time
+  // inside every readback predicate so deferred replays speak the
+  // *current* queue rather than a snapshot frozen into the original
+  // event. Default `() => null` collapses every readback to the
+  // empty-fallback clip — a safe stub for tests that don't supply a
+  // resolver.
+  getReadbackSnapshot: () => PitReadbackSnapshot | null = () => null,
 ): void {
   registerRadarEngine(bus);
 
@@ -185,7 +206,7 @@ export function registerPitCrew(
     );
   }
 
-  for (const s of PIT_READBACK_SCENARIOS) {
+  for (const s of buildPitReadbackScenarios(getReadbackSnapshot)) {
     engine.defineScenario(
       wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
     );

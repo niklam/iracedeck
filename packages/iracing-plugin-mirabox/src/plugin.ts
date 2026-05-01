@@ -105,7 +105,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
+import { getReadbackSnapshot, initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -186,6 +186,10 @@ registerPitCrew(
   // User opt-in for the per-toggle pit-service request confirmations
   // (issue #468). Live read so the toggle takes effect mid-session.
   () => (getGlobalSettings() as Record<string, unknown>).calloutEnabledPitServiceRequests !== false,
+  // Pit-readback queued-services snapshot (issue #481). Read fresh on
+  // every readback fire so deferred replays speak the current queue,
+  // not a snapshot frozen into the original event.
+  () => getReadbackSnapshot(),
 );
 
 // Publish audio device list and apply saved device selection.

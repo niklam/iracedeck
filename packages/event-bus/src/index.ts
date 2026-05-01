@@ -10,6 +10,7 @@ export { _resetEventBus, getEventBus, initializeEventBus, isEventBusInitialized 
 export type {
   EmptySimEventPayload,
   FlagScope,
+  PitReadbackSnapshot,
   PitServiceKind,
   SimEvent,
   SimEventMap,

@@ -17,7 +17,7 @@
  *   - On disconnect it resets per-tick state so a later reconnect
  *     doesn't replay stale transitions.
  */
-import type { IEventBus, SimEventMap, SimEventName } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName } from "@iracedeck/event-bus";
 import type { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -28,7 +28,7 @@ import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
-import { diffPitReadback } from "./diff/pit-readback.js";
+import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffRadar } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -130,6 +130,24 @@ export function isPitActionsAllowed(): boolean {
   if (!instance) return true;
 
   return Date.now() >= instance.state.pitActionCooldownUntil;
+}
+
+/**
+ * Build a pit-readback snapshot from the latest telemetry tick (issue
+ * #481). Returns `null` if no telemetry has arrived yet — callers (the
+ * audio scenarios, via the resolver passed into `registerPitCrew`)
+ * treat null as "no queued services known", which collapses to the
+ * empty-fallback recap rather than speaking a stale or fabricated plan.
+ *
+ * Read at fire time so a deferred readback (busy-bus low-priority hold
+ * or higher-priority preempt that stashed the readback for replay)
+ * speaks the user's *current* queue, not the queue from the moment the
+ * `pitService.readbackRequested` event was emitted.
+ */
+export function getReadbackSnapshot(): PitReadbackSnapshot | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  return buildReadbackSnapshot(instance.latestTelemetry);
 }
 
 /**

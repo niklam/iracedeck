@@ -50,6 +50,28 @@ export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
 export type FlagScope = "local" | "full";
 
 /**
+ * Pit-service readback snapshot — the queued-services view the readback
+ * scenarios speak to (issue #476). Lives next to the catalog because it's
+ * shared between the sim translator (which builds it from current
+ * telemetry) and the audio scenarios (which read it at fire time via a
+ * resolver closure). Sim-agnostic: any future translator can populate the
+ * same shape.
+ *
+ * Decoupled from `pitService.readbackRequested` event payload (which now
+ * carries only `reason`) so that deferred replay reads a fresh snapshot
+ * at the moment the engineer speaks rather than the one frozen into the
+ * original event.
+ */
+export type PitReadbackSnapshot = {
+  fuel: { queued: boolean };
+  tires: { lf: boolean; rf: boolean; lr: boolean; rr: boolean };
+  compoundChange: { from: number; to: number } | null;
+  fastRepair: { queued: boolean; available: boolean };
+  windshield: { queued: boolean; available: boolean };
+  limiterEngaged: boolean;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.
@@ -69,24 +91,17 @@ export type SimEventMap = {
    *                      while still on pit road, so the running readback
    *                      is preempted and replaced with the new snapshot
    *   - "exit"         — pitLane.exited + a settle delay (default 4500 ms)
-   * The full snapshot is captured at the trigger moment so the readback
-   * scenario stays pure (no live telemetry reads from inside the DSL).
    *
-   * `compoundChange` is non-null only when the queued compound differs
-   * from the player's currently-fitted compound — matches the existing
-   * `isCompoundChange` semantics in `service-reminder.ts`.
+   * The payload carries only the trigger reason. The queued-services
+   * snapshot the readback speaks to is read at fire time via a resolver
+   * closure passed into the audio-scenarios catalog, NOT pulled from the
+   * event payload (issue #481). Reading at fire time keeps the recap
+   * fresh under deferred replay (busy-bus low-priority deferral or a
+   * higher-priority preempt that stashes the readback for later).
    */
   "pitService.readbackRequested": SimEvent<
     "pitService.readbackRequested",
-    {
-      reason: "entry" | "entry-refire" | "exit";
-      fuel: { queued: boolean };
-      tires: { lf: boolean; rf: boolean; lr: boolean; rr: boolean };
-      compoundChange: { from: number; to: number } | null;
-      fastRepair: { queued: boolean; available: boolean };
-      windshield: { queued: boolean; available: boolean };
-      limiterEngaged: boolean;
-    }
+    { reason: "entry" | "entry-refire" | "exit" }
   >;
 
   "flag.yellow.raised": SimEvent<"flag.yellow.raised", { scope: FlagScope }>;
