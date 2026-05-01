@@ -70,6 +70,38 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitService.toggled",
     data: { service: "fuel", on: false },
   },
+  {
+    id: "windshield-on",
+    category: "Pit Service",
+    label: "Windshield ON",
+    description: "Driver enables windshield tearoff for the next stop",
+    event: "pitService.toggled",
+    data: { service: "windshield", on: true },
+  },
+  {
+    id: "windshield-off",
+    category: "Pit Service",
+    label: "Windshield OFF",
+    description: "Driver disables windshield tearoff for the next stop",
+    event: "pitService.toggled",
+    data: { service: "windshield", on: false },
+  },
+  {
+    id: "fast-repair-on",
+    category: "Pit Service",
+    label: "Fast Repair ON",
+    description: "Driver enables fast repair for the next stop",
+    event: "pitService.toggled",
+    data: { service: "fastRepair", on: true },
+  },
+  {
+    id: "fast-repair-off",
+    category: "Pit Service",
+    label: "Fast Repair OFF",
+    description: "Driver disables fast repair for the next stop",
+    event: "pitService.toggled",
+    data: { service: "fastRepair", on: false },
+  },
 
   // ── Tire Service ──
   // The 5 standard patterns the registered scenarios match on (current set).

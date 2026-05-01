@@ -155,43 +155,49 @@ const FLAG_CLIP_NAMES = [
   "meatball-01",
 ] as const;
 
-// Ack pool clips (used by toggle confirmations). Test only fires flag
-// events, so these are present in the manifest just to satisfy
-// validation when scenarios reference them via `pool:acknowledgment`.
-const ACK_CLIP_NAMES = [
-  "ack-01",
-  "ack-02",
-  "ack-03",
-  "ack-04",
-  "ack-05",
-  "ack-06",
-  "ack-07",
-  "ack-08",
-  "ack-09",
-  "ack-10",
+// Acknowledgment pool clips referenced from `pools.ts` — must be present
+// so toggle scenarios that reference `pool:pit-action-acknowledgment` and
+// `pool:acknowledgment` pass validation at register time.
+const ACK_POOL_CLIPS = [
+  "voice/luca/acknowledgment/okay.mp3",
+  "voice/luca/acknowledgment/got-it.mp3",
+  "voice/luca/acknowledgment/roger-that.mp3",
+  "voice/luca/acknowledgment/copy-that.mp3",
+  "voice/luca/acknowledgment/we-got-that.mp3",
+  "voice/luca/pit-actions/got-it.mp3",
+  "voice/luca/pit-actions/roger-that.mp3",
+  "voice/luca/pit-actions/copy-that.mp3",
 ] as const;
 
-const TOGGLE_ON_CLIP_NAMES = [
-  "fuel-fill-on-01",
-  "fuel-fill-off-01",
-  "tire-fl-only-01",
-  "tire-fr-only-01",
-  "tire-rl-only-01",
-  "tire-rr-only-01",
-  "tire-front-01",
-  "tire-rear-01",
-  "tire-left-01",
-  "tire-right-01",
-  "tire-diag-fl-rr-01",
-  "tire-diag-fr-rl-01",
-  "tire-three-not-fl-01",
-  "tire-three-not-fr-01",
-  "tire-three-not-rl-01",
-  "tire-three-not-rr-01",
-  "tire-all-01",
-  "tire-none-01",
-  "tire-compound-dry-01",
-  "tire-compound-wet-01",
+// Toggle-confirmation clips referenced directly from
+// `toggle-confirmations.ts`. Includes fuel/tire-set/compound and the
+// issue-#468 additions (windshield, fast-repair) so all five scenario
+// families register cleanly when `registerPitCrew(...)` runs.
+const TOGGLE_CLIP_PATHS = [
+  "voice/luca/pit-actions/fuel-on-01.mp3",
+  "voice/luca/pit-actions/fuel-off-01.mp3",
+  "voice/luca/pit-actions/tires-off-01.mp3",
+  "voice/luca/pit-actions/tires-on-all.mp3",
+  "voice/luca/pit-actions/tires-on-fronts.mp3",
+  "voice/luca/pit-actions/tires-on-rears.mp3",
+  "voice/luca/pit-actions/tires-on-lefts.mp3",
+  "voice/luca/pit-actions/tires-on-rights.mp3",
+  "voice/luca/pit-actions/tires-on-lf.mp3",
+  "voice/luca/pit-actions/tires-on-rf.mp3",
+  "voice/luca/pit-actions/tires-on-lr.mp3",
+  "voice/luca/pit-actions/tires-on-rr.mp3",
+  "voice/luca/pit-actions/tires-on-lf-rr.mp3",
+  "voice/luca/pit-actions/tires-on-rf-lr.mp3",
+  "voice/luca/pit-actions/tires-on-skip-lf.mp3",
+  "voice/luca/pit-actions/tires-on-skip-rf.mp3",
+  "voice/luca/pit-actions/tires-on-skip-lr.mp3",
+  "voice/luca/pit-actions/tires-on-skip-rr.mp3",
+  "voice/luca/pit-actions/tires-compound-dry.mp3",
+  "voice/luca/pit-actions/tires-compound-wet.mp3",
+  "voice/luca/pit-actions/windshield-on.mp3",
+  "voice/luca/pit-actions/windshield-off.mp3",
+  "voice/luca/pit-actions/fast-repair-on.mp3",
+  "voice/luca/pit-actions/fast-repair-off.mp3",
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -200,8 +206,8 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
     ...FLAG_CLIP_NAMES.map((name) => `voice/${VOICE}/flags/${name}.mp3`),
-    ...ACK_CLIP_NAMES.map((name) => `voice/${VOICE}/ack/${name}.mp3`),
-    ...TOGGLE_ON_CLIP_NAMES.map((name) => `voice/${VOICE}/toggles/${name}.mp3`),
+    ...ACK_POOL_CLIPS,
+    ...TOGGLE_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -236,14 +242,23 @@ function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
 }
 
 let enabled: Map<FlagCalloutId, boolean>;
+let pitServiceRequestsEnabled: boolean;
 
 beforeEach(() => {
   enabled = makeEnabledMap(true);
+  pitServiceRequestsEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitCrew(bus, (id) => enabled.get(id) ?? true, mockLogger as never);
+  registerPitCrew(
+    bus,
+    (id) => enabled.get(id) ?? true,
+    mockLogger as never,
+    () => true,
+    () => true,
+    () => pitServiceRequestsEnabled,
+  );
 });
 
 afterEach(() => {
@@ -433,5 +448,122 @@ describe("registerPitCrew live gating", () => {
     const played = voiceClipsPlayed();
     expect(played).toContain(`voice/${VOICE}/flags/yellow-cleared-01.mp3`);
     expect(played.some((p) => p.includes("meatball"))).toBe(false);
+  });
+});
+
+describe("pit-service-requests live gate (issue #468)", () => {
+  // The user opt-in toggle covers the whole pit-action family — fuel,
+  // tire-set, compound, windshield, fast-repair. One closure gates all
+  // five scenario sets in `registerPitCrew`. A representative event from
+  // each family is enough to pin the wiring; per-scenario behavior is
+  // covered by `toggle-confirmations.test.ts`.
+
+  it.each([
+    {
+      family: "fuel",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "fuel", on: true },
+      expectedClip: `voice/${VOICE}/pit-actions/fuel-on-01.mp3`,
+    },
+    {
+      family: "tire-set",
+      event: "tireService.changed" as SimEventName,
+      data: { added: ["LF", "RF", "LR", "RR"], removed: [], current: ["LF", "RF", "LR", "RR"] },
+      expectedClip: `voice/${VOICE}/pit-actions/tires-on-all.mp3`,
+    },
+    {
+      family: "compound",
+      event: "tireService.compoundChanged" as SimEventName,
+      data: { from: 0, to: 1 },
+      expectedClip: `voice/${VOICE}/pit-actions/tires-compound-wet.mp3`,
+    },
+    {
+      family: "windshield",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "windshield", on: true },
+      expectedClip: `voice/${VOICE}/pit-actions/windshield-on.mp3`,
+    },
+    {
+      family: "fast-repair",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "fastRepair", on: true },
+      expectedClip: `voice/${VOICE}/pit-actions/fast-repair-on.mp3`,
+    },
+  ])("$family fires when the gate is enabled", ({ event, data, expectedClip }) => {
+    bus.publishEvent(event, data as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(expectedClip);
+  });
+
+  it.each([
+    {
+      family: "fuel",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "fuel", on: true },
+    },
+    {
+      family: "tire-set",
+      event: "tireService.changed" as SimEventName,
+      data: { added: ["LF", "RF", "LR", "RR"], removed: [], current: ["LF", "RF", "LR", "RR"] },
+    },
+    {
+      family: "compound",
+      event: "tireService.compoundChanged" as SimEventName,
+      data: { from: 0, to: 1 },
+    },
+    {
+      family: "windshield",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "windshield", on: true },
+    },
+    {
+      family: "fast-repair",
+      event: "pitService.toggled" as SimEventName,
+      data: { service: "fastRepair", on: true },
+    },
+  ])("$family is suppressed when the gate is disabled", ({ event, data }) => {
+    pitServiceRequestsEnabled = false;
+    bus.publishEvent(event, data as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line each time a pit-service request is suppressed", () => {
+    pitServiceRequestsEnabled = false;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("pit service request suppressed: pit-crew.toggle-fuel-on"),
+    );
+  });
+
+  it("toggling the gate off mid-clip does not cut the in-flight callout", () => {
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    // Don't flush — fuel-on is still mid-playback (radio open + ack + voice + radio close).
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    // User unchecks the gate while it is playing.
+    pitServiceRequestsEnabled = false;
+
+    // Drain the in-flight sequence — gate fires only on event arrival,
+    // so the already-fired sequence completes naturally.
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/pit-actions/fuel-on-01.mp3`);
+  });
+
+  it("re-enabling the gate restores future fires", () => {
+    pitServiceRequestsEnabled = false;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    pitServiceRequestsEnabled = true;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/pit-actions/fuel-on-01.mp3`);
   });
 });

@@ -74,7 +74,7 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
 - **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
 
-Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch) continue to fire on the relevant Tire Service / Pit Service action presses.
+Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
 ## Pit Service Readback
 
@@ -99,12 +99,13 @@ Under **Flags**, all 11 flag callouts are toggleable, all enabled by default:
 
 Disabling a flag also disables its preemption — a disabled callout can't interrupt one already playing. When **Meatball** is disabled, no meatball callout fires; the flag itself is still active in iRacing and you'll still see the on-screen indicator.
 
-Under **Pit Service Readback**, both readback callouts are toggleable independently:
+Under **Pit Service**, three callouts are toggleable independently:
 
-- **Pit entry** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
-- **Pit exit** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
+- **Pit entry readback** — the "Don't forget your limiter. We're taking fuel, …" recap that fires as you roll onto pit road (and refires on any toggle while you're still on pit road).
+- **Pit exit readback** — the "To confirm: …" recap that plays after a short delay once you've left pit road.
+- **Pit service requests** — every per-toggle confirmation (fuel on/off, tire-set selection, compound switch, windshield-tearoff on/off, fast-repair on/off). Switching this off silences the engineer on every Stream Deck pit-service press while leaving the readbacks intact.
 
-Disabling either does not affect the other — and per-toggle confirmations (fuel on/off, tire-set selections, compound switches) continue regardless.
+Disabling any one of the three does not affect the others.
 
 ## Notes
 

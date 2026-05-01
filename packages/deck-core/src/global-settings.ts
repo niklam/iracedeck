@@ -259,6 +259,22 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * Family-wide gate for the per-toggle pit-service request
+     * confirmations (issue #468). One boolean covers fuel, tire-set,
+     * compound, windshield-tearoff, and fast-repair on/off acks — the
+     * driver either wants the engineer chiming in on every checkbox flip
+     * or they don't, no per-service granularity needed.
+     *
+     * Read live via a closure passed into `registerPitCrew(...)` so a
+     * mid-session toggle takes effect on the next event arrival without
+     * cutting an in-flight clip. Default `true` so existing users keep
+     * the acks they have today.
+     */
+    calloutEnabledPitServiceRequests: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
   })
   .passthrough();
 

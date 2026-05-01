@@ -2992,6 +2992,38 @@
       "textPreview": "plus",
       "generatedAt": "2026-04-29T11:28:37.094Z",
       "requestId": "m1Xar6A0DfMxfq9T9VpZ"
+    },
+    "voice/luca/pit-actions/windshield-on.mp3": {
+      "hash": "349df2ce60fb899d",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We'll clean the windshield at the next pitstop.",
+      "generatedAt": "2026-04-30T13:28:46.635Z",
+      "requestId": "Cn3q0u8rNNtx0epDN7f7"
+    },
+    "voice/luca/pit-actions/windshield-off.mp3": {
+      "hash": "eb7a423dd027579b",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We're not cleaning the windshield at the next pitstop.",
+      "generatedAt": "2026-04-30T14:00:01.304Z",
+      "requestId": "gdUeXQMEgSuiqnlpj5Io"
+    },
+    "voice/luca/pit-actions/fast-repair-on.mp3": {
+      "hash": "19f3ea61f94adde7",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We'll do a fast repair at the next pitstop.",
+      "generatedAt": "2026-04-30T13:28:48.491Z",
+      "requestId": "j41vPKh0L3vRXRswABBv"
+    },
+    "voice/luca/pit-actions/fast-repair-off.mp3": {
+      "hash": "39bfb5ad3445fcb8",
+      "voiceId": "15CVCzDByBinCIoCblXo",
+      "model": "eleven_v3",
+      "textPreview": "We're skipping fast repair at the next pitstop.",
+      "generatedAt": "2026-04-30T13:28:49.266Z",
+      "requestId": "g8qFXxqSHJOT8Pv9tYXf"
     }
   }
 }

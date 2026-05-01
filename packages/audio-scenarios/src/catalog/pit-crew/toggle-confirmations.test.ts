@@ -7,7 +7,13 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
-import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
+import {
+  FAST_REPAIR_TOGGLE_SCENARIOS,
+  FUEL_TOGGLE_SCENARIOS,
+  TIRE_COMPOUND_SCENARIOS,
+  TIRE_TOGGLE_SCENARIOS,
+  WINDSHIELD_TOGGLE_SCENARIOS,
+} from "./toggle-confirmations.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -144,6 +150,10 @@ const manifest: AudioAssetsManifest = {
       `voice/${v}/pit-actions/tires-on-skip-rr.mp3`,
       `voice/${v}/pit-actions/tires-compound-dry.mp3`,
       `voice/${v}/pit-actions/tires-compound-wet.mp3`,
+      `voice/${v}/pit-actions/windshield-on.mp3`,
+      `voice/${v}/pit-actions/windshield-off.mp3`,
+      `voice/${v}/pit-actions/fast-repair-on.mp3`,
+      `voice/${v}/pit-actions/fast-repair-off.mp3`,
     ]),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
@@ -180,6 +190,10 @@ beforeEach(() => {
   for (const s of TIRE_TOGGLE_SCENARIOS) engine.defineScenario(s);
 
   for (const s of TIRE_COMPOUND_SCENARIOS) engine.defineScenario(s);
+
+  for (const s of WINDSHIELD_TOGGLE_SCENARIOS) engine.defineScenario(s);
+
+  for (const s of FAST_REPAIR_TOGGLE_SCENARIOS) engine.defineScenario(s);
 });
 
 afterEach(() => {
@@ -207,11 +221,11 @@ describe("FUEL_TOGGLE_SCENARIOS", () => {
     expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
 
-  it("ignores pitService.toggled for other services (windshield)", () => {
+  it("does not fire any fuel scenario for a non-fuel service (windshield)", () => {
     bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
     flush(audio);
 
-    // None of the registered fuel scenarios should match.
+    // The fuel scenarios filter on `data.service === "fuel"` and must not match.
     expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-on-01.mp3");
     expect(voiceClipsPlayed()).not.toContain("voice/luca/pit-actions/fuel-off-01.mp3");
   });
@@ -315,5 +329,71 @@ describe("TIRE_COMPOUND_SCENARIOS", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/tires-compound-wet.mp3");
+  });
+});
+
+describe("WINDSHIELD_TOGGLE_SCENARIOS", () => {
+  it("fires windshield-on when pitService.toggled { windshield, on: true }", () => {
+    bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/windshield-on.mp3");
+  });
+
+  it("fires windshield-off when pitService.toggled { windshield, on: false }", () => {
+    bus.publishEvent("pitService.toggled", { service: "windshield", on: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/windshield-off.mp3");
+  });
+
+  it("does not fire on a non-windshield service (fuel)", () => {
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).not.toContain("voice/luca/pit-actions/windshield-on.mp3");
+    expect(played).not.toContain("voice/luca/pit-actions/windshield-off.mp3");
+  });
+
+  it("substitutes the active voice for windshield toggles", () => {
+    activeVoice = "titan";
+    bus.publishEvent("pitService.toggled", { service: "windshield", on: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/windshield-on.mp3");
+  });
+});
+
+describe("FAST_REPAIR_TOGGLE_SCENARIOS", () => {
+  it("fires fast-repair-on when pitService.toggled { fastRepair, on: true }", () => {
+    bus.publishEvent("pitService.toggled", { service: "fastRepair", on: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fast-repair-on.mp3");
+  });
+
+  it("fires fast-repair-off when pitService.toggled { fastRepair, on: false }", () => {
+    bus.publishEvent("pitService.toggled", { service: "fastRepair", on: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/luca/pit-actions/fast-repair-off.mp3");
+  });
+
+  it("does not fire on a non-fast-repair service (fuel)", () => {
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).not.toContain("voice/luca/pit-actions/fast-repair-on.mp3");
+    expect(played).not.toContain("voice/luca/pit-actions/fast-repair-off.mp3");
+  });
+
+  it("substitutes the active voice for fast-repair toggles", () => {
+    activeVoice = "titan";
+    bus.publishEvent("pitService.toggled", { service: "fastRepair", on: true });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain("voice/titan/pit-actions/fast-repair-on.mp3");
   });
 });

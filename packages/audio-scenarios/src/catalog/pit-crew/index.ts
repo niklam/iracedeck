@@ -12,15 +12,17 @@
  *   - Tire toggle scenarios (every meaningful tire-set selection, including
  *     singles, diagonals, and three-corner combos, via `tireService.changed`)
  *   - Tire compound scenarios (dry/wet via `tireService.compoundChanged`)
+ *   - Windshield-tearoff toggle scenarios (on/off via `pitService.toggled`)
+ *   - Fast-repair toggle scenarios (on/off via `pitService.toggled`)
  *   - Flag alert scenarios (every transition the translator publishes:
  *     yellow scope-aware, yellow.cleared, green, blue, white, red, black,
  *     checkered with session-type branch, debris, meatball)
  *
  * Other voice scenarios (welcome, pit-approach, fuel-warning, incident
- * alerts, limiter callouts, tips, windshield/fastRepair/drs/p2p toggles)
- * are not currently registered; they'll be added one at a time as their
- * `voice/{voice}/…` content is generated and the corresponding pools and
- * scenarios are reintroduced.
+ * alerts, limiter callouts, tips, drs/p2p toggles) are not currently
+ * registered; they'll be added one at a time as their `voice/{voice}/…`
+ * content is generated and the corresponding pools and scenarios are
+ * reintroduced.
  *
  * `bus` is the event bus instance returned by `initializeEventBus(...)`;
  * passed through to `registerRadarEngine` so the radar engine and the
@@ -45,7 +47,13 @@ import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { PIT_READBACK_SCENARIOS, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
-import { FUEL_TOGGLE_SCENARIOS, TIRE_COMPOUND_SCENARIOS, TIRE_TOGGLE_SCENARIOS } from "./toggle-confirmations.js";
+import {
+  FAST_REPAIR_TOGGLE_SCENARIOS,
+  FUEL_TOGGLE_SCENARIOS,
+  TIRE_COMPOUND_SCENARIOS,
+  TIRE_TOGGLE_SCENARIOS,
+  WINDSHIELD_TOGGLE_SCENARIOS,
+} from "./toggle-confirmations.js";
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
 export {
@@ -120,6 +128,13 @@ export function registerPitCrew(
   // windows. Default `() => true` preserves legacy behavior for tests
   // that don't supply a closure.
   getPitActionsAllowed: () => boolean = () => true,
+  // User opt-in for the per-toggle pit-service request confirmations
+  // (issue #468). Plugins wire this to the `calloutEnabledPitServiceRequests`
+  // global setting — read live so a toggle off mid-session takes effect on
+  // the next event arrival without cutting an in-flight clip. Distinct
+  // from `getPitActionsAllowed` (engine-internal cooldown vs persistent
+  // user preference) so they can move independently.
+  getPitServiceRequestsEnabled: () => boolean = () => true,
 ): void {
   registerRadarEngine(bus);
 
@@ -132,16 +147,36 @@ export function registerPitCrew(
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
+  // Each pit-service toggle scenario is wrapped twice. Outer wrapper
+  // applies the user opt-in (`calloutEnabledPitServiceRequests`); inner
+  // wrapper applies the engine-internal cooldown (`isPitActionsAllowed`).
+  // Outer-first because the user gate is the cheap, persistent check —
+  // if the user has opted out, we never even ask about the cooldown.
+  const wrapToggle = (s: Scenario): Scenario =>
+    wrapPitServiceRequestsScenario(
+      wrapPitActionScenario(s, getPitActionsAllowed, logger),
+      getPitServiceRequestsEnabled,
+      logger,
+    );
+
   for (const s of FUEL_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+    engine.defineScenario(wrapToggle(s));
   }
 
   for (const s of TIRE_TOGGLE_SCENARIOS) {
-    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+    engine.defineScenario(wrapToggle(s));
   }
 
   for (const s of TIRE_COMPOUND_SCENARIOS) {
-    engine.defineScenario(wrapPitActionScenario(s, getPitActionsAllowed, logger));
+    engine.defineScenario(wrapToggle(s));
+  }
+
+  for (const s of WINDSHIELD_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapToggle(s));
+  }
+
+  for (const s of FAST_REPAIR_TOGGLE_SCENARIOS) {
+    engine.defineScenario(wrapToggle(s));
   }
 
   for (const s of FLAG_ALERTS) {
@@ -186,6 +221,35 @@ function wrapPitActionScenario(s: Scenario, getAllowed: () => boolean, logger: I
       where: (ev) => {
         if (!getAllowed()) {
           logger?.debug(`pit-action suppressed (cooldown active): ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
+/**
+ * Wrap a per-toggle pit-service-request scenario with the user opt-in
+ * gate (`calloutEnabledPitServiceRequests`, issue #468). Read live so a
+ * toggle off mid-session takes effect on the next event arrival without
+ * cutting an in-flight clip — same gate-at-event-arrival shape as the
+ * other wrappers.
+ */
+function wrapPitServiceRequestsScenario(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getEnabled()) {
+          logger?.debug(`pit service request suppressed: ${s.id}`);
 
           return false;
         }
