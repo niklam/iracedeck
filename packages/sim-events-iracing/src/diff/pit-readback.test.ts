@@ -3,10 +3,11 @@
  *
  * Pins:
  *   - first-tick seeding (no spurious entry from boot-on-pit-road)
- *   - off→on emits "entry"
+ *   - `pitLane.approaching` in pending emits "entry"
+ *   - reset/teleport (OnPitRoad off→on with no approach event) stays silent
  *   - on-pit-road + user toggle in the same tick emits "entry-refire"
  *   - on→off schedules an exit fire that emits after the delay elapses
- *   - re-entering during the delay window cancels the scheduled exit
+ *   - re-approach during the delay window cancels the scheduled exit
  *   - issue #481: event payload carries only `reason` (the
  *     queued-services snapshot is read at fire time by the audio side
  *     via `getReadbackSnapshot()`)
@@ -112,11 +113,13 @@ describe("diffPitReadback — seeding", () => {
 });
 
 describe("diffPitReadback — entry", () => {
-  it("emits 'entry' with reason-only payload on the off→on transition", () => {
+  it("emits 'entry' with reason-only payload when pitLane.approaching is in pending", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
+    // The car is still off pit road during the approach zone — the
+    // approach event fires BEFORE OnPitRoad flips true.
     state.pitReadbackPrevOnPitRoad = false;
-    state.lastOnPitRoad = true;
+    state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
     diffPitReadback(
@@ -127,7 +130,7 @@ describe("diffPitReadback — entry", () => {
       }),
       0,
       emit,
-      [],
+      [{ event: "pitLane.approaching", data: {} }],
     );
 
     const readbacks = readbackEvents(events);
@@ -136,6 +139,23 @@ describe("diffPitReadback — entry", () => {
     // queued-services snapshot is read at fire time by the audio side
     // via `getReadbackSnapshot()`, so it doesn't ride on the event.
     expect(readbacks[0]?.data).toEqual({ reason: "entry" });
+  });
+
+  it("stays silent on reset/teleport-to-pits (OnPitRoad off→on with no approach event)", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = false;
+    // Car materialised on pit road this tick — `diffPitLane` would only
+    // emit `pitLane.entered`, not `pitLane.approaching`, because the
+    // approach zone was bypassed entirely.
+    state.lastOnPitRoad = true;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, [
+      { event: "pitLane.entered", data: {} },
+    ]);
+
+    expect(readbackEvents(events)).toHaveLength(0);
   });
 });
 
@@ -234,29 +254,31 @@ describe("diffPitReadback — exit", () => {
     expect(state.pitReadbackExitFireAt).toBe(fireDeadline);
   });
 
-  it("re-entering pit road cancels the pending exit fire and emits a fresh entry", () => {
+  it("re-approaching cancels the pending exit fire and emits a fresh entry", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
     state.pitReadbackExitFireAt = 1000;
-    state.lastOnPitRoad = true; // back on pit road
+    // Approach fires while still off pit road — same as a fresh natural
+    // entry, but the scheduled exit is still pending from the prior pit-out.
+    state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
     diffPitReadback(
       state,
       tick({ PitSvFlags: PitSvFlags.FuelFill }),
-      // Time has advanced past the exit-fire deadline, but the off→on
-      // transition has higher precedence — entry pre-empts the queued exit.
+      // Time has advanced past the exit-fire deadline, but a fresh
+      // approach pre-empts the queued exit.
       1000 + PIT_READBACK_EXIT_DELAY_MS,
       emit,
-      [],
+      [{ event: "pitLane.approaching", data: {} }],
     );
 
     const readbacks = readbackEvents(events);
-    // The off→on transition must take precedence over the overdue exit
-    // — exactly one event fires this tick, and it's the entry. Asserting
-    // the full shape (length + reason) catches a regression where both
-    // exit and entry fire in the same tick.
+    // Approach must take precedence over the overdue exit — exactly one
+    // event fires this tick, and it's the entry. Asserting the full
+    // shape (length + reason) catches a regression where both exit and
+    // entry fire in the same tick.
     expect(readbacks).toHaveLength(1);
     expect(readbacks[0]?.data).toEqual({ reason: "entry" });
     expect(state.pitReadbackExitFireAt).toBe(0);
