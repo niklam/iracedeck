@@ -95,8 +95,14 @@ function cacheIsFresh(sourcePath, cachedPath) {
  * the scenario harness both call this — the cache is shared across them.
  *
  * `logger` is an optional `(msg: string) => void` for build-summary output.
+ *
+ * `wipe` (default `true`) controls whether `destRoot` is emptied before the
+ * copy. The plugin Rollup build wants `true` so renamed/removed source
+ * folders don't leak into the output. The harness's live-refresh path
+ * passes `false` so it can update files in place without fighting Windows
+ * file locks held by the audio engine on currently-loaded clips.
  */
-export async function processAndCopyAudioAssets({ destRoot, logger } = {}) {
+export async function processAndCopyAudioAssets({ destRoot, logger, wipe = true } = {}) {
   if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
   if (!existsSync(audioAssetsPath)) return;
 
@@ -105,11 +111,15 @@ export async function processAndCopyAudioAssets({ destRoot, logger } = {}) {
   const cacheRoot = path.join(CACHE_ROOT, hash);
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
-  // Clear destRoot before recreating so renamed/removed top-level folders
-  // (e.g. the legacy `pit-crew/` after #441 §1) don't leak into the output
-  // across incremental builds. The cache under `.cache/` is keyed by filter
-  // hash and lives outside destRoot, so this doesn't invalidate it.
-  rmSync(destRoot, { recursive: true, force: true });
+  if (wipe) {
+    // Clear destRoot before recreating so renamed/removed top-level folders
+    // (e.g. the legacy `pit-crew/` after #441 §1) don't leak into the
+    // output across incremental builds. The cache under `.cache/` is keyed
+    // by filter hash and lives outside destRoot, so this doesn't
+    // invalidate it.
+    rmSync(destRoot, { recursive: true, force: true });
+  }
+
   mkdirSync(destRoot, { recursive: true });
 
   const tasks = [];

@@ -157,6 +157,13 @@ async function main(): Promise<void> {
       audio,
       packageRoot,
       logger: logger.createScope("Server"),
+      // Live refresh writes into the same dest dir the audio engine reads
+      // from. `wipe: false` skips the rmSync — Windows holds file locks on
+      // any clip currently loaded by miniaudio, and overwriting in place
+      // is plenty since the only stale state we'd risk is a clip removed
+      // from source still lingering in dest, which is fine for a dev tool.
+      refreshAudioAssets: () =>
+        processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
     },
     { host: DEFAULT_HOST, port: DEFAULT_PORT },
   );

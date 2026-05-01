@@ -34,6 +34,13 @@ export type HarnessContext = {
   /** Absolute path to the package root. UI + presets resolved relative to this. */
   packageRoot: string;
   logger: ILogger;
+  /**
+   * Re-run the audio-assets processor against the harness's audio dest dir.
+   * Lets the user generate fresh TTS clips and audition them without
+   * restarting the harness. Closure (rather than a path) keeps the boot-
+   * time wiring in main.ts and the server agnostic to dest layout.
+   */
+  refreshAudioAssets: () => Promise<void>;
 };
 
 type ClientMessage =
@@ -348,6 +355,19 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     broadcast({ kind: "state", section: "audioDevices", value: ctx.audio.getAudioDevices() });
 
     return { audioOutputDevice: id ?? "" };
+  });
+
+  app.post("/api/audio/refresh", async (_req, reply) => {
+    try {
+      await ctx.refreshAudioAssets();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.logger.warn(`Audio refresh failed: ${message}`);
+
+      return reply.code(500).send({ error: message });
+    }
+
+    return reply.code(204).send();
   });
 
   app.post("/api/readback/snapshot", async (req, reply) => {

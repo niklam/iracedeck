@@ -604,6 +604,25 @@ function wire() {
     $("event-count").textContent = "0";
   });
 
+  const refreshButton = $("audio-refresh");
+  refreshButton.addEventListener("click", async () => {
+    const originalLabel = refreshButton.textContent;
+    refreshButton.textContent = "Reloading…";
+    refreshButton.disabled = true;
+    try {
+      await post("/api/audio/refresh", {});
+      refreshButton.textContent = "Reloaded";
+      setTimeout(() => {
+        refreshButton.textContent = originalLabel;
+      }, 1500);
+    } catch (e) {
+      refreshButton.textContent = originalLabel;
+      alert(`Audio refresh failed: ${e.message}`);
+    } finally {
+      refreshButton.disabled = false;
+    }
+  });
+
   $("telemetry-apply-patch").addEventListener("click", async () => {
     try {
       const patch = JSON.parse($("telemetry-json").value);
