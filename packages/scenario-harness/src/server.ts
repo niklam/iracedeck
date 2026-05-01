@@ -10,7 +10,7 @@ import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import type { AudioBus, IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { fastify, type FastifyInstance } from "fastify";
@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { ALL_EVENT_NAMES, EVENT_TEMPLATES } from "./event-names.js";
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import type { MockSDKController } from "./mock-sdk-controller.js";
+import { snapshotToTelemetryPatch } from "./pit-readback-telemetry.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
@@ -76,6 +77,57 @@ function loadPresets(dir: string): Preset[] {
   }
 
   return presets;
+}
+
+/**
+ * Shape-check an incoming `/api/readback/snapshot` body. Returns the snapshot
+ * on success or a user-facing error string on the first failed field — the
+ * same lightweight validation style the other endpoints in this file use.
+ */
+function validatePitReadbackSnapshot(body: unknown): PitReadbackSnapshot | string {
+  if (typeof body !== "object" || body === null) return "body must be an object";
+
+  const b = body as Record<string, unknown>;
+
+  const fuel = b.fuel as Record<string, unknown> | undefined;
+
+  if (!fuel || typeof fuel.queued !== "boolean") return "fuel.queued must be a boolean";
+
+  const tires = b.tires as Record<string, unknown> | undefined;
+
+  if (
+    !tires ||
+    typeof tires.lf !== "boolean" ||
+    typeof tires.rf !== "boolean" ||
+    typeof tires.lr !== "boolean" ||
+    typeof tires.rr !== "boolean"
+  ) {
+    return "tires must have boolean lf/rf/lr/rr";
+  }
+
+  const compoundChange = b.compoundChange as Record<string, unknown> | null | undefined;
+
+  if (compoundChange !== null) {
+    if (!compoundChange || typeof compoundChange.from !== "number" || typeof compoundChange.to !== "number") {
+      return "compoundChange must be null or { from: number, to: number }";
+    }
+  }
+
+  const fastRepair = b.fastRepair as Record<string, unknown> | undefined;
+
+  if (!fastRepair || typeof fastRepair.queued !== "boolean" || typeof fastRepair.available !== "boolean") {
+    return "fastRepair must have boolean queued/available";
+  }
+
+  const windshield = b.windshield as Record<string, unknown> | undefined;
+
+  if (!windshield || typeof windshield.queued !== "boolean" || typeof windshield.available !== "boolean") {
+    return "windshield must have boolean queued/available";
+  }
+
+  if (typeof b.limiterEngaged !== "boolean") return "limiterEngaged must be a boolean";
+
+  return body as PitReadbackSnapshot;
 }
 
 function audioBusVolumeMap(audio: IAudioService): Record<number, number> {
@@ -296,6 +348,21 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     broadcast({ kind: "state", section: "audioDevices", value: ctx.audio.getAudioDevices() });
 
     return { audioOutputDevice: id ?? "" };
+  });
+
+  app.post("/api/readback/snapshot", async (req, reply) => {
+    const snapshot = validatePitReadbackSnapshot(req.body);
+
+    if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
+
+    const current = ctx.controller.getState().telemetry;
+    ctx.controller.mutateTelemetry(snapshotToTelemetryPatch(snapshot, current));
+    // Synchronous tick so the translator's `latestTelemetry` updates before
+    // the response returns — eliminates the publish-vs-tick race when the
+    // UI fires the readback right after a control change.
+    ctx.controller.tickOnce();
+
+    return reply.code(204).send();
   });
 
   app.post("/api/bus/publish", async (req, reply) => {

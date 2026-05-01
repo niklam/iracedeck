@@ -452,7 +452,6 @@ const TIRE_PRESETS = {
 };
 
 function readReadbackSnapshot() {
-  const reason = $("readback-reason").value;
   const tires = {
     lf: $("readback-tire-lf").checked,
     rf: $("readback-tire-rf").checked,
@@ -469,7 +468,6 @@ function readReadbackSnapshot() {
       : { from: currentCompound, to: Number(queuedCompoundRaw) };
 
   return {
-    reason,
     fuel: { queued: $("readback-fuel-queued").checked },
     tires,
     compoundChange,
@@ -485,6 +483,20 @@ function readReadbackSnapshot() {
   };
 }
 
+// Server-side translator turns the snapshot into a telemetry patch and
+// `tickOnce`s the mock controller, so the production readback resolver
+// (`getReadbackSnapshot()` from sim-events-iracing) sees the user's
+// selections when the readback fires. Per-control change listeners call
+// this on every edit so iRacing's per-toggle confirmations also fire as
+// the user composes — disconnect the controller if you want silence.
+async function pushReadbackSnapshot() {
+  try {
+    await post("/api/readback/snapshot", readReadbackSnapshot());
+  } catch (e) {
+    console.error("Readback snapshot push failed:", e);
+  }
+}
+
 function applyTirePreset(presetId) {
   const preset = TIRE_PRESETS[presetId];
   if (!preset) return;
@@ -494,9 +506,35 @@ function applyTirePreset(presetId) {
   $("readback-tire-rr").checked = preset.rr;
 }
 
+const READBACK_SYNC_IDS = [
+  "readback-fuel-queued",
+  "readback-tire-lf",
+  "readback-tire-rf",
+  "readback-tire-lr",
+  "readback-tire-rr",
+  "readback-fr-queued",
+  "readback-fr-available",
+  "readback-ws-queued",
+  "readback-ws-available",
+  "readback-limiter",
+];
+
 function wireReadbackComposer() {
   for (const btn of document.querySelectorAll("[data-readback-preset]")) {
-    btn.addEventListener("click", () => applyTirePreset(btn.dataset.readbackPreset));
+    btn.addEventListener("click", () => {
+      applyTirePreset(btn.dataset.readbackPreset);
+      // Programmatic .checked changes don't fire `change` — push manually.
+      pushReadbackSnapshot();
+    });
+  }
+
+  for (const id of READBACK_SYNC_IDS) {
+    $(id)?.addEventListener("change", pushReadbackSnapshot);
+  }
+  for (const radio of document.querySelectorAll(
+    'input[name="readback-compound-current"], input[name="readback-compound-queued"]',
+  )) {
+    radio.addEventListener("change", pushReadbackSnapshot);
   }
 
   const amount = $("readback-fuel-amount");
@@ -506,9 +544,16 @@ function wireReadbackComposer() {
   });
 
   $("readback-fire").addEventListener("click", async () => {
-    const data = readReadbackSnapshot();
+    const reason = $("readback-reason").value;
     try {
-      await post("/api/bus/publish", { event: "pitService.readbackRequested", data });
+      // Push current snapshot first so the readback fires against the
+      // selections visible on screen, even if a per-change push is still
+      // in flight. The endpoint is idempotent and fast.
+      await pushReadbackSnapshot();
+      await post("/api/bus/publish", {
+        event: "pitService.readbackRequested",
+        data: { reason },
+      });
     } catch (e) {
       alert(`Readback fire failed: ${e.message}`);
     }
@@ -521,6 +566,11 @@ function wireReadbackComposer() {
       alert(`Black-flag publish failed: ${e.message}`);
     }
   });
+
+  // Initial sync — reconciles the mock controller's telemetry with the
+  // composer's default-rendered state (and any state restored by the
+  // browser on reload).
+  pushReadbackSnapshot();
 }
 
 // ── Wire up controls ──────────────────────────────────────────────────────
