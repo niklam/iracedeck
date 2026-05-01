@@ -604,24 +604,30 @@ function wire() {
     $("event-count").textContent = "0";
   });
 
-  const refreshButton = $("audio-refresh");
-  refreshButton.addEventListener("click", async () => {
-    const originalLabel = refreshButton.textContent;
-    refreshButton.textContent = "Reloading…";
-    refreshButton.disabled = true;
-    try {
-      await post("/api/audio/refresh", {});
-      refreshButton.textContent = "Reloaded";
-      setTimeout(() => {
-        refreshButton.textContent = originalLabel;
-      }, 1500);
-    } catch (e) {
-      refreshButton.textContent = originalLabel;
-      alert(`Audio refresh failed: ${e.message}`);
-    } finally {
-      refreshButton.disabled = false;
-    }
-  });
+  const wireAudioActionButton = (id, endpoint, busyLabel, doneLabel, errorPrefix) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      const original = btn.textContent;
+      btn.textContent = busyLabel;
+      btn.disabled = true;
+      try {
+        await post(endpoint, {});
+        btn.textContent = doneLabel;
+        setTimeout(() => {
+          btn.textContent = original;
+        }, 1500);
+      } catch (e) {
+        btn.textContent = original;
+        alert(`${errorPrefix}: ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+
+  wireAudioActionButton("audio-refresh", "/api/audio/refresh", "Reloading…", "Reloaded", "Audio refresh failed");
+  wireAudioActionButton("audio-wipe-cache", "/api/audio/wipe-cache", "Wiping…", "Wiped", "Audio cache wipe failed");
 
   $("telemetry-apply-patch").addEventListener("click", async () => {
     try {

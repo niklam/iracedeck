@@ -13,3 +13,5 @@ export function processAndCopyAudioAssetsPlugin(options: { sdPlugin: string }): 
   name: string;
   generateBundle: () => Promise<void>;
 };
+
+export function wipeProcessedCache(): void;

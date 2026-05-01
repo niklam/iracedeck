@@ -41,6 +41,12 @@ export type HarnessContext = {
    * time wiring in main.ts and the server agnostic to dest layout.
    */
   refreshAudioAssets: () => Promise<void>;
+  /**
+   * Nuke the upstream ffmpeg cache (`packages/audio-assets/.cache/<hash>/`)
+   * and re-process everything from source. Last-resort diagnostic for when
+   * a stale-cache suspicion needs to be eliminated.
+   */
+  wipeAudioCache: () => Promise<void>;
 };
 
 type ClientMessage =
@@ -363,6 +369,19 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       ctx.logger.warn(`Audio refresh failed: ${message}`);
+
+      return reply.code(500).send({ error: message });
+    }
+
+    return reply.code(204).send();
+  });
+
+  app.post("/api/audio/wipe-cache", async (_req, reply) => {
+    try {
+      await ctx.wipeAudioCache();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.logger.warn(`Audio cache wipe failed: ${message}`);
 
       return reply.code(500).send({ error: message });
     }

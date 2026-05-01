@@ -7,7 +7,7 @@
  * sim-events translator from a web UI. See `let-s-plan-a-development-mellow-lake.md`
  * for the full design.
  */
-import { processAndCopyAudioAssets } from "@iracedeck/audio-assets/build";
+import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
@@ -164,6 +164,11 @@ async function main(): Promise<void> {
       // from source still lingering in dest, which is fine for a dev tool.
       refreshAudioAssets: () =>
         processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
+      wipeAudioCache: async () => {
+        wipeProcessedCache();
+        audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
+        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+      },
     },
     { host: DEFAULT_HOST, port: DEFAULT_PORT },
   );

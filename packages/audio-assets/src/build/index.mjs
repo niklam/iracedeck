@@ -80,7 +80,26 @@ async function runWithConcurrency(tasks, limit) {
 
 function cacheIsFresh(sourcePath, cachedPath) {
   if (!existsSync(cachedPath)) return false;
-  return statSync(cachedPath).mtimeMs >= statSync(sourcePath).mtimeMs;
+
+  // Strict `>` rather than `>=`: when generate writes the source MP3 and
+  // the build helper runs in the same wall-clock second (or even the same
+  // millisecond, on filesystems with finer resolution), an `>=` check
+  // accepts a cache file that was actually built from the *previous*
+  // source revision. Strict `>` forces the rebuild in that ambiguous
+  // case — slightly more ffmpeg work, but never stale audio.
+  return statSync(cachedPath).mtimeMs > statSync(sourcePath).mtimeMs;
+}
+
+/**
+ * Delete every `<filter-hash>/` subdir under the audio-assets ffmpeg cache.
+ * The next `processAndCopyAudioAssets` run rebuilds everything from source.
+ * Exposed as a separate operation for the harness's "Wipe ffmpeg cache"
+ * action — a clean-slate fallback when a stale-cache hunch needs ruling
+ * out without manually scrubbing `packages/audio-assets/.cache/`.
+ */
+export function wipeProcessedCache() {
+  if (!existsSync(CACHE_ROOT)) return;
+  rmSync(CACHE_ROOT, { recursive: true, force: true });
 }
 
 /**
