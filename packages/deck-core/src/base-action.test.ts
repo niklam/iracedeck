@@ -4,7 +4,7 @@
  * The harness mocks getController so the flag-overlay subscription
  * registers a callback the test can drive directly via fake timers.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
 import type { IDeckActionContext, IDeckDidReceiveSettingsEvent, IDeckWillAppearEvent } from "./types.js";
@@ -124,6 +124,10 @@ describe("BaseAction flag flash duration (issue #490)", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     mockGetGlobalSettings.mockReturnValue({ flagFlashDurationMs: 5000 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("auto-stops the flash after flagFlashDurationMs", () => {
