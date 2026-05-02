@@ -136,6 +136,24 @@ Use `hasFlag()` from `@iracedeck/iracing-sdk` to check bitfield values.
 - **Informational flags** (may or may not trigger overlay): Checkered, White, TenToGo, FiveToGo
 - **Normal racing** (should NOT trigger overlay): Green, GreenHeld, OneLapToGreen, Debris, Crossed, RandomWaving, Servicible, Furled, all Start lights
 
+## EngineWarnings Breakdown
+
+`telemetry.EngineWarnings` is a single 16-bit bitfield. Use the `EngineWarnings` enum from `@iracedeck/iracing-sdk` (re-exported from `@iracedeck/iracing-native`).
+
+| Flag | Value | When it's set |
+|------|-------|---------------|
+| WaterTempWarning | `0x0001` | Coolant temperature above threshold |
+| FuelPressureWarning | `0x0002` | Fuel pressure below threshold |
+| OilPressureWarning | `0x0004` | Oil pressure below threshold |
+| EngineStalled | `0x0008` | Engine has stalled |
+| PitSpeedLimiter | `0x0010` | Pit speed limiter is engaged |
+| RevLimiterActive | `0x0020` | Rev limiter is currently cutting |
+| OilTempWarning | `0x0040` | Oil temperature above threshold |
+| MandRepNeeded | `0x0080` | Mandatory damage repair required (driver must pit and repair to remain eligible) |
+| OptRepNeeded | `0x0100` | Optional damage repair available (driver may pit to repair, but not required) |
+
+Rising-edge of `(EngineWarnings & (MandRepNeeded \| OptRepNeeded))` is consumed by `sim-events-iracing/diff/damage.ts` to publish `damage.repairNeeded.raised` after a 3000 ms debounce (issue #489). Pair with `PitReadbackSnapshot.hasDamage` (built from the same mask) for damage-aware readback gating.
+
 ## Common Units
 
 | Unit | Meaning | Count |
