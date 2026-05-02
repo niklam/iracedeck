@@ -283,4 +283,27 @@ describe("diffPitReadback — exit", () => {
     expect(readbacks[0]?.data).toEqual({ reason: "entry" });
     expect(state.pitReadbackExitFireAt).toBe(0);
   });
+
+  it("clears the queued pre-start fire when a natural pit approach fires", () => {
+    const state = createInitialState();
+    state.pitReadbackInitialized = true;
+    state.pitReadbackPrevOnPitRoad = false;
+    // Driver was in formation/grid pre-start when the auto-readback got
+    // scheduled, then dove into pit road for whatever reason. The
+    // approach event fires before the pre-start timer would have.
+    state.pitReadbackPreStartFireAt = 999_999;
+    state.lastOnPitRoad = false;
+
+    const { events, emit } = collect();
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, [
+      { event: "pitLane.approaching", data: {} },
+    ]);
+
+    const readbacks = readbackEvents(events);
+    expect(readbacks).toHaveLength(1);
+    expect(readbacks[0]?.data).toEqual({ reason: "entry" });
+    // Without the disarm, the pre-start timer would fire a duplicate
+    // `entry` once the queued deadline elapsed.
+    expect(state.pitReadbackPreStartFireAt).toBe(0);
+  });
 });

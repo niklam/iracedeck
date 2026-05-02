@@ -179,7 +179,12 @@ export function diffPitReadback(
     // reset/teleport-to-pits never produces this event and stays silent.
     // Cancel any stale scheduled exit too — re-approaching before the
     // settle delay elapsed pre-empts the pending "to confirm" recap.
+    // Also disarm any queued pre-start readback: a driver who entered
+    // pit road during formation/grid has now had the entry callout fire
+    // here, so the pre-start timer must not re-fire the same `entry`
+    // reason later.
     state.pitReadbackExitFireAt = 0;
+    state.pitReadbackPreStartFireAt = 0;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
   } else if (onPitRoad && pending.some((p) => USER_TOGGLE_EVENTS.has(p.event))) {
     // While on pit road, any user-intent toggle event refires the
