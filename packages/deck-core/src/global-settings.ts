@@ -275,6 +275,19 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * Duration in milliseconds the flag overlay flashes after a new flag
+     * transition (issue #490). The flash auto-stops after this duration even
+     * while the underlying iRacing flag is still raised, so long full-course
+     * yellows don't turn into sustained visual noise. A new flag transition
+     * during or after the window starts a fresh timer.
+     *
+     * `0` disables the auto-stop and reverts to the original behaviour
+     * (flash continuously while the flag is raised). Range 0–15000, default
+     * 5000 (5 seconds). The blink rate (`FLAG_FLASH_INTERVAL_MS`) is a
+     * separate concept and stays a constant.
+     */
+    flagFlashDurationMs: z.coerce.number().min(0).max(15000).default(5000),
   })
   .passthrough();
 
