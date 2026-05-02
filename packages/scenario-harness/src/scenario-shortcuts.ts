@@ -171,6 +171,21 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Debris", "flag.debris.raised"),
   flag("Meatball", "flag.meatball.raised"),
 
+  // ── Damage ──
+  // Bypasses the rising-edge + 3000 ms debounce in
+  // `sim-events-iracing/diff/damage.ts` — fires the bus event directly
+  // so you hear the audio without waiting for the diff to settle. Use
+  // the Engine Warnings panel checkboxes (Mandatory / Optional Repair)
+  // when you specifically want to exercise the diff.
+  {
+    id: "damage-repair-needed",
+    category: "Damage",
+    label: "Damage Detected",
+    description: "Fire `damage.repairNeeded.raised` directly (skips the diff debounce)",
+    event: "damage.repairNeeded.raised",
+    data: {},
+  },
+
   // ── Incidents ──
   // Standard iRacing point values: 1x = off-track, 2x = minor contact,
   // 4x = major contact / car-to-car. 0x exists as a "warning" tier in

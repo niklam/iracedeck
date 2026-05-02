@@ -73,6 +73,14 @@ export const EVENT_TEMPLATES = [
   { name: "limiter.missing", description: "Pit lane entered without limiter on", data: {} },
   { name: "limiter.speeding", description: "Speeding in pit lane", data: {} },
 
+  // ── Damage ──
+  {
+    name: "damage.repairNeeded.raised",
+    description:
+      "Damage detected — fires after the rising-edge debounce on EngineWarnings & (MandRepNeeded | OptRepNeeded)",
+    data: {},
+  },
+
   // ── Incidents / off-track ──
   { name: "incident.occurred", description: "Player picked up an incident", data: { delta: 1 } },
   { name: "offTrack.started", description: "Player went off track", data: {} },

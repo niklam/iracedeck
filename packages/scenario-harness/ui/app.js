@@ -421,6 +421,7 @@ function connectWebSocket() {
         renderTopbar();
         renderTelemetry();
         renderSession();
+        syncEngineWarningsCheckboxes();
       } else if (msg.section === "settings") {
         state.settings = msg.value;
         persistSettings(msg.value);
@@ -432,6 +433,77 @@ function connectWebSocket() {
     }
   });
   ws.addEventListener("close", () => setTimeout(connectWebSocket, 1000));
+}
+
+// ── Engine Warnings panel ─────────────────────────────────────────────────
+//
+// One checkbox per bit in `telemetry.EngineWarnings`. The mock controller
+// owns the bitfield; on every flip we read the current value, mutate just
+// the targeted bit, and PATCH the new value via /api/telemetry — so other
+// bits set by other UIs (or the readback composer's limiter checkbox)
+// survive untouched.
+//
+// Bit values mirror `@iracedeck/iracing-native/src/defines.ts`. Treat this
+// as a small fixed set; if a new bit is added there, add it here too.
+
+const ENGINE_WARNINGS = [
+  { id: "ew-water-temp",     label: "Water Temp",        bit: 0x0001 },
+  { id: "ew-fuel-pressure",  label: "Fuel Pressure",     bit: 0x0002 },
+  { id: "ew-oil-pressure",   label: "Oil Pressure",      bit: 0x0004 },
+  { id: "ew-engine-stalled", label: "Engine Stalled",    bit: 0x0008 },
+  { id: "ew-pit-limiter",    label: "Pit Speed Limiter", bit: 0x0010 },
+  { id: "ew-rev-limiter",    label: "Rev Limiter",       bit: 0x0020 },
+  { id: "ew-oil-temp",       label: "Oil Temp",          bit: 0x0040 },
+  { id: "ew-mand-rep",       label: "Mandatory Repair",  bit: 0x0080 },
+  { id: "ew-opt-rep",        label: "Optional Repair",   bit: 0x0100 },
+];
+
+const ENGINE_WARNINGS_DAMAGE_MASK = 0x0080 | 0x0100;
+
+function renderEngineWarningsPanel() {
+  const container = $("engine-warnings");
+  if (!container) return;
+
+  // Render once; subsequent state changes only flip `checked`.
+  if (container.childElementCount === 0) {
+    for (const { id, label } of ENGINE_WARNINGS) {
+      const wrap = document.createElement("label");
+      wrap.className = "ew-checkbox";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = id;
+
+      const span = document.createElement("span");
+      span.textContent = label;
+
+      wrap.appendChild(input);
+      wrap.appendChild(span);
+      container.appendChild(wrap);
+    }
+  }
+
+  syncEngineWarningsCheckboxes();
+}
+
+function syncEngineWarningsCheckboxes() {
+  const current = state.controller?.telemetry?.EngineWarnings ?? 0;
+  for (const { id, bit } of ENGINE_WARNINGS) {
+    const cb = $(id);
+    if (cb) cb.checked = (current & bit) !== 0;
+  }
+}
+
+function wireEngineWarnings() {
+  for (const { id, bit } of ENGINE_WARNINGS) {
+    const cb = $(id);
+    if (!cb) continue;
+    cb.addEventListener("change", () => {
+      const cur = state.controller?.telemetry?.EngineWarnings ?? 0;
+      const next = cb.checked ? cur | bit : cur & ~bit;
+      post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => alert(err.message));
+    });
+  }
 }
 
 // ── Pit Service Readback composer ─────────────────────────────────────────
@@ -467,6 +539,12 @@ function readReadbackSnapshot() {
       ? null
       : { from: currentCompound, to: Number(queuedCompoundRaw) };
 
+  // hasDamage is owned by the Engine Warnings panel, not the composer.
+  // Derive it from the live telemetry bits so the snapshot's required
+  // field stays in sync with what the user has actually set.
+  const ew = state.controller?.telemetry?.EngineWarnings ?? 0;
+  const damageMask = ENGINE_WARNINGS_DAMAGE_MASK;
+
   return {
     fuel: { queued: $("readback-fuel-queued").checked },
     tires,
@@ -480,6 +558,7 @@ function readReadbackSnapshot() {
       available: $("readback-ws-available").checked,
     },
     limiterEngaged: $("readback-limiter").checked,
+    hasDamage: (ew & damageMask) !== 0,
   };
 }
 
@@ -736,8 +815,10 @@ function wire() {
     renderSettings();
     renderInjector();
     renderShortcuts();
+    renderEngineWarningsPanel();
     wire();
     wireReadbackComposer();
+    wireEngineWarnings();
     connectWebSocket();
   } catch (e) {
     document.body.innerHTML = `<pre style="padding:20px;color:#ff6b6b;">Failed to load harness: ${e.message}</pre>`;

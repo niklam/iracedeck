@@ -403,6 +403,24 @@ input[type="range"] {
   flex-wrap: wrap;
 }
 
+.engine-warnings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+
+.ew-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ew-checkbox input {
+  cursor: pointer;
+}
+
 .readback-tire-presets {
   display: flex;
   flex-wrap: wrap;
