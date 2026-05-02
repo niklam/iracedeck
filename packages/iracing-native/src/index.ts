@@ -257,4 +257,21 @@ export class IRacingNative {
       this.getMock().sendScanKeyUp(scanCodes);
     }
   }
+
+  // ============================================================================
+  // Clipboard
+  // ============================================================================
+
+  /**
+   * Write text to the OS clipboard as Unicode text.
+   *
+   * Used by paste-based action flows (e.g. race-admin's "Type in Chat" mode).
+   * Pasting (Ctrl+V) is the caller's responsibility — use the keyboard service.
+   *
+   * @param text - The text to place on the clipboard
+   * @returns true on success
+   */
+  setClipboardText(text: string): boolean {
+    return addon ? addon.setClipboardText(text) : this.getMock().setClipboardText(text);
+  }
 }

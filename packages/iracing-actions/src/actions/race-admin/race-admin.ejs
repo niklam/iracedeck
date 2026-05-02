@@ -46,8 +46,12 @@
 
 		<!-- Driver targeting (shown for modes that accept a driver parameter) -->
 		<div id="driver-section" class="hidden">
-			<sdpi-item label="Use Viewed Car">
-				<sdpi-checkbox id="use-viewed-car" setting="useViewedCar" default="true"></sdpi-checkbox>
+			<sdpi-item label="Driver Target">
+				<sdpi-select id="driver-target-select" setting="driverTarget" default="type-in-chat">
+					<option value="viewed-car">Use Viewed Car</option>
+					<option value="specific">Specific Car Number</option>
+					<option value="type-in-chat">Type in Chat</option>
+				</sdpi-select>
 			</sdpi-item>
 			<sdpi-item id="car-number-item" label="Car Number" class="hidden">
 				<sdpi-textfield id="car-number-field" setting="carNumber" placeholder="e.g. 070" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
@@ -156,7 +160,7 @@
 				await customElements.whenDefined("sdpi-select");
 
 				var modeSelect = document.getElementById("mode-select");
-				var useViewedCarCheckbox = document.getElementById("use-viewed-car");
+				var driverTargetSelect = document.getElementById("driver-target-select");
 
 				// Restrict car number input to digits only (preserve leading zeros)
 				var carNumberField = document.getElementById("car-number-field");
@@ -187,25 +191,20 @@
 					}, 100);
 				}
 
-				if (useViewedCarCheckbox) {
-					useViewedCarCheckbox.addEventListener("change", function() { updateCarNumberVisibility(); });
-					useViewedCarCheckbox.addEventListener("input", function() { updateCarNumberVisibility(); });
+				if (driverTargetSelect) {
+					driverTargetSelect.addEventListener("change", function() { updateCarNumberVisibility(); });
+					driverTargetSelect.addEventListener("input", function() { updateCarNumberVisibility(); });
 
-					var lastChecked = isCheckboxChecked(useViewedCarCheckbox);
+					// Polling fallback — sdpi-select change events can be unreliable.
+					var lastTarget = driverTargetSelect.value || "type-in-chat";
 					setInterval(function() {
-						var current = isCheckboxChecked(useViewedCarCheckbox);
-						if (current !== lastChecked) {
-							lastChecked = current;
+						var current = driverTargetSelect.value;
+						if (current && current !== lastTarget) {
+							lastTarget = current;
 							updateCarNumberVisibility();
 						}
 					}, 100);
 				}
-			}
-
-			function isCheckboxChecked(el) {
-				// sdpi-checkbox value can be boolean or string
-				var val = el.value;
-				return val === true || val === "true";
 			}
 
 			function updateModeVisibility(mode) {
@@ -222,18 +221,19 @@
 					toggle(meta.extra[j], true);
 				}
 
-				// Update car number visibility based on checkbox state
+				// Update car number visibility based on driver-target selection
 				if (meta.driver) {
 					updateCarNumberVisibility();
 				}
 			}
 
 			function updateCarNumberVisibility() {
-				var checkbox = document.getElementById("use-viewed-car");
+				var select = document.getElementById("driver-target-select");
 				var carNumberItem = document.getElementById("car-number-item");
-				if (checkbox && carNumberItem) {
-					var useViewed = isCheckboxChecked(checkbox);
-					carNumberItem.classList.toggle("hidden", useViewed);
+				if (select && carNumberItem) {
+					// Car number field is only relevant when a specific number is configured.
+					// Hidden for "viewed-car" (auto from telemetry) and "type-in-chat" (typed live).
+					carNumberItem.classList.toggle("hidden", select.value !== "specific");
 				}
 			}
 

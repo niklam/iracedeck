@@ -7,9 +7,11 @@ import { buildTemplateContext, resolveTemplate, type SDKController } from "@irac
 
 import { RACE_ADMIN_MODE_META, type RaceAdminMode, type RaceAdminModeMeta } from "./race-admin-modes.js";
 
+export type DriverTarget = "viewed-car" | "specific" | "type-in-chat";
+
 export interface RaceAdminSettings {
   mode: RaceAdminMode;
-  useViewedCar: boolean;
+  driverTarget: DriverTarget;
   carNumber: string;
   message: string;
   penaltyType: string;
@@ -23,6 +25,10 @@ export interface RaceAdminSettings {
 /**
  * Resolve the driver target for a command.
  *
+ * Returns null for the `type-in-chat` driver target — that path doesn't build a
+ * full command string at all. The caller (`executeMode`) must branch on
+ * `driverTarget === "type-in-chat"` before calling `buildAdminCommand`.
+ *
  * @internal Exported for testing
  */
 export function resolveDriverTarget(
@@ -32,13 +38,35 @@ export function resolveDriverTarget(
 ): string | null {
   if (!meta.needsDriver) return null;
 
-  if (settings.useViewedCar) {
+  if (settings.driverTarget === "viewed-car") {
     return viewedCarNumber ?? null;
   }
 
-  const carNum = settings.carNumber?.trim();
+  if (settings.driverTarget === "specific") {
+    const carNum = settings.carNumber?.trim();
 
-  return carNum || null;
+    return carNum || null;
+  }
+
+  return null;
+}
+
+/**
+ * Build the bare command prefix for a mode (e.g. `"!clear "` with trailing
+ * space). Used by the `type-in-chat` flow which pastes the prefix and lets
+ * the user type the driver number themselves.
+ *
+ * Returns null for camera modes (no `meta.command`) — currently unreachable
+ * since all 27 modes have a command, but kept defensive.
+ *
+ * @internal Exported for testing
+ */
+export function buildAdminCommandPrefix(mode: RaceAdminMode): string | null {
+  const meta = RACE_ADMIN_MODE_META[mode];
+
+  if (!meta.command) return null;
+
+  return `${meta.command} `;
 }
 
 /**

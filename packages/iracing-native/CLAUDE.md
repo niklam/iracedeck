@@ -68,6 +68,13 @@ All functions accept an array of PS/2 scan codes (modifiers first, then main key
 ### Internal helper: `sendScanKey(scanCode, isDown)`
 Static C++ function used by all three public functions. Sends a single key event via `SendInput()`. Derives `wVk` from scan code using `MapVirtualKeyW()` for compatibility.
 
+## Clipboard Functions
+
+### `setClipboardText(text: string): boolean`
+Writes a UTF-16 string to the Windows clipboard as `CF_UNICODETEXT`. Returns `true` on success, `false` if `OpenClipboard`/`GlobalAlloc`/`GlobalLock` fail. Internally reuses the same `copyToClipboard()` helper that backs the chat-send pipeline.
+
+Pasting is the caller's responsibility — `setClipboardText` only writes. Send `Ctrl+V` via `getKeyboard().sendKeyCombination(...)` from `@iracedeck/deck-core` to paste. Used by race-admin's "Type in Chat" driver-target mode and any future flows that need to put text on the clipboard without going through the full chat-send sequence.
+
 ## Cross-Package Sync
 
 The TypeScript wrapper in `src/index.ts` must mirror every function exported from `addon.cc`. When adding or modifying native keyboard functions:

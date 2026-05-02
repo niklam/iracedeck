@@ -171,6 +171,16 @@ export {
   type ScanKeyReleaser,
 } from "./keyboard-service.js";
 
+// Clipboard service singleton
+export {
+  initializeClipboard,
+  getClipboard,
+  isClipboardInitialized,
+  _resetClipboard,
+  type IClipboardService,
+  type ClipboardWriter,
+} from "./clipboard-service.js";
+
 // App monitor for iRacing process detection
 export { initAppMonitor, isIRacingRunning, isAppMonitorInitialized, _resetAppMonitor } from "./app-monitor.js";
 

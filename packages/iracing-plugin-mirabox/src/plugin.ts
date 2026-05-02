@@ -24,6 +24,7 @@ import {
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
+  initializeClipboard,
   initializeKeyboard,
   initializeSDK,
   initializeSimHub,
@@ -140,6 +141,10 @@ initializeKeyboard(
   (scanCodes) => native.sendScanKeyDown(scanCodes),
   (scanCodes) => native.sendScanKeyUp(scanCodes),
 );
+
+// Initialize clipboard for paste-based action flows (e.g. race-admin "Type in Chat").
+// Pasting itself uses the keyboard service above (Ctrl+V).
+initializeClipboard(adapter.createLogger("Clipboard"), (text) => native.setClipboardText(text));
 
 // Initialize audio engine for pit crew voice playback.
 // Base path lets scenarios emit manifest-relative clip paths (e.g.
