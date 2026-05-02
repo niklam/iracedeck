@@ -63,6 +63,39 @@ describe("buildSnapshot", () => {
     });
   });
 
+  it("flags hasDamage when MandRepNeeded is set", () => {
+    expect(buildSnapshot(tick({ EngineWarnings: EngineWarnings.MandRepNeeded }))).toMatchObject({
+      hasDamage: true,
+    });
+  });
+
+  it("flags hasDamage when OptRepNeeded is set", () => {
+    expect(buildSnapshot(tick({ EngineWarnings: EngineWarnings.OptRepNeeded }))).toMatchObject({
+      hasDamage: true,
+    });
+  });
+
+  it("does not flag hasDamage when only unrelated EngineWarnings bits are set", () => {
+    expect(
+      buildSnapshot(
+        tick({
+          EngineWarnings:
+            EngineWarnings.WaterTempWarning | EngineWarnings.OilTempWarning | EngineWarnings.PitSpeedLimiter,
+        }),
+      ),
+    ).toMatchObject({ hasDamage: false });
+  });
+
+  it("flags hasDamage alongside limiterEngaged when both share the EngineWarnings bitfield", () => {
+    expect(
+      buildSnapshot(
+        tick({
+          EngineWarnings: EngineWarnings.PitSpeedLimiter | EngineWarnings.OptRepNeeded,
+        }),
+      ),
+    ).toMatchObject({ limiterEngaged: true, hasDamage: true });
+  });
+
   it("flags a compound change when queued compound differs from player", () => {
     expect(
       buildSnapshot(

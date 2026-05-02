@@ -21,6 +21,7 @@ import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName } from "
 import type { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
+import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
 import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
@@ -252,6 +253,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // and trigger an `entry-refire` readback.
   diffPitReadback(self.state, telemetry, now, emit, pending);
   diffIncidents(self.state, telemetry, now, emit);
+  diffDamage(self.state, telemetry, now, emit);
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);

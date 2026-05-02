@@ -86,6 +86,14 @@ const TIRE_FLAGS_MASK =
   PitSvFlags.LFTireChange | PitSvFlags.RFTireChange | PitSvFlags.LRTireChange | PitSvFlags.RRTireChange;
 
 /**
+ * Damage indicator mask for the readback's `hasDamage` slot (issue #489).
+ * Mirrors the rising-edge mask in `diffDamage` so the readback's
+ * fast-repair gate and the live damage callout share the same definition
+ * of "damaged".
+ */
+const DAMAGE_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
+
+/**
  * Build the queued-services snapshot from current telemetry. Public so
  * the translator's `getReadbackSnapshot()` can reuse it — audio scenarios
  * call that resolver at fire time (issue #481).
@@ -94,7 +102,9 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   const flags = telemetry.PitSvFlags ?? 0;
   const compound = telemetry.PitSvTireCompound ?? 0;
   const playerCompound = telemetry.PlayerTireCompound ?? 0;
-  const limiter = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
+  const engineWarnings = telemetry.EngineWarnings ?? 0;
+  const limiter = (engineWarnings & EngineWarnings.PitSpeedLimiter) !== 0;
+  const hasDamage = (engineWarnings & DAMAGE_MASK) !== 0;
   const hasAnyTireBit = (flags & TIRE_FLAGS_MASK) !== 0;
   // Mirror `service-reminder.ts` `isCompoundChange`: only count compound as
   // "changing" when tires are queued AND the queued compound differs from
@@ -123,6 +133,7 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
       available: true,
     },
     limiterEngaged: limiter,
+    hasDamage,
   };
 }
 
