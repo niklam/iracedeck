@@ -25,11 +25,12 @@
  * line for full-course yellows ("pace car deployed") vs local sector
  * yellows ("mind the slow cars").
  *
- * **Checkered session-aware.** The recorded checkered clip set has three
- * variants — practice, qualifying, race — because the engineer's wording
- * differs per session ("that's it for the race, well done" only fits
- * after a race). The scenario nests `if`-step branches on
- * `getSessionType()` to pick the right pool at fire time.
+ * **Session-aware flags.** Green, white and checkered all have three
+ * recorded variants — practice, qualifying, race — because the engineer's
+ * wording differs per session ("that's it for the race, well done" only
+ * fits after a race; a green-flag "push now!" only fits a race start).
+ * Each scenario nests `if`-step branches on `getSessionType()` to pick
+ * the right pool at fire time.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -76,7 +77,19 @@ const YELLOW_CLEARED: Scenario = {
 };
 
 const GREEN: Scenario = {
-  ...flagScenario("green", ["pool:flag-green"]),
+  ...flagScenario("green", [
+    {
+      if: () => getSessionType() === "Practice",
+      then: ["pool:flag-green-practice"],
+      else: [
+        {
+          if: () => getSessionType().includes("Qualify"),
+          then: ["pool:flag-green-qualifying"],
+          else: ["pool:flag-green-race"],
+        },
+      ],
+    },
+  ]),
   when: { event: "flag.green.raised" },
 };
 
@@ -86,7 +99,19 @@ const BLUE: Scenario = {
 };
 
 const WHITE: Scenario = {
-  ...flagScenario("white", ["pool:flag-white"]),
+  ...flagScenario("white", [
+    {
+      if: () => getSessionType() === "Practice",
+      then: ["pool:flag-white-practice"],
+      else: [
+        {
+          if: () => getSessionType().includes("Qualify"),
+          then: ["pool:flag-white-qualifying"],
+          else: ["pool:flag-white-race"],
+        },
+      ],
+    },
+  ]),
   when: { event: "flag.white.raised" },
 };
 
@@ -104,7 +129,7 @@ const CHECKERED: Scenario = {
   ...flagScenario("checkered", [
     {
       if: () => getSessionType() === "Practice",
-      then: ["pool:flag-checkered-practise"],
+      then: ["pool:flag-checkered-practice"],
       else: [
         {
           if: () => getSessionType().includes("Qualify"),

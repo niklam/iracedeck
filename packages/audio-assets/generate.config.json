@@ -108,8 +108,8 @@
         "seed": 2
       },
       {
-        "name": "checkered-practise-01",
-        "text": "Checkered flag. <break time=\"0.3s\" /> Practise session is over.",
+        "name": "checkered-practice-01",
+        "text": "Checkered flag. <break time=\"0.3s\" /> Practice session is over.",
         "seed": 2
       },
       {
@@ -136,12 +136,22 @@
         "seed": 2
       },
       {
-        "name": "green-01",
+        "name": "green-practice-01",
+        "text": "We're green. Practice has started.",
+        "seed": 4
+      },
+      {
+        "name": "green-qualifying-01",
+        "text": "Green. Qualifying is on.",
+        "seed": 4
+      },
+      {
+        "name": "green-race-01",
         "text": "Green flag, Green flag. Push now.",
         "seed": 2
       },
       {
-        "name": "green-02",
+        "name": "green-race-02",
         "text": "Green, Green, Green!!! Go! Go! Go!",
         "seed": 2
       },
@@ -155,12 +165,20 @@
         "text": "Red flag. Red flag. Session stopped. Slow down, drive safely back to the pit."
       },
       {
-        "name": "white-01",
+        "name": "white-practice-01",
+        "text": "White flag, practice is wrapping up."
+      },
+      {
+        "name": "white-qualifying-01",
+        "text": "White flag, this lap's your last shot."
+      },
+      {
+        "name": "white-race-01",
         "text": "White flag.",
         "seed": 3
       },
       {
-        "name": "white-02",
+        "name": "white-race-02",
         "text": "White flag and the final lap... Let's make it count.",
         "seed": 7
       },

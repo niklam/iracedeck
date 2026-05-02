@@ -33,7 +33,7 @@
       "generatedAt": "2026-05-01T18:13:42.291Z",
       "requestId": "MNdFPGS8YXRESYQUwO91"
     },
-    "voice/luca/flags/green-01.mp3": {
+    "voice/luca/flags/green-race-01.mp3": {
       "hash": "46deef5b892a1ea6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
@@ -57,7 +57,7 @@
       "generatedAt": "2026-05-01T17:55:25.424Z",
       "requestId": "TpSPoFvyQveGt6IDmkZZ"
     },
-    "voice/luca/flags/white-01.mp3": {
+    "voice/luca/flags/white-race-01.mp3": {
       "hash": "2a5518f91bc607cc",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
@@ -1273,14 +1273,6 @@
       "generatedAt": "2026-05-01T18:10:18.702Z",
       "requestId": "nvXnQ0jpFxA4w3hy9vq3"
     },
-    "voice/luca/flags/checkered-practise-01.mp3": {
-      "hash": "1a39997ce36267ba",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2",
-      "textPreview": "Checkered flag. <break time=\"0.3s\" /> Practise session is over.",
-      "generatedAt": "2026-05-01T18:09:37.016Z",
-      "requestId": "PfUhIY9LgAeZvfXUqHiJ"
-    },
     "voice/luca/flags/checkered-qualifying-01.mp3": {
       "hash": "2e25eccd43cc2025",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -1793,7 +1785,7 @@
       "generatedAt": "2026-04-26T11:19:58.904Z",
       "requestId": "cD31aCOwTD756oU6AZCA"
     },
-    "voice/luca/flags/green-02.mp3": {
+    "voice/luca/flags/green-race-02.mp3": {
       "hash": "acb414ddc79d13d2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
@@ -1809,7 +1801,7 @@
       "generatedAt": "2026-04-26T11:32:06.483Z",
       "requestId": "j9Ll6mwg7hjGRI74ViNS"
     },
-    "voice/luca/flags/white-02.mp3": {
+    "voice/luca/flags/white-race-02.mp3": {
       "hash": "74c0ed538f93893a",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
@@ -3024,6 +3016,46 @@
       "textPreview": "We're skipping fast repair at the next pit stop.",
       "generatedAt": "2026-05-01T18:22:11.281Z",
       "requestId": "rOk4zMUhSdb4cLMHP6zH"
+    },
+    "voice/luca/flags/checkered-practice-01.mp3": {
+      "hash": "a02135ae8dcd42b0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Checkered flag. <break time=\"0.3s\" /> Practice session is over.",
+      "generatedAt": "2026-05-02T08:36:05.756Z",
+      "requestId": "dfEPmpgf4yv1MTTotYfm"
+    },
+    "voice/luca/flags/green-practice-01.mp3": {
+      "hash": "8b1d67a864681dae",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "We're green. Practice has started.",
+      "generatedAt": "2026-05-02T08:40:53.483Z",
+      "requestId": "Mrzaib5iDK6axZPma0Ha"
+    },
+    "voice/luca/flags/green-qualifying-01.mp3": {
+      "hash": "79664e5e59a58026",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Green. Qualifying is on.",
+      "generatedAt": "2026-05-02T08:39:02.152Z",
+      "requestId": "mUnZnm0BjyQg6UM6XjhF"
+    },
+    "voice/luca/flags/white-practice-01.mp3": {
+      "hash": "58ae7c62926c3a7b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "White flag, practice is wrapping up.",
+      "generatedAt": "2026-05-02T08:36:06.532Z",
+      "requestId": "rzqLMnkrwd8C16D60HT1"
+    },
+    "voice/luca/flags/white-qualifying-01.mp3": {
+      "hash": "cab65cc9be6eea19",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "White flag, this lap's your last shot.",
+      "generatedAt": "2026-05-02T08:36:06.813Z",
+      "requestId": "YeIRCpJxa4KCnWOMDhSq"
     }
   }
 }

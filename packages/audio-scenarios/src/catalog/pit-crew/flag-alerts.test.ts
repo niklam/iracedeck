@@ -120,15 +120,19 @@ const FLAG_CLIP_NAMES = [
   "yellow-local-01",
   "yellow-full-01",
   "yellow-cleared-01",
-  "green-01",
-  "green-02",
+  "green-practice-01",
+  "green-qualifying-01",
+  "green-race-01",
+  "green-race-02",
   "blue-01",
   "blue-02",
-  "white-01",
-  "white-02",
+  "white-practice-01",
+  "white-qualifying-01",
+  "white-race-01",
+  "white-race-02",
   "red-01",
   "black-01",
-  "checkered-practise-01",
+  "checkered-practice-01",
   "checkered-qualifying-01",
   "checkered-race-01",
   "debris-01",
@@ -318,24 +322,24 @@ describe("FLAG_ALERTS triggers", () => {
     );
   });
 
-  it("green draws from the flag-green pool (one of the two recorded variants)", () => {
+  it("green in a Race session draws from the flag-green-race pool (one of the two recorded variants)", () => {
     bus.publishEvent("flag.green.raised", {});
     flush(audio);
 
     const played = voiceClipsPlayed();
-    expect(played.includes("voice/luca/flags/green-01.mp3") || played.includes("voice/luca/flags/green-02.mp3")).toBe(
-      true,
-    );
+    expect(
+      played.includes("voice/luca/flags/green-race-01.mp3") || played.includes("voice/luca/flags/green-race-02.mp3"),
+    ).toBe(true);
   });
 
-  it("white draws from the flag-white pool (one of the two recorded variants)", () => {
+  it("white in a Race session draws from the flag-white-race pool (one of the two recorded variants)", () => {
     bus.publishEvent("flag.white.raised", {});
     flush(audio);
 
     const played = voiceClipsPlayed();
-    expect(played.includes("voice/luca/flags/white-01.mp3") || played.includes("voice/luca/flags/white-02.mp3")).toBe(
-      true,
-    );
+    expect(
+      played.includes("voice/luca/flags/white-race-01.mp3") || played.includes("voice/luca/flags/white-race-02.mp3"),
+    ).toBe(true);
   });
 
   it("debris draws from the flag-debris pool (one of the three recorded variants)", () => {
@@ -363,10 +367,68 @@ describe("FLAG_ALERTS triggers", () => {
   });
 });
 
+describe("FLAG_ALERTS green session-type branch", () => {
+  it.each([
+    { sessionType: "Practice", expected: "voice/luca/flags/green-practice-01.mp3" },
+    { sessionType: "Open Qualify", expected: "voice/luca/flags/green-qualifying-01.mp3" },
+    { sessionType: "Lone Qualify", expected: "voice/luca/flags/green-qualifying-01.mp3" },
+  ])("$sessionType session → $expected", ({ sessionType, expected }) => {
+    mockSessionType.mockReturnValue(sessionType);
+    bus.publishEvent("flag.green.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(expected);
+  });
+
+  it.each([
+    { sessionType: "Race" },
+    { sessionType: "" },
+    { sessionType: "Some Unknown" },
+  ])("$sessionType session falls through to flag-green-race", ({ sessionType }) => {
+    mockSessionType.mockReturnValue(sessionType);
+    bus.publishEvent("flag.green.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(
+      played.includes("voice/luca/flags/green-race-01.mp3") || played.includes("voice/luca/flags/green-race-02.mp3"),
+    ).toBe(true);
+  });
+});
+
+describe("FLAG_ALERTS white session-type branch", () => {
+  it.each([
+    { sessionType: "Practice", expected: "voice/luca/flags/white-practice-01.mp3" },
+    { sessionType: "Open Qualify", expected: "voice/luca/flags/white-qualifying-01.mp3" },
+    { sessionType: "Lone Qualify", expected: "voice/luca/flags/white-qualifying-01.mp3" },
+  ])("$sessionType session → $expected", ({ sessionType, expected }) => {
+    mockSessionType.mockReturnValue(sessionType);
+    bus.publishEvent("flag.white.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(expected);
+  });
+
+  it.each([
+    { sessionType: "Race" },
+    { sessionType: "" },
+    { sessionType: "Some Unknown" },
+  ])("$sessionType session falls through to flag-white-race", ({ sessionType }) => {
+    mockSessionType.mockReturnValue(sessionType);
+    bus.publishEvent("flag.white.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(
+      played.includes("voice/luca/flags/white-race-01.mp3") || played.includes("voice/luca/flags/white-race-02.mp3"),
+    ).toBe(true);
+  });
+});
+
 describe("FLAG_ALERTS checkered session-type branch", () => {
   it.each([
     { sessionType: "Race", expected: "voice/luca/flags/checkered-race-01.mp3" },
-    { sessionType: "Practice", expected: "voice/luca/flags/checkered-practise-01.mp3" },
+    { sessionType: "Practice", expected: "voice/luca/flags/checkered-practice-01.mp3" },
     { sessionType: "Open Qualify", expected: "voice/luca/flags/checkered-qualifying-01.mp3" },
     { sessionType: "Lone Qualify", expected: "voice/luca/flags/checkered-qualifying-01.mp3" },
     { sessionType: "", expected: "voice/luca/flags/checkered-race-01.mp3" },
@@ -417,14 +479,18 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-yellow-local",
       "flag-yellow-full",
       "flag-yellow-cleared",
-      "flag-green",
       "flag-blue",
-      "flag-white",
       "flag-red",
       "flag-black",
       "flag-debris",
       "flag-meatball",
-      "flag-checkered-practise",
+      "flag-green-practice",
+      "flag-green-qualifying",
+      "flag-green-race",
+      "flag-white-practice",
+      "flag-white-qualifying",
+      "flag-white-race",
+      "flag-checkered-practice",
       "flag-checkered-qualifying",
       "flag-checkered-race",
     ]);
