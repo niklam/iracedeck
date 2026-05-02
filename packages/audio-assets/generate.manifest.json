@@ -2922,36 +2922,36 @@
       "requestId": "7Gl2GdSNCE95day8ZPW8"
     },
     "voice/luca/pit-readback/fast-repair-on.mp3": {
-      "hash": "e45d77c1485269d4",
+      "hash": "2c7b84893e09ba86",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
-      "textPreview": ". <break time=\"0.3s\" /> We're doing fast repairs to any damage you might have.",
-      "generatedAt": "2026-05-01T17:51:18.958Z",
-      "requestId": "e0Qc1ODT8qVOkfzNopl4"
+      "textPreview": ". <break time=\"0.3s\" /> We have some damage, and we're going to use the fast re…",
+      "generatedAt": "2026-05-02T19:25:34.122Z",
+      "requestId": "tVaGm8Shjv93grXjp0U9"
     },
     "voice/luca/pit-readback/fast-repair-off.mp3": {
-      "hash": "6731fa2dcfaae1e5",
+      "hash": "57e4ab8f6f1c5230",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
-      "textPreview": " <break time=\"0.3s\" /> We're not doing fast repair",
-      "generatedAt": "2026-05-01T16:43:48.128Z",
-      "requestId": "HfHkr3mcM3oFhEswZqLs"
+      "textPreview": " <break time=\"0.3s\" /> The car is damaged, but we're NOT gonna do a fast repair.",
+      "generatedAt": "2026-05-02T19:17:18.364Z",
+      "requestId": "ZhvjaDOcsY6WkdycEkJf"
     },
     "voice/luca/pit-readback/windshield-on.mp3": {
-      "hash": "c3c1161a78b89d48",
+      "hash": "1bd5a6a6719b506b",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
       "textPreview": "And we're cleaning the windshield.",
-      "generatedAt": "2026-05-01T17:52:37.080Z",
-      "requestId": "nKL6826K7sAkSCWPy9rY"
+      "generatedAt": "2026-05-02T19:25:34.339Z",
+      "requestId": "OsQdpvSHUlSWxx9bd60f"
     },
     "voice/luca/pit-readback/windshield-off.mp3": {
-      "hash": "27749c4e88939146",
+      "hash": "bc0cf03d6f32287c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
       "textPreview": "and we're leaving windshield as-is.",
-      "generatedAt": "2026-05-01T17:53:11.675Z",
-      "requestId": "35drCAILwwfupXaciTgI"
+      "generatedAt": "2026-05-02T19:25:34.580Z",
+      "requestId": "lt16FEOmwwyZ2aI2HJ8Q"
     },
     "voice/luca/pit-readback/closer-exit.mp3": {
       "hash": "b15737e380e4ca18",
@@ -3056,6 +3056,30 @@
       "textPreview": "White flag, this lap's your last shot.",
       "generatedAt": "2026-05-02T08:36:06.813Z",
       "requestId": "YeIRCpJxa4KCnWOMDhSq"
+    },
+    "voice/luca/damage/repair-needed-01.mp3": {
+      "hash": "d1e4e40de828d79b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "That hit broke something on the car. The spotter likely has more information.",
+      "generatedAt": "2026-05-02T19:11:51.157Z",
+      "requestId": "0nrp9AzAptpnanaUJmvA"
+    },
+    "voice/luca/damage/repair-needed-02.mp3": {
+      "hash": "1933ee6c1774291f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "We picked up some damage. Maybe ask the spotter for details.",
+      "generatedAt": "2026-05-02T19:08:22.777Z",
+      "requestId": "ls6lMLik1tFuSh5LlyY5"
+    },
+    "voice/luca/damage/repair-needed-03.mp3": {
+      "hash": "7f1b1a5624c84a52",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Looks like we took a hit and something is broken. The spotter should have more …",
+      "generatedAt": "2026-05-02T19:08:23.135Z",
+      "requestId": "sEswTNHPc6Ld8NJhYWHi"
     }
   }
 }
