@@ -607,8 +607,11 @@ function wire() {
   const wireAudioActionButton = (id, endpoint, busyLabel, doneLabel, errorPrefix) => {
     const btn = $(id);
     if (!btn) return;
+    // Capture the resting label ONCE at wireup. If we re-read it per-click,
+    // a click during the 1500 ms "doneLabel" window would capture that
+    // success label as the new "resting" text and the button stays stuck.
+    const original = btn.textContent;
     btn.addEventListener("click", async () => {
-      const original = btn.textContent;
       btn.textContent = busyLabel;
       btn.disabled = true;
       try {
