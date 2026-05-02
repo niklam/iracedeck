@@ -243,6 +243,16 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Damage callout opt-in (issue #489). Fires after the rising-edge
+     * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same
+     * forward-compat semantics as the flag callouts above. Canonical
+     * id↔key mapping in `DAMAGE_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledDamageRepairNeeded: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Pit-service readback opt-ins (issue #476). Two subjects: the
      * "We're …" callout on pit entry and the "To confirm: …" callout
      * after pit exit. Same forward-compat semantics as flag callouts —
