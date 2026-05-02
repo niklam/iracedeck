@@ -240,9 +240,9 @@
 
 | Action | Shortcut(s) | Available via SDK | iRacing Setting |
 |--------|-------------|-------------------|-----------------|
-| Cycle Camera | Shift+C / C | Yes | Next Camera / Previous Camera |
-| Cycle Sub Camera | Shift+B / B | Yes | Next Sub Camera / Previous Sub Camera |
-| Cycle Car | Shift+V / V | Yes | Next Car / Previous Car |
+| Cycle Camera | C / Shift+C | Yes | Next Camera / Previous Camera |
+| Cycle Sub Camera | B / Shift+B | Yes | Next Sub Camera / Previous Sub Camera |
+| Cycle Car | V / Shift+V | Yes | Next Car / Previous Car |
 | Focus on Your Car | Ctrl+V | Yes | Your Car |
 | Cycle Driving Camera | PageDown / PageUp | Yes | Next Driving Camera / Previous Driving Camera |
 | Recenter Head Mounted Display | ; | No | Recenter Head Mounted Display |

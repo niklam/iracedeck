@@ -124,6 +124,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     setRegenerateCallback = vi.fn();
     updateKeyImage = vi.fn();
     setActiveBinding = vi.fn();
+    tapBinding = vi.fn().mockResolvedValue(undefined);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -1071,6 +1072,91 @@ describe("ReplayControl", () => {
         expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
         expect((action as any).replaySlowMotion.get("ctx-1")).toBe(false);
       });
+    });
+  });
+
+  describe("car cycling (keystroke dispatch)", () => {
+    function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
+      return {
+        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    let action: ReplayControl;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      action = new ReplayControl();
+    });
+
+    it("next-car onKeyDown taps the replayControlNextCar global binding", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+      await action.onKeyDown(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      expect(action.tapBinding).toHaveBeenCalledWith("replayControlNextCar");
+    });
+
+    it("prev-car onKeyDown taps the replayControlPrevCar global binding", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "prev-car" }) as any);
+      await action.onKeyDown(fakeEvent("ctx-1", { mode: "prev-car" }) as any);
+
+      expect(action.tapBinding).toHaveBeenCalledWith("replayControlPrevCar");
+    });
+
+    it("next-car does NOT consult telemetry for car selection", async () => {
+      // Arrange: telemetry that would normally be inspected by the legacy path
+      action.sdkController.getCurrentTelemetry = vi.fn(() => ({
+        CamCarIdx: 0,
+        CarIdxLapDistPct: [0.1, 0.2],
+        CarIdxOnPitRoad: [false, false],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack],
+      }));
+
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+      await action.onKeyDown(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      // No camera.switchNum call — keystroke is the only dispatch.
+      const { getCommands } = await import("@iracedeck/deck-core");
+      const cameraMock = vi.mocked(getCommands)().camera as unknown as { switchNum: ReturnType<typeof vi.fn> };
+      expect(cameraMock.switchNum).not.toHaveBeenCalled();
+    });
+
+    it("dial rotation on next-car routes through the keystroke path", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      await action.onDialRotate({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "next-car" }, ticks: 1 },
+      } as any);
+
+      expect(action.tapBinding).toHaveBeenCalledWith("replayControlNextCar");
+    });
+
+    it("dial counter-rotation on next-car taps the prev-car binding", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      await action.onDialRotate({
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "next-car" }, ticks: -1 },
+      } as any);
+
+      expect(action.tapBinding).toHaveBeenCalledWith("replayControlPrevCar");
+    });
+
+    it("declares the active binding so readiness tracking matches the configured key", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      expect(action.setActiveBinding).toHaveBeenCalledWith("replayControlNextCar");
+    });
+
+    it("clears the active binding when switched to a non-keystroke mode", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+      vi.mocked(action.setActiveBinding).mockClear();
+
+      await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-session" }) as any);
+
+      expect(action.setActiveBinding).toHaveBeenCalledWith(null);
     });
   });
 

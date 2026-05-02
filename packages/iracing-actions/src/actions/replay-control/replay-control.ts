@@ -168,6 +168,22 @@ const DIRECTIONAL_PAIRS: Partial<Record<ReplayControlMode, { next: ReplayControl
   "prev-car-number": { next: "next-car-number", prev: "prev-car-number" },
 };
 
+/**
+ * @internal Exported for testing
+ *
+ * Global setting keys for the configurable car-cycle keystrokes.
+ * The defaults (V / Shift+V) are declared in
+ * `packages/iracing-actions/src/actions/data/key-bindings.json` under `replayControl`.
+ */
+export const NEXT_CAR_BINDING_KEY = "replayControlNextCar";
+export const PREV_CAR_BINDING_KEY = "replayControlPrevCar";
+
+/** Modes that depend on a global key binding (rather than an SDK command). */
+const KEYSTROKE_MODES: Partial<Record<ReplayControlMode, string>> = {
+  "next-car": NEXT_CAR_BINDING_KEY,
+  "prev-car": PREV_CAR_BINDING_KEY,
+};
+
 /** Modes whose display changes based on telemetry state */
 const TELEMETRY_DISPLAY_MODES: ReadonlySet<ReplayControlMode> = new Set([
   "play-pause",
@@ -479,6 +495,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
 
     // Seed initial state from current telemetry
     const current = this.sdkController.getCurrentTelemetry();
@@ -521,6 +538,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     this.repeat.clear(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
     await this.updateDisplay(ev, settings);
   }
 
@@ -926,45 +944,16 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         break;
       }
       case "next-car": {
-        const nextCarIdx = this.findAdjacentCarOnTrack("ahead");
-
-        if (nextCarIdx === null) {
-          this.logger.warn("No car found ahead on track");
-          break;
-        }
-
-        const nextCarNum = this.getCarNumberRawByIdx(nextCarIdx);
-
-        if (nextCarNum === null) {
-          this.logger.warn("Could not find car number for next car");
-          break;
-        }
-
-        const camera = getCommands().camera;
-        const success = camera.switchNum(nextCarNum, 0, 0);
-        this.logger.info("Next car executed");
-        this.logger.debug(`Result: ${success}, carNum: ${nextCarNum}`);
+        // Send the configured keystroke (default: V) so iRacing's own car-ordering
+        // drives the cycle. Telemetry-driven selection picks the wrong driver during
+        // replay-while-towed, where CamCarIdx reflects the live field.
+        void this.tapBinding(NEXT_CAR_BINDING_KEY);
+        this.logger.info("Next car executed (keystroke)");
         break;
       }
       case "prev-car": {
-        const prevCarIdx = this.findAdjacentCarOnTrack("behind");
-
-        if (prevCarIdx === null) {
-          this.logger.warn("No car found behind on track");
-          break;
-        }
-
-        const prevCarNum = this.getCarNumberRawByIdx(prevCarIdx);
-
-        if (prevCarNum === null) {
-          this.logger.warn("Could not find car number for previous car");
-          break;
-        }
-
-        const camera = getCommands().camera;
-        const success = camera.switchNum(prevCarNum, 0, 0);
-        this.logger.info("Previous car executed");
-        this.logger.debug(`Result: ${success}, carNum: ${prevCarNum}`);
+        void this.tapBinding(PREV_CAR_BINDING_KEY);
+        this.logger.info("Previous car executed (keystroke)");
         break;
       }
       case "next-car-number":
