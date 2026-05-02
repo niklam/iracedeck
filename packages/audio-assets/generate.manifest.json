@@ -1762,12 +1762,12 @@
       "requestId": "HlSB4OleOgYXlr2zsYQh"
     },
     "voice/luca/flags/yellow-cleared-01.mp3": {
-      "hash": "34dc39967fb11d27",
+      "hash": "f22c11ff71cde4a1",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
-      "textPreview": "Yellow's cleared, <break time=\"0.3s\" /> be ready.",
-      "generatedAt": "2026-05-01T17:58:17.274Z",
-      "requestId": "caP8tInWkYLJNkxU0j4o"
+      "textPreview": "Yellow cleared.",
+      "generatedAt": "2026-05-02T08:01:09.804Z",
+      "requestId": "Hn13aZFvpIkOyIqQNrtp"
     },
     "voice/titan/flags/yellow-local-01.mp3": {
       "hash": "f36c9c1fc328bd45",

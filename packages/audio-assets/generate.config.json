@@ -176,7 +176,7 @@
       },
       {
         "name": "yellow-cleared-01",
-        "text": "Yellow's cleared, <break time=\"0.3s\" /> be ready.",
+        "text": "Yellow cleared.",
         "seed": 5
       }
     ],
