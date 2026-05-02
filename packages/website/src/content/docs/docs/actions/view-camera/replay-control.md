@@ -357,12 +357,12 @@ Jump the replay camera to your own car.
 
 ### Next Car
 
-Switch the replay camera to the next car ahead on track. Skips cars currently on pit road.
+Switch the replay camera to the next car. Defers to iRacing's own car-ordering by sending the configured keystroke, so cycling stays correct in live and replay (including replay-while-towed, where telemetry-driven selection picks the wrong driver).
 
 #### Details
 
-- **Dial:** Rotation cycles cars on track (clockwise = next ahead, counter-clockwise = previous behind)
-- **Default binding:** No keyboard binding
+- **Dial:** Clockwise sends Next Car, counter-clockwise sends Previous Car
+- **Default binding:** `V`
 - **Telemetry-aware icon:** No
 
 #### Settings
@@ -373,12 +373,12 @@ Switch the replay camera to the next car ahead on track. Skips cars currently on
 
 ### Previous Car
 
-Switch the replay camera to the next car behind on track. Skips cars currently on pit road.
+Switch the replay camera to the previous car. Defers to iRacing's own car-ordering by sending the configured keystroke, so cycling stays correct in live and replay (including replay-while-towed).
 
 #### Details
 
-- **Dial:** Rotation cycles cars on track (clockwise = next ahead, counter-clockwise = previous behind)
-- **Default binding:** No keyboard binding
+- **Dial:** Clockwise sends Next Car, counter-clockwise sends Previous Car
+- **Default binding:** `Shift+V`
 - **Telemetry-aware icon:** No
 
 #### Settings

@@ -959,6 +959,10 @@
       "setting": "spotterSilence"
     }
   ],
+  "replayControl": [
+    { "id": "nextCar", "label": "Next Car", "default": "V", "setting": "replayControlNextCar" },
+    { "id": "prevCar", "label": "Previous Car", "default": "Shift+V", "setting": "replayControlPrevCar" }
+  ],
   "audioControls": [
     {
       "id": "pushToTalk",

@@ -95,6 +95,7 @@
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
+		<%- include('global-key-bindings', { keyBindings: require('./data/key-bindings.json').replayControl }) %>
 		<%- include('global-title-defaults') %>
 		<%- include('global-color-defaults') %>
 		<%- include('global-border-defaults') %>
