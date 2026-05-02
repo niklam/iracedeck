@@ -1,0 +1,21 @@
+<!--
+  Global Flag Flash Settings
+
+  Plugin-wide flag-flash behaviour in a collapsible "Flag Flash" accordion.
+  Settings are stored in global settings (shared across all action instances).
+  Collapsed by default. See issue #490.
+-->
+<%- include('accordion', {
+  title: 'Flag Flash',
+  accordionId: 'Global Flag Flash',
+  open: false,
+  content: `
+    <sdpi-item label="Duration (ms)">
+      <ird-range-input setting="flagFlashDurationMs" min="0" max="15000" step="500" default="5000" global showlabels></ird-range-input>
+    </sdpi-item>
+    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+      How long the flag overlay flashes after a new flag transition.
+      Set to 0 to flash continuously while the flag is raised.
+    </div>
+  `
+}) %>
