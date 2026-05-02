@@ -9,7 +9,6 @@
 import { type AudioAssetsManifest, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
 
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 
@@ -22,17 +21,6 @@ const requireFromHere = createRequire(import.meta.url);
  */
 function resolveManifestPath(): string {
   return requireFromHere.resolve("@iracedeck/audio-assets/manifest.json");
-}
-
-/**
- * Path to the `@iracedeck/audio-assets` package root, used as the base
- * path for `initializeAudio()` so manifest-relative clip paths
- * (`voice/luca/welcome.mp3`, `sfx/IRD-tick-open.mp3`) resolve to real
- * files on disk. The harness reads source assets directly — no build-
- * time copy step.
- */
-export function resolveAudioAssetsBasePath(): string {
-  return dirname(resolveManifestPath());
 }
 
 let cachedManifest: AudioAssetsManifest | null = null;
