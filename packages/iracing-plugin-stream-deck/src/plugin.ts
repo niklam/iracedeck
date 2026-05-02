@@ -3,6 +3,8 @@ import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { t
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios, scanDriverNames, scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
 import {
+  DAMAGE_CALLOUT_SETTING_KEYS,
+  type DamageCalloutId,
   FLAG_CALLOUT_SETTING_KEYS,
   type FlagCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
@@ -192,6 +194,10 @@ registerPitCrew(
   // every readback fire so deferred replays speak the current queue,
   // not a snapshot frozen into the original event.
   () => getReadbackSnapshot(),
+  // Damage callout opt-in (issue #489) — same live-read pattern as the
+  // flag callouts: gate at event arrival so disabling mid-callout only
+  // suppresses future fires.
+  (id: DamageCalloutId) => (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
 );
 
 // Publish audio device list and apply saved device selection.
