@@ -489,11 +489,17 @@ function readReadbackSnapshot() {
 // selections when the readback fires. Per-control change listeners call
 // this on every edit so iRacing's per-toggle confirmations also fire as
 // the user composes — disconnect the controller if you want silence.
-async function pushReadbackSnapshot() {
+//
+// `throwOnError` defaults to false so per-change listeners log + carry on
+// if the harness server hiccups. The readback-fire button passes `true`
+// so a failed snapshot push aborts before publishing the
+// `readbackRequested` event with stale state.
+async function pushReadbackSnapshot({ throwOnError = false } = {}) {
   try {
     await post("/api/readback/snapshot", readReadbackSnapshot());
   } catch (e) {
     console.error("Readback snapshot push failed:", e);
+    if (throwOnError) throw e;
   }
 }
 
@@ -548,8 +554,10 @@ function wireReadbackComposer() {
     try {
       // Push current snapshot first so the readback fires against the
       // selections visible on screen, even if a per-change push is still
-      // in flight. The endpoint is idempotent and fast.
-      await pushReadbackSnapshot();
+      // in flight. The endpoint is idempotent and fast. `throwOnError`
+      // aborts before the publish below if the snapshot push fails — we
+      // must not fire `readbackRequested` against possibly-stale state.
+      await pushReadbackSnapshot({ throwOnError: true });
       await post("/api/bus/publish", {
         event: "pitService.readbackRequested",
         data: { reason },
