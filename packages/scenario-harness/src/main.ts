@@ -165,7 +165,7 @@ async function main(): Promise<void> {
       refreshAudioAssets: () =>
         processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
       wipeAudioCache: async () => {
-        wipeProcessedCache();
+        await wipeProcessedCache();
         audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
         await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
       },

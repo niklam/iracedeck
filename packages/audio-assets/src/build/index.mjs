@@ -20,6 +20,25 @@ const CACHE_ROOT = path.join(packageRoot, ".cache");
 // into the plugin's assets/audio/ output (tooling, package plumbing, our own
 // cache).
 const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src"]);
+
+// Serializes operations that mutate the shared `.cache/` tree
+// (`processAndCopyAudioAssets`, `wipeProcessedCache`). The harness exposes
+// both as separate "Reload audio" / "Wipe ffmpeg cache" buttons, and a
+// rapid Wipe-then-Reload (or vice versa) would otherwise race: an rmSync
+// can drop a file the other call just stat'd or is mid-write into, with
+// ENOENT or partial-output as fallout. The Rollup build path only invokes
+// `processAndCopyAudioAssets` once per build so it's not affected, but
+// the lock costs nothing in the single-call case.
+let cacheLock = Promise.resolve();
+function withCacheLock(operation) {
+  // `.then(fn, fn)` makes the queue continue even if a prior operation
+  // rejected, so one failure doesn't strand every subsequent call.
+  const next = cacheLock.then(operation, operation);
+
+  cacheLock = next.catch(() => {});
+
+  return next;
+}
 // The voice/ tree holds all radio-engineer voice clips, organised as
 // voice/<voice>/<category>/*.mp3. Every .mp3 under it (at any depth) gets
 // the radio filter; anything outside voice/ (currently sfx/) is copied
@@ -98,8 +117,10 @@ function cacheIsFresh(sourcePath, cachedPath) {
  * out without manually scrubbing `packages/audio-assets/.cache/`.
  */
 export function wipeProcessedCache() {
-  if (!existsSync(CACHE_ROOT)) return;
-  rmSync(CACHE_ROOT, { recursive: true, force: true });
+  return withCacheLock(() => {
+    if (!existsSync(CACHE_ROOT)) return;
+    rmSync(CACHE_ROOT, { recursive: true, force: true });
+  });
 }
 
 /**
@@ -125,6 +146,10 @@ export async function processAndCopyAudioAssets({ destRoot, logger, wipe = true 
   if (!destRoot) throw new Error("processAndCopyAudioAssets: destRoot is required");
   if (!existsSync(audioAssetsPath)) return;
 
+  return withCacheLock(() => runProcessAndCopy({ destRoot, logger, wipe }));
+}
+
+async function runProcessAndCopy({ destRoot, logger, wipe }) {
   const ffmpegPath = require("ffmpeg-static");
   const hash = filterHash(RADIO_ENGINEER_FILTER);
   const cacheRoot = path.join(CACHE_ROOT, hash);
