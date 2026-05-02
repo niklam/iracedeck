@@ -75,7 +75,7 @@ const CACHE_ROOT = path.join(packageRoot, ".cache");
 
 /**
  * Drop the processed mp3 for `relPath` from every filter-hash subdir under
- * `.cache/`. The build helper's mtime check (cache.mtime >= source.mtime)
+ * `.cache/`. The build helper's mtime check (cache.mtime > source.mtime)
  * is correct in the normal case, but breaks under git checkout / `cp -p`
  * which can preserve an older source mtime even though content changed.
  * Explicit deletion when we know the source is fresh removes that hazard

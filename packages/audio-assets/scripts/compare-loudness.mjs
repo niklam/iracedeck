@@ -39,8 +39,11 @@ const SOURCES = [
   "voice/luca/pit-readback/opener-entry.mp3",
 ];
 
-// The current production chain — kept as a literal here so this script is
-// fully self-contained and can be diffed against future tweaks.
+// The radio-engineer chain at the time this comparison was first authored
+// (production was the equivalent of variant 01 below). Kept as a literal
+// historical baseline so the variant labels (e.g. `+4dB`) stay meaningful
+// across re-runs. Production has since moved to variant 03's chain — see
+// `RADIO_ENGINEER_FILTER` in `src/presets.mjs` for the live chain.
 const CURRENT = "highpass=f=250,lowpass=f=3500,volume=8dB,asoftclip=type=tanh,volume=-6dB,volume=2dB";
 
 // Each variant gets a name (used as filename suffix) and a filter chain. The
