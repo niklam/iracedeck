@@ -493,10 +493,15 @@ Required. Supports template variables.
 
 ### Driver Target
 
-Every mode that accepts a `<driver>` parameter shares a single targeting setting with two options:
+Every mode that accepts a `<driver>` parameter shares a single targeting setting with three options:
 
-- **Use Viewed Car** (default) — The action reads the car number of the car currently being followed in the replay / broadcast view at send time. View a car and press the button; the command targets that car.
-- **Pre-defined Car Number** — Unchecking **Use Viewed Car** reveals a number input. The same car number is used on every press, regardless of which car is being viewed, and is also rendered on the button icon so you can tell which car the button targets.
+- **Type in Chat** (default) — One-tap "open chat with the right command pre-filled, let me type the number myself". The action opens iRacing chat, pastes the command prefix (e.g. `!clear `, with a trailing space), and **stops** — it does not press Enter. You type the car number off the standings sheet and press Enter to submit. Useful for league admins who handle a different driver each lap and don't want to pre-bind a specific number.
+- **Use Viewed Car** — The action reads the car number of the car currently being followed in the replay / broadcast view at send time. View a car and press the button; the command targets that car.
+- **Specific Car Number** — Selecting this reveals a number input. The same car number is used on every press, regardless of which car is being viewed, and is also rendered on the button icon so you can tell which car the button targets.
+
+:::caution
+**Type in Chat** leaves the command prefix on your OS clipboard after firing — same trade-off as the existing chat-send pipeline. If you have a clipboard manager that pops up on every change, you'll see the prefix queued there. Restoring the previous clipboard contents was deliberately skipped because clipboard-manager apps that watch `WM_CLIPBOARDUPDATE` can steal focus away from iRacing during the paste.
+:::
 
 ### Message templates
 

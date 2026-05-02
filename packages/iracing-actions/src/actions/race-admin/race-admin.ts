@@ -9,11 +9,13 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  getClipboard,
   getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
+  getKeyboard,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
@@ -54,17 +56,15 @@ import yellowIconSvg from "@iracedeck/icons/race-admin/yellow.svg";
 import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import { buildAdminCommand } from "./race-admin-commands.js";
+import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
+import { buildAdminCommand, buildAdminCommandPrefix } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
 
 // ── Settings Schema ─────────────────────────────────────────────
 
 const RaceAdminSettings = CommonSettings.extend({
   mode: z.enum(RACE_ADMIN_MODES).default("yellow"),
-  useViewedCar: z
-    .union([z.boolean(), z.string()])
-    .transform((val) => val === true || val === "true")
-    .default(true),
+  driverTarget: z.enum(["viewed-car", "specific", "type-in-chat"]).default("type-in-chat"),
   carNumber: z.string().default(""),
   message: z.string().default(""),
   penaltyType: z.enum(["time", "laps", "drivethrough"]).default("time"),
@@ -122,8 +122,10 @@ export function generateRaceAdminSvg(mode: RaceAdminMode, settings: RaceAdminSet
   // Build default title from meta labels (subLabel on top, mainLabel on bottom)
   let subLabel = meta.subLabel;
 
-  // When pre-defined car number is set, show it on the icon instead of subLabel
-  if (meta.needsDriver && !settings.useViewedCar && settings.carNumber?.trim()) {
+  // When a specific car number is configured, show it on the icon instead of the
+  // generic subLabel. For the "viewed-car" and "type-in-chat" targets there's no
+  // fixed number to display, so fall through to the default subLabel.
+  if (meta.needsDriver && settings.driverTarget === "specific" && settings.carNumber?.trim()) {
     subLabel = `#${settings.carNumber.trim()}`;
   }
 
@@ -146,17 +148,40 @@ export const RACE_ADMIN_UUID = "com.iracedeck.sd.core.race-admin" as const;
 export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   private activeContexts = new Map<string, RaceAdminSettings>();
   private viewedCarNumbers = new Map<string, string | null>();
+  private typeInChatInFlight = new Set<string>();
 
   private parseSettings(raw: unknown): RaceAdminSettings {
-    const result = RaceAdminSettings.safeParse(raw);
+    const { migrated } = migrateUseViewedCarToDriverTarget(raw);
+    const result = RaceAdminSettings.safeParse(migrated);
 
     return result.success ? result.data : RaceAdminSettings.parse({});
+  }
+
+  /**
+   * Detect a legacy `useViewedCar` setting and persist the migrated shape to
+   * Stream Deck storage so the legacy key is permanently dropped. Logs and
+   * swallows persist failures — the runtime always reads via `parseSettings`,
+   * so a failed persist doesn't block functionality.
+   */
+  private async persistMigratedSettings(
+    ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
+  ): Promise<void> {
+    const { migrated, changed } = migrateUseViewedCarToDriverTarget(ev.payload.settings);
+
+    if (!changed) return;
+
+    try {
+      await ev.action.setSettings(migrated);
+    } catch (err) {
+      this.logger.warn(`Failed to persist migrated race-admin settings: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // ── Lifecycle ───────────────────────────────────────────────
 
   override async onWillAppear(ev: IDeckWillAppearEvent<RaceAdminSettings>): Promise<void> {
     await super.onWillAppear(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
 
@@ -173,10 +198,12 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.viewedCarNumbers.delete(ev.action.id);
+    this.typeInChatInFlight.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<RaceAdminSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -200,6 +227,17 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
   private async executeMode(contextId: string, settings: RaceAdminSettings): Promise<void> {
     const { mode } = settings;
+    const meta = RACE_ADMIN_MODE_META[mode];
+
+    // "Type in chat" only applies to driver-targeted modes — for non-driver
+    // modes a leftover `driverTarget: "type-in-chat"` setting is ignored and
+    // the command is dispatched normally via the SDK.
+    if (meta.needsDriver && settings.driverTarget === "type-in-chat") {
+      await this.executeTypeInChat(contextId, mode);
+
+      return;
+    }
+
     const viewedCarNumber = this.viewedCarNumbers.get(contextId) ?? null;
     const command = buildAdminCommand(mode, settings, viewedCarNumber, this.sdkController);
 
@@ -219,6 +257,64 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     }
 
     this.logger.debug(`Command: "${command}", result: ${success}`);
+  }
+
+  /**
+   * "Type in chat" driver-target mode (issue #491).
+   *
+   * Writes the command prefix (e.g. `"!clear "` with trailing space) to the
+   * OS clipboard, opens iRacing chat via the SDK, waits ~100ms for the input
+   * box to focus, and sends Ctrl+V to paste. **Does NOT send Enter** — the
+   * admin types the driver number themselves and submits manually.
+   *
+   * Re-entrancy: a per-context guard drops back-to-back fires while one is
+   * still in flight, preventing the second fire from clobbering the clipboard
+   * before the first paste lands.
+   */
+  private async executeTypeInChat(contextId: string, mode: RaceAdminMode): Promise<void> {
+    if (this.typeInChatInFlight.has(contextId)) {
+      this.logger.debug(`type-in-chat: dropping concurrent fire for ${contextId}`);
+
+      return;
+    }
+
+    this.typeInChatInFlight.add(contextId);
+
+    try {
+      const prefix = buildAdminCommandPrefix(mode);
+
+      if (!prefix) {
+        this.logger.warn(`type-in-chat: no command prefix for mode: ${mode}`);
+
+        return;
+      }
+
+      if (!getClipboard().setClipboardText(prefix)) {
+        this.logger.warn(`type-in-chat: clipboard write failed, aborting (mode: ${mode})`);
+
+        return;
+      }
+
+      const opened = getCommands().chat.beginChat();
+
+      if (!opened) {
+        this.logger.warn("type-in-chat: chat.beginChat() failed, aborting");
+
+        return;
+      }
+
+      // Match the chat-send pipeline's kChatStepDelayMs (addon.cc:352): give
+      // iRacing a couple frames to actually focus the chat input box before
+      // pasting. Without this, Ctrl+V lands on an empty viewport.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+      await getKeyboard().sendKeyCombination({ key: "v", code: "KeyV", modifiers: ["ctrl"] });
+
+      this.logger.info("Type-in-chat prefix pasted");
+      this.logger.debug(`Prefix: "${prefix}" (${prefix.length} chars)`);
+    } finally {
+      this.typeInChatInFlight.delete(contextId);
+    }
   }
 
   // ── Display ─────────────────────────────────────────────────

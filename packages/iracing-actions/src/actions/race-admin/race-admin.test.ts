@@ -1,9 +1,9 @@
 import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildAdminCommand, resolveDriverTarget } from "./race-admin-commands.js";
+import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { generateRaceAdminSvg } from "./race-admin.js";
+import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
 // Mock iracing-sdk
@@ -99,6 +99,11 @@ vi.mock("@iracedeck/icons/race-admin/rc-message.svg", () => ({
 }));
 
 // Mock shared utilities
+const mockSendMessage = vi.fn(async () => true);
+const mockBeginChat = vi.fn(() => true);
+const mockSetClipboardText = vi.fn(() => true);
+const mockSendKeyCombination = vi.fn(async () => true);
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -121,11 +126,16 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    async onWillAppear(_ev: unknown): Promise<void> {}
+    async onWillDisappear(_ev: unknown): Promise<void> {}
+    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getCommands: vi.fn(() => ({
-    chat: { sendMessage: vi.fn(async () => true) },
+    chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
     camera: { switchNum: vi.fn(() => true) },
   })),
+  getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
+  getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -202,7 +212,7 @@ describe("RaceAdmin", () => {
   describe("resolveDriverTarget", () => {
     const baseSettings = {
       mode: "black-flag" as const,
-      useViewedCar: true,
+      driverTarget: "viewed-car" as const,
       carNumber: "",
       message: "",
       penaltyType: "time",
@@ -213,27 +223,33 @@ describe("RaceAdmin", () => {
       trackStatePercent: "50",
     };
 
-    it("should return viewed car number when useViewedCar is true", () => {
+    it("should return viewed car number when driverTarget is viewed-car", () => {
       const meta = RACE_ADMIN_MODE_META["black-flag"];
-      const result = resolveDriverTarget({ ...baseSettings, useViewedCar: true }, "42", meta);
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "viewed-car" }, "42", meta);
       expect(result).toBe("42");
     });
 
-    it("should return null when useViewedCar is true but no viewed car", () => {
+    it("should return null when driverTarget is viewed-car but no viewed car", () => {
       const meta = RACE_ADMIN_MODE_META["black-flag"];
-      const result = resolveDriverTarget({ ...baseSettings, useViewedCar: true }, null, meta);
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "viewed-car" }, null, meta);
       expect(result).toBeNull();
     });
 
-    it("should return pre-defined car number when useViewedCar is false", () => {
+    it("should return pre-defined car number when driverTarget is specific", () => {
       const meta = RACE_ADMIN_MODE_META["black-flag"];
-      const result = resolveDriverTarget({ ...baseSettings, useViewedCar: false, carNumber: "7" }, null, meta);
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "specific", carNumber: "7" }, null, meta);
       expect(result).toBe("7");
     });
 
-    it("should return null when useViewedCar is false and carNumber is empty", () => {
+    it("should return null when driverTarget is specific and carNumber is empty", () => {
       const meta = RACE_ADMIN_MODE_META["black-flag"];
-      const result = resolveDriverTarget({ ...baseSettings, useViewedCar: false, carNumber: "" }, null, meta);
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "specific", carNumber: "" }, null, meta);
+      expect(result).toBeNull();
+    });
+
+    it("should return null when driverTarget is type-in-chat (handled by executeMode)", () => {
+      const meta = RACE_ADMIN_MODE_META["black-flag"];
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "type-in-chat" }, "42", meta);
       expect(result).toBeNull();
     });
 
@@ -250,7 +266,7 @@ describe("RaceAdmin", () => {
     const mockSdkController = {} as unknown;
     const baseSettings = {
       mode: "yellow" as const,
-      useViewedCar: true,
+      driverTarget: "viewed-car" as const,
       carNumber: "",
       message: "",
       penaltyType: "time",
@@ -280,7 +296,7 @@ describe("RaceAdmin", () => {
     });
 
     it("should build commands with driver target (pre-defined)", () => {
-      const settings = { ...baseSettings, useViewedCar: false, carNumber: "7" };
+      const settings = { ...baseSettings, driverTarget: "specific" as const, carNumber: "7" };
       const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never);
       expect(result).toBe("!dq #7");
     });
@@ -404,7 +420,7 @@ describe("RaceAdmin", () => {
   describe("generateRaceAdminSvg", () => {
     const defaultSettings = {
       mode: "yellow" as const,
-      useViewedCar: true,
+      driverTarget: "viewed-car" as const,
       carNumber: "",
       message: "",
       penaltyType: "time" as const,
@@ -427,24 +443,261 @@ describe("RaceAdmin", () => {
       expect(decoded).toContain("CAUTION");
     });
 
-    it("should show car number when pre-defined car is set", () => {
-      const settings = { ...defaultSettings, useViewedCar: false, carNumber: "42" };
+    it("should show car number when driverTarget is specific", () => {
+      const settings = { ...defaultSettings, driverTarget: "specific" as const, carNumber: "42" };
       const result = generateRaceAdminSvg("black-flag", settings);
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("#42");
     });
 
     it("should show default sub label when using viewed car", () => {
-      const settings = { ...defaultSettings, useViewedCar: true };
+      const settings = { ...defaultSettings, driverTarget: "viewed-car" as const };
       const result = generateRaceAdminSvg("black-flag", settings);
       const decoded = decodeURIComponent(result);
       expect(decoded).toContain("FLAG");
+    });
+
+    it("should show default sub label for type-in-chat (no fixed number)", () => {
+      const settings = { ...defaultSettings, driverTarget: "type-in-chat" as const, carNumber: "999" };
+      const result = generateRaceAdminSvg("black-flag", settings);
+      const decoded = decodeURIComponent(result);
+      // Falls through to the default subLabel; the carNumber is irrelevant here.
+      expect(decoded).toContain("FLAG");
+      expect(decoded).not.toContain("#999");
     });
 
     it("should produce different icons for different modes", () => {
       const yellowSvg = generateRaceAdminSvg("yellow", defaultSettings);
       const pitCloseSvg = generateRaceAdminSvg("pit-close", defaultSettings);
       expect(yellowSvg).not.toBe(pitCloseSvg);
+    });
+  });
+
+  // ── Command Prefix (type-in-chat) ───────────────────────────
+
+  describe("buildAdminCommandPrefix", () => {
+    it("returns the meta.command with a trailing space for driver-targeted modes", () => {
+      expect(buildAdminCommandPrefix("dq-driver")).toBe("!dq ");
+      expect(buildAdminCommandPrefix("clear-penalties")).toBe("!clear ");
+      expect(buildAdminCommandPrefix("black-flag")).toBe("!black ");
+      expect(buildAdminCommandPrefix("wave-around")).toBe("!waveby ");
+      expect(buildAdminCommandPrefix("eol")).toBe("!eol ");
+    });
+
+    it("returns the prefix even for non-driver modes (caller filters by needsDriver)", () => {
+      expect(buildAdminCommandPrefix("yellow")).toBe("!yellow ");
+      expect(buildAdminCommandPrefix("clear-all")).toBe("!clearall ");
+    });
+
+    it("never returns a prefix without trailing whitespace", () => {
+      for (const mode of RACE_ADMIN_MODES) {
+        const prefix = buildAdminCommandPrefix(mode);
+
+        if (prefix !== null) {
+          expect(prefix.endsWith(" ")).toBe(true);
+        }
+      }
+    });
+  });
+
+  // ── Action Class: type-in-chat fire path ────────────────────
+
+  describe("RaceAdmin.executeMode (via onKeyDown)", () => {
+    const baseSettings = {
+      mode: "dq-driver" as const,
+      driverTarget: "type-in-chat" as const,
+      carNumber: "",
+      message: "",
+      penaltyType: "time",
+      penaltyValue: "30",
+      paceLapsOperation: "+",
+      paceLapsValue: "1",
+      gridSetMinutes: "5",
+      trackStatePercent: "50",
+    };
+
+    function makeKeyDownEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-1", setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    beforeEach(() => {
+      mockSetClipboardText.mockClear();
+      mockSendKeyCombination.mockClear();
+      mockBeginChat.mockClear();
+      mockSendMessage.mockClear();
+      mockSetClipboardText.mockReturnValue(true);
+      mockBeginChat.mockReturnValue(true);
+      mockSendKeyCombination.mockResolvedValue(true);
+    });
+
+    it("type-in-chat: writes prefix, opens chat, pastes Ctrl+V, never sends Enter", async () => {
+      const action = new RaceAdmin();
+      const ev = makeKeyDownEvent(baseSettings);
+
+      await action.onKeyDown(ev);
+      // Wait past the 100ms internal delay so the keyboard call has fired.
+      await new Promise((r) => setTimeout(r, 150));
+
+      expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
+      expect(mockSetClipboardText).toHaveBeenCalledWith("!dq ");
+
+      expect(mockBeginChat).toHaveBeenCalledTimes(1);
+
+      expect(mockSendKeyCombination).toHaveBeenCalledTimes(1);
+      expect(mockSendKeyCombination).toHaveBeenCalledWith({ key: "v", code: "KeyV", modifiers: ["ctrl"] });
+
+      // Crucially: no Enter key sent and no SDK chat.sendMessage call.
+      const enterCalls = mockSendKeyCombination.mock.calls.filter((c) => {
+        const arg = c[0] as { key?: string };
+
+        return arg?.key === "enter" || arg?.key === "Enter";
+      });
+      expect(enterCalls).toHaveLength(0);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("type-in-chat: clipboard write failure aborts before opening chat", async () => {
+      mockSetClipboardText.mockReturnValueOnce(false);
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeKeyDownEvent(baseSettings));
+      await new Promise((r) => setTimeout(r, 150));
+
+      expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
+      expect(mockBeginChat).not.toHaveBeenCalled();
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("type-in-chat: beginChat() failure aborts before sending Ctrl+V", async () => {
+      mockBeginChat.mockReturnValueOnce(false);
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeKeyDownEvent(baseSettings));
+      await new Promise((r) => setTimeout(r, 150));
+
+      expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
+      expect(mockBeginChat).toHaveBeenCalledTimes(1);
+      expect(mockSendKeyCombination).not.toHaveBeenCalled();
+    });
+
+    it("non-driver mode + leftover driverTarget=type-in-chat falls through to chat.sendMessage", async () => {
+      const action = new RaceAdmin();
+      const ev = makeKeyDownEvent({
+        ...baseSettings,
+        mode: "yellow", // needsDriver=false
+        driverTarget: "type-in-chat",
+        message: "Caution!",
+      });
+
+      await action.onKeyDown(ev);
+
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendMessage).toHaveBeenCalledWith("!yellow Caution!");
+      expect(mockSetClipboardText).not.toHaveBeenCalled();
+      expect(mockBeginChat).not.toHaveBeenCalled();
+    });
+
+    it("type-in-chat: re-entrant fires while one is in flight are dropped", async () => {
+      const action = new RaceAdmin();
+      const ev = makeKeyDownEvent(baseSettings);
+
+      // Fire two in rapid succession; the second should bail before clipboard write.
+      const first = action.onKeyDown(ev);
+      const second = action.onKeyDown(ev);
+      await Promise.all([first, second]);
+      await new Promise((r) => setTimeout(r, 150));
+
+      expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
+      expect(mockBeginChat).toHaveBeenCalledTimes(1);
+      expect(mockSendKeyCombination).toHaveBeenCalledTimes(1);
+    });
+
+    it("driverTarget=specific dispatches via SDK chat.sendMessage as before", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeKeyDownEvent({ ...baseSettings, driverTarget: "specific", carNumber: "42" }));
+
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendMessage).toHaveBeenCalledWith("!dq #42");
+      expect(mockSetClipboardText).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Action Class: settings migration ────────────────────────
+
+  describe("RaceAdmin settings migration (useViewedCar → driverTarget)", () => {
+    function makeWillAppearEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-1", setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    it("persists migrated payload (without useViewedCar) when legacy key present", async () => {
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "dq-driver", useViewedCar: false, carNumber: "7" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).toHaveBeenCalledTimes(1);
+      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      expect(persisted).toMatchObject({ mode: "dq-driver", driverTarget: "specific", carNumber: "7" });
+      expect(persisted.useViewedCar).toBeUndefined();
+    });
+
+    it("does not call setSettings when settings already use driverTarget", async () => {
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "dq-driver", driverTarget: "viewed-car" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it("maps legacy useViewedCar=true to driverTarget=viewed-car", async () => {
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "dq-driver", useViewedCar: true });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      expect(persisted.driverTarget).toBe("viewed-car");
+    });
+
+    it("backfills driverTarget=viewed-car for pre-existing buttons that never wrote useViewedCar", async () => {
+      // Regression for CodeRabbit catch on PR #495: v1.15 buttons whose users
+      // never toggled the "Use Viewed Car" checkbox have neither useViewedCar
+      // nor driverTarget in saved settings. Without backfill they'd silently
+      // flip to the new "type-in-chat" default.
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "dq-driver", addedWithVersion: "1.15.0" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).toHaveBeenCalledTimes(1);
+      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      expect(persisted.driverTarget).toBe("viewed-car");
+      expect(persisted.useViewedCar).toBeUndefined();
+    });
+
+    it("does not persist for a fresh button with no addedWithVersion and no useViewedCar", async () => {
+      // Brand-new button — addedWithVersion is missing on first appear, so we
+      // fall through to the schema default ("type-in-chat") without writing.
+      // (Note: base-action's own onWillAppear may persist addedWithVersion, but
+      // race-admin's persistMigratedSettings does not.)
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "yellow" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,0 +1,130 @@
+import { describe, expect, it } from "vitest";
+
+import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
+
+describe("migrateUseViewedCarToDriverTarget", () => {
+  it("maps useViewedCar=true to driverTarget=viewed-car and drops the legacy key", () => {
+    const result = migrateUseViewedCarToDriverTarget({ useViewedCar: true });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated).toEqual({ driverTarget: "viewed-car" });
+    expect(result.migrated.useViewedCar).toBeUndefined();
+  });
+
+  it("maps useViewedCar=false to driverTarget=specific and drops the legacy key", () => {
+    const result = migrateUseViewedCarToDriverTarget({ useViewedCar: false });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated).toEqual({ driverTarget: "specific" });
+    expect(result.migrated.useViewedCar).toBeUndefined();
+  });
+
+  it('treats string "true" as truthy (sdpi-checkbox stores booleans as strings)', () => {
+    const result = migrateUseViewedCarToDriverTarget({ useViewedCar: "true" });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated.driverTarget).toBe("viewed-car");
+    expect(result.migrated.useViewedCar).toBeUndefined();
+  });
+
+  it("treats other string values as falsy and maps to specific", () => {
+    const result = migrateUseViewedCarToDriverTarget({ useViewedCar: "false" });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated.driverTarget).toBe("specific");
+  });
+
+  it("preserves other settings keys during migration", () => {
+    const result = migrateUseViewedCarToDriverTarget({
+      mode: "black-flag",
+      useViewedCar: false,
+      carNumber: "42",
+      penaltyValue: "30",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated).toEqual({
+      mode: "black-flag",
+      driverTarget: "specific",
+      carNumber: "42",
+      penaltyValue: "30",
+    });
+  });
+
+  it("does not change settings that already use driverTarget", () => {
+    const result = migrateUseViewedCarToDriverTarget({ driverTarget: "viewed-car" });
+
+    expect(result.changed).toBe(false);
+    expect(result.migrated).toEqual({ driverTarget: "viewed-car" });
+  });
+
+  it("keeps driverTarget when both keys are present (already-migrated wins)", () => {
+    const result = migrateUseViewedCarToDriverTarget({
+      driverTarget: "type-in-chat",
+      useViewedCar: true,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.migrated.driverTarget).toBe("type-in-chat");
+  });
+
+  it("handles empty raw settings", () => {
+    const result = migrateUseViewedCarToDriverTarget({});
+
+    expect(result.changed).toBe(false);
+    expect(result.migrated).toEqual({});
+  });
+
+  it("backfills viewed-car when addedWithVersion is present but useViewedCar is absent", () => {
+    // Pre-existing v1.15 button: user never toggled the "Use Viewed Car" checkbox,
+    // so useViewedCar was never persisted to Stream Deck storage. addedWithVersion
+    // tells us the button has been loaded before — preserve the prior viewed-car
+    // intent rather than silently flipping to the new "type-in-chat" default.
+    const result = migrateUseViewedCarToDriverTarget({
+      mode: "dq-driver",
+      addedWithVersion: "1.15.0",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated).toEqual({
+      mode: "dq-driver",
+      addedWithVersion: "1.15.0",
+      driverTarget: "viewed-car",
+    });
+  });
+
+  it("does not backfill for a fresh button (no addedWithVersion, no useViewedCar)", () => {
+    // Brand-new button placed under the new build — let the schema default
+    // ("type-in-chat") apply rather than backfilling viewed-car.
+    const result = migrateUseViewedCarToDriverTarget({});
+
+    expect(result.changed).toBe(false);
+    expect(result.migrated).toEqual({});
+  });
+
+  it("explicit useViewedCar wins over addedWithVersion-based backfill", () => {
+    // Even when addedWithVersion is present, if the user explicitly toggled
+    // useViewedCar=false, that explicit choice must be preserved as "specific"
+    // — not overwritten with the implicit-legacy "viewed-car" backfill.
+    const result = migrateUseViewedCarToDriverTarget({
+      addedWithVersion: "1.15.0",
+      useViewedCar: false,
+      carNumber: "42",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated.driverTarget).toBe("specific");
+    expect(result.migrated.useViewedCar).toBeUndefined();
+  });
+
+  it("handles null and undefined raw settings", () => {
+    expect(migrateUseViewedCarToDriverTarget(null)).toEqual({ migrated: {}, changed: false });
+    expect(migrateUseViewedCarToDriverTarget(undefined)).toEqual({ migrated: {}, changed: false });
+  });
+
+  it("handles non-object raw settings (string, number, boolean)", () => {
+    expect(migrateUseViewedCarToDriverTarget("string").changed).toBe(false);
+    expect(migrateUseViewedCarToDriverTarget(42).changed).toBe(false);
+    expect(migrateUseViewedCarToDriverTarget(true).changed).toBe(false);
+  });
+});

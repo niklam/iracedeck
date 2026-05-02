@@ -114,6 +114,12 @@ export class IRacingNativeMock {
     console.debug(`[IRacingNativeMock] sendScanKeyUp([${scanCodes.join(", ")}])`);
   }
 
+  setClipboardText(text: string): boolean {
+    console.debug(`[IRacingNativeMock] setClipboardText("${text}")`);
+
+    return true;
+  }
+
   private maybeRotateSnapshot(): void {
     const now = Date.now();
 

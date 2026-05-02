@@ -722,6 +722,35 @@ Napi::Value SendScanKeyUp(const Napi::CallbackInfo &info)
 }
 
 // ============================================================================
+// Clipboard
+// ============================================================================
+
+/**
+ * Write text to the Windows clipboard as CF_UNICODETEXT.
+ * Returns true on success.
+ *
+ * The implementation reuses the static `copyToClipboard()` helper used by the
+ * chat-send pipeline. Unlike `sendChatMessage`, this exposes the bare clipboard
+ * write so callers can compose paste flows themselves (e.g. race-admin's
+ * "Type in Chat" mode pastes a command prefix and lets the user finish typing).
+ */
+Napi::Value SetClipboardText(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsString())
+    {
+        Napi::TypeError::New(env, "Expected (text: string)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    std::u16string text = info[0].As<Napi::String>().Utf16Value();
+    bool ok = copyToClipboard(text);
+
+    return Napi::Boolean::New(env, ok);
+}
+
+// ============================================================================
 // Module Initialization
 // ============================================================================
 
@@ -753,6 +782,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
     exports.Set("sendScanKeys", Napi::Function::New(env, SendScanKeys));
     exports.Set("sendScanKeyDown", Napi::Function::New(env, SendScanKeyDown));
     exports.Set("sendScanKeyUp", Napi::Function::New(env, SendScanKeyUp));
+
+    // Clipboard
+    exports.Set("setClipboardText", Napi::Function::New(env, SetClipboardText));
 
     return exports;
 }
