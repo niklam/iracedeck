@@ -446,7 +446,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Start or restart the flag flash timer.
-   * Schedules an auto-stop after `flagFlashDurationMs` (issue #490).
+   * Schedules an auto-stop after `flagFlashDurationSeconds` (issue #490).
    */
   private startFlagFlash(): void {
     // Clear existing timers to prevent leaks
@@ -480,13 +480,13 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
     // Auto-stop after configured duration. `0` keeps the flash running
     // indefinitely (issue #490 escape hatch — backwards-compat).
-    const durationMs = getGlobalSettings().flagFlashDurationMs;
+    const durationSeconds = getGlobalSettings().flagFlashDurationSeconds;
 
-    if (durationMs > 0) {
+    if (durationSeconds > 0) {
       this.flagFlashAutoStopTimer = setTimeout(() => {
         this.flagFlashAutoStopTimer = null;
         this.endFlagFlashVisual();
-      }, durationMs);
+      }, durationSeconds * 1000);
     }
   }
 

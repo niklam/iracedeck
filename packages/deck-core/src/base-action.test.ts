@@ -123,14 +123,14 @@ describe("BaseAction flag flash duration (issue #490)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    mockGetGlobalSettings.mockReturnValue({ flagFlashDurationMs: 5000 });
+    mockGetGlobalSettings.mockReturnValue({ flagFlashDurationSeconds: 5 });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("auto-stops the flash after flagFlashDurationMs", () => {
+  it("auto-stops the flash after flagFlashDurationSeconds", () => {
     const ctx = createTestContext();
 
     ctx.driveTelemetry(FLAG_YELLOW);
@@ -141,8 +141,8 @@ describe("BaseAction flag flash duration (issue #490)", () => {
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
   });
 
-  it("does not auto-stop when flagFlashDurationMs is 0 (forever)", () => {
-    mockGetGlobalSettings.mockReturnValue({ flagFlashDurationMs: 0 });
+  it("does not auto-stop when flagFlashDurationSeconds is 0 (forever)", () => {
+    mockGetGlobalSettings.mockReturnValue({ flagFlashDurationSeconds: 0 });
 
     const ctx = createTestContext();
     ctx.driveTelemetry(FLAG_YELLOW);

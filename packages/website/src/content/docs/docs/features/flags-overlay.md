@@ -22,8 +22,8 @@ When a flag becomes active during racing, the selected buttons flash the flag co
 
 ## Flash Duration
 
-By default the flash plays for **5 seconds** after a new flag transition, then stops automatically — even if the flag is still raised. The intent is to give a clear "new event happened" beat without the sustained distraction of a flag flashing for the entire duration of a long full-course yellow.
+By default the flash plays for **15 seconds** after a new flag transition, then stops automatically — even if the flag is still raised. The intent is to give a clear "new event happened" beat without the sustained distraction of a flag flashing for the entire duration of a long full-course yellow.
 
 A new flag transition during the window starts a fresh timer, so the driver always gets the announcement when something changes.
 
-You can change the duration in the **Flag Flash** section under any action's Global Settings (the slider ranges from 0 to 15 000 ms in 500 ms steps). Setting it to **0** disables the auto-stop and reverts to the original behaviour: the flash continues for as long as the flag is raised.
+You can change the duration in the **Flag Flash** section under any action's Global Settings (the slider ranges from 0 to 30 seconds in 1 second steps). Setting it to **0** disables the auto-stop and reverts to the original behaviour: the flash continues for as long as the flag is raised.
