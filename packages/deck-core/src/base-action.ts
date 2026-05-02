@@ -79,6 +79,9 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   /** Shared flash timer for all overlay contexts */
   private flagFlashTimer: ReturnType<typeof setInterval> | null = null;
 
+  /** Auto-stop timer that ends the flash visual after the configured duration */
+  private flagFlashAutoStopTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** Current active flags from telemetry */
   private currentFlags: FlagInfo[] = [];
 
@@ -443,11 +446,17 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Start or restart the flag flash timer.
+   * Schedules an auto-stop after `flagFlashDurationMs` (issue #490).
    */
   private startFlagFlash(): void {
-    // Clear existing timer to prevent leaks
+    // Clear existing timers to prevent leaks
     if (this.flagFlashTimer) {
       clearInterval(this.flagFlashTimer);
+    }
+
+    if (this.flagFlashAutoStopTimer) {
+      clearTimeout(this.flagFlashAutoStopTimer);
+      this.flagFlashAutoStopTimer = null;
     }
 
     this.logger.debug(
@@ -468,29 +477,63 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
         this.restoreAllFlagOverlayImages();
       }
     }, BaseAction.FLAG_FLASH_INTERVAL_MS);
+
+    // Auto-stop after configured duration. `0` keeps the flash running
+    // indefinitely (issue #490 escape hatch — backwards-compat).
+    const durationMs = getGlobalSettings().flagFlashDurationMs;
+
+    if (durationMs > 0) {
+      this.flagFlashAutoStopTimer = setTimeout(() => {
+        this.flagFlashAutoStopTimer = null;
+        this.endFlagFlashVisual();
+      }, durationMs);
+    }
   }
 
   /**
-   * Stop the flag flash timer and restore original images.
+   * Stop the visual flash without clearing the cached flag state.
+   * Called by the duration auto-stop (issue #490): subsequent telemetry
+   * ticks with the same flag set are short-circuited by `lastFlagStateKey`,
+   * so the flash doesn't immediately retrigger.
    */
-  private stopFlagFlash(): void {
+  private endFlagFlashVisual(): void {
     if (this.flagFlashTimer) {
       clearInterval(this.flagFlashTimer);
       this.flagFlashTimer = null;
-      this.logger.debug("Flag flash stopped");
     }
 
-    // Restore all overlay-active contexts
     for (const contextId of this.flagOverlayActive) {
       this.restoreFlagOverlayImage(contextId);
     }
 
     this.flagOverlayActive.clear();
+    this.flagFlashTick = 0;
 
-    // Reset state so flash restarts correctly if re-enabled
+    // INTENTIONAL: lastFlagStateKey and currentFlags stay set so the same
+    // flag still in telemetry doesn't retrigger the flash via
+    // onFlagTelemetryUpdate's state-key short-circuit. stopFlagFlash() is
+    // the only path that wipes that cache (called when flags actually clear).
+    this.logger.debug("Flag flash auto-stopped after duration");
+  }
+
+  /**
+   * Stop the flag flash and reset cached state.
+   * Called when flags clear (`flags.length === 0`) or the action
+   * unsubscribes from telemetry — anywhere a fresh transition should
+   * be allowed to retrigger the flash next.
+   */
+  private stopFlagFlash(): void {
+    if (this.flagFlashAutoStopTimer) {
+      clearTimeout(this.flagFlashAutoStopTimer);
+      this.flagFlashAutoStopTimer = null;
+    }
+
+    this.endFlagFlashVisual();
+
+    // Reset cached state so the next transition (including the same flag
+    // re-appearing later) restarts the flash.
     this.lastFlagStateKey = "";
     this.currentFlags = [];
-    this.flagFlashTick = 0;
   }
 
   /**
