@@ -65,6 +65,7 @@ describe("SimHub Service", () => {
       calloutEnabledPitReadbackEntry: true,
       calloutEnabledPitReadbackExit: true,
       calloutEnabledPitServiceRequests: true,
+      flagFlashDurationSeconds: 15,
     });
   });
 
@@ -179,6 +180,7 @@ describe("SimHub Service", () => {
         calloutEnabledPitReadbackEntry: true,
         calloutEnabledPitReadbackExit: true,
         calloutEnabledPitServiceRequests: true,
+        flagFlashDurationSeconds: 15,
       });
 
       initializeSimHub(mockLogger);

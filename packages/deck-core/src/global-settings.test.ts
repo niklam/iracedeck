@@ -292,3 +292,33 @@ describe("resolveActiveDriverName", () => {
     expect(resolveActiveDriverName(["adam", "driver"], "driver")).toBe("driver");
   });
 });
+
+describe("flagFlashDurationSeconds (issue #490)", () => {
+  it("defaults to 15 when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.flagFlashDurationSeconds).toBe(15);
+  });
+
+  it("accepts the lower bound (0 = flash forever)", () => {
+    const parsed = GlobalSettingsSchema.parse({ flagFlashDurationSeconds: 0 }) as Record<string, unknown>;
+    expect(parsed.flagFlashDurationSeconds).toBe(0);
+  });
+
+  it("accepts the upper bound (30 seconds)", () => {
+    const parsed = GlobalSettingsSchema.parse({ flagFlashDurationSeconds: 30 }) as Record<string, unknown>;
+    expect(parsed.flagFlashDurationSeconds).toBe(30);
+  });
+
+  it("coerces a numeric string from the Property Inspector slider", () => {
+    const parsed = GlobalSettingsSchema.parse({ flagFlashDurationSeconds: "12" }) as Record<string, unknown>;
+    expect(parsed.flagFlashDurationSeconds).toBe(12);
+  });
+
+  it("rejects values below 0", () => {
+    expect(() => GlobalSettingsSchema.parse({ flagFlashDurationSeconds: -1 })).toThrow();
+  });
+
+  it("rejects values above 30", () => {
+    expect(() => GlobalSettingsSchema.parse({ flagFlashDurationSeconds: 31 })).toThrow();
+  });
+});

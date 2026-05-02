@@ -84,6 +84,7 @@ Template `require('./data/...')` resolves relative to the shared data directory 
     <%- include('global-color-defaults') %>
     <%- include('global-border-defaults') %>
     <%- include('global-graphic-defaults') %>
+    <%- include('global-flag-flash') %>
     <%- include('global-common-settings') %>
 
     <script>
@@ -113,6 +114,7 @@ Located in `packages/pi-components/partials/`:
 - **global-title-defaults.ejs** - Global title defaults (show/hide, bold, font size, position) in accordion
 - **global-border-defaults.ejs** - Global border defaults (enable, width, color, glow) in accordion
 - **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion
+- **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490.
 - **global-common-settings.ejs** - Global common settings (window focus, SimHub server) in accordion
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped)
 - **version.ejs** - Version footer with downloads link
