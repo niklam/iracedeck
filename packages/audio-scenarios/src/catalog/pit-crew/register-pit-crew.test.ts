@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { type FlagCalloutId, registerPitCrew } from "./index.js";
+import { type DamageCalloutId, type FlagCalloutId, registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -204,6 +204,12 @@ const TOGGLE_CLIP_PATHS = [
   "voice/luca/pit-actions/fast-repair-off.mp3",
 ] as const;
 
+const DAMAGE_CLIP_PATHS = [
+  `voice/${VOICE}/damage/repair-needed-01.mp3`,
+  `voice/${VOICE}/damage/repair-needed-02.mp3`,
+  `voice/${VOICE}/damage/repair-needed-03.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -212,6 +218,7 @@ const manifest: AudioAssetsManifest = {
     ...FLAG_CLIP_NAMES.map((name) => `voice/${VOICE}/flags/${name}.mp3`),
     ...ACK_POOL_CLIPS,
     ...TOGGLE_CLIP_PATHS,
+    ...DAMAGE_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -247,10 +254,12 @@ function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
 
 let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
+let damageEnabled: Map<DamageCalloutId, boolean>;
 
 beforeEach(() => {
   enabled = makeEnabledMap(true);
   pitServiceRequestsEnabled = true;
+  damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -262,6 +271,8 @@ beforeEach(() => {
     () => true,
     () => true,
     () => pitServiceRequestsEnabled,
+    () => null,
+    (id) => damageEnabled.get(id) ?? true,
   );
 });
 
@@ -569,5 +580,56 @@ describe("pit-service-requests live gate (issue #468)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/pit-actions/fuel-on-01.mp3`);
+  });
+});
+
+// Issue #489: damage callout opt-in behaves identically to the flag callouts
+// — gated at event arrival, suppression doesn't cut in-flight playback,
+// re-enabling restores future fires.
+describe("damage callout live gating (issue #489)", () => {
+  it("fires when enabled", () => {
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+
+    const matched = voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"));
+    expect(matched).toBe(true);
+  });
+
+  it("is suppressed when its toggle is off", () => {
+    damageEnabled.set("repair-needed", false);
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line on suppression", () => {
+    damageEnabled.set("repair-needed", false);
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("damage callout suppressed: repair-needed");
+  });
+
+  it("toggling off mid-clip does not cut the in-flight callout", () => {
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    damageEnabled.set("repair-needed", false);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"))).toBe(true);
+  });
+
+  it("re-enabling restores future fires", () => {
+    damageEnabled.set("repair-needed", false);
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    damageEnabled.set("repair-needed", true);
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"))).toBe(true);
   });
 });

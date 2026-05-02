@@ -69,7 +69,10 @@ function hasAnyService(s: PitReadbackSnapshot): boolean {
     s.fuel.queued ||
     hasAnyTire(s.tires) ||
     s.compoundChange !== null ||
-    (s.fastRepair.available && s.fastRepair.queued) ||
+    // Fast-repair is "a service to mention" when the car has damage and the
+    // series allows fast-repair. The queued state decides which clip plays
+    // (issue #489: drop the line entirely on a clean car).
+    (s.hasDamage && s.fastRepair.available) ||
     (s.windshield.available && s.windshield.queued)
   );
 }
@@ -136,6 +139,7 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: false },
   windshield: { queued: false, available: false },
   limiterEngaged: false,
+  hasDamage: false,
 };
 
 function fuelSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
@@ -184,15 +188,28 @@ function tireCompoundSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
 }
 
 function fastRepairSlotSteps(getSnap: ReadbackSnapshotResolver): Step[] {
-  // Only mention fast repair when it's queued. Skipping the negative
-  // ("no fast repair") sidesteps the false positive on undamaged cars
-  // — iRacing doesn't expose pre-stall damage in telemetry, so we
-  // can't gate on actual need; the queue bit alone is the only honest
-  // signal we have, and it's a positive-only callout.
+  // Issue #489: gate on `hasDamage` (EngineWarnings & Mand|OptRepNeeded).
+  //   - clean car          → omit the slot entirely (no callout, regardless of queued)
+  //   - damaged + queued   → "we're doing fast repairs"
+  //   - damaged + !queued  → "we're not doing fast repair"  (warns the driver)
+  // The series-level `available` gate stays so cars without fast-repair
+  // service stay silent even when damaged.
   return [
     {
-      if: () => (getSnap() ?? EMPTY_SNAPSHOT).fastRepair.queued,
+      if: () => {
+        const s = getSnap() ?? EMPTY_SNAPSHOT;
+
+        return s.hasDamage && s.fastRepair.available && s.fastRepair.queued;
+      },
       then: [clipPath("fast-repair-on.mp3")],
+    },
+    {
+      if: () => {
+        const s = getSnap() ?? EMPTY_SNAPSHOT;
+
+        return s.hasDamage && s.fastRepair.available && !s.fastRepair.queued;
+      },
+      then: [clipPath("fast-repair-off.mp3")],
     },
   ];
 }

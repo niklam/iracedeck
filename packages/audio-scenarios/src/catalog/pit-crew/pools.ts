@@ -80,4 +80,12 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "flag-checkered-practice": ["voice/{voice}/flags/checkered-practice-01.mp3"],
   "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
   "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],
+
+  // Damage callout pool (issue #489). Single pool today; multi-clip rotation
+  // works the same way as the flag pools above.
+  "damage-repair-needed": [
+    "voice/{voice}/damage/repair-needed-01.mp3",
+    "voice/{voice}/damage/repair-needed-02.mp3",
+    "voice/{voice}/damage/repair-needed-03.mp3",
+  ],
 };

@@ -49,6 +49,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
+import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
@@ -128,6 +129,27 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-meatball": "meatball",
 };
 
+/**
+ * Stable identifier for each user-toggleable damage callout (issue #489).
+ * One id today (`repair-needed`) covering the combined
+ * `MandRepNeeded | OptRepNeeded` rising edge. Future bits could split into
+ * separate subjects without changing the wrapper.
+ */
+export type DamageCalloutId = "repair-needed";
+
+/**
+ * Canonical mapping from `DamageCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in for each damage callout without duplicating key strings.
+ */
+export const DAMAGE_CALLOUT_SETTING_KEYS: Record<DamageCalloutId, string> = {
+  "repair-needed": "calloutEnabledDamageRepairNeeded",
+};
+
+const SCENARIO_ID_TO_DAMAGE_ID: Record<string, DamageCalloutId> = {
+  "pit-crew.damage-repair-needed": "repair-needed",
+};
+
 export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
@@ -156,6 +178,12 @@ export function registerPitCrew(
   // empty-fallback clip — a safe stub for tests that don't supply a
   // resolver.
   getReadbackSnapshot: () => PitReadbackSnapshot | null = () => null,
+  // User opt-in for the damage-alert callout (issue #489). Same
+  // gate-at-event-arrival shape as the flag and pit-readback callouts —
+  // toggling off mid-session takes effect on the next event without
+  // cutting an in-flight clip. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getDamageCalloutEnabled: (id: DamageCalloutId) => boolean = () => true,
 ): void {
   registerRadarEngine(bus);
 
@@ -209,6 +237,12 @@ export function registerPitCrew(
   for (const s of buildPitReadbackScenarios(getReadbackSnapshot)) {
     engine.defineScenario(
       wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+    );
+  }
+
+  for (const s of DAMAGE_ALERTS) {
+    engine.defineScenario(
+      wrapCalloutScenario(s, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
     );
   }
 }
