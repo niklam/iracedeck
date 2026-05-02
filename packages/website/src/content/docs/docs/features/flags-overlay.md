@@ -19,3 +19,11 @@ You can enable it on as many or as few buttons as you like — for example, only
 ## How It Works
 
 When a flag becomes active during racing, the selected buttons flash the flag color on top of their normal icon. When the flag clears, the buttons return to their normal appearance. The overlay does not interfere with the button's action — you can still press it as usual while the flag is flashing.
+
+## Flash Duration
+
+By default the flash plays for **5 seconds** after a new flag transition, then stops automatically — even if the flag is still raised. The intent is to give a clear "new event happened" beat without the sustained distraction of a flag flashing for the entire duration of a long full-course yellow.
+
+A new flag transition during the window starts a fresh timer, so the driver always gets the announcement when something changes.
+
+You can change the duration in the **Flag Flash** section under any action's Global Settings (the slider ranges from 0 to 15 000 ms in 500 ms steps). Setting it to **0** disables the auto-stop and reverts to the original behaviour: the flash continues for as long as the flag is raised.
