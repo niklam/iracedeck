@@ -75,6 +75,48 @@ describe("migrateUseViewedCarToDriverTarget", () => {
     expect(result.migrated).toEqual({});
   });
 
+  it("backfills viewed-car when addedWithVersion is present but useViewedCar is absent", () => {
+    // Pre-existing v1.15 button: user never toggled the "Use Viewed Car" checkbox,
+    // so useViewedCar was never persisted to Stream Deck storage. addedWithVersion
+    // tells us the button has been loaded before — preserve the prior viewed-car
+    // intent rather than silently flipping to the new "type-in-chat" default.
+    const result = migrateUseViewedCarToDriverTarget({
+      mode: "dq-driver",
+      addedWithVersion: "1.15.0",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated).toEqual({
+      mode: "dq-driver",
+      addedWithVersion: "1.15.0",
+      driverTarget: "viewed-car",
+    });
+  });
+
+  it("does not backfill for a fresh button (no addedWithVersion, no useViewedCar)", () => {
+    // Brand-new button placed under the new build — let the schema default
+    // ("type-in-chat") apply rather than backfilling viewed-car.
+    const result = migrateUseViewedCarToDriverTarget({});
+
+    expect(result.changed).toBe(false);
+    expect(result.migrated).toEqual({});
+  });
+
+  it("explicit useViewedCar wins over addedWithVersion-based backfill", () => {
+    // Even when addedWithVersion is present, if the user explicitly toggled
+    // useViewedCar=false, that explicit choice must be preserved as "specific"
+    // — not overwritten with the implicit-legacy "viewed-car" backfill.
+    const result = migrateUseViewedCarToDriverTarget({
+      addedWithVersion: "1.15.0",
+      useViewedCar: false,
+      carNumber: "42",
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.migrated.driverTarget).toBe("specific");
+    expect(result.migrated.useViewedCar).toBeUndefined();
+  });
+
   it("handles null and undefined raw settings", () => {
     expect(migrateUseViewedCarToDriverTarget(null)).toEqual({ migrated: {}, changed: false });
     expect(migrateUseViewedCarToDriverTarget(undefined)).toEqual({ migrated: {}, changed: false });

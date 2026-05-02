@@ -668,5 +668,36 @@ describe("RaceAdmin", () => {
       const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
       expect(persisted.driverTarget).toBe("viewed-car");
     });
+
+    it("backfills driverTarget=viewed-car for pre-existing buttons that never wrote useViewedCar", async () => {
+      // Regression for CodeRabbit catch on PR #495: v1.15 buttons whose users
+      // never toggled the "Use Viewed Car" checkbox have neither useViewedCar
+      // nor driverTarget in saved settings. Without backfill they'd silently
+      // flip to the new "type-in-chat" default.
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "dq-driver", addedWithVersion: "1.15.0" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).toHaveBeenCalledTimes(1);
+      const persisted = setSettings.mock.calls[0]![0] as Record<string, unknown>;
+      expect(persisted.driverTarget).toBe("viewed-car");
+      expect(persisted.useViewedCar).toBeUndefined();
+    });
+
+    it("does not persist for a fresh button with no addedWithVersion and no useViewedCar", async () => {
+      // Brand-new button — addedWithVersion is missing on first appear, so we
+      // fall through to the schema default ("type-in-chat") without writing.
+      // (Note: base-action's own onWillAppear may persist addedWithVersion, but
+      // race-admin's persistMigratedSettings does not.)
+      const action = new RaceAdmin();
+      const ev = makeWillAppearEvent({ mode: "yellow" });
+
+      await action.onWillAppear(ev);
+
+      const setSettings = ev.action.setSettings as unknown as ReturnType<typeof vi.fn>;
+      expect(setSettings).not.toHaveBeenCalled();
+    });
   });
 });
