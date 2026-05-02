@@ -619,14 +619,24 @@ function wire() {
     // a click during the 1500 ms "doneLabel" window would capture that
     // success label as the new "resting" text and the button stays stuck.
     const original = btn.textContent;
+    // Track the active restore timer so a click during the 1500 ms
+    // success window cancels the in-flight reset — otherwise the prior
+    // timer fires mid-way through the new request and flips the label
+    // back to `original` while "Reloading…" should still be showing.
+    let restoreTimer = null;
     btn.addEventListener("click", async () => {
+      if (restoreTimer !== null) {
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+      }
       btn.textContent = busyLabel;
       btn.disabled = true;
       try {
         await post(endpoint, {});
         btn.textContent = doneLabel;
-        setTimeout(() => {
+        restoreTimer = setTimeout(() => {
           btn.textContent = original;
+          restoreTimer = null;
         }, 1500);
       } catch (e) {
         btn.textContent = original;
