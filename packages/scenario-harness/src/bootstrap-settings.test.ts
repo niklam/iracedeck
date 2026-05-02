@@ -1,16 +1,8 @@
 import { silentLogger } from "@iracedeck/logger";
 import { describe, expect, it } from "vitest";
 
-import { getAudioAssetsManifest, resolveAudioAssetsBasePath, seedGlobalSettings } from "./bootstrap-settings.js";
+import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
-
-describe("resolveAudioAssetsBasePath", () => {
-  it("returns the directory containing the audio-assets manifest", () => {
-    const basePath = resolveAudioAssetsBasePath();
-    expect(basePath.length).toBeGreaterThan(0);
-    expect(basePath).toMatch(/audio-assets/);
-  });
-});
 
 describe("getAudioAssetsManifest", () => {
   it("loads the bundled manifest with the expected shape", () => {

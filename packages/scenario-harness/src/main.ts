@@ -7,6 +7,7 @@
  * sim-events translator from a web UI. See `let-s-plan-a-development-mellow-lake.md`
  * for the full design.
  */
+import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
@@ -16,10 +17,10 @@ import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import { getReadbackSnapshot, initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getAudioAssetsManifest, resolveAudioAssetsBasePath, seedGlobalSettings } from "./bootstrap-settings.js";
+import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
@@ -55,10 +56,20 @@ async function main(): Promise<void> {
   initializeSimEventsIracing(eventBus, controller as unknown as SDKController, logger.createScope("SimEventsIracing"));
 
   // ── Audio engine ────────────────────────────────────────────────────────
-  const audioBasePath = resolveAudioAssetsBasePath();
-  logger.debug(`Audio base path: ${audioBasePath}`);
+  // Process audio-assets through the same radio-engineer ffmpeg filter
+  // the plugin build applies, so the harness auditions the exact clips
+  // shipped to users (issue: harness was previously playing raw,
+  // unfiltered TTS output). The destination lives under the harness's
+  // own .cache/ — the underlying ffmpeg cache is shared with the plugin
+  // build via `packages/audio-assets/.cache/<filter-hash>/`, so the very
+  // first run after a plugin build is a fast cache-hit copy.
+  const audioLog = logger.createScope("Audio");
+  const audioBasePath = join(resolvePackageRoot(), ".cache", "audio");
+  audioLog.info("Processing audio assets (radio filter — first run takes a moment)");
+  await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m) });
+  audioLog.debug(`Audio base path: ${audioBasePath}`);
   const audioNative = new AudioNative();
-  const audio = initializeAudio(logger.createScope("Audio"), audioNative, audioBasePath);
+  const audio = initializeAudio(audioLog, audioNative, audioBasePath);
   audio.init();
 
   // ── Audio scenarios ──────────────────────────────────────────────────────
@@ -146,6 +157,18 @@ async function main(): Promise<void> {
       audio,
       packageRoot,
       logger: logger.createScope("Server"),
+      // Live refresh writes into the same dest dir the audio engine reads
+      // from. `wipe: false` skips the rmSync — Windows holds file locks on
+      // any clip currently loaded by miniaudio, and overwriting in place
+      // is plenty since the only stale state we'd risk is a clip removed
+      // from source still lingering in dest, which is fine for a dev tool.
+      refreshAudioAssets: () =>
+        processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false }),
+      wipeAudioCache: async () => {
+        await wipeProcessedCache();
+        audioLog.info("Wiped ffmpeg cache; full reprocess on next refresh/restart");
+        await processAndCopyAudioAssets({ destRoot: audioBasePath, logger: (m) => audioLog.info(m), wipe: false });
+      },
     },
     { host: DEFAULT_HOST, port: DEFAULT_PORT },
   );

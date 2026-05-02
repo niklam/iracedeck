@@ -452,7 +452,6 @@ const TIRE_PRESETS = {
 };
 
 function readReadbackSnapshot() {
-  const reason = $("readback-reason").value;
   const tires = {
     lf: $("readback-tire-lf").checked,
     rf: $("readback-tire-rf").checked,
@@ -469,7 +468,6 @@ function readReadbackSnapshot() {
       : { from: currentCompound, to: Number(queuedCompoundRaw) };
 
   return {
-    reason,
     fuel: { queued: $("readback-fuel-queued").checked },
     tires,
     compoundChange,
@@ -485,6 +483,26 @@ function readReadbackSnapshot() {
   };
 }
 
+// Server-side translator turns the snapshot into a telemetry patch and
+// `tickOnce`s the mock controller, so the production readback resolver
+// (`getReadbackSnapshot()` from sim-events-iracing) sees the user's
+// selections when the readback fires. Per-control change listeners call
+// this on every edit so iRacing's per-toggle confirmations also fire as
+// the user composes — disconnect the controller if you want silence.
+//
+// `throwOnError` defaults to false so per-change listeners log + carry on
+// if the harness server hiccups. The readback-fire button passes `true`
+// so a failed snapshot push aborts before publishing the
+// `readbackRequested` event with stale state.
+async function pushReadbackSnapshot({ throwOnError = false } = {}) {
+  try {
+    await post("/api/readback/snapshot", readReadbackSnapshot());
+  } catch (e) {
+    console.error("Readback snapshot push failed:", e);
+    if (throwOnError) throw e;
+  }
+}
+
 function applyTirePreset(presetId) {
   const preset = TIRE_PRESETS[presetId];
   if (!preset) return;
@@ -494,9 +512,35 @@ function applyTirePreset(presetId) {
   $("readback-tire-rr").checked = preset.rr;
 }
 
+const READBACK_SYNC_IDS = [
+  "readback-fuel-queued",
+  "readback-tire-lf",
+  "readback-tire-rf",
+  "readback-tire-lr",
+  "readback-tire-rr",
+  "readback-fr-queued",
+  "readback-fr-available",
+  "readback-ws-queued",
+  "readback-ws-available",
+  "readback-limiter",
+];
+
 function wireReadbackComposer() {
   for (const btn of document.querySelectorAll("[data-readback-preset]")) {
-    btn.addEventListener("click", () => applyTirePreset(btn.dataset.readbackPreset));
+    btn.addEventListener("click", () => {
+      applyTirePreset(btn.dataset.readbackPreset);
+      // Programmatic .checked changes don't fire `change` — push manually.
+      pushReadbackSnapshot();
+    });
+  }
+
+  for (const id of READBACK_SYNC_IDS) {
+    $(id)?.addEventListener("change", pushReadbackSnapshot);
+  }
+  for (const radio of document.querySelectorAll(
+    'input[name="readback-compound-current"], input[name="readback-compound-queued"]',
+  )) {
+    radio.addEventListener("change", pushReadbackSnapshot);
   }
 
   const amount = $("readback-fuel-amount");
@@ -506,9 +550,18 @@ function wireReadbackComposer() {
   });
 
   $("readback-fire").addEventListener("click", async () => {
-    const data = readReadbackSnapshot();
+    const reason = $("readback-reason").value;
     try {
-      await post("/api/bus/publish", { event: "pitService.readbackRequested", data });
+      // Push current snapshot first so the readback fires against the
+      // selections visible on screen, even if a per-change push is still
+      // in flight. The endpoint is idempotent and fast. `throwOnError`
+      // aborts before the publish below if the snapshot push fails — we
+      // must not fire `readbackRequested` against possibly-stale state.
+      await pushReadbackSnapshot({ throwOnError: true });
+      await post("/api/bus/publish", {
+        event: "pitService.readbackRequested",
+        data: { reason },
+      });
     } catch (e) {
       alert(`Readback fire failed: ${e.message}`);
     }
@@ -521,6 +574,11 @@ function wireReadbackComposer() {
       alert(`Black-flag publish failed: ${e.message}`);
     }
   });
+
+  // Initial sync — reconciles the mock controller's telemetry with the
+  // composer's default-rendered state (and any state restored by the
+  // browser on reload).
+  pushReadbackSnapshot();
 }
 
 // ── Wire up controls ──────────────────────────────────────────────────────
@@ -553,6 +611,44 @@ function wire() {
     state.eventCount = 0;
     $("event-count").textContent = "0";
   });
+
+  const wireAudioActionButton = (id, endpoint, busyLabel, doneLabel, errorPrefix) => {
+    const btn = $(id);
+    if (!btn) return;
+    // Capture the resting label ONCE at wireup. If we re-read it per-click,
+    // a click during the 1500 ms "doneLabel" window would capture that
+    // success label as the new "resting" text and the button stays stuck.
+    const original = btn.textContent;
+    // Track the active restore timer so a click during the 1500 ms
+    // success window cancels the in-flight reset — otherwise the prior
+    // timer fires mid-way through the new request and flips the label
+    // back to `original` while "Reloading…" should still be showing.
+    let restoreTimer = null;
+    btn.addEventListener("click", async () => {
+      if (restoreTimer !== null) {
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+      }
+      btn.textContent = busyLabel;
+      btn.disabled = true;
+      try {
+        await post(endpoint, {});
+        btn.textContent = doneLabel;
+        restoreTimer = setTimeout(() => {
+          btn.textContent = original;
+          restoreTimer = null;
+        }, 1500);
+      } catch (e) {
+        btn.textContent = original;
+        alert(`${errorPrefix}: ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+
+  wireAudioActionButton("audio-refresh", "/api/audio/refresh", "Reloading…", "Reloaded", "Audio refresh failed");
+  wireAudioActionButton("audio-wipe-cache", "/api/audio/wipe-cache", "Wiping…", "Wiped", "Audio cache wipe failed");
 
   $("telemetry-apply-patch").addEventListener("click", async () => {
     try {

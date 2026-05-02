@@ -3,8 +3,14 @@
  *
  * Emits `pitService.readbackRequested` at three moments during a pit stop:
  *
- *   - "entry"        — `OnPitRoad` off→on transition. The engineer starts
- *                      the readback as the car rolls onto pit road.
+ *   - "entry"        — `pitLane.approaching` event from `diffPitLane`. The
+ *                      engineer starts the readback as the car enters the
+ *                      approach zone, a few seconds before crossing onto
+ *                      pit road. Approach is the canonical natural-entry
+ *                      signal: a reset/teleport-to-pits bypasses
+ *                      `TrkLoc.AproachingPits` entirely, so the event
+ *                      can't be synthesized for those cases and the
+ *                      readback stays silent.
  *   - "entry-refire" — any user-intent pit-service toggle while still on
  *                      pit road. The running readback (family
  *                      `"pit-readback"`) is preempted and replaced.
@@ -164,13 +170,21 @@ export function diffPitReadback(
     state.pitReadbackPreStartFireAt = 0;
   }
 
-  if (!wasOnPitRoad && onPitRoad) {
-    // Off → on: cancel any stale scheduled exit (re-entry within the delay
-    // window) and emit the entry readback. Doing this BEFORE the
-    // exit-fire dispatch below ensures a tick that lands past the exit
-    // deadline AND off→on re-entry fires only the entry readback, never
-    // both in the same tick.
+  const justApproached = pending.some((p) => p.event === "pitLane.approaching");
+
+  if (justApproached) {
+    // `pitLane.approaching` only fires when the car enters
+    // `TrkLoc.AproachingPits` from track (`diffPitLane` keeps it
+    // suppressed when the car is exiting through the same zone), so a
+    // reset/teleport-to-pits never produces this event and stays silent.
+    // Cancel any stale scheduled exit too — re-approaching before the
+    // settle delay elapsed pre-empts the pending "to confirm" recap.
+    // Also disarm any queued pre-start readback: a driver who entered
+    // pit road during formation/grid has now had the entry callout fire
+    // here, so the pre-start timer must not re-fire the same `entry`
+    // reason later.
     state.pitReadbackExitFireAt = 0;
+    state.pitReadbackPreStartFireAt = 0;
     emit({ event: "pitService.readbackRequested", data: { reason: "entry" } });
   } else if (onPitRoad && pending.some((p) => USER_TOGGLE_EVENTS.has(p.event))) {
     // While on pit road, any user-intent toggle event refires the

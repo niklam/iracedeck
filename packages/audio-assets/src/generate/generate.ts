@@ -56,7 +56,7 @@
  *   pnpm --filter @iracedeck/audio-assets generate --voice luca --group numbers
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
@@ -71,6 +71,26 @@ const packageRoot = path.resolve(__dirname, "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const CONFIG_PATH = path.join(packageRoot, "generate.config.json");
 const MANIFEST_PATH = path.join(packageRoot, "generate.manifest.json");
+const CACHE_ROOT = path.join(packageRoot, ".cache");
+
+/**
+ * Drop the processed mp3 for `relPath` from every filter-hash subdir under
+ * `.cache/`. The build helper's mtime check (cache.mtime > source.mtime)
+ * is correct in the normal case, but breaks under git checkout / `cp -p`
+ * which can preserve an older source mtime even though content changed.
+ * Explicit deletion when we know the source is fresh removes that hazard
+ * entirely. No-op when `.cache/` doesn't exist yet (clean tree).
+ */
+function invalidateProcessedCache(relPath: string): void {
+  if (!existsSync(CACHE_ROOT)) return;
+
+  for (const entry of readdirSync(CACHE_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const cachedPath = path.join(CACHE_ROOT, entry.name, relPath);
+    rmSync(cachedPath, { force: true });
+  }
+}
 
 /**
  * Load environment variables from `<repoRoot>/.env.local` (preferred) or
@@ -249,6 +269,7 @@ async function main(): Promise<void> {
 
           mkdirSync(path.dirname(absPath), { recursive: true });
           writeFileSync(absPath, mp3);
+          invalidateProcessedCache(relPath);
           manifest.entries[relPath] = {
             hash,
             voiceId: voice.id,

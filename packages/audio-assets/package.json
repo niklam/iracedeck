@@ -4,7 +4,10 @@
   "description": "Shared audio assets (MP3) for iRaceDeck plugins",
   "type": "module",
   "exports": {
-    "./build": "./src/build/index.mjs",
+    "./build": {
+      "types": "./src/build/index.d.ts",
+      "default": "./src/build/index.mjs"
+    },
     "./manifest.json": "./manifest.json",
     "./presets": "./src/presets.mjs"
   },

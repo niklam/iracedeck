@@ -50,17 +50,9 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "flag-yellow-local": ["voice/{voice}/flags/yellow-local-01.mp3"],
   "flag-yellow-full": ["voice/{voice}/flags/yellow-full-01.mp3"],
   "flag-yellow-cleared": ["voice/{voice}/flags/yellow-cleared-01.mp3"],
-  "flag-green": [
-    "voice/{voice}/flags/green-01.mp3",
-    "voice/{voice}/flags/green-02.mp3",
-  ],
   "flag-blue": [
     "voice/{voice}/flags/blue-01.mp3",
     "voice/{voice}/flags/blue-02.mp3",
-  ],
-  "flag-white": [
-    "voice/{voice}/flags/white-01.mp3",
-    "voice/{voice}/flags/white-02.mp3",
   ],
   "flag-red": ["voice/{voice}/flags/red-01.mp3"],
   "flag-black": ["voice/{voice}/flags/black-01.mp3"],
@@ -70,10 +62,22 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/flags/debris-03.mp3",
   ],
   "flag-meatball": ["voice/{voice}/flags/meatball-01.mp3"],
-  // Checkered branches on getSessionType() at fire time, so each session
-  // type gets its own pool. Future variants for any single session type
-  // append to that pool only.
-  "flag-checkered-practise": ["voice/{voice}/flags/checkered-practise-01.mp3"],
+  // Green, white and checkered all branch on getSessionType() at fire time
+  // so each session type gets its own pool. Future variants for any single
+  // session type append to that pool only.
+  "flag-green-practice": ["voice/{voice}/flags/green-practice-01.mp3"],
+  "flag-green-qualifying": ["voice/{voice}/flags/green-qualifying-01.mp3"],
+  "flag-green-race": [
+    "voice/{voice}/flags/green-race-01.mp3",
+    "voice/{voice}/flags/green-race-02.mp3",
+  ],
+  "flag-white-practice": ["voice/{voice}/flags/white-practice-01.mp3"],
+  "flag-white-qualifying": ["voice/{voice}/flags/white-qualifying-01.mp3"],
+  "flag-white-race": [
+    "voice/{voice}/flags/white-race-01.mp3",
+    "voice/{voice}/flags/white-race-02.mp3",
+  ],
+  "flag-checkered-practice": ["voice/{voice}/flags/checkered-practice-01.mp3"],
   "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
   "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],
 };

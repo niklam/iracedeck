@@ -1,5 +1,5 @@
 {
-  "model_id": "eleven_v3",
+  "model_id": "eleven_flash_v2",
   "voice_settings": {
     "stability": 1,
     "similarity_boost": 1,
@@ -9,12 +9,12 @@
   },
   "voices": {
     "luca": {
-      "id": "15CVCzDByBinCIoCblXo",
+      "id": "ljX1ZrXuDIIRVcmiVSyR",
       "label": "Luca",
       "voice_settings": {
-        "speed": 0.85,
-        "stability": 0.5,
-        "similarity_boost": 0.75,
+        "speed": 0.97,
+        "stability": 0.75,
+        "similarity_boost": 0.85,
         "use_speaker_boost": true,
         "style": 0
       }
@@ -94,76 +94,108 @@
     "flags": [
       {
         "name": "black-01",
-        "text": "Black flag! <break time=\"0.3s\" /> We have three laps to serve the penalty."
+        "text": "We got the black flag. <break time=\"0.3s\" /> We have three laps to serve the penalty.",
+        "seed": 10
       },
       {
         "name": "blue-01",
-        "text": "Blue flag! <break time=\"0.3s\" /> Faster car approaching!"
+        "text": "Blue flag. <break time=\"0.3s\" /> Faster car approaching.",
+        "seed": 3
       },
       {
         "name": "blue-02",
-        "text": "Blue flag! <break time=\"0.3s\" /> Check your mirrors!"
+        "text": "Blue flag. <break time=\"0.3s\" /> Check your mirrors.",
+        "seed": 2
       },
       {
-        "name": "checkered-practise-01",
-        "text": "Checkered flag! <break time=\"0.3s\" /> Practise session is over."
+        "name": "checkered-practice-01",
+        "text": "Checkered flag. <break time=\"0.3s\" /> Practice session is over.",
+        "seed": 2
       },
       {
         "name": "checkered-qualifying-01",
-        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the qualifying session."
+        "text": "Checkered flag. <break time=\"0.3s\" /> That's it for the qualifying session."
       },
       {
         "name": "checkered-race-01",
-        "text": "Checkered flag! <break time=\"0.3s\" /> That's it for the race. <break time=\"0.3s\" /> Well done!"
+        "text": "Checkered flag. <break time=\"0.3s\" /> That's it for the race, well done.",
+        "seed": 10
       },
       {
         "name": "debris-01",
-        "text": "There's debris on track. <break time=\"0.3s\" /> Be careful!"
+        "text": "There's debris on track. <break time=\"0.3s\" /> Be careful.",
+        "seed": 2
       },
       {
         "name": "debris-02",
-        "text": "There's dirt on the track! Watch out!"
+        "text": "There's dirt on the track. Watch out."
       },
       {
         "name": "debris-03",
-        "text": "The track might be slippery here! Focus!",
+        "text": "The track might be slippery here. Focus.",
+        "seed": 2
+      },
+      {
+        "name": "green-practice-01",
+        "text": "We're green. Practice has started.",
         "seed": 4
       },
       {
-        "name": "green-01",
-        "text": "Green flag, Green flag! Push now!"
+        "name": "green-qualifying-01",
+        "text": "Green. Qualifying is on.",
+        "seed": 4
       },
       {
-        "name": "green-02",
-        "text": "Green! Green! Green! Go! Go! Go!"
+        "name": "green-race-01",
+        "text": "Green flag, Green flag. Push now.",
+        "seed": 2
+      },
+      {
+        "name": "green-race-02",
+        "text": "Green, Green, Green!!! Go! Go! Go!",
+        "seed": 2
       },
       {
         "name": "meatball-01",
-        "text": "We got the meatball flag... We'll need to pit for repairs."
+        "text": "We got the meatball flag. <break time=\"0.3s\" /> We'll need to pit for repairs.",
+        "seed": 8
       },
       {
         "name": "red-01",
-        "text": "Red flag! Red flag! Session stopped. Slow down, drive safely back to the pit."
+        "text": "Red flag. Red flag. Session stopped. Slow down, drive safely back to the pit."
       },
       {
-        "name": "white-01",
-        "text": "White flag! Last lap! Bring it home!"
+        "name": "white-practice-01",
+        "text": "White flag, practice is wrapping up."
       },
       {
-        "name": "white-02",
-        "text": "White flag! It's the last lap! Clean and tidy now!"
+        "name": "white-qualifying-01",
+        "text": "White flag, this lap's your last shot."
+      },
+      {
+        "name": "white-race-01",
+        "text": "White flag.",
+        "seed": 3
+      },
+      {
+        "name": "white-race-02",
+        "text": "White flag and the final lap... Let's make it count.",
+        "seed": 7
       },
       {
         "name": "yellow-local-01",
-        "text": "Yellow flag! Mind the slow cars!"
+        "text": "Yellow flag",
+        "seed": 4
       },
       {
         "name": "yellow-full-01",
-        "text": "Full course yellow! Pace car will be deployed."
+        "text": "Full course yellow, <break time=\"0.3s\" /> Pace car will be deployed.",
+        "seed": 4
       },
       {
         "name": "yellow-cleared-01",
-        "text": "Yellow's cleared, back to green soon. Be ready!"
+        "text": "Yellow cleared.",
+        "seed": 5
       }
     ],
     "pit-limiter": [
@@ -189,7 +221,7 @@
       },
       {
         "name": "pit-limiter-warn-002",
-        "text": "Over the limit. <break time=\"0.3s\" /> Lift!"
+        "text": "Over the limit. <break time=\"0.3s\" /> Lift."
       },
       {
         "name": "pit-limiter-reminder-001",
@@ -213,110 +245,231 @@
       },
       {
         "name": "fuel-on-01",
-        "text": "We're refueling at the next pitstop."
+        "text": "We're refueling at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "fuel-off-01",
-        "text": "We're skipping fuel at the next pitstop."
+        "text": "We're skipping fuel at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-off-01",
-        "text": "We're skipping tires at the next pitstop."
+        "text": "We're skipping tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-fronts",
-        "text": "We'll change the front tires at the next pitstop."
+        "text": "We'll change the front tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-rears",
-        "text": "We'll change the rear tires at the next pitstop."
+        "text": "We'll change the rear tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-lefts",
-        "text": "We'll change both left side tires at the next pitstop."
+        "text": "We'll change both left side tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-rights",
-        "text": "We'll change both right side tires at the next pitstop."
+        "text": "We'll change both right side tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-all",
-        "text": "We'll change all tires at the next pitstop."
+        "text": "We'll change all tires at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-lf",
-        "text": "We'll change the left-front at the next pitstop."
+        "text": "We'll change the left-front at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-rf",
-        "text": "We'll change the right-front at the next pitstop."
+        "text": "We'll change the right-front at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-lr",
-        "text": "We'll change the left-rear at the next pitstop."
+        "text": "We'll change the left-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-rr",
-        "text": "We'll change the right-rear at the next pitstop."
+        "text": "We'll change the right-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-lf-rr",
-        "text": "We'll change the left-front and right-rear at the next pitstop."
+        "text": "We'll change the left-front and right-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-rf-lr",
-        "text": "We'll change the right-front and left-rear at the next pitstop."
+        "text": "We'll change the right-front and left-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-skip-lf",
-        "text": "We'll change everything but the left-front at the next pitstop."
+        "text": "We'll change everything but the left-front at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-skip-rf",
-        "text": "We'll change everything but the right-front at the next pitstop."
+        "text": "We'll change everything but the right-front at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-skip-lr",
-        "text": "We'll change everything but the left-rear at the next pitstop."
+        "text": "We'll change everything but the left-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-on-skip-rr",
-        "text": "We'll change everything but the right-rear at the next pitstop."
+        "text": "We'll change everything but the right-rear at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-compound-dry",
-        "text": "Switching to dry compound at the next pitstop."
+        "text": "Switching to dry compound at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "tires-compound-wet",
         "seed": 2,
-        "text": "Switching to wets at the next pitstop."
+        "text": "Switching to wets at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "windshield-on",
-        "text": "We'll clean the windshield at the next pitstop."
+        "text": "We'll clean the windshield at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "windshield-off",
-        "text": "We're not cleaning the windshield at the next pitstop."
+        "text": "We're not cleaning the windshield at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "fast-repair-on",
-        "text": "We'll do a fast repair at the next pitstop."
+        "text": "We'll do a fast repair at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       },
       {
         "name": "fast-repair-off",
-        "text": "We're skipping fast repair at the next pitstop."
+        "text": "We're skipping fast repair at the next pit stop.",
+        "previous_request_ids": [
+          "pit-actions/got-it",
+          "pit-actions/roger-that",
+          "pit-actions/copy-that"
+        ]
       }
     ],
     "pit-readback": [
       {
         "name": "opener-entry",
-        "text": "During this pitstop..."
+        "text": "During this pitstop...",
+        "seed": 2
       },
       {
         "name": "opener-entry-limiter",
-        "text": "Remember the pit limiter! ahem...",
+        "text": "Remember the pit limiter. <break time=\"0.3s\" />",
         "seed": 4
       },
       {
@@ -326,7 +479,7 @@
       },
       {
         "name": "empty-fallback",
-        "text": "We're not changing tires, and we're not refueling!"
+        "text": "We're not changing tires, and we're not refueling."
       },
       {
         "name": "fuel-on",
@@ -335,76 +488,80 @@
       {
         "name": "fuel-off",
         "text": "We're not refueling",
-        "seed": 3
+        "seed": 4
       },
       {
         "name": "tires-all",
-        "text": "and we're changing all tires!"
+        "text": "and we're changing all tires.",
+        "seed": 5
       },
       {
         "name": "tires-fronts",
-        "text": "and we're changing front tires"
+        "text": "and we're changing front tires.",
+        "seed": 3
       },
       {
         "name": "tires-rears",
-        "text": "and we're changing rear tires"
+        "text": "and we're changing rear tires."
       },
       {
         "name": "tires-lefts",
-        "text": "and we're changing left side tires"
+        "text": "and we're changing left side tires.",
+        "seed": 4
       },
       {
         "name": "tires-rights",
-        "text": "and we're changing right side tires"
+        "text": "and we're changing right side tires."
       },
       {
         "name": "tires-lf",
-        "text": "and we're changing left front only"
+        "text": "and we're changing left front only."
       },
       {
         "name": "tires-rf",
-        "text": "and we're changing right front only"
+        "text": "and we're changing right front only."
       },
       {
         "name": "tires-lr",
-        "text": "and we're changing left rear only"
+        "text": "and we're changing left rear only."
       },
       {
         "name": "tires-rr",
-        "text": "and we're changing right rear only"
+        "text": "and we're changing right rear only."
       },
       {
         "name": "tires-lf-rr",
-        "text": "and we're changing left front and right rear"
+        "text": "and we're changing left front and right rear."
       },
       {
         "name": "tires-rf-lr",
-        "text": "and we're changing right front and left rear"
+        "text": "and we're changing right front and left rear."
       },
       {
         "name": "tires-skip-lf",
-        "text": "and we're changing three tires, skipping left front"
+        "text": "and we're changing three tires, skipping left front."
       },
       {
         "name": "tires-skip-rf",
-        "text": "and we're changing three tires, skipping right front"
+        "text": "and we're changing three tires, skipping right front."
       },
       {
         "name": "tires-skip-lr",
-        "text": "and we're changing three tires, skipping left rear"
+        "text": "and we're changing three tires, skipping left rear."
       },
       {
         "name": "tires-skip-rr",
-        "text": "and we're changing three tires, skipping right rear"
+        "text": "and we're changing three tires, skipping right rear."
       },
       {
         "name": "tires-off",
-        "text": "and, we're not changing tires!",
+        "text": "and, we're not changing tires.",
         "seed": 2
       },
       {
         "name": "compound-dry",
-        "text": "and, we're changing to dries."
+        "text": "and, we're changing to dries.",
+        "seed": 4
       },
       {
         "name": "compound-wet",
@@ -412,22 +569,25 @@
       },
       {
         "name": "fast-repair-on",
-        "text": "ahem..Additionally, we're doing fast repairs to any damage you might have,"
+        "text": ". <break time=\"0.3s\" /> We're doing fast repairs to any damage you might have.",
+        "seed": 3
       },
       {
         "name": "fast-repair-off",
-        "text": "ahem..We're not doing fast repair",
+        "text": " <break time=\"0.3s\" /> We're not doing fast repair",
         "seed": 3
       },
       {
         "name": "windshield-on",
-        "text": "and we're cleaning the windshield.",
-        "seed": 4
+        "text": "And we're cleaning the windshield.",
+        "seed": 4,
+        "previous_request_ids": ["pit-readback/fast-repair-on"]
       },
       {
         "name": "windshield-off",
         "text": "and we're leaving windshield as-is.",
-        "seed": 4
+        "seed": 4,
+        "previous_request_ids": ["pit-readback/fast-repair-on"]
       }
     ],
     "names": [
@@ -593,10 +753,7 @@
       },
       {
         "name": "oivindl",
-        "text": "Öivin",
-        "voice_settings": {
-          "language_code": "fi"
-        }
+        "text": "Öivin"
       },
       {
         "name": "pablo",
@@ -642,7 +799,7 @@
       },
       {
         "name": "greeting-01",
-        "text": "Nice to meet you! I'm your Race Engineer! Are you ready to race? Let's win some races together!"
+        "text": "Nice to meet you. I'm your Race Engineer. Are you ready to race? Let's win some races together."
       }
     ]
   }
