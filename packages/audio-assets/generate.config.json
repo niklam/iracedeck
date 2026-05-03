@@ -582,7 +582,8 @@
         "text": "And we're cleaning the windshield.",
         "seed": 7,
         "previous_request_ids": [
-          "pit-readback/fast-repair-on"
+          "pit-readback/fast-repair-on",
+          "pit-readback/fast-repair-off"
         ]
       },
       {
@@ -590,7 +591,8 @@
         "text": "and we're leaving windshield as-is.",
         "seed": 4,
         "previous_request_ids": [
-          "pit-readback/fast-repair-on"
+          "pit-readback/fast-repair-on",
+          "pit-readback/fast-repair-off"
         ]
       }
     ],

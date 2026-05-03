@@ -225,6 +225,15 @@ const OTHER_CLIP_NAMES = [
   "voice/luca/flags/checkered-practice-01.mp3",
   "voice/luca/flags/checkered-qualifying-01.mp3",
   "voice/luca/flags/checkered-race-01.mp3",
+  // Damage callout pool clips (issue #489). Required because
+  // `registerPitCrew()` always defines the damage scenarios; without
+  // these in the manifest, `definePool` silently rejects the pool
+  // (interpreter.ts: logs an error and returns), and any future damage-
+  // related test added to this file would hit a missing-pool failure
+  // at fire time.
+  "voice/luca/damage/repair-needed-01.mp3",
+  "voice/luca/damage/repair-needed-02.mp3",
+  "voice/luca/damage/repair-needed-03.mp3",
 ];
 
 const manifest: AudioAssetsManifest = {

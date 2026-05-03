@@ -494,13 +494,32 @@ function syncEngineWarningsCheckboxes() {
   }
 }
 
-function wireEngineWarnings() {
+// Derive the EngineWarnings bitmask from the current checkbox states.
+// This is the source-of-truth read for any code path that needs to
+// reason about EngineWarnings between a checkbox click and the
+// matching WS echo — the alternative (`state.controller.telemetry.EngineWarnings`)
+// is one round-trip behind, so two quick clicks would race and the
+// later POST would drop the earlier bit.
+function readEngineWarningsMaskFromUi() {
+  let mask = 0;
   for (const { id, bit } of ENGINE_WARNINGS) {
+    if ($(id)?.checked) mask |= bit;
+  }
+  return mask;
+}
+
+function wireEngineWarnings() {
+  for (const { id } of ENGINE_WARNINGS) {
     const cb = $(id);
     if (!cb) continue;
     cb.addEventListener("change", () => {
-      const cur = state.controller?.telemetry?.EngineWarnings ?? 0;
-      const next = cb.checked ? cur | bit : cur & ~bit;
+      const next = readEngineWarningsMaskFromUi();
+      // Optimistic local update so subsequent reads (this function on a
+      // rapid second click, `readReadbackSnapshot()` on a readback fire)
+      // see the new value immediately. The WS echo arriving later is a
+      // no-op confirmation. Guard against the controller state not being
+      // populated yet on first boot.
+      if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = next;
       post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => alert(err.message));
     });
   }
@@ -540,9 +559,11 @@ function readReadbackSnapshot() {
       : { from: currentCompound, to: Number(queuedCompoundRaw) };
 
   // hasDamage is owned by the Engine Warnings panel, not the composer.
-  // Derive it from the live telemetry bits so the snapshot's required
-  // field stays in sync with what the user has actually set.
-  const ew = state.controller?.telemetry?.EngineWarnings ?? 0;
+  // Derive it from the live checkbox states (NOT
+  // state.controller.telemetry.EngineWarnings) so a readback fired
+  // immediately after a checkbox toggle sees the user's intent rather
+  // than the last WS echo from the server.
+  const ew = readEngineWarningsMaskFromUi();
   const damageMask = ENGINE_WARNINGS_DAMAGE_MASK;
 
   return {
