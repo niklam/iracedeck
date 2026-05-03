@@ -513,6 +513,7 @@ function wireEngineWarnings() {
     const cb = $(id);
     if (!cb) continue;
     cb.addEventListener("change", () => {
+      const prev = state.controller?.telemetry?.EngineWarnings ?? 0;
       const next = readEngineWarningsMaskFromUi();
       // Optimistic local update so subsequent reads (this function on a
       // rapid second click, `readReadbackSnapshot()` on a readback fire)
@@ -520,7 +521,13 @@ function wireEngineWarnings() {
       // no-op confirmation. Guard against the controller state not being
       // populated yet on first boot.
       if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = next;
-      post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => alert(err.message));
+      post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => {
+        // Roll back the optimistic write so the cache can't drift from
+        // server truth, then re-sync the checkboxes to match.
+        if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
+        syncEngineWarningsCheckboxes();
+        alert(err.message);
+      });
     });
   }
 }
