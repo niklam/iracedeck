@@ -438,10 +438,13 @@ function connectWebSocket() {
 // ── Engine Warnings panel ─────────────────────────────────────────────────
 //
 // One checkbox per bit in `telemetry.EngineWarnings`. The mock controller
-// owns the bitfield; on every flip we read the current value, mutate just
-// the targeted bit, and PATCH the new value via /api/telemetry — so other
-// bits set by other UIs (or the readback composer's limiter checkbox)
-// survive untouched.
+// owns the bitfield; on every checkbox flip we recompute the full mask
+// from the current UI state via `readEngineWarningsMaskFromUi()` and PATCH
+// the new value via /api/telemetry. Reading from the UI rather than from
+// the cached telemetry avoids racing the WS echo from the previous click,
+// and naturally preserves bits set by the readback composer's limiter
+// checkbox (the user's intent for those is reflected in their own
+// checkbox state).
 //
 // Bit values mirror `@iracedeck/iracing-native/src/defines.ts`. Treat this
 // as a small fixed set; if a new bit is added there, add it here too.
@@ -508,6 +511,12 @@ function readEngineWarningsMaskFromUi() {
   return mask;
 }
 
+// Monotonic counter incremented on every PATCH attempt. The catch handler
+// only rolls back if its captured `seq` is still the latest write — so a
+// late failure from an older POST can't clobber newer user edits made
+// while it was in flight.
+let engineWarningsWriteSeq = 0;
+
 function wireEngineWarnings() {
   for (const { id } of ENGINE_WARNINGS) {
     const cb = $(id);
@@ -515,6 +524,7 @@ function wireEngineWarnings() {
     cb.addEventListener("change", () => {
       const prev = state.controller?.telemetry?.EngineWarnings ?? 0;
       const next = readEngineWarningsMaskFromUi();
+      const seq = ++engineWarningsWriteSeq;
       // Optimistic local update so subsequent reads (this function on a
       // rapid second click, `readReadbackSnapshot()` on a readback fire)
       // see the new value immediately. The WS echo arriving later is a
@@ -522,10 +532,13 @@ function wireEngineWarnings() {
       // populated yet on first boot.
       if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = next;
       post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => {
-        // Roll back the optimistic write so the cache can't drift from
-        // server truth, then re-sync the checkboxes to match.
-        if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
-        syncEngineWarningsCheckboxes();
+        // Only roll back if this failed write is still the latest user
+        // intent. Otherwise the user has already typed past us — keep
+        // the newer optimistic state.
+        if (seq === engineWarningsWriteSeq) {
+          if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
+          syncEngineWarningsCheckboxes();
+        }
         alert(err.message);
       });
     });
