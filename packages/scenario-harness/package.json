@@ -26,7 +26,7 @@
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
-    "fastify": "5.7.0"
+    "fastify": "5.8.5"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",

@@ -19,7 +19,7 @@
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "zod": "4.3.6"
+    "zod": "4.4.2"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",

@@ -28,7 +28,7 @@
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/pi-components": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
-    "zod": "4.3.6"
+    "zod": "4.4.2"
   },
   "devDependencies": {
     "@elgato/cli": "1.7.4",
