@@ -140,6 +140,8 @@ function validatePitReadbackSnapshot(body: unknown): PitReadbackSnapshot | strin
 
   if (typeof b.limiterEngaged !== "boolean") return "limiterEngaged must be a boolean";
 
+  if (typeof b.hasDamage !== "boolean") return "hasDamage must be a boolean";
+
   return body as PitReadbackSnapshot;
 }
 

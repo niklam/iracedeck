@@ -65,6 +65,7 @@ describe("SimHub Service", () => {
       calloutEnabledPitReadbackEntry: true,
       calloutEnabledPitReadbackExit: true,
       calloutEnabledPitServiceRequests: true,
+      calloutEnabledDamageRepairNeeded: true,
       flagFlashDurationSeconds: 15,
     });
   });
@@ -180,6 +181,7 @@ describe("SimHub Service", () => {
         calloutEnabledPitReadbackEntry: true,
         calloutEnabledPitReadbackExit: true,
         calloutEnabledPitServiceRequests: true,
+        calloutEnabledDamageRepairNeeded: true,
         flagFlashDurationSeconds: 15,
       });
 

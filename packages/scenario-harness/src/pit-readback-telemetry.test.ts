@@ -11,6 +11,7 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: false },
   windshield: { queued: false, available: false },
   limiterEngaged: false,
+  hasDamage: false,
 };
 
 const ZERO_TELEMETRY = {
@@ -40,6 +41,7 @@ describe("snapshotToTelemetryPatch", () => {
       fastRepair: { queued: true, available: true },
       windshield: { queued: true, available: true },
       limiterEngaged: true,
+      hasDamage: false,
     };
 
     const patch = snapshotToTelemetryPatch(snapshot, ZERO_TELEMETRY);
@@ -104,6 +106,24 @@ describe("snapshotToTelemetryPatch", () => {
     // Limiter on — limiter bit set, the other bit survives.
     const on = snapshotToTelemetryPatch({ ...EMPTY_SNAPSHOT, limiterEngaged: true }, current);
     expect(on.EngineWarnings).toBe(otherBit | EngineWarnings.PitSpeedLimiter);
+  });
+
+  // Issue #489: damage bits in the harness are owned by the dedicated
+  // EngineWarnings panel, not the readback composer. The composer's
+  // snapshot push must therefore preserve any damage bits the user has
+  // set independently — even though the snapshot type carries a
+  // `hasDamage` field, that field is informational here.
+  it("preserves the damage bits regardless of the snapshot's hasDamage value", () => {
+    const current = {
+      ...ZERO_TELEMETRY,
+      EngineWarnings: EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded,
+    } as unknown as TelemetryData;
+
+    const withFalse = snapshotToTelemetryPatch({ ...EMPTY_SNAPSHOT, hasDamage: false }, current);
+    expect(withFalse.EngineWarnings).toBe(EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded);
+
+    const withTrue = snapshotToTelemetryPatch({ ...EMPTY_SNAPSHOT, hasDamage: true }, current);
+    expect(withTrue.EngineWarnings).toBe(EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded);
   });
 
   it("encodes fast-repair availability independent of queued state", () => {

@@ -225,6 +225,15 @@ const OTHER_CLIP_NAMES = [
   "voice/luca/flags/checkered-practice-01.mp3",
   "voice/luca/flags/checkered-qualifying-01.mp3",
   "voice/luca/flags/checkered-race-01.mp3",
+  // Damage callout pool clips (issue #489). Required because
+  // `registerPitCrew()` always defines the damage scenarios; without
+  // these in the manifest, `definePool` silently rejects the pool
+  // (interpreter.ts: logs an error and returns), and any future damage-
+  // related test added to this file would hit a missing-pool failure
+  // at fire time.
+  "voice/luca/damage/repair-needed-01.mp3",
+  "voice/luca/damage/repair-needed-02.mp3",
+  "voice/luca/damage/repair-needed-03.mp3",
 ];
 
 const manifest: AudioAssetsManifest = {
@@ -254,6 +263,7 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: true },
   windshield: { queued: false, available: true },
   limiterEngaged: false,
+  hasDamage: false,
 };
 
 function snap(overrides: Partial<PitReadbackSnapshot>): PitReadbackSnapshot {
@@ -521,18 +531,6 @@ describe("pit readback scenarios", () => {
       expect(paths.some((p) => p.endsWith("/pit-readback/windshield-off.mp3"))).toBe(false);
     });
 
-    it("plays fast-repair-on when queued", () => {
-      fireReadback(
-        "entry",
-        snap({
-          fuel: { queued: true },
-          fastRepair: { queued: true, available: true },
-        }),
-      );
-
-      expect(voicePaths().some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(true);
-    });
-
     it("stays silent on windshield when not queued (no false 'no windshield' on open-wheel cars)", () => {
       fireReadback(
         "entry",
@@ -544,6 +542,105 @@ describe("pit readback scenarios", () => {
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/windshield-off.mp3"))).toBe(false);
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/windshield-on.mp3"))).toBe(false);
+    });
+  });
+
+  // Issue #489: the fast-repair slot is gated on `hasDamage` so the readback
+  // stays silent about repairs on a clean car (regardless of whether the
+  // user accidentally queued fast-repair).
+  describe("fast-repair damage gate (issue #489)", () => {
+    it("plays fast-repair-on when damaged and queued", () => {
+      fireReadback(
+        "entry",
+        snap({
+          fuel: { queued: true },
+          hasDamage: true,
+          fastRepair: { queued: true, available: true },
+        }),
+      );
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-off.mp3"))).toBe(false);
+    });
+
+    it("plays fast-repair-off when damaged but not queued (warns the driver)", () => {
+      fireReadback(
+        "entry",
+        snap({
+          fuel: { queued: true },
+          hasDamage: true,
+          fastRepair: { queued: false, available: true },
+        }),
+      );
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-off.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(false);
+    });
+
+    it("drops the fast-repair slot when no damage, even if queued", () => {
+      fireReadback(
+        "entry",
+        snap({
+          fuel: { queued: true },
+          hasDamage: false,
+          fastRepair: { queued: true, available: true },
+        }),
+      );
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-off.mp3"))).toBe(false);
+    });
+
+    it("drops the fast-repair slot when damaged but the series doesn't offer fast-repair", () => {
+      fireReadback(
+        "entry",
+        snap({
+          fuel: { queued: true },
+          hasDamage: true,
+          fastRepair: { queued: false, available: false },
+        }),
+      );
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-off.mp3"))).toBe(false);
+    });
+
+    it("collapses to empty-fallback when only fast-repair was queued and the car is clean", () => {
+      fireReadback(
+        "entry",
+        snap({
+          hasDamage: false,
+          fastRepair: { queued: true, available: true },
+          limiterEngaged: true,
+        }),
+      );
+
+      const paths = voicePaths();
+      expect(paths.some((p) => p.endsWith("/pit-readback/empty-fallback.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-on.mp3"))).toBe(false);
+    });
+
+    it("damaged + nothing else queued still produces a non-empty readback (the fast-repair-off warning)", () => {
+      fireReadback(
+        "entry",
+        snap({
+          hasDamage: true,
+          fastRepair: { queued: false, available: true },
+          limiterEngaged: true,
+        }),
+      );
+
+      const paths = voicePaths();
+      // hasAnyService(snapshot) returns true because of the damage+available
+      // path, so we get the regular opener and slots — not the empty
+      // fallback. The fast-repair-off warning carries the meaningful content.
+      expect(paths.some((p) => p.endsWith("/pit-readback/empty-fallback.mp3"))).toBe(false);
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/fast-repair-off.mp3"))).toBe(true);
     });
   });
 
@@ -577,6 +674,7 @@ describe("pit readback scenarios", () => {
         snap({
           fuel: { queued: true },
           tires: { lf: true, rf: true, lr: true, rr: true },
+          hasDamage: true,
           fastRepair: { queued: true, available: true },
           windshield: { queued: true, available: true },
           limiterEngaged: true,

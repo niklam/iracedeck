@@ -569,25 +569,48 @@
       },
       {
         "name": "fast-repair-on",
-        "text": ". <break time=\"0.3s\" /> We're doing fast repairs to any damage you might have.",
+        "text": ". <break time=\"0.3s\" /> We have some damage, and we're going to use the fast repair.",
         "seed": 3
       },
       {
         "name": "fast-repair-off",
-        "text": " <break time=\"0.3s\" /> We're not doing fast repair",
-        "seed": 3
+        "text": " <break time=\"0.3s\" /> The car is damaged, but we're NOT gonna do a fast repair.",
+        "seed": 4
       },
       {
         "name": "windshield-on",
         "text": "And we're cleaning the windshield.",
-        "seed": 4,
-        "previous_request_ids": ["pit-readback/fast-repair-on"]
+        "seed": 7,
+        "previous_request_ids": [
+          "pit-readback/fast-repair-on",
+          "pit-readback/fast-repair-off"
+        ]
       },
       {
         "name": "windshield-off",
         "text": "and we're leaving windshield as-is.",
         "seed": 4,
-        "previous_request_ids": ["pit-readback/fast-repair-on"]
+        "previous_request_ids": [
+          "pit-readback/fast-repair-on",
+          "pit-readback/fast-repair-off"
+        ]
+      }
+    ],
+    "damage": [
+      {
+        "name": "repair-needed-01",
+        "text": "That hit broke something on the car. The spotter likely has more information.",
+        "seed": 8
+      },
+      {
+        "name": "repair-needed-02",
+        "text": "We picked up some damage. Maybe ask the spotter for details.",
+        "seed": 5
+      },
+      {
+        "name": "repair-needed-03",
+        "text": "Looks like we took a hit and something is broken. The spotter should have more details.",
+        "seed": 5
       }
     ],
     "names": [

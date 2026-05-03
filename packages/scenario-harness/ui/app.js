@@ -1,3 +1,4 @@
+/* eslint-env browser */
 // iRaceDeck Scenario Harness — single-file vanilla UI.
 //
 // All state writes go through HTTP. The WebSocket only carries server →
@@ -421,6 +422,11 @@ function connectWebSocket() {
         renderTopbar();
         renderTelemetry();
         renderSession();
+        // Skip the EngineWarnings sync while a local PATCH is still in
+        // flight — an older echo could otherwise resurrect a stale mask
+        // and overwrite a more recent click. wireEngineWarnings()'s
+        // .finally handler reconciles once the last write settles.
+        if (engineWarningsPendingWrites === 0) syncEngineWarningsCheckboxes();
       } else if (msg.section === "settings") {
         state.settings = msg.value;
         persistSettings(msg.value);
@@ -432,6 +438,132 @@ function connectWebSocket() {
     }
   });
   ws.addEventListener("close", () => setTimeout(connectWebSocket, 1000));
+}
+
+// ── Engine Warnings panel ─────────────────────────────────────────────────
+//
+// One checkbox per bit in `telemetry.EngineWarnings`. The mock controller
+// owns the bitfield; on every checkbox flip we recompute the full mask
+// from the current UI state via `readEngineWarningsMaskFromUi()` and PATCH
+// the new value via /api/telemetry. Reading from the UI rather than from
+// the cached telemetry avoids racing the WS echo from the previous click,
+// and naturally preserves bits set by the readback composer's limiter
+// checkbox (the user's intent for those is reflected in their own
+// checkbox state).
+//
+// Bit values mirror `@iracedeck/iracing-native/src/defines.ts`. Treat this
+// as a small fixed set; if a new bit is added there, add it here too.
+
+const ENGINE_WARNINGS = [
+  { id: "ew-water-temp",     label: "Water Temp",        bit: 0x0001 },
+  { id: "ew-fuel-pressure",  label: "Fuel Pressure",     bit: 0x0002 },
+  { id: "ew-oil-pressure",   label: "Oil Pressure",      bit: 0x0004 },
+  { id: "ew-engine-stalled", label: "Engine Stalled",    bit: 0x0008 },
+  { id: "ew-pit-limiter",    label: "Pit Speed Limiter", bit: 0x0010 },
+  { id: "ew-rev-limiter",    label: "Rev Limiter",       bit: 0x0020 },
+  { id: "ew-oil-temp",       label: "Oil Temp",          bit: 0x0040 },
+  { id: "ew-mand-rep",       label: "Mandatory Repair",  bit: 0x0080 },
+  { id: "ew-opt-rep",        label: "Optional Repair",   bit: 0x0100 },
+];
+
+const ENGINE_WARNINGS_DAMAGE_MASK = 0x0080 | 0x0100;
+
+function renderEngineWarningsPanel() {
+  const container = $("engine-warnings");
+  if (!container) return;
+
+  // Render once; subsequent state changes only flip `checked`.
+  if (container.childElementCount === 0) {
+    for (const { id, label } of ENGINE_WARNINGS) {
+      const wrap = document.createElement("label");
+      wrap.className = "ew-checkbox";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.id = id;
+
+      const span = document.createElement("span");
+      span.textContent = label;
+
+      wrap.appendChild(input);
+      wrap.appendChild(span);
+      container.appendChild(wrap);
+    }
+  }
+
+  syncEngineWarningsCheckboxes();
+}
+
+function syncEngineWarningsCheckboxes() {
+  const current = state.controller?.telemetry?.EngineWarnings ?? 0;
+  for (const { id, bit } of ENGINE_WARNINGS) {
+    const cb = $(id);
+    if (cb) cb.checked = (current & bit) !== 0;
+  }
+}
+
+// Derive the EngineWarnings bitmask from the current checkbox states.
+// This is the source-of-truth read for any code path that needs to
+// reason about EngineWarnings between a checkbox click and the
+// matching WS echo — the alternative (`state.controller.telemetry.EngineWarnings`)
+// is one round-trip behind, so two quick clicks would race and the
+// later POST would drop the earlier bit.
+function readEngineWarningsMaskFromUi() {
+  let mask = 0;
+  for (const { id, bit } of ENGINE_WARNINGS) {
+    if ($(id)?.checked) mask |= bit;
+  }
+  return mask;
+}
+
+// Monotonic counter incremented on every PATCH attempt. The catch handler
+// only rolls back if its captured `seq` is still the latest write — so a
+// late failure from an older POST can't clobber newer user edits made
+// while it was in flight.
+let engineWarningsWriteSeq = 0;
+
+// Number of EngineWarnings PATCHes currently in flight. While > 0, the WS
+// `state.controller` broadcast handler skips `syncEngineWarningsCheckboxes()`
+// — server echoes from older writes would otherwise stomp on a newer
+// optimistic click. Reconciliation happens once in the `.finally` of the
+// last in-flight PATCH below.
+let engineWarningsPendingWrites = 0;
+
+function wireEngineWarnings() {
+  for (const { id } of ENGINE_WARNINGS) {
+    const cb = $(id);
+    if (!cb) continue;
+    cb.addEventListener("change", () => {
+      const prev = state.controller?.telemetry?.EngineWarnings ?? 0;
+      const next = readEngineWarningsMaskFromUi();
+      const seq = ++engineWarningsWriteSeq;
+      engineWarningsPendingWrites++;
+      // Optimistic local update so subsequent reads (this function on a
+      // rapid second click, `readReadbackSnapshot()` on a readback fire)
+      // see the new value immediately. The WS echo arriving later is a
+      // no-op confirmation. Guard against the controller state not being
+      // populated yet on first boot.
+      if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = next;
+      post("/api/telemetry", { patch: { EngineWarnings: next } })
+        .catch((err) => {
+          // Only roll back if this failed write is still the latest user
+          // intent. Otherwise the user has already typed past us — keep
+          // the newer optimistic state.
+          if (seq === engineWarningsWriteSeq) {
+            if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
+            syncEngineWarningsCheckboxes();
+          }
+          alert(err.message);
+        })
+        .finally(() => {
+          engineWarningsPendingWrites--;
+          // Reconcile against the current cached telemetry once the last
+          // in-flight write settles, so any external change that arrived
+          // during the in-flight window lands now.
+          if (engineWarningsPendingWrites === 0) syncEngineWarningsCheckboxes();
+        });
+    });
+  }
 }
 
 // ── Pit Service Readback composer ─────────────────────────────────────────
@@ -467,6 +599,14 @@ function readReadbackSnapshot() {
       ? null
       : { from: currentCompound, to: Number(queuedCompoundRaw) };
 
+  // hasDamage is owned by the Engine Warnings panel, not the composer.
+  // Derive it from the live checkbox states (NOT
+  // state.controller.telemetry.EngineWarnings) so a readback fired
+  // immediately after a checkbox toggle sees the user's intent rather
+  // than the last WS echo from the server.
+  const ew = readEngineWarningsMaskFromUi();
+  const damageMask = ENGINE_WARNINGS_DAMAGE_MASK;
+
   return {
     fuel: { queued: $("readback-fuel-queued").checked },
     tires,
@@ -480,6 +620,7 @@ function readReadbackSnapshot() {
       available: $("readback-ws-available").checked,
     },
     limiterEngaged: $("readback-limiter").checked,
+    hasDamage: (ew & damageMask) !== 0,
   };
 }
 
@@ -736,8 +877,10 @@ function wire() {
     renderSettings();
     renderInjector();
     renderShortcuts();
+    renderEngineWarningsPanel();
     wire();
     wireReadbackComposer();
+    wireEngineWarnings();
     connectWebSocket();
   } catch (e) {
     document.body.innerHTML = `<pre style="padding:20px;color:#ff6b6b;">Failed to load harness: ${e.message}</pre>`;

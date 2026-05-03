@@ -401,16 +401,19 @@ describe("pit-readback path-graph invariant", () => {
                     if (wsQ && !wsAvail) continue;
 
                     for (const limiter of BOOLS) {
-                      const seq = recordSequence(reason, {
-                        fuel: { queued: fuelQ },
-                        tires,
-                        compoundChange,
-                        fastRepair: { queued: frQ, available: frAvail },
-                        windshield: { queued: wsQ, available: wsAvail },
-                        limiterEngaged: limiter,
-                      });
+                      for (const damage of BOOLS) {
+                        const seq = recordSequence(reason, {
+                          fuel: { queued: fuelQ },
+                          tires,
+                          compoundChange,
+                          fastRepair: { queued: frQ, available: frAvail },
+                          windshield: { queued: wsQ, available: wsAvail },
+                          limiterEngaged: limiter,
+                          hasDamage: damage,
+                        });
 
-                      record(seq);
+                        record(seq);
+                      }
                     }
                   }
                 }

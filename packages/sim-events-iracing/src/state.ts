@@ -93,6 +93,17 @@ export type TranslatorState = {
   materialHistory: MaterialSample[];
   offTrackPending: boolean; // true between offTrack.started and offTrack.ended
 
+  // ── Damage (issue #489) ─────────────────────────────────────────────────
+  // Rising-edge detection for `EngineWarnings & (MandRepNeeded | OptRepNeeded)`
+  // with a debounce window. The baseline is the last *emitted* state — once
+  // damage has been announced, we hold that baseline until the bits clear so
+  // sustained damage doesn't re-fire. Clear → damage cycles re-fire because
+  // the baseline drops back to false on the falling edge (no event emitted).
+  damageInitialized: boolean;
+  damageBaseline: boolean; // true = damage announced and held
+  damagePendingAt: number; // 0 = stable; >0 = ms timestamp of most recent flip
+  damagePendingValue: boolean; // value the pending flip is moving toward
+
   // ── Overtakes ───────────────────────────────────────────────────────────
   overtakeInitialized: boolean;
   lastPosition: number;
@@ -159,6 +170,11 @@ export function createInitialState(): TranslatorState {
     offTrackWarnedThisExcursion: false,
     materialHistory: [],
     offTrackPending: false,
+
+    damageInitialized: false,
+    damageBaseline: false,
+    damagePendingAt: 0,
+    damagePendingValue: false,
 
     overtakeInitialized: false,
     lastPosition: -1,

@@ -69,6 +69,15 @@ export type PitReadbackSnapshot = {
   fastRepair: { queued: boolean; available: boolean };
   windshield: { queued: boolean; available: boolean };
   limiterEngaged: boolean;
+  /**
+   * Whether the player's car currently has damage that requires repair —
+   * `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Used by the readback
+   * to gate the fast-repair slot: the engineer stays silent about repairs
+   * on a clean car, regardless of whether the user happened to queue
+   * fast-repair (issue #489). Sim-agnostic boolean so future translators
+   * can map their own damage model onto the same readback shape.
+   */
+  hasDamage: boolean;
 };
 
 /**
@@ -141,6 +150,15 @@ export type SimEventMap = {
   "limiter.dropped": SimEvent<"limiter.dropped", EmptySimEventPayload>;
   "limiter.missing": SimEvent<"limiter.missing", EmptySimEventPayload>;
   "limiter.speeding": SimEvent<"limiter.speeding", EmptySimEventPayload>;
+
+  /**
+   * Damage requiring repair was just observed on the player's car after the
+   * debounce window settled (issue #489). Triggered on the rising edge of
+   * `EngineWarnings & (MandRepNeeded | OptRepNeeded)`; clear → damage
+   * cycles re-fire as fresh `raised` events. No paired `cleared` event —
+   * audio scenarios only need the rising edge.
+   */
+  "damage.repairNeeded.raised": SimEvent<"damage.repairNeeded.raised", EmptySimEventPayload>;
 
   "incident.occurred": SimEvent<"incident.occurred", { delta: number }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;

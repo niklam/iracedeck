@@ -97,6 +97,16 @@
 			var pitServiceCheckboxes = pitServiceCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Damage callouts (issue #489). One subject today; the same
+			// 2-column auto-balancing grid scales when more land later.
+			var damageCallouts = [
+				{ setting: "calloutEnabledDamageRepairNeeded", label: "Repair needed" },
+			];
+			var damageRowCount = Math.ceil(damageCallouts.length / 2);
+			var damageCheckboxes = damageCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -111,6 +121,11 @@
 				'<sdpi-item label="Pit Service">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + pitServiceRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						pitServiceCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Damage">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + damageRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						damageCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
