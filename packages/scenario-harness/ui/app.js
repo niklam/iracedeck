@@ -1,3 +1,4 @@
+/* eslint-env browser */
 // iRaceDeck Scenario Harness — single-file vanilla UI.
 //
 // All state writes go through HTTP. The WebSocket only carries server →
@@ -421,7 +422,11 @@ function connectWebSocket() {
         renderTopbar();
         renderTelemetry();
         renderSession();
-        syncEngineWarningsCheckboxes();
+        // Skip the EngineWarnings sync while a local PATCH is still in
+        // flight — an older echo could otherwise resurrect a stale mask
+        // and overwrite a more recent click. wireEngineWarnings()'s
+        // .finally handler reconciles once the last write settles.
+        if (engineWarningsPendingWrites === 0) syncEngineWarningsCheckboxes();
       } else if (msg.section === "settings") {
         state.settings = msg.value;
         persistSettings(msg.value);
@@ -517,6 +522,13 @@ function readEngineWarningsMaskFromUi() {
 // while it was in flight.
 let engineWarningsWriteSeq = 0;
 
+// Number of EngineWarnings PATCHes currently in flight. While > 0, the WS
+// `state.controller` broadcast handler skips `syncEngineWarningsCheckboxes()`
+// — server echoes from older writes would otherwise stomp on a newer
+// optimistic click. Reconciliation happens once in the `.finally` of the
+// last in-flight PATCH below.
+let engineWarningsPendingWrites = 0;
+
 function wireEngineWarnings() {
   for (const { id } of ENGINE_WARNINGS) {
     const cb = $(id);
@@ -525,22 +537,31 @@ function wireEngineWarnings() {
       const prev = state.controller?.telemetry?.EngineWarnings ?? 0;
       const next = readEngineWarningsMaskFromUi();
       const seq = ++engineWarningsWriteSeq;
+      engineWarningsPendingWrites++;
       // Optimistic local update so subsequent reads (this function on a
       // rapid second click, `readReadbackSnapshot()` on a readback fire)
       // see the new value immediately. The WS echo arriving later is a
       // no-op confirmation. Guard against the controller state not being
       // populated yet on first boot.
       if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = next;
-      post("/api/telemetry", { patch: { EngineWarnings: next } }).catch((err) => {
-        // Only roll back if this failed write is still the latest user
-        // intent. Otherwise the user has already typed past us — keep
-        // the newer optimistic state.
-        if (seq === engineWarningsWriteSeq) {
-          if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
-          syncEngineWarningsCheckboxes();
-        }
-        alert(err.message);
-      });
+      post("/api/telemetry", { patch: { EngineWarnings: next } })
+        .catch((err) => {
+          // Only roll back if this failed write is still the latest user
+          // intent. Otherwise the user has already typed past us — keep
+          // the newer optimistic state.
+          if (seq === engineWarningsWriteSeq) {
+            if (state.controller?.telemetry) state.controller.telemetry.EngineWarnings = prev;
+            syncEngineWarningsCheckboxes();
+          }
+          alert(err.message);
+        })
+        .finally(() => {
+          engineWarningsPendingWrites--;
+          // Reconcile against the current cached telemetry once the last
+          // in-flight write settles, so any external change that arrived
+          // during the in-flight window lands now.
+          if (engineWarningsPendingWrites === 0) syncEngineWarningsCheckboxes();
+        });
     });
   }
 }
