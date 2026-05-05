@@ -258,6 +258,21 @@ describe("SimHub Service", () => {
       expect(result).toEqual([]);
       expect(mockLogger.warn).toHaveBeenCalled();
     });
+
+    it("should sort roles alphabetically (case-insensitive)", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve(["Zebra", "apple", "Banana", "cherry"]),
+        }),
+      );
+
+      initializeSimHub(mockLogger);
+      const result = await getSimHub().getRoles();
+
+      expect(result).toEqual(["apple", "Banana", "cherry", "Zebra"]);
+    });
   });
 
   describe("URL-encodes role names", () => {
