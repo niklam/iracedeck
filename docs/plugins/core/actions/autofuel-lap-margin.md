@@ -34,8 +34,8 @@ Triggers the direction configured in Settings (increase or decrease).
 
 | Action | Default Key | iRacing Setting |
 |--------|-------------|-----------------|
-| Increase | Shift+Alt+X | Autofuel Lap Margin Inc |
-| Decrease | Shift+Alt+S | Autofuel Lap Margin Dec |
+| Increase | *(none)* | Autofuel Lap Margin Inc |
+| Decrease | *(none)* | Autofuel Lap Margin Dec |
 
 ## Icon States
 
