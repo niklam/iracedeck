@@ -5,7 +5,7 @@
  * driving around the track. These are placeholder values — replace
  * with real telemetry captures for more accurate simulation.
  */
-import { Flags, PitSvFlags, SessionState, TrkLoc } from "../defines.js";
+import { Flags, PitSvFlags, PitSvStatus, SessionState, TrkLoc } from "../defines.js";
 import type { MockSnapshotValues } from "./telemetry.js";
 
 /** Create a 64-element array with default value, setting specific car values */
@@ -91,6 +91,7 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
     PitSvFlags.LRTireChange |
     PitSvFlags.RRTireChange,
   PitSvFuel: 50.0,
+  PlayerCarPitSvStatus: PitSvStatus.None,
   PitRepairLeft: 0.0,
   PitOptRepairLeft: 0.0,
   FastRepairAvailable: 1,

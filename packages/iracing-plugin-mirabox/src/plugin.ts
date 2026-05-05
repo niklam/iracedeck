@@ -15,7 +15,9 @@ import {
   FLAG_CALLOUT_SETTING_KEYS,
   type FlagCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
+  PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
+  type PitStatusCalloutId,
   registerPitCrew,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
@@ -201,6 +203,11 @@ registerPitCrew(
   // flag callouts: gate at event arrival so disabling mid-callout only
   // suppresses future fires.
   (id: DamageCalloutId) => (getGlobalSettings() as Record<string, unknown>)[DAMAGE_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Pit-service status callout opt-ins (issue #479) — one boolean per
+  // non-`None` PlayerCarPitSvStatus. Same live-read pattern as the
+  // other callout families.
+  (id: PitStatusCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
 );
 
 // Publish audio device list and apply saved device selection.

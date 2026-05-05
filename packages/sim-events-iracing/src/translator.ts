@@ -30,6 +30,7 @@ import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
+import { diffPitStatus } from "./diff/pit-status.js";
 import { diffRadar } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -247,6 +248,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
   diffToggles(self.state, telemetry, now, emit);
+  // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
+  // / positioning / can't-fix-that transitions (issue #479). Independent of
+  // diffToggles' bit-flag world; placed adjacent for cohesion of the
+  // pit-service event group.
+  diffPitStatus(self.state, telemetry, emit);
   // diffPitReadback runs after diffToggles so it sees the per-tick toggle
   // emissions (`pitService.toggled` / `tireService.changed` /
   // `tireService.compoundChanged`) in `pending` — those signal user intent

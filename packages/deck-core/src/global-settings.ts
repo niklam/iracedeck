@@ -286,6 +286,49 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Pit-service status callout opt-ins (issue #479). One boolean per
+     * non-`None` `PlayerCarPitSvStatus` target — the silent idle state
+     * has no opt-out because it never reaches the bus.
+     *
+     * Same forward-compat semantics as the other callout families:
+     * default `true` so a future plugin upgrade automatically enables
+     * a new subject for existing users (`.passthrough()` on the schema
+     * makes that property hold without a migration). Canonical id↔key
+     * mapping in `PIT_STATUS_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledPitStatusInProgress: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusComplete: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusTooFarLeft: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusTooFarRight: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusTooFarForward: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusTooFarBack: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusBadAngle: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledPitStatusCantFixThat: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

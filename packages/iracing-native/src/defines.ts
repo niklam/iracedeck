@@ -622,6 +622,7 @@ export interface TelemetryData {
   PitSvLRP?: number;
   PitSvRRP?: number;
   PitSvTireCompound?: number;
+  PlayerCarPitSvStatus?: number; // PitSvStatus enum value
   PitRepairLeft?: number;
   PitOptRepairLeft?: number;
   FastRepairAvailable?: number;

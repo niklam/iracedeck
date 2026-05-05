@@ -88,4 +88,17 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/damage/repair-needed-02.mp3",
     "voice/{voice}/damage/repair-needed-03.mp3",
   ],
+
+  // Pit-service status callout pools (issue #479). One pool per non-`None`
+  // PitSvStatus target. Single-clip today; future variants append cleanly
+  // here without scenario changes. Closing transitions (`* → None`) are
+  // suppressed by the sim translator, so there's no `pit-status-none` pool.
+  "pit-status-in-progress": ["voice/{voice}/pit-status/in-progress-01.mp3"],
+  "pit-status-complete": ["voice/{voice}/pit-status/complete-01.mp3"],
+  "pit-status-too-far-left": ["voice/{voice}/pit-status/too-far-left-01.mp3"],
+  "pit-status-too-far-right": ["voice/{voice}/pit-status/too-far-right-01.mp3"],
+  "pit-status-too-far-forward": ["voice/{voice}/pit-status/too-far-forward-01.mp3"],
+  "pit-status-too-far-back": ["voice/{voice}/pit-status/too-far-back-01.mp3"],
+  "pit-status-bad-angle": ["voice/{voice}/pit-status/bad-angle-01.mp3"],
+  "pit-status-cant-fix-that": ["voice/{voice}/pit-status/cant-fix-that-01.mp3"],
 };

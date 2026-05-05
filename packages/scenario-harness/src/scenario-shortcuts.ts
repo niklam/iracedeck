@@ -12,6 +12,7 @@
  * the array drives display order in the UI.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
+import { PitSvStatus } from "@iracedeck/iracing-sdk";
 
 export type ScenarioShortcut = {
   id: string;
@@ -49,6 +50,22 @@ function radar(label: string, from: string, to: string): ScenarioShortcut {
     label,
     event: "radar.changed",
     data: { from, to },
+  };
+}
+
+function pitStatus(id: string, label: string, target: PitSvStatus, description?: string): ScenarioShortcut {
+  return {
+    id: `pit-status-${id}`,
+    category: "Pit Status",
+    label,
+    description,
+    event: "pitService.statusChanged",
+    // `from` is presented as `None` so each shortcut reads as a fresh
+    // transition into the target state. Same-family preempt still works
+    // when two shortcuts fire in quick succession because the scenario
+    // engine sees identical `family: "pit-status"` metadata regardless
+    // of the `from` value.
+    data: { from: PitSvStatus.None, to: target },
   };
 }
 
@@ -229,6 +246,25 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "offTrack.ended",
     data: {},
   },
+
+  // ── Pit Status ──
+  // `pitService.statusChanged` transitions (issue #479). Bypasses the
+  // sim translator so you hear/see the scenario without driving
+  // `PlayerCarPitSvStatus` through `/api/telemetry`. Same-family
+  // preempt: fire two in a row to confirm the second cancels the first.
+  pitStatus("in-progress", "In Progress", PitSvStatus.InProgress, "Crew started working on the car"),
+  pitStatus("complete", "Complete", PitSvStatus.Complete, "Service finished — ready to leave the box"),
+  pitStatus("too-far-left", "Too Far Left", PitSvStatus.TooFarLeft),
+  pitStatus("too-far-right", "Too Far Right", PitSvStatus.TooFarRight),
+  pitStatus("too-far-forward", "Too Far Forward", PitSvStatus.TooFarForward),
+  pitStatus("too-far-back", "Too Far Back", PitSvStatus.TooFarBack),
+  pitStatus("bad-angle", "Bad Angle", PitSvStatus.BadAngle),
+  pitStatus(
+    "cant-fix-that",
+    "Can't Fix That",
+    PitSvStatus.CantFixThat,
+    "Crew won't perform the queued repair this stop",
+  ),
 
   // ── Radar ──
   // `from` is the previous radar state; `to` is the new one. The radar

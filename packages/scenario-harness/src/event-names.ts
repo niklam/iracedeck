@@ -66,6 +66,12 @@ export const EVENT_TEMPLATES = [
     description: "Pit service toggled (fuel/windshield/fastRepair)",
     data: { service: "fuel", on: true },
   },
+  {
+    name: "pitService.statusChanged",
+    description:
+      "Pit-service status transition (PlayerCarPitSvStatus). 0=None, 1=InProgress, 2=Complete, 100..105=positioning/cantFix",
+    data: { from: 0, to: 1 },
+  },
   { name: "carControl.drsToggled", description: "DRS toggled", data: { on: true } },
   { name: "carControl.p2pToggled", description: "Push-to-pass toggled", data: { on: true } },
   { name: "carControl.limiterToggled", description: "Pit limiter toggled", data: { on: true } },

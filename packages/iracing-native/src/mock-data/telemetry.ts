@@ -165,6 +165,14 @@ function buildVarHeaders(): VarHeader[] {
     },
     { type: VarType.Float, count: 1, countAsTime: false, name: "PitSvFuel", desc: "Pit service fuel add", unit: "l" },
     {
+      type: VarType.Int,
+      count: 1,
+      countAsTime: false,
+      name: "PlayerCarPitSvStatus",
+      desc: "Pit service status",
+      unit: "irsdk_PitSvStatus",
+    },
+    {
       type: VarType.Float,
       count: 1,
       countAsTime: false,

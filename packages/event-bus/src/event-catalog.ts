@@ -144,6 +144,16 @@ export type SimEventMap = {
    */
   "tireService.compoundChanged": SimEvent<"tireService.compoundChanged", { from: number; to: number }>;
   "pitService.toggled": SimEvent<"pitService.toggled", { service: PitServiceKind; on: boolean }>;
+  /**
+   * Pit-service status transition (issue #479). Fired by the sim translator
+   * on every change to the player's pit-service status (idle / in-progress /
+   * complete / positioning errors / can't-fix-that). `from`/`to` are
+   * sim-defined numeric ids — the bus stays sim-agnostic. iRacing uses the
+   * `irsdk_PitSvStatus` enum (`@iracedeck/iracing-sdk` re-exports it as
+   * `PitSvStatus`). Closing transitions (`* → None`) are suppressed by the
+   * translator so the silent idle state never fires.
+   */
+  "pitService.statusChanged": SimEvent<"pitService.statusChanged", { from: number; to: number }>;
   "carControl.drsToggled": SimEvent<"carControl.drsToggled", { on: boolean }>;
   "carControl.p2pToggled": SimEvent<"carControl.p2pToggled", { on: boolean }>;
   "carControl.limiterToggled": SimEvent<"carControl.limiterToggled", { on: boolean }>;
