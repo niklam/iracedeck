@@ -56,6 +56,9 @@ vi.mock("@iracedeck/icons/chat/respond-pm.svg", () => ({
 vi.mock("@iracedeck/icons/chat/cancel.svg", () => ({
   default: "<svg>cancel-icon</svg>",
 }));
+vi.mock("@iracedeck/icons/chat/toggle.svg", () => ({
+  default: "<svg>toggle-icon</svg>",
+}));
 
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
@@ -174,7 +177,7 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   };
 }
 
-type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "open-chat" | "cancel";
+type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "toggle" | "open-chat" | "cancel";
 
 /** Helper to build chat settings for test functions */
 function chatSettings(
@@ -205,6 +208,7 @@ describe("Chat", () => {
   describe("constants", () => {
     it("should map keyboard modes to correct global settings keys", () => {
       expect(CHAT_GLOBAL_KEYS["whisper"]).toBe("chatWhisper");
+      expect(CHAT_GLOBAL_KEYS["toggle"]).toBe("chatToggle");
     });
 
     it("should not contain SDK-based modes", () => {
@@ -267,6 +271,7 @@ describe("Chat", () => {
       "open-chat",
       "reply",
       "whisper",
+      "toggle",
       "respond-pm",
       "cancel",
       "send-message",
@@ -297,6 +302,7 @@ describe("Chat", () => {
         "open-chat": { line1: "OPEN", line2: "CHAT" },
         reply: { line1: "REPLY", line2: "CHAT" },
         whisper: { line1: "WHISPER", line2: "CHAT" },
+        toggle: { line1: "ON/OFF", line2: "CHAT" },
         "respond-pm": { line1: "RESPOND", line2: "LAST PM" },
         cancel: { line1: "CANCEL", line2: "CHAT" },
       };
@@ -588,8 +594,23 @@ describe("Chat", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("chatWhisper");
     });
 
+    it("should call tapGlobalBinding for toggle", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { mode: "toggle" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("chatToggle");
+    });
+
+    it("should call tapGlobalBinding even when no key binding is configured for toggle", async () => {
+      mockParseKeyBinding.mockReturnValue(null);
+
+      await action.onKeyDown(fakeEvent("action-1", { mode: "toggle" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("chatToggle");
+    });
+
     it("should not call SDK commands for keyboard modes", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "whisper" }) as any);
+      await action.onKeyDown(fakeEvent("action-1", { mode: "toggle" }) as any);
 
       expect(mockBeginChat).not.toHaveBeenCalled();
       expect(mockReply).not.toHaveBeenCalled();

@@ -3,11 +3,11 @@ title: Chat
 description: Send chat messages, macros, replies, whispers, and manage the chat window.
 sidebar:
   badge:
-    text: "7 modes"
+    text: "8 modes"
     variant: tip
 ---
 
-Send chat messages and interact with iRacing's chat system. Includes sending custom messages, triggering built-in chat macros, replying to messages, whispering a specific driver, and managing the chat window.
+Send chat messages and interact with iRacing's chat system. Includes sending custom messages, triggering built-in chat macros, replying to messages, whispering a specific driver, toggling the chat window, and managing the chat window.
 
 :::note
 Chat macros correspond to iRacing's built-in macro slots 1 through 15. Configure the macro text inside iRacing's chat macro settings.
@@ -98,6 +98,22 @@ Send a private whisper to a specific driver. Whisper has no SDK command in iRaci
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — Whisper has no default iRacing hotkey, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Toggle Chat On/Off
+
+Show or hide the chat window. iRacing's `Text Chat Toggle` control has no SDK command and ships with no default key, so this mode falls back to a keyboard binding.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — `Text Chat Toggle` has no default iRacing hotkey, so you must bind a key in iRacing's *Options → Controls → Text Chat Toggle* and the matching key in the Property Inspector
+- **Telemetry-aware icon:** No — iRacing does not expose chat-window state via telemetry, so the button cannot reflect whether chat is currently visible
 
 #### Settings
 

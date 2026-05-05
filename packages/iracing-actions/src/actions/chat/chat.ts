@@ -25,6 +25,7 @@ import cancelIcon from "@iracedeck/icons/chat/cancel.svg";
 import openChatIcon from "@iracedeck/icons/chat/open-chat.svg";
 import replyIcon from "@iracedeck/icons/chat/reply.svg";
 import respondPmIcon from "@iracedeck/icons/chat/respond-pm.svg";
+import toggleIcon from "@iracedeck/icons/chat/toggle.svg";
 import whisperIcon from "@iracedeck/icons/chat/whisper.svg";
 import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -57,7 +58,7 @@ const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144
   </g>
 </svg>`;
 
-type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "open-chat" | "cancel";
+type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "toggle" | "open-chat" | "cancel";
 
 /**
  * Title configuration for each static chat mode (icon modes only, not send-message/macro)
@@ -66,6 +67,7 @@ const CHAT_TITLES: Partial<Record<ChatMode, string>> = {
   "open-chat": "CHAT\nOPEN",
   reply: "CHAT\nREPLY",
   whisper: "CHAT\nWHISPER",
+  toggle: "CHAT\nON/OFF",
   "respond-pm": "LAST PM\nRESPOND",
   cancel: "CHAT\nCANCEL",
 };
@@ -78,6 +80,7 @@ const CHAT_ICONS: Partial<Record<ChatMode, string>> = {
   "open-chat": openChatIcon,
   reply: replyIcon,
   whisper: whisperIcon,
+  toggle: toggleIcon,
   "respond-pm": respondPmIcon,
   cancel: cancelIcon,
 };
@@ -90,11 +93,12 @@ const CHAT_ICONS: Partial<Record<ChatMode, string>> = {
  */
 export const CHAT_GLOBAL_KEYS: Record<string, string> = {
   whisper: "chatWhisper",
+  toggle: "chatToggle",
 };
 
 const ChatSettings = CommonSettings.extend({
   mode: z
-    .enum(["send-message", "macro", "reply", "respond-pm", "whisper", "open-chat", "cancel"])
+    .enum(["send-message", "macro", "reply", "respond-pm", "whisper", "toggle", "open-chat", "cancel"])
     .default("send-message"),
   message: z.string().default(""),
   macroNumber: z.coerce.number().min(1).max(15).default(1),
@@ -360,8 +364,9 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
         this.executeSdkMacro(settings.macroNumber);
         break;
 
-      // Keyboard-based mode
-      case "whisper": {
+      // Keyboard-based modes
+      case "whisper":
+      case "toggle": {
         const settingKey = CHAT_GLOBAL_KEYS[mode];
 
         if (!settingKey) {

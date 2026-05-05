@@ -671,7 +671,9 @@
     }
   ],
   "chat": [
-    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" }],
+    { "id": "whisper", "label": "Whisper", "default": "", "setting": "chatWhisper" },
+    { "id": "toggle", "label": "Toggle Chat On/Off", "default": "", "setting": "chatToggle" }
+  ],
   "cameraEditorAdjustments": [
     { "id": "latitudeIncrease", "label": "Latitude +", "default": "D", "setting": "camEditLatitudeIncrease" },
     { "id": "latitudeDecrease", "label": "Latitude -", "default": "A", "setting": "camEditLatitudeDecrease" },
