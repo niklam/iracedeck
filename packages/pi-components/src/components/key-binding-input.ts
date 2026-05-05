@@ -189,7 +189,9 @@ async function ensureSimHubRolesFetched(): Promise<void> {
         const json: unknown = await response.json();
 
         if (Array.isArray(json) && json.every((item) => typeof item === "string")) {
-          simHubRoles = json as string[];
+          simHubRoles = (json as string[])
+            .slice()
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
           simHubReachable = true;
         } else {
           console.warn("[ird-key-binding] SimHub GetRoles returned unexpected format");

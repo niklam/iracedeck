@@ -150,7 +150,7 @@ class SimHubService implements ISimHubService {
         return [];
       }
 
-      const roles = json as string[];
+      const roles = (json as string[]).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
       this.logger.debug(`Available roles: ${JSON.stringify(roles)}`);
       this.setReachable(true);
 
