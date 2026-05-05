@@ -51,6 +51,7 @@ import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
+import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
@@ -150,6 +151,50 @@ const SCENARIO_ID_TO_DAMAGE_ID: Record<string, DamageCalloutId> = {
   "pit-crew.damage-repair-needed": "repair-needed",
 };
 
+/**
+ * Stable identifier for each user-toggleable pit-service-status callout
+ * (issue #479). One id per non-`None` `PlayerCarPitSvStatus` target — the
+ * idle state never reaches the bus, so it has no opt-out either. Eight
+ * subjects today; future statuses (if iRacing ever extends `PitSvStatus`)
+ * append cleanly because the wrapper is generic over `TId`.
+ */
+export type PitStatusCalloutId =
+  | "in-progress"
+  | "complete"
+  | "too-far-left"
+  | "too-far-right"
+  | "too-far-forward"
+  | "too-far-back"
+  | "bad-angle"
+  | "cant-fix-that";
+
+/**
+ * Canonical mapping from `PitStatusCalloutId` to its plugin-global setting
+ * key in `GlobalSettingsSchema`. Plugin entry points use this to read the
+ * live opt-in for each status callout without duplicating key strings.
+ */
+export const PIT_STATUS_CALLOUT_SETTING_KEYS: Record<PitStatusCalloutId, string> = {
+  "in-progress": "calloutEnabledPitStatusInProgress",
+  complete: "calloutEnabledPitStatusComplete",
+  "too-far-left": "calloutEnabledPitStatusTooFarLeft",
+  "too-far-right": "calloutEnabledPitStatusTooFarRight",
+  "too-far-forward": "calloutEnabledPitStatusTooFarForward",
+  "too-far-back": "calloutEnabledPitStatusTooFarBack",
+  "bad-angle": "calloutEnabledPitStatusBadAngle",
+  "cant-fix-that": "calloutEnabledPitStatusCantFixThat",
+};
+
+const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
+  "pit-crew.pit-status-in-progress": "in-progress",
+  "pit-crew.pit-status-complete": "complete",
+  "pit-crew.pit-status-too-far-left": "too-far-left",
+  "pit-crew.pit-status-too-far-right": "too-far-right",
+  "pit-crew.pit-status-too-far-forward": "too-far-forward",
+  "pit-crew.pit-status-too-far-back": "too-far-back",
+  "pit-crew.pit-status-bad-angle": "bad-angle",
+  "pit-crew.pit-status-cant-fix-that": "cant-fix-that",
+};
+
 export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
@@ -184,6 +229,11 @@ export function registerPitCrew(
   // cutting an in-flight clip. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getDamageCalloutEnabled: (id: DamageCalloutId) => boolean = () => true,
+  // User opt-in for the per-status pit-service callouts (issue #479).
+  // Same gate-at-event-arrival shape as the other callout families.
+  // Default `() => true` preserves legacy behavior for tests that don't
+  // supply a closure.
+  getPitStatusCalloutEnabled: (id: PitStatusCalloutId) => boolean = () => true,
 ): void {
   registerRadarEngine(bus);
 
@@ -243,6 +293,12 @@ export function registerPitCrew(
   for (const s of DAMAGE_ALERTS) {
     engine.defineScenario(
       wrapCalloutScenario(s, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
+    );
+  }
+
+  for (const s of PIT_STATUS_ALERTS) {
+    engine.defineScenario(
+      wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
     );
   }
 }

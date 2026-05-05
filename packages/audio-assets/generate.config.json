@@ -613,6 +613,42 @@
         "seed": 5
       }
     ],
+    "pit-status": [
+      {
+        "name": "in-progress-01",
+        "text": "Pit stop in progress.",
+        "seed": 2
+      },
+      {
+        "name": "complete-01",
+        "text": "Done. Go."
+      },
+      {
+        "name": "too-far-left-01",
+        "text": "Car's too far left, line it up."
+      },
+      {
+        "name": "too-far-right-01",
+        "text": "Car's too far right, line it up."
+      },
+      {
+        "name": "too-far-forward-01",
+        "text": "Car's too far forward, back it up."
+      },
+      {
+        "name": "too-far-back-01",
+        "text": "Car's too far back, ease it forward."
+      },
+      {
+        "name": "bad-angle-01",
+        "text": "Car's at a bad angle, straighten it up."
+      },
+      {
+        "name": "cant-fix-that-01",
+        "text": "We can't fix this car... We're gonna have to retire.",
+        "seed": 2
+      }
+    ],
     "names": [
       {
         "name": "adam",

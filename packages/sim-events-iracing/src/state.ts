@@ -80,6 +80,16 @@ export type TranslatorState = {
    */
   lastTickInPreStart: boolean;
 
+  // ── Pit-service status (issue #479) ─────────────────────────────────────
+  // Tracks PlayerCarPitSvStatus across ticks so the diff can emit one event
+  // per transition. Seeded silently on first tick / off-track / in pit stall
+  // for the same reason `lastPitSvFlags` is — the user isn't responsible for
+  // those state changes and the engineer should stay silent on connect /
+  // garage returns. Closing transitions (* → None) are suppressed in the
+  // diff itself, not via baseline juggling.
+  pitStatusInitialized: boolean;
+  lastPitSvStatus: number; // PitSvStatus enum value
+
   // ── Pit limiter warnings ────────────────────────────────────────────────
   limiterInitialized: boolean;
   lastOnPitRoadForLimiter: boolean;
@@ -159,6 +169,9 @@ export function createInitialState(): TranslatorState {
     pitActionCooldownUntil: 0,
     pitReadbackPreStartFireAt: 0,
     lastTickInPreStart: false,
+
+    pitStatusInitialized: false,
+    lastPitSvStatus: 0, // PitSvStatus.None
 
     limiterInitialized: false,
     lastOnPitRoadForLimiter: false,

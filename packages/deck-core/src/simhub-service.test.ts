@@ -66,6 +66,14 @@ describe("SimHub Service", () => {
       calloutEnabledPitReadbackExit: true,
       calloutEnabledPitServiceRequests: true,
       calloutEnabledDamageRepairNeeded: true,
+      calloutEnabledPitStatusInProgress: true,
+      calloutEnabledPitStatusComplete: true,
+      calloutEnabledPitStatusTooFarLeft: true,
+      calloutEnabledPitStatusTooFarRight: true,
+      calloutEnabledPitStatusTooFarForward: true,
+      calloutEnabledPitStatusTooFarBack: true,
+      calloutEnabledPitStatusBadAngle: true,
+      calloutEnabledPitStatusCantFixThat: true,
       flagFlashDurationSeconds: 15,
     });
   });
@@ -182,6 +190,14 @@ describe("SimHub Service", () => {
         calloutEnabledPitReadbackExit: true,
         calloutEnabledPitServiceRequests: true,
         calloutEnabledDamageRepairNeeded: true,
+        calloutEnabledPitStatusInProgress: true,
+        calloutEnabledPitStatusComplete: true,
+        calloutEnabledPitStatusTooFarLeft: true,
+        calloutEnabledPitStatusTooFarRight: true,
+        calloutEnabledPitStatusTooFarForward: true,
+        calloutEnabledPitStatusTooFarBack: true,
+        calloutEnabledPitStatusBadAngle: true,
+        calloutEnabledPitStatusCantFixThat: true,
         flagFlashDurationSeconds: 15,
       });
 

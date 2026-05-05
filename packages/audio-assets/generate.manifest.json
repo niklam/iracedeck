@@ -2938,20 +2938,20 @@
       "requestId": "ZhvjaDOcsY6WkdycEkJf"
     },
     "voice/luca/pit-readback/windshield-on.mp3": {
-      "hash": "1bd5a6a6719b506b",
+      "hash": "dcc4c411eb63d282",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
       "textPreview": "And we're cleaning the windshield.",
-      "generatedAt": "2026-05-02T19:25:34.339Z",
-      "requestId": "OsQdpvSHUlSWxx9bd60f"
+      "generatedAt": "2026-05-05T15:13:06.497Z",
+      "requestId": "q5yqG4YwfPivo52JsVTF"
     },
     "voice/luca/pit-readback/windshield-off.mp3": {
-      "hash": "bc0cf03d6f32287c",
+      "hash": "857c4d688bc1ddea",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
       "textPreview": "and we're leaving windshield as-is.",
-      "generatedAt": "2026-05-02T19:25:34.580Z",
-      "requestId": "lt16FEOmwwyZ2aI2HJ8Q"
+      "generatedAt": "2026-05-05T15:13:06.773Z",
+      "requestId": "OkppvrWAXLDw5086dkLR"
     },
     "voice/luca/pit-readback/closer-exit.mp3": {
       "hash": "b15737e380e4ca18",
@@ -3080,6 +3080,70 @@
       "textPreview": "Looks like we took a hit and something is broken. The spotter should have more …",
       "generatedAt": "2026-05-02T19:08:23.135Z",
       "requestId": "sEswTNHPc6Ld8NJhYWHi"
+    },
+    "voice/luca/pit-status/in-progress-01.mp3": {
+      "hash": "5f9fe4a5d44c7c47",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Pit stop in progress.",
+      "generatedAt": "2026-05-05T17:28:16.297Z",
+      "requestId": "ac7eLTcsAYdActYllTDt"
+    },
+    "voice/luca/pit-status/complete-01.mp3": {
+      "hash": "bbd351d051b1fc0a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Done. Go.",
+      "generatedAt": "2026-05-05T17:29:01.994Z",
+      "requestId": "hFB5c9V7qMdyl4pFA7Ty"
+    },
+    "voice/luca/pit-status/too-far-left-01.mp3": {
+      "hash": "f2f2d178a588f362",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Car's too far left, line it up.",
+      "generatedAt": "2026-05-05T15:23:20.124Z",
+      "requestId": "F166sb3QKYqt52V3GoV0"
+    },
+    "voice/luca/pit-status/too-far-right-01.mp3": {
+      "hash": "6433a62eeca85d8a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Car's too far right, line it up.",
+      "generatedAt": "2026-05-05T15:23:20.410Z",
+      "requestId": "93PanrwwYT9AZj9tlV9H"
+    },
+    "voice/luca/pit-status/too-far-forward-01.mp3": {
+      "hash": "32dc39b749c82df1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Car's too far forward, back it up.",
+      "generatedAt": "2026-05-05T15:23:20.689Z",
+      "requestId": "NtUPRNzjqsxHjZu32iS3"
+    },
+    "voice/luca/pit-status/too-far-back-01.mp3": {
+      "hash": "8ffae9681bce496e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Car's too far back, ease it forward.",
+      "generatedAt": "2026-05-05T15:23:20.977Z",
+      "requestId": "R0t5bQwFnUPOIoTMQ2hp"
+    },
+    "voice/luca/pit-status/bad-angle-01.mp3": {
+      "hash": "af795dcfb87ca80b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Car's at a bad angle, straighten it up.",
+      "generatedAt": "2026-05-05T15:23:21.262Z",
+      "requestId": "iD0jpbBCmh8clTaGOI6l"
+    },
+    "voice/luca/pit-status/cant-fix-that-01.mp3": {
+      "hash": "bcf9df4d9a0e18ce",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "We can't fix this car... We're gonna have to retire.",
+      "generatedAt": "2026-05-05T15:24:49.912Z",
+      "requestId": "Ijd2Ij9pNoiaKySaMvuk"
     }
   }
 }

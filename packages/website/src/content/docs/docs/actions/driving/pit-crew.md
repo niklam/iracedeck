@@ -76,6 +76,8 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
+The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
+
 ## Pit Service Readback
 
 Per-toggle confirmations alone fall short when several services are queued back-to-back — only the most recent one is heard in full and you lose the holistic picture of what's queued. The pit-service readback fixes that with a coherent recap at two key moments:
@@ -92,6 +94,18 @@ The fast-repair line in both readbacks is **damage-aware**: the engineer stays s
 ## Damage Heads-Up
 
 Drivers focused on the racing line can miss small impacts — a tap on the wall, an inside-line bump. The Race Engineer fires a spoken heads-up the first time iRacing reports damage that requires repair, so you know to consider a pit stop without having to look away from the track. The callout fires once on each clean → damaged transition (after a short debounce window that filters frame-rate flicker), and re-fires after a repair if you pick up new damage later.
+
+## Pit Service Status
+
+Once the car is in the box, iRacing's status display tells you whether the crew is working, whether you're parked correctly, and whether the queued damage repair is actually feasible. The Race Engineer reads each of those state transitions out loud so you don't have to glance at the status box mid-stop:
+
+- **In progress** — the crew is working on the car ("Crew working.").
+- **Complete** — service finished, ready to leave the box ("All done, ready to roll.").
+- **Too far left / right / forward / back** — positioning correction; line the car up so the crew can reach the wheels.
+- **Bad angle** — the car is parked at an angle the crew can't reach properly.
+- **Can't fix that** — iRacing has decided the queued damage repair won't actually be performed this stop. This is the only iRacing-exposed signal that fast-repair / damage repair will fail, and it has no other audio surface.
+
+The eight callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. Closing transitions back to the idle state are silent.
 
 ## Race Engineer Callouts (per-subject opt-in/out)
 
@@ -112,6 +126,14 @@ Under **Pit Service**, three callouts are toggleable independently:
 - **Pit service requests** — every per-toggle confirmation (fuel on/off, tire-set selection, compound switch, windshield-tearoff on/off, fast-repair on/off). Switching this off silences the engineer on every Stream Deck pit-service press while leaving the readbacks intact.
 
 Disabling any one of the three does not affect the others.
+
+Under **Pit Service Status**, eight callouts are toggleable independently — one per non-idle `PlayerCarPitSvStatus` value, all enabled by default:
+
+- **In progress**, **Complete**
+- **Too far left**, **Too far right**, **Too far forward**, **Too far back**
+- **Bad angle**, **Can't fix that**
+
+Disabling a status only suppresses future events of that subject; an in-flight callout completes naturally. Disabling all eight silences the in-stop status family while leaving readbacks, flag callouts, and damage heads-ups intact.
 
 Under **Damage**, one callout is toggleable, enabled by default:
 
