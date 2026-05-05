@@ -239,19 +239,19 @@
     {
       "id": "toggleAutofuel",
       "label": "Toggle Autofuel",
-      "default": "Shift+Ctrl+A",
+      "default": "",
       "setting": "fuelServiceToggleAutofuel"
     },
     {
       "id": "lapMarginIncrease",
       "label": "Lap Margin Increase",
-      "default": "Shift+Alt+X",
+      "default": "",
       "setting": "fuelServiceLapMarginIncrease"
     },
     {
       "id": "lapMarginDecrease",
       "label": "Lap Margin Decrease",
-      "default": "Shift+Alt+S",
+      "default": "",
       "setting": "fuelServiceLapMarginDecrease"
     }
   ],

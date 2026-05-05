@@ -178,9 +178,9 @@ Complete fuel management for pit stops and autofuel.
 | Reduce Fuel         | -            | SDK             | Repeat     | Adjust amount |
 | Set Fuel Amount     | -            | SDK             | None       | Direct value  |
 | Clear Fuel Checkbox | _(SDK)_      | SDK             | None       | -             |
-| Toggle Autofuel     | Shift+Ctrl+A | -               | None       | -             |
-| Increase Lap Margin | Shift+Alt+X  | -               | Repeat     | -             |
-| Decrease Lap Margin | Shift+Alt+S  | -               | Repeat     | -             |
+| Toggle Autofuel     | -            | -               | None       | -             |
+| Increase Lap Margin | -            | -               | Repeat     | -             |
+| Decrease Lap Margin | -            | -               | Repeat     | -             |
 
 **Type:** Adjustment/Toggle (+/- or value input)
 **SDK Support:** Partial (pit commands via SDK, autofuel via keyboard)

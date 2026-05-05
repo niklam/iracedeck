@@ -21,8 +21,8 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Ignition | I | No | Ignition |
 | Starter | S | No | Starter |
 | Pit Speed Limiter | A | No | Pit Speed Limiter |
-| Autofuel Toggle | Shift+Ctrl+A | No | Autofuel Toggle |
-| Adjust Autofuel Lap Margin | Shift+Alt+X / Shift+Alt+S | No | Autofuel Lap Margin Inc / Dec |
+| Autofuel Toggle | - | No | Autofuel Toggle |
+| Adjust Autofuel Lap Margin | - | No | Autofuel Lap Margin Inc / Dec |
 | Toggle Windshield Wipers | Shift+W | No | Toggle Windshield Wipers |
 | Trigger Windshield Wipers | Ctrl+Alt+W | No | Trigger Windshield Wipers |
 | Toggle Dash Box | D | No | Toggle Dash Box |

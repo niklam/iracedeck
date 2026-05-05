@@ -122,7 +122,7 @@ Toggle iRacing's autofuel checkbox on or off. The icon shows a green ON / red OF
 #### Details
 
 - **Dial:** No rotation support
-- **Default binding:** `Shift+Ctrl+A`
+- **Default binding:** No default key binding
 - **Telemetry-aware icon:** Yes — shows an on/off indicator driven by `dpFuelAutoFillActive`
 
 #### Settings
@@ -138,7 +138,7 @@ Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 #### Details
 
 - **Dial:** Rotation adjusts lap margin (clockwise = increase, counter-clockwise = decrease)
-- **Default binding:** `Shift+Alt+X`
+- **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
 #### Settings
@@ -154,7 +154,7 @@ Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 #### Details
 
 - **Dial:** Rotation adjusts lap margin (clockwise = decrease, counter-clockwise = increase)
-- **Default binding:** `Shift+Alt+S`
+- **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
 #### Settings

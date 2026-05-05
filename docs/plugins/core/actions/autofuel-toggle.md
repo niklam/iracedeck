@@ -24,7 +24,7 @@ None.
 
 | Action | Default Key | iRacing Setting |
 |--------|-------------|-----------------|
-| Toggle | Shift+Ctrl+A | Autofuel Toggle |
+| Toggle | *(none)* | Autofuel Toggle |
 
 ## Icon States
 
