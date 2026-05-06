@@ -738,7 +738,6 @@
             { "value": "macro", "macroNumber": 14, "label": "Chat Macro 14" },
             { "value": "macro", "macroNumber": 15, "label": "Chat Macro 15" },
             { "value": "reply", "label": "Reply" },
-            { "value": "respond-pm", "label": "Respond to Last PM" },
             { "value": "whisper", "label": "Whisper" },
             { "value": "toggle", "label": "Toggle Chat On/Off" },
             { "value": "open-chat", "label": "Open Chat" },

@@ -118,7 +118,6 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 |--------|-----------------|-------------------|-----------------|
 | Text Chat | T | Yes | Text Chat |
 | Text Chat Reply | R | Yes | Text Chat Reply |
-| Respond to Last PM | /r [message] | Yes | - |
 | Send Chat Message | - | Yes | - |
 | Trigger Chat Macro (1-15) | - | Yes | - |
 | Cancel Chat | - | Yes | - |

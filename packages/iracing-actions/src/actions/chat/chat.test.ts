@@ -50,9 +50,6 @@ vi.mock("@iracedeck/icons/chat/reply.svg", () => ({
 vi.mock("@iracedeck/icons/chat/whisper.svg", () => ({
   default: "<svg>whisper-icon</svg>",
 }));
-vi.mock("@iracedeck/icons/chat/respond-pm.svg", () => ({
-  default: "<svg>respond-pm-icon</svg>",
-}));
 vi.mock("@iracedeck/icons/chat/cancel.svg", () => ({
   default: "<svg>cancel-icon</svg>",
 }));
@@ -177,7 +174,7 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   };
 }
 
-type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "toggle" | "open-chat" | "cancel";
+type ChatMode = "send-message" | "macro" | "reply" | "whisper" | "toggle" | "open-chat" | "cancel";
 
 /** Helper to build chat settings for test functions */
 function chatSettings(
@@ -214,7 +211,6 @@ describe("Chat", () => {
     it("should not contain SDK-based modes", () => {
       expect(CHAT_GLOBAL_KEYS["open-chat"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["reply"]).toBeUndefined();
-      expect(CHAT_GLOBAL_KEYS["respond-pm"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["cancel"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["send-message"]).toBeUndefined();
       expect(CHAT_GLOBAL_KEYS["macro"]).toBeUndefined();
@@ -267,16 +263,7 @@ describe("Chat", () => {
   });
 
   describe("generateChatSvg", () => {
-    const allModes = [
-      "open-chat",
-      "reply",
-      "whisper",
-      "toggle",
-      "respond-pm",
-      "cancel",
-      "send-message",
-      "macro",
-    ] as const;
+    const allModes = ["open-chat", "reply", "whisper", "toggle", "cancel", "send-message", "macro"] as const;
 
     const defaultSettings = { message: "", macroNumber: 1, iconColor: "#4a90d9", keyText: "", fontSize: 11 };
 
@@ -303,7 +290,6 @@ describe("Chat", () => {
         reply: { line1: "REPLY", line2: "CHAT" },
         whisper: { line1: "WHISPER", line2: "CHAT" },
         toggle: { line1: "ON/OFF", line2: "CHAT" },
-        "respond-pm": { line1: "RESPOND", line2: "LAST PM" },
         cancel: { line1: "CANCEL", line2: "CHAT" },
       };
 
@@ -520,7 +506,10 @@ describe("Chat", () => {
       expect(mockBeginChat).not.toHaveBeenCalled();
     });
 
-    it("should call chat.reply() on keyDown for respond-pm", async () => {
+    it("should migrate legacy respond-pm to reply on keyDown", async () => {
+      // Backward compatibility: existing user settings with mode="respond-pm"
+      // are migrated to mode="reply" by parseSettings before executeMode runs,
+      // so the action still triggers chat.reply() exactly as before.
       await action.onKeyDown(fakeEvent("action-1", { mode: "respond-pm" }) as any);
 
       expect(mockReply).toHaveBeenCalledOnce();
