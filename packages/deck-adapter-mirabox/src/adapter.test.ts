@@ -413,5 +413,25 @@ describe("VSDPlatformAdapter", () => {
       const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.action.isKey()).toBe(false);
     });
+
+    it("should return isKey=true for Information controller because 293S updates the info area with setImage", async () => {
+      const handler: IDeckActionHandler = {
+        onWillAppear: vi.fn(),
+      };
+      adapter.registerAction("com.test.action", handler);
+
+      const willAppearCall = client.onActionEvent.mock.calls.find(
+        (call: [string, string, unknown]) => call[1] === "willAppear",
+      );
+      await willAppearCall[2]({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx-info",
+        payload: { settings: {}, controller: "Information" },
+      });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.action.isKey()).toBe(true);
+    });
   });
 });

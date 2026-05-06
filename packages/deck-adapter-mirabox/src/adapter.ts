@@ -19,7 +19,7 @@ import { createConsoleLogger } from "@iracedeck/logger";
 import { parseConnectionParams, VSDClient, type VSDEvent } from "./vsd-client.js";
 
 /** Valid controller types for VSD/Elgato devices. */
-type ControllerType = "Keypad" | "Encoder" | "Knob";
+type ControllerType = "Keypad" | "Encoder" | "Knob" | "Information";
 
 /**
  * Wraps a VSD action context (identified by context string) into
@@ -45,7 +45,9 @@ class VSDActionContext implements IDeckActionContext {
   }
 
   isKey(): boolean {
-    return this.controllerType === "Keypad";
+    // Stream Dock 293S exposes its read-only information area through
+    // setImage, so display-only contexts should use the shared image path.
+    return this.controllerType === "Keypad" || this.controllerType === "Information";
   }
 }
 
