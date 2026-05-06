@@ -252,7 +252,7 @@
 | Toggle UI Visibility | - | Yes | - |
 | Focus on Leader | - | Yes | - |
 | Focus on Incident | - | Yes | - |
-| Focus on Exiting Cars | - | Yes | - |
+| Focus on Most Exciting | - | Yes | - |
 
 ### Texture Reload
 

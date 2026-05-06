@@ -76,8 +76,8 @@ vi.mock("@iracedeck/icons/camera-focus/focus-on-leader.svg", () => ({
 vi.mock("@iracedeck/icons/camera-focus/focus-on-incident.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-on-incident {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/camera-focus/focus-on-exiting.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">focus-on-exiting {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("@iracedeck/icons/camera-focus/focus-on-most-exciting.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">focus-on-most-exciting {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/camera-focus/switch-by-position.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">switch-by-position {{mainLabel}} {{subLabel}}</svg>',
@@ -130,7 +130,7 @@ vi.mock("@iracedeck/deck-core", () => ({
       setState: vi.fn(() => true),
       focusOnLeader: vi.fn(() => true),
       focusOnIncident: vi.fn(() => true),
-      focusOnExiting: vi.fn(() => true),
+      focusOnMostExciting: vi.fn(() => true),
     },
   })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
@@ -477,7 +477,7 @@ describe("CameraControls", () => {
         "focus-your-car",
         "focus-on-leader",
         "focus-on-incident",
-        "focus-on-exiting",
+        "focus-on-most-exciting",
         "switch-by-position",
         "switch-by-car-number",
         "set-camera-state",
@@ -510,6 +510,12 @@ describe("CameraControls", () => {
         const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "set-camera-state" }));
         expect(decoded).toContain("CAM STATE");
         expect(decoded).toContain("SET");
+      });
+
+      it("should include MOST and EXCITING labels for focus-on-most-exciting", () => {
+        const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "focus-on-most-exciting" }));
+        expect(decoded).toContain("MOST");
+        expect(decoded).toContain("EXCITING");
       });
     });
   });

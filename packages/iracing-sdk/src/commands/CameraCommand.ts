@@ -100,11 +100,17 @@ export class CameraCommand extends BroadcastCommand {
   }
 
   /**
-   * Focus on cars exiting pits
+   * Focus on the car the iRacing director rates as most exciting in the moment.
+   * Replay only.
+   *
+   * Note: the underlying SDK enum is `CameraFocusMode.FocusAtExiting`, which
+   * mirrors the upstream typo in `irsdk_csFocusAtExiting`. The behavior is
+   * iRacing's "Most Exciting" director focus, not pit-lane related.
+   *
    * @param group Camera group number
    * @param camera Camera number within group
    */
-  focusOnExiting(group: number, camera: number): boolean {
+  focusOnMostExciting(group: number, camera: number): boolean {
     return this.switchPos(CameraFocusMode.FocusAtExiting, group, camera);
   }
 

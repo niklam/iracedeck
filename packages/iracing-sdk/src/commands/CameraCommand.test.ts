@@ -202,9 +202,9 @@ describe("CameraCommand", () => {
     });
   });
 
-  describe("focusOnExiting", () => {
+  describe("focusOnMostExciting", () => {
     it("should call switchPos with FocusAtExiting mode", () => {
-      cameraCommand.focusOnExiting(4, 0);
+      cameraCommand.focusOnMostExciting(4, 0);
 
       expect(mockNative.broadcastMsg).toHaveBeenCalledWith(
         BroadcastMsg.CamSwitchPos,
@@ -215,7 +215,7 @@ describe("CameraCommand", () => {
     });
 
     it("should return true", () => {
-      expect(cameraCommand.focusOnExiting(1, 0)).toBe(true);
+      expect(cameraCommand.focusOnMostExciting(1, 0)).toBe(true);
     });
   });
 
@@ -330,7 +330,7 @@ describe("CameraCommand", () => {
       expect(cameraCommand.showUI(0)).toBe(true);
       expect(cameraCommand.focusOnLeader(1, 1)).toBe(true);
       expect(cameraCommand.focusOnIncident(1, 1)).toBe(true);
-      expect(cameraCommand.focusOnExiting(1, 1)).toBe(true);
+      expect(cameraCommand.focusOnMostExciting(1, 1)).toBe(true);
       expect(cameraCommand.cycleCamera(1, 1, 1)).toBe(true);
       expect(cameraCommand.cycleSubCamera(1, 1, 1, 1)).toBe(true);
       expect(cameraCommand.cycleCar(1, 1)).toBe(true);
