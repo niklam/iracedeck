@@ -32,9 +32,9 @@ import drivingPreviousSvg from "@iracedeck/icons/camera-cycle/driving-previous.s
 import subCameraNextSvg from "@iracedeck/icons/camera-cycle/sub-camera-next.svg";
 import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previous.svg";
 // Focus icons
-import focusOnExitingSvg from "@iracedeck/icons/camera-focus/focus-on-exiting.svg";
 import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
 import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
+import focusOnMostExcitingSvg from "@iracedeck/icons/camera-focus/focus-on-most-exciting.svg";
 import focusYourCarSvg from "@iracedeck/icons/camera-focus/focus-your-car.svg";
 import setCameraStateSvg from "@iracedeck/icons/camera-focus/set-camera-state.svg";
 import switchByCarNumberSvg from "@iracedeck/icons/camera-focus/switch-by-car-number.svg";
@@ -67,6 +67,8 @@ import {
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
+
 // --- Target types ---
 
 const CYCLE_TARGET_VALUES = ["cycle-camera", "cycle-sub-camera", "cycle-car", "cycle-driving"] as const;
@@ -75,7 +77,7 @@ const FOCUS_TARGET_VALUES = [
   "focus-your-car",
   "focus-on-leader",
   "focus-on-incident",
-  "focus-on-exiting",
+  "focus-on-most-exciting",
   "switch-by-position",
   "switch-by-car-number",
   "set-camera-state",
@@ -251,7 +253,7 @@ const FOCUS_ICONS: Record<string, string> = {
   "focus-your-car": focusYourCarSvg,
   "focus-on-leader": focusOnLeaderSvg,
   "focus-on-incident": focusOnIncidentSvg,
-  "focus-on-exiting": focusOnExitingSvg,
+  "focus-on-most-exciting": focusOnMostExcitingSvg,
   "switch-by-position": switchByPositionSvg,
   "switch-by-car-number": switchByCarNumberSvg,
   "set-camera-state": setCameraStateSvg,
@@ -261,7 +263,7 @@ const FOCUS_TITLES: Record<string, string> = {
   "focus-your-car": "FOCUS\nYOUR CAR",
   "focus-on-leader": "FOCUS\nLEADER",
   "focus-on-incident": "FOCUS\nINCIDENT",
-  "focus-on-exiting": "FOCUS\nEXITING",
+  "focus-on-most-exciting": "MOST\nEXCITING",
   "switch-by-position": "SWITCH\nPOSITION",
   "switch-by-car-number": "SWITCH\nCAR #",
   "set-camera-state": "SET\nCAM STATE",
@@ -652,7 +654,7 @@ function getNextSelectedGroupEntry(
  * Camera Controls
  * Cycles through cameras, sub-cameras, cars, and driving cameras,
  * and focuses on specific targets (your car, leader, incidents,
- * exiting cars, positions, car numbers, camera state)
+ * most exciting, positions, car numbers, camera state)
  * via iRacing SDK commands.
  */
 export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
@@ -667,6 +669,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
@@ -689,6 +692,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastDisplayedGroup.delete(ev.action.id);
@@ -733,9 +737,33 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
   }
 
   private parseSettings(settings: unknown): CameraControlsSettings {
-    const parsed = CameraControlsSettings.safeParse(settings);
+    const { migrated } = migrateFocusOnExitingToMostExciting(settings);
+    const parsed = CameraControlsSettings.safeParse(migrated);
 
     return parsed.success ? parsed.data : CameraControlsSettings.parse({});
+  }
+
+  /**
+   * Detect a legacy `target: "focus-on-exiting"` setting and persist the
+   * migrated shape (`target: "focus-on-most-exciting"`) so the legacy value
+   * is permanently dropped. Logs and swallows persist failures — the runtime
+   * always reads via `parseSettings`, so a failed persist doesn't block
+   * functionality.
+   */
+  private async persistMigratedSettings(
+    ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
+  ): Promise<void> {
+    const { migrated, changed } = migrateFocusOnExitingToMostExciting(ev.payload.settings);
+
+    if (!changed) return;
+
+    try {
+      await ev.action.setSettings(migrated);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist migrated camera-controls settings: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   private executeCycle(
@@ -858,9 +886,9 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         this.logger.debug(`Result: ${success}`);
         break;
       }
-      case "focus-on-exiting": {
-        const success = camera.focusOnExiting(groupNum, cameraNum);
-        this.logger.info("Focus on exiting executed");
+      case "focus-on-most-exciting": {
+        const success = camera.focusOnMostExciting(groupNum, cameraNum);
+        this.logger.info("Focus on most exciting executed");
         this.logger.debug(`Result: ${success}`);
         break;
       }

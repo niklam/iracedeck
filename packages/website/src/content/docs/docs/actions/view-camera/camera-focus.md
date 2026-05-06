@@ -151,9 +151,9 @@ Focus the camera on the latest incident reported by iRacing.
 
 ---
 
-### Focus on Exiting
+### Focus on Most Exciting
 
-Focus the camera on a car that is currently exiting pit lane.
+Focus the camera on the car the iRacing director rates as most exciting in the moment. Replay only.
 
 #### Details
 

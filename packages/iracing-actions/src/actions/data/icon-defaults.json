@@ -38,7 +38,6 @@
   "camera-focus": {
     "backgroundColor": "#2a3a4a",
     "textColor": "#ffffff",
-    "graphic1Color": "#ffffff",
     "borderColor": "#5a6a7a"
   },
   "camera-select": {

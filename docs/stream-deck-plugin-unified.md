@@ -341,7 +341,7 @@ Focus camera on specific target.
 | Focus Your Car        | Ctrl+V      | SDK             | None       | -            |
 | Focus on Leader       | _(SDK)_     | SDK             | None       | -            |
 | Focus on Incident     | _(SDK)_     | SDK             | None       | -            |
-| Focus on Exiting Cars | _(SDK)_     | SDK             | None       | -            |
+| Focus on Most Exciting | _(SDK)_     | SDK             | None       | -            |
 | Switch by Position    | _(SDK)_     | SDK             | None       | Configurable |
 | Switch by Car Number  | _(SDK)_     | SDK             | None       | Configurable |
 | Set Camera State      | _(SDK)_     | SDK             | None       | Configurable |

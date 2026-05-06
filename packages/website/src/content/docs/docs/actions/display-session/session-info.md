@@ -23,9 +23,9 @@ Show the live incident count. The icon flashes red when a new incident is receiv
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the incident count updates live and the icon flashes when a new incident is added
 
-#### Settings
+#### Setting: Font Size
 
-- No additional settings
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -39,9 +39,9 @@ Display the session time remaining. The icon flashes when less than 5 minutes re
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the countdown updates every second and the icon flashes when under 5 minutes remain
 
-#### Settings
+#### Setting: Font Size
 
-- No additional settings
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -55,9 +55,9 @@ Show the current lap number.
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the lap number updates as you cross the start/finish line
 
-#### Settings
+#### Setting: Font Size
 
-- No additional settings
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -76,6 +76,10 @@ Display the current race position. Optionally shows total cars (e.g., `3/24`) by
 - **Off** (default) — Show just your position (e.g., `3`)
 - **On** — Show position out of field size (e.g., `3/24`)
 
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
 ---
 
 ### Fuel
@@ -93,6 +97,10 @@ Show fuel amount or fuel percentage remaining.
 - **Amount** (default) — Show the absolute fuel amount, respecting your iRacing display units (liters or gallons)
 - **Percentage** — Show fuel as a percentage of tank capacity
 
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
 ---
 
 ### Flags
@@ -105,6 +113,6 @@ Display currently active flags with the corresponding colors and a pulsing anima
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the icon updates to reflect the active flag (green, yellow, white, checkered, etc.) and pulses when a new flag is raised
 
-#### Settings
+#### Setting: Font Size
 
-- No additional settings
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.

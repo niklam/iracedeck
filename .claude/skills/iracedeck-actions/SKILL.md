@@ -85,7 +85,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 |--------|-------|-------------|
 | View Adjustment | 5 | fov (+/-), horizon (+/-), driver-height (+/-), recenter-vr, ui-size (+/-) |
 | Replay Control | 26 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind, frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, next/prev car, next/prev car number |
-| Camera Controls | 12 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / exiting), switch (by position / car number), set-camera-state |
+| Camera Controls | 12 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / most exciting), switch (by position / car number), set-camera-state |
 | Camera Editor Adjustments | 15 | latitude, longitude, altitude, yaw, pitch, fov-zoom, key-step, vanish-x, vanish-y, blimp-radius, blimp-velocity, mic-gain (all +/-), auto-set-mic-gain, f-number (+/-), focus-depth (+/-) |
 | Camera Editor Controls | 30 | Open Camera Tool, 14 toggles (key accel/10x, parabolic mic, temp edits, dampening, zoom, beyond fence, in cockpit, mouse nav, pitch/roll gyro, limit shot range, show camera, shot selection, manual focus), cycle position/aim type, acquire start/end, camera CRUD (insert/remove/copy/paste), group CRUD (copy/paste), track/car save/load |
 

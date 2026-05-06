@@ -16,6 +16,9 @@ yarn.lock
 /build/
 /packages/*/build/
 
+# Astro/Starlight generated files
+/packages/website/.astro/
+
 # Stream Deck plugin packages (built artifacts)
 *.streamDeckPlugin
 
@@ -75,6 +78,9 @@ scripts/radio-effect/output/*
 # Claude Code
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Serena local project metadata
+.serena/
 
 # Superpowers brainstorming artifacts
 .superpowers/
