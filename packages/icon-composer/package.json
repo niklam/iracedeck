@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/icon-composer",
-  "version": "1.15.1",
+  "version": "1.16.0",
   "description": "Standalone SVG icon assembly and composition for Stream Deck plugins",
   "type": "module",
   "main": "dist/index.js",
