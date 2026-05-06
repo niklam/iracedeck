@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetGlobalSettings,
+  deleteGlobalSettings,
   getGlobalSettings,
   GlobalSettingsSchema,
   initGlobalSettings,
@@ -65,20 +66,20 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 
   it("updateGlobalSettings reflects the new value on the very next getGlobalSettings call", () => {
-    updateGlobalSettings({ radarEnabled: false });
+    updateGlobalSettings({ pitCrewRadarEnabled: false });
 
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
   });
 
-  it("alternates radarEnabled across consecutive local writes without any host echo", () => {
-    updateGlobalSettings({ radarEnabled: false });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+  it("alternates pitCrewRadarEnabled across consecutive local writes without any host echo", () => {
+    updateGlobalSettings({ pitCrewRadarEnabled: false });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
-    updateGlobalSettings({ radarEnabled: true });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+    updateGlobalSettings({ pitCrewRadarEnabled: true });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
 
-    updateGlobalSettings({ radarEnabled: false });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    updateGlobalSettings({ pitCrewRadarEnabled: false });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
     // No echo has fired yet — the adapter's echo callback was captured
     // but never invoked.
@@ -90,26 +91,26 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     // production helper uses `=== true` (default-off semantic, #378), so
     // the first read on an unset cache returns false → flip → write true.
     const readFlipWrite = () => {
-      const current = (getGlobalSettings() as Record<string, unknown>).radarEnabled === true;
-      updateGlobalSettings({ radarEnabled: !current });
+      const current = (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
+      updateGlobalSettings({ pitCrewRadarEnabled: !current });
     };
 
     readFlipWrite();
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
 
     readFlipWrite();
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
     readFlipWrite();
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
   });
 
-  it("applies the same behaviour to raceEngineerEnabled (same toggle code path)", () => {
-    updateGlobalSettings({ raceEngineerEnabled: false });
-    expect((getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled).toBe(false);
+  it("applies the same behaviour to pitCrewRaceEngineerEnabled (same toggle code path)", () => {
+    updateGlobalSettings({ pitCrewRaceEngineerEnabled: false });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled).toBe(false);
 
-    updateGlobalSettings({ raceEngineerEnabled: true });
-    expect((getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled).toBe(true);
+    updateGlobalSettings({ pitCrewRaceEngineerEnabled: true });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled).toBe(true);
   });
 
   it("notifies listeners on every local write, not just on host echoes", () => {
@@ -125,7 +126,7 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 
   it("forwards the full merged+parsed settings payload to the adapter", () => {
-    updateGlobalSettings({ radarEnabled: false });
+    updateGlobalSettings({ pitCrewRadarEnabled: false });
 
     expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
     const sent = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
@@ -133,8 +134,8 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     // all present — this proves the adapter receives the parsed result,
     // not just the caller's bare partial.
     expect(sent).toMatchObject({
-      radarEnabled: false,
-      raceEngineerEnabled: false,
+      pitCrewRadarEnabled: false,
+      pitCrewRaceEngineerEnabled: false,
       radarVolume: 100,
       backgroundVolume: 35,
       disableWhenDisconnected: true,
@@ -146,30 +147,132 @@ describe("global-settings cache (synchronous update on local writes)", () => {
   });
 
   it("reconciles on host echo without losing later local writes' semantics", () => {
-    updateGlobalSettings({ radarEnabled: false });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    updateGlobalSettings({ pitCrewRadarEnabled: false });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
     // initGlobalSettings must register an echo callback; fail loudly if
     // not, otherwise the reconciliation step below silently skips.
     expect(mock.echo).not.toBeNull();
 
     // Host finally echoes the earlier write — cache stays false.
-    mock.echo!({ radarEnabled: false });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    mock.echo!({ pitCrewRadarEnabled: false });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
 
     // New local write still flips immediately.
-    updateGlobalSettings({ radarEnabled: true });
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(true);
+    updateGlobalSettings({ pitCrewRadarEnabled: true });
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(true);
   });
 
   it("no-ops when the adapter is not initialized", () => {
     _resetGlobalSettings();
     // Not calling initGlobalSettings — adapterRef stays null.
 
-    updateGlobalSettings({ radarEnabled: true });
+    updateGlobalSettings({ pitCrewRadarEnabled: true });
 
     // No throw; cache stays at the schema default (false per #378).
-    expect((getGlobalSettings() as Record<string, unknown>).radarEnabled).toBe(false);
+    expect((getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled).toBe(false);
+  });
+});
+
+describe("deleteGlobalSettings (issue #515 migration helper)", () => {
+  let mock: MockAdapter;
+
+  beforeEach(() => {
+    _resetGlobalSettings();
+    mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.setGlobalSettings.mockClear();
+  });
+
+  it("removes the listed keys from the cache", () => {
+    // Seed the cache via the host-echo path so the keys exist as
+    // passthrough values (the schema doesn't define them).
+    mock.echo!({ legacyA: 1, legacyB: 2, keepMe: 3 });
+    expect((getGlobalSettings() as Record<string, unknown>).legacyA).toBe(1);
+
+    deleteGlobalSettings(["legacyA", "legacyB"]);
+
+    const settings = getGlobalSettings() as Record<string, unknown>;
+    expect(settings.legacyA).toBeUndefined();
+    expect(settings.legacyB).toBeUndefined();
+    expect(settings.keepMe).toBe(3);
+  });
+
+  it("writes the trimmed cache to the adapter exactly once per call", () => {
+    mock.echo!({ legacyA: 1 });
+    mock.setGlobalSettings.mockClear();
+
+    deleteGlobalSettings(["legacyA"]);
+
+    expect(mock.setGlobalSettings).toHaveBeenCalledTimes(1);
+    const written = mock.setGlobalSettings.mock.calls[0][0] as Record<string, unknown>;
+    expect(written.legacyA).toBeUndefined();
+  });
+
+  it("is a no-op when none of the listed keys are present", () => {
+    mock.echo!({ keepMe: 3 });
+    mock.setGlobalSettings.mockClear();
+    const listener = vi.fn();
+    onGlobalSettingsChange(listener);
+
+    deleteGlobalSettings(["legacyA", "legacyB"]);
+
+    // No write to the adapter, no listener fire — the cache is unchanged.
+    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+    expect((getGlobalSettings() as Record<string, unknown>).keepMe).toBe(3);
+  });
+
+  it("removes only the listed keys when same-prefix keys also exist", () => {
+    // Specifically exercises the issue #515 migration shape: the renamed
+    // pitCrew* keys can coexist with their legacy counterparts during
+    // the transition; deleting the legacy names must not touch the new
+    // ones.
+    mock.echo!({
+      pitCrewRaceEngineerEnabled: false,
+      pitCrewRadarEnabled: false,
+      raceEngineerEnabled: true,
+      radarEnabled: true,
+    });
+    mock.setGlobalSettings.mockClear();
+
+    deleteGlobalSettings(["raceEngineerEnabled", "radarEnabled"]);
+
+    const settings = getGlobalSettings() as Record<string, unknown>;
+    expect(settings.raceEngineerEnabled).toBeUndefined();
+    expect(settings.radarEnabled).toBeUndefined();
+    expect(settings.pitCrewRaceEngineerEnabled).toBe(false);
+    expect(settings.pitCrewRadarEnabled).toBe(false);
+  });
+
+  it("subsequent call with the same key list is a no-op (idempotent)", () => {
+    mock.echo!({ legacyA: 1 });
+    deleteGlobalSettings(["legacyA"]);
+    mock.setGlobalSettings.mockClear();
+
+    deleteGlobalSettings(["legacyA"]);
+
+    expect(mock.setGlobalSettings).not.toHaveBeenCalled();
+  });
+
+  it("notifies listeners with the trimmed payload", () => {
+    mock.echo!({ legacyA: 1, keepMe: 3 });
+    const listener = vi.fn();
+    onGlobalSettingsChange(listener);
+
+    deleteGlobalSettings(["legacyA"]);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const payload = listener.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.legacyA).toBeUndefined();
+    expect(payload.keepMe).toBe(3);
+  });
+
+  it("no-ops when the adapter is not initialized", () => {
+    _resetGlobalSettings();
+    // No initGlobalSettings call.
+
+    expect(() => deleteGlobalSettings(["whatever"])).not.toThrow();
   });
 });
 

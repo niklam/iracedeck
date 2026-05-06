@@ -79,11 +79,13 @@ function isRaceEngineerEnabled(): boolean {
   // Both feature gates default to off — fresh installs and never-toggled
   // setups stay quiet until the user opts in. Only an explicit `true`
   // (set when the user presses the toggle) enables the feature.
-  return (getGlobalSettings() as Record<string, unknown>).raceEngineerEnabled === true;
+  // Key renamed from `raceEngineerEnabled` for issue #515.
+  return (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true;
 }
 
 function isRadarEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).radarEnabled === true;
+  // Key renamed from `radarEnabled` for issue #515.
+  return (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
 }
 
 function readRadarVolume(): number {
@@ -623,7 +625,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   private toggleRaceEngineer(): void {
     const next = !isRaceEngineerEnabled();
     this.logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
-    updateGlobalSettings({ raceEngineerEnabled: next });
+    updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
     // Mirror the radar pattern: apply the gate to Voice + Background
     // synchronously so an in-flight engineer clip is silenced on the same
     // tick the user pressed the key. Relying on the global-settings
@@ -639,7 +641,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // immediately. Relying on the global-settings round-trip echo would let
     // a tick fire after the user already released the key.
     setRadarEnabled(next);
-    updateGlobalSettings({ radarEnabled: next });
+    updateGlobalSettings({ pitCrewRadarEnabled: next });
   }
 
   private stepRadarVolume(direction: "up" | "down"): void {

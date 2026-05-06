@@ -22,8 +22,8 @@ describe("seedGlobalSettings", () => {
 
     expect(settings._raceEngineerVoices).toBe(JSON.stringify(raceEngineerVoices));
     expect(settings._driverNames).toBe(JSON.stringify(driverNames));
-    expect(settings.raceEngineerEnabled).toBe(true);
-    expect(settings.radarEnabled).toBe(true);
+    expect(settings.pitCrewRaceEngineerEnabled).toBe(true);
+    expect(settings.pitCrewRadarEnabled).toBe(true);
     expect(settings.raceEngineerVolume).toBe(100);
     expect(settings.radarVolume).toBe(100);
     expect(settings.audioOutputDevice).toBe("");

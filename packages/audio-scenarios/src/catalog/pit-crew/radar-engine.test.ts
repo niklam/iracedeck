@@ -223,6 +223,78 @@ describe("pit-road suppression", () => {
   });
 });
 
+// Issue #515: a plugin-supplied `getMasterEnabled` closure provides
+// defense-in-depth alongside the imperative `enabled` flag. The engine
+// reads it live on every `radar.changed` arrival AND on every scheduled
+// tick, so the radar can't audibly fire when the plugin-wide master
+// toggle is off — even if `setRadarEnabled(true)` was called.
+describe("Race Engineer master gate (issue #515)", () => {
+  it("does not fire ticks on radar.changed when the master gate is off", () => {
+    let masterOn = false;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+  });
+
+  it("fires normally when both `enabled` and the master gate are on", () => {
+    let masterOn = true;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops scheduled ticks mid-loop when the master gate flips off", () => {
+    let masterOn = true;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+    // Master gate flips off (e.g. user un-checks the global setting via PI).
+    masterOn = false;
+
+    // The next scheduled tick lands but the master-gate check inside
+    // `fire()` aborts before `playOnChannel` is invoked.
+    vi.advanceTimersByTime(250);
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-firing radar.changed while master is off still suppresses the engine", () => {
+    let masterOn = false;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+
+    hoisted.publishRadar("left");
+    hoisted.publishRadar("right", "left");
+    hoisted.publishRadar("both", "right");
+
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+  });
+
+  it("flipping the master gate back on lets the next radar.changed fire ticks", () => {
+    let masterOn = false;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+
+    hoisted.publishRadar("left");
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+    masterOn = true;
+    hoisted.publishRadar("right", "left");
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
+    expect(hoisted.playOnChannel.mock.calls.at(-1)?.[1]).toContain("IRD-radar-right");
+  });
+});
+
 describe("Lone Qualify suppression", () => {
   it("ignores events during Lone Qualify", () => {
     registerRadarEngine(hoisted.bus);

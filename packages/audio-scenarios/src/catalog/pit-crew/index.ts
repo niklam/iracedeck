@@ -234,8 +234,24 @@ export function registerPitCrew(
   // Default `() => true` preserves legacy behavior for tests that don't
   // supply a closure.
   getPitStatusCalloutEnabled: (id: PitStatusCalloutId) => boolean = () => true,
+  // Master gate for the Race Engineer voice subsystem (issue #515).
+  // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
+  // on every event arrival and applied as the OUTERMOST wrapper around
+  // every voice scenario, so a fresh install (or a deck with no Pit Crew
+  // button) suppresses dispatch entirely — independent of audio bus
+  // volumes, per-callout opt-ins, or pit-action cooldowns. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a
+  // closure.
+  getRaceEngineerMasterEnabled: () => boolean = () => true,
+  // Master gate for the directional radar (issue #515). Plumbed into
+  // `registerRadarEngine` and consulted on every `radar.changed` arrival
+  // and on every scheduled tick — same defense-in-depth shape as the
+  // voice master gate, but inside the imperative engine since radar
+  // isn't expressed as a scenario. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getRadarMasterEnabled: () => boolean = () => true,
 ): void {
-  registerRadarEngine(bus);
+  registerRadarEngine(bus, getRadarMasterEnabled);
 
   const engine = getScenarioEngine();
 
@@ -246,16 +262,25 @@ export function registerPitCrew(
   engine.defineScenario(RADIO_OPEN);
   engine.defineScenario(RADIO_CLOSE);
 
-  // Each pit-service toggle scenario is wrapped twice. Outer wrapper
-  // applies the user opt-in (`calloutEnabledPitServiceRequests`); inner
-  // wrapper applies the engine-internal cooldown (`isPitActionsAllowed`).
-  // Outer-first because the user gate is the cheap, persistent check —
-  // if the user has opted out, we never even ask about the cooldown.
+  // Master gate is applied as the outermost wrapper so per-callout opt-ins,
+  // pit-action cooldowns, and readback predicates only run when the
+  // engineer is on at all. Cheap short-circuit on the master saves every
+  // inner wrapper from running on every event arrival.
+  const wrapWithMaster = (s: Scenario): Scenario => wrapRaceEngineerMasterGate(s, getRaceEngineerMasterEnabled, logger);
+
+  // Each pit-service toggle scenario is wrapped three times. Outermost
+  // wrapper applies the master gate (`pitCrewRaceEngineerEnabled`); next
+  // applies the user opt-in (`calloutEnabledPitServiceRequests`);
+  // innermost applies the engine-internal cooldown
+  // (`isPitActionsAllowed`). Outer-first because the master gate is the
+  // cheapest, most-persistent check.
   const wrapToggle = (s: Scenario): Scenario =>
-    wrapPitServiceRequestsScenario(
-      wrapPitActionScenario(s, getPitActionsAllowed, logger),
-      getPitServiceRequestsEnabled,
-      logger,
+    wrapWithMaster(
+      wrapPitServiceRequestsScenario(
+        wrapPitActionScenario(s, getPitActionsAllowed, logger),
+        getPitServiceRequestsEnabled,
+        logger,
+      ),
     );
 
   for (const s of FUEL_TOGGLE_SCENARIOS) {
@@ -280,25 +305,31 @@ export function registerPitCrew(
 
   for (const s of FLAG_ALERTS) {
     engine.defineScenario(
-      wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger),
+      wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
     );
   }
 
   for (const s of buildPitReadbackScenarios(getReadbackSnapshot)) {
     engine.defineScenario(
-      wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_READBACK_ID, getPitReadbackEnabled, "pit readback callout", logger),
+      ),
     );
   }
 
   for (const s of DAMAGE_ALERTS) {
     engine.defineScenario(
-      wrapCalloutScenario(s, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
+      ),
     );
   }
 
   for (const s of PIT_STATUS_ALERTS) {
     engine.defineScenario(
-      wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
+      ),
     );
   }
 }
@@ -314,6 +345,43 @@ export function registerPitCrew(
  * missing from the id mapping — better to fail loudly at startup than
  * silently leak the unmapped scenario past the toggle.
  */
+/**
+ * Wrap a Race Engineer voice scenario with the plugin-wide master gate
+ * (issue #515). Plugins compose the closure from
+ * `pitCrewRaceEngineerEnabled === true`. Read live on every event
+ * arrival and short-circuits before `attemptFire` so a clip already in
+ * flight is NOT cut — only future events are suppressed. Applied as the
+ * outermost wrapper inside `registerPitCrew` so a `false` master is the
+ * cheapest possible early-out, ahead of per-callout opt-ins and
+ * pit-action cooldowns.
+ *
+ * Returns the scenario unchanged when it has no `when:` block (e.g. the
+ * `@pit-crew.radio-open` / `…close` include scenarios), since includes
+ * only run when triggered by a parent scenario whose master-gate check
+ * has already passed.
+ */
+function wrapRaceEngineerMasterGate(s: Scenario, getEnabled: () => boolean, logger: ILogger | undefined): Scenario {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getEnabled()) {
+          logger?.debug(`race engineer master gate suppressed: ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
 /**
  * Wrap a per-toggle pit-action scenario so the cooldown set by
  * `pitLane.exited` / pre-start grid entry suppresses fires during the

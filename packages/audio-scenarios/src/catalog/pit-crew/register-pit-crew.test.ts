@@ -255,11 +255,13 @@ function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
 let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
+let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
   enabled = makeEnabledMap(true);
   pitServiceRequestsEnabled = true;
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
+  voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -273,6 +275,8 @@ beforeEach(() => {
     () => pitServiceRequestsEnabled,
     () => null,
     (id) => damageEnabled.get(id) ?? true,
+    undefined,
+    () => voiceMasterEnabled,
   );
 });
 
@@ -631,5 +635,85 @@ describe("damage callout live gating (issue #489)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed().some((p) => p.includes("/damage/repair-needed-"))).toBe(true);
+  });
+});
+
+// Issue #515: the Race Engineer master gate ANDs the user's
+// `pitCrewRaceEngineerEnabled` toggle with whatever the plugin needs to
+// gate (e.g. Pit Crew button presence in a future iteration). When the
+// gate returns false, every voice scenario short-circuits at event
+// arrival regardless of per-callout opt-ins (which all default `true`).
+// This is the smoking-gun fix: prior to the master gate, flag / pit /
+// damage callouts could fire on a fresh install with no Pit Crew button
+// placed because dispatch only consulted per-callout flags.
+describe("Race Engineer master gate (issue #515)", () => {
+  it.each(FLAG_FIRES)("$id is suppressed when the master gate is off", ({ event, data }) => {
+    voiceMasterEnabled = false;
+    bus.publishEvent(event, data as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line each time a flag is suppressed by the master gate", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("flag.green.raised", {} as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("race engineer master gate suppressed: pit-crew.flag-green");
+  });
+
+  it("master gate off blocks pit-service request callouts (fuel)", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitService.toggled", { service: "fuel", on: true } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("master gate off blocks damage callouts", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("master gate off does not cut an in-flight callout", () => {
+    bus.publishEvent("flag.red.raised", {} as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    voiceMasterEnabled = false;
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toContain(`voice/${VOICE}/flags/red-01.mp3`);
+  });
+
+  it("master gate flipping back on restores future fires", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("flag.green.raised", {} as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    voiceMasterEnabled = true;
+    bus.publishEvent("flag.green.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("green-"))).toBe(true);
+  });
+
+  it("master gate on with a single per-callout off keeps the family granularity working", () => {
+    // Confirms the master gate is the OUTERMOST wrapper — when master is
+    // on, the per-callout flag still has independent effect, so a user
+    // who disables a single flag color still sees the others fire.
+    voiceMasterEnabled = true;
+    enabled.set("debris", false);
+
+    bus.publishEvent("flag.debris.raised", {} as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    bus.publishEvent("flag.green.raised", {} as never);
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes("green-"))).toBe(true);
   });
 });

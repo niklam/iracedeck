@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   // The production Pit Crew action does this on mount + on every settings
   // change. The harness has no actions, so we wire the same plumbing
   // here: the radar engine ships disabled, and bus volumes default to
-  // 1.0 — neither matches the seeded `radarEnabled: true` /
+  // 1.0 — neither matches the seeded `pitCrewRadarEnabled: true` /
   // `radarVolume: 100` until something pushes the values down. Same for
   // `audioOutputDevice` — the device selector setting is only meaningful
   // if something routes it to the audio engine.
@@ -111,8 +111,8 @@ async function main(): Promise<void> {
   const applyAudioSettings = (settings: Record<string, unknown>): void => {
     // Match the production Pit Crew helper's `=== true` semantic so the
     // harness behaves identically to the shipped plugin (radar off until
-    // explicitly enabled — #378).
-    const radarEnabled = settings.radarEnabled === true;
+    // explicitly enabled — #378). Key renamed from `radarEnabled` for #515.
+    const radarEnabled = settings.pitCrewRadarEnabled === true;
     setRadarEnabled(radarEnabled);
 
     const radarVol = clampVolume(settings.radarVolume);

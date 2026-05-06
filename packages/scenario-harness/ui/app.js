@@ -135,7 +135,7 @@ function renderSettings() {
 
   const lines = [
     {
-      key: "raceEngineerEnabled",
+      key: "pitCrewRaceEngineerEnabled",
       label: "Race Engineer Enabled",
       type: "checkbox",
     },
@@ -160,7 +160,7 @@ function renderSettings() {
       options: parseJsonList(state.settings._driverNames),
     },
     {
-      key: "radarEnabled",
+      key: "pitCrewRadarEnabled",
       label: "Radar Enabled",
       type: "checkbox",
     },

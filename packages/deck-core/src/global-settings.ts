@@ -103,8 +103,14 @@ export const GlobalSettingsSchema = z
      * Voice and Background audio buses are zeroed so any in-flight clip
      * silences immediately. Persists across plugin restarts. Default: false
      * — fresh installs stay quiet until the user opts in (issue #378).
+     *
+     * Renamed from `raceEngineerEnabled` (issue #515): the original name
+     * shipped on builds where audio could fire without a Pit Crew button on
+     * the deck. The rename forces every existing user back to the schema
+     * default on next startup so the buggy state can't carry forward; an
+     * active migration in plugin startup wipes the old key from storage.
      */
-    raceEngineerEnabled: z
+    pitCrewRaceEngineerEnabled: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(false),
@@ -114,27 +120,30 @@ export const GlobalSettingsSchema = z
      * Race Engineer so silencing the voice to talk to teammates on Discord
      * doesn't kill the proximity alerts. Persists across plugin restarts.
      * Default: false — fresh installs stay quiet until the user opts in
-     * (issue #378).
+     * (issue #378). Renamed from `radarEnabled` (issue #515) — see the
+     * note on `pitCrewRaceEngineerEnabled` for context.
      */
-    radarEnabled: z
+    pitCrewRadarEnabled: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
-     * Startup defaults for `raceEngineerEnabled` / `radarEnabled` (issue #482).
-     * On every plugin start, after the first global-settings arrival, the
-     * plugin copies these values into the runtime keys above — overriding
-     * whatever the user toggled in the previous session. Editing these
-     * during a running session is also mirrored immediately into the
-     * runtime keys, so the checkbox has visible effect without waiting
-     * for a restart. Default false — fresh installs stay quiet on startup
-     * (matches the runtime keys' fresh-install posture from #378).
+     * Startup defaults for `pitCrewRaceEngineerEnabled` /
+     * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the
+     * first global-settings arrival, the plugin copies these values into
+     * the runtime keys above — overriding whatever the user toggled in the
+     * previous session. Editing these during a running session is also
+     * mirrored immediately into the runtime keys, so the checkbox has
+     * visible effect without waiting for a restart. Default false — fresh
+     * installs stay quiet on startup (matches the runtime keys'
+     * fresh-install posture from #378). Renamed from
+     * `raceEngineerEnabledOnStartup` / `radarEnabledOnStartup` (issue #515).
      */
-    raceEngineerEnabledOnStartup: z
+    pitCrewRaceEngineerEnabledOnStartup: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(false),
-    radarEnabledOnStartup: z
+    pitCrewRadarEnabledOnStartup: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(false),
@@ -470,6 +479,46 @@ export function updateGlobalSettings(partial: Record<string, unknown>): void {
   // those nested updates back to the snapshot's stale view (#441 bug:
   // `_raceEngineerVoices` push from inside the audio-device push listener
   // was being overwritten by the outer audio-device-only payload).
+  adapterRef.setGlobalSettings(currentSettings);
+}
+
+/**
+ * Remove the listed keys from the global settings cache and persist the
+ * trimmed result. Used for one-shot schema migrations (#515) — pass the
+ * old key names that have been renamed away, the keys vanish from storage
+ * on the first call, and subsequent calls are no-ops because the keys are
+ * no longer present.
+ *
+ * Idempotent: when none of the listed keys are in the cache, the function
+ * returns without writing to the adapter or notifying listeners. Only an
+ * actual deletion triggers a re-parse + write — same shape as
+ * `updateGlobalSettings`.
+ *
+ * @param keys - Names of keys to drop from the cache
+ */
+export function deleteGlobalSettings(keys: readonly string[]): void {
+  if (!adapterRef) {
+    logger?.warn("Cannot delete global settings: adapter not initialized");
+
+    return;
+  }
+
+  const next: Record<string, unknown> = { ...(currentSettings as Record<string, unknown>) };
+  let changed = false;
+
+  for (const key of keys) {
+    if (key in next) {
+      delete next[key];
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  logger?.info("Deleting global settings keys");
+  logger?.debug(`Deleted: ${keys.filter((k) => !(k in next)).join(", ")}`);
+
+  applyParsedSettings(GlobalSettingsSchema.parse(next));
   adapterRef.setGlobalSettings(currentSettings);
 }
 

@@ -55,11 +55,11 @@ export function seedGlobalSettings(adapter: MockPlatformAdapter): BootstrapDefau
   adapter.setGlobalSettings({
     _raceEngineerVoices: JSON.stringify(raceEngineerVoices),
     _driverNames: JSON.stringify(driverNames),
-    raceEngineerEnabled: true,
+    pitCrewRaceEngineerEnabled: true,
     raceEngineerVolume: 100,
     raceEngineerVoice: raceEngineerVoices[0] ?? "",
     driverName: driverNames[0] ?? "",
-    radarEnabled: true,
+    pitCrewRadarEnabled: true,
     radarVolume: 100,
     audioOutputDevice: "",
   });
