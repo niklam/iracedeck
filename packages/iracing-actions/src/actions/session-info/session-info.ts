@@ -133,8 +133,7 @@ export function generateSessionInfoSvg(
     flags: "FLAGS",
   };
   const actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
-  const autoValueFontSizeNum = settings.mode === "incidents" ? 48 : value.length > 5 ? 28 : 36;
-  const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : autoValueFontSizeNum;
+  const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : 28;
   const valueFontSize = String(valueFontSizeNum);
   const valueY = String(88 + (valueFontSizeNum - 44) / 3);
 

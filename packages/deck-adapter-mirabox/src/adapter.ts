@@ -19,7 +19,7 @@ import { createConsoleLogger } from "@iracedeck/logger";
 import { parseConnectionParams, VSDClient, type VSDEvent } from "./vsd-client.js";
 
 /** Valid controller types for VSD/Elgato devices. */
-type ControllerType = "Keypad" | "Encoder" | "Knob" | "Information" | "SecondaryScreen";
+type ControllerType = "Keypad" | "Encoder" | "Knob" | "Information";
 
 /**
  * Wraps a VSD action context (identified by context string) into

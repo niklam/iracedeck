@@ -9,12 +9,6 @@ sidebar:
 
 Display real-time session data on your Stream Deck button. Each mode shows different telemetry with a live-updating icon. Session Info is purely a display action — pressing the button does nothing.
 
-## Shared Settings
-
-### Font Size
-
-Override the size of the rendered session value. Accepts values from 5 to 36, interpreted as pixels. Leave blank to use the automatic size for the selected mode and value length.
-
 ## Modes
 
 Select the mode from the **Mode** dropdown in the Property Inspector.
@@ -29,9 +23,9 @@ Show the live incident count. The icon flashes red when a new incident is receiv
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the incident count updates live and the icon flashes when a new incident is added
 
-#### Settings
+#### Setting: Font Size
 
-- **Font Size** — See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -45,9 +39,9 @@ Display the session time remaining. The icon flashes when less than 5 minutes re
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the countdown updates every second and the icon flashes when under 5 minutes remain
 
-#### Settings
+#### Setting: Font Size
 
-- **Font Size** — See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -61,9 +55,9 @@ Show the current lap number.
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the lap number updates as you cross the start/finish line
 
-#### Settings
+#### Setting: Font Size
 
-- **Font Size** — See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -84,7 +78,7 @@ Display the current race position. Optionally shows total cars (e.g., `3/24`) by
 
 #### Setting: Font Size
 
-See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -105,7 +99,7 @@ Show fuel amount or fuel percentage remaining.
 
 #### Setting: Font Size
 
-See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
 
 ---
 
@@ -119,6 +113,6 @@ Display currently active flags with the corresponding colors and a pulsing anima
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the icon updates to reflect the active flag (green, yellow, white, checkered, etc.) and pulses when a new flag is raised
 
-#### Settings
+#### Setting: Font Size
 
-- **Font Size** — See **Shared Settings** above for Font Size details.
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
