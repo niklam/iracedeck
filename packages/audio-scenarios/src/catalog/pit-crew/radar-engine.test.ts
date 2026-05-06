@@ -293,6 +293,40 @@ describe("Race Engineer master gate (issue #515)", () => {
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
     expect(hoisted.playOnChannel.mock.calls.at(-1)?.[1]).toContain("IRD-radar-right");
   });
+
+  // Defense-in-depth: when the master gate aborts the tick, the icon
+  // shouldn't stay "occupied" indefinitely. Without this, a failed
+  // `setRadarEnabled(false)` (the failure mode this gate exists for)
+  // would leave subscribers latched on the last non-clear state.
+  it("clears latched visualState when the master gate aborts a scheduled tick", () => {
+    let masterOn = true;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+    expect(getRadarVisualState()).toBe("left");
+
+    masterOn = false;
+    vi.advanceTimersByTime(250);
+
+    expect(getRadarVisualState()).toBe("clear");
+  });
+
+  it("clears latched visualState when the master gate suppresses a radar.changed event", () => {
+    let masterOn = true;
+    registerRadarEngine(hoisted.bus, () => masterOn);
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+    expect(getRadarVisualState()).toBe("left");
+
+    // Master flips off, then a fresh transition arrives. The handler
+    // aborts at the master-gate check before processing `to`, but
+    // clears the stale latched state so subscribers don't keep
+    // showing the previous "occupied" icon.
+    masterOn = false;
+    hoisted.publishRadar("right", "left");
+
+    expect(getRadarVisualState()).toBe("clear");
+  });
 });
 
 describe("Lone Qualify suppression", () => {

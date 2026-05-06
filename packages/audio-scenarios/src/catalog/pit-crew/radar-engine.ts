@@ -86,7 +86,18 @@ function startTickLoop(state: ActiveState): void {
     // already scheduled, refuse to fire when the plugin-wide master
     // toggle is off. Catches the narrow window where a tick was queued
     // before `setRadarEnabled(false)` ran but landed after.
-    if (!getMasterEnabled()) return;
+    //
+    // Also clears the latched `visualState`: if `setRadarEnabled(false)`
+    // is the path that failed (the very scenario this defense-in-depth
+    // gate exists for), the icon would otherwise stay "occupied"
+    // indefinitely. Don't stop the channel — the in-flight clip
+    // finishes naturally, matching the voice-master-gate's
+    // "doesn't cut in-flight" contract.
+    if (!getMasterEnabled()) {
+      setVisualState("clear");
+
+      return;
+    }
 
     // If the audio engine isn't ready, playOnChannel returns false — don't
     // reschedule a timer in that case; the next radar.changed event will
@@ -133,8 +144,14 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
   // Master gate (issue #515): defense-in-depth alongside `enabled`.
   // Read live so the engine respects `pitCrewRadarEnabled` even if the
   // plugin-level listener that calls `setRadarEnabled` ever fails to
-  // run.
-  if (!getMasterEnabled()) return;
+  // run. Clear the latched visual state so a stale icon doesn't stay
+  // "occupied" while the gate is off — see the matching note in
+  // `startTickLoop.fire`.
+  if (!getMasterEnabled()) {
+    setVisualState("clear");
+
+    return;
+  }
 
   // Lone qualifying sessions have no other cars on track; the raw
   // CarLeftRight value can flicker, and the callouts aren't useful. If a
