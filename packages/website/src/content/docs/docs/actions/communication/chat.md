@@ -3,7 +3,7 @@ title: Chat
 description: Send chat messages, macros, replies, whispers, and manage the chat window.
 sidebar:
   badge:
-    text: "8 modes"
+    text: "7 modes"
     variant: tip
 ---
 
@@ -60,22 +60,6 @@ Font size (5–36 px) used on the button. Defaults to `11`. For macro mode, this
 ### Reply
 
 Reply to the most recent chat message using iRacing's reply command.
-
-#### Details
-
-- **Dial:** No rotation support
-- **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** No
-
-#### Settings
-
-- No additional settings
-
----
-
-### Respond to Last PM
-
-Respond to the most recent private message received.
 
 #### Details
 

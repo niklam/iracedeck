@@ -215,9 +215,8 @@ All text chat operations, messages, and macros.
 | Sub-Action         | Default Key | iRacing Setting | Long-Press | Notes               |
 | ------------------ | ----------- | --------------- | ---------- | ------------------- |
 | Open Chat          | T           | SDK             | None       | -                   |
-| Reply to Chat      | R           | SDK             | None       | -                   |
+| Reply              | R           | SDK             | None       | -                   |
 | Whisper            | / [num]     | -               | None       | -                   |
-| Respond to Last PM | /r          | SDK             | None       | -                   |
 | Cancel Chat        | _(SDK)_     | SDK             | None       | -                   |
 | Send Message       | -           | SDK             | None       | Configurable text   |
 | Macro (1-15)       | -           | SDK             | None       | Select number in PI |
