@@ -479,7 +479,7 @@
             { "value": "focus-your-car", "label": "Focus Your Car" },
             { "value": "focus-on-leader", "label": "Focus on Leader" },
             { "value": "focus-on-incident", "label": "Focus on Incident" },
-            { "value": "focus-on-exiting", "label": "Focus on Exiting" },
+            { "value": "focus-on-most-exciting", "label": "Focus on Most Exciting" },
             { "value": "switch-by-position", "label": "Switch by Position" },
             { "value": "switch-by-car-number", "label": "Switch by Car Number" },
             { "value": "set-camera-state", "label": "Set Camera State" }
