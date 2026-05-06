@@ -24,11 +24,12 @@ import {
 import cancelIcon from "@iracedeck/icons/chat/cancel.svg";
 import openChatIcon from "@iracedeck/icons/chat/open-chat.svg";
 import replyIcon from "@iracedeck/icons/chat/reply.svg";
-import respondPmIcon from "@iracedeck/icons/chat/respond-pm.svg";
 import toggleIcon from "@iracedeck/icons/chat/toggle.svg";
 import whisperIcon from "@iracedeck/icons/chat/whisper.svg";
 import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
+
+import { migrateRespondPmToReply } from "./migrate-respond-pm.js";
 
 /**
  * SVG template for send-message mode: large chat bubble with text inside.
@@ -58,7 +59,7 @@ const MACRO_TEMPLATE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144
   </g>
 </svg>`;
 
-type ChatMode = "send-message" | "macro" | "reply" | "respond-pm" | "whisper" | "toggle" | "open-chat" | "cancel";
+type ChatMode = "send-message" | "macro" | "reply" | "whisper" | "toggle" | "open-chat" | "cancel";
 
 /**
  * Title configuration for each static chat mode (icon modes only, not send-message/macro)
@@ -68,7 +69,6 @@ const CHAT_TITLES: Partial<Record<ChatMode, string>> = {
   reply: "CHAT\nREPLY",
   whisper: "CHAT\nWHISPER",
   toggle: "CHAT\nON/OFF",
-  "respond-pm": "LAST PM\nRESPOND",
   cancel: "CHAT\nCANCEL",
 };
 
@@ -81,7 +81,6 @@ const CHAT_ICONS: Partial<Record<ChatMode, string>> = {
   reply: replyIcon,
   whisper: whisperIcon,
   toggle: toggleIcon,
-  "respond-pm": respondPmIcon,
   cancel: cancelIcon,
 };
 
@@ -97,9 +96,7 @@ export const CHAT_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const ChatSettings = CommonSettings.extend({
-  mode: z
-    .enum(["send-message", "macro", "reply", "respond-pm", "whisper", "toggle", "open-chat", "cancel"])
-    .default("send-message"),
+  mode: z.enum(["send-message", "macro", "reply", "whisper", "toggle", "open-chat", "cancel"]).default("send-message"),
   message: z.string().default(""),
   macroNumber: z.coerce.number().min(1).max(15).default(1),
   iconColor: z.string().default("#4a90d9"),
@@ -286,6 +283,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ChatSettings>): Promise<void> {
     await super.onWillAppear(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     const activeKey = CHAT_GLOBAL_KEYS[settings.mode];
@@ -311,6 +309,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ChatSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastRenderedIcon.delete(ev.action.id);
@@ -336,10 +335,32 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     this.logger.debug("Dial rotation ignored for chat action");
   }
 
-  private parseSettings(settings: unknown): ChatSettings {
-    const parsed = ChatSettings.safeParse(settings);
+  private parseSettings(raw: unknown): ChatSettings {
+    const { migrated } = migrateRespondPmToReply(raw);
+    const result = ChatSettings.safeParse(migrated);
 
-    return parsed.success ? parsed.data : ChatSettings.parse({});
+    return result.success ? result.data : ChatSettings.parse({});
+  }
+
+  /**
+   * Detect a legacy `mode: "respond-pm"` setting and persist the migrated
+   * shape (`mode: "reply"`) to Stream Deck storage so the legacy value is
+   * permanently dropped. Logs and swallows persist failures — the runtime
+   * always reads via `parseSettings`, so a failed persist doesn't block
+   * functionality.
+   */
+  private async persistMigratedSettings(
+    ev: IDeckWillAppearEvent<ChatSettings> | IDeckDidReceiveSettingsEvent<ChatSettings>,
+  ): Promise<void> {
+    const { migrated, changed } = migrateRespondPmToReply(ev.payload.settings);
+
+    if (!changed) return;
+
+    try {
+      await ev.action.setSettings(migrated);
+    } catch (err) {
+      this.logger.warn(`Failed to persist migrated chat settings: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   private async executeMode(mode: ChatMode, settings: ChatSettings): Promise<void> {
@@ -349,9 +370,6 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
         this.executeSdkBeginChat();
         break;
       case "reply":
-        this.executeSdkReply();
-        break;
-      case "respond-pm":
         this.executeSdkReply();
         break;
       case "cancel":
