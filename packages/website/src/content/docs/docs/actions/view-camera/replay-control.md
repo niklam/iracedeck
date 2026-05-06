@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "25 modes"
+    text: "26 modes"
     variant: tip
 ---
 
@@ -69,7 +69,7 @@ Pause playback and reset the remembered speed so the next Play / Pause starts at
 
 ### Fast Forward
 
-Progressive fast-forward. Each press steps the forward speed up by one (2x → 3x → 4x → ... → 16x) up to the iRacing maximum.
+Progressive fast-forward. The first press jumps to 2x; each subsequent press adds **Step Rate** to the speed magnitude up to the iRacing maximum of 16x.
 
 #### Details
 
@@ -77,15 +77,31 @@ Progressive fast-forward. Each press steps the forward speed up by one (2x → 3
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
-#### Settings
+#### Setting: Step Rate
 
-- No additional settings
+How much the speed magnitude increases per press after the initial 2x. `1` (default) gives the legacy 2x → 3x → 4x → … → 16x progression; `2` matches iRacing's own 2x → 4x → 6x → 8x → … → 16x stepping. Range 1–15.
 
 ---
 
 ### Rewind
 
-Progressive rewind. Each press steps the reverse speed up by one (−2x → −3x → −4x → ... → −16x) up to the iRacing maximum.
+Progressive rewind. The first press jumps to −2x; each subsequent press adds **Step Rate** to the reverse speed magnitude up to the iRacing maximum of −16x.
+
+#### Details
+
+- **Dial:** Rotation steps playback forward or backward by one frame
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Step Rate
+
+How much the reverse speed magnitude increases per press after the initial −2x. `1` (default) gives −2x → −3x → −4x → … → −16x; `2` gives −2x → −4x → −6x → −8x → … → −16x. Range 1–15.
+
+---
+
+### Slow Motion
+
+Quick shortcut to 1/2x slow motion (forward).
 
 #### Details
 
@@ -99,9 +115,9 @@ Progressive rewind. Each press steps the reverse speed up by one (−2x → −3
 
 ---
 
-### Slow Motion
+### Slow Motion Rewind
 
-Quick shortcut to 1/2x slow motion.
+Quick shortcut to −1/2x slow motion (reverse). Mirror of Slow Motion.
 
 #### Details
 

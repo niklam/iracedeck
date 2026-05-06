@@ -15,6 +15,7 @@
 					<option value="fast-forward">Fast Forward</option>
 					<option value="rewind">Rewind</option>
 					<option value="slow-motion">Slow Motion</option>
+					<option value="slow-motion-rewind">Slow Motion Rewind</option>
 					<option value="frame-forward">Frame Forward</option>
 					<option value="frame-backward">Frame Backward</option>
 				</optgroup>
@@ -42,6 +43,10 @@
 					<option value="prev-car-number">Previous Car (Number Order)</option>
 				</optgroup>
 			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="step-rate-setting" label="Step Rate" class="hidden">
+			<ird-range-input setting="stepRate" min="1" max="15" step="1" default="1" showlabels></ird-range-input>
 		</sdpi-item>
 
 		<sdpi-item id="speed-setting" label="Speed" class="hidden">
@@ -135,6 +140,13 @@
 					speedSetting?.classList.remove("hidden");
 				} else {
 					speedSetting?.classList.add("hidden");
+				}
+
+				const stepRateSetting = document.getElementById("step-rate-setting");
+				if (mode === "fast-forward" || mode === "rewind") {
+					stepRateSetting?.classList.remove("hidden");
+				} else {
+					stepRateSetting?.classList.add("hidden");
 				}
 			}
 

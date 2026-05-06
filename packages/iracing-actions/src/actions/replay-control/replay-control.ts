@@ -49,6 +49,7 @@ import prevLapIconSvg from "@iracedeck/icons/replay-control/prev-lap.svg";
 import prevSessionIconSvg from "@iracedeck/icons/replay-control/prev-session.svg";
 import rewindIconSvg from "@iracedeck/icons/replay-control/rewind.svg";
 import setSpeedIconSvg from "@iracedeck/icons/replay-control/set-speed.svg";
+import slowMotionRewindIconSvg from "@iracedeck/icons/replay-control/slow-motion-rewind.svg";
 import slowMotionIconSvg from "@iracedeck/icons/replay-control/slow-motion.svg";
 import speedDecreaseIconSvg from "@iracedeck/icons/replay-control/speed-decrease.svg";
 import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.svg";
@@ -72,6 +73,7 @@ const REPLAY_CONTROL_MODES = [
   "fast-forward",
   "rewind",
   "slow-motion",
+  "slow-motion-rewind",
   "frame-forward",
   "frame-backward",
   "speed-increase",
@@ -102,6 +104,7 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "fast-forward": fastForwardIconSvg,
   rewind: rewindIconSvg,
   "slow-motion": slowMotionIconSvg,
+  "slow-motion-rewind": slowMotionRewindIconSvg,
   "frame-forward": frameForwardIconSvg,
   "frame-backward": frameBackwardIconSvg,
   "speed-increase": speedIncreaseIconSvg,
@@ -130,6 +133,7 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
   "fast-forward": "FAST\nFORWARD",
   rewind: "REWIND",
   "slow-motion": "SLOW\nMOTION",
+  "slow-motion-rewind": "SLOW\nREWIND",
   "frame-forward": "FRAME FWD",
   "frame-backward": "FRAME BACK",
   "speed-increase": "REPLAY\nFASTER",
@@ -454,6 +458,7 @@ export function findAdjacentCarByNumber(
 const ReplayControlSettings = CommonSettings.extend({
   mode: z.enum(REPLAY_CONTROL_MODES).default("play-pause"),
   speed: z.string().default("1"),
+  stepRate: z.coerce.number().int().min(1).max(15).default(1),
 });
 
 type ReplayControlSettings = z.infer<typeof ReplayControlSettings>;
@@ -743,10 +748,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       }
       case "fast-forward": {
         const current = this.getCurrentSpeed();
+        const step = settings.stepRate;
         let nextSpeed: number;
 
         if (!current.slowMotion && current.speed >= 2) {
-          nextSpeed = Math.min(current.speed + 1, 16);
+          nextSpeed = Math.min(current.speed + step, 16);
         } else {
           nextSpeed = 2;
         }
@@ -754,15 +760,16 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const success = replay.setPlaySpeed(nextSpeed);
         this.setLocalSpeed(nextSpeed, false);
         this.logger.info("Fast forward executed");
-        this.logger.debug(`Result: ${success}, speed: ${nextSpeed}`);
+        this.logger.debug(`Result: ${success}, speed: ${nextSpeed}, step: ${step}`);
         break;
       }
       case "rewind": {
         const current = this.getCurrentSpeed();
+        const step = settings.stepRate;
         let nextSpeed: number;
 
         if (!current.slowMotion && current.speed <= -2) {
-          nextSpeed = Math.max(current.speed - 1, -16);
+          nextSpeed = Math.max(current.speed - step, -16);
         } else {
           nextSpeed = -2;
         }
@@ -770,13 +777,20 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const success = replay.setPlaySpeed(nextSpeed);
         this.setLocalSpeed(nextSpeed, false);
         this.logger.info("Rewind executed");
-        this.logger.debug(`Result: ${success}, speed: ${nextSpeed}`);
+        this.logger.debug(`Result: ${success}, speed: ${nextSpeed}, step: ${step}`);
         break;
       }
       case "slow-motion": {
         const success = replay.setPlaySpeed(2, true);
         this.setLocalSpeed(2, true);
         this.logger.info("Slow motion executed");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
+      case "slow-motion-rewind": {
+        const success = replay.setPlaySpeed(-2, true);
+        this.setLocalSpeed(-2, true);
+        this.logger.info("Slow motion rewind executed");
         this.logger.debug(`Result: ${success}`);
         break;
       }
@@ -1027,11 +1041,23 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     if (mode === "speed-increase" || mode === "speed-decrease") {
       // Speed modes: rotate adjusts speed progressively
       const adjustedMode: ReplayControlMode = ticks > 0 ? "speed-increase" : "speed-decrease";
-      this.executeMode(contextId, { mode: adjustedMode, speed: "1", flagsOverlay: false, addedWithVersion: "0.0.0" });
+      this.executeMode(contextId, {
+        mode: adjustedMode,
+        speed: "1",
+        stepRate: 1,
+        flagsOverlay: false,
+        addedWithVersion: "0.0.0",
+      });
     } else if (DIRECTIONAL_PAIRS[mode]) {
       const pair = DIRECTIONAL_PAIRS[mode]!;
       const nav = ticks > 0 ? pair.next : pair.prev;
-      this.executeMode("__dial__", { mode: nav, speed: "1", flagsOverlay: false, addedWithVersion: "0.0.0" });
+      this.executeMode("__dial__", {
+        mode: nav,
+        speed: "1",
+        stepRate: 1,
+        flagsOverlay: false,
+        addedWithVersion: "0.0.0",
+      });
     } else if (mode === "jump-to-beginning" || mode === "jump-to-live") {
       if (ticks > 0) {
         replay.nextIncident();

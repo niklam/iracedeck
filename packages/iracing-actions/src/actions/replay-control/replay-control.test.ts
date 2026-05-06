@@ -28,6 +28,9 @@ vi.mock("@iracedeck/icons/replay-control/rewind.svg", () => ({
 vi.mock("@iracedeck/icons/replay-control/slow-motion.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">slow-motion {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/replay-control/slow-motion-rewind.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">slow-motion-rewind {{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/replay-control/frame-forward.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">frame-forward {{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -316,6 +319,7 @@ describe("ReplayControl", () => {
       "fast-forward",
       "rewind",
       "slow-motion",
+      "slow-motion-rewind",
       "frame-forward",
       "frame-backward",
       "speed-increase",
@@ -399,6 +403,13 @@ describe("ReplayControl", () => {
       const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "slow-motion" }));
 
       expect(decoded).toContain("MOTION");
+      expect(decoded).toContain("SLOW");
+    });
+
+    it("should include REWIND and SLOW labels for slow-motion-rewind mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "slow-motion-rewind" }));
+
+      expect(decoded).toContain("REWIND");
       expect(decoded).toContain("SLOW");
     });
 
@@ -1045,6 +1056,87 @@ describe("ReplayControl", () => {
 
         // Both displays should have been re-rendered
         expect(action.updateKeyImage).toHaveBeenCalled();
+      });
+    });
+
+    describe("fast-forward / rewind step rate", () => {
+      beforeEach(async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 2 }) as any);
+      });
+
+      it("should step fast-forward by stepRate (default 1) when starting from 1x", async () => {
+        (action as any).replaySpeed.set("ctx-1", 1);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 1 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2);
+      });
+
+      it("should step fast-forward by stepRate=2 to 4x from 2x", async () => {
+        (action as any).replaySpeed.set("ctx-1", 2);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(4);
+      });
+
+      it("should always start fast-forward at 2x from paused, regardless of stepRate", async () => {
+        (action as any).replaySpeed.set("ctx-1", 0);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 3 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2);
+      });
+
+      it("should clamp fast-forward to 16x when stepRate would exceed it", async () => {
+        (action as any).replaySpeed.set("ctx-1", 14);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 5 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(16);
+      });
+
+      it("should step rewind by stepRate=2 to -4x from -2x", async () => {
+        (action as any).replaySpeed.set("ctx-1", -2);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-4);
+      });
+
+      it("should clamp rewind to -16x when stepRate would exceed it", async () => {
+        (action as any).replaySpeed.set("ctx-1", -14);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 5 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-16);
+      });
+
+      it("should reset to -2x when entering rewind from forward play, regardless of stepRate", async () => {
+        (action as any).replaySpeed.set("ctx-1", 4);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 3 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2);
+      });
+    });
+
+    describe("slow-motion-rewind", () => {
+      it("should set play speed to -2 with slow-motion flag", async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "slow-motion-rewind" }) as any);
+        // Seed the speed map so setLocalSpeed has a key to update
+        (action as any).replaySpeed.set("ctx-1", 0);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind" }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, true);
+        expect((action as any).replaySpeed.get("ctx-1")).toBe(-2);
+        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(true);
       });
     });
 
