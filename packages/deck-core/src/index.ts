@@ -124,6 +124,7 @@ export {
   getGlobalColors,
   onGlobalSettingsChange,
   updateGlobalSettings,
+  deleteGlobalSettings,
   isGlobalSettingsInitialized,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,

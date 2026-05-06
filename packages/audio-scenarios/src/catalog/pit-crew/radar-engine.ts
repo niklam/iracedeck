@@ -59,6 +59,16 @@ let testSequenceInFlight = false;
 let testSequenceGeneration = 0;
 const listeners = new Set<RadarListener>();
 
+// Plugin-wide master gate (issue #515). Defense-in-depth alongside the
+// `enabled` flag set via `setRadarEnabled` — if the plugin-level
+// global-settings listener ever fails to fire (test harness, future
+// refactor, race during startup), `getMasterEnabled` is consulted live
+// on every `radar.changed` arrival AND on every scheduled tick so the
+// engine can't audibly fire when the master toggle is off. Plugins
+// compose the closure from `pitCrewRadarEnabled === true` and pass it
+// through `registerPitCrew` → `registerRadarEngine`.
+let getMasterEnabled: () => boolean = () => true;
+
 function stopTickLoop(): void {
   if (tickTimer !== null) {
     clearTimeout(tickTimer);
@@ -72,6 +82,23 @@ function startTickLoop(state: ActiveState): void {
   const file = RADAR_AUDIO[state];
   const interval = RADAR_TICK_INTERVALS[state];
   const fire = (): void => {
+    // Master gate (issue #515): even if `enabled` is true and a tick is
+    // already scheduled, refuse to fire when the plugin-wide master
+    // toggle is off. Catches the narrow window where a tick was queued
+    // before `setRadarEnabled(false)` ran but landed after.
+    //
+    // Also clears the latched `visualState`: if `setRadarEnabled(false)`
+    // is the path that failed (the very scenario this defense-in-depth
+    // gate exists for), the icon would otherwise stay "occupied"
+    // indefinitely. Don't stop the channel — the in-flight clip
+    // finishes naturally, matching the voice-master-gate's
+    // "doesn't cut in-flight" contract.
+    if (!getMasterEnabled()) {
+      setVisualState("clear");
+
+      return;
+    }
+
     // If the audio engine isn't ready, playOnChannel returns false — don't
     // reschedule a timer in that case; the next radar.changed event will
     // retry the loop once the system is healthy.
@@ -113,6 +140,18 @@ function forceClear(): void {
 
 function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
   if (!enabled) return;
+
+  // Master gate (issue #515): defense-in-depth alongside `enabled`.
+  // Read live so the engine respects `pitCrewRadarEnabled` even if the
+  // plugin-level listener that calls `setRadarEnabled` ever fails to
+  // run. Clear the latched visual state so a stale icon doesn't stay
+  // "occupied" while the gate is off — see the matching note in
+  // `startTickLoop.fire`.
+  if (!getMasterEnabled()) {
+    setVisualState("clear");
+
+    return;
+  }
 
   // Lone qualifying sessions have no other cars on track; the raw
   // CarLeftRight value can flicker, and the callouts aren't useful. If a
@@ -156,10 +195,21 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
  * passes the same bus instance — re-registering with a different bus would
  * leave the handler attached to the original one and silently break radar
  * events, so we throw loudly instead. Invoked once from
- * `registerPitCrew(bus)` at plugin startup; takes the bus explicitly
+ * `registerPitCrew(bus, …)` at plugin startup; takes the bus explicitly
  * so tests can pass a fake bus without going through `initializeEventBus`.
+ *
+ * `masterEnabledGetter` (issue #515) is the plugin-wide master gate the
+ * engine consults on every `radar.changed` arrival and every scheduled
+ * tick. Optional — when omitted the gate stays at `() => true` (legacy
+ * behavior). Subsequent calls with a different getter overwrite the
+ * previous one, which keeps the bus-instance idempotency check honest:
+ * tests that re-register with the same bus can still update the gate.
  */
-export function registerRadarEngine(bus: IEventBus): void {
+export function registerRadarEngine(bus: IEventBus, masterEnabledGetter?: () => boolean): void {
+  if (masterEnabledGetter) {
+    getMasterEnabled = masterEnabledGetter;
+  }
+
   if (registeredBus !== null) {
     if (registeredBus !== bus) {
       throw new Error(
@@ -288,4 +338,5 @@ export function _resetRadarEngine(): void {
   registeredBus = null;
   testSequenceInFlight = false;
   testSequenceGeneration = 0;
+  getMasterEnabled = () => true;
 }

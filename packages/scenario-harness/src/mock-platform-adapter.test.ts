@@ -11,9 +11,9 @@ describe("MockPlatformAdapter", () => {
 
   it("setGlobalSettings persists the payload", () => {
     const adapter = new MockPlatformAdapter(silentLogger);
-    adapter.setGlobalSettings({ raceEngineerVolume: 50, raceEngineerEnabled: true });
+    adapter.setGlobalSettings({ raceEngineerVolume: 50, pitCrewRaceEngineerEnabled: true });
 
-    expect(adapter.readSettings()).toEqual({ raceEngineerVolume: 50, raceEngineerEnabled: true });
+    expect(adapter.readSettings()).toEqual({ raceEngineerVolume: 50, pitCrewRaceEngineerEnabled: true });
   });
 
   it("setGlobalSettings notifies all listeners", () => {
@@ -23,15 +23,15 @@ describe("MockPlatformAdapter", () => {
     adapter.onDidReceiveGlobalSettings(a);
     adapter.onDidReceiveGlobalSettings(b);
 
-    adapter.setGlobalSettings({ raceEngineerEnabled: false });
+    adapter.setGlobalSettings({ pitCrewRaceEngineerEnabled: false });
 
-    expect(a).toHaveBeenCalledWith({ raceEngineerEnabled: false });
-    expect(b).toHaveBeenCalledWith({ raceEngineerEnabled: false });
+    expect(a).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: false });
+    expect(b).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: false });
   });
 
   it("getGlobalSettings replays the current value to all listeners", () => {
     const adapter = new MockPlatformAdapter(silentLogger);
-    adapter.setGlobalSettings({ raceEngineerEnabled: true });
+    adapter.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
 
     const callback = vi.fn();
     adapter.onDidReceiveGlobalSettings(callback);
@@ -39,7 +39,7 @@ describe("MockPlatformAdapter", () => {
 
     adapter.getGlobalSettings();
 
-    expect(callback).toHaveBeenCalledWith({ raceEngineerEnabled: true });
+    expect(callback).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
   });
 
   it("setGlobalSettings replaces rather than merges", () => {

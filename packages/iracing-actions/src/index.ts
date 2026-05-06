@@ -29,7 +29,13 @@ export { FORCE_FEEDBACK_UUID, ForceFeedback } from "./actions/force-feedback/for
 export { FUEL_SERVICE_UUID, FuelService } from "./actions/fuel-service/fuel-service.js";
 export { LOOK_DIRECTION_UUID, LookDirection } from "./actions/look-direction/look-direction.js";
 export { MEDIA_CAPTURE_UUID, MediaCapture } from "./actions/media-capture/media-capture.js";
-export { PIT_CREW_UUID, PitCrew } from "./actions/pit-crew/pit-crew.js";
+export {
+  applyRaceEngineerAudio,
+  applyRadarEnabled,
+  applyRadarVolume,
+  PIT_CREW_UUID,
+  PitCrew,
+} from "./actions/pit-crew/pit-crew.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
 export { REPLAY_CONTROL_UUID, ReplayControl } from "./actions/replay-control/replay-control.js";
