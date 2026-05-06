@@ -740,6 +740,7 @@
             { "value": "reply", "label": "Reply" },
             { "value": "respond-pm", "label": "Respond to Last PM" },
             { "value": "whisper", "label": "Whisper" },
+            { "value": "toggle", "label": "Toggle Chat On/Off" },
             { "value": "open-chat", "label": "Open Chat" },
             { "value": "cancel", "label": "Cancel" }
           ]
