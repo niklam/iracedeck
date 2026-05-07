@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"HYS\nNO BOOST"},"border":{"color":"#3a6a3a"},"artworkBounds":{"x":39,"y":27,"width":60,"height":34}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"HYS\nNO BOOST"},"border":{"color":"#3a6a3a"}}</desc>
+  
 
-    <rect x="40" y="28" width="52" height="32" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="92" y="38" width="6" height="12" rx="2" fill="{{graphic1Color}}"/>
-    <line x1="54" y1="36" x2="78" y2="52" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
-    <line x1="78" y1="36" x2="54" y2="52" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
+    <rect x="2" y="2" width="52" height="32" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <rect x="54" y="12" width="6" height="12" rx="2" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="16" y1="10" x2="40" y2="26" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
+    <line x1="40" y1="10" x2="16" y2="26" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
 
 </svg>

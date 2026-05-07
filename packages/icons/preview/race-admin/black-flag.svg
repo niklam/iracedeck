@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FLAG\nBLACK"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":45,"y":21,"width":56,"height":62}}</desc>
-    <rect x="52" y="22" width="48" height="36" fill="none" stroke="#ffffff" stroke-width="4" rx="2"/>
-    <line x1="52" y1="58" x2="100" y2="22" stroke="#ffffff" stroke-width="3"/>
-    <line x1="46" y1="22" x2="46" y2="82" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FLAG\nBLACK"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <rect x="10" y="4" width="48" height="36" fill="none" stroke="#ffffff" stroke-width="4" rx="2"/>
+    <line x1="10" y1="40" x2="58" y2="4" stroke="#ffffff" stroke-width="3"/>
+    <line x1="4" y1="4" x2="4" y2="64" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

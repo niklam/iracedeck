@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEAROFF\nWINDSHIELD"},"border":{"color":"#6a5a5a"},"artworkBounds":{"x":35,"y":15,"width":74,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEAROFF\nWINDSHIELD"},"border":{"color":"#6a5a5a"}}</desc>
+  
 
-    <path d="M36 60 Q72 16 108 60" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="52" y1="44" x2="92" y2="44" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <path d="M92 36 L108 20" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="100,20 108,20 108,28" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M40 64 Q72 28 104 64" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,4" stroke-linecap="round"/>
+    <path d="M4,48Q40,4,76,48" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="20" y1="32" x2="60" y2="32" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <path d="M60,24L76,8" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="68,8 76,8 76,16" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8,52Q40,16,72,52" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,4" stroke-linecap="round"/>
 
 </svg>

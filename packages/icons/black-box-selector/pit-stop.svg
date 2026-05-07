@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"},"artworkBounds":{"x":15,"y":15,"width":114,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"PIT-STOP"},"border":{"color":"#5a5a5a"}}</desc>
+  
 
-    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <path d="M32 56 l8 -8 l-4 -4 l16 -16 l6 6 l-16 16 l4 4 l-8 8 z" fill="#888888"/>
-    <circle cx="60" cy="28" r="8" fill="none" stroke="#888888" stroke-width="3"/>
-    <path d="M54 28 h12 M60 22 v12" stroke="#888888" stroke-width="2"/>
-    <text x="84" y="32" fill="#ffffff" font-family="Arial, sans-serif" font-size="10">FUEL</text>
-    <text x="84" y="46" fill="#f39c12" font-family="Arial, sans-serif" font-size="10" font-weight="bold">+10.5</text>
-    <text x="84" y="60" fill="#2ecc71" font-family="Arial, sans-serif" font-size="10">TIRES ✓</text>
+    <rect x="1" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <path d="M17,41l8,-8l-4,-4l16,-16l6,6l-16,16l4,4l-8,8z" fill="#888888" stroke="none"/>
+    <circle cx="45" cy="13" r="8" fill="none" stroke="#888888" stroke-width="3"/>
+    <path d="M39,13h12M45,7v12" stroke="#888888" stroke-width="2"/>
+    <text x="69" y="17" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" stroke="none">FUEL</text>
+    <text x="69" y="31" fill="#f39c12" font-family="Arial, sans-serif" font-size="10" font-weight="bold" stroke="none">+10.5</text>
+    <text x="69" y="45" fill="#2ecc71" font-family="Arial, sans-serif" font-size="10" stroke="none">TIRES ✓</text>
 
 </svg>

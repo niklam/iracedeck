@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"GROUP\nPASTE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":31,"y":27,"width":86,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"GROUP\nPASTE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="32" y="36" width="40" height="28" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="40" y="28" width="40" height="28" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
-    <rect x="92" y="36" width="24" height="32" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
-    <rect x="98" y="30" width="12" height="8" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="2" y="10" width="40" height="28" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="10" y="2" width="40" height="28" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
+    <rect x="62" y="10" width="24" height="32" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="68" y="4" width="12" height="8" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
 
 </svg>

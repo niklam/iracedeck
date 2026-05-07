@@ -1,15 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nFASTER"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":41,"y":11,"width":65,"height":70}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 67 72" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nFASTER"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
     
-      <ellipse fill="{{graphic1Color}}" cx="69" cy="60.5" rx="21" ry="15"/>
-      <circle fill="{{graphic1Color}}" cx="94.5" cy="51.5" r="10.5"/>
-      <ellipse fill="{{graphic1Color}}" cx="87" cy="30.5" rx="3.75" ry="13.5"/>
-      <ellipse fill="{{graphic1Color}}" cx="97.5" cy="27.5" rx="3.75" ry="15"/>
-      <circle cx="99" cy="49.25" r="1.88" fill="#2a3a4a"/>
-      <ellipse fill="{{graphic1Color}}" cx="85.5" cy="72.5" rx="3.75" ry="7.5"/>
-      <ellipse fill="{{graphic1Color}}" cx="52.5" cy="68" rx="7.5" ry="9"/>
-      <circle fill="{{graphic1Color}}" cx="46.5" cy="54.5" r="4.5"/>
+      <ellipse fill="{{graphic1Color}}" cx="29" cy="50.5" rx="21" ry="15" stroke="none"/>
+      <circle fill="{{graphic1Color}}" cx="54.5" cy="41.5" r="10.5" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="47" cy="20.5" rx="3.75" ry="13.5" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="57.5" cy="17.5" rx="3.75" ry="15" stroke="none"/>
+      <circle cx="59" cy="39.25" r="1.88" fill="#2a3a4a" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="45.5" cy="62.5" rx="3.75" ry="7.5" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="12.5" cy="58" rx="7.5" ry="9" stroke="none"/>
+      <circle fill="{{graphic1Color}}" cx="6.5" cy="44.5" r="4.5" stroke="none"/>
     
 
 </svg>

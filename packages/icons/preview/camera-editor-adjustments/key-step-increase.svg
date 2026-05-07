@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"KEY STEP\n+"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":27,"y":23,"width":90,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"KEY STEP\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <rect x="28" y="24" width="88" height="8" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
-    <rect x="28" y="24" width="56" height="8" rx="2" fill="#ffffff" fill-opacity="0.3"/>
-    <line x1="40" y1="48" x2="40" y2="76" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <line x1="72" y1="48" x2="72" y2="76" stroke="#ffffff" stroke-width="3"/>
-    <line x1="104" y1="48" x2="104" y2="76" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <polyline points="66,56 72,48 78,56" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="1" y="1" width="88" height="8" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
+    <rect x="1" y="1" width="56" height="8" rx="2" fill="#ffffff" fill-opacity="0.3" stroke="none"/>
+    <line x1="13" y1="25" x2="13" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
+    <line x1="45" y1="25" x2="45" y2="53" stroke="#ffffff" stroke-width="3"/>
+    <line x1="77" y1="25" x2="77" y2="53" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
+    <polyline points="39,33 45,25 51,33" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

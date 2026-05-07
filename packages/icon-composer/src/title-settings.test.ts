@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseIconArtworkBounds, parseIconTitleDefaults } from "./icon-template.js";
+import { parseIconTitleDefaults, parseSvgViewBox } from "./icon-template.js";
 import {
   assembleIcon,
   BORDER_DEFAULTS,
@@ -12,45 +12,39 @@ import {
 } from "./title-settings.js";
 
 // ---------------------------------------------------------------------------
-// parseIconArtworkBounds
+// parseSvgViewBox
 // ---------------------------------------------------------------------------
 
-describe("parseIconArtworkBounds", () => {
-  it("should parse valid artworkBounds from desc", () => {
-    const svg = `<svg><desc>{"colors":{},"artworkBounds":{"x":36,"y":24,"width":88,"height":48}}</desc></svg>`;
-    const result = parseIconArtworkBounds(svg);
-    expect(result).toEqual({ x: 36, y: 24, width: 88, height: 48 });
+describe("parseSvgViewBox", () => {
+  it("should parse a simple viewBox", () => {
+    const svg = `<svg viewBox="0 0 88 48"><desc>{}</desc></svg>`;
+    expect(parseSvgViewBox(svg)).toEqual({ x: 0, y: 0, width: 88, height: 48 });
   });
 
-  it("should return undefined when artworkBounds is missing", () => {
-    const svg = `<svg><desc>{"colors":{}}</desc></svg>`;
-    expect(parseIconArtworkBounds(svg)).toBeUndefined();
+  it("should parse a viewBox with non-zero origin", () => {
+    const svg = `<svg viewBox="36 24 88 48"></svg>`;
+    expect(parseSvgViewBox(svg)).toEqual({ x: 36, y: 24, width: 88, height: 48 });
   });
 
-  it("should return undefined when desc is missing", () => {
-    const svg = `<svg><rect/></svg>`;
-    expect(parseIconArtworkBounds(svg)).toBeUndefined();
+  it("should accept comma-separated values", () => {
+    const svg = `<svg viewBox="0,0,100,100"></svg>`;
+    expect(parseSvgViewBox(svg)).toEqual({ x: 0, y: 0, width: 100, height: 100 });
   });
 
-  it("should return undefined when fields are not numbers", () => {
-    const svg = `<svg><desc>{"artworkBounds":{"x":"bad","y":24,"width":88,"height":48}}</desc></svg>`;
-    expect(parseIconArtworkBounds(svg)).toBeUndefined();
+  it("should return undefined when viewBox attribute is absent", () => {
+    expect(parseSvgViewBox(`<svg><rect/></svg>`)).toBeUndefined();
+  });
+
+  it("should return undefined when viewBox has too few values", () => {
+    expect(parseSvgViewBox(`<svg viewBox="0 0 100"></svg>`)).toBeUndefined();
   });
 
   it("should return undefined when width is zero", () => {
-    const svg = `<svg><desc>{"artworkBounds":{"x":0,"y":0,"width":0,"height":48}}</desc></svg>`;
-    expect(parseIconArtworkBounds(svg)).toBeUndefined();
+    expect(parseSvgViewBox(`<svg viewBox="0 0 0 48"></svg>`)).toBeUndefined();
   });
 
   it("should return undefined when height is negative", () => {
-    const svg = `<svg><desc>{"artworkBounds":{"x":0,"y":0,"width":48,"height":-10}}</desc></svg>`;
-    expect(parseIconArtworkBounds(svg)).toBeUndefined();
-  });
-
-  it("should accept bounds at origin", () => {
-    const svg = `<svg><desc>{"artworkBounds":{"x":0,"y":0,"width":100,"height":100}}</desc></svg>`;
-    const result = parseIconArtworkBounds(svg);
-    expect(result).toEqual({ x: 0, y: 0, width: 100, height: 100 });
+    expect(parseSvgViewBox(`<svg viewBox="0 0 48 -10"></svg>`)).toBeUndefined();
   });
 });
 
@@ -188,9 +182,9 @@ function decodeDataUri(dataUri: string): string {
   return dataUri;
 }
 
-const MOCK_GRAPHIC_NO_BOUNDS = `<svg><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"TEST"}}</desc><rect x="22" y="12" width="100" height="80" fill="{{graphic1Color}}"/></svg>`;
+const MOCK_GRAPHIC_NO_VIEWBOX = `<svg><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"TEST"}}</desc><rect x="22" y="12" width="100" height="80" fill="{{graphic1Color}}"/></svg>`;
 
-const MOCK_GRAPHIC_WITH_BOUNDS = `<svg><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"TEST"},"artworkBounds":{"x":22,"y":12,"width":100,"height":80}}</desc><rect x="22" y="12" width="100" height="80" fill="{{graphic1Color}}"/></svg>`;
+const MOCK_GRAPHIC_TRIMMED = `<svg viewBox="0 0 100 80"><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"TEST"}}</desc><rect x="0" y="0" width="100" height="80" fill="{{graphic1Color}}"/></svg>`;
 
 const DEFAULT_TITLE = {
   showTitle: true,
@@ -207,7 +201,7 @@ const COLORS = { backgroundColor: "#2a3444", textColor: "#ffffff", graphic1Color
 describe("assembleIcon with graphic scaling", () => {
   it("should NOT apply transform when graphic param is omitted", () => {
     const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_WITH_BOUNDS,
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
       colors: COLORS,
       title: DEFAULT_TITLE,
       border: BORDER_DEFAULTS,
@@ -216,9 +210,9 @@ describe("assembleIcon with graphic scaling", () => {
     expect(svg).not.toContain("<g transform=");
   });
 
-  it("should NOT apply transform when artworkBounds is missing", () => {
+  it("should NOT apply transform when viewBox is missing", () => {
     const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_NO_BOUNDS,
+      graphicSvg: MOCK_GRAPHIC_NO_VIEWBOX,
       colors: COLORS,
       title: DEFAULT_TITLE,
       border: BORDER_DEFAULTS,
@@ -228,9 +222,9 @@ describe("assembleIcon with graphic scaling", () => {
     expect(svg).not.toContain("<g transform=");
   });
 
-  it("should apply transform when graphic param AND artworkBounds present", () => {
+  it("should apply transform when graphic param set and viewBox present", () => {
     const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_WITH_BOUNDS,
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
       colors: COLORS,
       title: DEFAULT_TITLE,
       border: BORDER_DEFAULTS,
@@ -243,8 +237,8 @@ describe("assembleIcon with graphic scaling", () => {
   });
 
   it("should scale up when title is hidden", () => {
-    // Use tall/narrow artwork where height becomes the constraining dimension
-    const tallGraphic = `<svg><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"LINE1\\nLINE2"},"artworkBounds":{"x":40,"y":10,"width":64,"height":120}}</desc><rect x="40" y="10" width="64" height="120" fill="{{graphic1Color}}"/></svg>`;
+    // Tall/narrow artwork where height becomes the constraining dimension
+    const tallGraphic = `<svg viewBox="0 0 64 120"><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"LINE1\\nLINE2"}}</desc><rect x="0" y="0" width="64" height="120" fill="{{graphic1Color}}"/></svg>`;
     const titleWithTwoLines = { ...DEFAULT_TITLE, titleText: "LINE1\nLINE2", fontSize: 12 };
     const noTitle = { ...titleWithTwoLines, showTitle: false };
 
@@ -264,7 +258,6 @@ describe("assembleIcon with graphic scaling", () => {
       graphic: { scale: 100 },
     });
 
-    // Extract scale values from both
     const withTitleScale = parseFloat(decodeDataUri(withTitle).match(/scale\(([^)]+)\)/)?.[1] ?? "0");
     const withoutTitleScale = parseFloat(decodeDataUri(withoutTitle).match(/scale\(([^)]+)\)/)?.[1] ?? "0");
 
@@ -274,21 +267,20 @@ describe("assembleIcon with graphic scaling", () => {
 
   it("should still contain graphic content inside the transform group", () => {
     const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_WITH_BOUNDS,
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
       colors: COLORS,
       title: DEFAULT_TITLE,
       border: BORDER_DEFAULTS,
       graphic: { scale: 100 },
     });
     const svg = decodeDataUri(result);
-    // The rect should be inside the transform group
     expect(svg).toContain('fill="#ffffff"');
     expect(svg).toContain("</g>");
   });
 
   it("should not apply transform when showGraphics is false", () => {
     const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_WITH_BOUNDS,
+      graphicSvg: MOCK_GRAPHIC_TRIMMED,
       colors: COLORS,
       title: { ...DEFAULT_TITLE, showGraphics: false },
       border: BORDER_DEFAULTS,

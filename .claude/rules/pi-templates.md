@@ -157,7 +157,7 @@ Place after `color-overrides` include, before `graphic-overrides`.
 
 ## Graphic Overrides Partial
 
-Adds per-action graphic scale settings. Settings are stored under the `graphicOverrides` key in action settings. Only effective when the icon declares `artworkBounds` in its `<desc>` metadata.
+Adds per-action graphic scale settings. Settings are stored under the `graphicOverrides` key in action settings. Effective for any icon with a parseable `viewBox` — the viewBox dimensions drive the dynamic scaling pipeline.
 
 ```ejs
 <%- include('graphic-overrides') %>

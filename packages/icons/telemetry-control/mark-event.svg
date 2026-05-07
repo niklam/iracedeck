@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"EVENT\nMARK"},"border":{"color":"#6a5a6a"},"artworkBounds":{"x":27,"y":19,"width":90,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"EVENT\nMARK"},"border":{"color":"#6a5a6a"}}</desc>
+  
 
-    <line x1="28" y1="68" x2="116" y2="68" stroke="#888888" stroke-width="1.6"/>
-    <polyline points="36,68 36,56 44,56 52,68 52,56 60,56 68,68" fill="none"
+    <line x1="2" y1="50" x2="90" y2="50" stroke="#888888" stroke-width="1.6"/>
+    <polyline points="10,50 10,38 18,38 26,50 26,38 34,38 42,50" fill="none"
               stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <line x1="72" y1="68" x2="72" y2="20" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polygon points="72,20 96,32 72,44" fill="#f1c40f"/>
+    <line x1="46" y1="50" x2="46" y2="2" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="46,2 70,14 46,26" fill="#f1c40f" stroke="none"/>
 
 </svg>

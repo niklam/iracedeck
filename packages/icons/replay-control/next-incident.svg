@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"INCIDENT\nNEXT"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":23,"y":27,"width":86,"height":46}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 48" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"INCIDENT\nNEXT"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polygon points="60,28 40,68 80,68" fill="{{graphic1Color}}"/>
-    <text x="60" y="60" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a4a" font-family="Arial, sans-serif" font-size="24" font-weight="bold">!</text>
-    <polyline points="92,40 108,52 92,64" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="38,2 18,42 58,42" fill="{{graphic1Color}}" stroke="none"/>
+    <text x="38" y="34" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a4a" font-family="Arial, sans-serif" font-size="24" font-weight="bold" stroke="none">!</text>
+    <polyline points="70,14 86,26 70,38" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

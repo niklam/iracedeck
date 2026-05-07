@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"DQS\nSHOW"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":34,"y":27,"width":83,"height":52}}</desc>
-    <circle cx="56" cy="48" r="20" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <line x1="70" y1="62" x2="88" y2="78" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <text x="56" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold">DQ</text>
-    <circle cx="104" cy="36" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <path d="M92 62 a12 12 0 0 1 24 0" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 89 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"DQS\nSHOW"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <circle cx="25" cy="24" r="20" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <line x1="39" y1="38" x2="57" y2="54" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <text x="25" y="26" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">DQ</text>
+    <circle cx="73" cy="12" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <path d="M61,38a12,12,0,0,1,24,0" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
 
 </svg>

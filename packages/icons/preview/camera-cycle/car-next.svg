@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nNEXT"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":31,"y":39,"width":94,"height":32}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 34" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nNEXT"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <path d="M 32,60 L 40,40 L 88,40 L 100,60 Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <circle cx="48" cy="64" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="84" cy="64" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polyline points="112,40 124,48 112,56" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2,22L10,2L58,2L70,22Z" fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="18" cy="26" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="54" cy="26" r="6" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polyline points="82,2 94,10 82,18" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

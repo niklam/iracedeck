@@ -27,9 +27,11 @@ Standalone SVG icon assembly and composition library for Stream Deck plugins. Co
 - `parseIconDefaults()` — Color slot defaults (`colors` field)
 - `parseIconTitleDefaults()` — Title defaults (`title` field), including `showTitle` and `locked` array for protecting fields from global overrides
 - `parseIconBorderDefaults()` — Border defaults (`border` field)
-- `parseIconArtworkBounds()` — Artwork bounding box (`artworkBounds` field)
 - `parseIconLocked()` — Locked color slot names (`locked` field)
 - `resolveIconColors()` — Merges per-action overrides, global defaults, and icon defaults
+
+**SVG Root Parser:**
+- `parseSvgViewBox()` — Reads the root `<svg viewBox>` attribute. For trimmed icons the viewBox dimensions ARE the artwork extent, so this replaces the older `artworkBounds` `<desc>` field that used to declare the bounding box separately.
 
 ### Title, Border, Graphic Settings & Assembly (`title-settings.ts`)
 
@@ -39,7 +41,8 @@ Standalone SVG icon assembly and composition library for Stream Deck plugins. Co
 - `generateTitleText()` — Generates positioned SVG title text elements
 - `calculateYPositions()` — Computes Y positions for title text lines by placement mode
 - `computeGraphicArea()` — Computes available rectangle for graphic based on title placement
-- `assembleIcon()` — Full icon assembly: extracts artwork, applies colors, optionally scales/positions graphic via `artworkBounds`, generates title, border, and wraps in base template
+- `applyGraphicTransform()` — Wraps content in a `<g transform>` to scale and center it within an available area. Static-icon callers pass `{x: 0, y: 0, width, height}` derived from the SVG's own viewBox; inline-assembled callers (car-control, pit-crew) pass bounds matching whatever coordinate space their content occupies.
+- `assembleIcon()` — Full icon assembly: extracts artwork, applies colors, scales/positions the graphic into the title-aware available area using the SVG's viewBox dimensions, generates title, border, and wraps in base template
 
 **Defaults:**
 - `TITLE_DEFAULTS` — Hardcoded title fallbacks (showTitle, bold, fontSize, position)

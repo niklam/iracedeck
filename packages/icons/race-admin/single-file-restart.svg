@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RESTART\nSINGLE"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":53,"y":13,"width":38,"height":76}}</desc>
-    <rect x="62" y="22" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
-    <rect x="62" y="40" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
-    <rect x="62" y="58" width="20" height="12" rx="4" fill="{{graphic1Color}}"/>
-    <rect x="62" y="76" width="20" height="12" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="2" stroke-dasharray="4,2"/>
-    <text x="72" y="20" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="12" font-weight="bold">1</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 82" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RESTART\nSINGLE"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <rect x="12" y="12" width="20" height="12" rx="4" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="12" y="30" width="20" height="12" rx="4" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="12" y="48" width="20" height="12" rx="4" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="12" y="66" width="20" height="12" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="2" stroke-dasharray="4,2"/>
+    <text x="22" y="10" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">1</text>
 
 </svg>

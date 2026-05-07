@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL MIX\nINCREASE"},"border":{"color":"#6a6a3a"},"artworkBounds":{"x":39,"y":19,"width":78,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FUEL MIX\nINCREASE"},"border":{"color":"#6a6a3a"}}</desc>
+  
 
-    <path d="M60 20 C60 20 40 44 40 56 C40 68 48 76 60 76 C72 76 80 68 80 56 C80 44 60 20 60 20Z"
+    <path d="M24,4C24,4,4,28,4,40C4,52,12,60,24,60C36,60,44,52,44,40C44,28,24,4,24,4Z"
           fill="none" stroke="#ffffff" stroke-width="4"/>
-    <path d="M46 60 Q60 52 74 60" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10,44Q24,36,38,44" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="70,40 80,28 70,16" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

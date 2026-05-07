@@ -7,12 +7,12 @@
 import { extractGraphicContent, generateBorderParts, ICON_BASE_TEMPLATE } from "./icon-base.js";
 import {
   escapeXml,
-  parseIconArtworkBounds,
   parseIconBorderDefaults,
   parseIconTitleDefaults,
+  parseSvgViewBox,
   renderIconTemplate,
 } from "./icon-template.js";
-import type { IconArtworkBounds } from "./icon-template.js";
+import type { SvgViewBox } from "./icon-template.js";
 import { svgToDataUri } from "./svg-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -459,14 +459,16 @@ export function computeGraphicArea(title: ResolvedTitleSettings): GraphicArea {
 
 /**
  * Wraps graphic content in a `<g transform>` to center and scale it
- * within the available area based on its declared artworkBounds.
+ * within the available area based on its source coordinate-space bounds.
  *
- * Exported for use by actions that do manual icon assembly (e.g., speed-display
- * and set-speed modes that inject dynamic template variables before assembly).
+ * For static icons, callers typically pass `{x: 0, y: 0, width: viewBoxW, height: viewBoxH}`
+ * derived from the SVG's viewBox (since trimmed icons place artwork at origin filling the viewBox).
+ * For inline-assembled artwork (car-control, pit-crew) callers pass bounds matching the
+ * coordinate space their content occupies.
  */
 export function applyGraphicTransform(
   content: string,
-  artworkBounds: IconArtworkBounds,
+  artworkBounds: SvgViewBox,
   availableArea: GraphicArea,
   userScale: number,
 ): string {
@@ -526,13 +528,19 @@ export function assembleIcon(options: {
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
 
-  // Apply dynamic scaling if artworkBounds metadata exists and graphic settings provided
+  // Trimmed icons place artwork at origin filling the viewBox, so the viewBox
+  // dimensions ARE the artwork extent for scaling.
   if (graphicContent && graphic) {
-    const artworkBounds = parseIconArtworkBounds(graphicSvg);
+    const viewBox = parseSvgViewBox(graphicSvg);
 
-    if (artworkBounds) {
+    if (viewBox) {
       const area = computeGraphicArea(title);
-      graphicContent = applyGraphicTransform(graphicContent, artworkBounds, area, graphic.scale);
+      graphicContent = applyGraphicTransform(
+        graphicContent,
+        { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
+        area,
+        graphic.scale,
+      );
     }
   }
 

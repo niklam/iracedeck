@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"STATE\nTRACK"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":35,"y":35,"width":74,"height":52}}</desc>
-    <path d="M36,76 C36,36 108,36 108,76" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M48,72 C48,48 96,48 96,72" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <rect x="50" y="78" width="8" height="8" fill="{{graphic1Color}}" opacity="0.4"/>
-    <rect x="62" y="74" width="8" height="12" fill="{{graphic1Color}}" opacity="0.6"/>
-    <rect x="74" y="70" width="8" height="16" fill="{{graphic1Color}}" opacity="0.8"/>
-    <rect x="86" y="66" width="8" height="20" fill="{{graphic1Color}}"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"STATE\nTRACK"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M4,44C4,4,76,4,76,44" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M16,40C16,16,64,16,64,40" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <rect x="18" y="46" width="8" height="8" fill="{{graphic1Color}}" opacity="0.4" stroke="none"/>
+    <rect x="30" y="42" width="8" height="12" fill="{{graphic1Color}}" opacity="0.6" stroke="none"/>
+    <rect x="42" y="38" width="8" height="16" fill="{{graphic1Color}}" opacity="0.8" stroke="none"/>
+    <rect x="54" y="34" width="8" height="20" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

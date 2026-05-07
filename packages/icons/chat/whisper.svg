@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nWHISPER"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":23,"y":19,"width":98,"height":68}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nWHISPER"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <path d="M32 20 h80 a8 8 0 0 1 8 8 v40 a8 8 0 0 1-8 8 H76 l-6 10 l-6-10 H32 a8 8 0 0 1-8-8 V28 a8 8 0 0 1 8-8 z"
+    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
           fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M60 36 A8 8 0 0 1 60 56" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
-    <path d="M68 30 A16 16 0 0 1 68 62" fill="none" stroke="{{color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M76 24 A24 24 0 0 1 76 68" fill="none" stroke="{{color}}" stroke-width="2" stroke-linecap="round"/>
+    <path d="M38,18A8,8,0,0,1,38,38" fill="none" stroke="{{color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M46,12A16,16,0,0,1,46,44" fill="none" stroke="{{color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M54,6A24,24,0,0,1,54,50" fill="none" stroke="{{color}}" stroke-width="2" stroke-linecap="round"/>
 
 </svg>

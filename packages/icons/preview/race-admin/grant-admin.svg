@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ADMIN\nGRANT"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":35,"y":19,"width":78,"height":62}}</desc>
-    <circle cx="60" cy="34" r="14" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <path d="M36,78 C36,58 60,50 60,50 C60,50 84,58 84,78" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="98" cy="66" r="14" fill="#8B1A1A" stroke="#ffffff" stroke-width="3"/>
-    <line x1="98" y1="58" x2="98" y2="74" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="90" y1="66" x2="106" y2="66" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ADMIN\nGRANT"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <circle cx="28" cy="18" r="14" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <path d="M4,62C4,42,28,34,28,34C28,34,52,42,52,62" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="66" cy="50" r="14" fill="#8B1A1A" stroke="#ffffff" stroke-width="3"/>
+    <line x1="66" y1="42" x2="66" y2="58" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="58" y1="50" x2="74" y2="50" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
 
 </svg>

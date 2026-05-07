@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAPTURE\nSCREENSHOT"},"border":{"color":"#5a3a6a"},"artworkBounds":{"x":39,"y":19,"width":74,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAPTURE\nSCREENSHOT"},"border":{"color":"#5a3a6a"}}</desc>
+  
 
-    <rect x="40" y="28" width="56" height="40" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="60" y="20" width="16" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="68" cy="48" r="12" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="68" cy="48" r="4" fill="{{graphic1Color}}"/>
-    <line x1="104" y1="24" x2="112" y2="24" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="108" y1="20" x2="108" y2="28" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <rect x="2" y="10" width="56" height="40" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <rect x="22" y="2" width="16" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="30" cy="30" r="12" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="30" cy="30" r="4" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="66" y1="6" x2="74" y2="6" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="70" y1="2" x2="70" y2="10" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

@@ -16,19 +16,19 @@ export {
   escapeXml,
   generateIconText,
   parseDescMetadata,
-  parseIconArtworkBounds,
   parseIconBorderDefaults,
   parseIconDefaults,
   parseIconLocked,
   parseIconTitleDefaults,
+  parseSvgViewBox,
   renderIconTemplate,
   resolveIconColors,
   validateIconTemplate,
   type ColorSlots,
   type GenerateIconTextOptions,
-  type IconArtworkBounds,
   type IconBorderDefaults,
   type IconTitleDefaults,
+  type SvgViewBox,
 } from "./icon-template.js";
 
 // Title, border, graphic settings and icon assembly

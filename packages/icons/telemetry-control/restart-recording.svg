@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RECORDING\nRESTART"},"border":{"color":"#6a5a6a"},"artworkBounds":{"x":39,"y":19,"width":42,"height":38}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RECORDING\nRESTART"},"border":{"color":"#6a5a6a"}}</desc>
 
-    <path d="M72 20 A28 28 0 1 1 44 48" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="40,40 44,48 52,44" fill="none" stroke="{{graphic1Color}}" stroke-width="3"
-              stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="72" cy="48" r="8" fill="#e74c3c"/>
+
+    <path d="M30,10A20,20,0,1,1,10,30" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="10,22 2,30 18,30" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="30" cy="30" r="5" fill="#e74c3c" stroke="none"/>
 
 </svg>

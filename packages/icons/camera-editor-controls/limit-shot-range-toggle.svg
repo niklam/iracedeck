@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nSHOT RNG"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":27,"y":31,"width":90,"height":26}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 28" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nSHOT RNG"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <line x1="40" y1="44" x2="104" y2="44" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="40" y1="32" x2="40" y2="56" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="104" y1="32" x2="104" y2="56" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="28" y1="44" x2="36" y2="44" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
-    <line x1="108" y1="44" x2="116" y2="44" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
+    <line x1="14" y1="14" x2="78" y2="14" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="14" y1="2" x2="14" y2="26" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="78" y1="2" x2="78" y2="26" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="2" y1="14" x2="10" y2="14" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
+    <line x1="82" y1="14" x2="90" y2="14" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
 
 </svg>

@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nKEY 10X"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":47,"y":23,"width":50,"height":38}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 40" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nKEY 10X"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="48" y="24" width="48" height="36" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <text x="72" y="44" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">10x</text>
+    <rect x="2" y="2" width="48" height="36" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <text x="26" y="22" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">10x</text>
 
 </svg>

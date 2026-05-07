@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"DRIVER\nCHAT ON"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":29,"y":25,"width":86,"height":54}}</desc>
-    <path d="M36,26 L108,26 Q114,26 114,32 L114,58 Q114,64 108,64 L76,64 L60,78 L60,64 L36,64 Q30,64 30,58 L30,32 Q30,26 36,26 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <circle cx="62" cy="40" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <path d="M50,58 C50,50 62,46 62,46 C62,46 74,50 74,58" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="84,42 90,50 102,34" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"DRIVER\nCHAT ON"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M10,4L82,4Q88,4,88,10L88,36Q88,42,82,42L50,42L34,56L34,42L10,42Q4,42,4,36L4,10Q4,4,10,4Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="36" cy="18" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <path d="M24,36C24,28,36,24,36,24C36,24,48,28,48,36" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="58,20 64,28 76,12" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

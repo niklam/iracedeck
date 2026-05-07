@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nGYRO"},"border":{"color":"#5a7a8a"},"artworkBounds":{"x":35,"y":23,"width":74,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nGYRO"},"border":{"color":"#5a7a8a"}}</desc>
+  
 
     <g stroke="#ffffff" fill="none">
-      <ellipse cx="72" cy="52" rx="36" ry="28" stroke-width="3"/>
-      <ellipse cx="72" cy="52" rx="26" ry="22" stroke-width="2.5" transform="rotate(20, 72, 52)"/>
-      <ellipse cx="72" cy="52" rx="14" ry="14" stroke-width="2"/>
+      <ellipse cx="38" cy="30" rx="36" ry="28" stroke-width="3"/>
+      <ellipse cx="38" cy="30" rx="26" ry="22" stroke-width="2.5" transform="rotate(20, 38, 30)"/>
+      <ellipse cx="38" cy="30" rx="14" ry="14" stroke-width="2"/>
     </g>
-    <circle cx="72" cy="52" r="5" fill="#ffffff"/>
+    <circle cx="38" cy="30" r="5" fill="#ffffff" stroke="none"/>
 
 </svg>

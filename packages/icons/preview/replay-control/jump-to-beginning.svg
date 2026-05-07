@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"JUMP TO\nBEGINNING"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":39,"y":27,"width":66,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"JUMP TO\nBEGINNING"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <line x1="40" y1="28" x2="40" y2="76" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-    <polygon points="80,28 52,52 80,76" fill="#ffffff"/>
-    <polygon points="104,28 76,52 104,76" fill="#ffffff"/>
+    <line x1="2" y1="2" x2="2" y2="50" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="42,2 14,26 42,50" fill="#ffffff" stroke="none"/>
+    <polygon points="66,2 38,26 66,50" fill="#ffffff" stroke="none"/>
 
 </svg>

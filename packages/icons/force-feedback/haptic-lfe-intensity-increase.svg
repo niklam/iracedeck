@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"MORE INTENSE\nHAPTIC LFE"},"border":{"color":"#5a5a7a"},"artworkBounds":{"x":17,"y":21,"width":108,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"MORE INTENSE\nHAPTIC LFE"},"border":{"color":"#5a5a7a"}}</desc>
+  
 
-    <circle cx="52" cy="46" r="10" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <path d="M36 30 Q28 46 36 62" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M28 22 Q18 46 28 70" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M68 30 Q76 46 68 62" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M76 22 Q86 46 76 70" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <rect x="92" y="56" width="8" height="12" rx="1" fill="#888888"/>
-    <rect x="104" y="46" width="8" height="22" rx="1" fill="#888888"/>
-    <rect x="116" y="36" width="8" height="32" rx="1" fill="#2ecc71"/>
+    <circle cx="36" cy="26" r="10" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <path d="M20,10Q12,26,20,42" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M12,2Q2,26,12,50" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M52,10Q60,26,52,42" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M60,2Q70,26,60,50" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <rect x="76" y="36" width="8" height="12" rx="1" fill="#888888" stroke="none"/>
+    <rect x="88" y="26" width="8" height="22" rx="1" fill="#888888" stroke="none"/>
+    <rect x="100" y="16" width="8" height="32" rx="1" fill="#2ecc71" stroke="none"/>
 
 </svg>

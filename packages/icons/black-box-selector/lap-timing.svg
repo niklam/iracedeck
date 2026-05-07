@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"LAP TIMING"},"border":{"color":"#5a5a5a"},"artworkBounds":{"x":8,"y":15,"width":121,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 121 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"LAP TIMING"},"border":{"color":"#5a5a5a"}}</desc>
+  
 
-    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <text x="24" y="30" fill="#888888" font-family="Arial, sans-serif" font-size="10">LAP</text>
-    <text x="64" y="30" fill="#f39c12" font-family="Arial, sans-serif" font-size="12" font-weight="bold">1:23.456</text>
-    <text x="24" y="44" fill="#888888" font-family="Arial, sans-serif" font-size="10">LAST</text>
-    <text x="64" y="44" fill="#ffffff" font-family="Arial, sans-serif" font-size="12">1:24.012</text>
-    <text x="24" y="58" fill="#888888" font-family="Arial, sans-serif" font-size="10">BEST</text>
-    <text x="64" y="58" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">1:22.891</text>
-    <rect x="24" y="64" width="96" height="2" fill="#ffffff" opacity="0.3"/>
+    <rect x="8" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <text x="16" y="15" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">LAP</text>
+    <text x="56" y="15" fill="#f39c12" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">1:23.456</text>
+    <text x="16" y="29" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">LAST</text>
+    <text x="56" y="29" fill="#ffffff" font-family="Arial, sans-serif" font-size="12" stroke="none">1:24.012</text>
+    <text x="16" y="43" fill="#888888" font-family="Arial, sans-serif" font-size="10" stroke="none">BEST</text>
+    <text x="56" y="43" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">1:22.891</text>
+    <rect x="16" y="49" width="96" height="2" fill="#ffffff" opacity="0.3" stroke="none"/>
 
 </svg>

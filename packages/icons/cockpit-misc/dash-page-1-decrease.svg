@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PREVIOUS\nDASH PG 1"},"border":{"color":"#5a5a6a"},"artworkBounds":{"x":27,"y":23,"width":88,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PREVIOUS\nDASH PG 1"},"border":{"color":"#5a5a6a"}}</desc>
+  
 
-    <rect x="32" y="24" width="80" height="48" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <text x="72" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="28" font-weight="bold">1</text>
-    <polyline points="38,36 28,48 38,60" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="6" y="2" width="80" height="48" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <text x="46" y="30" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="28" font-weight="bold" stroke="none">1</text>
+    <polyline points="12,14 2,26 12,38" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

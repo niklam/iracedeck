@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG BRAKE\nDECREASE"},"border":{"color":"#6a5a3a"},"artworkBounds":{"x":23,"y":19,"width":62,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ENG BRAKE\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
+  
 
-    <rect x="36" y="28" width="48" height="40" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <line x1="44" y1="28" x2="44" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="60" y1="28" x2="60" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="76" y1="28" x2="76" y2="20" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="60" cy="48" r="8" fill="none" stroke="#e74c3c" stroke-width="3"/>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="14" y="10" width="48" height="40" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <line x1="22" y1="10" x2="22" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="38" y1="10" x2="38" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="54" y1="10" x2="54" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="38" cy="30" r="8" fill="none" stroke="#e74c3c" stroke-width="3"/>
+    <polyline points="12,14 2,26 12,38" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CYCLE\nAIM TYPE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":43,"y":19,"width":54,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CYCLE\nAIM TYPE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <circle cx="72" cy="44" r="24" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M72 20 A24 24 0 1 1 48 44" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="44,36 48,44 56,40" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="72" cy="44" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
-    <line x1="72" y1="32" x2="72" y2="36" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="72" y1="52" x2="72" y2="56" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="60" y1="44" x2="64" y2="44" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
-    <line x1="80" y1="44" x2="84" y2="44" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="30" cy="26" r="24" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M30,2A24,24,0,1,1,6,26" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="2,18 6,26 14,22" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="26" r="8" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
+    <line x1="30" y1="14" x2="30" y2="18" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="30" y1="34" x2="30" y2="38" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="18" y1="26" x2="22" y2="26" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="38" y1="26" x2="42" y2="26" stroke="{{graphic1Color}}" stroke-width="2" stroke-linecap="round"/>
 
 </svg>

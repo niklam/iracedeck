@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAUTION\nYELLOW"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":39,"y":23,"width":66,"height":58}}</desc>
-    <polygon points="72,24 104,80 40,80" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>
-    <line x1="72" y1="46" x2="72" y2="62" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="72" cy="70" r="3" fill="{{graphic1Color}}"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAUTION\nYELLOW"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <polygon points="36,4 68,60 4,60" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linejoin="round"/>
+    <line x1="36" y1="26" x2="36" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="36" cy="50" r="3" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

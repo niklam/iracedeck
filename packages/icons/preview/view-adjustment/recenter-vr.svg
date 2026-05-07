@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VR VIEW\nRECENTER"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":19,"y":15,"width":106,"height":66}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VR VIEW\nRECENTER"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <rect x="32" y="28" width="80" height="40" rx="12" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="72" y1="28" x2="72" y2="68" stroke="#888888" stroke-width="1"/>
-    <circle cx="56" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="88" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="72" y1="16" x2="72" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="72" y1="72" x2="72" y2="80" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="20" y1="48" x2="28" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="116" y1="48" x2="124" y2="48" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="14" y="14" width="80" height="40" rx="12" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="54" y1="14" x2="54" y2="54" stroke="#888888" stroke-width="1"/>
+    <circle cx="38" cy="34" r="12" fill="none" stroke="#888888" stroke-width="2"/>
+    <circle cx="70" cy="34" r="12" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="54" y1="2" x2="54" y2="10" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="54" y1="58" x2="54" y2="66" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="2" y1="34" x2="10" y2="34" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="98" y1="34" x2="106" y2="34" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

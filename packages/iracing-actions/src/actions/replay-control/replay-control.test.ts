@@ -162,7 +162,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
-  parseIconArtworkBounds: vi.fn(() => undefined),
+  parseSvgViewBox: vi.fn(() => undefined),
   getGlobalTitleSettings: vi.fn(() => ({})),
   resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
     enabled: false,

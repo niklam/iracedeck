@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nDISABLE"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":29,"y":29,"width":86,"height":56}}</desc>
-    <path d="M36,30 L108,30 Q114,30 114,36 L114,64 Q114,70 108,70 L76,70 L60,84 L60,70 L36,70 Q30,70 30,64 L30,36 Q30,30 36,30 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <line x1="56" y1="40" x2="88" y2="60" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <line x1="88" y1="40" x2="56" y2="60" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 62" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nDISABLE"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M10,4L82,4Q88,4,88,10L88,38Q88,44,82,44L50,44L34,58L34,44L10,44Q4,44,4,38L4,10Q4,4,10,4Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <line x1="30" y1="14" x2="62" y2="34" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <line x1="62" y1="14" x2="30" y2="34" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

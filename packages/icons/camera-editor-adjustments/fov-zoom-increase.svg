@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV ZOOM\n+"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":39,"y":19,"width":78,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 78 50" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV ZOOM\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <circle cx="64" cy="44" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="64" cy="44" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <circle cx="64" cy="44" r="4" fill="{{graphic1Color}}"/>
-    <line x1="100" y1="44" x2="116" y2="44" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="108" y1="36" x2="108" y2="52" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="25" cy="25" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="25" cy="25" r="12" fill="none" stroke="#888888" stroke-width="2"/>
+    <circle cx="25" cy="25" r="4" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="61" y1="25" x2="77" y2="25" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="69" y1="17" x2="69" y2="33" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

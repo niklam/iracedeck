@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"SLOW\nMOTION"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":47,"y":25,"width":92,"height":52}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 94 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"SLOW\nMOTION"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polygon points="48,28 92,52 48,76" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linejoin="round"/>
-    <text x="108" y="36" text-anchor="middle" dominant-baseline="central"
-          fill="#888888" font-family="Arial, sans-serif" font-size="20" font-weight="bold">½</text>
+    <polygon points="2,4 46,28 2,52" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linejoin="round"/>
+    <text x="62" y="12" text-anchor="middle" dominant-baseline="central"
+          fill="#888888" font-family="Arial, sans-serif" font-size="20" font-weight="bold" stroke="none">½</text>
 
 </svg>

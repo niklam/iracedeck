@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"YAW\n+"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":43,"y":23,"width":62,"height":60}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"YAW\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <rect x="44" y="28" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <polygon points="84,34 104,24 104,64 84,54" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M48 76 A24 12 0 0 1 96 76" fill="none" stroke="#888888" stroke-width="2"/>
-    <polyline points="90,70 96,76 90,82" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="1" y="5" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="41,11 61,1 61,41 41,31" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M5,53A24,12,0,0,1,53,53" fill="none" stroke="#888888" stroke-width="2"/>
+    <polyline points="47,47 53,53 47,59" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

@@ -5,28 +5,29 @@ paths:
 ---
 # Key Icon Types
 
-This document defines standardized key icon type layouts. Standalone icon SVGs (`packages/icons/**/*.svg`) are 144x144 graphic snippets — they contain only artwork, Mustache color placeholders, and `<desc>` metadata. No background rect and no label text elements. Background, title text, and base layout are composed at render time by `assembleIcon()`. Key icons (`packages/iracing-actions/src/actions/<name>/key.svg`) are 72x72 static full-color SVGs with no Mustache placeholders.
+This document defines standardized key icon type layouts. Standalone icon SVGs (`packages/icons/**/*.svg`) are graphic snippets whose `viewBox` is trimmed to the artwork's exact extent — they contain only artwork, Mustache color placeholders, and `<desc>` metadata. No background rect and no label text elements. Background, title text, and base layout are composed at render time by `assembleIcon()` using the SVG's own viewBox dimensions for centering and scaling. Key icons (`packages/iracing-actions/src/actions/<name>/key.svg`) are 72x72 static full-color SVGs with no Mustache placeholders.
 
 ## Default Key Icon Type
 
 The standard layout for most action icons.
 
-### Canvas Layout (144x144 graphic snippet)
+### Canvas Layout (trimmed-viewBox graphic snippet)
 
-Icon SVGs contain only artwork — the background and title are assembled at render time:
+Icon SVGs contain only artwork — the viewBox IS the artwork bounding box, and the background/title/centering are assembled at render time:
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"subLabel\nmainLabel"},"artworkBounds":{"x":20,"y":18,"width":104,"height":68}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 68">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"subLabel\nmainLabel"}}</desc>
 
-  <!-- Icon content area: y=18 to y=86 (recommended) -->
+  <!-- Coordinates start at (0, 0) and span the viewBox width/height -->
   {icon content using {{graphic1Color}} for eligible artwork}
 
 </svg>
 ```
 
 - **Background**: Added by `assembleIcon()` via `ICON_BASE_TEMPLATE` — no background rect in the source SVG
-- **Icon artwork area**: y=18 to y=86 recommended (68px height)
+- **viewBox**: Variable per icon — trimmed to the exact artwork extent. Coordinates start at (0, 0).
+- **Centering & scaling**: `assembleIcon()` reads the viewBox dimensions and fits the artwork into the available area (which shrinks when a title is shown), centered.
 - **Title text**: Generated from `<desc>` title metadata and placed at the bottom by default
 
 ### Title Text System
@@ -69,23 +70,21 @@ Use these colors consistently across all icons (literal hex values in SVG, no co
 | Blue | #3498db | Cold temperatures |
 | Red | #e74c3c | Hot temperatures, errors |
 
-### Graphic Snippet Template (144x144)
+### Graphic Snippet Template (trimmed viewBox)
 
-All icon SVGs now use this graphic snippet format:
+All icon SVGs use this graphic snippet format with the viewBox trimmed to the artwork extent:
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CATEGORY\nACTION"},"artworkBounds":{"x":20,"y":18,"width":104,"height":68}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 68">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CATEGORY\nACTION"}}</desc>
 
-  <!-- Icon content area: y=18 to y=86 -->
+  <!-- Coordinates start at (0, 0) and span the viewBox width/height -->
   <!-- ... artwork using {{graphic1Color}} ... -->
 
 </svg>
 ```
 
-Prefer short, single-line titles — only use the two-line `"subLabel\nmainLabel"` format when a single line cannot convey the action clearly. When two lines are used, the first line is the secondary (smaller) label and the second line is the primary (bold) label. Titles are rendered at the bottom of the icon at position y≈118–140 by `generateTitleText()`.
-
-The `artworkBounds` field declares the bounding box of the artwork content (`x`, `y`, `width`, `height`). When present and the `graphic` parameter is passed to `assembleIcon()`, the artwork is dynamically scaled and repositioned to fit the available area based on title placement. Auto-detect bounds with `node scripts/generate-artwork-bounds.mjs`.
+Prefer short, single-line titles — only use the two-line `"subLabel\nmainLabel"` format when a single line cannot convey the action clearly. When two lines are used, the first line is the secondary (smaller) label and the second line is the primary (bold) label. Titles are rendered at the bottom of the icon by `generateTitleText()` after `assembleIcon()` has scaled the artwork into the title-aware available area.
 
 ## Specialized Types
 

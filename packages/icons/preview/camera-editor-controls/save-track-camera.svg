@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TRACK CAM\nSAVE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":35,"y":19,"width":94,"height":66}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TRACK CAM\nSAVE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="36" y="20" width="44" height="48" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="44" y="20" width="28" height="16" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="104" y1="28" x2="104" y2="56" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="96,48 104,56 112,48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="104" y="76" text-anchor="middle" dominant-baseline="central"
-          fill="#888888" font-family="Arial, sans-serif" font-size="16" font-weight="bold">T</text>
+    <rect x="2" y="2" width="44" height="48" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="10" y="2" width="28" height="16" rx="2" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="70" y1="10" x2="70" y2="38" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="62,30 70,38 78,30" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="70" y="58" text-anchor="middle" dominant-baseline="central"
+          fill="#888888" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">T</text>
 
 </svg>

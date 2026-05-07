@@ -1,18 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"STANDINGS"},"border":{"color":"#5a5a5a"},"artworkBounds":{"x":15,"y":15,"width":114,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"STANDINGS"},"border":{"color":"#5a5a5a"}}</desc>
+  
 
-    <rect x="16" y="16" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
-    <circle cx="28" cy="24" r="3" fill="#f39c12"/>
-    <rect x="36" y="22" width="84" height="3" rx="1" fill="#ffffff"/>
-    <circle cx="28" cy="32" r="3" fill="#f39c12" opacity="0.85"/>
-    <rect x="36" y="30" width="72" height="3" rx="1" fill="#ffffff"/>
-    <circle cx="28" cy="40" r="3" fill="#f39c12" opacity="0.7"/>
-    <rect x="36" y="38" width="80" height="3" rx="1" fill="#ffffff"/>
-    <circle cx="28" cy="48" r="3" fill="#f39c12" opacity="0.55"/>
-    <rect x="36" y="46" width="64" height="3" rx="1" fill="#ffffff"/>
-    <circle cx="28" cy="56" r="3" fill="#f39c12" opacity="0.4"/>
-    <rect x="36" y="54" width="76" height="3" rx="1" fill="#ffffff"/>
-    <circle cx="28" cy="64" r="3" fill="#f39c12" opacity="0.25"/>
-    <rect x="36" y="62" width="68" height="3" rx="1" fill="#ffffff"/>
+    <rect x="1" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <circle cx="13" cy="9" r="3" fill="#f39c12" stroke="none"/>
+    <rect x="21" y="7" width="84" height="3" rx="1" fill="#ffffff" stroke="none"/>
+    <circle cx="13" cy="17" r="3" fill="#f39c12" opacity="0.85" stroke="none"/>
+    <rect x="21" y="15" width="72" height="3" rx="1" fill="#ffffff" stroke="none"/>
+    <circle cx="13" cy="25" r="3" fill="#f39c12" opacity="0.7" stroke="none"/>
+    <rect x="21" y="23" width="80" height="3" rx="1" fill="#ffffff" stroke="none"/>
+    <circle cx="13" cy="33" r="3" fill="#f39c12" opacity="0.55" stroke="none"/>
+    <rect x="21" y="31" width="64" height="3" rx="1" fill="#ffffff" stroke="none"/>
+    <circle cx="13" cy="41" r="3" fill="#f39c12" opacity="0.4" stroke="none"/>
+    <rect x="21" y="39" width="76" height="3" rx="1" fill="#ffffff" stroke="none"/>
+    <circle cx="13" cy="49" r="3" fill="#f39c12" opacity="0.25" stroke="none"/>
+    <rect x="21" y="47" width="68" height="3" rx="1" fill="#ffffff" stroke="none"/>
 
 </svg>

@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FRONT WING\nINCREASE"},"border":{"color":"#3a3a6a"},"artworkBounds":{"x":23,"y":27,"width":94,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"FRONT WING\nINCREASE"},"border":{"color":"#3a3a6a"}}</desc>
+  
 
-    <path d="M24,56 Q40,28 80,36 Q100,40 112,48" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="100" y1="44" x2="100" y2="68" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2,30Q18,2,58,10Q78,14,90,22" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="78" y1="18" x2="78" y2="42" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="84,30 94,18 84,6" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

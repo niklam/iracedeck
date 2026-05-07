@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"SECTOR\nSTART"},"border":{"color":"#714474"},"artworkBounds":{"x":41,"y":15,"width":60,"height":72}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 74" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"SECTOR\nSTART"},"border":{"color":"#714474"}}</desc>
+  
 
-    <line x1="48" y1="16" x2="48" y2="80" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <polygon points="52,16 100,30 52,44" fill="#2ecc71"/>
-    <circle cx="48" cy="80" r="6" fill="#ffffff"/>
+    <line x1="8" y1="2" x2="8" y2="66" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polygon points="12,2 60,16 12,30" fill="#2ecc71" stroke="none"/>
+    <circle cx="8" cy="66" r="6" fill="#ffffff" stroke="none"/>
 
 </svg>

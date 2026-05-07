@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE BIAS\nINCREASE"},"border":{"color":"#6a5a3a"},"artworkBounds":{"x":27,"y":31,"width":90,"height":34}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE BIAS\nINCREASE"},"border":{"color":"#6a5a3a"}}</desc>
+  
 
-    <rect x="28" y="40" width="88" height="20" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <rect x="28" y="40" width="52" height="20" rx="6" fill="#e74c3c" opacity="0.6"/>
-    <line x1="80" y1="36" x2="80" y2="64" stroke="#ffffff" stroke-width="3"/>
-    <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="2" y="10" width="88" height="20" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <rect x="2" y="10" width="52" height="20" rx="6" fill="#e74c3c" opacity="0.6" stroke="none"/>
+    <line x1="54" y1="6" x2="54" y2="34" stroke="#ffffff" stroke-width="3"/>
+    <polyline points="80,26 90,14 80,2" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

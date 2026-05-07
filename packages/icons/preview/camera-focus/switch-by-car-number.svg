@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SWITCH\nCAR #"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":29,"y":27,"width":86,"height":63}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 65" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SWITCH\nCAR #"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <rect x="40" y="28" width="64" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <text x="72" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="28" font-weight="bold">00</text>
-    <text x="72" y="80" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="18">CAR</text>
+    <rect x="12" y="2" width="64" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <text x="44" y="24" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="28" font-weight="bold" stroke="none">00</text>
+    <text x="44" y="54" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="18" stroke="none">CAR</text>
 
 </svg>

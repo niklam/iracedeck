@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TC SLOT 2\nINCREASE"},"border":{"color":"#3a5a3a"},"artworkBounds":{"x":35,"y":23,"width":82,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TC SLOT 2\nINCREASE"},"border":{"color":"#3a5a3a"}}</desc>
+  
 
-    <circle cx="60" cy="48" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="60" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <text x="60" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#2ecc71" font-family="Arial, sans-serif" font-size="16" font-weight="bold">2</text>
-    <polyline points="106,56 116,44 106,32" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="26" cy="26" r="24" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="26" cy="26" r="12" fill="none" stroke="#888888" stroke-width="2"/>
+    <text x="26" y="28" text-anchor="middle" dominant-baseline="central"
+          fill="#2ecc71" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">2</text>
+    <polyline points="72,34 82,22 72,10" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

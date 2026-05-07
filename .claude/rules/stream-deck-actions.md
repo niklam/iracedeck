@@ -66,7 +66,7 @@ Actions with no custom settings use `CommonSettings` directly.
 - `colorOverrides` (optional object with `backgroundColor`, `textColor`, `graphic1Color`, `graphic2Color`) — per-action color overrides
 - `titleOverrides` (optional `TitleOverridesSchema` object) — per-action title overrides (showTitle, showGraphics, titleText, bold, fontSize, position, customPosition)
 - `borderOverrides` (optional `BorderOverridesSchema` object) — per-action border settings (enabled, width, color). For toggle actions, pass `borderStateColor` to `assembleIcon()` to override color with state-driven green/red/gray.
-- `graphicOverrides` (optional `GraphicOverridesSchema` object) — per-action graphic scaling settings (scaleMode: inherit/default/override, scale: 50-150). Only effective when the icon declares `artworkBounds` in its `<desc>` metadata.
+- `graphicOverrides` (optional `GraphicOverridesSchema` object) — per-action graphic scaling settings (scaleMode: inherit/default/override, scale: 50-150). Effective for any icon with a parseable `viewBox` — the viewBox dimensions drive the dynamic scaling pipeline.
 
 All fields are automatically available in all action settings schemas.
 

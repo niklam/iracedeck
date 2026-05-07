@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"LEFT SPRING\nDECREASE"},"border":{"color":"#3a6a3a"},"artworkBounds":{"x":23,"y":23,"width":46,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"LEFT SPRING\nDECREASE"},"border":{"color":"#3a6a3a"}}</desc>
+  
 
-    <polyline points="56,24 48,32 64,40 48,48 64,56 48,64 64,72 56,80" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="44" y1="24" x2="68" y2="24" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="44" y1="80" x2="68" y2="80" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="34,2 26,10 42,18 26,26 42,34 26,42 42,50 34,58" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="22" y1="2" x2="46" y2="2" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="22" y1="58" x2="46" y2="58" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="12,10 2,22 12,34" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

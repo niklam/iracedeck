@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"F-NUMBER\n+"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":43,"y":15,"width":74,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"F-NUMBER\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <circle cx="72" cy="44" r="28" fill="none" stroke="#888888" stroke-width="2"/>
-    <polygon points="72,20 88,28 88,60 72,68 56,60 56,28" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="72" cy="44" r="10" fill="none" stroke="#ffffff" stroke-width="2"/>
-    <line x1="108" y1="36" x2="108" y2="52" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="100" y1="44" x2="116" y2="44" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="29" cy="29" r="28" fill="none" stroke="#888888" stroke-width="2"/>
+    <polygon points="29,5 45,13 45,45 29,53 13,45 13,13" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="29" cy="29" r="10" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <line x1="65" y1="21" x2="65" y2="37" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="57" y1="29" x2="73" y2="29" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

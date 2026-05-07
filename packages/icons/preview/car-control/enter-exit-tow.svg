@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOW\nENTER/EXIT"},"border":{"color":"#5a6a5a"},"artworkBounds":{"x":39,"y":31,"width":66,"height":52}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOW\nENTER/EXIT"},"border":{"color":"#5a6a5a"}}</desc>
+  
 
-    <rect x="40" y="32" width="64" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="56" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="88" cy="60" r="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <path d="M48 76 L96 76" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <path d="M48 76 L56 70 M48 76 L56 82" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M96 76 L88 70 M96 76 L88 82" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="2" y="2" width="64" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="18" cy="30" r="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <circle cx="50" cy="30" r="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <path d="M10,46L58,46" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <path d="M10,46L18,40M10,46L18,52" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58,46L50,40M58,46L50,52" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

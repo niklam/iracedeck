@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALL\nMSG"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":33,"y":23,"width":80,"height":58}}</desc>
-    <path d="M46,42 L66,36 L66,68 L46,62 Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <rect x="34" y="42" width="14" height="20" rx="3" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <path d="M66,36 L100,24 L100,80 L66,68" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <path d="M106,40 C112,46 112,58 106,64" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 86 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALL\nMSG"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M16,22L36,16L36,48L16,42Z" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="4" y="22" width="14" height="20" rx="3" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <path d="M36,16L70,4L70,60L36,48" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M76,20C82,26,82,38,76,44" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
 
 </svg>
