@@ -108,6 +108,14 @@ export default defineConfig({
           items: [
             { slug: "docs/actions/overview" },
             {
+              label: "Audio & Voice",
+              items: [
+                { slug: "docs/actions/audio-voice/ai-spotter-controls" },
+                { slug: "docs/actions/audio-voice/audio-controls" },
+                { slug: "docs/actions/audio-voice/pit-crew" },
+              ],
+            },
+            {
               label: "Display & Session",
               items: [
                 { slug: "docs/actions/display-session/session-info" },
@@ -117,8 +125,6 @@ export default defineConfig({
             {
               label: "Driving Controls",
               items: [
-                { slug: "docs/actions/driving/ai-spotter-controls" },
-                { slug: "docs/actions/driving/audio-controls" },
                 { slug: "docs/actions/driving/black-box-selector" },
                 { slug: "docs/actions/driving/look-direction" },
                 { slug: "docs/actions/driving/car-control" },

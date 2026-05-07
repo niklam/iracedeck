@@ -1,6 +1,6 @@
 {
-  "ai-spotter-controls": "https://iracedeck.com/docs/actions/driving/ai-spotter-controls/",
-  "audio-controls": "https://iracedeck.com/docs/actions/driving/audio-controls/",
+  "ai-spotter-controls": "https://iracedeck.com/docs/actions/audio-voice/ai-spotter-controls/",
+  "audio-controls": "https://iracedeck.com/docs/actions/audio-voice/audio-controls/",
   "black-box-selector": "https://iracedeck.com/docs/actions/driving/black-box-selector/",
   "camera-editor-adjustments": "https://iracedeck.com/docs/actions/view-camera/camera-editor-adjustments/",
   "camera-editor-controls": "https://iracedeck.com/docs/actions/view-camera/camera-editor-controls/",
@@ -8,7 +8,7 @@
   "car-control": "https://iracedeck.com/docs/actions/driving/car-control/",
   "chat": "https://iracedeck.com/docs/actions/communication/chat/",
   "cockpit-misc": "https://iracedeck.com/docs/actions/cockpit/cockpit-misc/",
-  "pit-crew": "https://iracedeck.com/docs/actions/driving/pit-crew/",
+  "pit-crew": "https://iracedeck.com/docs/actions/audio-voice/pit-crew/",
   "force-feedback": "https://iracedeck.com/docs/actions/cockpit/force-feedback/",
   "fuel-service": "https://iracedeck.com/docs/actions/pit-service/fuel-service/",
   "look-direction": "https://iracedeck.com/docs/actions/driving/look-direction/",

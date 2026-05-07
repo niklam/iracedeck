@@ -12,6 +12,21 @@
         "source": "/downloads/plugin/latest/mirabox",
         "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.iracedeck.sd.core.sdPlugin",
         "type": 302
+      },
+      {
+        "source": "/docs/actions/driving/ai-spotter-controls",
+        "destination": "/docs/actions/audio-voice/ai-spotter-controls",
+        "type": 301
+      },
+      {
+        "source": "/docs/actions/driving/audio-controls",
+        "destination": "/docs/actions/audio-voice/audio-controls",
+        "type": 301
+      },
+      {
+        "source": "/docs/actions/driving/pit-crew",
+        "destination": "/docs/actions/audio-voice/pit-crew",
+        "type": 301
       }
     ]
   }
