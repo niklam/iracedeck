@@ -136,8 +136,9 @@ describe("global-settings cache (synchronous update on local writes)", () => {
     expect(sent).toMatchObject({
       pitCrewRadarEnabled: false,
       pitCrewRaceEngineerEnabled: false,
-      radarVolume: 100,
-      backgroundVolume: 35,
+      raceEngineerVolume: 50,
+      radarVolume: 50,
+      backgroundVolume: 25,
       disableWhenDisconnected: true,
       focusIRacingWindow: false,
       enableFuelingOnChange: true,
