@@ -279,9 +279,17 @@ export function generateIconText(options: GenerateIconTextOptions): string {
 export function validateIconTemplate(svg: string): string[] {
   const errors: string[] = [];
 
-  // Check viewBox — accept 144x144 (standard) or 72x72 (legacy)
-  if (!svg.includes('viewBox="0 0 144 144"') && !svg.includes('viewBox="0 0 72 72"')) {
-    errors.push('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
+  // Check viewBox — must parse and have positive width/height. Trimmed icons
+  // have variable viewBox dimensions (the artwork extent), so we no longer
+  // hard-check 144x144 / 72x72 literals.
+  const viewBox = parseSvgViewBox(svg);
+
+  if (!viewBox) {
+    errors.push('Missing or unparseable viewBox. Expected: <svg viewBox="0 0 W H"> with positive W and H.');
+  } else if (viewBox.width > 144 || viewBox.height > 144) {
+    errors.push(
+      `Oversized viewBox ${viewBox.width}x${viewBox.height}. Expected dimensions <= 144 (standard render canvas).`,
+    );
   }
 
   // Check for activity-state filter group
