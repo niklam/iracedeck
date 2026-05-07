@@ -151,9 +151,10 @@ export const GlobalSettingsSchema = z
      * Volume for the directional Radar ticks, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Alerts`). Stepped by the Radar Volume Up/Down modes of the
      * Pit Crew action; sliding to 0 mutes the radar without toggling the
-     * feature off. Default: 100.
+     * feature off. Default: 50 (issue #522 — first-run mix sits below
+     * full-tilt so the slider has headroom in both directions).
      */
-    radarVolume: z.coerce.number().min(0).max(100).default(100),
+    radarVolume: z.coerce.number().min(0).max(100).default(50),
     /**
      * Active voice used by Race Engineer scenarios — the key under
      * `voice/<voice>/` in `@iracedeck/audio-assets` (e.g., `"luca"`,
@@ -166,21 +167,23 @@ export const GlobalSettingsSchema = z
     /**
      * Volume for the Race Engineer voice, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Voice`). Sliding to 0 silences voice scenarios without
-     * disabling the feature. Default: 100.
+     * disabling the feature. Default: 50 (issue #522 — paired with the
+     * removal of bake-in gain from the radio filter so the slider has
+     * headroom in both directions).
      */
-    raceEngineerVolume: z.coerce.number().min(0).max(100).default(100),
+    raceEngineerVolume: z.coerce.number().min(0).max(100).default(50),
     /**
      * Volume for the pit ambience and walkie-talkie SFX, 0–100 (mapped to
      * 0.0–1.0 on `AudioBus.Background`, which carries both the ambient
-     * loop and the radio open/close SFX). Defaults to 35 — the ambient
-     * loop and walkie-talkie ticks are loud relative to the engineer
-     * voice at unity, so the out-of-the-box mix favours intelligibility
-     * (especially for users with audio-processing sensitivities). Only
-     * takes effect while Race Engineer is enabled — when the engineer
-     * is off, Background is muted to 0 regardless of this value
-     * (issue #471).
+     * loop and the radio open/close SFX). Defaults to 25 (issue #522 —
+     * sits under the new 50 voice default so the engineer cuts through
+     * cleanly out of the box; turn it up for a louder pit-lane
+     * atmosphere). Lower default also helps users with audio-processing
+     * sensitivities. Only takes effect while Race Engineer is enabled —
+     * when the engineer is off, Background is muted to 0 regardless of
+     * this value (issue #471).
      */
-    backgroundVolume: z.coerce.number().min(0).max(100).default(35),
+    backgroundVolume: z.coerce.number().min(0).max(100).default(25),
     /**
      * Driver name the Race Engineer addresses the user as — the key
      * under `voice/<voice>/names/` (e.g., `"niklas"`, `"oivindl"`).

@@ -336,10 +336,11 @@ describe("applyRaceEngineerAudio", () => {
   });
 
   it("falls back to 100% when backgroundVolume is missing from the live settings cache (#471)", () => {
-    // The Zod schema default is 35 (so a fresh install starts at 35), but
-    // readBackgroundVolume's defensive runtime fallback is VOLUME_MAX so an
-    // unparsed/empty cache during very early startup doesn't accidentally
-    // mute the bus. Same shape as readRaceEngineerVolume / readRadarVolume.
+    // The Zod schema default is 25 (so a fresh install starts at 25 — issue
+    // #522), but readBackgroundVolume's defensive runtime fallback is
+    // VOLUME_MAX so an unparsed/empty cache during very early startup
+    // doesn't accidentally mute the bus. Same shape as
+    // readRaceEngineerVolume / readRadarVolume.
     hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true });
     applyRaceEngineerAudio();
 
