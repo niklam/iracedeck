@@ -143,7 +143,7 @@
 				}
 
 				const stepRateSetting = document.getElementById("step-rate-setting");
-				if (mode === "fast-forward" || mode === "rewind") {
+				if (mode === "fast-forward" || mode === "rewind" || mode === "slow-motion" || mode === "slow-motion-rewind") {
 					stepRateSetting?.classList.remove("hidden");
 				} else {
 					stepRateSetting?.classList.add("hidden");

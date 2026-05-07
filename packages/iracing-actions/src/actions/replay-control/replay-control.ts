@@ -199,6 +199,8 @@ const TELEMETRY_DISPLAY_MODES: ReadonlySet<ReplayControlMode> = new Set([
 const LONG_PRESS_REPEAT_MODES: ReadonlySet<ReplayControlMode> = new Set([
   "fast-forward",
   "rewind",
+  "slow-motion",
+  "slow-motion-rewind",
   "frame-forward",
   "frame-backward",
   "speed-increase",
@@ -781,17 +783,37 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         break;
       }
       case "slow-motion": {
-        const success = replay.setPlaySpeed(2, true);
-        this.setLocalSpeed(2, true);
+        const current = this.getCurrentSpeed();
+        const step = settings.stepRate;
+        let nextSpeed: number;
+
+        if (current.slowMotion && current.speed >= 2) {
+          nextSpeed = Math.min(current.speed + step, 16);
+        } else {
+          nextSpeed = 2;
+        }
+
+        const success = replay.setPlaySpeed(nextSpeed, true);
+        this.setLocalSpeed(nextSpeed, true);
         this.logger.info("Slow motion executed");
-        this.logger.debug(`Result: ${success}`);
+        this.logger.debug(`Result: ${success}, speed: 1/${nextSpeed}x, step: ${step}`);
         break;
       }
       case "slow-motion-rewind": {
-        const success = replay.setPlaySpeed(-2, true);
-        this.setLocalSpeed(-2, true);
+        const current = this.getCurrentSpeed();
+        const step = settings.stepRate;
+        let nextSpeed: number;
+
+        if (current.slowMotion && current.speed <= -2) {
+          nextSpeed = Math.max(current.speed - step, -16);
+        } else {
+          nextSpeed = -2;
+        }
+
+        const success = replay.setPlaySpeed(nextSpeed, true);
+        this.setLocalSpeed(nextSpeed, true);
         this.logger.info("Slow motion rewind executed");
-        this.logger.debug(`Result: ${success}`);
+        this.logger.debug(`Result: ${success}, speed: -1/${Math.abs(nextSpeed)}x, step: ${step}`);
         break;
       }
       case "frame-forward": {
