@@ -20,14 +20,24 @@ vi.mock("@iracedeck/deck-core", () => ({
     extend: () => {
       const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount", blankWhenNoFlag: false };
       const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags"];
+      const coerceBool = (v: unknown): boolean => v === true || v === "true";
+      const merge = (data: Record<string, unknown>) => {
+        const merged: Record<string, unknown> = { ...defaults, ...data };
+
+        if ("positionShowTotal" in merged) merged.positionShowTotal = coerceBool(merged.positionShowTotal);
+
+        if ("blankWhenNoFlag" in merged) merged.blankWhenNoFlag = coerceBool(merged.blankWhenNoFlag);
+
+        return merged;
+      };
       const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        parse: (data: Record<string, unknown>) => merge(data),
         safeParse: (data: Record<string, unknown>) => {
           if (data?.mode && !validModes.includes(data.mode as string)) {
             return { success: false, error: new Error("Invalid mode") };
           }
 
-          return { success: true, data: { ...defaults, ...data } };
+          return { success: true, data: merge(data) };
         },
       };
 
