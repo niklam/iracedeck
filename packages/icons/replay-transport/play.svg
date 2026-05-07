@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"PLAY"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":55,"y":27,"width":50,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"PLAY"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polygon points="56,28 104,52 56,76" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linejoin="round"/>
+    <polygon points="2,2 50,26 2,50" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linejoin="round"/>
 
 </svg>

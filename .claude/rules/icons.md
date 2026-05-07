@@ -5,7 +5,8 @@
 
 - **Category icons** (`icon.svg`, 20x20): Must be monochrome white (`#ffffff`) on transparent background. No colors. Keep designs simple—text is often too small to read at this size.
 - **Key icons** (`key.svg`, 72x72): Can use full color palette. These appear on Stream Deck buttons. See [key-icon-types.md](key-icon-types.md) for standardized layouts.
-- **Standalone icon SVGs** (`packages/icons/{action-name}/*.svg`): Graphic snippet SVGs — 144x144 viewBox with color Mustache placeholders and `<desc>` metadata, but no background rect and no label text elements. The background, title text, and base layout are added at render time by `assembleIcon()`. Imported at build time via `@iracedeck/icons/{action-name}/{variant}.svg`.
+- **Standalone icon SVGs** (`packages/icons/{action-name}/*.svg`): Graphic snippet SVGs whose `viewBox` is trimmed to the artwork's exact extent (variable per icon, no background rect, no label text). Color Mustache placeholders and `<desc>` metadata are kept. The background, title text, border, and dynamic scaling are added at render time by `assembleIcon()` using the SVG's own viewBox dimensions. Imported at build time via `@iracedeck/icons/{action-name}/{variant}.svg`.
+  - **Exception**: `packages/icons/tire-service/toggle-tires.svg` is intentionally kept on the legacy 144×144 canvas. The tire-service action overlays four dynamic tire-status rects in 144-coord space at runtime, so the car body's coordinates must stay in that frame. The migration script (`scripts/migrate-icons-to-trimmed-viewbox.mjs`) explicitly skips this file via `SKIP_FILES`, and `tire-service.ts` uses a hardcoded `TOGGLE_TIRES_BOUNDS` instead of reading the viewBox. Don't trim it without also rewriting the dynamic tire layout in the action.
 - **Dynamic templates** (e.g., `packages/iracing-actions/icons/*.svg`): 144x144 Mustache templates for actions with telemetry-driven content that can't be pre-rendered as standalone SVGs.
 
 ## Standalone Icon SVGs (preferred)
@@ -19,32 +20,25 @@ packages/icons/{action-name}/
 └── default.svg
 ```
 
-### Structure (144x144 graphic snippet)
+### Structure (trimmed-viewBox graphic snippet)
 
-Icons are graphic snippets — they contain only the artwork and metadata. The background rect and title text are added at render time by `assembleIcon()`.
+Icons are graphic snippets — they contain only the artwork and metadata. Each icon's `viewBox` IS the artwork extent (no padding, no surrounding canvas). The background rect, title text, border, and centering/scaling are added at render time by `assembleIcon()` based on the SVG's own viewBox dimensions.
 
 ```svg
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 68">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CATEGORY\nACTION"}}</desc>
 
   <!-- Graphic artwork only — no background rect, no label text elements -->
+  <!-- Coordinates start at (0, 0) and span the viewBox width/height -->
   <!-- Eligible single-color artwork uses {{graphic1Color}} -->
   <!-- ... artwork ... -->
 
 </svg>
 ```
 
+The `viewBox` width and height are the artwork's own dimensions — no surrounding padding. `assembleIcon()` reads them via `parseSvgViewBox()` and uses `applyGraphicTransform()` to scale the artwork into the available area (which shrinks when a title is shown at top or bottom) and centers it. Users can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
+
 The `title.text` field in `<desc>` provides the default title. Prefer short, single-line titles (e.g., `"1x"`, `"DRS"`) — only use two lines (`"CATEGORY\nACTION"`) when a single line cannot convey the action clearly. Title position, font, and visibility are controlled via `resolveTitleSettings()` at render time.
-
-Icons can also declare `artworkBounds` in `<desc>` to enable dynamic graphic scaling and repositioning based on title placement:
-
-```json
-{"colors":{...},"title":{...},"artworkBounds":{"x":20,"y":18,"width":104,"height":68}}
-```
-
-When `artworkBounds` is present and the `graphic` parameter is passed to `assembleIcon()`, the artwork is automatically scaled to fit the available area (which shrinks when a title is shown at top or bottom) and centered within it. The user can further adjust scale via Graphic Overrides (per-action) or Graphic Defaults (global).
-
-To auto-detect bounding boxes for all icons, run: `node scripts/generate-artwork-bounds.mjs`
 
 ### Base template
 
@@ -71,10 +65,10 @@ The Rollup `svgPlugin` resolves `@iracedeck/icons/` to `packages/icons/`.
 Icons support up to 4 customizable color slots via Mustache placeholders. Each SVG declares its supported slots, defaults, and default title text in a `<desc>` element:
 
 ```svg
-<desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CATEGORY\nACTION"},"artworkBounds":{"x":20,"y":18,"width":104,"height":68}}</desc>
+<desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CATEGORY\nACTION"}}</desc>
 ```
 
-The `title.text` field is the default title text. Prefer short, single-line titles — only use two-line `"subLabel\nmainLabel"` format when needed for clarity. Actions may override this at render time via `resolveTitleSettings()`. The `artworkBounds` field declares the bounding box of the artwork content for dynamic scaling (see "Standalone Icon SVGs" section above).
+The `title.text` field is the default title text. Prefer short, single-line titles — only use two-line `"subLabel\nmainLabel"` format when needed for clarity. Actions may override this at render time via `resolveTitleSettings()`.
 
 | Slot | Placeholder | Controls | Availability |
 |------|-------------|----------|-------------|
@@ -145,7 +139,7 @@ packages/icons/preview/   # Mirrors source structure with colors resolved
 - Generated by `node scripts/generate-icon-previews.mjs`
 - A Vitest freshness test verifies previews match templates
 - **Run after modifying any icon SVG:** `node scripts/generate-icon-previews.mjs`
-- **Run after adding new icons:** also run `node scripts/generate-icon-defaults.mjs` to update PI defaults and `node scripts/generate-artwork-bounds.mjs` to auto-detect artwork bounding boxes
+- **Run after adding new icons:** also run `node scripts/generate-icon-defaults.mjs` to update PI defaults. New icons should be authored with their `viewBox` already trimmed to the artwork extent — no separate bounds-generation step.
 
 ## Dynamic Templates (for telemetry-driven content)
 
@@ -157,9 +151,9 @@ Current dynamic templates: `car-control.svg`, `session-info.svg`, `tire-service.
 
 ## Design Specs
 
-- Standalone icons: 144x144 canvas, no rounded corners on background rect.
+- Standalone icons: variable-sized viewBox trimmed to the artwork extent (no canvas padding, no background rect).
 - Dynamic templates: 144x144 canvas, no rounded corners.
-- Stroke width: 4–5px main, 2–3px details (144x144 scale).
+- Stroke width: 4–5px main, 2–3px details (in 144x144 reference scale — author at the same visual weight regardless of trimmed viewBox size, the render-time scaler keeps proportions correct).
 - Colors: white `#ffffff`, green `#2ecc71`, red `#e74c3c`, yellow `#f39c12`, purple `#9b59b6`, gray `#888888`.
 
 ## Text and Variants

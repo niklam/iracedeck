@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nRF BRAKE"},"border":{"color":"#3a3a6a"},"artworkBounds":{"x":43,"y":19,"width":58,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nRF BRAKE"},"border":{"color":"#3a3a6a"}}</desc>
+  
 
-    <circle cx="72" cy="48" r="28" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="72" cy="48" r="14" fill="none" stroke="#888888" stroke-width="2"/>
-    <text x="72" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#f1c40f" font-family="Arial, sans-serif" font-size="16" font-weight="bold">RF</text>
+    <circle cx="30" cy="30" r="28" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="30" cy="30" r="14" fill="none" stroke="#888888" stroke-width="2"/>
+    <text x="30" y="32" text-anchor="middle" dominant-baseline="central"
+          fill="#f1c40f" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">RF</text>
 
 </svg>

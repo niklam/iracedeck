@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nREMOVE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":27,"y":23,"width":86,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nREMOVE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="28" y="28" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <polygon points="68,34 88,24 88,64 68,54" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="96" y1="40" x2="112" y2="64" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="112" y1="40" x2="96" y2="64" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <rect x="2" y="6" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <polygon points="42,12 62,2 62,42 42,32" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="70" y1="18" x2="86" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="86" y1="18" x2="70" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
 
 </svg>

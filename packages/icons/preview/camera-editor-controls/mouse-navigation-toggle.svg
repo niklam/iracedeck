@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nMOUSE NAV"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":55,"y":23,"width":58,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nMOUSE NAV"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <polygon points="56,24 56,64 66,54 76,72 84,68 74,50 88,50" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="96" y1="36" x2="112" y2="36" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="106,30 112,36 106,42" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <line x1="96" y1="60" x2="112" y2="60" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="106,54 112,60 106,66" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <polygon points="2,2 2,42 12,32 22,50 30,46 20,28 34,28" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="42" y1="14" x2="58" y2="14" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="52,8 58,14 52,20" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="42" y1="38" x2="58" y2="38" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="52,32 58,38 52,44" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

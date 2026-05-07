@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RESET POINT\nSET"},"border":{"color":"#714474"},"artworkBounds":{"x":39,"y":13,"width":66,"height":70}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 72" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"RESET POINT\nSET"},"border":{"color":"#714474"}}</desc>
+  
 
-    <path d="M72 14 C52 14 40 28 40 44 C40 64 72 82 72 82 C72 82 104 64 104 44 C104 28 92 14 72 14 Z"
+    <path d="M34,2C14,2,2,16,2,32C2,52,34,70,34,70C34,70,66,52,66,32C66,16,54,2,34,2Z"
           fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="72" cy="42" r="12" fill="#f39c12"/>
+    <circle cx="34" cy="30" r="12" fill="#f39c12" stroke="none"/>
 
 </svg>

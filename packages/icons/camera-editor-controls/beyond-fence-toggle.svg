@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nBND FENCE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":31,"y":15,"width":78,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nBND FENCE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <line x1="32" y1="68" x2="32" y2="28" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="60" y1="68" x2="60" y2="28" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="32" y1="40" x2="60" y2="40" stroke="#888888" stroke-width="2"/>
-    <line x1="32" y1="56" x2="60" y2="56" stroke="#888888" stroke-width="2"/>
-    <path d="M72 60 Q84 16 108 32" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="100,24 108,32 100,36" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="2" y1="54" x2="2" y2="14" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="30" y1="54" x2="30" y2="14" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="2" y1="26" x2="30" y2="26" stroke="#888888" stroke-width="2"/>
+    <line x1="2" y1="42" x2="30" y2="42" stroke="#888888" stroke-width="2"/>
+    <path d="M42,46Q54,2,78,18" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="70,10 78,18 70,22" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

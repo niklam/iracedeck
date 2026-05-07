@@ -15,6 +15,7 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  parseSvgViewBox,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -533,8 +534,19 @@ export function generateCycleCameraGridSvg(
     const artwork = renderIconTemplate(rawGraphic, artColors);
     const pos = positions[i];
 
-    const scale = pos.size / 144;
-    thumbnails += `<g transform="translate(${pos.x}, ${pos.y}) scale(${scale})">${artwork}</g>`;
+    // Each thumbnail icon is now trimmed to its artwork extent — fit the longer
+    // side into a fraction of pos.size (THUMB_FIT) so the artwork doesn't crowd
+    // its grid cell. Pre-trim, icons were 144x144 with internal padding so the
+    // visible artwork already took up only ~60-70% of pos.size; this constant
+    // restores that breathing room.
+    const THUMB_FIT = 0.6;
+    const viewBox = parseSvgViewBox(iconSvg);
+    const sourceW = viewBox?.width ?? 144;
+    const sourceH = viewBox?.height ?? 144;
+    const scale = (pos.size * THUMB_FIT) / Math.max(sourceW, sourceH);
+    const offsetX = (pos.size - sourceW * scale) / 2;
+    const offsetY = (pos.size - sourceH * scale) / 2;
+    thumbnails += `<g transform="translate(${pos.x + offsetX}, ${pos.y + offsetY}) scale(${scale})">${artwork}</g>`;
   }
 
   const plusIndicator = "";

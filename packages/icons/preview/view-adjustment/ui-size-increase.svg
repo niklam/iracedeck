@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"UI SIZE\nINCREASE"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":31,"y":23,"width":82,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"UI SIZE\nINCREASE"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <rect x="32" y="24" width="80" height="52" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="32" y1="36" x2="112" y2="36" stroke="#888888" stroke-width="2"/>
-    <circle cx="40" cy="30" r="2" fill="#888888"/>
-    <circle cx="48" cy="30" r="2" fill="#888888"/>
-    <path d="M90 54 L106 70 M106 60 L106 70 L96 70" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="2" y="2" width="80" height="52" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="2" y1="14" x2="82" y2="14" stroke="#888888" stroke-width="2"/>
+    <circle cx="10" cy="8" r="2" fill="#888888" stroke="none"/>
+    <circle cx="18" cy="8" r="2" fill="#888888" stroke="none"/>
+    <path d="M60,32L76,48M76,38L76,48L66,48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

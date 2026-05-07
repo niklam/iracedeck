@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"STOP"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":51,"y":33,"width":42,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"STOP"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <rect x="52" y="34" width="40" height="40" rx="4" fill="{{graphic1Color}}"/>
+    <rect x="2" y="2" width="40" height="40" rx="4" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

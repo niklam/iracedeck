@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"REPLAY\nSLOWER"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":43,"y":27,"width":58,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"REPLAY\nSLOWER"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polyline points="100,28 72,52 100,76" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="72,28 44,52 72,76" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="58,2 30,26 58,50" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="30,2 2,26 30,50" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

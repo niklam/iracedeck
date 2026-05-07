@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RACE\nSTART"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":45,"y":21,"width":56,"height":62}}</desc>
-    <rect x="52" y="22" width="48" height="48" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="52" y="22" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="76" y="22" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="64" y="34" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="88" y="34" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="52" y="46" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="76" y="46" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="64" y="58" width="12" height="12" fill="{{graphic1Color}}"/>
-    <rect x="88" y="58" width="12" height="12" fill="{{graphic1Color}}"/>
-    <line x1="46" y1="22" x2="46" y2="82" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RACE\nSTART"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <rect x="10" y="4" width="48" height="48" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <rect x="10" y="4" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="34" y="4" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="22" y="16" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="46" y="16" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="10" y="28" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="34" y="28" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="22" y="40" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="46" y="40" width="12" height="12" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="4" y1="4" x2="4" y2="64" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

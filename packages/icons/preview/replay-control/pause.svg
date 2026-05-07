@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nPAUSE"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":51,"y":27,"width":42,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nPAUSE"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <rect x="52" y="28" width="12" height="48" rx="2" fill="#ffffff"/>
-    <rect x="80" y="28" width="12" height="48" rx="2" fill="#ffffff"/>
+    <rect x="2" y="2" width="12" height="48" rx="2" fill="#ffffff" stroke="none"/>
+    <rect x="30" y="2" width="12" height="48" rx="2" fill="#ffffff" stroke="none"/>
 
 </svg>

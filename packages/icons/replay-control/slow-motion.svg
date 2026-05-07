@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SLOW\nMOTION"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":39,"y":27,"width":64,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 66 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SLOW\nMOTION"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <line x1="40" y1="28" x2="40" y2="76" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <polygon points="54,28 102,52 54,76" fill="{{graphic1Color}}"/>
+    <line x1="2" y1="2" x2="2" y2="50" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="16,2 64,26 16,50" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

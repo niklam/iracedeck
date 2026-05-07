@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALL\nCLEAR"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":39,"y":27,"width":62,"height":60}}</desc>
-    <line x1="52" y1="78" x2="82" y2="28" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
-    <path d="M78,32 Q100,38 96,60 L88,56 Q92,42 78,36" fill="#ffffff" stroke="none"/>
-    <line x1="44" y1="74" x2="60" y2="82" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="48" y1="68" x2="64" y2="76" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="40" y1="80" x2="56" y2="86" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 66" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ALL\nCLEAR"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <line x1="16" y1="54" x2="46" y2="4" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <path d="M42,8Q64,14,60,36L52,32Q56,18,42,12" fill="#ffffff" stroke="none"/>
+    <line x1="8" y1="50" x2="24" y2="58" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="12" y1="44" x2="28" y2="52" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="4" y1="56" x2="20" y2="62" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

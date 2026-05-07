@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nPASTE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":27,"y":25,"width":90,"height":40}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 42" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nPASTE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="28" y="28" width="36" height="28" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="64,34 80,26 80,60 64,52" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="92" y="32" width="24" height="32" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
-    <rect x="98" y="26" width="12" height="8" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="2" y="4" width="36" height="28" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polygon points="38,10 54,2 54,36 38,28" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="66" y="8" width="24" height="32" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
+    <rect x="72" y="2" width="12" height="8" rx="2" fill="none" stroke="#ffffff" stroke-width="2"/>
 
 </svg>

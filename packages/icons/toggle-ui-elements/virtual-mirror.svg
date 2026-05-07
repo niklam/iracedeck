@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MIRROR\nVIRTUAL"},"border":{"color":"#3a6a6a"},"artworkBounds":{"x":19,"y":23,"width":106,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MIRROR\nVIRTUAL"},"border":{"color":"#3a6a6a"}}</desc>
+  
 
-    <rect x="20" y="24" width="104" height="40" rx="6" fill="#0a1a1a" stroke="#888888" stroke-width="3"/>
-    <rect x="28" y="30" width="88" height="28" rx="2" fill="#1a2a2a"/>
-    <line x1="44" y1="32" x2="56" y2="54" stroke="{{graphic1Color}}" stroke-width="3" opacity="0.4"/>
-    <line x1="52" y1="32" x2="64" y2="54" stroke="{{graphic1Color}}" stroke-width="2" opacity="0.25"/>
-    <circle cx="88" cy="42" r="6" fill="{{graphic1Color}}" opacity="0.15"/>
-    <circle cx="100" cy="44" r="4" fill="{{graphic1Color}}" opacity="0.1"/>
+    <rect x="2" y="2" width="104" height="40" rx="6" fill="#0a1a1a" stroke="#888888" stroke-width="3"/>
+    <rect x="10" y="8" width="88" height="28" rx="2" fill="#1a2a2a" stroke="none"/>
+    <line x1="26" y1="10" x2="38" y2="32" stroke="{{graphic1Color}}" stroke-width="3" opacity="0.4"/>
+    <line x1="34" y1="10" x2="46" y2="32" stroke="{{graphic1Color}}" stroke-width="2" opacity="0.25"/>
+    <circle cx="70" cy="20" r="6" fill="{{graphic1Color}}" opacity="0.15" stroke="none"/>
+    <circle cx="82" cy="22" r="4" fill="{{graphic1Color}}" opacity="0.1" stroke="none"/>
 
 </svg>

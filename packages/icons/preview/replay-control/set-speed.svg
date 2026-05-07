@@ -1,18 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":""},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":35,"y":35,"width":74,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":""},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <path d="M 36 72 A 36 36 0 1 1 108 72" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M2,38A36,36,0,1,1,74,38" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
-    <line x1="36" y1="72" x2="42" y2="72" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="46.5" y1="46.5" x2="50.7" y2="50.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="72" y1="36" x2="72" y2="42" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="97.5" y1="46.5" x2="93.3" y2="50.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="108" y1="72" x2="102" y2="72" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="2" y1="38" x2="8" y2="38" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="12.5" y1="12.5" x2="16.7" y2="16.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="38" y1="2" x2="38" y2="8" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="63.5" y1="12.5" x2="59.3" y2="16.7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="74" y1="38" x2="68" y2="38" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
 
-    <g transform="rotate({{needleAngle}}, 72, 72)">
-      <line x1="72" y1="72" x2="72" y2="44" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+    <g transform="rotate({{needleAngle}}, 38, 38)">
+      <line x1="38" y1="38" x2="38" y2="10" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
     </g>
 
-    <circle cx="72" cy="72" r="4" fill="#ffffff"/>
+    <circle cx="38" cy="38" r="4" fill="#ffffff" stroke="none"/>
 
 </svg>

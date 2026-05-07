@@ -88,19 +88,19 @@ export {
   escapeXml,
   generateIconText,
   parseDescMetadata,
-  parseIconArtworkBounds,
   parseIconBorderDefaults,
   parseIconDefaults,
   parseIconLocked,
   parseIconTitleDefaults,
+  parseSvgViewBox,
   renderIconTemplate,
   resolveIconColors,
   validateIconTemplate,
   type ColorSlots,
-  type IconArtworkBounds,
   type IconBorderDefaults,
   type IconTitleDefaults,
   type GenerateIconTextOptions,
+  type SvgViewBox,
 } from "./icon-template.js";
 
 // Re-export LogLevel for convenience

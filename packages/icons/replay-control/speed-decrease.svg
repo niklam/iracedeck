@@ -1,16 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nSLOWER"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":39,"y":35,"width":67,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 69 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nSLOWER"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
     
-      <ellipse fill="{{graphic1Color}}" cx="69.6" cy="53.6" rx="22.4" ry="16.8"/>
-      <path d="M69.6 36.8L69.6 70.4" stroke="#2a3a4a" stroke-width="1.4" fill="none"/>
-      <path d="M57 41L57 66.2" stroke="#2a3a4a" stroke-width="1.05" fill="none"/>
-      <path d="M82.2 41L82.2 66.2" stroke="#2a3a4a" stroke-width="1.05" fill="none"/>
-      <ellipse fill="{{graphic1Color}}" cx="97.6" cy="56.4" rx="7" ry="5.6"/>
-      <circle cx="101.1" cy="54.3" r="1.4" fill="#2a3a4a"/>
-      <ellipse fill="{{graphic1Color}}" cx="89.2" cy="69" rx="4.2" ry="7"/>
-      <ellipse fill="{{graphic1Color}}" cx="51.4" cy="67.6" rx="4.2" ry="7"/>
-      <path d="M47.2 57.8Q40.2 55 43 60.6" stroke="{{graphic1Color}}" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+      <ellipse fill="{{graphic1Color}}" cx="31.6" cy="19.6" rx="22.4" ry="16.8" stroke="none"/>
+      <path d="M31.6,2.8L31.6,36.4" stroke="#2a3a4a" stroke-width="1.4" fill="none"/>
+      <path d="M19,7L19,32.2" stroke="#2a3a4a" stroke-width="1.05" fill="none"/>
+      <path d="M44.2,7L44.2,32.2" stroke="#2a3a4a" stroke-width="1.05" fill="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="59.6" cy="22.4" rx="7" ry="5.6" stroke="none"/>
+      <circle cx="63.1" cy="20.3" r="1.4" fill="#2a3a4a" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="51.2" cy="35" rx="4.2" ry="7" stroke="none"/>
+      <ellipse fill="{{graphic1Color}}" cx="13.4" cy="33.6" rx="4.2" ry="7" stroke="none"/>
+      <path d="M9.2,23.8Q2.2,21,5,26.6" stroke="{{graphic1Color}}" stroke-width="2.1" fill="none" stroke-linecap="round"/>
     
 
 </svg>

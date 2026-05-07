@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"REAR ARB\nDECREASE"},"border":{"color":"#3a6a3a"},"artworkBounds":{"x":23,"y":31,"width":78,"height":49}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 51" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"REAR ARB\nDECREASE"},"border":{"color":"#3a6a3a"}}</desc>
+  
 
-    <line x1="36" y1="36" x2="56" y2="36" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <path d="M56,36 C56,56 80,56 80,36" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="80" y1="36" x2="100" y2="36" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <text x="68" y="72" text-anchor="middle" fill="#888888" font-family="Arial, sans-serif" font-size="14">REAR</text>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="14" y1="6" x2="34" y2="6" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M34,6C34,26,58,26,58,6" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="58" y1="6" x2="78" y2="6" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <text x="46" y="42" text-anchor="middle" fill="#888888" font-family="Arial, sans-serif" font-size="14" stroke="none">REAR</text>
+    <polyline points="12,2 2,14 12,26" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

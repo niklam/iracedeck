@@ -129,7 +129,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   ICON_BASE_TEMPLATE: "<svg>{{backgroundColor}}|{{borderContent}}|{{graphicContent}}|{{titleContent}}</svg>",
   LogLevel: { Info: 2 },
-  parseIconArtworkBounds: vi.fn(() => undefined),
+  // tire-service no longer reads SVG viewBox; toggle-tires.svg keeps 144x144 with hardcoded combined bounds.
   generateIconText: vi.fn(
     (opts: { text: string; fontSize: number; fill: string }) => `<text fill="${opts.fill}">${opts.text}</text>`,
   ),

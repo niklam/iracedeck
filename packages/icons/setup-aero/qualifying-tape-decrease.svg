@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"},"title":{"text":"QUAL TAPE\nDECREASE"},"border":{"color":"#3a3a6a"},"artworkBounds":{"x":27,"y":27,"width":66,"height":46}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 48" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a1a3a","textColor":"#ffffff"},"title":{"text":"QUAL TAPE\nDECREASE"},"border":{"color":"#3a3a6a"}}</desc>
 
-    <rect x="36" y="28" width="56" height="44" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
-    <line x1="36" y1="40" x2="92" y2="40" stroke="#888888" stroke-width="1"/>
-    <line x1="36" y1="52" x2="92" y2="52" stroke="#888888" stroke-width="1"/>
-    <line x1="36" y1="64" x2="92" y2="64" stroke="#888888" stroke-width="1"/>
-    <rect x="40" y="36" width="48" height="12" rx="2" fill="#f1c40f" opacity="0.6"/>
-    <polyline points="38,32 28,44 38,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="26" y="2" width="56" height="44" rx="6" fill="none" stroke="#888888" stroke-width="3"/>
+    <line x1="26" y1="14" x2="82" y2="14" stroke="#888888" stroke-width="1"/>
+    <line x1="26" y1="26" x2="82" y2="26" stroke="#888888" stroke-width="1"/>
+    <line x1="26" y1="38" x2="82" y2="38" stroke="#888888" stroke-width="1"/>
+    <rect x="30" y="10" width="48" height="12" rx="2" fill="#f1c40f" opacity="0.6" stroke="none"/>
+    <polyline points="12,30 2,18 12,6" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

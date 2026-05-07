@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"NEXT\nLAP"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":29,"y":27,"width":86,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"NEXT\nLAP"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <rect x="30" y="28" width="84" height="48" rx="24" fill="none" stroke="#ffffff" stroke-width="9"/>
+    <rect x="2" y="2" width="84" height="48" rx="24" fill="none" stroke="#ffffff" stroke-width="9"/>
 
-    <rect x="30" y="28" width="84" height="48" rx="24" fill="none" stroke="#2a3a4a" stroke-width="2" stroke-dasharray="5,4"/>
+    <rect x="2" y="2" width="84" height="48" rx="24" fill="none" stroke="#2a3a4a" stroke-width="2" stroke-dasharray="5,4"/>
 
-    <polygon points="66,44 82,52 66,60" fill="#ffffff"/>
+    <polygon points="38,18 54,26 38,34" fill="#ffffff" stroke="none"/>
 
 </svg>

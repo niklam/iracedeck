@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FLASH\nHEADLIGHT"},"border":{"color":"#5a6a5a"},"artworkBounds":{"x":33,"y":27,"width":80,"height":36}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 38" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FLASH\nHEADLIGHT"},"border":{"color":"#5a6a5a"}}</desc>
+  
 
-    <rect x="34" y="30" width="40" height="30" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <rect x="38" y="34" width="32" height="22" rx="3" fill="#ffffff" opacity="0.3"/>
+    <rect x="2" y="4" width="40" height="30" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <rect x="6" y="8" width="32" height="22" rx="3" fill="#ffffff" opacity="0.3" stroke="none"/>
 
-    <line x1="80" y1="38" x2="110" y2="28" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="80" y1="45" x2="112" y2="45" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="80" y1="52" x2="110" y2="62" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="48" y1="12" x2="78" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="48" y1="19" x2="80" y2="19" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="48" y1="26" x2="78" y2="36" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

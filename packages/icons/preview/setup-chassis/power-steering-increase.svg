@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PWR STEER\nINCREASE"},"border":{"color":"#3a6a3a"},"artworkBounds":{"x":39,"y":15,"width":78,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"PWR STEER\nINCREASE"},"border":{"color":"#3a6a3a"}}</desc>
+  
 
-    <circle cx="68" cy="44" r="28" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="68" cy="44" r="8" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="68" y1="52" x2="68" y2="72" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="64,32 68,40 64,40 68,48" fill="none" stroke="#f1c40f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="106,56 116,44 106,32" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="30" r="28" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="30" cy="30" r="8" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="30" y1="38" x2="30" y2="58" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="26,18 30,26 26,26 30,34" fill="none" stroke="#f1c40f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="68,42 78,30 68,18" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nTV2"},"border":{"color":"#5a7a8a"},"artworkBounds":{"x":30,"y":32,"width":83,"height":59}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85 61" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nTV2"},"border":{"color":"#5a7a8a"}}</desc>
+  
 
     
-      <path d="M103.96 83.71H39.99A8.03 8.03 0 0 1 31.97 75.69V41.06A8.03 8.03 0 0 1 39.99 33.04H103.96A8.03 8.03 0 0 1 111.98 41.06V75.69A8.03 8.03 0 0 1 103.96 83.71Z"
-        fill="{{graphic1Color}}"/>
-      <line x1="50.64" y1="89.05" x2="93.31" y2="89.05"
+      <path d="M74.96,52.71H10.99A8.03,8.03,0,0,1,2.97,44.69V10.06A8.03,8.03,0,0,1,10.99,2.04H74.96A8.03,8.03,0,0,1,82.98,10.06V44.69A8.03,8.03,0,0,1,74.96,52.71Z"
+        fill="{{graphic1Color}}" stroke="none"/>
+      <line x1="21.64" y1="58.05" x2="64.31" y2="58.05"
         stroke="{{graphic1Color}}" stroke-linecap="round" stroke-miterlimit="10" stroke-width="5.33"/>
     
 
-    <text x="72" y="67" text-anchor="middle" dominant-baseline="central"
-          fill="{{backgroundColor}}" font-family="Arial, sans-serif" font-size="25" font-weight="bold">TV2</text>
+    <text x="43" y="36" text-anchor="middle" dominant-baseline="central"
+          fill="{{backgroundColor}}" font-family="Arial, sans-serif" font-size="25" font-weight="bold" stroke="none">TV2</text>
 
 </svg>

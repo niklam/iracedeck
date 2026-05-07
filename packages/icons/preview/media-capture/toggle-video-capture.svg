@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VIDEO\nTOGGLE"},"border":{"color":"#5a3a6a"},"artworkBounds":{"x":39,"y":17,"width":70,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VIDEO\nTOGGLE"},"border":{"color":"#5a3a6a"}}</desc>
+  
 
-    <rect x="40" y="24" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="84,30 108,18 108,66 84,54" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <line x1="62" y1="32" x2="62" y2="40" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <path d="M54 36 A10 10 0 1 0 70 36" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <rect x="2" y="8" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polygon points="46,14 70,2 70,50 46,38" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="24" y1="16" x2="24" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M16,20A10,10,0,1,0,32,20" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

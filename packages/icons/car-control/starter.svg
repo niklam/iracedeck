@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff"},"title":{"text":"ENGINE\nSTART"},"border":{"color":"#5a6a5a"},"artworkBounds":{"x":41,"y":17,"width":62,"height":62}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff"},"title":{"text":"ENGINE\nSTART"},"border":{"color":"#5a6a5a"}}</desc>
+  
 
-    <circle cx="72" cy="48" r="30" fill="#e74c3c"/>
-    <circle cx="72" cy="48" r="24" fill="#c0392b"/>
-    <text x="72" y="52" text-anchor="middle" dominant-baseline="central"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold">START</text>
+    <circle cx="32" cy="32" r="30" fill="#e74c3c" stroke="none"/>
+    <circle cx="32" cy="32" r="24" fill="#c0392b" stroke="none"/>
+    <text x="32" y="36" text-anchor="middle" dominant-baseline="central"
+          fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">START</text>
 
 </svg>

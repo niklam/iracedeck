@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nROLL BAR"},"border":{"color":"#5a7a8a"},"artworkBounds":{"x":35,"y":33,"width":74,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a4a5a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CAMERA\nROLL BAR"},"border":{"color":"#5a7a8a"}}</desc>
+  
 
-    <path d="M36,82 L36,52 Q36,34 72,34 Q108,34 108,52 L108,82"
+    <path d="M2,50L2,20Q2,2,38,2Q74,2,74,20L74,50"
       stroke="#ffffff" fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

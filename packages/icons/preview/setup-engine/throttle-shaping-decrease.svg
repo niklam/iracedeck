@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"THROTTLE\nDECREASE"},"border":{"color":"#5a6a3a"},"artworkBounds":{"x":23,"y":23,"width":66,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"THROTTLE\nDECREASE"},"border":{"color":"#5a6a3a"}}</desc>
 
-    <rect x="28" y="24" width="60" height="48" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M32,68 Q56,64 64,36 L84,36" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="30" y="2" width="60" height="48" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M34,46Q58,42,66,14L86,14" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="12,34 2,22 12,10" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LAST PM\nRESPOND"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":23,"y":19,"width":98,"height":68}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LAST PM\nRESPOND"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <path d="M32 20 h80 a8 8 0 0 1 8 8 v40 a8 8 0 0 1-8 8 H76 l-6 10 l-6-10 H32 a8 8 0 0 1-8-8 V28 a8 8 0 0 1 8-8 z"
+    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
           fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
-    <text x="72" y="48" text-anchor="middle" dominant-baseline="central"
-          fill="{{color}}" font-family="Arial, sans-serif" font-size="28" font-weight="bold">/r</text>
+    <text x="50" y="30" text-anchor="middle" dominant-baseline="central"
+          fill="{{color}}" font-family="Arial, sans-serif" font-size="28" font-weight="bold" stroke="none">/r</text>
 
 </svg>

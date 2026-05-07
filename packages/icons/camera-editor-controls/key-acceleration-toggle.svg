@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nKEY ACCEL"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":31,"y":23,"width":66,"height":38}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 40" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nKEY ACCEL"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <rect x="48" y="24" width="48" height="36" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <text x="72" y="44" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">KEY</text>
-    <line x1="36" y1="36" x2="44" y2="36" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="32" y1="44" x2="44" y2="44" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="36" y1="52" x2="44" y2="52" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <rect x="18" y="2" width="48" height="36" rx="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <text x="42" y="22" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="16" font-weight="bold" stroke="none">KEY</text>
+    <line x1="6" y1="14" x2="14" y2="14" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="2" y1="22" x2="14" y2="22" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="6" y1="30" x2="14" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

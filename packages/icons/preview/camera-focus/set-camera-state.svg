@@ -1,15 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"SET\nCAM STATE"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":47,"y":23,"width":50,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"SET\nCAM STATE"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <circle cx="72" cy="48" r="16" fill="none" stroke="#888888" stroke-width="4"/>
-    <circle cx="72" cy="48" r="6" fill="#888888"/>
-    <line x1="72" y1="24" x2="72" y2="32" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="72" y1="64" x2="72" y2="72" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="48" y1="48" x2="56" y2="48" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="88" y1="48" x2="96" y2="48" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="55" y1="31" x2="60.6" y2="36.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="83.4" y1="59.4" x2="89" y2="65" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="89" y1="31" x2="83.4" y2="36.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
-    <line x1="60.6" y1="59.4" x2="55" y2="65" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="26" cy="26" r="16" fill="none" stroke="#888888" stroke-width="4"/>
+    <circle cx="26" cy="26" r="6" fill="#888888" stroke="none"/>
+    <line x1="26" y1="2" x2="26" y2="10" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="26" y1="42" x2="26" y2="50" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="2" y1="26" x2="10" y2="26" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="42" y1="26" x2="50" y2="26" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="9" y1="9" x2="14.6" y2="14.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="37.4" y1="37.4" x2="43" y2="43" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="43" y1="9" x2="37.4" y2="14.6" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
+    <line x1="14.6" y1="37.4" x2="9" y2="43" stroke="#888888" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

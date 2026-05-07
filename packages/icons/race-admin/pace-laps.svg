@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LAPS\nPACE"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":33,"y":41,"width":78,"height":48}}</desc>
-    <path d="M38,62 L46,42 L98,42 L106,62" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <rect x="34" y="62" width="76" height="20" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <circle cx="52" cy="82" r="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="92" cy="82" r="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <rect x="54" y="48" width="14" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
-    <rect x="74" y="48" width="14" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LAPS\nPACE"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M8,24L16,4L68,4L76,24" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="4" y="24" width="76" height="20" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <circle cx="22" cy="44" r="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="62" cy="44" r="6" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <rect x="24" y="10" width="14" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
+    <rect x="44" y="10" width="14" height="12" rx="2" fill="none" stroke="{{graphic1Color}}" stroke-width="2"/>
 
 </svg>

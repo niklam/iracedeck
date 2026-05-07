@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LOOK\nUP"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":35,"y":15,"width":82,"height":62}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"LOOK\nUP"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <path d="M36 52 Q72 28 108 52 Q72 76 36 52 Z" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="72" cy="52" r="10" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <circle cx="72" cy="48" r="4" fill="#ffffff"/>
-    <path d="M108 28 L108 16 L100 24" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M108 16 L116 24" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M2,38Q38,14,74,38Q38,62,2,38Z" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="38" cy="38" r="10" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <circle cx="38" cy="34" r="4" fill="#ffffff" stroke="none"/>
+    <path d="M74,14L74,2L66,10" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M74,2L82,10" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

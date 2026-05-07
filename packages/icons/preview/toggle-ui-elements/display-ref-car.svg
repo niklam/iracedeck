@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nREFERENCE"},"border":{"color":"#3a6a6a"},"artworkBounds":{"x":35,"y":23,"width":74,"height":52}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nREFERENCE"},"border":{"color":"#3a6a6a"}}</desc>
+  
 
-    <rect x="44" y="24" width="56" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <rect x="36" y="36" width="12" height="16" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
-    <rect x="96" y="36" width="12" height="16" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="60" y1="24" x2="60" y2="52" stroke="#888888" stroke-width="1"/>
-    <line x1="84" y1="24" x2="84" y2="52" stroke="#888888" stroke-width="1"/>
-    <text x="72" y="68" text-anchor="middle" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold">REF</text>
+    <rect x="10" y="2" width="56" height="28" rx="8" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <rect x="2" y="14" width="12" height="16" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
+    <rect x="62" y="14" width="12" height="16" rx="4" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="26" y1="2" x2="26" y2="30" stroke="#888888" stroke-width="1"/>
+    <line x1="50" y1="2" x2="50" y2="30" stroke="#888888" stroke-width="1"/>
+    <text x="38" y="46" text-anchor="middle" fill="#2ecc71" font-family="Arial, sans-serif" font-size="12" font-weight="bold" stroke="none">REF</text>
 
 </svg>

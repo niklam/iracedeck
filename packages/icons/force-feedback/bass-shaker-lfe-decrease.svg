@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"QUIETER\nBASS SHAKER"},"border":{"color":"#5a5a7a"},"artworkBounds":{"x":23,"y":31,"width":104,"height":34}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 106 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"QUIETER\nBASS SHAKER"},"border":{"color":"#5a5a7a"}}</desc>
+  
 
-    <rect x="44" y="32" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
-    <line x1="52" y1="40" x2="52" y2="56" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="60" y1="36" x2="60" y2="60" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="68" y1="40" x2="68" y2="56" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <line x1="76" y1="36" x2="76" y2="60" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
-    <path d="M30 34 Q24 48 30 62" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
-    <path d="M96 34 Q102 48 96 62" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
-    <polyline points="110,32 118,44 126,32" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="22" y="2" width="40" height="32" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
+    <line x1="30" y1="10" x2="30" y2="26" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="38" y1="6" x2="38" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="46" y1="10" x2="46" y2="26" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <line x1="54" y1="6" x2="54" y2="30" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <path d="M8,4Q2,18,8,32" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
+    <path d="M74,4Q80,18,74,32" fill="none" stroke="#888888" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
+    <polyline points="88,2 96,14 104,2" fill="none" stroke="#e74c3c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

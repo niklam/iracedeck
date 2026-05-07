@@ -20,7 +20,7 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  parseIconArtworkBounds,
+  parseSvgViewBox,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -310,10 +310,15 @@ export function generateReplayControlSvg(
       ? renderIconTemplate(rawGraphic, { speedText: formatSpeedDisplay(speed, slowMo), ...colors })
       : "";
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-    const artworkBounds = parseIconArtworkBounds(iconSvg);
+    const viewBox = parseSvgViewBox(iconSvg);
 
-    if (graphicContent && artworkBounds) {
-      graphicContent = applyGraphicTransform(graphicContent, artworkBounds, computeGraphicArea(title), graphic.scale);
+    if (graphicContent && viewBox) {
+      graphicContent = applyGraphicTransform(
+        graphicContent,
+        { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
+        computeGraphicArea(title),
+        graphic.scale,
+      );
     }
 
     const titleContent = title.showTitle
@@ -349,10 +354,15 @@ export function generateReplayControlSvg(
       ? renderIconTemplate(rawGraphic, { mainLabel, needleAngle, ...colors })
       : "";
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-    const artworkBounds = parseIconArtworkBounds(iconSvg);
+    const viewBox = parseSvgViewBox(iconSvg);
 
-    if (graphicContent && artworkBounds) {
-      graphicContent = applyGraphicTransform(graphicContent, artworkBounds, computeGraphicArea(title), graphic.scale);
+    if (graphicContent && viewBox) {
+      graphicContent = applyGraphicTransform(
+        graphicContent,
+        { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
+        computeGraphicArea(title),
+        graphic.scale,
+      );
     }
 
     const titleContent = title.showTitle

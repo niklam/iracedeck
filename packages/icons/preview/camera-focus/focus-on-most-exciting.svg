@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MOST\nEXCITING"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":31,"y":19,"width":82,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MOST\nEXCITING"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <circle cx="60" cy="48" r="20" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <circle cx="60" cy="48" r="5" fill="#ffffff"/>
-    <line x1="60" y1="20" x2="60" y2="32" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="60" y1="64" x2="60" y2="76" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="32" y1="48" x2="44" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="76" y1="48" x2="88" y2="48" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="100,36 112,48 100,60" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="30" r="20" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <circle cx="30" cy="30" r="5" fill="#ffffff" stroke="none"/>
+    <line x1="30" y1="2" x2="30" y2="14" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="30" y1="46" x2="30" y2="58" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="2" y1="30" x2="14" y2="30" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="46" y1="30" x2="58" y2="30" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="70,18 82,30 70,42" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

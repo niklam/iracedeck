@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nSPEED"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":23,"y":45,"width":98,"height":34}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 36" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPLAY\nSPEED"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <text x="72" y="62" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="32" font-weight="bold">{{speedText}}</text>
+    <text x="50" y="18" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="32" font-weight="bold" stroke="none">{{speedText}}</text>
 
 </svg>

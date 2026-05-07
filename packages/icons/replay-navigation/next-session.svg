@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SESSION\nNEXT"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":47,"y":27,"width":50,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SESSION\nNEXT"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polygon points="48,28 88,52 48,76" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <line x1="96" y1="28" x2="96" y2="76" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="2,2 42,26 2,50" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+    <line x1="50" y1="2" x2="50" y2="50" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

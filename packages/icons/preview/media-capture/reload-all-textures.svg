@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEXTURES\nRELOAD ALL"},"border":{"color":"#5a3a6a"},"artworkBounds":{"x":39,"y":19,"width":66,"height":58}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 60" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEXTURES\nRELOAD ALL"},"border":{"color":"#5a3a6a"}}</desc>
+  
 
-    <path d="M72 20 A28 28 0 1 1 44 48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="40,40 44,48 52,44" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M72 76 A28 28 0 1 1 100 48" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
-    <polyline points="104,56 100,48 92,52" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="60" y="36" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="74" y="36" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="60" y="50" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
-    <rect x="74" y="50" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <path d="M34,2A28,28,0,1,1,6,30" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="2,22 6,30 14,26" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M34,58A28,28,0,1,1,62,30" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round"/>
+    <polyline points="66,38 62,30 54,34" fill="none" stroke="#888888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="22" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="36" y="18" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="22" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
+    <rect x="36" y="32" width="10" height="10" fill="none" stroke="#888888" stroke-width="1.6"/>
 
 </svg>

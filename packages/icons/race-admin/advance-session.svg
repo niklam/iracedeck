@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SESSION\nADVANCE"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":43,"y":29,"width":58,"height":46}}</desc>
-    <polyline points="44,30 72,52 44,74" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <polyline points="72,30 100,52 72,74" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SESSION\nADVANCE"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <polyline points="4,4 32,26 4,48" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="32,4 60,26 32,48" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

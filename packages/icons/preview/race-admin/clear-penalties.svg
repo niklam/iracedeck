@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"PENALTY\nCLEAR"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":43,"y":23,"width":58,"height":58}}</desc>
-    <circle cx="72" cy="52" r="28" fill="none" stroke="#ffffff" stroke-width="4"/>
-    <polyline points="56,52 66,64 88,40" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"PENALTY\nCLEAR"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <circle cx="32" cy="32" r="28" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <polyline points="16,32 26,44 48,20" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

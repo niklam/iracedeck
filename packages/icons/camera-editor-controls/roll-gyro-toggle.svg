@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nROLL GYRO"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":39,"y":39,"width":66,"height":26}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 28" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nROLL GYRO"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <path d="M40 60 A32 24 30 0 1 104 60" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <path d="M104 60 A32 24 30 0 1 40 60" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
-    <polyline points="46,54 40,60 48,64" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="72" cy="44" r="4" fill="{{graphic1Color}}"/>
+    <path d="M2,22A32,24,30,0,1,66,22" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M66,22A32,24,30,0,1,2,22" fill="none" stroke="#888888" stroke-width="2" stroke-dasharray="6,6"/>
+    <polyline points="8,16 2,22 10,26" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="34" cy="6" r="4" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

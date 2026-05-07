@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nON/OFF"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":23,"y":19,"width":98,"height":68}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT\nON/OFF"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <path d="M32 20 h80 a8 8 0 0 1 8 8 v40 a8 8 0 0 1-8 8 H76 l-6 10 l-6-10 H32 a8 8 0 0 1-8-8 V28 a8 8 0 0 1 8-8 z"
+    <path d="M10,2h80a8,8,0,0,1,8,8v40a8,8,0,0,1,-8,8H54l-6,10l-6,-10H10a8,8,0,0,1,-8,-8V10a8,8,0,0,1,8,-8z"
           fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
-    <circle cx="72" cy="52" r="14" fill="none" stroke="{{color}}" stroke-width="4"/>
-    <line x1="72" y1="32" x2="72" y2="52" stroke="{{color}}" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="50" cy="34" r="14" fill="none" stroke="{{color}}" stroke-width="4"/>
+    <line x1="50" y1="14" x2="50" y2="34" stroke="{{color}}" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VIDEO\nTIMER"},"border":{"color":"#5a3a6a"},"artworkBounds":{"x":31,"y":19,"width":90,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a1a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VIDEO\nTIMER"},"border":{"color":"#5a3a6a"}}</desc>
+  
 
-    <rect x="32" y="24" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <polygon points="76,30 96,20 96,64 76,54" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="104" cy="56" r="16" fill="none" stroke="#ffffff" stroke-width="3"/>
-    <line x1="104" y1="56" x2="104" y2="46" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-    <line x1="104" y1="56" x2="112" y2="56" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <rect x="2" y="6" width="44" height="36" rx="4" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <polygon points="46,12 66,2 66,46 46,36" fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="74" cy="38" r="16" fill="none" stroke="#ffffff" stroke-width="3"/>
+    <line x1="74" y1="38" x2="74" y2="28" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <line x1="74" y1="38" x2="82" y2="38" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
 
 </svg>

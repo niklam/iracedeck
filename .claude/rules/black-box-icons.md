@@ -10,7 +10,25 @@ paths:
 
 Reference icons: `C:\Users\nikla\OneDrive\Tiedostot\Stream_Deck_Icons_THK_v2.1.5\Stream_Deck_Icons_v2.1.5\Function icons\color no-border flat\effects management\iracing blackbox\BB_*_Overlay.png`
 
-## Canvas Layout (72x72)
+## Graphic Snippet Icons (`packages/icons/black-box-selector/*.svg`)
+
+These are the dynamic-render icons used by the black-box selector action. Each
+icon's `viewBox` is trimmed to the artwork extent — typically `viewBox="0 0 114 58"`
+for the standard list/data icons (frame width × frame height). The frame rect
+sits flush against the viewBox edge (one stroke-width inset). `assembleIcon()`
+scales each icon into the available area on the Stream Deck button at render
+time using the SVG's own viewBox, so the design works at any final size.
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58">
+  <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"FUEL"},"border":{"color":"#5a5a5a"}}</desc>
+  <!-- Frame fills the viewBox; coordinates start at (0, 0) -->
+  <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+  <!-- ... artwork inside the frame ... -->
+</svg>
+```
+
+## Static Key Icon (`black-box-selector/key.svg`, 72x72)
 
 ```svg
 <!-- Main background -->

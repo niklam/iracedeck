@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nPARA MIC"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":43,"y":23,"width":58,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nPARA MIC"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <path d="M44 24 Q72 56 100 24" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <line x1="72" y1="40" x2="72" y2="72" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="72" cy="40" r="4" fill="{{graphic1Color}}"/>
-    <path d="M60 76 L84 76" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <path d="M2,2Q30,34,58,2" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <line x1="30" y1="18" x2="30" y2="50" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="30" cy="18" r="4" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M18,54L42,54" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

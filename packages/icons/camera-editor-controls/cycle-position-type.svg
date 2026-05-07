@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CYCLE\nPOS TYPE"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":41,"y":19,"width":62,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CYCLE\nPOS TYPE"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <circle cx="72" cy="44" r="24" fill="none" stroke="#888888" stroke-width="2"/>
-    <path d="M72 20 A24 24 0 1 1 48 44" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="44,36 48,44 56,40" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="72" y="48" text-anchor="middle" dominant-baseline="central"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">P</text>
+    <circle cx="32" cy="26" r="24" fill="none" stroke="#888888" stroke-width="2"/>
+    <path d="M32,2A24,24,0,1,1,8,26" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="4,18 8,26 16,22" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="32" y="30" text-anchor="middle" dominant-baseline="central"
+          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="20" font-weight="bold" stroke="none">P</text>
 
 </svg>

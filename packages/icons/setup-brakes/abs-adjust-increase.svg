@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ABS\nINCREASE"},"border":{"color":"#6a5a3a"},"artworkBounds":{"x":43,"y":23,"width":82,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"ABS\nINCREASE"},"border":{"color":"#6a5a3a"}}</desc>
+  
 
-    <circle cx="68" cy="48" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
-    <circle cx="68" cy="48" r="12" fill="none" stroke="#888888" stroke-width="2"/>
-    <text x="68" y="50" text-anchor="middle" dominant-baseline="central"
-          fill="#e74c3c" font-family="Arial, sans-serif" font-size="14" font-weight="bold">ABS</text>
-    <polyline points="108,44 116,32 124,44" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="26" cy="26" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>
+    <circle cx="26" cy="26" r="12" fill="none" stroke="#888888" stroke-width="2"/>
+    <text x="26" y="28" text-anchor="middle" dominant-baseline="central"
+          fill="#e74c3c" font-family="Arial, sans-serif" font-size="14" font-weight="bold" stroke="none">ABS</text>
+    <polyline points="66,22 74,10 82,22" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

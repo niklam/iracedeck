@@ -146,11 +146,9 @@ export function parseIconBorderDefaults(svgTemplate: string): IconBorderDefaults
 }
 
 /**
- * Artwork bounding box declared in an icon's <desc> metadata.
- * Used by assembleIcon() to dynamically scale and position the graphic
- * based on title placement.
+ * Parsed SVG viewBox.
  */
-export interface IconArtworkBounds {
+export interface SvgViewBox {
   x: number;
   y: number;
   width: number;
@@ -158,30 +156,27 @@ export interface IconArtworkBounds {
 }
 
 /**
- * Parses artwork bounds from an SVG template's <desc> metadata.
- * Returns undefined if the icon does not declare artworkBounds (backward compatible).
- *
- * @param svgTemplate - SVG template string containing a <desc> element
- * @returns Artwork bounding box, or undefined if not declared
+ * Parses the viewBox from the root <svg> element. Returns undefined when the
+ * attribute is absent or unparseable. Trimmed icons store their artwork extent
+ * directly here, so this replaces the older artworkBounds metadata.
  */
-export function parseIconArtworkBounds(svgTemplate: string): IconArtworkBounds | undefined {
-  const meta = parseDescMetadata(svgTemplate);
-  const bounds = meta.artworkBounds as Record<string, unknown> | undefined;
+export function parseSvgViewBox(svgTemplate: string): SvgViewBox | undefined {
+  const match = svgTemplate.match(/<svg\b[^>]*\bviewBox\s*=\s*(["'])(.*?)\1/i);
 
-  if (!bounds) return undefined;
+  if (!match) return undefined;
 
-  const x = bounds.x;
-  const y = bounds.y;
-  const w = bounds.width;
-  const h = bounds.height;
+  const parts = match[2]
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
 
-  if (typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") {
-    return undefined;
-  }
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return undefined;
 
-  if (w <= 0 || h <= 0) return undefined;
+  const [x, y, width, height] = parts;
 
-  return { x, y, width: w, height: h };
+  if (width <= 0 || height <= 0) return undefined;
+
+  return { x, y, width, height };
 }
 
 /**
@@ -284,9 +279,17 @@ export function generateIconText(options: GenerateIconTextOptions): string {
 export function validateIconTemplate(svg: string): string[] {
   const errors: string[] = [];
 
-  // Check viewBox — accept 144x144 (standard) or 72x72 (legacy)
-  if (!svg.includes('viewBox="0 0 144 144"') && !svg.includes('viewBox="0 0 72 72"')) {
-    errors.push('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
+  // Check viewBox — must parse and have positive width/height. Trimmed icons
+  // have variable viewBox dimensions (the artwork extent), so we no longer
+  // hard-check 144x144 / 72x72 literals.
+  const viewBox = parseSvgViewBox(svg);
+
+  if (!viewBox) {
+    errors.push('Missing or unparseable viewBox. Expected: <svg viewBox="0 0 W H"> with positive W and H.');
+  } else if (viewBox.width > 144 || viewBox.height > 144) {
+    errors.push(
+      `Oversized viewBox ${viewBox.width}x${viewBox.height}. Expected dimensions <= 144 (standard render canvas).`,
+    );
   }
 
   // Check for activity-state filter group

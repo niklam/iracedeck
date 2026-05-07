@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"TIME\nSEARCH"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":47,"y":21,"width":50,"height":56}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff"},"title":{"text":"TIME\nSEARCH"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <circle cx="72" cy="52" r="24" fill="none" stroke="#888888" stroke-width="4"/>
-    <line x1="72" y1="52" x2="72" y2="36" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
-    <line x1="72" y1="52" x2="86" y2="58" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
-    <line x1="72" y1="22" x2="72" y2="28" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="26" cy="32" r="24" fill="none" stroke="#888888" stroke-width="4"/>
+    <line x1="26" y1="32" x2="26" y2="16" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
+    <line x1="26" y1="32" x2="40" y2="38" stroke="#888888" stroke-width="4" stroke-linecap="round"/>
+    <line x1="26" y1="2" x2="26" y2="8" stroke="#888888" stroke-width="3" stroke-linecap="round"/>
 
 </svg>

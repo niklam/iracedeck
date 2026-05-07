@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nLOGGING"},"border":{"color":"#6a5a6a"},"artworkBounds":{"x":27,"y":13,"width":90,"height":56}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 58" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nLOGGING"},"border":{"color":"#6a5a6a"}}</desc>
+  
 
-    <polyline points="28,56 44,36 60,48 76,24 92,40 108,20" fill="none"
+    <polyline points="2,44 18,24 34,36 50,12 66,28 82,8" fill="none"
               stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="108" cy="20" r="6" fill="#2ecc71"/>
-    <line x1="28" y1="68" x2="116" y2="68" stroke="#888888" stroke-width="1.6"/>
+    <circle cx="82" cy="8" r="6" fill="#2ecc71" stroke="none"/>
+    <line x1="2" y1="56" x2="90" y2="56" stroke="#888888" stroke-width="1.6"/>
 
 </svg>

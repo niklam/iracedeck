@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VISOR\nTEAR OFF"},"border":{"color":"#5a6a5a"},"artworkBounds":{"x":37,"y":23,"width":70,"height":52}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VISOR\nTEAR OFF"},"border":{"color":"#5a6a5a"}}</desc>
+  
 
-    <path d="M38 62 Q38 24 72 24 Q106 24 106 62 L106 68 Q106 74 100 74 L44 74 Q38 74 38 68 Z"
+    <path d="M2,40Q2,2,36,2Q70,2,70,40L70,46Q70,52,64,52L8,52Q2,52,2,46Z"
           fill="none" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
 
-    <path d="M46 48 Q46 42 56 42 L88 42 Q98 42 98 48 L98 56 Q98 60 92 60 L52 60 Q46 60 46 56 Z"
+    <path d="M10,26Q10,20,20,20L52,20Q62,20,62,26L62,34Q62,38,56,38L16,38Q10,38,10,34Z"
           fill="#ffffff" opacity="0.3" stroke="#ffffff" stroke-width="2"/>
 
-    <path d="M86 52 L104 34" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/>
-    <polyline points="98,32 104,34 100,40" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M50,30L68,12" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 3"/>
+    <polyline points="62,10 68,12 64,18" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

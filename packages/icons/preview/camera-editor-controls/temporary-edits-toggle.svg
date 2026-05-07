@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nTEMP EDIT"},"border":{"color":"#3a6a5a"},"artworkBounds":{"x":39,"y":27,"width":78,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nTEMP EDIT"},"border":{"color":"#3a6a5a"}}</desc>
+  
 
-    <line x1="40" y1="72" x2="84" y2="28" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="40" y1="72" x2="44" y2="60" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="40" y1="72" x2="52" y2="68" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="100" cy="60" r="16" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="100" y1="60" x2="100" y2="50" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
-    <line x1="100" y1="60" x2="108" y2="60" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <line x1="2" y1="46" x2="46" y2="2" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="2" y1="46" x2="6" y2="34" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="2" y1="46" x2="14" y2="42" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="62" cy="34" r="16" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="62" y1="34" x2="62" y2="24" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+    <line x1="62" y1="34" x2="70" y2="34" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
 
 </svg>

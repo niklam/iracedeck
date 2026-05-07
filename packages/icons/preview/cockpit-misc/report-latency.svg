@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPORT\nLATENCY"},"border":{"color":"#5a5a6a"},"artworkBounds":{"x":39,"y":23,"width":68,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"REPORT\nLATENCY"},"border":{"color":"#5a5a6a"}}</desc>
+  
 
-    <rect x="40" y="60" width="12" height="12" rx="2" fill="#888888"/>
-    <rect x="58" y="48" width="12" height="24" rx="2" fill="#888888"/>
-    <rect x="76" y="36" width="12" height="36" rx="2" fill="#ffffff"/>
-    <rect x="94" y="24" width="12" height="48" rx="2" fill="#ffffff"/>
+    <rect x="2" y="38" width="12" height="12" rx="2" fill="#888888" stroke="none"/>
+    <rect x="20" y="26" width="12" height="24" rx="2" fill="#888888" stroke="none"/>
+    <rect x="38" y="14" width="12" height="36" rx="2" fill="#ffffff" stroke="none"/>
+    <rect x="56" y="2" width="12" height="48" rx="2" fill="#ffffff" stroke="none"/>
 
 </svg>

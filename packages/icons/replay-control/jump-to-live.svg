@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"JUMP TO\nLIVE"},"border":{"color":"#5a6a7a"},"artworkBounds":{"x":39,"y":27,"width":66,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"JUMP TO\nLIVE"},"border":{"color":"#5a6a7a"}}</desc>
+  
 
-    <polygon points="40,28 68,52 40,76" fill="{{graphic1Color}}"/>
-    <polygon points="64,28 92,52 64,76" fill="{{graphic1Color}}"/>
-    <line x1="104" y1="28" x2="104" y2="76" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="2,2 30,26 2,50" fill="{{graphic1Color}}" stroke="none"/>
+    <polygon points="26,2 54,26 26,50" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="66" y1="2" x2="66" y2="50" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
 </svg>

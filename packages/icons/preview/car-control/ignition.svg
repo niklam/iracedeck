@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ON/OFF\nIGNITION"},"border":{"color":"#5a6a5a"},"artworkBounds":{"x":59,"y":23,"width":26,"height":26}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 62" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"ON/OFF\nIGNITION"},"border":{"color":"#5a6a5a"}}</desc>
+  
 
-    <path d="M60 34 A22 22 0 1 0 84 34" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
-    <line x1="72" y1="24" x2="72" y2="48" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+    <path d="M16,15A22,22,0,1,0,40,15" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+    <line x1="28" y1="5" x2="28" y2="29" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
 
 </svg>

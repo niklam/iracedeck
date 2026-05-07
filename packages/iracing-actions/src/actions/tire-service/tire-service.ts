@@ -21,7 +21,6 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   migrateLegacyActionToMode,
-  parseIconArtworkBounds,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -324,6 +323,14 @@ export function buildTireToggleMacro(settings: TireServiceSettings): string | nu
 }
 
 /**
+ * Combined bounds covering both the car body in toggle-tires.svg and the four
+ * dynamic tire rects this action overlays at runtime. The car SVG keeps its
+ * 144x144 viewBox (skipped by scripts/migrate-icons-to-trimmed-viewbox.mjs)
+ * because the tire rects are positioned in the same 144x144 space.
+ */
+const TOGGLE_TIRES_BOUNDS = { x: 35, y: 1, width: 74, height: 138 };
+
+/**
  * @internal Exported for testing
  *
  * Generates dynamic tire indicator SVG rectangles for the toggle-tires action.
@@ -339,10 +346,10 @@ export function generateToggleTiresIconContent(
   const rrColor = getTireColor(isTireSelected(settings, "rr"), currentState.rr);
 
   return [
-    `<rect x="39.57" y="22.94" width="14.88" height="16.13" rx="2" fill="${lfColor}" stroke="${GRAY}" stroke-width="1"/>`,
-    `<rect x="89.56" y="22.94" width="14.88" height="16.13" rx="2" fill="${rfColor}" stroke="${GRAY}" stroke-width="1"/>`,
-    `<rect x="37.89" y="71.07" width="15.79" height="19.48" rx="2" fill="${lrColor}" stroke="${GRAY}" stroke-width="1"/>`,
-    `<rect x="90.33" y="71.07" width="15.79" height="19.48" rx="2" fill="${rrColor}" stroke="${GRAY}" stroke-width="1"/>`,
+    `<rect x="40.57" y="30.94" width="14.88" height="18.13" rx="2" fill="${lfColor}" stroke="${GRAY}" stroke-width="1"/>`,
+    `<rect x="88.56" y="30.94" width="14.88" height="18.13" rx="2" fill="${rfColor}" stroke="${GRAY}" stroke-width="1"/>`,
+    `<rect x="35.89" y="98.07" width="15.79" height="21.48" rx="2" fill="${lrColor}" stroke="${GRAY}" stroke-width="1"/>`,
+    `<rect x="92.33" y="98.07" width="15.79" height="21.48" rx="2" fill="${rrColor}" stroke="${GRAY}" stroke-width="1"/>`,
   ].join("\n    ");
 }
 
@@ -439,10 +446,14 @@ export function generateTireServiceSvg(
       let graphicContent = title.showGraphics ? colorizedCar + "\n" + tireElements : "";
 
       const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-      const artworkBounds = parseIconArtworkBounds(toggleTiresCarSvg);
 
-      if (graphicContent && artworkBounds) {
-        graphicContent = applyGraphicTransform(graphicContent, artworkBounds, computeGraphicArea(title), graphic.scale);
+      if (graphicContent) {
+        graphicContent = applyGraphicTransform(
+          graphicContent,
+          TOGGLE_TIRES_BOUNDS,
+          computeGraphicArea(title),
+          graphic.scale,
+        );
       }
 
       const titleContent = title.showTitle

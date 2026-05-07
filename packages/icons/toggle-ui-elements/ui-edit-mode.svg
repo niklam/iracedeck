@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MODE\nUI EDIT"},"border":{"color":"#3a6a6a"},"artworkBounds":{"x":27,"y":19,"width":90,"height":54}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"MODE\nUI EDIT"},"border":{"color":"#3a6a6a"}}</desc>
+  
 
-    <rect x="32" y="24" width="80" height="44" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-dasharray="6 4"/>
-    <line x1="72" y1="20" x2="72" y2="72" stroke="#888888" stroke-width="2"/>
-    <line x1="28" y1="46" x2="116" y2="46" stroke="#888888" stroke-width="2"/>
-    <path d="M72 20 l-6 8 h12 z" fill="{{graphic1Color}}"/>
-    <path d="M72 72 l-6 -8 h12 z" fill="{{graphic1Color}}"/>
-    <path d="M28 46 l8 -6 v12 z" fill="{{graphic1Color}}"/>
-    <path d="M116 46 l-8 -6 v12 z" fill="{{graphic1Color}}"/>
+    <rect x="6" y="6" width="80" height="44" rx="4" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-dasharray="6 4"/>
+    <line x1="46" y1="2" x2="46" y2="54" stroke="#888888" stroke-width="2"/>
+    <line x1="2" y1="28" x2="90" y2="28" stroke="#888888" stroke-width="2"/>
+    <path d="M46,2l-6,8h12z" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M46,54l-6,-8h12z" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M2,28l8,-6v12z" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M90,28l-8,-6v12z" fill="{{graphic1Color}}" stroke="none"/>
 
 </svg>

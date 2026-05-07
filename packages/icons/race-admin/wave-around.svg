@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"AROUND\nWAVE"},"border":{"color":"#bb4a4a"},"artworkBounds":{"x":47,"y":35,"width":60,"height":46}}</desc>
-    <path d="M48,62 C48,36 96,36 96,62" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
-    <polygon points="96,52 106,62 96,72" fill="{{graphic1Color}}"/>
-    <path d="M96,62 C96,80 48,80 48,62" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 66 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#8B1A1A","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"AROUND\nWAVE"},"border":{"color":"#bb4a4a"}}</desc>
+  
+    <path d="M4,30C4,4,52,4,52,30" fill="none" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <polygon points="52,20 62,30 52,40" fill="{{graphic1Color}}" stroke="none"/>
+    <path d="M52,30C52,48,4,48,4,30" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-dasharray="6,4" stroke-linecap="round"/>
 
 </svg>

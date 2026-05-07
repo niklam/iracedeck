@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV\nDECREASE"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":47,"y":23,"width":50,"height":52}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 54" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FOV\nDECREASE"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <circle cx="72" cy="68" r="6" fill="#ffffff"/>
-    <line x1="72" y1="62" x2="48" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="72" y1="62" x2="96" y2="24" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-    <line x1="48" y1="24" x2="96" y2="24" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
+    <circle cx="26" cy="46" r="6" fill="#ffffff" stroke="none"/>
+    <line x1="26" y1="40" x2="2" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="26" y1="40" x2="50" y2="2" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+    <line x1="2" y1="2" x2="50" y2="2" stroke="#888888" stroke-width="2" stroke-dasharray="4,4"/>
 
 </svg>

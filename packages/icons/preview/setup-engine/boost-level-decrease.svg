@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BOOST\nDECREASE"},"border":{"color":"#5a6a3a"},"artworkBounds":{"x":23,"y":31,"width":78,"height":42}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 44" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BOOST\nDECREASE"},"border":{"color":"#5a6a3a"}}</desc>
+  
 
-    <path d="M36,68 A32,32 0 0,1 100,68" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
-    <line x1="68" y1="68" x2="52" y2="40" stroke="#f1c40f" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="68" cy="68" r="4" fill="#ffffff"/>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M14,38A32,32,0,0,1,78,38" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <line x1="46" y1="38" x2="30" y2="10" stroke="#f1c40f" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="46" cy="38" r="4" fill="#ffffff" stroke="none"/>
+    <polyline points="12,2 2,14 12,26" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

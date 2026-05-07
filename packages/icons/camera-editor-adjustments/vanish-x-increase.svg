@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VANISH X\n+"},"border":{"color":"#3a5a6a"},"artworkBounds":{"x":27,"y":19,"width":90,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 50" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"VANISH X\n+"},"border":{"color":"#3a5a6a"}}</desc>
+  
 
-    <circle cx="72" cy="44" r="4" fill="{{graphic1Color}}"/>
-    <line x1="72" y1="44" x2="28" y2="20" stroke="#888888" stroke-width="2"/>
-    <line x1="72" y1="44" x2="28" y2="68" stroke="#888888" stroke-width="2"/>
-    <line x1="72" y1="44" x2="116" y2="20" stroke="#888888" stroke-width="2"/>
-    <line x1="72" y1="44" x2="116" y2="68" stroke="#888888" stroke-width="2"/>
-    <line x1="80" y1="44" x2="108" y2="44" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
-    <polyline points="102,38 108,44 102,50" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="45" cy="25" r="4" fill="{{graphic1Color}}" stroke="none"/>
+    <line x1="45" y1="25" x2="1" y2="1" stroke="#888888" stroke-width="2"/>
+    <line x1="45" y1="25" x2="1" y2="49" stroke="#888888" stroke-width="2"/>
+    <line x1="45" y1="25" x2="89" y2="1" stroke="#888888" stroke-width="2"/>
+    <line x1="45" y1="25" x2="89" y2="49" stroke="#888888" stroke-width="2"/>
+    <line x1="53" y1="25" x2="81" y2="25" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="75,19 81,25 75,31" fill="none" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

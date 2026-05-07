@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE MISC\nDECREASE"},"border":{"color":"#6a5a3a"},"artworkBounds":{"x":23,"y":23,"width":78,"height":50}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 52" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"BRAKE MISC\nDECREASE"},"border":{"color":"#6a5a3a"}}</desc>
+  
 
-    <circle cx="60" cy="48" r="24" fill="none" stroke="#888888" stroke-width="3"/>
-    <circle cx="60" cy="48" r="10" fill="none" stroke="#888888" stroke-width="2"/>
-    <line x1="76" y1="32" x2="92" y2="64" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <line x1="84" y1="32" x2="100" y2="64" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
-    <polyline points="34,32 24,44 34,56" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="38" cy="26" r="24" fill="none" stroke="#888888" stroke-width="3"/>
+    <circle cx="38" cy="26" r="10" fill="none" stroke="#888888" stroke-width="2"/>
+    <line x1="54" y1="10" x2="70" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <line x1="62" y1="10" x2="78" y2="42" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="12,10 2,22 12,34" fill="none" stroke="#f1c40f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
 
 </svg>

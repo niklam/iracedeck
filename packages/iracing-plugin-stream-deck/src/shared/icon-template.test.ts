@@ -115,16 +115,29 @@ describe("icon-template", () => {
       </svg>`;
       const errors = validateIconTemplate(template);
 
-      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
+      expect(errors).toContain(
+        'Missing or unparseable viewBox. Expected: <svg viewBox="0 0 W H"> with positive W and H.',
+      );
     });
 
-    it("should detect incorrect viewBox", () => {
+    it("should accept trimmed viewBox sizes", () => {
       const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
         <g filter="url(#activity-state)"></g>
       </svg>`;
       const errors = validateIconTemplate(template);
 
-      expect(errors).toContain('Missing or incorrect viewBox. Expected: viewBox="0 0 144 144"');
+      expect(errors).not.toContain(
+        'Missing or unparseable viewBox. Expected: <svg viewBox="0 0 W H"> with positive W and H.',
+      );
+    });
+
+    it("should reject oversized viewBox", () => {
+      const template = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+        <g filter="url(#activity-state)"></g>
+      </svg>`;
+      const errors = validateIconTemplate(template);
+
+      expect(errors).toContain("Oversized viewBox 200x200. Expected dimensions <= 144 (standard render canvas).");
     });
 
     it("should detect missing activity-state filter", () => {

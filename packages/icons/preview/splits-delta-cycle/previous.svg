@@ -1,9 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"SPLITS DELTA\nPREVIOUS"},"border":{"color":"#714474"},"artworkBounds":{"x":25,"y":19,"width":94,"height":66}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"SPLITS DELTA\nPREVIOUS"},"border":{"color":"#714474"}}</desc>
+  
 
-    <rect x="26" y="20" width="28" height="20" rx="4" fill="#9b59b6"/>
-    <rect x="58" y="20" width="28" height="20" rx="4" fill="#2ecc71"/>
-    <rect x="90" y="20" width="28" height="20" rx="4" fill="#f1c40f"/>
-    <path d="M32 66 l28 -18 v10 h48 v16 h-48 v10 z" fill="#ffffff"/>
+    <rect x="2" y="2" width="28" height="20" rx="4" fill="#9b59b6" stroke="none"/>
+    <rect x="34" y="2" width="28" height="20" rx="4" fill="#2ecc71" stroke="none"/>
+    <rect x="66" y="2" width="28" height="20" rx="4" fill="#f1c40f" stroke="none"/>
+    <path d="M8,48l28,-18v10h48v16h-48v10z" fill="#ffffff" stroke="none"/>
 
 </svg>

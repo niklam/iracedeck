@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nWIPERS"},"border":{"color":"#5a5a6a"},"artworkBounds":{"x":31,"y":27,"width":82,"height":47}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 63" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TOGGLE\nWIPERS"},"border":{"color":"#5a5a6a"}}</desc>
+  
 
-    <path d="M32 68 A44 44 0 0 1 112 68" fill="none" stroke="#888888" stroke-width="3"/>
+    <path d="M5,55A44,44,0,0,1,85,55" fill="none" stroke="#888888" stroke-width="3"/>
 
-    <line x1="72" y1="68" x2="44" y2="28" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
+    <line x1="45" y1="55" x2="17" y2="15" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round"/>
 
-    <line x1="72" y1="68" x2="100" y2="28" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+    <line x1="45" y1="55" x2="73" y2="15" stroke="{{graphic1Color}}" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
 
-    <circle cx="72" cy="68" r="5" fill="{{graphic1Color}}"/>
+    <circle cx="45" cy="55" r="5" fill="{{graphic1Color}}" stroke="none"/>
 
-    <path d="M44 28 A40 40 0 0 1 100 28" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
+    <path d="M17,15A40,40,0,0,1,73,15" fill="none" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
 
 </svg>
