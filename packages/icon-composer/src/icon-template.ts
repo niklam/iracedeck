@@ -161,11 +161,11 @@ export interface SvgViewBox {
  * directly here, so this replaces the older artworkBounds metadata.
  */
 export function parseSvgViewBox(svgTemplate: string): SvgViewBox | undefined {
-  const match = svgTemplate.match(/<svg[^>]*viewBox="([^"]+)"/);
+  const match = svgTemplate.match(/<svg\b[^>]*\bviewBox\s*=\s*(["'])(.*?)\1/i);
 
   if (!match) return undefined;
 
-  const parts = match[1]
+  const parts = match[2]
     .trim()
     .split(/[\s,]+/)
     .map(Number);

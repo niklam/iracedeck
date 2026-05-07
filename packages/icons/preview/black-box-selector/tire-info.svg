@@ -2,7 +2,7 @@
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"TIRE INFO"},"border":{"color":"#5a5a5a"}}</desc>
   
 
-    <rect x="1" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
     <circle cx="41" cy="29" r="20" fill="none" stroke="#888888" stroke-width="3"/>
     <circle cx="41" cy="29" r="10" fill="none" stroke="#888888" stroke-width="2"/>
     <path d="M21,29A20,20,0,0,1,27,13" fill="none" stroke="#3498db" stroke-width="6" stroke-linecap="round"/>

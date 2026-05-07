@@ -529,19 +529,25 @@ export function assembleIcon(options: {
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
 
   // Trimmed icons place artwork at origin filling the viewBox, so the viewBox
-  // dimensions ARE the artwork extent for scaling.
+  // dimensions ARE the artwork extent for scaling. Fail fast if the caller
+  // requested scaling but the SVG is missing a parseable viewBox — silently
+  // skipping would render raw 144-coord artwork at full size in the base
+  // template, which is a user-visible bug rather than a no-op.
   if (graphicContent && graphic) {
     const viewBox = parseSvgViewBox(graphicSvg);
 
-    if (viewBox) {
-      const area = computeGraphicArea(title);
-      graphicContent = applyGraphicTransform(
-        graphicContent,
-        { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
-        area,
-        graphic.scale,
-      );
+    if (!viewBox) {
+      throw new Error("assembleIcon: graphic scaling requested but graphicSvg has no parseable viewBox");
     }
+
+    const area = computeGraphicArea(title);
+
+    graphicContent = applyGraphicTransform(
+      graphicContent,
+      { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
+      area,
+      graphic.scale,
+    );
   }
 
   const titleContent = title.showTitle

@@ -23,7 +23,7 @@ time using the SVG's own viewBox, so the design works at any final size.
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 58">
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"FUEL"},"border":{"color":"#5a5a5a"}}</desc>
   <!-- Frame fills the viewBox; coordinates start at (0, 0) -->
-  <rect x="1" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+  <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
   <!-- ... artwork inside the frame ... -->
 </svg>
 ```

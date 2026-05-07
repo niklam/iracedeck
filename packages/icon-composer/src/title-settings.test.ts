@@ -210,16 +210,16 @@ describe("assembleIcon with graphic scaling", () => {
     expect(svg).not.toContain("<g transform=");
   });
 
-  it("should NOT apply transform when viewBox is missing", () => {
-    const result = assembleIcon({
-      graphicSvg: MOCK_GRAPHIC_NO_VIEWBOX,
-      colors: COLORS,
-      title: DEFAULT_TITLE,
-      border: BORDER_DEFAULTS,
-      graphic: { scale: 100 },
-    });
-    const svg = decodeDataUri(result);
-    expect(svg).not.toContain("<g transform=");
+  it("should throw when graphic param is set but viewBox is missing", () => {
+    expect(() =>
+      assembleIcon({
+        graphicSvg: MOCK_GRAPHIC_NO_VIEWBOX,
+        colors: COLORS,
+        title: DEFAULT_TITLE,
+        border: BORDER_DEFAULTS,
+        graphic: { scale: 100 },
+      }),
+    ).toThrow(/no parseable viewBox/);
   });
 
   it("should apply transform when graphic param set and viewBox present", () => {

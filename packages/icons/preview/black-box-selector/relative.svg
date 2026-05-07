@@ -2,7 +2,7 @@
   <desc>{"colors":{"backgroundColor":"#2a2a2a","textColor":"#ffffff"},"title":{"text":"RELATIVE"},"border":{"color":"#5a5a5a"}}</desc>
   
 
-    <rect x="1" y="1" width="112" height="56" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
+    <rect x="2" y="2" width="110" height="54" rx="6" fill="#2d2510" stroke="#4a3728" stroke-width="4"/>
     <rect x="9" y="7" width="8" height="6" rx="1" fill="#f39c12" stroke="none"/>
     <rect x="21" y="7" width="84" height="6" rx="1" fill="#ffffff" opacity="0.7" stroke="none"/>
     <rect x="9" y="17" width="8" height="6" rx="1" fill="#e67e22" stroke="none"/>
