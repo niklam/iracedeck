@@ -13,7 +13,7 @@ Complete command over iRacing's replay system. Playback transport, progressive s
 Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Navigation actions. Existing button configurations using those actions continue to work.
 :::
 
-Fast Forward, Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically after an initial 500 ms delay, then every 250 ms.
+Fast Forward, Rewind, Slow Motion, Slow Motion Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically after an initial 500 ms delay, then every 250 ms.
 
 ## Modes
 
@@ -101,7 +101,7 @@ How much the reverse speed magnitude increases per press after the initial −2x
 
 ### Slow Motion
 
-Quick shortcut to 1/2x slow motion (forward).
+Progressive slow-motion. The first press jumps to 1/2x; each subsequent press makes playback slower by **Step Rate**, walking down the slow-mo ladder up to the iRacing minimum of 1/16x. Pressing while the replay is rewinding in slow motion resets to 1/2x forward.
 
 #### Details
 
@@ -109,15 +109,15 @@ Quick shortcut to 1/2x slow motion (forward).
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
-#### Settings
+#### Setting: Step Rate
 
-- No additional settings
+How much the slow-mo denominator increases per press after the initial 1/2x. `1` (default) gives 1/2x → 1/3x → 1/4x → … → 1/16x; `2` gives 1/2x → 1/4x → 1/6x → … → 1/16x. Range 1–15.
 
 ---
 
 ### Slow Motion Rewind
 
-Quick shortcut to −1/2x slow motion (reverse). Mirror of Slow Motion.
+Progressive slow-motion rewind. The first press jumps to −1/2x; each subsequent press makes the rewind slower by **Step Rate**, up to the iRacing minimum of −1/16x. Pressing while the replay is in forward slow motion resets to −1/2x.
 
 #### Details
 
@@ -125,9 +125,9 @@ Quick shortcut to −1/2x slow motion (reverse). Mirror of Slow Motion.
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
-#### Settings
+#### Setting: Step Rate
 
-- No additional settings
+How much the slow-mo denominator increases per press after the initial −1/2x. `1` (default) gives −1/2x → −1/3x → −1/4x → … → −1/16x; `2` gives −1/2x → −1/4x → −1/6x → … → −1/16x. Range 1–15.
 
 ---
 

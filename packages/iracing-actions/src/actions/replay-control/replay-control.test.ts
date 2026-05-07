@@ -1125,18 +1125,121 @@ describe("ReplayControl", () => {
       });
     });
 
-    describe("slow-motion-rewind", () => {
-      it("should set play speed to -2 with slow-motion flag", async () => {
-        await action.onWillAppear(fakeEvent("ctx-1", { mode: "slow-motion-rewind" }) as any);
-        // Seed the speed map so setLocalSpeed has a key to update
+    describe("slow-motion / slow-motion-rewind step rate", () => {
+      beforeEach(async () => {
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 1 }) as any);
+      });
+
+      it("should jump to 1/2x on first slow-motion press from forward play", async () => {
+        (action as any).replaySpeed.set("ctx-1", 1);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 3 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, true);
+        expect((action as any).replaySpeed.get("ctx-1")).toBe(2);
+        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(true);
+      });
+
+      it("should jump to 1/2x on first slow-motion press from paused", async () => {
         (action as any).replaySpeed.set("ctx-1", 0);
         (action as any).replaySlowMotion.set("ctx-1", false);
 
-        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind" }) as any);
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 5 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, true);
+      });
+
+      it("should jump to 1/2x on first slow-motion press from fast-forward", async () => {
+        (action as any).replaySpeed.set("ctx-1", 8);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, true);
+      });
+
+      it("should step slow-motion by stepRate=1 from 1/2x to 1/3x", async () => {
+        (action as any).replaySpeed.set("ctx-1", 2);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 1 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(3, true);
+      });
+
+      it("should step slow-motion by stepRate=2 from 1/2x to 1/4x", async () => {
+        (action as any).replaySpeed.set("ctx-1", 2);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(4, true);
+      });
+
+      it("should clamp slow-motion to 1/16x when stepRate would exceed it", async () => {
+        (action as any).replaySpeed.set("ctx-1", 14);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 5 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(16, true);
+      });
+
+      it("should reset to 1/2x when slow-motion pressed while in slow-motion-rewind", async () => {
+        (action as any).replaySpeed.set("ctx-1", -4);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 3 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, true);
+      });
+
+      it("should jump to -1/2x on first slow-motion-rewind press from paused", async () => {
+        (action as any).replaySpeed.set("ctx-1", 0);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 1 }) as any);
 
         expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, true);
         expect((action as any).replaySpeed.get("ctx-1")).toBe(-2);
         expect((action as any).replaySlowMotion.get("ctx-1")).toBe(true);
+      });
+
+      it("should jump to -1/2x on first slow-motion-rewind press from rewind", async () => {
+        (action as any).replaySpeed.set("ctx-1", -8);
+        (action as any).replaySlowMotion.set("ctx-1", false);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, true);
+      });
+
+      it("should step slow-motion-rewind by stepRate=2 from -1/2x to -1/4x", async () => {
+        (action as any).replaySpeed.set("ctx-1", -2);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 2 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-4, true);
+      });
+
+      it("should clamp slow-motion-rewind to -1/16x when stepRate would exceed it", async () => {
+        (action as any).replaySpeed.set("ctx-1", -14);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 5 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-16, true);
+      });
+
+      it("should reset to -1/2x when slow-motion-rewind pressed while in slow-motion forward", async () => {
+        (action as any).replaySpeed.set("ctx-1", 4);
+        (action as any).replaySlowMotion.set("ctx-1", true);
+
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 3 }) as any);
+
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, true);
       });
     });
 
