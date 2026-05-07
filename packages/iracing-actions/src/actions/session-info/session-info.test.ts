@@ -18,16 +18,26 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
-      const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount" };
+      const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount", blankWhenNoFlag: false };
       const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags"];
+      const coerceBool = (v: unknown): boolean => v === true || v === "true";
+      const merge = (data: Record<string, unknown>) => {
+        const merged: Record<string, unknown> = { ...defaults, ...data };
+
+        if ("positionShowTotal" in merged) merged.positionShowTotal = coerceBool(merged.positionShowTotal);
+
+        if ("blankWhenNoFlag" in merged) merged.blankWhenNoFlag = coerceBool(merged.blankWhenNoFlag);
+
+        return merged;
+      };
       const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
+        parse: (data: Record<string, unknown>) => merge(data),
         safeParse: (data: Record<string, unknown>) => {
           if (data?.mode && !validModes.includes(data.mode as string)) {
             return { success: false, error: new Error("Invalid mode") };
           }
 
-          return { success: true, data: { ...defaults, ...data } };
+          return { success: true, data: merge(data) };
         },
       };
 
@@ -92,9 +102,16 @@ function defaultSettings(
     fontSize: number;
     positionShowTotal: boolean;
     fuelFormat: "amount" | "percentage";
+    blankWhenNoFlag: boolean;
   }> = {},
 ) {
-  return { mode: "incidents" as const, positionShowTotal: false, fuelFormat: "amount" as const, ...overrides };
+  return {
+    mode: "incidents" as const,
+    positionShowTotal: false,
+    fuelFormat: "amount" as const,
+    blankWhenNoFlag: false,
+    ...overrides,
+  };
 }
 
 /** Create a minimal fake event with the given action ID and settings. */
@@ -639,6 +656,63 @@ describe("SessionInfo", () => {
       await action.onWillDisappear(fakeEvent("action-1") as any);
 
       expect(action["flagPulseTimers"].has("action-1")).toBe(false);
+    });
+
+    describe("flags mode display value", () => {
+      it("returns '--' when no telemetry and blankWhenNoFlag is false", () => {
+        const action = new SessionInfo();
+        const settings = defaultSettings({ mode: "flags", blankWhenNoFlag: false });
+
+        const result = action["extractDisplayValue"](settings as any, null);
+
+        expect(result).toBe("--");
+      });
+
+      it("returns '' when no telemetry and blankWhenNoFlag is true", () => {
+        const action = new SessionInfo();
+        const settings = defaultSettings({ mode: "flags", blankWhenNoFlag: true });
+
+        const result = action["extractDisplayValue"](settings as any, null);
+
+        expect(result).toBe("");
+      });
+
+      it("returns '--' when telemetry has no active flag and blankWhenNoFlag is false", () => {
+        const action = new SessionInfo();
+        const settings = defaultSettings({ mode: "flags", blankWhenNoFlag: false });
+        const telemetry = { SessionFlags: 0 } as any;
+
+        const result = action["extractDisplayValue"](settings as any, telemetry);
+
+        expect(result).toBe("--");
+      });
+
+      it("returns '' when telemetry has no active flag and blankWhenNoFlag is true", () => {
+        const action = new SessionInfo();
+        const settings = defaultSettings({ mode: "flags", blankWhenNoFlag: true });
+        const telemetry = { SessionFlags: 0 } as any;
+
+        const result = action["extractDisplayValue"](settings as any, telemetry);
+
+        expect(result).toBe("");
+      });
+
+      it("returns the flag label when a flag is active regardless of blankWhenNoFlag", () => {
+        const action = new SessionInfo();
+        const telemetry = { SessionFlags: 0x00000004 } as any; // Green
+
+        const blankFalse = action["extractDisplayValue"](
+          defaultSettings({ mode: "flags", blankWhenNoFlag: false }) as any,
+          telemetry,
+        );
+        const blankTrue = action["extractDisplayValue"](
+          defaultSettings({ mode: "flags", blankWhenNoFlag: true }) as any,
+          telemetry,
+        );
+
+        expect(blankFalse).toBe("GREEN");
+        expect(blankTrue).toBe("GREEN");
+      });
     });
 
     it("should cancel flag pulse on onDidReceiveSettings", async () => {

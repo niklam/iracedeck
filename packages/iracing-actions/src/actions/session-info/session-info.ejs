@@ -32,6 +32,10 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="flags-settings" label="UI" class="hidden">
+			<sdpi-checkbox setting="blankWhenNoFlag" label="Blank when no flag"></sdpi-checkbox>
+		</sdpi-item>
+
 		<script>
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
@@ -57,12 +61,16 @@
 			function updateVisibility(mode) {
 				const positionSettings = document.getElementById("position-settings");
 				const fuelSettings = document.getElementById("fuel-settings");
+				const flagsSettings = document.getElementById("flags-settings");
 
 				if (positionSettings) {
 					positionSettings.classList.toggle("hidden", mode !== "position");
 				}
 				if (fuelSettings) {
 					fuelSettings.classList.toggle("hidden", mode !== "fuel");
+				}
+				if (flagsSettings) {
+					flagsSettings.classList.toggle("hidden", mode !== "flags");
 				}
 			}
 

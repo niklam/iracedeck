@@ -53,6 +53,10 @@ const SessionInfoSettings = CommonSettings.extend({
     .transform((val) => val === true || val === "true")
     .default(false),
   fuelFormat: z.enum(["amount", "percentage"]).default("amount"),
+  blankWhenNoFlag: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(false),
 });
 
 type SessionInfoSettings = z.infer<typeof SessionInfoSettings>;
@@ -301,7 +305,7 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
       if (settings.mode === "fuel") return settings.fuelFormat === "percentage" ? "--%" : "-- L";
 
-      if (settings.mode === "flags") return "--";
+      if (settings.mode === "flags") return settings.blankWhenNoFlag ? "" : "--";
 
       return "--:--";
     }
@@ -372,7 +376,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     if (settings.mode === "flags") {
       const flagInfo = resolveActiveFlag(telemetry.SessionFlags);
 
-      return flagInfo ? flagInfo.label : "--";
+      if (flagInfo) return flagInfo.label;
+
+      return settings.blankWhenNoFlag ? "" : "--";
     }
 
     // time-remaining (default)

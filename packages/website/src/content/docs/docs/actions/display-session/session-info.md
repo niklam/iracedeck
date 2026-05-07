@@ -113,6 +113,10 @@ Display currently active flags with the corresponding colors and a pulsing anima
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the icon updates to reflect the active flag (green, yellow, white, checkered, etc.) and pulses when a new flag is raised
 
+#### Setting: UI
+
+- **Blank when no flag** — When enabled, the icon shows no value text while no flag is active, leaving the button visually empty (background color and title visibility are unaffected and remain configurable). When a flag becomes active, the flag label, color, and pulse/flash effects render as usual. Defaults to `Off` (the icon shows `--` when no flag is active).
+
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
