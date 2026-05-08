@@ -167,9 +167,9 @@ export const GlobalSettingsSchema = z
     /**
      * Volume for the Race Engineer voice, 0–100 (mapped to 0.0–1.0 on
      * `AudioBus.Voice`). Sliding to 0 silences voice scenarios without
-     * disabling the feature. Default: 50 (issue #522 — paired with the
-     * removal of bake-in gain from the radio filter so the slider has
-     * headroom in both directions).
+     * disabling the feature. Default: 50 (issue #522 — first-run mix
+     * sits below full-tilt so the slider has headroom in both
+     * directions).
      */
     raceEngineerVolume: z.coerce.number().min(0).max(100).default(50),
     /**
