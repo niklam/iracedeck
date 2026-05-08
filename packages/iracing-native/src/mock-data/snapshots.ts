@@ -5,7 +5,7 @@
  * driving around the track. These are placeholder values — replace
  * with real telemetry captures for more accurate simulation.
  */
-import { Flags, PitSvFlags, PitSvStatus, SessionState, TrkLoc } from "../defines.js";
+import { Flags, PitSvFlags, PitSvStatus, SessionState, TrackWetness, TrkLoc } from "../defines.js";
 import type { MockSnapshotValues } from "./telemetry.js";
 
 /** Create a 64-element array with default value, setting specific car values */
@@ -126,6 +126,7 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   AirTemp: 25.56,
   TrackTempCrew: 32.22,
   Skies: 1, // Partly Cloudy
+  TrackWetness: TrackWetness.Dry,
 };
 
 /**
@@ -157,6 +158,8 @@ export const SNAPSHOT_BRAKING: MockSnapshotValues = {
 
   P2P_Status: false,
   DRS_Status: 0,
+
+  TrackWetness: TrackWetness.VeryLightlyWet,
 };
 
 /**
@@ -198,6 +201,8 @@ export const SNAPSHOT_PIT_ENTRY: MockSnapshotValues = {
 
   P2P_Status: false,
   DRS_Status: 0,
+
+  TrackWetness: TrackWetness.ModeratelyWet,
 };
 
 /**
@@ -212,6 +217,7 @@ export const SNAPSHOT_YELLOW_FLAG: MockSnapshotValues = {
   Throttle: 0.4,
   P2P_Status: false,
   DRS_Status: 0,
+  TrackWetness: TrackWetness.VeryWet,
 };
 
 /**
@@ -224,6 +230,7 @@ export const SNAPSHOT_BLUE_FLAG: MockSnapshotValues = {
   SessionFlags: Flags.Green | Flags.Blue,
   PlayerCarPosition: 3,
   PlayerCarClassPosition: 3,
+  TrackWetness: TrackWetness.MostlyDry,
 };
 
 /**
@@ -240,6 +247,7 @@ export const SNAPSHOT_YELLOW_BLUE_FLAG: MockSnapshotValues = {
   PlayerCarClassPosition: 3,
   P2P_Status: false,
   DRS_Status: 0,
+  TrackWetness: TrackWetness.ExtremelyWet,
 };
 
 /**

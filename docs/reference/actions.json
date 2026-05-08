@@ -24,7 +24,12 @@
             { "value": "laps", "label": "Laps", "description": "Current lap number" },
             { "value": "position", "label": "Position", "description": "Race position, optionally shows total cars" },
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
-            { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" }
+            { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" },
+            {
+              "value": "track-wetness",
+              "label": "Track Wetness",
+              "description": "Track wetness state with a centered vertical 6-segment bar; the current state is the icon title"
+            }
           ]
         },
         {

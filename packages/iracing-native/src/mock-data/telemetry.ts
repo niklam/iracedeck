@@ -297,6 +297,14 @@ function buildVarHeaders(): VarHeader[] {
     { type: VarType.Float, count: 1, countAsTime: false, name: "AirTemp", desc: "Air temperature", unit: "C" },
     { type: VarType.Float, count: 1, countAsTime: false, name: "TrackTempCrew", desc: "Track temperature", unit: "C" },
     { type: VarType.Int, count: 1, countAsTime: false, name: "Skies", desc: "Sky condition", unit: "irsdk_Skies" },
+    {
+      type: VarType.Int,
+      count: 1,
+      countAsTime: false,
+      name: "TrackWetness",
+      desc: "Track wetness",
+      unit: "irsdk_TrackWetness",
+    },
   ];
 
   let offset = 0;

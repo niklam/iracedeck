@@ -22,6 +22,7 @@ import {
   type SessionInfo as IRacingSessionInfo,
   resolveActiveFlag,
   type TelemetryData,
+  TrackWetness,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -43,7 +44,9 @@ const UNLIMITED_LAPS = 32767;
 const LITERS_PER_GALLON = 3.78541;
 
 const SessionInfoSettings = CommonSettings.extend({
-  mode: z.enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags"]).default("incidents"),
+  mode: z
+    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"])
+    .default("incidents"),
   fontSize: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : val),
     z.coerce.number().min(5).max(36).optional(),
@@ -118,6 +121,81 @@ export function countActiveDrivers(sessionInfo: IRacingSessionInfo | null): numb
 }
 
 /**
+ * Lit-segment colors for the track-wetness bar (cyan → deep blue gradient across 6 states).
+ * Index 0 is the bottom-most segment (lit at MostlyDry), index 5 is the top (lit at ExtremelyWet).
+ * Dry shows zero lit segments. Semantic colors — fixed across platforms (see
+ * `.claude/rules/icons.md` "What stays fixed").
+ */
+const TRACK_WETNESS_SEGMENT_COLORS = [
+  "#a8e6f0", // MostlyDry
+  "#6dc9e3", // VeryLightlyWet
+  "#3b9bc4", // LightlyWet
+  "#1f7eb0", // ModeratelyWet
+  "#15639a", // VeryWet
+  "#0e4c80", // ExtremelyWet
+] as const;
+
+const TRACK_WETNESS_UNLIT_COLOR = "#3a3a3a";
+
+/**
+ * @internal Exported for testing
+ *
+ * Maps a TrackWetness enum value to a short upper-case label rendered as the
+ * action title at the bottom of the icon. Returns "--" for Unknown / undefined.
+ */
+export function trackWetnessLabel(state: TrackWetness | undefined): string {
+  switch (state) {
+    case TrackWetness.Dry:
+      return "DRY";
+    case TrackWetness.MostlyDry:
+      return "MOSTLY DRY";
+    case TrackWetness.VeryLightlyWet:
+      return "V. LIGHT";
+    case TrackWetness.LightlyWet:
+      return "LIGHT";
+    case TrackWetness.ModeratelyWet:
+      return "MODERATE";
+    case TrackWetness.VeryWet:
+      return "VERY WET";
+    case TrackWetness.ExtremelyWet:
+      return "EXTREME";
+    default:
+      return "--";
+  }
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Generates an inline SVG fragment showing a centered vertical 6-segment bar that
+ * fills cumulatively from the bottom using a cyan→deep-blue gradient. Dry and
+ * Unknown render zero lit segments; ExtremelyWet renders all six. The state label
+ * is rendered separately as the icon title (see `generateSessionInfoSvg`).
+ */
+export function generateTrackWetnessGraphic(state: TrackWetness | undefined): string {
+  // Dry → 0 lit, MostlyDry → 1, …, ExtremelyWet → 6.
+  const lit =
+    state !== undefined && state >= TrackWetness.MostlyDry && state <= TrackWetness.ExtremelyWet ? state - 1 : 0;
+
+  // Centered vertical 6-segment bar: 6 × 14 high + 5 × 3 gap = 99.
+  // Bottom at y=110, top at y=11; horizontally centered at x=72 with width=80 (x=32..112).
+  const segH = 14;
+  const gap = 3;
+  const barX = 32;
+  const barW = 80;
+  const barBottom = 110;
+  const segments: string[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    const y = barBottom - segH - i * (segH + gap);
+    const fill = i < lit ? TRACK_WETNESS_SEGMENT_COLORS[i] : TRACK_WETNESS_UNLIT_COLOR;
+    segments.push(`<rect x="${barX}" y="${y}" width="${barW}" height="${segH}" rx="2" fill="${fill}"/>`);
+  }
+
+  return segments.join("\n    ");
+}
+
+/**
  * @internal Exported for testing
  *
  * Generates an SVG data URI for the session info display.
@@ -127,6 +205,7 @@ export function generateSessionInfoSvg(
   value: string,
   isFlashing: boolean,
   colorOverride?: { background: string; text: string },
+  trackWetnessState?: TrackWetness,
 ): string {
   const titleLabels: Record<string, string> = {
     incidents: "INCIDENTS",
@@ -136,7 +215,12 @@ export function generateSessionInfoSvg(
     fuel: "FUEL",
     flags: "FLAGS",
   };
-  const actionDefaultTitle = titleLabels[settings.mode] ?? "INCIDENTS";
+  // Track-wetness uses the live state name as its title so the icon shows the
+  // current state in one line. All other modes use a fixed category label.
+  const actionDefaultTitle =
+    settings.mode === "track-wetness"
+      ? trackWetnessLabel(trackWetnessState)
+      : (titleLabels[settings.mode] ?? "INCIDENTS");
   const valueFontSizeNum = settings.fontSize !== undefined ? settings.fontSize * 2 : 28;
   const valueFontSize = String(valueFontSizeNum);
   const valueY = String(88 + (valueFontSizeNum - 44) / 3);
@@ -175,12 +259,19 @@ export function generateSessionInfoSvg(
   const border = resolveBorderSettings(sessionInfoTemplate, getGlobalBorderSettings(), settings.borderOverrides);
   const borderSvg = generateBorderParts(border);
 
+  const graphicContent = settings.mode === "track-wetness" ? generateTrackWetnessGraphic(trackWetnessState) : "";
+
+  // The graphic content carries its own label for track-wetness, so clear the value
+  // text slot to avoid drawing the label twice.
+  const valueText = settings.mode === "track-wetness" ? "" : value;
+
   const svg = renderIconTemplate(sessionInfoTemplate, {
     backgroundColor,
     titleContent,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
-    value,
+    graphicContent,
+    value: valueText,
     valueFontSize,
     valueY,
     textColor,
@@ -275,8 +366,9 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
 
     // Resolve flag colors for flags mode
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
+    const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
 
-    const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride);
+    const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride, trackWetnessState);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
 
@@ -296,6 +388,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
   }
 
   private extractDisplayValue(settings: SessionInfoSettings, telemetry: TelemetryData | null): string {
+    // Track wetness renders its label inside the graphic content. The label is still
+    // returned here so the state-key cache busts on state transitions; generateSessionInfoSvg
+    // clears the value text slot for this mode to avoid drawing it twice.
+    if (settings.mode === "track-wetness") {
+      return trackWetnessLabel(telemetry?.TrackWetness as TrackWetness | undefined);
+    }
+
     if (!telemetry) {
       if (settings.mode === "incidents") return "--";
 
@@ -495,12 +594,13 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     const value = this.extractDisplayValue(settings, telemetry);
     const isFlashing = this.flashStates.get(contextId) ?? false;
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
+    const trackWetnessState = telemetry?.TrackWetness as TrackWetness | undefined;
     const stateKey = this.buildStateKey(settings, value, isFlashing, colorOverride?.background);
     const lastStateKey = this.lastState.get(contextId);
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride);
+      const svgDataUri = generateSessionInfoSvg(settings, value, isFlashing, colorOverride, trackWetnessState);
       await this.updateKeyImage(contextId, svgDataUri);
     }
   }

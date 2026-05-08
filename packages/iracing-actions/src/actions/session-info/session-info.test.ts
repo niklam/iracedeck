@@ -1,4 +1,4 @@
-import { FLAG_DEFINITIONS, resolveActiveFlag } from "@iracedeck/iracing-sdk";
+import { FLAG_DEFINITIONS, resolveActiveFlag, TrackWetness } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,7 +6,9 @@ import {
   formatFuelAmount,
   formatSessionTime,
   generateSessionInfoSvg,
+  generateTrackWetnessGraphic,
   SessionInfo,
+  trackWetnessLabel,
 } from "./session-info.js";
 
 vi.mock("@iracedeck/iracing-sdk", async () => {
@@ -19,7 +21,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
       const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount", blankWhenNoFlag: false };
-      const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags"];
+      const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
         const merged: Record<string, unknown> = { ...defaults, ...data };
@@ -90,7 +92,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     textColor: "#ffffff",
   })),
   renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
-    return `<svg>${data.backgroundColor || ""}|${data.titleContent || ""}|<text font-size="${data.valueFontSize || ""}" y="${data.valueY || ""}" fill="${data.textColor || ""}">${data.value || ""}</text></svg>`;
+    return `<svg>${data.backgroundColor || ""}|${data.titleContent || ""}|${data.graphicContent || ""}|<text font-size="${data.valueFontSize || ""}" y="${data.valueY || ""}" fill="${data.textColor || ""}">${data.value || ""}</text></svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
@@ -98,7 +100,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Default settings factory for tests */
 function defaultSettings(
   overrides: Partial<{
-    mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags";
+    mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags" | "track-wetness";
     fontSize: number;
     positionShowTotal: boolean;
     fuelFormat: "amount" | "percentage";
@@ -568,6 +570,209 @@ describe("SessionInfo", () => {
       // Should use override color, not flash red
       expect(decoded).toContain("#2ecc71");
       expect(decoded).not.toContain("#e74c3c");
+    });
+
+    it("should use the live state name as the title for track-wetness mode", () => {
+      const dry = decodeURIComponent(
+        generateSessionInfoSvg(defaultSettings({ mode: "track-wetness" }), "DRY", false, undefined, TrackWetness.Dry),
+      );
+      const wet = decodeURIComponent(
+        generateSessionInfoSvg(
+          defaultSettings({ mode: "track-wetness" }),
+          "MOSTLY DRY",
+          false,
+          undefined,
+          TrackWetness.MostlyDry,
+        ),
+      );
+
+      expect(dry).toContain("DRY");
+      expect(dry).not.toContain("WETNESS");
+      expect(wet).toContain("MOSTLY DRY");
+    });
+
+    it("should leave the value text slot empty for track-wetness", () => {
+      const result = generateSessionInfoSvg(
+        defaultSettings({ mode: "track-wetness" }),
+        "MOSTLY DRY",
+        false,
+        undefined,
+        TrackWetness.MostlyDry,
+      );
+      const decoded = decodeURIComponent(result);
+
+      // Title (from generateTitleText mock) is the only place the state label appears.
+      const matches = decoded.match(/MOSTLY DRY/g) ?? [];
+
+      expect(matches.length).toBe(1);
+      // Value-slot <text> exists but is empty between > and </text>.
+      expect(decoded).toMatch(/y="\d[\d.]*"[^>]*>(<\/text>|\s*<\/text>)/);
+    });
+
+    it("should include bar segments in the graphicContent for track-wetness", () => {
+      const result = generateSessionInfoSvg(
+        defaultSettings({ mode: "track-wetness" }),
+        "DRY",
+        false,
+        undefined,
+        TrackWetness.Dry,
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("<rect");
+    });
+
+    it("should not include any graphicContent for non-track-wetness modes", () => {
+      const result = generateSessionInfoSvg(defaultSettings({ mode: "incidents" }), "3x", false);
+      const decoded = decodeURIComponent(result);
+
+      // No bar rects in incidents mode (border rects are stripped by the mock)
+      expect(decoded).not.toContain("<rect");
+    });
+  });
+
+  describe("trackWetnessLabel", () => {
+    it("returns '--' for Unknown", () => {
+      expect(trackWetnessLabel(TrackWetness.Unknown)).toBe("--");
+    });
+
+    it("returns '--' for undefined", () => {
+      expect(trackWetnessLabel(undefined)).toBe("--");
+    });
+
+    it("returns 'DRY' for Dry", () => {
+      expect(trackWetnessLabel(TrackWetness.Dry)).toBe("DRY");
+    });
+
+    it("returns 'MOSTLY DRY' for MostlyDry", () => {
+      expect(trackWetnessLabel(TrackWetness.MostlyDry)).toBe("MOSTLY DRY");
+    });
+
+    it("returns 'V. LIGHT' for VeryLightlyWet", () => {
+      expect(trackWetnessLabel(TrackWetness.VeryLightlyWet)).toBe("V. LIGHT");
+    });
+
+    it("returns 'LIGHT' for LightlyWet", () => {
+      expect(trackWetnessLabel(TrackWetness.LightlyWet)).toBe("LIGHT");
+    });
+
+    it("returns 'MODERATE' for ModeratelyWet", () => {
+      expect(trackWetnessLabel(TrackWetness.ModeratelyWet)).toBe("MODERATE");
+    });
+
+    it("returns 'VERY WET' for VeryWet", () => {
+      expect(trackWetnessLabel(TrackWetness.VeryWet)).toBe("VERY WET");
+    });
+
+    it("returns 'EXTREME' for ExtremelyWet", () => {
+      expect(trackWetnessLabel(TrackWetness.ExtremelyWet)).toBe("EXTREME");
+    });
+  });
+
+  describe("generateTrackWetnessGraphic", () => {
+    const LIT_COLORS = ["#a8e6f0", "#6dc9e3", "#3b9bc4", "#1f7eb0", "#15639a", "#0e4c80"];
+
+    function countSegmentRects(svg: string): { lit: number; total: number } {
+      const rectMatches = svg.match(/<rect[^/]*\/>/g) ?? [];
+      const lit = rectMatches.filter((rect) => LIT_COLORS.some((c) => rect.includes(c))).length;
+
+      return { lit, total: rectMatches.length };
+    }
+
+    it("renders 6 segments total regardless of state", () => {
+      for (const state of [
+        TrackWetness.Unknown,
+        TrackWetness.Dry,
+        TrackWetness.MostlyDry,
+        TrackWetness.VeryLightlyWet,
+        TrackWetness.LightlyWet,
+        TrackWetness.ModeratelyWet,
+        TrackWetness.VeryWet,
+        TrackWetness.ExtremelyWet,
+      ]) {
+        const svg = generateTrackWetnessGraphic(state);
+        const counts = countSegmentRects(svg);
+
+        expect(counts.total).toBe(6);
+      }
+    });
+
+    it("lights 0 segments for Unknown", () => {
+      expect(countSegmentRects(generateTrackWetnessGraphic(TrackWetness.Unknown)).lit).toBe(0);
+    });
+
+    it("lights 0 segments for undefined", () => {
+      expect(countSegmentRects(generateTrackWetnessGraphic(undefined)).lit).toBe(0);
+    });
+
+    it("lights 0 segments for Dry", () => {
+      expect(countSegmentRects(generateTrackWetnessGraphic(TrackWetness.Dry)).lit).toBe(0);
+    });
+
+    it("lights segments according to state (MostlyDry=1 … ExtremelyWet=6)", () => {
+      const cases: Array<[TrackWetness, number]> = [
+        [TrackWetness.MostlyDry, 1],
+        [TrackWetness.VeryLightlyWet, 2],
+        [TrackWetness.LightlyWet, 3],
+        [TrackWetness.ModeratelyWet, 4],
+        [TrackWetness.VeryWet, 5],
+        [TrackWetness.ExtremelyWet, 6],
+      ];
+
+      for (const [state, expectedLit] of cases) {
+        const svg = generateTrackWetnessGraphic(state);
+
+        expect(countSegmentRects(svg).lit).toBe(expectedLit);
+      }
+    });
+
+    it("uses the unlit color for all segments when state is Unknown or Dry", () => {
+      for (const state of [TrackWetness.Unknown, TrackWetness.Dry]) {
+        const svg = generateTrackWetnessGraphic(state);
+
+        for (const c of LIT_COLORS) expect(svg).not.toContain(c);
+
+        expect(svg).toContain("#3a3a3a");
+      }
+    });
+
+    it("does not render any text inside the graphic (the title carries the state name)", () => {
+      const svg = generateTrackWetnessGraphic(TrackWetness.MostlyDry);
+
+      expect(svg).not.toContain("<text");
+    });
+  });
+
+  describe("track-wetness mode display value", () => {
+    it("returns 'DRY' label when telemetry reports Dry", () => {
+      const action = new SessionInfo();
+      const settings = defaultSettings({ mode: "track-wetness" });
+      const telemetry = { TrackWetness: TrackWetness.Dry } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("DRY");
+    });
+
+    it("returns 'EXTREME' label when telemetry reports ExtremelyWet", () => {
+      const action = new SessionInfo();
+      const settings = defaultSettings({ mode: "track-wetness" });
+      const telemetry = { TrackWetness: TrackWetness.ExtremelyWet } as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("EXTREME");
+    });
+
+    it("returns '--' label when telemetry is null", () => {
+      const action = new SessionInfo();
+      const settings = defaultSettings({ mode: "track-wetness" });
+
+      expect(action["extractDisplayValue"](settings as any, null)).toBe("--");
+    });
+
+    it("returns '--' label when TrackWetness is missing from telemetry", () => {
+      const action = new SessionInfo();
+      const settings = defaultSettings({ mode: "track-wetness" });
+      const telemetry = {} as any;
+
+      expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("--");
     });
   });
 
