@@ -276,6 +276,7 @@ beforeEach(() => {
     () => null,
     (id) => damageEnabled.get(id) ?? true,
     undefined,
+    undefined,
     () => voiceMasterEnabled,
   );
 });

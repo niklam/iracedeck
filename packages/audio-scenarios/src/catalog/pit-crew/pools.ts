@@ -101,4 +101,20 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "pit-status-too-far-back": ["voice/{voice}/pit-status/too-far-back-01.mp3"],
   "pit-status-bad-angle": ["voice/{voice}/pit-status/bad-angle-01.mp3"],
   "pit-status-cant-fix-that": ["voice/{voice}/pit-status/cant-fix-that-01.mp3"],
+
+  // Track-conditions callout pools (issue #526). One pool per
+  // (direction, target-state) combination — six worsening + six drying.
+  // Single-clip today; future variants append cleanly here.
+  "track-conditions-worsening-mostly-dry": ["voice/{voice}/track-conditions/worsening-mostly-dry-01.mp3"],
+  "track-conditions-worsening-very-lightly-wet": ["voice/{voice}/track-conditions/worsening-very-lightly-wet-01.mp3"],
+  "track-conditions-worsening-lightly-wet": ["voice/{voice}/track-conditions/worsening-lightly-wet-01.mp3"],
+  "track-conditions-worsening-moderately-wet": ["voice/{voice}/track-conditions/worsening-moderately-wet-01.mp3"],
+  "track-conditions-worsening-very-wet": ["voice/{voice}/track-conditions/worsening-very-wet-01.mp3"],
+  "track-conditions-worsening-extremely-wet": ["voice/{voice}/track-conditions/worsening-extremely-wet-01.mp3"],
+  "track-conditions-drying-dry": ["voice/{voice}/track-conditions/drying-dry-01.mp3"],
+  "track-conditions-drying-mostly-dry": ["voice/{voice}/track-conditions/drying-mostly-dry-01.mp3"],
+  "track-conditions-drying-very-lightly-wet": ["voice/{voice}/track-conditions/drying-very-lightly-wet-01.mp3"],
+  "track-conditions-drying-lightly-wet": ["voice/{voice}/track-conditions/drying-lightly-wet-01.mp3"],
+  "track-conditions-drying-moderately-wet": ["voice/{voice}/track-conditions/drying-moderately-wet-01.mp3"],
+  "track-conditions-drying-very-wet": ["voice/{voice}/track-conditions/drying-very-wet-01.mp3"],
 };

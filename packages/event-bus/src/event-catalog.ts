@@ -50,6 +50,24 @@ export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
 export type FlagScope = "local" | "full";
 
 /**
+ * Canonical track-wetness state (issue #526). Mirrors iRacing's
+ * `irsdk_TrackWetness` enum but lives here on the sim-agnostic bus so future
+ * adapters (AC, ACC, …) can map their own concepts onto the same shape.
+ * `Unknown` represents the period before the sim has reported a state — events
+ * never fire for transitions involving it.
+ */
+export enum TrackWetness {
+  Unknown = 0,
+  Dry = 1,
+  MostlyDry = 2,
+  VeryLightlyWet = 3,
+  LightlyWet = 4,
+  ModeratelyWet = 5,
+  VeryWet = 6,
+  ExtremelyWet = 7,
+}
+
+/**
  * Pit-service readback snapshot — the queued-services view the readback
  * scenarios speak to (issue #476). Lives next to the catalog because it's
  * shared between the sim translator (which builds it from current
@@ -184,6 +202,13 @@ export type SimEventMap = {
   // ── Value-change events (§6.2) — emit new state when derived value changes
   "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;
   "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", { threshold: number; laps: number }>;
+  /**
+   * Track-wetness state changed (issue #526). Emitted on every step change in
+   * the sim's track-wetness state. `from`/`to` carry the canonical
+   * {@link TrackWetness} enum values. The translator suppresses transitions
+   * involving `Unknown` (Unknown ↔ x) so subscribers only see real changes.
+   */
+  "track.wetness.changed": SimEvent<"track.wetness.changed", { from: TrackWetness; to: TrackWetness }>;
 };
 
 /** All event names the catalog supports. */

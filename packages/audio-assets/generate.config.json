@@ -649,6 +649,68 @@
         "seed": 2
       }
     ],
+    "track-conditions": [
+      {
+        "name": "worsening-mostly-dry-01",
+        "text": "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dry, there might still be small puddles.",
+        "seed": 5
+      },
+      {
+        "name": "worsening-very-lightly-wet-01",
+        "text": "There's a bit of moisture, watch for slick spots.",
+        "seed": 6
+      },
+      {
+        "name": "worsening-lightly-wet-01",
+        "text": "It's wetting up. <break time=\"0.3s\" /> Light wetness on the track now.",
+        "seed": 2
+      },
+      {
+        "name": "worsening-moderately-wet-01",
+        "text": "Conditions are getting worse. <break time=\"0.3s\" /> The track is wet.",
+        "seed": 4
+      },
+      {
+        "name": "worsening-very-wet-01",
+        "text": "It's getting really wet out there. <break time=\"0.3s\" /> Very wet conditions, be careful.",
+        "seed": 7
+      },
+      {
+        "name": "worsening-extremely-wet-01",
+        "text": "It's pouring. <break time=\"0.3s\" /> The track is water logged, you might need a boat instead.",
+        "seed": 4
+      },
+      {
+        "name": "drying-dry-01",
+        "text": "Track is fully dry now. <break time=\"0.3s\" /> Conditions are good.",
+        "seed": 4
+      },
+      {
+        "name": "drying-mostly-dry-01",
+        "text": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, just a few damp spots.",
+        "seed": 2
+      },
+      {
+        "name": "drying-very-lightly-wet-01",
+        "text": "Conditions are improving. <break time=\"0.3s\" /> Track is just very lightly wet.",
+        "seed": 5
+      },
+      {
+        "name": "drying-lightly-wet-01",
+        "text": "Track is drying. <break time=\"0.3s\" /> Light wetness now.",
+        "seed": 3
+      },
+      {
+        "name": "drying-moderately-wet-01",
+        "text": "It's drying out, but the track is still wet.",
+        "seed": 3
+      },
+      {
+        "name": "drying-very-wet-01",
+        "text": "Conditions are improving slightly. <break time=\"0.3s\" /> Still very wet though, be careful.",
+        "seed": 4
+      }
+    ],
     "names": [
       {
         "name": "adam",

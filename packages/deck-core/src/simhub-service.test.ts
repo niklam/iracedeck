@@ -74,6 +74,7 @@ describe("SimHub Service", () => {
       calloutEnabledPitStatusTooFarBack: true,
       calloutEnabledPitStatusBadAngle: true,
       calloutEnabledPitStatusCantFixThat: true,
+      calloutEnabledTrackWetness: true,
       flagFlashDurationSeconds: 15,
     });
   });
@@ -198,6 +199,7 @@ describe("SimHub Service", () => {
         calloutEnabledPitStatusTooFarBack: true,
         calloutEnabledPitStatusBadAngle: true,
         calloutEnabledPitStatusCantFixThat: true,
+        calloutEnabledTrackWetness: true,
         flagFlashDurationSeconds: 15,
       });
 

@@ -3144,6 +3144,102 @@
       "textPreview": "We can't fix this car... We're gonna have to retire.",
       "generatedAt": "2026-05-05T15:24:49.912Z",
       "requestId": "Ijd2Ij9pNoiaKySaMvuk"
+    },
+    "voice/luca/track-conditions/worsening-mostly-dry-01.mp3": {
+      "hash": "9f268ad209d50758",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dr…",
+      "generatedAt": "2026-05-09T08:08:55.132Z",
+      "requestId": "dBvjFfukHrYBJPziHyzH"
+    },
+    "voice/luca/track-conditions/worsening-very-lightly-wet-01.mp3": {
+      "hash": "bcd389f2da6ad40e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "There's a bit of moisture, watch for slick spots.",
+      "generatedAt": "2026-05-09T08:09:45.108Z",
+      "requestId": "91lHvhTh0W6m9KDailHI"
+    },
+    "voice/luca/track-conditions/worsening-lightly-wet-01.mp3": {
+      "hash": "6ba45ff6b138f727",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "It's wetting up. <break time=\"0.3s\" /> Light wetness on the track now.",
+      "generatedAt": "2026-05-08T16:18:55.153Z",
+      "requestId": "42BCRdRNTAniJzU9kSum"
+    },
+    "voice/luca/track-conditions/worsening-moderately-wet-01.mp3": {
+      "hash": "5192a3c07917d913",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Conditions are getting worse. <break time=\"0.3s\" /> The track is wet.",
+      "generatedAt": "2026-05-09T08:08:07.703Z",
+      "requestId": "2e8XMoYMKzgFSAV4nsSt"
+    },
+    "voice/luca/track-conditions/worsening-very-wet-01.mp3": {
+      "hash": "22a63d9e47dd79b4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "It's getting really wet out there. <break time=\"0.3s\" /> Very wet conditions, b…",
+      "generatedAt": "2026-05-08T16:18:55.771Z",
+      "requestId": "8qhpRMNeKMyJbfUYlREy"
+    },
+    "voice/luca/track-conditions/worsening-extremely-wet-01.mp3": {
+      "hash": "4b30b55f5258d6ed",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "It's pouring. <break time=\"0.3s\" /> The track is water logged, you might need a…",
+      "generatedAt": "2026-05-09T08:08:08.063Z",
+      "requestId": "fbqOmu6vnsfU34mgQxJO"
+    },
+    "voice/luca/track-conditions/drying-dry-01.mp3": {
+      "hash": "05663a130b78f7bf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Track is fully dry now. <break time=\"0.3s\" /> Conditions are good.",
+      "generatedAt": "2026-05-08T16:18:56.365Z",
+      "requestId": "PV4FFT2aMaBsZcsmlP2V"
+    },
+    "voice/luca/track-conditions/drying-mostly-dry-01.mp3": {
+      "hash": "6639b2c359c09579",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, just a few damp spots.",
+      "generatedAt": "2026-05-08T16:18:56.701Z",
+      "requestId": "y8pfgoLPyHlpoI9R0yMD"
+    },
+    "voice/luca/track-conditions/drying-very-lightly-wet-01.mp3": {
+      "hash": "f506cb2ff885da50",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Conditions are improving. <break time=\"0.3s\" /> Track is just very lightly wet.",
+      "generatedAt": "2026-05-08T16:18:57.039Z",
+      "requestId": "VPEo8AOOiocQ8EPETSaF"
+    },
+    "voice/luca/track-conditions/drying-lightly-wet-01.mp3": {
+      "hash": "08775ae3fbc894da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Track is drying. <break time=\"0.3s\" /> Light wetness now.",
+      "generatedAt": "2026-05-08T16:18:57.323Z",
+      "requestId": "iZc2JQsgIIQvYuzF0f6X"
+    },
+    "voice/luca/track-conditions/drying-moderately-wet-01.mp3": {
+      "hash": "d33e83fc34875150",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "It's drying out, but the track is still wet.",
+      "generatedAt": "2026-05-09T08:11:46.980Z",
+      "requestId": "0FQpzfNGMh0ZMSPuDipb"
+    },
+    "voice/luca/track-conditions/drying-very-wet-01.mp3": {
+      "hash": "bc14b82b2b2f6dd5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Conditions are improving slightly. <break time=\"0.3s\" /> Still very wet though,…",
+      "generatedAt": "2026-05-09T08:10:29.028Z",
+      "requestId": "MnvchUClBaSqMKEWDynf"
     }
   }
 }
