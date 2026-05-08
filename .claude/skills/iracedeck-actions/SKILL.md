@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-The website currently documents **31 actions with 258 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
+The website currently documents **31 actions with 259 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -37,7 +37,7 @@ When asked about actions or controls:
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| Display & Session | 2 | 7 | Live session data: incidents, laps, position, fuel, flags |
+| Display & Session | 2 | 8 | Live session data: incidents, laps, position, fuel, flags, track wetness |
 | Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
@@ -45,7 +45,7 @@ When asked about actions or controls:
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **258** | |
+| **Total** | **31** | **259** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -55,7 +55,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Session Info | 6 | incidents, time-remaining, laps, position, fuel, flags |
+| Session Info | 7 | incidents, time-remaining, laps, position, fuel, flags, track-wetness |
 | Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown) |
 
 ### Driving Controls

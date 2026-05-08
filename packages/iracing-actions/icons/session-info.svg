@@ -6,10 +6,13 @@
     <rect x="0" y="0" width="144" height="144" rx="24" fill="{{backgroundColor}}"/>
 {{borderContent}}
 
+    <!-- Optional mode-specific graphic (e.g., track wetness drop + bar). Empty for text modes. -->
+    {{graphicContent}}
+
     <!-- Title label (position and style controlled by title settings) -->
     {{titleContent}}
 
-    <!-- Large centered value -->
+    <!-- Large centered value (empty when graphicContent carries the display) -->
     <text x="72" y="{{valueY}}" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="{{valueFontSize}}" font-weight="bold">{{value}}</text>
   </g>

@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, fuel, and flags.
+description: Display live session information — incidents, time, laps, position, fuel, flags, and track wetness.
 sidebar:
   badge:
-    text: "6 modes"
+    text: "7 modes"
     variant: tip
 ---
 
@@ -120,3 +120,30 @@ Display currently active flags with the corresponding colors and a pulsing anima
 #### Setting: Font Size
 
 Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+---
+
+### Track Wetness
+
+Show the current track-wetness state with a centered vertical 6-segment bar that fills cumulatively as the track gets wetter using a cyan→deep-blue gradient. The current state name is rendered as the icon title. Maps to iRacing's `irsdk_TrackWetness` telemetry.
+
+| State | Bar | Title |
+|-------|-----|-------|
+| Unknown | empty | `--` |
+| Dry | empty | `DRY` |
+| Mostly Dry | 1 segment | `MOSTLY DRY` |
+| Very Lightly Wet | 2 segments | `V. LIGHT` |
+| Lightly Wet | 3 segments | `LIGHT` |
+| Moderately Wet | 4 segments | `MODERATE` |
+| Very Wet | 5 segments | `VERY WET` |
+| Extremely Wet | 6 segments | `EXTREME` |
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the bar and label update live as track conditions shift through the eight states
+
+#### Settings
+
+- No additional settings. The Font Size slider does not apply (the graphic carries its own label).
