@@ -12,19 +12,24 @@ export type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: b
 
 /**
  * Telemetry poll interval in milliseconds. iRacing writes shared memory at
- * ~60 Hz; we poll slightly faster (~70 Hz, 14 ms) and dedupe by
- * `SessionTick` so subscribers see exactly one notification per real
- * iRacing frame — never a duplicate, never a drop. Polling at
- * `Math.round(1000 / 60) = 17 ms` would drift slightly slower than 60 Hz
- * and silently miss ~1.6 frames per second; the small extra poll work
- * here is cheap because the dedupe short-circuits before any subscriber
- * callback or template-context rebuild fires.
+ * ~60 Hz (16.67 ms); we poll at 100 Hz (10 ms) and dedupe by `SessionTick`
+ * so subscribers see exactly one notification per real iRacing frame —
+ * never a duplicate, never a drop.
+ *
+ * The original ~70 Hz target (14 ms) was theoretically enough to catch
+ * every iRacing frame, but `setInterval` drift on Windows under load left
+ * gaps where our poll could land before iRacing's next write — surfaced
+ * by the frame-miss telemetry as steady "Missed 1 iRacing frame" entries.
+ * 10 ms gives ~6 ms of headroom per iRacing frame, well above the typical
+ * scheduler jitter, and the extra poll work is cheap because the dedupe
+ * short-circuits before any subscriber callback or template-context
+ * rebuild fires.
  *
  * Sub-100 ms features (sector timing, precise pit/lap edges, transient
  * `PlayerIncidents` flag detection) all depend on this cadence — see
  * issue #493.
  */
-export const TELEMETRY_INTERVAL_MS = 14;
+export const TELEMETRY_INTERVAL_MS = 10;
 
 export class SDKController {
   private readonly sdk: IRacingSDK;

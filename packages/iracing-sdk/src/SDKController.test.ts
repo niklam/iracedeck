@@ -36,13 +36,14 @@ describe("SDKController", () => {
   });
 
   describe("TELEMETRY_INTERVAL_MS", () => {
-    it("polls slightly faster than iRacing's 60 Hz to never miss a frame", () => {
+    it("polls at 100 Hz with enough headroom to absorb setInterval drift", () => {
       // Pinned literally so any future drift surfaces visibly. We poll at
-      // ~70 Hz (14 ms) and dedupe by SessionTick — see issue #493 and the
-      // module-level docstring on TELEMETRY_INTERVAL_MS for the rationale.
-      expect(TELEMETRY_INTERVAL_MS).toBe(14);
+      // 100 Hz (10 ms) — see the module-level docstring on
+      // TELEMETRY_INTERVAL_MS for the rationale (issue #493 follow-up).
+      expect(TELEMETRY_INTERVAL_MS).toBe(10);
       // Sanity: must be strictly faster than iRacing's 60 Hz write rate
-      // (16.67 ms) for the dedupe approach to never miss a frame.
+      // (16.67 ms) for the dedupe approach to never miss a frame, with
+      // enough headroom to absorb Windows scheduler jitter under load.
       expect(TELEMETRY_INTERVAL_MS).toBeLessThan(1000 / 60);
     });
   });

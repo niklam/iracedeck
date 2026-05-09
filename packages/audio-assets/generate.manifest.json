@@ -3240,6 +3240,166 @@
       "textPreview": "Conditions are improving slightly. <break time=\"0.3s\" /> Still very wet though,…",
       "generatedAt": "2026-05-09T08:10:29.028Z",
       "requestId": "MnvchUClBaSqMKEWDynf"
+    },
+    "voice/luca/incidents/off-track-01.mp3": {
+      "hash": "dd306ff96be92c77",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Mind the track limits.",
+      "generatedAt": "2026-05-09T10:05:32.806Z",
+      "requestId": "Qb8YzaNOUMmVv8Z9T4PM"
+    },
+    "voice/luca/incidents/off-track-02.mp3": {
+      "hash": "1e0195fb9c4934d6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Try to stay between the white lines.",
+      "generatedAt": "2026-05-09T10:05:33.091Z",
+      "requestId": "NhjMU0QY8tYZ88ISjWL7"
+    },
+    "voice/luca/incidents/out-of-control-01.mp3": {
+      "hash": "ca4050e3e644565b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Easy on the car.",
+      "generatedAt": "2026-05-09T10:05:33.283Z",
+      "requestId": "YIrROEOX4dRuvkyRIzxq"
+    },
+    "voice/luca/incidents/out-of-control-02.mp3": {
+      "hash": "835942238ee79e00",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Get it back together.",
+      "generatedAt": "2026-05-09T10:05:33.481Z",
+      "requestId": "B2pejkvM9rX6sRe7LSLv"
+    },
+    "voice/luca/incidents/contact-world-01.mp3": {
+      "hash": "eedcd224b203cb90",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "A bit of rubbing on the wall there. <break time=\"0.3s\" /> No points.",
+      "generatedAt": "2026-05-09T10:05:33.779Z",
+      "requestId": "1C0lOauClUGXwNbcLNEg"
+    },
+    "voice/luca/incidents/contact-world-02.mp3": {
+      "hash": "8539da54cca352cb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Just a touch on the wall. <break time=\"0.3s\" /> We're clean.",
+      "generatedAt": "2026-05-09T10:05:34.072Z",
+      "requestId": "8h0aGLQn1CScDFceXDmb"
+    },
+    "voice/luca/incidents/contact-car-01.mp3": {
+      "hash": "a61f909ea934848b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Some rubbing with the other car. <break time=\"0.3s\" /> No points.",
+      "generatedAt": "2026-05-09T10:05:34.381Z",
+      "requestId": "6xEgTpVQv9AQM0kMx5VQ"
+    },
+    "voice/luca/incidents/contact-car-02.mp3": {
+      "hash": "da1e89380c94c6ff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Light contact with the other car. <break time=\"0.3s\" /> That's fine.",
+      "generatedAt": "2026-05-09T10:05:34.677Z",
+      "requestId": "WMyRFN313afxoxlJJiqJ"
+    },
+    "voice/luca/incidents/collision-world-01.mp3": {
+      "hash": "33bc9feb9df7b4c5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "That hit on the wall cost us two penalty points.",
+      "generatedAt": "2026-05-09T17:07:38.401Z",
+      "requestId": "vTAn1iTVInoMUTEESB2a"
+    },
+    "voice/luca/incidents/collision-car-01.mp3": {
+      "hash": "fdadc6b6824f7564",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "That collision with the other car cost us four penalty points.",
+      "generatedAt": "2026-05-09T17:07:39.258Z",
+      "requestId": "ehF05BMdEdebgHF8be34"
+    },
+    "voice/luca/incidents/penalty-2x-01.mp3": {
+      "hash": "492dedf5bee01345",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "of two points.",
+      "generatedAt": "2026-05-09T10:05:35.487Z",
+      "requestId": "7bObXAS3iXVoLtoZ2Mye"
+    },
+    "voice/luca/incidents/penalty-4x-01.mp3": {
+      "hash": "a3bc1bfe6a3d305f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "of four points.",
+      "generatedAt": "2026-05-09T10:05:35.706Z",
+      "requestId": "EZvdJ3fYZ4TnHMG09nLi"
+    },
+    "voice/luca/incidents/off-track-03.mp3": {
+      "hash": "b129dc2e9e4cb8d1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Watch the kerbs out there.",
+      "generatedAt": "2026-05-09T17:07:37.345Z",
+      "requestId": "7oevoO7Xpqbnpo6Lt6Uu"
+    },
+    "voice/luca/incidents/out-of-control-03.mp3": {
+      "hash": "6eee76faf64789de",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Reset, find your rhythm.",
+      "generatedAt": "2026-05-09T17:07:37.530Z",
+      "requestId": "poGJ8b0NThFkstv1oHDr"
+    },
+    "voice/luca/incidents/contact-world-03.mp3": {
+      "hash": "917a06026bffecfa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Quick kiss with the wall. <break time=\"0.3s\" /> No penalty.",
+      "generatedAt": "2026-05-09T17:07:37.827Z",
+      "requestId": "YpQap5kMqjX2LGhycRfG"
+    },
+    "voice/luca/incidents/contact-car-03.mp3": {
+      "hash": "a613491e1e6f2c3f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Door-to-door but clean. <break time=\"0.3s\" /> No penalty.",
+      "generatedAt": "2026-05-09T17:07:38.106Z",
+      "requestId": "yGHV5tncPo0e9bDOP9n1"
+    },
+    "voice/luca/incidents/collision-world-02.mp3": {
+      "hash": "6a6cc8fb08950a42",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "We just received a two point penalty for that crash.",
+      "generatedAt": "2026-05-09T17:07:38.691Z",
+      "requestId": "nBiS1JL6Tns931wGYE6T"
+    },
+    "voice/luca/incidents/collision-world-03.mp3": {
+      "hash": "649f356e01fd5e3a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Two points for catching the wall.",
+      "generatedAt": "2026-05-09T17:07:38.962Z",
+      "requestId": "A4tuFOxCT18Z90vClw5D"
+    },
+    "voice/luca/incidents/collision-car-02.mp3": {
+      "hash": "c1c8567d5b6c45e8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "We just received a four point penalty for that crash.",
+      "generatedAt": "2026-05-09T17:07:39.549Z",
+      "requestId": "YBLl3q6VJrtPWZ6CX2DO"
+    },
+    "voice/luca/incidents/collision-car-03.mp3": {
+      "hash": "7ac3716f8a27b84e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2",
+      "textPreview": "Four points for hitting the other car.",
+      "generatedAt": "2026-05-09T17:07:40.008Z",
+      "requestId": "yKJazWgmSZLSJmm3Rn30"
     }
   }
 }
