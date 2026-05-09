@@ -6,7 +6,7 @@
  * Initial state uses sentinel values (negative / null / empty sets) so the
  * first tick after connect seeds without firing spurious transition events.
  */
-import { type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import { type IncidentType, type RadarState, TrackWetness } from "@iracedeck/event-bus";
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -109,6 +109,29 @@ export type TranslatorState = {
   offTrackWarnedThisExcursion: boolean;
   materialHistory: MaterialSample[];
   offTrackPending: boolean; // true between offTrack.started and offTrack.ended
+  // Latch for the transient `PlayerIncidents` byte (issue #530). iRacing
+  // sets the IncidentFlags byte for ~one 16 ms tick then clears it, BEFORE
+  // PlayerCarMyIncidentCount visibly increments (~32 ms / 2 frames later).
+  // The diff caches the most recent classified type and consumes it when
+  // the count delta arrives. Stale entries are rejected via timestamp;
+  // `pendingIncidentTypeAt` is 0 when no type is pending.
+  pendingIncidentType: IncidentType | null;
+  pendingIncidentTypeAt: number; // 0 = no pending; >0 = ms timestamp captured at
+  // Burst-coalesce buffer (issue #530). A single physical incident in
+  // iRacing (one crash) often arrives as a stream of count increments
+  // over ~hundreds of ms — e.g. off-track (1x) → out-of-control (2x) →
+  // collision-with-car (4x). Without coalescing, each step fires a
+  // separate callout and the engineer talks over himself. We hold the
+  // most recent classification + accumulated delta in a buffer and only
+  // emit once `INCIDENT_BURST_QUIET_MS` has passed without a new
+  // increment, or once `INCIDENT_BURST_MAX_MS` has passed since the
+  // first increment in the burst (hard cap so a sustained roll can't
+  // delay the announcement indefinitely). `incidentBurstFirstAt` is 0
+  // when no burst is pending.
+  incidentBurstType: IncidentType | null;
+  incidentBurstDelta: number;
+  incidentBurstFirstAt: number; // 0 = no pending burst; >0 = ms timestamp of first increment
+  incidentBurstLatestAt: number; // ms timestamp of most recent increment in this burst
 
   // ── Damage (issue #489) ─────────────────────────────────────────────────
   // Rising-edge detection for `EngineWarnings & (MandRepNeeded | OptRepNeeded)`
@@ -193,6 +216,12 @@ export function createInitialState(): TranslatorState {
     offTrackWarnedThisExcursion: false,
     materialHistory: [],
     offTrackPending: false,
+    pendingIncidentType: null,
+    pendingIncidentTypeAt: 0,
+    incidentBurstType: null,
+    incidentBurstDelta: 0,
+    incidentBurstFirstAt: 0,
+    incidentBurstLatestAt: 0,
 
     damageInitialized: false,
     damageBaseline: false,

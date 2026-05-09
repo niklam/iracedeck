@@ -11,6 +11,7 @@ import {
   CarLeftRight,
   EngineWarnings,
   Flags,
+  IncidentFlags,
   PitSvFlags,
   type SDKController,
   type TelemetryCallback,
@@ -82,6 +83,7 @@ function telemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
     PlayerTrackSurface: TrkLoc.OnTrack,
     PlayerTrackSurfaceMaterial: 0,
     PlayerCarMyIncidentCount: 0,
+    PlayerIncidents: 0,
     SessionFlags: 0,
     SessionNum: 0,
     PitSvFlags: 0,
@@ -861,6 +863,7 @@ describe("sim-events-iracing translator", () => {
     });
 
     it("emits incident.occurred when PlayerCarMyIncidentCount increments", () => {
+      vi.useFakeTimers();
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -869,27 +872,98 @@ describe("sim-events-iracing translator", () => {
 
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
-      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
 
+      // Burst-coalesce window: nothing fires until the quiet window elapses.
+      expect(handler).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1500);
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    it("forwards the incident delta in the event payload", () => {
+    it("coalesces a multi-step incident burst into a single emission with the most-recent type", () => {
+      vi.useFakeTimers();
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("incident.occurred", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      // 0 → 1 (1x track limits) then 1 → 5 (4x spin/contact). Consumers
-      // filter on delta to pick which audio scenario to play.
+      // A typical iRacing crash arrives as a stream of count increments
+      // over a few hundred ms. Without coalescing each step would fire
+      // its own callout — three lines on top of each other.
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      // off-track first (1x)
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
+      vi.advanceTimersByTime(200);
+      // out-of-control (2x more) shortly after
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 3, PlayerIncidents: IncidentFlags.RepOutOfControl }));
+      vi.advanceTimersByTime(200);
+      // car collision (4x more) lands the worst classification last
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 7, PlayerIncidents: IncidentFlags.RepCollisionWithCar }));
+
+      // Still inside the burst window — no emit yet.
+      expect(handler).not.toHaveBeenCalled();
+
+      // Quiet window elapses; one emit with the accumulated delta and the
+      // most recent type.
+      vi.advanceTimersByTime(1500);
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 7 }));
+      expect(handler).toHaveBeenCalledTimes(1);
+      const data = (handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data;
+      expect(data.delta).toBe(7);
+      expect(data.type).toBe("collision-car");
+    });
+
+    it("treats two incidents separated by more than the quiet window as separate emissions", () => {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("incident.occurred", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: IncidentFlags.RepOffTrack }));
+      // Quiet window elapses → first burst flushes.
+      vi.advanceTimersByTime(1600);
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1 }));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Second incident much later — second burst.
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 5, PlayerIncidents: IncidentFlags.RepCollisionWithCar }));
+      vi.advanceTimersByTime(1600);
       controller.__tick(telemetry({ PlayerCarMyIncidentCount: 5 }));
 
       expect(handler).toHaveBeenCalledTimes(2);
-      expect((handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data.delta).toBe(1);
-      expect((handler.mock.calls[1]![0] as SimEventOf<"incident.occurred">).data.delta).toBe(4);
+      const first = (handler.mock.calls[0]![0] as SimEventOf<"incident.occurred">).data;
+      const second = (handler.mock.calls[1]![0] as SimEventOf<"incident.occurred">).data;
+      expect(first.delta).toBe(1);
+      expect(first.type).toBe("off-track");
+      expect(second.delta).toBe(4);
+      expect(second.type).toBe("collision-car");
+    });
+
+    it("suppresses incident.occurred when PlayerIncidents is zero or unknown", () => {
+      vi.useFakeTimers();
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("incident.occurred", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Count bumps but the report byte is RepNoReport — stay silent so a
+      // future iRacing-side type addition doesn't get an unclassified callout.
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 0 }));
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 1, PlayerIncidents: 0 }));
+      // Ongoing variant — iRacing's header notes it is never sent, but if it
+      // ever does arrive we still suppress it.
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 2, PlayerIncidents: IncidentFlags.RepOffTrackOngoing }));
+
+      // Even after the burst window elapses, nothing fires — no resolved type.
+      vi.advanceTimersByTime(1500);
+      controller.__tick(telemetry({ PlayerCarMyIncidentCount: 2 }));
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it("does not synthesize offTrack.started when the first tick starts off-track (mid-excursion reconnect)", () => {
