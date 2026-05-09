@@ -342,13 +342,14 @@ export const GlobalSettingsSchema = z
       .default(true),
     /**
      * Per-incident-type callout opt-ins (issue #530). One boolean per
-     * `irsdk_IncidentFlags` report-byte category surfaced by the bus. The
-     * `OutOfControl` subject defaults `false` because spinning the car is
-     * usually obvious to the driver and the engineer chiming in adds noise;
-     * everything else defaults `true` because the type-specific coaching
-     * (track limits, contact-vs-collision-with-penalty) is the whole point
-     * of the family. Same forward-compat semantics as the other callout
-     * families. Canonical id↔key mapping in `INCIDENT_CALLOUT_SETTING_KEYS`.
+     * `irsdk_IncidentFlags` report-byte category surfaced by the bus.
+     * Every category defaults `true` so a fresh install gets full
+     * type-specific coaching (track limits / composure / contact vs
+     * collision-with-penalty) — the user can silence individual
+     * categories from the PI mid-session and the change takes effect on
+     * the next event arrival without cutting an in-flight clip. Same
+     * forward-compat semantics as the other callout families. Canonical
+     * id↔key mapping in `INCIDENT_CALLOUT_SETTING_KEYS`.
      */
     calloutEnabledIncidentOffTrack: z
       .union([z.boolean(), z.string()])
