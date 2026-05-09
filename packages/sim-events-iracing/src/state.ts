@@ -6,7 +6,7 @@
  * Initial state uses sentinel values (negative / null / empty sets) so the
  * first tick after connect seeds without firing spurious transition events.
  */
-import type { RadarState } from "@iracedeck/event-bus";
+import { type RadarState, TrackWetness } from "@iracedeck/event-bus";
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -79,6 +79,13 @@ export type TranslatorState = {
    * iRacing pit-board project.
    */
   lastTickInPreStart: boolean;
+
+  // ── Track wetness (issue #526) ──────────────────────────────────────────
+  // Tracks `TelemetryData.TrackWetness` across ticks so the diff can emit one
+  // `track.wetness.changed` per real state transition. Seeded silently on
+  // first tick; transitions involving Unknown are suppressed by the diff.
+  trackWetnessInitialized: boolean;
+  lastTrackWetness: TrackWetness;
 
   // ── Pit-service status (issue #479) ─────────────────────────────────────
   // Tracks PlayerCarPitSvStatus across ticks so the diff can emit one event
@@ -169,6 +176,9 @@ export function createInitialState(): TranslatorState {
     pitActionCooldownUntil: 0,
     pitReadbackPreStartFireAt: 0,
     lastTickInPreStart: false,
+
+    trackWetnessInitialized: false,
+    lastTrackWetness: TrackWetness.Unknown,
 
     pitStatusInitialized: false,
     lastPitSvStatus: 0, // PitSvStatus.None

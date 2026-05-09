@@ -18,3 +18,4 @@ export type {
   SimEventOf,
   RadarState,
 } from "./event-catalog.js";
+export { TrackWetness } from "./event-catalog.js";

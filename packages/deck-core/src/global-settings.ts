@@ -341,6 +341,20 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Master opt-in for the track-conditions callout family (issue #526).
+     * Single subject for v1 — every (direction × target) combination of the
+     * Race Engineer's track-wetness change announcement is gated by this one
+     * boolean. Forward-compat: future track-related callouts (temperature,
+     * weather type) join the same `Track` family with their own per-subject
+     * keys, following the
+     * `callout<Polarity><Family><Subject>` convention. See the canonical
+     * id↔key mapping in `TRACK_CONDITIONS_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledTrackWetness: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

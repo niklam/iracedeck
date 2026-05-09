@@ -11,7 +11,7 @@
  * stable `category` string and add at least one entry under it. Order in
  * the array drives display order in the UI.
  */
-import type { SimEventName } from "@iracedeck/event-bus";
+import { type SimEventName, TrackWetness } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 
 export type ScenarioShortcut = {
@@ -66,6 +66,27 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
     // engine sees identical `family: "pit-status"` metadata regardless
     // of the `from` value.
     data: { from: PitSvStatus.None, to: target },
+  };
+}
+
+function trackConditions(
+  direction: "worsening" | "drying",
+  id: string,
+  label: string,
+  target: TrackWetness,
+): ScenarioShortcut {
+  // Pick a `from` one step away from `to` in the chosen direction so the
+  // scenario predicate (`to > from` for worsening, `to < from` for drying)
+  // resolves naturally without having to compute exhaustively.
+  const from = direction === "worsening" ? target - 1 : target + 1;
+
+  return {
+    id: `track-${direction}-${id}`,
+    category: `Track Conditions — ${direction === "worsening" ? "Worsening" : "Drying"}`,
+    label,
+    description: `${direction === "worsening" ? "Track is getting wetter" : "Track is drying"} — now ${label}`,
+    event: "track.wetness.changed",
+    data: { from, to: target },
   };
 }
 
@@ -276,4 +297,29 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   radar("Both Sides", "clear", "both"),
   radar("Two Left", "left", "two-left"),
   radar("Two Right", "right", "two-right"),
+
+  // ── Track Conditions — Worsening ──
+  // `track.wetness.changed` transitions where `to > from`. Bypasses the sim
+  // translator so you hear the engineer line without driving the iRacing
+  // `TrackWetness` field through `/api/telemetry`. Six worsening targets:
+  // Dry isn't a worsening target (you can only become wetter than Dry, not
+  // arrive at Dry by getting wetter). Same-family preempt works between any
+  // two track-conditions shortcuts fired in quick succession.
+  trackConditions("worsening", "mostly-dry", "Mostly Dry", TrackWetness.MostlyDry),
+  trackConditions("worsening", "very-lightly-wet", "Very Lightly Wet", TrackWetness.VeryLightlyWet),
+  trackConditions("worsening", "lightly-wet", "Lightly Wet", TrackWetness.LightlyWet),
+  trackConditions("worsening", "moderately-wet", "Moderately Wet", TrackWetness.ModeratelyWet),
+  trackConditions("worsening", "very-wet", "Very Wet", TrackWetness.VeryWet),
+  trackConditions("worsening", "extremely-wet", "Extremely Wet", TrackWetness.ExtremelyWet),
+
+  // ── Track Conditions — Drying ──
+  // `track.wetness.changed` transitions where `to < from`. Six drying
+  // targets: ExtremelyWet isn't a drying target (you can only dry from
+  // ExtremelyWet, not arrive at it by drying).
+  trackConditions("drying", "very-wet", "Very Wet", TrackWetness.VeryWet),
+  trackConditions("drying", "moderately-wet", "Moderately Wet", TrackWetness.ModeratelyWet),
+  trackConditions("drying", "lightly-wet", "Lightly Wet", TrackWetness.LightlyWet),
+  trackConditions("drying", "very-lightly-wet", "Very Lightly Wet", TrackWetness.VeryLightlyWet),
+  trackConditions("drying", "mostly-dry", "Mostly Dry", TrackWetness.MostlyDry),
+  trackConditions("drying", "dry", "Dry", TrackWetness.Dry),
 ];

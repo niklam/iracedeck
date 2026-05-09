@@ -19,6 +19,8 @@ import {
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
   registerPitCrew,
+  TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
+  type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
@@ -225,6 +227,10 @@ registerPitCrew(
   // other callout families.
   (id: PitStatusCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[PIT_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Track-conditions callout opt-in (issue #526). Single subject today
+  // (`wetness`); same live-read pattern as the other callout families.
+  (id: TrackConditionsCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[TRACK_CONDITIONS_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

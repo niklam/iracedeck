@@ -33,6 +33,7 @@ import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/
 import { diffPitStatus } from "./diff/pit-status.js";
 import { diffRadar } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
+import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { createInitialState, type TranslatorState } from "./state.js";
 
@@ -263,6 +264,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);
+  diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {
     publish(self, p, telemetry, now);

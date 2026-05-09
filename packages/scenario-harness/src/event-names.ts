@@ -112,6 +112,11 @@ export const EVENT_TEMPLATES = [
     description: "Crossed a fuel-laps-remaining threshold",
     data: { threshold: 5, laps: 4.6 },
   },
+  {
+    name: "track.wetness.changed",
+    description: "Track-wetness state stepped (irsdk_TrackWetness 1..7)",
+    data: { from: 1, to: 2 },
+  },
 ] as const satisfies readonly EventTemplate[];
 
 export const ALL_EVENT_NAMES: readonly SimEventName[] = EVENT_TEMPLATES.map((t) => t.name);

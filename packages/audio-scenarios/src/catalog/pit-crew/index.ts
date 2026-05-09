@@ -63,6 +63,7 @@ import {
   TIRE_TOGGLE_SCENARIOS,
   WINDSHIELD_TOGGLE_SCENARIOS,
 } from "./toggle-confirmations.js";
+import { TRACK_CONDITIONS_ALERTS } from "./track-conditions.js";
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
 export {
@@ -195,6 +196,39 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
   "pit-crew.pit-status-cant-fix-that": "cant-fix-that",
 };
 
+/**
+ * Stable identifier for the track-conditions callout family (issue #526).
+ * Single subject for v1 — every (direction × target) combination is gated by
+ * the same opt-in. Future sub-callouts (per-state opt-out, threshold-cross,
+ * etc.) can append cleanly under the same `Track` family namespace without
+ * reshaping the persistence model.
+ */
+export type TrackConditionsCalloutId = "wetness";
+
+/**
+ * Canonical mapping from `TrackConditionsCalloutId` to its plugin-global
+ * setting key in `GlobalSettingsSchema`. Plugin entry points use this to
+ * read the live opt-in for each subject without duplicating key strings.
+ */
+export const TRACK_CONDITIONS_CALLOUT_SETTING_KEYS: Record<TrackConditionsCalloutId, string> = {
+  wetness: "calloutEnabledTrackWetness",
+};
+
+const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Record<string, TrackConditionsCalloutId> = {
+  "pit-crew.track-conditions-worsening-mostly-dry": "wetness",
+  "pit-crew.track-conditions-worsening-very-lightly-wet": "wetness",
+  "pit-crew.track-conditions-worsening-lightly-wet": "wetness",
+  "pit-crew.track-conditions-worsening-moderately-wet": "wetness",
+  "pit-crew.track-conditions-worsening-very-wet": "wetness",
+  "pit-crew.track-conditions-worsening-extremely-wet": "wetness",
+  "pit-crew.track-conditions-drying-dry": "wetness",
+  "pit-crew.track-conditions-drying-mostly-dry": "wetness",
+  "pit-crew.track-conditions-drying-very-lightly-wet": "wetness",
+  "pit-crew.track-conditions-drying-lightly-wet": "wetness",
+  "pit-crew.track-conditions-drying-moderately-wet": "wetness",
+  "pit-crew.track-conditions-drying-very-wet": "wetness",
+};
+
 export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
@@ -234,6 +268,11 @@ export function registerPitCrew(
   // Default `() => true` preserves legacy behavior for tests that don't
   // supply a closure.
   getPitStatusCalloutEnabled: (id: PitStatusCalloutId) => boolean = () => true,
+  // User opt-in for the track-conditions callouts (issue #526).
+  // Single subject (`wetness`) today; same gate-at-event-arrival shape as
+  // the other callout families. Default `() => true` preserves legacy
+  // behavior for tests that don't supply a closure.
+  getTrackConditionsCalloutEnabled: (id: TrackConditionsCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -329,6 +368,20 @@ export function registerPitCrew(
     engine.defineScenario(
       wrapWithMaster(
         wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),
+      ),
+    );
+  }
+
+  for (const s of TRACK_CONDITIONS_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          s,
+          SCENARIO_ID_TO_TRACK_CONDITIONS_ID,
+          getTrackConditionsCalloutEnabled,
+          "track-conditions callout",
+          logger,
+        ),
       ),
     );
   }
