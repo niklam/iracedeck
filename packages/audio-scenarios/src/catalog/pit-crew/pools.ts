@@ -102,6 +102,44 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "pit-status-bad-angle": ["voice/{voice}/pit-status/bad-angle-01.mp3"],
   "pit-status-cant-fix-that": ["voice/{voice}/pit-status/cant-fix-that-01.mp3"],
 
+  // Incident callout pools (issue #530). One pool per IncidentType
+  // discriminator. Three alternating lines per pool — the first two are
+  // calm coaching (off-track / out-of-control / contact = no penalty),
+  // the third adds variety. Collision lines mention the deterministic
+  // penalty point count inline (CollisionWithWorld is always 2x,
+  // CollisionWithCar is always 4x per iRacing's `irsdk_IncidentFlags`
+  // enum), so no separate penalty follow-on pool is needed.
+  "incident-off-track": [
+    "voice/{voice}/incidents/off-track-01.mp3",
+    "voice/{voice}/incidents/off-track-02.mp3",
+    "voice/{voice}/incidents/off-track-03.mp3",
+  ],
+  "incident-out-of-control": [
+    "voice/{voice}/incidents/out-of-control-01.mp3",
+    "voice/{voice}/incidents/out-of-control-02.mp3",
+    "voice/{voice}/incidents/out-of-control-03.mp3",
+  ],
+  "incident-contact-world": [
+    "voice/{voice}/incidents/contact-world-01.mp3",
+    "voice/{voice}/incidents/contact-world-02.mp3",
+    "voice/{voice}/incidents/contact-world-03.mp3",
+  ],
+  "incident-collision-world": [
+    "voice/{voice}/incidents/collision-world-01.mp3",
+    "voice/{voice}/incidents/collision-world-02.mp3",
+    "voice/{voice}/incidents/collision-world-03.mp3",
+  ],
+  "incident-contact-car": [
+    "voice/{voice}/incidents/contact-car-01.mp3",
+    "voice/{voice}/incidents/contact-car-02.mp3",
+    "voice/{voice}/incidents/contact-car-03.mp3",
+  ],
+  "incident-collision-car": [
+    "voice/{voice}/incidents/collision-car-01.mp3",
+    "voice/{voice}/incidents/collision-car-02.mp3",
+    "voice/{voice}/incidents/collision-car-03.mp3",
+  ],
+
   // Track-conditions callout pools (issue #526). One pool per
   // (direction, target-state) combination — six worsening + six drying.
   // Single-clip today; future variants append cleanly here.
