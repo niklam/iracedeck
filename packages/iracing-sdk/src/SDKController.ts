@@ -10,6 +10,22 @@ import { SessionInfo, TelemetryData } from "./types.js";
 
 export type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: boolean) => void;
 
+/**
+ * Telemetry poll interval in milliseconds. iRacing writes shared memory at
+ * ~60 Hz; we poll slightly faster (~70 Hz, 14 ms) and dedupe by
+ * `SessionTick` so subscribers see exactly one notification per real
+ * iRacing frame — never a duplicate, never a drop. Polling at
+ * `Math.round(1000 / 60) = 17 ms` would drift slightly slower than 60 Hz
+ * and silently miss ~1.6 frames per second; the small extra poll work
+ * here is cheap because the dedupe short-circuits before any subscriber
+ * callback or template-context rebuild fires.
+ *
+ * Sub-100 ms features (sector timing, precise pit/lap edges, transient
+ * `PlayerIncidents` flag detection) all depend on this cadence — see
+ * issue #493.
+ */
+export const TELEMETRY_INTERVAL_MS = 14;
+
 export class SDKController {
   private readonly sdk: IRacingSDK;
   private readonly logger: ILogger;
@@ -21,6 +37,15 @@ export class SDKController {
   private reconnectEnabled = true;
   private templateContextDirty = true;
   private lastTemplateContext: TemplateContext | null = null;
+  /**
+   * iRacing's `SessionTick` value at the last notified frame. We poll
+   * faster than iRacing's native write rate (see TELEMETRY_INTERVAL_MS)
+   * and skip notifying subscribers when the tick hasn't advanced, so each
+   * real iRacing frame produces exactly one downstream notification. Reset
+   * to `-1` on disconnect / stop so the next connection's first frame
+   * always notifies.
+   */
+  private lastSessionTick = -1;
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
     this.sdk = sdk;
@@ -78,12 +103,13 @@ export class SDKController {
       }
     }, 2000);
 
-    // Start telemetry update loop (faster - 4Hz when connected)
+    // Start telemetry update loop. 60 Hz matches iRacing's shared-memory
+    // write rate so consumers see every fresh value (issue #493).
     this.updateInterval = setInterval(() => {
       if (this.sdk.isConnected()) {
         this.update();
       }
-    }, 250);
+    }, TELEMETRY_INTERVAL_MS);
   }
 
   /**
@@ -104,6 +130,7 @@ export class SDKController {
     this.isConnected = false;
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
+    this.lastSessionTick = -1;
   }
 
   /**
@@ -143,6 +170,7 @@ export class SDKController {
         this.lastValidTelemetry = null;
         this.lastTemplateContext = null;
         this.templateContextDirty = true;
+        this.lastSessionTick = -1;
         this.notifySubscribers(null);
       }
 
@@ -161,6 +189,22 @@ export class SDKController {
 
       return;
     }
+
+    // Dedupe by iRacing's `SessionTick`. We poll faster than iRacing's
+    // 60 Hz write rate (see TELEMETRY_INTERVAL_MS) so the same tick will
+    // be read by 1–2 polls in a row; firing subscribers only on a tick
+    // change keeps downstream work (template context rebuild, action
+    // re-renders) at iRacing's native cadence regardless of poll rate.
+    // `SessionTick` undefined falls through (no field on this build of
+    // the SDK headers) — we still notify so we don't silently break
+    // legacy paths.
+    const tick = telemetry.SessionTick;
+
+    if (tick !== undefined && tick === this.lastSessionTick) {
+      return;
+    }
+
+    this.lastSessionTick = tick ?? -1;
 
     // Cache the valid telemetry
     this.lastValidTelemetry = telemetry;
@@ -205,6 +249,9 @@ export class SDKController {
       this.lastValidTelemetry = null;
       this.lastTemplateContext = null;
       this.templateContextDirty = true;
+      // Reset dedupe state so the first frame of the next iRacing session
+      // is never suppressed by a stale tick value (issue #493 follow-up).
+      this.lastSessionTick = -1;
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately

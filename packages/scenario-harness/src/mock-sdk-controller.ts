@@ -31,11 +31,15 @@ export type MockSDKControllerOptions = {
    * flags / off-track" so the harness boots without firing spurious events.
    */
   initialTelemetry?: TelemetryData;
-  /** Tick interval in ms when running. Default 250 (matches the real loop). */
+  /**
+   * Tick interval in ms when running. Defaults to 14 ms to match the real
+   * SDKController's poll rate (issue #493 — slightly faster than iRacing's
+   * 60 Hz write rate).
+   */
   tickIntervalMs?: number;
 };
 
-const DEFAULT_TICK_INTERVAL_MS = 250;
+const DEFAULT_TICK_INTERVAL_MS = 14;
 
 /**
  * Minimum-viable telemetry snapshot. Field set covers everything the

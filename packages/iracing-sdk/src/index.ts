@@ -8,7 +8,7 @@
 export { IRacingSDK } from "./IRacingSDK.js";
 
 // SDK Controller (manages connections and subscribers)
-export { SDKController, TelemetryCallback } from "./SDKController.js";
+export { SDKController, TELEMETRY_INTERVAL_MS, TelemetryCallback } from "./SDKController.js";
 
 // Interfaces for dependency injection
 export type { INativeSDK } from "./interfaces.js";

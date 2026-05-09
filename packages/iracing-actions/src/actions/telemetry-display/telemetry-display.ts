@@ -20,6 +20,7 @@ import { resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import telemetryDisplayTemplate from "../../../icons/telemetry-display.svg";
+import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 
 const TelemetryDisplaySettings = CommonSettings.extend({
   template: z.string().default("#{{self.car_number}}\n{{self.first_name}}"),
@@ -105,6 +106,13 @@ export const TELEMETRY_DISPLAY_UUID = "com.iracedeck.sd.core.telemetry-display" 
 export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDisplaySettings> {
   private activeContexts = new Map<string, TelemetryDisplaySettings>();
   private lastState = new Map<string, string>();
+  /**
+   * Caps per-key icon updates at 10 Hz with a trailing-edge coalescer
+   * (issue #493). The SDK now ticks at ~70 Hz with SessionTick dedupe (so
+   * up to ~60 unique frames per second can reach this action); a fast-
+   * changing template like RPM would otherwise flood `setKeyImage` calls.
+   */
+  private readonly imageThrottle = new IconUpdateThrottle();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<TelemetryDisplaySettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -122,10 +130,15 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<TelemetryDisplaySettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
+    // Clear pending throttle + per-context state BEFORE awaiting super so a
+    // queued trailing flush (up to 100 ms) can't fire and call
+    // `updateKeyImage` for a context that's mid-teardown.
+    this.imageThrottle.clear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
+
+    await super.onWillDisappear(ev);
+    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryDisplaySettings>): Promise<void> {
@@ -184,10 +197,22 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
     const stateKey = this.buildStateKey(title, value, settings);
     const lastStateKey = this.lastState.get(contextId);
 
-    if (lastStateKey !== stateKey) {
-      this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateTelemetryDisplaySvg(title, value, settings);
+    if (lastStateKey === stateKey) return;
+
+    this.lastState.set(contextId, stateKey);
+
+    // Route through the 10 Hz throttle (issue #493). The render closure
+    // re-resolves from current telemetry/settings at flush time so a
+    // trailing-edge fire reflects the latest state, not the state we
+    // had when the throttle scheduled it.
+    this.imageThrottle.schedule(contextId, async () => {
+      const storedSettings = this.activeContexts.get(contextId);
+
+      if (!storedSettings) return;
+
+      const display = this.resolveDisplay(storedSettings);
+      const svgDataUri = generateTelemetryDisplaySvg(display.title, display.value, storedSettings);
       await this.updateKeyImage(contextId, svgDataUri);
-    }
+    });
   }
 }

@@ -27,10 +27,12 @@ const RADAR_AUDIO: Record<ActiveState, string> = {
   "two-right": "sfx/radar/IRD-radar-right.mp3",
 };
 
-// Single-car states tick at 250 ms (matches the legacy 4 Hz cadence).
-// Two-cars-same-side is faster (180 ms) because being sandwiched on one
-// side is the highest-risk position. Both-sides is 230 ms — locked between
-// cars but the driver is holding a straight line.
+// Single-car states tick at 250 ms — the radar engine has its own
+// `setInterval` for audio playback gaps and is independent of the SDK's
+// telemetry poll rate, so bumping that rate (issue #493) does not change
+// radar cadence. Two-cars-same-side is faster (180 ms) because being
+// sandwiched on one side is the highest-risk position. Both-sides is
+// 230 ms — locked between cars but the driver is holding a straight line.
 const RADAR_TICK_INTERVALS: Readonly<Record<ActiveState, number>> = {
   left: 250,
   right: 250,

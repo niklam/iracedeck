@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IRacingSDK } from "./IRacingSDK.js";
-import { SDKController, TelemetryCallback } from "./SDKController.js";
+import { SDKController, TELEMETRY_INTERVAL_MS, TelemetryCallback } from "./SDKController.js";
 import { TelemetryData } from "./types.js";
 
 // Create mock SDK factory
@@ -33,6 +33,52 @@ describe("SDKController", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+  });
+
+  describe("TELEMETRY_INTERVAL_MS", () => {
+    it("polls slightly faster than iRacing's 60 Hz to never miss a frame", () => {
+      // Pinned literally so any future drift surfaces visibly. We poll at
+      // ~70 Hz (14 ms) and dedupe by SessionTick — see issue #493 and the
+      // module-level docstring on TELEMETRY_INTERVAL_MS for the rationale.
+      expect(TELEMETRY_INTERVAL_MS).toBe(14);
+      // Sanity: must be strictly faster than iRacing's 60 Hz write rate
+      // (16.67 ms) for the dedupe approach to never miss a frame.
+      expect(TELEMETRY_INTERVAL_MS).toBeLessThan(1000 / 60);
+    });
+  });
+
+  describe("SessionTick dedupe", () => {
+    it("notifies subscribers only when SessionTick advances", () => {
+      const callback = vi.fn();
+      const telemetry: TelemetryData = { Speed: 100, SessionTick: 1000 } as TelemetryData;
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(telemetry);
+
+      controller.subscribe("test", callback);
+      // Prime: let the first poll establish lastSessionTick = 1000, then
+      // ignore the bookkeeping notifications from subscribe()/first poll.
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      callback.mockClear();
+
+      // Three more polls reading the SAME tick — dedupe should suppress all.
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 3);
+      expect(callback).not.toHaveBeenCalled();
+
+      // Tick advances — next poll fires the callback exactly once.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100, SessionTick: 1001 } as TelemetryData);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("notifies on every poll when SessionTick is undefined (legacy SDK builds)", () => {
+      const callback = vi.fn();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100 } as TelemetryData);
+
+      controller.subscribe("test", callback);
+      callback.mockClear();
+
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 3);
+      expect(callback).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe("subscribe", () => {
