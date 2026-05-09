@@ -97,6 +97,18 @@ function toPerceivedAmplitude(linear: number): number {
   return Math.pow(linear, PERCEPTUAL_EXPONENT);
 }
 
+/**
+ * Clamp a user-facing volume to [0, 1], coercing non-finite inputs (`NaN`,
+ * `±Infinity`) to 0. Defends the curve and the native layer from a malformed
+ * caller — `Math.max(0, Math.min(1, NaN))` is `NaN`, which would propagate
+ * through `Math.pow` to `ma_sound_set_volume` with undefined results.
+ */
+function clampVolume01(volume: number): number {
+  if (!Number.isFinite(volume)) return 0;
+
+  return Math.max(0, Math.min(1, volume));
+}
+
 // ─── Voice sequence state ────────────────────────────────────────────────────
 
 enum VoiceSeqState {
@@ -383,15 +395,16 @@ class AudioService implements IAudioService {
   setChannelVolume(channel: AudioChannel, volume: number): void {
     // Clamp before the curve — `Math.pow(negative, fractional)` would be NaN
     // for non-integer exponents; clamping first also means an over-1 input
-    // still resolves to 1.0 (curve(1) = 1).
-    const clamped = Math.max(0, Math.min(1, volume));
+    // still resolves to 1.0 (curve(1) = 1). `clampVolume01` also coerces
+    // non-finite inputs (NaN, ±Infinity) to 0 so they can't reach the engine.
+    const clamped = clampVolume01(volume);
     const perceived = toPerceivedAmplitude(clamped);
     this.channelVolumes[channel] = perceived;
     this.native.setChannelVolume(channel, perceived);
   }
 
   setBusVolume(bus: AudioBus, volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
+    const clamped = clampVolume01(volume);
     // Store the user-facing linear value so `getBusVolume` reflects what the
     // slider was set to, not the curved internal amplitude.
     this.busVolumes[bus] = clamped;

@@ -275,7 +275,7 @@ describe("AudioService", () => {
       expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Voice, 0);
     });
 
-    it("clamps before curving so over-1 inputs resolve to 1.0 and negatives to 0", () => {
+    it("clamps before curving so over-1 inputs resolve to 1.0, negatives and non-finite to 0", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
       getAudio().init();
@@ -287,6 +287,14 @@ describe("AudioService", () => {
       expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 1);
 
       getAudio().setChannelVolume(AudioChannel.Voice, -0.5);
+      expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 0);
+
+      // Non-finite inputs (NaN, ±Infinity) are coerced to 0. `Math.max/min`
+      // would otherwise propagate NaN straight through to the native layer.
+      getAudio().setChannelVolume(AudioChannel.Voice, Number.NaN);
+      expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 0);
+
+      getAudio().setChannelVolume(AudioChannel.Voice, Number.POSITIVE_INFINITY);
       expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 0);
     });
   });
