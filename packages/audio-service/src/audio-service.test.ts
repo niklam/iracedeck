@@ -183,13 +183,20 @@ describe("AudioService", () => {
       expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Voice, 0);
     });
 
-    it("should use stored volume when playing on channel", () => {
+    it("should use stored (perceptually curved) volume when playing on channel", () => {
       const native = createMockNative();
       initializeAudio(mockLogger as never, native);
       getAudio().init();
       getAudio().setChannelVolume(AudioChannel.Voice, 0.6);
       getAudio().playOnChannel(AudioChannel.Voice, "/sound.mp3");
-      expect(native.playOnChannel).toHaveBeenCalledWith(AudioChannel.Voice, "/sound.mp3", false, 0.6);
+      // Stored channel volume passes through the power-2.5 curve before
+      // reaching miniaudio (#531): 0.6 → 0.6^2.5 ≈ 0.279.
+      expect(native.playOnChannel).toHaveBeenCalledWith(
+        AudioChannel.Voice,
+        "/sound.mp3",
+        false,
+        expect.closeTo(0.279, 3),
+      );
     });
 
     it("should check if channel is playing", () => {
@@ -198,6 +205,89 @@ describe("AudioService", () => {
       initializeAudio(mockLogger as never, native);
       getAudio().init();
       expect(getAudio().isChannelPlaying(AudioChannel.Radar)).toBe(true);
+    });
+  });
+
+  describe("perceptual volume curve (#531)", () => {
+    // miniaudio's `ma_sound_set_volume` is linear-amplitude; the audio
+    // service applies a power-2.5 curve at the public setters so user
+    // sliders feel proportional to perceived loudness instead of bunching
+    // their audible range into the bottom 30% of travel.
+
+    it("setChannelVolume curves the input before storing on the channel", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      getAudio().setChannelVolume(AudioChannel.Voice, 0.5);
+      // 0.5^2.5 ≈ 0.17678. Without the curve this would be 0.5 (≈ −6 dB),
+      // which is the linear-amplitude bug that motivated #531.
+      expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Voice, expect.closeTo(0.1768, 4));
+    });
+
+    it("setBusVolume curves the bus value but keeps mix ratio linear", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      // Bus volume 0.5, SFX channel mix ratio 0.7. Curve is applied to the
+      // bus value (0.5^2.5 ≈ 0.17678) and then multiplied by the mix ratio
+      // → 0.17678 * 0.7 ≈ 0.1237.
+      getAudio().setBusVolume(/* AudioBus.Background */ 1, 0.5);
+
+      expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.SFX, expect.closeTo(0.1237, 4));
+      // Ambient (mix ratio 0.8): 0.17678 * 0.8 ≈ 0.1414.
+      expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Ambient, expect.closeTo(0.1414, 4));
+    });
+
+    it("getBusVolume returns the user-facing linear value, not the curved amplitude", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      getAudio().setBusVolume(/* AudioBus.Voice */ 0, 0.5);
+
+      // The slider value is what callers (PI rehydrate, Pit Crew step
+      // handlers) want to read back — not the curved amplitude.
+      expect(getAudio().getBusVolume(0)).toBe(0.5);
+    });
+
+    it("preserves slider = 100% as full amplitude (1^2.5 = 1, no regression at max)", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      getAudio().setBusVolume(/* AudioBus.Voice */ 0, 1);
+
+      expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Voice, 1);
+    });
+
+    it("preserves slider = 0% as silent (0^2.5 = 0)", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      getAudio().setBusVolume(/* AudioBus.Voice */ 0, 0);
+
+      expect(native.setChannelVolume).toHaveBeenCalledWith(AudioChannel.Voice, 0);
+    });
+
+    it("clamps before curving so over-1 inputs resolve to 1.0 and negatives to 0", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+      vi.clearAllMocks();
+
+      // 1.5 clamped to 1.0, then curve(1.0) = 1.0. Without clamping first,
+      // `Math.pow(-0.5, 2.5)` would return NaN and crash the native call.
+      getAudio().setChannelVolume(AudioChannel.Voice, 1.5);
+      expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 1);
+
+      getAudio().setChannelVolume(AudioChannel.Voice, -0.5);
+      expect(native.setChannelVolume).toHaveBeenLastCalledWith(AudioChannel.Voice, 0);
     });
   });
 
