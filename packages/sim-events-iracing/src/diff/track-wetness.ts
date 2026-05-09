@@ -47,5 +47,10 @@ export function diffTrackWetness(state: TranslatorState, telemetry: TelemetryDat
 }
 
 function isValidTrackWetness(value: unknown): boolean {
-  return typeof value === "number" && value >= TrackWetness.Unknown && value <= TrackWetness.ExtremelyWet;
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= TrackWetness.Unknown &&
+    value <= TrackWetness.ExtremelyWet
+  );
 }

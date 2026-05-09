@@ -191,4 +191,15 @@ describe("diffTrackWetness — invalid input", () => {
     expect(wetnessEvents(events)).toHaveLength(0);
     expect(state.lastTrackWetness).toBe(TrackWetness.Dry);
   });
+
+  it("treats non-integer values as Unknown (e.g. 2.5 between MostlyDry and VeryLightlyWet)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    diffTrackWetness(state, tick(2.5), emit); // non-integer → Unknown
+    diffTrackWetness(state, tick(TrackWetness.LightlyWet), emit); // Unknown → known, suppressed
+
+    expect(wetnessEvents(events)).toHaveLength(0);
+    expect(state.lastTrackWetness).toBe(TrackWetness.LightlyWet);
+  });
 });
