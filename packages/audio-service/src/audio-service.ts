@@ -76,6 +76,39 @@ const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.Radar]: 1.0,
 };
 
+// ─── Perceptual volume curve (#531) ──────────────────────────────────────────
+
+/**
+ * Power exponent for the perceptual volume curve. miniaudio's
+ * `ma_sound_set_volume` interprets its argument as a linear amplitude factor,
+ * but human loudness perception is roughly logarithmic — at exponent 1 the
+ * upper half of a 0–1 slider only spans ~6 dB and feels "the same" to the
+ * ear. An exponent of 2.5 spreads the audible range across the whole slider
+ * (slider 50 → 0.18 amp ≈ −15 dB, 75 → 0.49 ≈ −6 dB, 100 → 1.0 = 0 dB).
+ *
+ * Applied at the public volume setters so every caller (sliders, ducking,
+ * voice/radar bus writes) gets perceptual scaling for free. `CHANNEL_MIX_RATIO`
+ * stays in linear amplitude — those constants are internal balance, not a
+ * user-facing control.
+ */
+const PERCEPTUAL_EXPONENT = 2.5;
+
+function toPerceivedAmplitude(linear: number): number {
+  return Math.pow(linear, PERCEPTUAL_EXPONENT);
+}
+
+/**
+ * Clamp a user-facing volume to [0, 1], coercing non-finite inputs (`NaN`,
+ * `±Infinity`) to 0. Defends the curve and the native layer from a malformed
+ * caller — `Math.max(0, Math.min(1, NaN))` is `NaN`, which would propagate
+ * through `Math.pow` to `ma_sound_set_volume` with undefined results.
+ */
+function clampVolume01(volume: number): number {
+  if (!Number.isFinite(volume)) return 0;
+
+  return Math.max(0, Math.min(1, volume));
+}
+
 // ─── Voice sequence state ────────────────────────────────────────────────────
 
 enum VoiceSeqState {
@@ -360,22 +393,33 @@ class AudioService implements IAudioService {
   }
 
   setChannelVolume(channel: AudioChannel, volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    this.channelVolumes[channel] = clamped;
-    this.native.setChannelVolume(channel, clamped);
+    // Clamp before the curve — `Math.pow(negative, fractional)` would be NaN
+    // for non-integer exponents; clamping first also means an over-1 input
+    // still resolves to 1.0 (curve(1) = 1). `clampVolume01` also coerces
+    // non-finite inputs (NaN, ±Infinity) to 0 so they can't reach the engine.
+    const clamped = clampVolume01(volume);
+    const perceived = toPerceivedAmplitude(clamped);
+    this.channelVolumes[channel] = perceived;
+    this.native.setChannelVolume(channel, perceived);
   }
 
   setBusVolume(bus: AudioBus, volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
+    const clamped = clampVolume01(volume);
+    // Store the user-facing linear value so `getBusVolume` reflects what the
+    // slider was set to, not the curved internal amplitude.
     this.busVolumes[bus] = clamped;
 
-    // Recompute effective channel volumes for every channel routed to this bus
+    const perceived = toPerceivedAmplitude(clamped);
+
+    // Recompute effective channel volumes for every channel routed to this
+    // bus. Mix ratio stays linear — it's pre-tuned channel balance, not a
+    // user-facing control.
     for (const channelStr of Object.keys(CHANNEL_BUS_MAP)) {
       const channel = Number(channelStr) as AudioChannel;
 
       if (CHANNEL_BUS_MAP[channel] !== bus) continue;
 
-      const effective = clamped * CHANNEL_MIX_RATIO[channel];
+      const effective = perceived * CHANNEL_MIX_RATIO[channel];
       this.channelVolumes[channel] = effective;
       this.native.setChannelVolume(channel, effective);
     }
