@@ -51,6 +51,7 @@ import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
+import { INCIDENT_ALERTS } from "./incidents.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
@@ -197,6 +198,43 @@ const SCENARIO_ID_TO_PIT_STATUS_ID: Record<string, PitStatusCalloutId> = {
 };
 
 /**
+ * Stable identifier for each user-toggleable incident callout (issue #530).
+ * Mirrors the bus's `IncidentType` discriminator one-to-one. `out-of-control`
+ * defaults `false` in the schema (the spin is usually obvious to the
+ * driver); the other five default `true`.
+ */
+export type IncidentCalloutId =
+  | "off-track"
+  | "out-of-control"
+  | "contact-world"
+  | "collision-world"
+  | "contact-car"
+  | "collision-car";
+
+/**
+ * Canonical mapping from `IncidentCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in for each incident type without duplicating key strings.
+ */
+export const INCIDENT_CALLOUT_SETTING_KEYS: Record<IncidentCalloutId, string> = {
+  "off-track": "calloutEnabledIncidentOffTrack",
+  "out-of-control": "calloutEnabledIncidentOutOfControl",
+  "contact-world": "calloutEnabledIncidentContactWorld",
+  "collision-world": "calloutEnabledIncidentCollisionWorld",
+  "contact-car": "calloutEnabledIncidentContactCar",
+  "collision-car": "calloutEnabledIncidentCollisionCar",
+};
+
+const SCENARIO_ID_TO_INCIDENT_ID: Record<string, IncidentCalloutId> = {
+  "pit-crew.incident-off-track": "off-track",
+  "pit-crew.incident-out-of-control": "out-of-control",
+  "pit-crew.incident-contact-world": "contact-world",
+  "pit-crew.incident-collision-world": "collision-world",
+  "pit-crew.incident-contact-car": "contact-car",
+  "pit-crew.incident-collision-car": "collision-car",
+};
+
+/**
  * Stable identifier for the track-conditions callout family (issue #526).
  * Single subject for v1 — every (direction × target) combination is gated by
  * the same opt-in. Future sub-callouts (per-state opt-out, threshold-cross,
@@ -273,6 +311,13 @@ export function registerPitCrew(
   // the other callout families. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getTrackConditionsCalloutEnabled: (id: TrackConditionsCalloutId) => boolean = () => true,
+  // User opt-in for the per-incident-type callouts (issue #530). Plugins
+  // wire this to each `calloutEnabledIncident*` global setting via
+  // `INCIDENT_CALLOUT_SETTING_KEYS` — read live so a toggle off
+  // mid-session takes effect on the next event without cutting an
+  // in-flight clip. Default `() => true` preserves legacy behavior for
+  // tests that don't supply a closure.
+  getIncidentCalloutEnabled: (id: IncidentCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -382,6 +427,14 @@ export function registerPitCrew(
           "track-conditions callout",
           logger,
         ),
+      ),
+    );
+  }
+
+  for (const s of INCIDENT_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_INCIDENT_ID, getIncidentCalloutEnabled, "incident callout", logger),
       ),
     );
   }

@@ -225,33 +225,59 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   },
 
   // ── Incidents ──
-  // Standard iRacing point values: 1x = off-track, 2x = minor contact,
-  // 4x = major contact / car-to-car. 0x exists as a "warning" tier in
-  // SDK telemetry but the translator only fires `incident.occurred` on
-  // non-zero deltas, so it isn't useful as a shortcut.
+  // One shortcut per IncidentType the bus publishes (issue #530). The
+  // diff classifies the iRacing report byte before publishing, so the
+  // harness mirrors that vocabulary directly. `delta` is the canonical
+  // point count for each type per iRacing's `irsdk_IncidentFlags` enum
+  // comments (off-track 1x, out-of-control 2x, contact 0x, collision 2x
+  // for world / 4x for car).
   {
-    id: "incident-1x",
+    id: "incident-off-track",
     category: "Incidents",
-    label: "1x (off-track)",
-    description: "Driver picked up 1 incident point — typical off-track penalty",
+    label: "Off Track (1x)",
+    description: "Track-limits nudge — `Mind the track limits` etc.",
     event: "incident.occurred",
-    data: { delta: 1 },
+    data: { delta: 1, type: "off-track" },
   },
   {
-    id: "incident-2x",
+    id: "incident-out-of-control",
     category: "Incidents",
-    label: "2x (minor)",
-    description: "Driver picked up 2 incident points — minor contact",
+    label: "Out of Control (2x)",
+    description: "Spin / loss of control — composure callout (default off in PI).",
     event: "incident.occurred",
-    data: { delta: 2 },
+    data: { delta: 2, type: "out-of-control" },
   },
   {
-    id: "incident-4x",
+    id: "incident-contact-world",
     category: "Incidents",
-    label: "4x (major)",
-    description: "Driver picked up 4 incident points — major contact",
+    label: "Contact — Wall (0x)",
+    description: "Light wall rub — engineer notes no penalty.",
     event: "incident.occurred",
-    data: { delta: 4 },
+    data: { delta: 0, type: "contact-world" },
+  },
+  {
+    id: "incident-collision-world",
+    category: "Incidents",
+    label: "Collision — Wall (2x)",
+    description: "Heavier wall hit — engineer announces 2-point penalty.",
+    event: "incident.occurred",
+    data: { delta: 2, type: "collision-world" },
+  },
+  {
+    id: "incident-contact-car",
+    category: "Incidents",
+    label: "Contact — Car (0x)",
+    description: "Light car-to-car rub — engineer notes no penalty.",
+    event: "incident.occurred",
+    data: { delta: 0, type: "contact-car" },
+  },
+  {
+    id: "incident-collision-car",
+    category: "Incidents",
+    label: "Collision — Car (4x)",
+    description: "Heavier car-to-car hit — engineer announces 4-point penalty.",
+    event: "incident.occurred",
+    data: { delta: 4, type: "collision-car" },
   },
   {
     id: "off-track-started",

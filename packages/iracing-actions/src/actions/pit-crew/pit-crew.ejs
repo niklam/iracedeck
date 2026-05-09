@@ -137,6 +137,23 @@
 			var trackConditionsCheckboxes = trackConditionsCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Per-incident-type callouts (issue #530). One subject per
+			// IncidentFlags report category surfaced by the bus. Every category
+			// defaults on so a fresh install gets full feedback; users can
+			// silence individual categories from the PI.
+			var incidentCallouts = [
+				{ setting: "calloutEnabledIncidentOffTrack",       label: "Off track" },
+				{ setting: "calloutEnabledIncidentOutOfControl",   label: "Out of control" },
+				{ setting: "calloutEnabledIncidentContactWorld",   label: "Contact (wall)" },
+				{ setting: "calloutEnabledIncidentCollisionWorld", label: "Collision (wall)" },
+				{ setting: "calloutEnabledIncidentContactCar",     label: "Contact (car)" },
+				{ setting: "calloutEnabledIncidentCollisionCar",   label: "Collision (car)" },
+			];
+			var incidentRowCount = Math.ceil(incidentCallouts.length / 2);
+			var incidentCheckboxes = incidentCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -166,6 +183,11 @@
 				'<sdpi-item label="Track Conditions">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + trackConditionsRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						trackConditionsCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Incidents">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + incidentRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						incidentCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>

@@ -596,6 +596,7 @@ export interface TelemetryData {
   PlayerCarMyIncidentCount?: number;
   PlayerCarDriverIncidentCount?: number;
   PlayerCarTeamIncidentCount?: number;
+  PlayerIncidents?: number;
   PlayerCarTowTime?: number;
   PlayerCarWeightPenalty?: number;
   PlayerCarPowerAdjust?: number;

@@ -711,6 +711,98 @@
         "seed": 4
       }
     ],
+    "incidents": [
+      {
+        "name": "off-track-01",
+        "text": "Mind the track limits.",
+        "seed": 3
+      },
+      {
+        "name": "off-track-02",
+        "text": "Try to stay between the white lines.",
+        "seed": 4
+      },
+      {
+        "name": "off-track-03",
+        "text": "Watch the kerbs out there.",
+        "seed": 5
+      },
+      {
+        "name": "out-of-control-01",
+        "text": "Easy on the car.",
+        "seed": 2
+      },
+      {
+        "name": "out-of-control-02",
+        "text": "Get it back together.",
+        "seed": 5
+      },
+      {
+        "name": "out-of-control-03",
+        "text": "Reset, find your rhythm.",
+        "seed": 6
+      },
+      {
+        "name": "contact-world-01",
+        "text": "A bit of rubbing on the wall there. <break time=\"0.3s\" /> No points.",
+        "seed": 4
+      },
+      {
+        "name": "contact-world-02",
+        "text": "Just a touch on the wall. <break time=\"0.3s\" /> We're clean.",
+        "seed": 6
+      },
+      {
+        "name": "contact-world-03",
+        "text": "Quick kiss with the wall. <break time=\"0.3s\" /> No penalty.",
+        "seed": 7
+      },
+      {
+        "name": "contact-car-01",
+        "text": "Some rubbing with the other car. <break time=\"0.3s\" /> No points.",
+        "seed": 3
+      },
+      {
+        "name": "contact-car-02",
+        "text": "Light contact with the other car. <break time=\"0.3s\" /> That's fine.",
+        "seed": 7
+      },
+      {
+        "name": "contact-car-03",
+        "text": "Door-to-door but clean. <break time=\"0.3s\" /> No penalty.",
+        "seed": 8
+      },
+      {
+        "name": "collision-world-01",
+        "text": "That hit on the wall cost us two penalty points.",
+        "seed": 5
+      },
+      {
+        "name": "collision-world-02",
+        "text": "We just received a two point penalty for that crash.",
+        "seed": 6
+      },
+      {
+        "name": "collision-world-03",
+        "text": "Two points for catching the wall.",
+        "seed": 7
+      },
+      {
+        "name": "collision-car-01",
+        "text": "That collision with the other car cost us four penalty points.",
+        "seed": 6
+      },
+      {
+        "name": "collision-car-02",
+        "text": "We just received a four point penalty for that crash.",
+        "seed": 7
+      },
+      {
+        "name": "collision-car-03",
+        "text": "Four points for hitting the other car.",
+        "seed": 8
+      }
+    ],
     "names": [
       {
         "name": "adam",

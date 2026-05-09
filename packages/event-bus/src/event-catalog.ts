@@ -50,6 +50,32 @@ export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
 export type FlagScope = "local" | "full";
 
 /**
+ * Canonical incident-report type (issue #530). Maps the report byte of
+ * iRacing's `irsdk_IncidentFlags` onto a sim-agnostic discriminator so future
+ * translators (AC, ACC, …) can emit the same `incident.occurred` shape.
+ *
+ * The audio-scenarios catalog branches one scenario per value:
+ *   - OffTrack       — track-limits nudge
+ *   - OutOfControl   — composure / get-it-back
+ *   - ContactWorld   — light wall rub, no penalty
+ *   - CollisionWorld — heavier wall hit, deterministic 2x penalty
+ *   - ContactCar     — light car rub, no penalty
+ *   - CollisionCar   — heavier car hit, deterministic 4x penalty
+ *
+ * `RepOffTrackOngoing` (0x03) and `RepCollisionWithWorldOngoing` (0x06) are
+ * not surfaced — iRacing's own header notes they are never emitted by the
+ * sim. `RepNoReport` (0x00) is suppressed because it carries no actionable
+ * type information.
+ */
+export type IncidentType =
+  | "off-track"
+  | "out-of-control"
+  | "contact-world"
+  | "collision-world"
+  | "contact-car"
+  | "collision-car";
+
+/**
  * Canonical track-wetness state (issue #526). Mirrors iRacing's
  * `irsdk_TrackWetness` enum but lives here on the sim-agnostic bus so future
  * adapters (AC, ACC, …) can map their own concepts onto the same shape.
@@ -188,7 +214,16 @@ export type SimEventMap = {
    */
   "damage.repairNeeded.raised": SimEvent<"damage.repairNeeded.raised", EmptySimEventPayload>;
 
-  "incident.occurred": SimEvent<"incident.occurred", { delta: number }>;
+  /**
+   * Player incident bumped the count (issue #530). `delta` carries the raw
+   * count delta (1 / 2 / 4 in iRacing's scoring) so consumers that only care
+   * about magnitude can use it directly. `type` carries the {@link IncidentType}
+   * discriminator so audio scenarios can branch one callout per category
+   * (off-track nudge, composure prompt, light contact, penalty-bearing
+   * collision). Translators must omit emission when the incident type is
+   * unknown — every fire MUST set `type`.
+   */
+  "incident.occurred": SimEvent<"incident.occurred", { delta: number; type: IncidentType }>;
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;
   "offTrack.ended": SimEvent<"offTrack.ended", EmptySimEventPayload>;
 

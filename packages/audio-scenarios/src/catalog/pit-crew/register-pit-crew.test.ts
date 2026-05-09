@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { type DamageCalloutId, type FlagCalloutId, registerPitCrew } from "./index.js";
+import { type DamageCalloutId, type FlagCalloutId, type IncidentCalloutId, registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
@@ -210,6 +210,29 @@ const DAMAGE_CLIP_PATHS = [
   `voice/${VOICE}/damage/repair-needed-03.mp3`,
 ] as const;
 
+// Incident clips referenced from `incidents.ts` (issue #530). Three
+// alternating lines per category × six categories.
+const INCIDENT_CLIP_PATHS = [
+  `voice/${VOICE}/incidents/off-track-01.mp3`,
+  `voice/${VOICE}/incidents/off-track-02.mp3`,
+  `voice/${VOICE}/incidents/off-track-03.mp3`,
+  `voice/${VOICE}/incidents/out-of-control-01.mp3`,
+  `voice/${VOICE}/incidents/out-of-control-02.mp3`,
+  `voice/${VOICE}/incidents/out-of-control-03.mp3`,
+  `voice/${VOICE}/incidents/contact-world-01.mp3`,
+  `voice/${VOICE}/incidents/contact-world-02.mp3`,
+  `voice/${VOICE}/incidents/contact-world-03.mp3`,
+  `voice/${VOICE}/incidents/collision-world-01.mp3`,
+  `voice/${VOICE}/incidents/collision-world-02.mp3`,
+  `voice/${VOICE}/incidents/collision-world-03.mp3`,
+  `voice/${VOICE}/incidents/contact-car-01.mp3`,
+  `voice/${VOICE}/incidents/contact-car-02.mp3`,
+  `voice/${VOICE}/incidents/contact-car-03.mp3`,
+  `voice/${VOICE}/incidents/collision-car-01.mp3`,
+  `voice/${VOICE}/incidents/collision-car-02.mp3`,
+  `voice/${VOICE}/incidents/collision-car-03.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -219,6 +242,7 @@ const manifest: AudioAssetsManifest = {
     ...ACK_POOL_CLIPS,
     ...TOGGLE_CLIP_PATHS,
     ...DAMAGE_CLIP_PATHS,
+    ...INCIDENT_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -252,15 +276,30 @@ function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
   return new Map<FlagCalloutId, boolean>(ALL_FLAG_IDS.map((id) => [id, initial]));
 }
 
+const ALL_INCIDENT_IDS: readonly IncidentCalloutId[] = [
+  "off-track",
+  "out-of-control",
+  "contact-world",
+  "collision-world",
+  "contact-car",
+  "collision-car",
+];
+
+function makeIncidentEnabledMap(initial: boolean): Map<IncidentCalloutId, boolean> {
+  return new Map<IncidentCalloutId, boolean>(ALL_INCIDENT_IDS.map((id) => [id, initial]));
+}
+
 let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
+let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
   enabled = makeEnabledMap(true);
   pitServiceRequestsEnabled = true;
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
+  incidentEnabled = makeIncidentEnabledMap(true);
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -277,6 +316,7 @@ beforeEach(() => {
     (id) => damageEnabled.get(id) ?? true,
     undefined,
     undefined,
+    (id) => incidentEnabled.get(id) ?? true,
     () => voiceMasterEnabled,
   );
 });
@@ -639,6 +679,62 @@ describe("damage callout live gating (issue #489)", () => {
   });
 });
 
+describe("incident callout live gating (issue #530)", () => {
+  it.each(ALL_INCIDENT_IDS)("%s fires when its toggle is enabled", (id) => {
+    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    flush(audio);
+
+    const matched = voiceClipsPlayed().some((p) => p.includes(`/incidents/${id}-`));
+    expect(matched).toBe(true);
+  });
+
+  it.each(ALL_INCIDENT_IDS)("%s is suppressed when its toggle is off", (id) => {
+    incidentEnabled.set(id, false);
+    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line on suppression", () => {
+    incidentEnabled.set("collision-car", false);
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("incident callout suppressed: collision-car");
+  });
+
+  it("disabling one category does not affect another (per-id isolation)", () => {
+    incidentEnabled.set("out-of-control", false);
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+  });
+
+  it("toggling off mid-clip does not cut the in-flight callout", () => {
+    bus.publishEvent("incident.occurred", { delta: 4, type: "collision-car" } as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    incidentEnabled.set("collision-car", false);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/incidents/collision-car-"))).toBe(true);
+  });
+
+  it("re-enabling restores future fires", () => {
+    incidentEnabled.set("off-track", false);
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    incidentEnabled.set("off-track", true);
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+  });
+});
+
 // Issue #515: the Race Engineer master gate ANDs the user's
 // `pitCrewRaceEngineerEnabled` toggle with whatever the plugin needs to
 // gate (e.g. Pit Crew button presence in a future iteration). When the
@@ -674,6 +770,14 @@ describe("Race Engineer master gate (issue #515)", () => {
   it("master gate off blocks damage callouts", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("damage.repairNeeded.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(ALL_INCIDENT_IDS)("master gate off blocks incident callouts (%s)", (id) => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

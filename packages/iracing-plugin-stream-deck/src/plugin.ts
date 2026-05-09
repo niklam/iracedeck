@@ -7,6 +7,8 @@ import {
   type DamageCalloutId,
   FLAG_CALLOUT_SETTING_KEYS,
   type FlagCalloutId,
+  INCIDENT_CALLOUT_SETTING_KEYS,
+  type IncidentCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
@@ -238,6 +240,12 @@ registerPitCrew(
   // so toggling off mid-session takes effect on the next event.
   (id: TrackConditionsCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[TRACK_CONDITIONS_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Per-incident-type callout opt-ins (issue #530). One boolean per
+  // IncidentType subject. Same live-read pattern as the other callout
+  // families so toggling a category off mid-session takes effect on the
+  // next event without cutting an in-flight clip.
+  (id: IncidentCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

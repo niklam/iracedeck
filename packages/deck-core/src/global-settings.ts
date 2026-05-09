@@ -341,6 +341,41 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Per-incident-type callout opt-ins (issue #530). One boolean per
+     * `irsdk_IncidentFlags` report-byte category surfaced by the bus.
+     * Every category defaults `true` so a fresh install gets full
+     * type-specific coaching (track limits / composure / contact vs
+     * collision-with-penalty) — the user can silence individual
+     * categories from the PI mid-session and the change takes effect on
+     * the next event arrival without cutting an in-flight clip. Same
+     * forward-compat semantics as the other callout families. Canonical
+     * id↔key mapping in `INCIDENT_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledIncidentOffTrack: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledIncidentOutOfControl: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledIncidentContactWorld: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledIncidentCollisionWorld: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledIncidentContactCar: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledIncidentCollisionCar: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Master opt-in for the track-conditions callout family (issue #526).
      * Single subject for v1 — every (direction × target) combination of the
      * Race Engineer's track-wetness change announcement is gated by this one
