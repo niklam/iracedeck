@@ -43,6 +43,7 @@ import drsTemplate from "../../../icons/car-control-drs.svg";
 import pushToPassTemplate from "../../../icons/car-control-push-to-pass.svg";
 import carControlTemplate from "../../../icons/car-control.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
+import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
@@ -500,6 +501,14 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   /** Auto-hold release timers per action context (escape auto-hold mode) */
   private autoHoldTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /**
+   * Caps per-key icon updates at 10 Hz with a trailing-edge coalescer
+   * (issue #493). The SDK now ticks at ~70 Hz with SessionTick dedupe;
+   * a fast-changing telemetry-driven control (DRS, push-to-pass blinking)
+   * would otherwise flood `setKeyImage` calls.
+   */
+  private readonly imageThrottle = new IconUpdateThrottle();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CarControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -538,6 +547,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
+    this.imageThrottle.clear(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CarControlSettings>): Promise<void> {
@@ -815,16 +825,29 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     const stateKey = this.buildStateKey(settings, telemetryState);
     const lastStateKey = this.lastState.get(contextId);
 
-    if (lastStateKey !== stateKey) {
-      this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateCarControlSvg(settings, telemetryState);
+    if (lastStateKey === stateKey) return;
+
+    this.lastState.set(contextId, stateKey);
+
+    // Route through the 10 Hz throttle (issue #493). The render closure
+    // re-resolves from current telemetry at flush time so a trailing-edge
+    // fire reflects the latest state, not the state we had when the
+    // throttle scheduled it.
+    this.imageThrottle.schedule(contextId, async () => {
+      const storedSettings = this.activeContexts.get(contextId);
+
+      if (!storedSettings || !TELEMETRY_AWARE_CONTROLS.has(storedSettings.control)) return;
+
+      const currentTelemetry = this.sdkController.getCurrentTelemetry();
+      const currentState = this.getTelemetryState(currentTelemetry, storedSettings.control);
+      const svgDataUri = generateCarControlSvg(storedSettings, currentState);
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
-        const currentTelemetry = this.sdkController.getCurrentTelemetry();
-        const currentState = this.getTelemetryState(currentTelemetry, settings.control);
+        const t = this.sdkController.getCurrentTelemetry();
+        const s = this.getTelemetryState(t, storedSettings.control);
 
-        return generateCarControlSvg(settings, currentState);
+        return generateCarControlSvg(storedSettings, s);
       });
-    }
+    });
   }
 }
