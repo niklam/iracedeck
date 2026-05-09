@@ -14,6 +14,8 @@ import {
   type DamageCalloutId,
   FLAG_CALLOUT_SETTING_KEYS,
   type FlagCalloutId,
+  INCIDENT_CALLOUT_SETTING_KEYS,
+  type IncidentCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
@@ -231,6 +233,11 @@ registerPitCrew(
   // (`wetness`); same live-read pattern as the other callout families.
   (id: TrackConditionsCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[TRACK_CONDITIONS_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Per-incident-type callout opt-ins (issue #530). One boolean per
+  // IncidentType subject. Same live-read pattern as the other callout
+  // families.
+  (id: IncidentCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
