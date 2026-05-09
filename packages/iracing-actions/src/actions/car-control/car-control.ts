@@ -531,6 +531,13 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CarControlSettings>): Promise<void> {
+    // Clear pending throttle + per-context state BEFORE awaiting any keyboard
+    // release / super so a queued trailing flush (up to 100 ms) can't fire
+    // and call `updateKeyImage` for a context that's mid-teardown.
+    this.imageThrottle.clear(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastState.delete(ev.action.id);
+
     const settings = this.parseSettings(ev.payload.settings);
 
     if (settings.control === "escape") {
@@ -545,9 +552,6 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
-    this.activeContexts.delete(ev.action.id);
-    this.lastState.delete(ev.action.id);
-    this.imageThrottle.clear(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CarControlSettings>): Promise<void> {

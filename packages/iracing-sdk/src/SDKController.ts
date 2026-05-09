@@ -249,6 +249,9 @@ export class SDKController {
       this.lastValidTelemetry = null;
       this.lastTemplateContext = null;
       this.templateContextDirty = true;
+      // Reset dedupe state so the first frame of the next iRacing session
+      // is never suppressed by a stale tick value (issue #493 follow-up).
+      this.lastSessionTick = -1;
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately

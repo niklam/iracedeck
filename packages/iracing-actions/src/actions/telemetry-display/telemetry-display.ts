@@ -130,11 +130,15 @@ export class TelemetryDisplay extends ConnectionStateAwareAction<TelemetryDispla
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<TelemetryDisplaySettings>): Promise<void> {
-    await super.onWillDisappear(ev);
-    this.sdkController.unsubscribe(ev.action.id);
+    // Clear pending throttle + per-context state BEFORE awaiting super so a
+    // queued trailing flush (up to 100 ms) can't fire and call
+    // `updateKeyImage` for a context that's mid-teardown.
+    this.imageThrottle.clear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
-    this.imageThrottle.clear(ev.action.id);
+
+    await super.onWillDisappear(ev);
+    this.sdkController.unsubscribe(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<TelemetryDisplaySettings>): Promise<void> {
