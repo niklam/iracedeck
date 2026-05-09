@@ -775,6 +775,14 @@ describe("Race Engineer master gate (issue #515)", () => {
     expect(voiceClipsPlayed()).toEqual([]);
   });
 
+  it.each(ALL_INCIDENT_IDS)("master gate off blocks incident callouts (%s)", (id) => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("incident.occurred", { delta: 1, type: id } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
   it("master gate off does not cut an in-flight callout", () => {
     bus.publishEvent("flag.red.raised", {} as never);
     expect(audio._played.length).toBeGreaterThan(0);
