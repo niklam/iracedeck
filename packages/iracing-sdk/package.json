@@ -20,10 +20,10 @@
   "dependencies": {
     "@iracedeck/iracing-native": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "yaml": "2.8.3"
+    "yaml": "2.8.4"
   },
   "devDependencies": {
-    "@types/node": "25.6.0",
+    "@types/node": "25.6.2",
     "rimraf": "6.1.3",
     "typescript": "5.9.3",
     "vitest": "4.1.5"

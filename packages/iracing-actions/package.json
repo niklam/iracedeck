@@ -20,11 +20,11 @@
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
-    "zod": "4.3.6"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.5",
-    "@types/node": "25.6.0",
+    "@types/node": "25.6.2",
     "typescript": "5.9.3",
     "vitest": "4.1.5"
   }
