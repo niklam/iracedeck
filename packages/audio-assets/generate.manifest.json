@@ -3146,12 +3146,12 @@
       "requestId": "Ijd2Ij9pNoiaKySaMvuk"
     },
     "voice/luca/track-conditions/worsening-mostly-dry-01.mp3": {
-      "hash": "9f268ad209d50758",
+      "hash": "455d95faa4def6c6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
       "textPreview": "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dr…",
-      "generatedAt": "2026-05-09T08:08:55.132Z",
-      "requestId": "dBvjFfukHrYBJPziHyzH"
+      "generatedAt": "2026-05-11T05:33:54.901Z",
+      "requestId": "yzdMEkCXqgKs68ZoHUHJ"
     },
     "voice/luca/track-conditions/worsening-very-lightly-wet-01.mp3": {
       "hash": "bcd389f2da6ad40e",
@@ -3162,12 +3162,12 @@
       "requestId": "91lHvhTh0W6m9KDailHI"
     },
     "voice/luca/track-conditions/worsening-lightly-wet-01.mp3": {
-      "hash": "6ba45ff6b138f727",
+      "hash": "d54f3bef9c7ee177",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
-      "textPreview": "It's wetting up. <break time=\"0.3s\" /> Light wetness on the track now.",
-      "generatedAt": "2026-05-08T16:18:55.153Z",
-      "requestId": "42BCRdRNTAniJzU9kSum"
+      "textPreview": "It's getting wetter. <break time=\"0.3s\" /> Light wetness on the track now.",
+      "generatedAt": "2026-05-11T05:26:52.625Z",
+      "requestId": "v9iUnB8WcUuoCJr6S2OA"
     },
     "voice/luca/track-conditions/worsening-moderately-wet-01.mp3": {
       "hash": "5192a3c07917d913",
@@ -3202,12 +3202,12 @@
       "requestId": "PV4FFT2aMaBsZcsmlP2V"
     },
     "voice/luca/track-conditions/drying-mostly-dry-01.mp3": {
-      "hash": "6639b2c359c09579",
+      "hash": "696acc23fa66a6d2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2",
-      "textPreview": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, just a few damp spots.",
-      "generatedAt": "2026-05-08T16:18:56.701Z",
-      "requestId": "y8pfgoLPyHlpoI9R0yMD"
+      "textPreview": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, there might still be …",
+      "generatedAt": "2026-05-11T05:26:52.975Z",
+      "requestId": "sS74LYcSLb0BZhGerivU"
     },
     "voice/luca/track-conditions/drying-very-lightly-wet-01.mp3": {
       "hash": "f506cb2ff885da50",

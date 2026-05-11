@@ -652,8 +652,8 @@
     "track-conditions": [
       {
         "name": "worsening-mostly-dry-01",
-        "text": "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dry, there might still be small puddles.",
-        "seed": 5
+        "text": "Conditions are starting to change. <break time=\"0.3s\" /> The track is mostly dry, there might be some damp spots.",
+        "seed": 8
       },
       {
         "name": "worsening-very-lightly-wet-01",
@@ -662,7 +662,7 @@
       },
       {
         "name": "worsening-lightly-wet-01",
-        "text": "It's wetting up. <break time=\"0.3s\" /> Light wetness on the track now.",
+        "text": "It's getting wetter. <break time=\"0.3s\" /> Light wetness on the track now.",
         "seed": 2
       },
       {
@@ -687,7 +687,7 @@
       },
       {
         "name": "drying-mostly-dry-01",
-        "text": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, just a few damp spots.",
+        "text": "Track is drying up. <break time=\"0.3s\" /> Mostly dry now, there might still be some puddles.",
         "seed": 2
       },
       {
