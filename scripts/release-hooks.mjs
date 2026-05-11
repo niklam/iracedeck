@@ -39,12 +39,22 @@ const packageJsonPaths = readdirSync(packagesDir, { withFileTypes: true })
 // Bump Version in manifest.json files. Elgato's manifest schema requires a
 // strict 4-part numeric format `{major}.{minor}.{patch}.{build}`
 // (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so semver pre-release / build metadata
-// suffixes must be stripped. Every 1.15.0 pre-release and the final 1.15.0
-// therefore ship with the same manifest Version "1.15.0.0".
+// suffixes must be stripped. The build slot is populated from
+// `git rev-list --count HEAD` so each release (pre or final alike) gets a
+// unique 4-part version; the final naturally outranks its preceding
+// pre-releases because release-it commits the version bump between runs,
+// which advances the commit count.
 const manifestPaths = [
   "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json",
   "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json",
 ];
+
+const numericVersion = version.replace(/[-+].*$/, "");
+const buildNumber = execFileSync("git", ["rev-list", "--count", "HEAD"], {
+  cwd: root,
+  encoding: "utf-8",
+}).trim();
+const manifestVersion = `${numericVersion}.${buildNumber}`;
 
 // release-it runs before:bump hooks even in dry-run mode, which would otherwise
 // modify real package.json / manifest.json files and stage them with `git add`.
@@ -52,9 +62,7 @@ const manifestPaths = [
 if (process.env.RELEASE_IT_DRY_RUN === "1") {
   console.log(`  [dry-run] Would bump ${packageJsonPaths.length} package.json files to version ${version}:`);
   for (const rel of packageJsonPaths) console.log(`    - ${rel}`);
-  console.log(
-    `  [dry-run] Would bump ${manifestPaths.length} manifest.json files to version ${version.replace(/[-+].*$/, "")}.0:`,
-  );
+  console.log(`  [dry-run] Would bump ${manifestPaths.length} manifest.json files to version ${manifestVersion}:`);
   for (const rel of manifestPaths) console.log(`    - ${rel}`);
   process.exit(0);
 }
@@ -67,14 +75,12 @@ for (const rel of packageJsonPaths) {
   console.log(`  Updated ${rel} → ${version}`);
 }
 
-const numericVersion = version.replace(/[-+].*$/, "");
-
 for (const rel of manifestPaths) {
   const filePath = join(root, rel);
   const manifest = JSON.parse(readFileSync(filePath, "utf-8"));
-  manifest.Version = `${numericVersion}.0`;
+  manifest.Version = manifestVersion;
   writeFileSync(filePath, JSON.stringify(manifest, null, 2) + "\n");
-  console.log(`  Updated ${rel} → ${numericVersion}.0`);
+  console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
 
 // Stage all modified files. Use argv form (no shell) so package directory
