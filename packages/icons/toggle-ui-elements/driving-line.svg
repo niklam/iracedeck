@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 70" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#1a3a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TOGGLE\nDRIVING LINE"},"border":{"color":"#3a6a6a"}}</desc>
+
+
+    <path d="M5,70 L5,40 A35,35 0 0 1 40,5 L70,5" fill="none" stroke="#888888" stroke-width="3"/>
+    <path d="M25,70 L25,40 A15,15 0 0 1 40,25 L70,25" fill="none" stroke="#888888" stroke-width="3"/>
+    <path d="M15,70 L15,42 Q15,22 38,16 L62,15" fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M68,15 l-9,-4 v8 z" fill="{{graphic1Color}}" stroke="none"/>
+
+</svg>

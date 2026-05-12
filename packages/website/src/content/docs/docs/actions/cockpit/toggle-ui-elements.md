@@ -3,7 +3,7 @@ title: Toggle UI Elements
 description: Show or hide iRacing's on-screen UI elements.
 sidebar:
   badge:
-    text: "9 modes"
+    text: "10 modes"
     variant: tip
 ---
 
@@ -117,6 +117,26 @@ Enter or exit UI edit mode for repositioning overlays.
 
 - **Dial:** No rotation support
 - **Default binding:** `Alt+K`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Driving Line
+
+Toggle the in-car driving-line overlay. Handy for reference laps when learning a track and turning it off again for clean laps.
+
+:::note
+The driving line must first be enabled in iRacing's options (Settings → Driving → Driving Aids → Driving Line). The toggle only switches the overlay on and off — if Driving Line is turned off in iRacing settings, the keybind cannot turn it on.
+:::
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** `Ctrl+Alt+L`
 - **Telemetry-aware icon:** No
 
 #### Settings

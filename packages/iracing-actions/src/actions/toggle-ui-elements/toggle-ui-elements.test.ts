@@ -23,6 +23,9 @@ vi.mock("@iracedeck/icons/toggle-ui-elements/virtual-mirror.svg", () => ({
 vi.mock("@iracedeck/icons/toggle-ui-elements/ui-edit-mode.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/toggle-ui-elements/driving-line.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/toggle-ui-elements/display-ref-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -154,6 +157,10 @@ describe("ToggleUiElements", () => {
       expect(UI_ELEMENT_GLOBAL_KEYS["ui-edit-mode"]).toBe("toggleUiEditMode");
     });
 
+    it("should have correct mapping for driving-line", () => {
+      expect(UI_ELEMENT_GLOBAL_KEYS["driving-line"]).toBe("toggleUiDrivingLine");
+    });
+
     it("should have correct mapping for display-ref-car", () => {
       expect(UI_ELEMENT_GLOBAL_KEYS["display-ref-car"]).toBe("toggleUiDisplayRefCar");
     });
@@ -162,8 +169,8 @@ describe("ToggleUiElements", () => {
       expect(UI_ELEMENT_GLOBAL_KEYS["replay-ui"]).toBeUndefined();
     });
 
-    it("should have exactly 8 entries", () => {
-      expect(Object.keys(UI_ELEMENT_GLOBAL_KEYS)).toHaveLength(8);
+    it("should have exactly 9 entries", () => {
+      expect(Object.keys(UI_ELEMENT_GLOBAL_KEYS)).toHaveLength(9);
     });
   });
 
@@ -189,6 +196,7 @@ describe("ToggleUiElements", () => {
         "weather-radar",
         "virtual-mirror",
         "ui-edit-mode",
+        "driving-line",
         "display-ref-car",
         "replay-ui",
       ] as const;
@@ -233,6 +241,7 @@ describe("ToggleUiElements", () => {
         "weather-radar": { mainLabel: "WEATHER", subLabel: "RADAR" },
         "virtual-mirror": { mainLabel: "VIRTUAL", subLabel: "MIRROR" },
         "ui-edit-mode": { mainLabel: "UI EDIT", subLabel: "MODE" },
+        "driving-line": { mainLabel: "DRIVING LINE", subLabel: "TOGGLE" },
         "display-ref-car": { mainLabel: "REFERENCE", subLabel: "CAR" },
         "replay-ui": { mainLabel: "REPLAY UI", subLabel: "TOGGLE" },
       };

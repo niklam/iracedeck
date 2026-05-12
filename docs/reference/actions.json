@@ -266,6 +266,7 @@
             { "value": "weather-radar", "label": "Weather Radar" },
             { "value": "virtual-mirror", "label": "Virtual Mirror" },
             { "value": "ui-edit-mode", "label": "UI Edit Mode" },
+            { "value": "driving-line", "label": "Driving Line" },
             {
               "value": "display-ref-car",
               "label": "Display Reference Car",

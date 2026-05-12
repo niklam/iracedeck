@@ -96,6 +96,7 @@
 | Toggle Weather Radar | Shift+Alt+R | No | Toggle Weather Radar |
 | Toggle Virtual Mirror | Alt+M | No | Toggle Virtual Mirror |
 | Toggle UI Edit | Alt+K | No | Toggle UI Edit |
+| Toggle Driving Line | Ctrl+Alt+L | No | Driving Line |
 | Adjust UI Size | Ctrl+PageDown / Ctrl+PageUp | No | Scale UI Up / Scale UI Down |
 | Toggle UI Visibility | Space | No | Toggle UI Visibility |
 | Pause Sim | Shift+P | No | Pause Sim |
