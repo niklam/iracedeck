@@ -2,19 +2,35 @@
 /**
  * ElevenLabs voice generator for @iracedeck/audio-assets.
  *
- * Reads generate.config.json, iterates voices × groups × entries, skips any
- * entry whose output MP3 already exists AND whose hash in
- * generate.manifest.json matches the current (voice + model + settings +
- * text + seed + all other audio-affecting options) tuple. Remaining entries
- * are fetched from the ElevenLabs TTS API and written to
- * packages/audio-assets/voice/<voice>/<group>/<name>.mp3.
+ * Reads every `configs/<voice-id>.voice.json` file, iterates each voice's
+ * groups × entries, skips any entry whose output MP3 already exists AND
+ * whose hash in `generate.manifest.json` matches the current (voice +
+ * model + settings + text + seed + all other audio-affecting options)
+ * tuple. Remaining entries are fetched from the ElevenLabs TTS API and
+ * written to `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
+ *
+ * Per-voice file shape
+ *   Every voice is fully self-contained. There is no shared root config:
+ *   `model_id`, `voice_settings`, `output_format`, language / normalization
+ *   flags all live in each `<voice-id>.voice.json`. The intent is to let
+ *   different ElevenLabs models or different speeds ride one to a voice
+ *   without coupling them.
+ *
+ *   Per-entry overrides (within a voice file) fall back to the voice's
+ *   value when omitted, so e.g. one entry can pin a different `model_id`
+ *   or `language_code` without rewriting the rest.
+ *
+ *   Key parity across voices is enforced by `voice-parity.test.ts` —
+ *   every voice must define the same `<group>/<entry-name>` set as
+ *   `default.voice.json`. Different text per voice is fine; missing or
+ *   extra clip keys fail the test.
  *
  * Request-id chains
  *   `previous_request_ids` and `next_request_ids` array elements may be
  *   either:
  *     - a `<group>/<entry-name>` reference (e.g. `"acknowledgment/got-it"`)
  *       resolved at generate-time to that clip's `requestId` for the
- *       current voice from generate.manifest.json, or
+ *       current voice from `generate.manifest.json`, or
  *     - a raw ElevenLabs request-id string (no `/`, passed through verbatim).
  *   References are resolved per-voice — the same chain block produces a
  *   per-voice link without duplication. The resolved IDs feed the
@@ -41,11 +57,11 @@
  *                                   skipped without calling the API, writing
  *                                   files, or updating the manifest.
  *   --voice <key>[,<key>...]        Only iterate the named voices. Repeatable;
- *                                   --voice luca --voice titan == --voice luca,titan.
+ *                                   --voice default --voice titan == --voice default,titan.
  *   --group <name>[,<name>...]      Only iterate the named groups. Repeatable.
  *
- * Voice and group filters compose as an intersection: --voice luca --group
- * numbers only touches voice/luca/numbers/. Manifest entries outside the
+ * Voice and group filters compose as an intersection: --voice default --group
+ * numbers only touches voice/default/numbers/. Manifest entries outside the
  * filter are left untouched, so a subsequent unscoped run still sees them
  * as cache hits. Unknown names exit non-zero with the list of valid choices.
  *
@@ -53,7 +69,7 @@
  *   pnpm --filter @iracedeck/audio-assets generate
  *   pnpm --filter @iracedeck/audio-assets generate:dry-run
  *   pnpm --filter @iracedeck/audio-assets generate --group acknowledgment
- *   pnpm --filter @iracedeck/audio-assets generate --voice luca --group numbers
+ *   pnpm --filter @iracedeck/audio-assets generate --voice default --group numbers
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -61,7 +77,7 @@ import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
-import { type Config, type Entry, loadConfig, resolveRequestIds, resolveVoiceSettings, type Voice } from "./config.ts";
+import { type Entry, loadVoiceConfigs, resolveRequestIds, resolveVoiceSettings, type VoiceConfig } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
 import { loadManifest, type Manifest, saveManifest } from "./manifest.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
@@ -69,7 +85,7 @@ import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "../..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const CONFIG_PATH = path.join(packageRoot, "generate.config.json");
+const CONFIGS_DIR = path.join(packageRoot, "configs");
 const MANIFEST_PATH = path.join(packageRoot, "generate.manifest.json");
 const CACHE_ROOT = path.join(packageRoot, ".cache");
 
@@ -111,8 +127,8 @@ function loadDotenv(): void {
 
 /**
  * Construct the complete `synthesizeSpeech` options for one entry, resolving
- * global config + per-voice override + per-entry fields in that order.
- * `apiKey` is injected separately at the call site (or omitted for hashing).
+ * voice-level then per-entry fields in that order. `apiKey` is injected
+ * separately at the call site (or omitted for hashing).
  *
  * `<group>/<entry-name>` references in `previous_request_ids` /
  * `next_request_ids` are resolved against the manifest for `voiceName` here,
@@ -120,22 +136,21 @@ function loadDotenv(): void {
  * a re-cut dependency cascades into a hash change for every dependent.
  */
 function buildSynthesizeOptions(
-  config: Config,
   voiceName: string,
-  voice: Voice,
+  voice: VoiceConfig,
   entry: Entry,
   manifest: Manifest,
 ): Omit<SynthesizeOptions, "apiKey"> {
-  // Resolve the 3-level voice_settings stack (config → voice → entry) and
-  // split off language_code so it ships as the top-level body field per the
+  // Resolve the 2-level voice_settings stack (voice → entry) and split off
+  // language_code so it ships as the top-level body field per the
   // ElevenLabs API contract — `voice_settings` itself stays clean.
-  const merged = resolveVoiceSettings(config, voice, entry);
+  const merged = resolveVoiceSettings(voice, entry);
   const { language_code, ...voice_settings } = merged;
 
   return {
     voice_id: voice.id,
     text: entry.text,
-    model_id: config.model_id,
+    model_id: entry.model_id ?? voice.model_id,
     voice_settings,
     seed: entry.seed,
     previous_text: entry.previous_text,
@@ -143,13 +158,17 @@ function buildSynthesizeOptions(
     previous_request_ids: resolveRequestIds(entry.previous_request_ids, voiceName, manifest),
     next_request_ids: resolveRequestIds(entry.next_request_ids, voiceName, manifest),
     language_code,
-    apply_text_normalization: config.apply_text_normalization,
-    apply_language_text_normalization: config.apply_language_text_normalization,
-    pronunciation_dictionary_locators: config.pronunciation_dictionary_locators,
-    use_pvc_as_ivc: voice.use_pvc_as_ivc,
-    output_format: config.output_format,
-    enable_logging: config.enable_logging,
-    optimize_streaming_latency: config.optimize_streaming_latency,
+    apply_text_normalization: entry.apply_text_normalization ?? voice.apply_text_normalization,
+    apply_language_text_normalization:
+      entry.apply_language_text_normalization ?? voice.apply_language_text_normalization,
+    pronunciation_dictionary_locators:
+      entry.pronunciation_dictionary_locators ?? voice.pronunciation_dictionary_locators,
+    use_pvc_as_ivc: entry.use_pvc_as_ivc ?? voice.use_pvc_as_ivc,
+    output_format: entry.output_format ?? voice.output_format,
+    // `enable_logging` is excluded from the hash, so per-entry overrides on
+    // it would never invalidate the cache — keep it voice-level only.
+    enable_logging: voice.enable_logging,
+    optimize_streaming_latency: entry.optimize_streaming_latency ?? voice.optimize_streaming_latency,
   };
 }
 
@@ -204,10 +223,15 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const config = loadConfig(CONFIG_PATH);
+  const voiceConfigs = loadVoiceConfigs(CONFIGS_DIR);
+
+  if (voiceConfigs.size === 0) {
+    console.error(`No voice configs found in ${CONFIGS_DIR} (expected at least one *.voice.json).`);
+    process.exit(1);
+  }
 
   try {
-    validateScope(scope, config);
+    validateScope(scope, voiceConfigs);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -225,10 +249,10 @@ async function main(): Promise<void> {
   let skipped = 0;
   let failed = 0;
 
-  for (const [voiceName, voice] of Object.entries(config.voices)) {
+  for (const [voiceName, voice] of voiceConfigs) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
 
-    for (const [groupName, entries] of Object.entries(config.groups)) {
+    for (const [groupName, entries] of Object.entries(voice.groups)) {
       if (scope.groups && !scope.groups.includes(groupName)) continue;
 
       for (const entry of entries) {
@@ -238,7 +262,7 @@ async function main(): Promise<void> {
         let synthOptions: Omit<SynthesizeOptions, "apiKey">;
 
         try {
-          synthOptions = buildSynthesizeOptions(config, voiceName, voice, entry, manifest);
+          synthOptions = buildSynthesizeOptions(voiceName, voice, entry, manifest);
         } catch (err) {
           // Reference resolution failure (missing dep in manifest, etc.).
           // Treat as a per-entry failure so the rest of the run continues.
@@ -273,7 +297,7 @@ async function main(): Promise<void> {
           manifest.entries[relPath] = {
             hash,
             voiceId: voice.id,
-            model: config.model_id,
+            model: synthOptions.model_id,
             textPreview: textPreview(entry.text, 80),
             generatedAt: new Date().toISOString(),
             requestId,

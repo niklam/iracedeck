@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 
 import type { Manifest } from "./manifest.ts";
@@ -28,7 +29,7 @@ export const VoiceSettingsSchema = z.object({
   use_speaker_boost: z.boolean().default(true),
   // ElevenLabs accepts language_code as a top-level body field, but we group
   // it here so it rides along with stability/speed/etc. and can be set at any
-  // level (config, voice, entry) — useful for per-entry overrides like
+  // level (voice, entry) — useful for per-entry overrides like
   // `"language_code": "fi"` on a Finnish-name entry. It's extracted at
   // request time and sent as a top-level body field per the API contract.
   language_code: z.string().optional(),
@@ -40,17 +41,6 @@ export const PronunciationDictionaryLocatorSchema = z.object({
 });
 
 export const ApplyTextNormalizationSchema = z.enum(["auto", "on", "off"]);
-
-export const VoiceSchema = z.object({
-  id: z.string().min(1),
-  label: z.string().min(1),
-  // Optional per-voice override. Any subset of VoiceSettings is valid;
-  // declared fields shallow-merge on top of the top-level `voice_settings`.
-  voice_settings: VoiceSettingsSchema.partial().optional(),
-  // Only meaningful for voices that have both a Professional Voice Clone (PVC)
-  // and an Instant Voice Clone (IVC). Forces the IVC model when true.
-  use_pvc_as_ivc: z.boolean().optional(),
-});
 
 export const EntrySchema = z.object({
   name: entryName,
@@ -72,54 +62,88 @@ export const EntrySchema = z.object({
   // `validateReferences` and `resolveRequestIds`.
   previous_request_ids: z.array(z.string()).max(3).optional(),
   next_request_ids: z.array(z.string()).max(3).optional(),
-  // Optional per-entry override. Shallow-merges on top of (config + voice)
-  // settings; useful for one-off pronunciation tweaks such as setting
-  // `language_code` for a single foreign-language name.
+  // Per-entry overrides — each falls back to the voice's value when omitted.
+  // Shallow-merge semantics for `voice_settings`; scalar replacement for the
+  // rest. All audio-affecting overrides feed the per-entry hash, so flipping
+  // any of them on a single entry invalidates only that entry's cache.
   voice_settings: VoiceSettingsSchema.partial().optional(),
+  model_id: z.string().optional(),
+  output_format: z.string().optional(),
+  apply_text_normalization: ApplyTextNormalizationSchema.optional(),
+  apply_language_text_normalization: z.boolean().optional(),
+  optimize_streaming_latency: z.number().int().min(0).max(4).optional(),
+  pronunciation_dictionary_locators: z.array(PronunciationDictionaryLocatorSchema).max(3).optional(),
+  use_pvc_as_ivc: z.boolean().optional(),
 });
 
-export const ConfigSchema = z.object({
+export const VoiceConfigSchema = z.object({
+  // Voice metadata — required.
+  id: z.string().min(1),
+  label: z.string().min(1),
+  // TTS defaults for this voice. Each voice is self-contained: nothing
+  // falls back across voice files. Different voices need different
+  // models / speeds / settings, so sharing them across the pack would
+  // be a footgun.
   model_id: z.string().default("eleven_multilingual_v2"),
-  // Required base. Per-voice `voice_settings` are partial and merge on top.
   voice_settings: VoiceSettingsSchema,
-  // All of the below are optional. When omitted we don't send the field and
-  // ElevenLabs uses its own default.
+  // Optional voice-level defaults (per-entry may still override).
+  use_pvc_as_ivc: z.boolean().optional(),
   output_format: z.string().optional(),
   apply_text_normalization: ApplyTextNormalizationSchema.optional(),
   apply_language_text_normalization: z.boolean().optional(),
   enable_logging: z.boolean().optional(),
   optimize_streaming_latency: z.number().int().min(0).max(4).optional(),
   pronunciation_dictionary_locators: z.array(PronunciationDictionaryLocatorSchema).max(3).optional(),
-  voices: z.record(kebab, VoiceSchema),
+  // The actual content.
   groups: z.record(kebab, z.array(EntrySchema)),
 });
 
-export type Config = z.infer<typeof ConfigSchema>;
+export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export type VoiceSettings = z.infer<typeof VoiceSettingsSchema>;
-export type Voice = z.infer<typeof VoiceSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type PronunciationDictionaryLocator = z.infer<typeof PronunciationDictionaryLocatorSchema>;
 export type ApplyTextNormalization = z.infer<typeof ApplyTextNormalizationSchema>;
 
-export function loadConfig(configPath: string): Config {
-  const raw = readFileSync(configPath, "utf-8");
-  const json = JSON.parse(raw);
-  const config = ConfigSchema.parse(json);
+// Filenames in `configs/` follow `<voice-id>.voice.json`; the stem becomes
+// the runtime voice id (kebab-case, matches the on-disk `voice/<id>/...`
+// directory).
+const VOICE_FILE_SUFFIX = ".voice.json";
 
-  validateReferences(config);
+/**
+ * Load every per-voice config from a directory of `<voice-id>.voice.json`
+ * files. The filename stem (`default` from `default.voice.json`) is the
+ * voice id used in the generator output path and the runtime manifest.
+ * Order is sorted by id for deterministic iteration.
+ *
+ * Per-voice `validateReferences` runs eagerly so a typoed
+ * `<group>/<entry-name>` reference fails fast.
+ */
+export function loadVoiceConfigs(configsDir: string): Map<string, VoiceConfig> {
+  const entries = readdirSync(configsDir).filter((f) => f.endsWith(VOICE_FILE_SUFFIX));
+  const ids = entries.map((f) => f.slice(0, -VOICE_FILE_SUFFIX.length)).sort();
+  const map = new Map<string, VoiceConfig>();
 
-  return config;
+  for (const voiceId of ids) {
+    kebab.parse(voiceId);
+
+    const raw = readFileSync(path.join(configsDir, `${voiceId}${VOICE_FILE_SUFFIX}`), "utf-8");
+    const json = JSON.parse(raw);
+    const voiceConfig = VoiceConfigSchema.parse(json);
+
+    validateReferences(voiceId, voiceConfig);
+    map.set(voiceId, voiceConfig);
+  }
+
+  return map;
 }
 
 /**
- * Resolve the effective voice_settings stack — config defaults, then per-voice
- * override, then per-entry override. `VoiceSettings` is flat so a shallow
- * merge at each level is sufficient.
+ * Resolve the effective voice_settings stack — voice-level then per-entry
+ * override. `VoiceSettings` is flat so a shallow merge is sufficient.
  */
-export function resolveVoiceSettings(config: Config, voice: Voice, entry?: Entry): VoiceSettings {
+export function resolveVoiceSettings(voice: VoiceConfig, entry?: Entry): VoiceSettings {
   return {
-    ...config.voice_settings,
-    ...(voice.voice_settings ?? {}),
+    ...voice.voice_settings,
     ...(entry?.voice_settings ?? {}),
   };
 }
@@ -135,25 +159,26 @@ export function isReference(idOrRef: string): boolean {
 }
 
 /**
- * Cross-entry validation: reject any `<group>/<entry-name>` reference that
- * doesn't point to a known entry in the same config (typo guard). Raw IDs
- * (no `/`) are passed through untouched. Errors list valid candidates so a
- * typo is easy to fix without grepping the file.
+ * Cross-entry validation for a single voice config: reject any
+ * `<group>/<entry-name>` reference that doesn't point to a known entry in
+ * the same voice file (typo guard). Raw IDs (no `/`) are passed through
+ * untouched. Errors list valid candidates so a typo is easy to fix without
+ * grepping the file.
  *
- * Runs once per `loadConfig`, before any manifest lookup or API call, so
- * config-shape errors surface immediately and aren't hidden behind a long
- * generation run.
+ * Runs once per voice in `loadVoiceConfigs`, before any manifest lookup or
+ * API call, so config-shape errors surface immediately and aren't hidden
+ * behind a long generation run.
  */
-export function validateReferences(config: Config): void {
+export function validateReferences(voiceId: string, voice: VoiceConfig): void {
   const candidates = new Set<string>();
 
-  for (const [groupName, entries] of Object.entries(config.groups)) {
+  for (const [groupName, entries] of Object.entries(voice.groups)) {
     for (const entry of entries) {
       candidates.add(`${groupName}/${entry.name}`);
     }
   }
 
-  for (const [groupName, entries] of Object.entries(config.groups)) {
+  for (const [groupName, entries] of Object.entries(voice.groups)) {
     for (const entry of entries) {
       for (const field of ["previous_request_ids", "next_request_ids"] as const) {
         const ids = entry[field];
@@ -167,8 +192,9 @@ export function validateReferences(config: Config): void {
             const valid = [...candidates].sort().join("\n  ");
 
             throw new Error(
-              `Invalid ${field} reference "${id}" on entry "${groupName}/${entry.name}". ` +
-                `No such entry. Valid <group>/<entry-name> candidates:\n  ${valid}`,
+              `Invalid ${field} reference "${id}" on entry "${groupName}/${entry.name}" ` +
+                `(voice "${voiceId}"). No such entry. ` +
+                `Valid <group>/<entry-name> candidates:\n  ${valid}`,
             );
           }
         }
@@ -182,11 +208,12 @@ export function validateReferences(config: Config): void {
  * matching `requestId` from `generate.manifest.json` for the given voice.
  * Raw IDs (no `/`) pass through unchanged.
  *
- * Resolution is per-voice: the same reference produces `luca`'s requestId
- * for voice `luca`, `titan`'s requestId for voice `titan`. The dependency
- * must already exist in the manifest (run `--voice <v> --group <dep-group>`
- * first, or order dependencies before dependents in the config so a single
- * full run completes them in the right order).
+ * Resolution is per-voice: the same reference produces `default`'s
+ * requestId for voice `default`, `titan`'s requestId for voice `titan`.
+ * The dependency must already exist in the manifest (run
+ * `--voice <v> --group <dep-group>` first, or order dependencies before
+ * dependents in the config so a single full run completes them in the
+ * right order).
  *
  * Returns `undefined` when given `undefined` so callers can still drop the
  * field from the request body when no chain context is configured.

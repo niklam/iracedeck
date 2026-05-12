@@ -349,6 +349,20 @@ describe("resolveActiveRaceEngineerVoice", () => {
 
     expect(resolveActiveRaceEngineerVoice(["luca", "titan"])).toBe("luca");
   });
+
+  // Migration regression: when audio-assets renamed `voice/luca/` to
+  // `voice/default/`, the persisted `raceEngineerVoice: "luca"` value no
+  // longer matches any scanned voice. The existing "falls back to the
+  // first available voice" path covers this without code changes — this
+  // test pins the behaviour explicitly so a future refactor that breaks
+  // the fallback fails loudly.
+  it("falls back to 'default' when persisted value is the legacy 'luca' (post-rename)", () => {
+    const mock = createMockAdapter();
+    initGlobalSettings(mock.adapter, createMockLogger());
+    mock.echo!({ raceEngineerVoice: "luca" });
+
+    expect(resolveActiveRaceEngineerVoice(["default"])).toBe("default");
+  });
 });
 
 describe("resolveActiveDriverName", () => {

@@ -1,24 +1,13 @@
 {
+  "id": "ljX1ZrXuDIIRVcmiVSyR",
+  "label": "Default",
   "model_id": "eleven_flash_v2",
   "voice_settings": {
-    "stability": 1,
-    "similarity_boost": 1,
+    "stability": 0.75,
+    "similarity_boost": 0.85,
     "style": 0,
-    "speed": 1,
+    "speed": 0.97,
     "use_speaker_boost": true
-  },
-  "voices": {
-    "luca": {
-      "id": "ljX1ZrXuDIIRVcmiVSyR",
-      "label": "Luca",
-      "voice_settings": {
-        "speed": 0.97,
-        "stability": 0.75,
-        "similarity_boost": 0.85,
-        "use_speaker_boost": true,
-        "style": 0
-      }
-    }
   },
   "groups": {
     "acknowledgment": [

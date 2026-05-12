@@ -1,4 +1,4 @@
-import type { Config } from "./config.ts";
+import type { VoiceConfig } from "./config.ts";
 
 /**
  * Filter applied to the voices × groups iteration in the TTS generator.
@@ -89,16 +89,30 @@ export function parseScopeArgs(argv: readonly string[]): { scope: Scope; remaini
 
 /**
  * Throw with a helpful message if any requested voice/group key is missing
- * from the loaded config. Lists the unknown names and the valid options so
- * the user can correct the typo without spelunking through the config file.
+ * from the loaded voice configs. Lists the unknown names and the valid
+ * options so the user can correct the typo without spelunking through the
+ * config files.
+ *
+ * Voice ids come from the `configs/*.voice.json` filename stems. Group
+ * names come from the union of `groups` across every loaded voice — so a
+ * `--group <name>` filter is accepted as long as *at least one* voice
+ * defines that group (in practice the parity test enforces equality, but
+ * the validator is intentionally permissive so a mid-refactor mismatch
+ * doesn't block work).
  */
-export function validateScope(scope: Scope, config: Config): void {
+export function validateScope(scope: Scope, voiceConfigs: Map<string, VoiceConfig>): void {
   if (scope.voices) {
-    requireKnown("--voice", scope.voices, Object.keys(config.voices));
+    requireKnown("--voice", scope.voices, Array.from(voiceConfigs.keys()));
   }
 
   if (scope.groups) {
-    requireKnown("--group", scope.groups, Object.keys(config.groups));
+    const groups = new Set<string>();
+
+    for (const voice of voiceConfigs.values()) {
+      for (const groupName of Object.keys(voice.groups)) groups.add(groupName);
+    }
+
+    requireKnown("--group", scope.groups, Array.from(groups).sort());
   }
 }
 
