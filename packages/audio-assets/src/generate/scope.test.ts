@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { Config } from "./config.ts";
+import type { VoiceConfig } from "./config.ts";
 import { formatScope, parseScopeArgs, validateScope } from "./scope.ts";
 
-// Minimal Config shape — validateScope only reads keys of voices/groups.
-const config = {
-  voices: { luca: {}, titan: {} },
-  groups: { acknowledgment: [], numbers: [], flags: [] },
-} as unknown as Config;
+// Minimal VoiceConfig shape — validateScope only reads `groups` keys per
+// voice and the map's voice ids.
+function fakeVoice(groups: Record<string, unknown[]>): VoiceConfig {
+  return { groups } as unknown as VoiceConfig;
+}
+
+const voiceConfigs = new Map<string, VoiceConfig>([
+  ["default", fakeVoice({ acknowledgment: [], numbers: [], flags: [] })],
+  ["titan", fakeVoice({ acknowledgment: [], numbers: [], flags: [] })],
+]);
 
 describe("parseScopeArgs", () => {
   it("returns a null scope when no flags are present", () => {
@@ -85,27 +90,31 @@ describe("parseScopeArgs", () => {
 
 describe("validateScope", () => {
   it("accepts a null scope", () => {
-    expect(() => validateScope({ voices: null, groups: null }, config)).not.toThrow();
+    expect(() => validateScope({ voices: null, groups: null }, voiceConfigs)).not.toThrow();
   });
 
   it("accepts known voice and group keys", () => {
-    expect(() => validateScope({ voices: ["luca"], groups: ["acknowledgment", "numbers"] }, config)).not.toThrow();
+    expect(() =>
+      validateScope({ voices: ["default"], groups: ["acknowledgment", "numbers"] }, voiceConfigs),
+    ).not.toThrow();
   });
 
   it("throws on an unknown group with a helpful message", () => {
-    expect(() => validateScope({ voices: null, groups: ["nope"] }, config)).toThrow(
-      /--group: unknown name "nope"\.\n {2}Valid: acknowledgment, numbers, flags/,
+    expect(() => validateScope({ voices: null, groups: ["nope"] }, voiceConfigs)).toThrow(
+      /--group: unknown name "nope"\.\n {2}Valid: acknowledgment, flags, numbers/,
     );
   });
 
   it("throws on an unknown voice with a helpful message", () => {
-    expect(() => validateScope({ voices: ["mystery"], groups: null }, config)).toThrow(
-      /--voice: unknown name "mystery"\.\n {2}Valid: luca, titan/,
+    expect(() => validateScope({ voices: ["mystery"], groups: null }, voiceConfigs)).toThrow(
+      /--voice: unknown name "mystery"\.\n {2}Valid: default, titan/,
     );
   });
 
   it("lists multiple unknowns in one error", () => {
-    expect(() => validateScope({ voices: null, groups: ["foo", "bar"] }, config)).toThrow(/unknown names "foo", "bar"/);
+    expect(() => validateScope({ voices: null, groups: ["foo", "bar"] }, voiceConfigs)).toThrow(
+      /unknown names "foo", "bar"/,
+    );
   });
 });
 
@@ -115,8 +124,8 @@ describe("formatScope", () => {
   });
 
   it("includes only the populated axes", () => {
-    expect(formatScope({ voices: ["luca"], groups: null })).toBe("voices=luca");
+    expect(formatScope({ voices: ["default"], groups: null })).toBe("voices=default");
     expect(formatScope({ voices: null, groups: ["a", "b"] })).toBe("groups=a,b");
-    expect(formatScope({ voices: ["luca"], groups: ["numbers"] })).toBe("voices=luca, groups=numbers");
+    expect(formatScope({ voices: ["default"], groups: ["numbers"] })).toBe("voices=default, groups=numbers");
   });
 });

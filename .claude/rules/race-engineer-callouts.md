@@ -29,7 +29,7 @@ voice scenario as the outermost short-circuit.
 
 | Concern | File |
 |---|---|
-| **Voice lines (source of truth)** | `packages/audio-assets/generate.config.json` |
+| **Voice lines (source of truth)** | `packages/audio-assets/configs/<voice-id>.voice.json` — canonical: `default.voice.json`; key parity across voices enforced by `voice-parity.test.ts` |
 | **Generated clips** | `packages/audio-assets/voice/<voice>/<group>/<name>.mp3` (gitignored locally; committed once stable) |
 | **Generator cache** | `packages/audio-assets/generate.manifest.json` |
 | **Runtime manifest** | `packages/audio-assets/manifest.json` (rebuilt by `generate:manifest`) |
@@ -51,7 +51,7 @@ voice scenario as the outermost short-circuit.
 - **Per-callout opt-in setting key:** `callout<Polarity><Family><Subject>` (`.claude/rules/global-settings.md` is the canonical reference). Polarity is always `Enabled`; the schema field's *default* encodes the family's natural baseline (callouts default `true`). Examples: `calloutEnabledFlagYellowLocal`, `calloutEnabledTrackWetness`.
 - **Scenario id:** `pit-crew.<family>-<subject>` — `pit-crew.flag-yellow-local`, `pit-crew.pit-status-too-far-left`, `pit-crew.track-conditions-worsening-mostly-dry`.
 - **Pool name:** `<family>-<subject>` — matches the scenario subject. One pool per scenario; arrays of clip paths so future variants append cleanly.
-- **Voice clip path:** `voice/{voice}/<group>/<name>.mp3` — group keys the `generate.config.json` group; name keys the entry inside the group.
+- **Voice clip path:** `voice/{voice}/<group>/<name>.mp3` — group keys the `groups` map in the voice config; name keys the entry inside the group.
 - **Family identifier (for preemption):** matches the directory naming: `flag`, `damage`, `pit-status`, `track-conditions`. All scenarios in a family share the same `family:` value, so a newer fire supersedes an in-flight one cleanly.
 
 ## Adding a new callout — checklist
@@ -74,10 +74,11 @@ In `packages/event-bus/src/event-catalog.ts`:
 
 ### 3. Voice lines
 
-In `packages/audio-assets/generate.config.json`:
+In `packages/audio-assets/configs/default.voice.json` (and every other voice file — `voice-parity.test.ts` enforces matching `<group>/<entry-name>` sets across voices, even though text can differ):
 - Add (or extend) a group with one entry per `(direction × subject)` combination.
 - Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, optional `seed` for reproducibility, optional `previous_request_ids` to bias prosody continuity.
 - Use `<break time="0.3s" />` for natural pauses inside a single line.
+- Per-entry overrides for `model_id`, `language_code` (inside `voice_settings`), `output_format`, normalization flags etc. are supported and shallow-merge on top of the voice's defaults.
 
 Generate the clips:
 
@@ -86,10 +87,7 @@ pnpm --filter @iracedeck/audio-assets generate --group <group-name>     # only t
 pnpm --filter @iracedeck/audio-assets generate:manifest                  # rebuild runtime manifest
 ```
 
-`generate.config.json` is the source of truth; `generate.manifest.json` is the
-hash cache; `manifest.json` is the runtime asset listing. The `--group` filter
-keeps the generator from re-cutting unrelated entries (and saving API cost).
-ElevenLabs is a paid API — never run unfiltered `generate` casually.
+Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices are self-contained, no cross-voice fallback. `generate.manifest.json` is the per-voice hash cache (keys include `voice/<voice-id>/…` so changing one voice's settings invalidates only that voice's entries). `manifest.json` is the runtime asset listing. The `--group` filter keeps the generator from re-cutting unrelated entries (and saves API cost); `--voice <id>` scopes to one voice. ElevenLabs is a paid API — never run unfiltered `generate` casually.
 
 ### 4. Audio pools + scenario
 
