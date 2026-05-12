@@ -18,6 +18,7 @@ function buildVoiceConfig(
   return VoiceConfigSchema.parse({
     id: "voice-id",
     label: "Test",
+    model_id: "eleven_test_model",
     voice_settings: { stability: 1, similarity_boost: 1 },
     groups,
     ...overrides,
@@ -25,11 +26,12 @@ function buildVoiceConfig(
 }
 
 describe("VoiceConfigSchema", () => {
-  it("requires id, label, voice_settings, and groups", () => {
+  it("requires id, label, model_id, voice_settings, and groups", () => {
     expect(() =>
       VoiceConfigSchema.parse({
         id: "",
         label: "x",
+        model_id: "m",
         voice_settings: { stability: 1, similarity_boost: 1 },
         groups: {},
       }),
@@ -38,28 +40,34 @@ describe("VoiceConfigSchema", () => {
       VoiceConfigSchema.parse({
         id: "x",
         label: "",
+        model_id: "m",
         voice_settings: { stability: 1, similarity_boost: 1 },
         groups: {},
       }),
     ).toThrow();
-    expect(() => VoiceConfigSchema.parse({ id: "x", label: "y", groups: {} })).toThrow();
+    expect(() => VoiceConfigSchema.parse({ id: "x", label: "y", model_id: "m", groups: {} })).toThrow();
     expect(() =>
-      VoiceConfigSchema.parse({ id: "x", label: "y", voice_settings: { stability: 1, similarity_boost: 1 } }),
+      VoiceConfigSchema.parse({
+        id: "x",
+        label: "y",
+        model_id: "m",
+        voice_settings: { stability: 1, similarity_boost: 1 },
+      }),
     ).toThrow();
   });
 
-  it("defaults model_id when omitted", () => {
-    const v = VoiceConfigSchema.parse({
-      id: "x",
-      label: "y",
-      voice_settings: { stability: 1, similarity_boost: 1 },
-      groups: {},
-    });
-
-    expect(v.model_id).toBe("eleven_multilingual_v2");
+  it("requires model_id (no implicit default)", () => {
+    expect(() =>
+      VoiceConfigSchema.parse({
+        id: "x",
+        label: "y",
+        voice_settings: { stability: 1, similarity_boost: 1 },
+        groups: {},
+      }),
+    ).toThrow();
   });
 
-  it("accepts a model_id override", () => {
+  it("accepts an explicit model_id", () => {
     const v = buildVoiceConfig({}, { model_id: "eleven_flash_v2" });
 
     expect(v.model_id).toBe("eleven_flash_v2");
@@ -95,15 +103,21 @@ describe("EntrySchema per-entry overrides", () => {
     expect(() => EntrySchema.parse({ name: "x", text: "hi", optimize_streaming_latency: 5 })).toThrow();
   });
 
-  it("preserves voice_settings shallow-override semantics", () => {
+  it("preserves voice-level fields with no Zod default during shallow override", () => {
+    // The voice has non-default `stability` / `similarity_boost` (required
+    // fields, no `.default()` on the schema). When the entry overrides only
+    // `speed`, those required fields must survive the merge. Caveat: fields
+    // that DO have a Zod default (`style`, `use_speaker_boost`) get the
+    // default applied during entry-side parsing and clobber the voice base
+    // in the merge — that's a pre-existing footgun in `VoiceSettingsSchema.partial()`.
+    // This assertion intentionally only covers the no-default-side guarantee.
+    const voice = buildVoiceConfig({}, { voice_settings: { stability: 0.42, similarity_boost: 0.42 } });
     const entry = EntrySchema.parse({ name: "x", text: "hi", voice_settings: { speed: 0.9 } });
+    const merged = resolveVoiceSettings(voice, entry);
 
-    // Note: VoiceSettingsSchema.partial() still applies defaults for fields
-    // that have one (`style`, `use_speaker_boost`), so the parsed override
-    // object isn't strictly equal to the input. The merge in
-    // resolveVoiceSettings still produces the right effective settings
-    // because the voice-level base is splatted in first.
-    expect(entry.voice_settings?.speed).toBe(0.9);
+    expect(merged.speed).toBe(0.9);
+    expect(merged.stability).toBe(0.42);
+    expect(merged.similarity_boost).toBe(0.42);
   });
 });
 

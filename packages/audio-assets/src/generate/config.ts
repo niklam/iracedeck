@@ -83,8 +83,10 @@ export const VoiceConfigSchema = z.object({
   // TTS defaults for this voice. Each voice is self-contained: nothing
   // falls back across voice files. Different voices need different
   // models / speeds / settings, so sharing them across the pack would
-  // be a footgun.
-  model_id: z.string().default("eleven_multilingual_v2"),
+  // be a footgun — `model_id` is intentionally required (no implicit
+  // default) so a typo or omission fails loudly instead of silently
+  // picking a wrong model.
+  model_id: z.string().min(1),
   voice_settings: VoiceSettingsSchema,
   // Optional voice-level defaults (per-entry may still override).
   use_pvc_as_ivc: z.boolean().optional(),
