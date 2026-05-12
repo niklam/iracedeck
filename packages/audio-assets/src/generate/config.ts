@@ -145,8 +145,18 @@ export function loadVoiceConfigs(configsDir: string): Map<string, VoiceConfig> {
   for (const voiceId of ids) {
     kebab.parse(voiceId);
 
-    const raw = readFileSync(path.join(configsDir, `${voiceId}${VOICE_FILE_SUFFIX}`), "utf-8");
-    const json = JSON.parse(raw);
+    const fileName = `${voiceId}${VOICE_FILE_SUFFIX}`;
+    const raw = readFileSync(path.join(configsDir, fileName), "utf-8");
+    let json: unknown;
+
+    try {
+      json = JSON.parse(raw);
+    } catch (err) {
+      // Generic SyntaxError from JSON.parse doesn't say which file failed —
+      // in a multi-voice loader that's hostile to debugging.
+      throw new Error(`Failed to parse ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     const voiceConfig = VoiceConfigSchema.parse(json);
 
     validateReferences(voiceId, voiceConfig);
