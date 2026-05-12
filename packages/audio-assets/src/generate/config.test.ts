@@ -103,21 +103,20 @@ describe("EntrySchema per-entry overrides", () => {
     expect(() => EntrySchema.parse({ name: "x", text: "hi", optimize_streaming_latency: 5 })).toThrow();
   });
 
-  it("preserves voice-level fields with no Zod default during shallow override", () => {
-    // The voice has non-default `stability` / `similarity_boost` (required
-    // fields, no `.default()` on the schema). When the entry overrides only
-    // `speed`, those required fields must survive the merge. Caveat: fields
-    // that DO have a Zod default (`style`, `use_speaker_boost`) get the
-    // default applied during entry-side parsing and clobber the voice base
-    // in the merge — that's a pre-existing footgun in `VoiceSettingsSchema.partial()`.
-    // This assertion intentionally only covers the no-default-side guarantee.
-    const voice = buildVoiceConfig({}, { voice_settings: { stability: 0.42, similarity_boost: 0.42 } });
+  it("preserves voice_settings shallow-override semantics (incl. fields with Zod defaults)", () => {
+    // Per CodeRabbit feedback on #546: a per-entry override of just `speed`
+    // must NOT clobber the voice's `style` (or other Zod-defaulted fields).
+    // VoiceSettingsOverrideSchema avoids `.partial()` of the full schema so
+    // unstated keys don't get filled with defaults that would overwrite the
+    // voice-level base during merge.
+    const voice = buildVoiceConfig({}, { voice_settings: { stability: 1, similarity_boost: 1, style: 0.65 } });
     const entry = EntrySchema.parse({ name: "x", text: "hi", voice_settings: { speed: 0.9 } });
     const merged = resolveVoiceSettings(voice, entry);
 
     expect(merged.speed).toBe(0.9);
-    expect(merged.stability).toBe(0.42);
-    expect(merged.similarity_boost).toBe(0.42);
+    expect(merged.style).toBe(0.65);
+    expect(merged.stability).toBe(1);
+    expect(merged.similarity_boost).toBe(1);
   });
 });
 

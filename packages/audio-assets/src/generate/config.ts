@@ -35,6 +35,22 @@ export const VoiceSettingsSchema = z.object({
   language_code: z.string().optional(),
 });
 
+// Per-entry override schema. Intentionally NOT `VoiceSettingsSchema.partial()`:
+// that variant still applies Zod defaults during parse (so an entry override of
+// just `{ speed: 0.9 }` materializes as `{ speed: 0.9, style: 0, use_speaker_boost: true }`,
+// and the resulting object clobbers the voice's `style`/`use_speaker_boost` in
+// the shallow merge). Here every field is plain `.optional()` with no default,
+// so a parsed override contains exactly the keys the user wrote — preserving
+// the voice's base values for everything else.
+export const VoiceSettingsOverrideSchema = z.object({
+  stability: z.number().min(0).max(1).optional(),
+  similarity_boost: z.number().min(0).max(1).optional(),
+  style: z.number().min(0).max(1).optional(),
+  speed: z.number().min(0.7).max(1.2).optional(),
+  use_speaker_boost: z.boolean().optional(),
+  language_code: z.string().optional(),
+});
+
 export const PronunciationDictionaryLocatorSchema = z.object({
   pronunciation_dictionary_id: z.string().min(1),
   version_id: z.string().min(1),
@@ -66,7 +82,7 @@ export const EntrySchema = z.object({
   // Shallow-merge semantics for `voice_settings`; scalar replacement for the
   // rest. All audio-affecting overrides feed the per-entry hash, so flipping
   // any of them on a single entry invalidates only that entry's cache.
-  voice_settings: VoiceSettingsSchema.partial().optional(),
+  voice_settings: VoiceSettingsOverrideSchema.optional(),
   model_id: z.string().optional(),
   output_format: z.string().optional(),
   apply_text_normalization: ApplyTextNormalizationSchema.optional(),
@@ -102,6 +118,7 @@ export const VoiceConfigSchema = z.object({
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export type VoiceSettings = z.infer<typeof VoiceSettingsSchema>;
+export type VoiceSettingsOverride = z.infer<typeof VoiceSettingsOverrideSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type PronunciationDictionaryLocator = z.infer<typeof PronunciationDictionaryLocatorSchema>;
 export type ApplyTextNormalization = z.infer<typeof ApplyTextNormalizationSchema>;
