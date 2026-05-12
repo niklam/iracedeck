@@ -18,6 +18,7 @@ import {
 } from "@iracedeck/deck-core";
 import dashBoxIconSvg from "@iracedeck/icons/toggle-ui-elements/dash-box.svg";
 import displayRefCarIconSvg from "@iracedeck/icons/toggle-ui-elements/display-ref-car.svg";
+import drivingLineIconSvg from "@iracedeck/icons/toggle-ui-elements/driving-line.svg";
 import fpsNetworkDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/fps-network-display.svg";
 import radioDisplayIconSvg from "@iracedeck/icons/toggle-ui-elements/radio-display.svg";
 import replayUiIconSvg from "@iracedeck/icons/toggle-ui-elements/replay-ui.svg";
@@ -36,6 +37,7 @@ type UiElement =
   | "weather-radar"
   | "virtual-mirror"
   | "ui-edit-mode"
+  | "driving-line"
   | "display-ref-car"
   | "replay-ui";
 
@@ -47,6 +49,7 @@ const ELEMENT_ICONS: Record<UiElement, string> = {
   "weather-radar": weatherRadarIconSvg,
   "virtual-mirror": virtualMirrorIconSvg,
   "ui-edit-mode": uiEditModeIconSvg,
+  "driving-line": drivingLineIconSvg,
   "display-ref-car": displayRefCarIconSvg,
   "replay-ui": replayUiIconSvg,
 };
@@ -62,6 +65,7 @@ const UI_ELEMENT_TITLES: Record<UiElement, string> = {
   "weather-radar": "RADAR\nWEATHER",
   "virtual-mirror": "MIRROR\nVIRTUAL",
   "ui-edit-mode": "MODE\nUI EDIT",
+  "driving-line": "TOGGLE\nDRIVING LINE",
   "display-ref-car": "CAR\nREFERENCE",
   "replay-ui": "TOGGLE\nREPLAY UI",
 };
@@ -80,6 +84,7 @@ export const UI_ELEMENT_GLOBAL_KEYS: Record<string, string> = {
   "weather-radar": "toggleUiWeatherRadar",
   "virtual-mirror": "toggleUiVirtualMirror",
   "ui-edit-mode": "toggleUiEditMode",
+  "driving-line": "toggleUiDrivingLine",
   "display-ref-car": "toggleUiDisplayRefCar",
 };
 
@@ -93,6 +98,7 @@ const ToggleUiElementsSettings = CommonSettings.extend({
       "weather-radar",
       "virtual-mirror",
       "ui-edit-mode",
+      "driving-line",
       "display-ref-car",
       "replay-ui",
     ])

@@ -50,7 +50,8 @@
     },
     { "id": "weatherRadar", "label": "Weather Radar", "default": "Shift+Alt+R", "setting": "toggleUiWeatherRadar" },
     { "id": "virtualMirror", "label": "Virtual Mirror", "default": "Alt+M", "setting": "toggleUiVirtualMirror" },
-    { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" }
+    { "id": "uiEditMode", "label": "UI Edit Mode", "default": "Alt+K", "setting": "toggleUiEditMode" },
+    { "id": "drivingLine", "label": "Driving Line", "default": "Ctrl+Alt+L", "setting": "toggleUiDrivingLine" }
   ],
   "lookDirection": [
     { "id": "left", "label": "Look Left", "default": "Z", "setting": "lookDirectionLeft" },
