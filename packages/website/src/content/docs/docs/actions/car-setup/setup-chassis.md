@@ -27,7 +27,7 @@ The **View …** entries are read-only live readouts. No Direction, no key fires
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. Every chassis mode is directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does.
+Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes are read-only and do not use Direction.
 
 ### Differential Preload
 
