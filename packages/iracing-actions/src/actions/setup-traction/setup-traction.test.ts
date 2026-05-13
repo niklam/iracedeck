@@ -71,6 +71,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+    if (!text) return "";
+
+    return `<text fill="${fill}">${text}</text>`;
+  }),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -238,7 +247,7 @@ describe("SetupTraction", () => {
       const result = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "increase" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("TC SLOT 1");
+      expect(decoded).toContain("TC1");
       expect(decoded).toContain("INCREASE");
     });
 
@@ -246,7 +255,7 @@ describe("SetupTraction", () => {
       const result = generateSetupTractionSvg({ setting: "tc-slot-1", direction: "decrease" });
       const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("TC SLOT 1");
+      expect(decoded).toContain("TC1");
       expect(decoded).toContain("DECREASE");
     });
 
@@ -257,20 +266,20 @@ describe("SetupTraction", () => {
           decrease: { mainLabel: "TC", subLabel: "TOGGLE" },
         },
         "tc-slot-1": {
-          increase: { mainLabel: "TC SLOT 1", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC SLOT 1", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC1", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC1", subLabel: "DECREASE" },
         },
         "tc-slot-2": {
-          increase: { mainLabel: "TC SLOT 2", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC SLOT 2", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC2", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC2", subLabel: "DECREASE" },
         },
         "tc-slot-3": {
-          increase: { mainLabel: "TC SLOT 3", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC SLOT 3", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC3", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC3", subLabel: "DECREASE" },
         },
         "tc-slot-4": {
-          increase: { mainLabel: "TC SLOT 4", subLabel: "INCREASE" },
-          decrease: { mainLabel: "TC SLOT 4", subLabel: "DECREASE" },
+          increase: { mainLabel: "TC4", subLabel: "INCREASE" },
+          decrease: { mainLabel: "TC4", subLabel: "DECREASE" },
         },
       };
 
@@ -378,6 +387,41 @@ describe("SetupTraction", () => {
 
     it("should ignore rotation for non-directional controls (tc-toggle)", async () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "tc-toggle" }, 1) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("view sub-modes (issue #541)", () => {
+    let action: SetupTraction;
+
+    beforeEach(() => {
+      action = new SetupTraction();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({
+        dcTractionControl: 3,
+        dcTractionControl2: 5,
+      });
+    });
+
+    it("renders the formatted telemetry value for View TC1", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any;
+      await action.onWillAppear(ev);
+      const calls = (action.setKeyImage as any).mock.calls;
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("3");
+    });
+
+    it("reads the per-slot dc field for View TC2", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-tc-slot-2" }) as any;
+      await action.onWillAppear(ev);
+      const calls = (action.setKeyImage as any).mock.calls;
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("5");
+    });
+
+    it("does not fire a binding when a View setting is pressed", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
+      await action.onDialDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
     });

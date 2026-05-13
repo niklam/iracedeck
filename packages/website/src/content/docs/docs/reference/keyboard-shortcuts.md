@@ -204,10 +204,10 @@ Actions marked "Available via SDK" use SDK commands directly and don't require k
 | Action | Default Shortcut | Available via SDK | iRacing Setting |
 |--------|-----------------|-------------------|-----------------|
 | TC Toggle | - | No | Traction Control Toggle |
-| Adjust TC Slot 1 | - | No | Traction Control Set |
-| Adjust TC Slot 2 | - | No | Traction Control 2 Set |
-| Adjust TC Slot 3 | - | No | Traction Control 3 Set |
-| Adjust TC Slot 4 | - | No | Traction Control 4 Set |
+| Adjust TC1 | - | No | Traction Control Set |
+| Adjust TC2 | - | No | Traction Control 2 Set |
+| Adjust TC3 | - | No | Traction Control 3 Set |
+| Adjust TC4 | - | No | Traction Control 4 Set |
 
 ### Aerodynamics
 

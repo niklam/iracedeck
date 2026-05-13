@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -42,7 +43,10 @@ import rightSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spr
 import rightSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/right-spring-increase.svg";
 import rrShockDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-decrease.svg";
 import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-increase.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
+
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
 
 type DirectionType = "increase" | "decrease";
 
@@ -114,7 +118,7 @@ const SETUP_CHASSIS_TITLES: Record<string, string> = {
  * @internal Exported for testing
  *
  * Mapping from setting + direction to global settings keys.
- * All chassis settings are directional, using composite keys (e.g., "differential-preload-increase").
+ * All chassis adjustment settings are directional, using composite keys (e.g., "differential-preload-increase").
  */
 export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
   "differential-preload-increase": "setupChassisDifferentialPreloadIncrease",
@@ -148,6 +152,17 @@ export const SETUP_CHASSIS_GLOBAL_KEYS: Record<string, string> = {
 const SetupChassisSettings = CommonSettings.extend({
   setting: z
     .enum([
+      // View sub-modes (read-only telemetry display).
+      "view-diff-preload",
+      "view-diff-entry",
+      "view-diff-middle",
+      "view-diff-exit",
+      "view-anti-roll-front",
+      "view-anti-roll-rear",
+      "view-power-steering",
+      "view-weight-jacker-left",
+      "view-weight-jacker-right",
+      // Adjustment sub-modes.
       "differential-preload",
       "differential-entry",
       "differential-middle",
@@ -171,9 +186,21 @@ type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup chassis action.
+ * Generates an SVG data URI icon for the setup chassis action's adjustment sub-modes.
+ * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
 export function generateSetupChassisSvg(settings: SetupChassisSettings): string {
+  if (isViewSetting(settings.setting)) {
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: differentialPreloadIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
   const { setting, direction } = settings;
   const key = `${setting}-${direction}`;
 
@@ -198,36 +225,72 @@ export function generateSetupChassisSvg(settings: SetupChassisSettings): string 
 export const SETUP_CHASSIS_UUID = "com.iracedeck.sd.core.setup-chassis" as const;
 
 export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupChassisSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupChassisSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupChassisSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupChassisSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupChassisSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
     await this.executeSetting(settings.setting, direction);
@@ -237,6 +300,16 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     const parsed = SetupChassisSettings.safeParse(settings);
 
     return parsed.success ? parsed.data : SetupChassisSettings.parse({});
+  }
+
+  private applyActiveBinding(settings: SetupChassisSettings): void {
+    if (isViewSetting(settings.setting)) {
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    this.setActiveBinding(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
   }
 
   private async executeSetting(setting: string, direction: DirectionType): Promise<void> {
@@ -255,9 +328,53 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     ev: IDeckWillAppearEvent<SetupChassisSettings> | IDeckDidReceiveSettingsEvent<SetupChassisSettings>,
     settings: SetupChassisSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupChassisSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupChassisSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupChassisSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: differentialPreloadIncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupChassisSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupChassisSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: differentialPreloadIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

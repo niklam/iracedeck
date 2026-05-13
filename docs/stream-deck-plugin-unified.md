@@ -510,10 +510,10 @@ Traction control adjustments.
 | Sub-Action    | Default Key | iRacing Setting | Long-Press | Notes |
 | ------------- | ----------- | --------------- | ---------- | ----- |
 | TC Toggle     | -           | -               | None       | -     |
-| TC Slot 1 +/- | -           | Adjustment      | Repeat     | -     |
-| TC Slot 2 +/- | -           | Adjustment      | Repeat     | -     |
-| TC Slot 3 +/- | -           | Adjustment      | Repeat     | -     |
-| TC Slot 4 +/- | -           | Adjustment      | Repeat     | -     |
+| TC1 +/- | -           | Adjustment      | Repeat     | -     |
+| TC2 +/- | -           | Adjustment      | Repeat     | -     |
+| TC3 +/- | -           | Adjustment      | Repeat     | -     |
+| TC4 +/- | -           | Adjustment      | Repeat     | -     |
 
 **Type:** Toggle or +/- (TC slot selector)
 

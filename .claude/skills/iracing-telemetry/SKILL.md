@@ -50,7 +50,7 @@ This is the **source of truth** for which variables are available in Mustache te
 | Category | Pattern | Count | Examples |
 |----------|---------|-------|----------|
 | Tire/Shock | `LF*`, `RF*`, `LR*`, `RR*`, `CF*`, `CR*` | 88 | `LFtempCM`, `RRwearL`, `LFshockDefl` |
-| In-Car Adjustments | `dc*` | 42 | `dcBrakeBias`, `dcTractionControl`, `dcDRSToggle` |
+| In-Car Adjustments | `dc*` | 42 | `dcBrakeBias`, `dcTractionControl`, `dcDRSToggle`. The setup-* actions' "View …" sub-modes (issue #541) consume these directly — see `packages/iracing-actions/src/shared/setup-view.ts` for the registry mapping each view-* setting to its dc* field. |
 | Lap/Timing | `Lap*`, `Race*` | 28 | `Lap`, `LapBestLapTime`, `LapDistPct` |
 | Per-Car Arrays | `CarIdx*` | 27 | `CarIdxPosition`, `CarIdxLapDistPct`, `CarIdxGear` |
 | Pit Adjustments | `dp*` | 24 | `dpFuelAddKg`, `dpRFTireChange`, `dpWingFront` |

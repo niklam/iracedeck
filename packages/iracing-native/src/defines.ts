@@ -697,6 +697,40 @@ export interface TelemetryData {
   DRS_Status?: number;
   dcPushToPass?: boolean;
   dcDRSToggle?: boolean;
+  // In-car setup adjustments — surfaced by setup-* actions' "View …" sub-modes (issue #541).
+  // All optional and scalar; iRacing exposes them by name in the shared-memory snapshot so the
+  // parser picks them up automatically without any translator changes.
+  dcBrakeBias?: number;
+  dcBrakeBiasFine?: number;
+  dcPeakBrakeBias?: number;
+  dcBrakeMisc?: number;
+  dcEngineBraking?: number;
+  dcABS?: number;
+  // TC slots 1–4: slot 1 is the canonical `dcTractionControl`; iRacing exposes per-slot
+  // values as `dcTractionControl<N>` on cars that have multiple TC presets.
+  dcTractionControl?: number;
+  dcTractionControl2?: number;
+  dcTractionControl3?: number;
+  dcTractionControl4?: number;
+  dcFuelMixture?: number;
+  dcFuelCutPosition?: number;
+  dcEnginePower?: number;
+  dcThrottleShape?: number;
+  dcLaunchRPM?: number;
+  dcFrontWing?: number;
+  dcRearWing?: number;
+  dcAntiRollFront?: number;
+  dcAntiRollRear?: number;
+  dcDiffPreload?: number;
+  dcDiffEntry?: number;
+  dcDiffMiddle?: number;
+  dcDiffExit?: number;
+  dcPowerSteering?: number;
+  dcWeightJackerLeft?: number;
+  dcWeightJackerRight?: number;
+  dcMGUKDeployMode?: number;
+  dcMGUKRegenGain?: number;
+  dcMGUKDeployFixed?: number;
 }
 
 /**

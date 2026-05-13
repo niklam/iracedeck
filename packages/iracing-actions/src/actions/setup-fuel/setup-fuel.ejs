@@ -8,11 +8,17 @@
 
 		<sdpi-item label="Setting">
 			<sdpi-select id="setting-select" setting="setting" default="fuel-mixture">
-				<option value="fuel-mixture">Fuel Mixture</option>
-				<option value="fuel-cut-position">Fuel Cut Position</option>
-				<option value="disable-fuel-cut">Disable Fuel Cut</option>
-				<option value="low-fuel-accept">Low Fuel Accept</option>
-				<option value="fcy-mode-toggle">FCY Mode Toggle</option>
+				<optgroup label="Adjust">
+					<option value="disable-fuel-cut">Disable Fuel Cut</option>
+					<option value="fcy-mode-toggle">FCY Mode Toggle</option>
+					<option value="fuel-cut-position">Fuel Cut Position</option>
+					<option value="fuel-mixture">Fuel Mixture</option>
+					<option value="low-fuel-accept">Low Fuel Accept</option>
+				</optgroup>
+				<optgroup label="Display value">
+					<option value="view-fuel-cut-position">View Fuel Cut Position</option>
+					<option value="view-fuel-mixture">View Fuel Mixture</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -44,13 +50,14 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// Non-directional controls: hide direction dropdown
+			// Non-directional controls: hide direction dropdown. View sub-modes also hide it (read-only).
 			const NON_DIRECTIONAL = new Set(["disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"]);
 
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				if (!directionItem) return;
-				directionItem.classList.toggle("hidden", NON_DIRECTIONAL.has(setting));
+				const hide = NON_DIRECTIONAL.has(setting) || setting.startsWith("view-");
+				directionItem.classList.toggle("hidden", hide);
 			}
 
 			async function initialize() {

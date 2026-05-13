@@ -7,15 +7,22 @@
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
 		<sdpi-item label="Setting">
-			<sdpi-select setting="setting" default="engine-power">
-				<option value="engine-power">Engine Power</option>
-				<option value="throttle-shaping">Throttle Shaping</option>
-				<option value="boost-level">Boost Level</option>
-				<option value="launch-rpm">Launch RPM</option>
+			<sdpi-select id="setting-select" setting="setting" default="engine-power">
+				<optgroup label="Adjust">
+					<option value="boost-level">Boost Level</option>
+					<option value="engine-power">Engine Power</option>
+					<option value="launch-rpm">Launch RPM</option>
+					<option value="throttle-shaping">Throttle Shaping</option>
+				</optgroup>
+				<optgroup label="Display value">
+					<option value="view-engine-power">View Engine Power</option>
+					<option value="view-launch-rpm">View Launch RPM</option>
+					<option value="view-throttle-shape">View Throttle Shape</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item label="Direction">
+		<sdpi-item label="Direction" id="direction-item">
 			<sdpi-select setting="direction" default="increase">
 				<option value="increase">Increase</option>
 				<option value="decrease">Decrease</option>
@@ -41,6 +48,53 @@
 		<%- include('global-graphic-defaults') %>
 		<%- include('global-flag-flash') %>
 		<%- include('global-common-settings') %>
+
+		<script>
+			// View sub-modes are read-only — hide Direction when one is selected.
+			function updateVisibility(setting) {
+				const directionItem = document.getElementById("direction-item");
+				if (!directionItem) return;
+				directionItem.classList.toggle("hidden", setting.startsWith("view-"));
+			}
+
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const settingSelect = document.getElementById("setting-select");
+
+				if (settingSelect) {
+					const initialValue = settingSelect.value || "engine-power";
+					updateVisibility(initialValue);
+
+					settingSelect.addEventListener("change", (ev) => {
+						updateVisibility(ev.target.value || "engine-power");
+					});
+					settingSelect.addEventListener("input", (ev) => {
+						updateVisibility(ev.target.value || "engine-power");
+					});
+
+					// Polling fallback for reliable detection
+					let lastValue = settingSelect.value || "engine-power";
+					setInterval(() => {
+						const currentValue = settingSelect.value;
+						if (currentValue && currentValue !== lastValue) {
+							lastValue = currentValue;
+							updateVisibility(currentValue);
+						}
+					}, 100);
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<style>
+			.hidden { display: none !important; }
+		</style>
 
 		<%- include('docs-link') %>
 

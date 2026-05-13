@@ -73,6 +73,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+    if (!text) return "";
+
+    return `<text fill="${fill}">${text}</text>`;
+  }),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -513,6 +522,30 @@ describe("SetupHybrid", () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "hys-no-boost" }, 1) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("view sub-modes (issue #541)", () => {
+    let action: SetupHybrid;
+
+    beforeEach(() => {
+      action = new SetupHybrid();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcMGUKDeployMode: 2 });
+    });
+
+    it("renders the formatted telemetry value for a View setting", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-mguk-deploy-mode" }) as any;
+      await action.onWillAppear(ev);
+      const calls = (action.setKeyImage as any).mock.calls;
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("2");
+    });
+
+    it("does not fire a binding (tap or hold) when a View setting is pressed", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-mguk-deploy-mode" }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
     });
   });
 });

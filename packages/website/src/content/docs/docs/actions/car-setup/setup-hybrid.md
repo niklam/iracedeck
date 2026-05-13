@@ -3,11 +3,21 @@ title: Setup Hybrid
 description: Control hybrid system settings including MGU-K regen, deploy modes, and HYS boost/regen during a session.
 sidebar:
   badge:
-    text: "6 modes"
+    text: "9 modes"
     variant: tip
 ---
 
 Control hybrid energy recovery and deployment settings from the cockpit: MGU-K regeneration gain, deploy mode, fixed deploy level, HYS (Hybrid System) boost, HYS regen, and the HYS no-boost toggle.
+
+## View sub-modes
+
+The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View MGU-K Deploy Mode | `dcMGUKDeployMode` | integer | 0–4 |
+| View MGU-K Regen Gain | `dcMGUKRegenGain` | integer | car-dependent slot |
+| View MGU-K Deploy Fixed | `dcMGUKDeployFixed` | integer | car-dependent slot |
 
 ## Modes
 

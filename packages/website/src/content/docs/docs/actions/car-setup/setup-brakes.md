@@ -3,11 +3,24 @@ title: Setup Brakes
 description: Adjust brake settings including ABS, brake bias, peak brake bias, engine braking, and more.
 sidebar:
   badge:
-    text: "7 modes"
+    text: "13 modes"
     variant: tip
 ---
 
 Adjust brake-related setup options from the cockpit — ABS level, brake bias (coarse and fine), peak brake bias, miscellaneous brake settings, and engine braking.
+
+## View sub-modes
+
+The **View …** entries at the top of the Setting dropdown are read-only live readouts of the current value in the car. Pick "View Brake Bias" to turn the key into a continuously updating display of the current brake bias percentage — no Direction setting, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View Brake Bias | `dcBrakeBias` | percent, 1 decimal | ~50–60% |
+| View Brake Bias Fine | `dcBrakeBiasFine` | percent, 1 decimal | ~50–60% |
+| View Peak Brake Bias | `dcPeakBrakeBias` | percent, 1 decimal | ~50–80% |
+| View Brake Misc | `dcBrakeMisc` | integer | car-dependent |
+| View Engine Braking | `dcEngineBraking` | integer | car-dependent slot |
+| View ABS Adjust | `dcABS` | integer | car-dependent slot |
 
 ## Modes
 

@@ -3,11 +3,21 @@ title: Setup Engine
 description: Adjust engine settings including power, throttle shaping, boost level, and launch RPM during a session.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "7 modes"
     variant: tip
 ---
 
 Adjust engine-related setup options from the cockpit: engine power, throttle shaping, boost level, and launch RPM.
+
+## View sub-modes
+
+The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View Engine Power | `dcEnginePower` | integer | car-dependent slot |
+| View Throttle Shape | `dcThrottleShape` | integer | car-dependent slot |
+| View Launch RPM | `dcLaunchRPM` | integer | RPM |
 
 ## Modes
 
