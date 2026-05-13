@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -23,18 +24,23 @@ import qualifyingTapeIncreaseIconSvg from "@iracedeck/icons/setup-aero/qualifyin
 import rearWingDecreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-decrease.svg";
 import rearWingIncreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-increase.svg";
 import rfBrakeAttachedIconSvg from "@iracedeck/icons/setup-aero/rf-brake-attached.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-type SetupAeroSetting = "front-wing" | "rear-wing" | "qualifying-tape" | "rf-brake-attached";
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+
+type SetupAeroAdjustSetting = "front-wing" | "rear-wing" | "qualifying-tape" | "rf-brake-attached";
+
+/**
+ * The combined `setting` type is the union of `SetupAeroAdjustSetting` and the two View
+ * IDs in `setup-view.ts`. Code paths narrow back to `SetupAeroAdjustSetting` after
+ * `isViewSetting` gates the View branch; nothing needs the full union as a name.
+ */
 
 type DirectionType = "increase" | "decrease";
 
 /** Controls that have +/- direction */
-const DIRECTIONAL_CONTROLS: Set<SetupAeroSetting> = new Set([
-  "front-wing",
-  "rear-wing",
-  "qualifying-tape",
-]);
+const DIRECTIONAL_CONTROLS: Set<SetupAeroAdjustSetting> = new Set(["front-wing", "rear-wing", "qualifying-tape"]);
 
 /**
  * Flat icon lookup record mapping setting + direction keys to imported SVGs.
@@ -79,7 +85,18 @@ export const SETUP_AERO_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const SetupAeroSettings = CommonSettings.extend({
-  setting: z.enum(["front-wing", "rear-wing", "qualifying-tape", "rf-brake-attached"]).default("front-wing"),
+  setting: z
+    .enum([
+      // View sub-modes.
+      "view-front-wing",
+      "view-rear-wing",
+      // Adjustment sub-modes.
+      "front-wing",
+      "rear-wing",
+      "qualifying-tape",
+      "rf-brake-attached",
+    ])
+    .default("front-wing"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
@@ -88,10 +105,23 @@ type SetupAeroSettings = z.infer<typeof SetupAeroSettings>;
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup aero action.
+ * Generates an SVG data URI icon for the setup aero action's adjustment sub-modes.
+ * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
 export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
-  const { setting, direction } = settings;
+  if (isViewSetting(settings.setting)) {
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: frontWingIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
+  const setting = settings.setting as SetupAeroAdjustSetting;
+  const { direction } = settings;
 
   const iconKey = DIRECTIONAL_CONTROLS.has(setting) ? `${setting}-${direction}` : setting;
   const iconSvg = SETUP_AERO_ICONS[iconKey] || SETUP_AERO_ICONS["rf-brake-attached"];
@@ -115,56 +145,84 @@ export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
 export const SETUP_AERO_UUID = "com.iracedeck.sd.core.setup-aero" as const;
 
 export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupAeroSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupAeroSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupAeroSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupAeroSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupAeroSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupAeroSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupAeroSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
+    const adjustSetting = settings.setting as SetupAeroAdjustSetting;
+
     // Non-directional controls have no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_CONTROLS.has(settings.setting)) {
-      this.logger.debug(`Rotation ignored for ${settings.setting}`);
+    if (!DIRECTIONAL_CONTROLS.has(adjustSetting)) {
+      this.logger.debug(`Rotation ignored for ${adjustSetting}`);
 
       return;
     }
 
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeSetting(settings.setting, direction);
+    await this.executeSetting(adjustSetting, direction);
   }
 
   private parseSettings(settings: unknown): SetupAeroSettings {
@@ -173,7 +231,21 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     return parsed.success ? parsed.data : SetupAeroSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupAeroSetting, direction: DirectionType): Promise<void> {
+  private applyActiveBinding(settings: SetupAeroSettings): void {
+    if (isViewSetting(settings.setting)) {
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+  }
+
+  private async executeSetting(setting: SetupAeroAdjustSetting, direction: DirectionType): Promise<void> {
     const settingKey = this.resolveGlobalKey(setting, direction);
 
     if (!settingKey) {
@@ -185,7 +257,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     await this.tapBinding(settingKey);
   }
 
-  private resolveGlobalKey(setting: SetupAeroSetting, direction: DirectionType): string | null {
+  private resolveGlobalKey(setting: SetupAeroAdjustSetting, direction: DirectionType): string | null {
     if (DIRECTIONAL_CONTROLS.has(setting)) {
       const key = `${setting}-${direction}`;
 
@@ -199,9 +271,53 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     ev: IDeckWillAppearEvent<SetupAeroSettings> | IDeckDidReceiveSettingsEvent<SetupAeroSettings>,
     settings: SetupAeroSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupAeroSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupAeroSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupAeroSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: frontWingIncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupAeroSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupAeroSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: frontWingIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

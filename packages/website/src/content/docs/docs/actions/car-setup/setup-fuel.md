@@ -3,11 +3,20 @@ title: Setup Fuel
 description: Adjust in-car fuel settings including mixture, fuel cut position, and FCY mode during a session.
 sidebar:
   badge:
-    text: "5 modes"
+    text: "7 modes"
     variant: tip
 ---
 
 Adjust in-car fuel settings from the cockpit: fuel mixture, fuel cut position, disable fuel cut, low fuel accept, and full-course yellow mode. These are live car adjustments, not pit service fuel requests.
+
+## View sub-modes
+
+The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View Fuel Mixture | `dcFuelMixture` | integer | car-dependent slot |
+| View Fuel Cut Position | `dcFuelCutPosition` | integer | car-dependent slot |
 
 ## Modes
 

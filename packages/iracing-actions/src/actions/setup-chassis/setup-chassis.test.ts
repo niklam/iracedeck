@@ -122,6 +122,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+    if (!text) return "";
+
+    return `<text fill="${fill}">${text}</text>`;
+  }),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -558,6 +567,40 @@ describe("SetupChassis", () => {
       );
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupChassisFrontArbIncrease");
+    });
+  });
+
+  describe("view sub-modes (issue #541)", () => {
+    let action: SetupChassis;
+
+    beforeEach(() => {
+      action = new SetupChassis();
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({
+        dcDiffEntry: 4,
+        dcWeightJackerRight: 0.06,
+      });
+    });
+
+    it("renders the formatted telemetry value for a View setting", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-diff-entry" }) as any;
+      await action.onWillAppear(ev);
+      const calls = (action.setKeyImage as any).mock.calls;
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("4");
+    });
+
+    it("renders the signed-percent formatter for weight-jacker-right", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-weight-jacker-right" }) as any;
+      await action.onWillAppear(ev);
+      const calls = (action.setKeyImage as any).mock.calls;
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("+6%");
+    });
+
+    it("does not fire a binding when a View setting is pressed", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-power-steering" }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });

@@ -8,11 +8,19 @@
 
 		<sdpi-item label="Setting">
 			<sdpi-select id="setting-select" setting="setting" default="tc-toggle">
-				<option value="tc-toggle">TC Toggle</option>
-				<option value="tc-slot-1">TC Slot 1</option>
-				<option value="tc-slot-2">TC Slot 2</option>
-				<option value="tc-slot-3">TC Slot 3</option>
-				<option value="tc-slot-4">TC Slot 4</option>
+				<optgroup label="Adjust">
+					<option value="tc-slot-1">TC1</option>
+					<option value="tc-slot-2">TC2</option>
+					<option value="tc-slot-3">TC3</option>
+					<option value="tc-slot-4">TC4</option>
+					<option value="tc-toggle">TC Toggle</option>
+				</optgroup>
+				<optgroup label="Display value">
+					<option value="view-tc-slot-1">View TC1</option>
+					<option value="view-tc-slot-2">View TC2</option>
+					<option value="view-tc-slot-3">View TC3</option>
+					<option value="view-tc-slot-4">View TC4</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -44,11 +52,12 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// TC Toggle is the only non-directional control
+			// TC Toggle is non-directional; View sub-modes are read-only — both hide Direction.
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				if (!directionItem) return;
-				directionItem.classList.toggle("hidden", setting === "tc-toggle");
+				const hide = setting === "tc-toggle" || setting.startsWith("view-");
+				directionItem.classList.toggle("hidden", hide);
 			}
 
 			async function initialize() {

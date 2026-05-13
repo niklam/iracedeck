@@ -3,11 +3,22 @@ title: Setup Aero
 description: Adjust aerodynamic settings like front wing, rear wing, and qualifying tape during a session.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "6 modes"
     variant: tip
 ---
 
 Adjust aerodynamic setup options from the cockpit — front and rear wing angles, qualifying tape, and the right-front brake attachment.
+
+## View sub-modes
+
+The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View Front Wing | `dcFrontWing` | integer | car-dependent slot or angle |
+| View Rear Wing | `dcRearWing` | integer | car-dependent slot or angle |
+
+Cars without a driver-adjustable wing render "---". Qualifying tape and the RF brake attachment toggle have no `dc*` telemetry on common cars, so they don't have View entries.
 
 ## Modes
 

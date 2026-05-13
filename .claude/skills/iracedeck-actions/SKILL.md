@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-The website currently documents **31 actions with 260 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
+The website currently documents **31 actions with 289 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -43,9 +43,9 @@ When asked about actions or controls:
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
-| Car Setup | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
+| Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus read-only "View …" sub-modes that display live dc* telemetry on the key |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **260** | |
+| **Total** | **31** | **289** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -107,13 +107,13 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 
 | Action | Modes | Mode values |
 |--------|-------|-------------|
-| Setup Aero | 4 | front-wing (+/-), rear-wing (+/-), qualifying-tape (+/-), rf-brake-attached |
-| Setup Brakes | 7 | abs-toggle, abs-adjust (+/-), brake-bias (+/-), brake-bias-fine (+/-), peak-brake-bias (+/-), brake-misc (+/-), engine-braking (+/-) |
-| Setup Chassis | 13 | differential-preload/entry/middle/exit, front/rear ARB, left/right spring, LF/RF/LR/RR shock, power-steering (all +/-) |
-| Setup Engine | 4 | engine-power (+/-), throttle-shaping (+/-), boost-level (+/-), launch-rpm (+/-) |
-| Setup Fuel | 5 | fuel-mixture (+/-), fuel-cut-position (+/-), disable-fuel-cut, low-fuel-accept, fcy-mode-toggle |
-| Setup Hybrid | 6 | mguk-regen-gain (+/-), mguk-deploy-mode (+/-), mguk-fixed-deploy (+/-), hys-boost (hold), hys-regen (hold), hys-no-boost |
-| Setup Traction | 5 | tc-toggle, tc-slot-1/2/3/4 (all +/-) |
+| Setup Aero | 6 | view-{front-wing, rear-wing} (read-only, live dcFrontWing/dcRearWing), front-wing (+/-), rear-wing (+/-), qualifying-tape (+/-), rf-brake-attached |
+| Setup Brakes | 13 | view-{brake-bias, brake-bias-fine, peak-brake-bias, brake-misc, engine-braking, abs-adjust} (read-only, live dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS), abs-toggle, abs-adjust (+/-), brake-bias (+/-), brake-bias-fine (+/-), peak-brake-bias (+/-), brake-misc (+/-), engine-braking (+/-) |
+| Setup Chassis | 22 | view-{diff-preload, diff-entry, diff-middle, diff-exit, anti-roll-front, anti-roll-rear, power-steering, weight-jacker-left, weight-jacker-right} (read-only, live dcDiffPreload/dcDiffEntry/dcDiffMiddle/dcDiffExit/dcAntiRollFront/dcAntiRollRear/dcPowerSteering/dcWeightJackerLeft/dcWeightJackerRight), differential-preload/entry/middle/exit, front/rear ARB, left/right spring, LF/RF/LR/RR shock, power-steering (all +/-) |
+| Setup Engine | 7 | view-{engine-power, throttle-shape, launch-rpm} (read-only, live dcEnginePower/dcThrottleShape/dcLaunchRPM), engine-power (+/-), throttle-shaping (+/-), boost-level (+/-), launch-rpm (+/-) |
+| Setup Fuel | 7 | view-{fuel-mixture, fuel-cut-position} (read-only, live dcFuelMixture/dcFuelCutPosition), fuel-mixture (+/-), fuel-cut-position (+/-), disable-fuel-cut, low-fuel-accept, fcy-mode-toggle |
+| Setup Hybrid | 9 | view-{mguk-deploy-mode, mguk-regen-gain, mguk-deploy-fixed} (read-only, live dcMGUKDeployMode/dcMGUKRegenGain/dcMGUKDeployFixed), mguk-regen-gain (+/-), mguk-deploy-mode (+/-), mguk-fixed-deploy (+/-), hys-boost (hold), hys-regen (hold), hys-no-boost |
+| Setup Traction | 9 | view-tc-slot-{1,2,3,4} = "TC1"…"TC4" (read-only, live dcTractionControl/dcTractionControl2/dcTractionControl3/dcTractionControl4), tc-toggle, tc-slot-1/2/3/4 (all +/-, labelled TC1–TC4 in the PI) |
 
 ### Communication
 
@@ -131,6 +131,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Composite | Multiple dropdowns combine | Audio (category + action), black box (mode + box) |
 | Hold | Key held while button pressed | Look direction, HYS boost/regen |
 | Telemetry-aware | Icon updates from live data | Session info, car control (pit limiter), tire service |
+| Read-only View | Setting prefixed `view-…`; the action subscribes to telemetry and renders the live dc* value, with key presses suppressed | Setup actions' View sub-modes (issue #541) |
 
 ## Keeping in Sync
 

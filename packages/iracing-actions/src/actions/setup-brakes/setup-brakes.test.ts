@@ -84,6 +84,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
+    if (!text) return "";
+
+    return `<text fill="${fill}">${text}</text>`;
+  }),
+  renderIconTemplate: vi.fn((_template: string, data: Record<string, string>) => {
+    return `<svg>${data.value ?? ""} ${data.titleContent ?? ""}</svg>`;
+  }),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -459,6 +468,54 @@ describe("SetupBrakes", () => {
       await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "abs-toggle" }, 1) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("view sub-modes (issue #541)", () => {
+    let action: SetupBrakes;
+
+    beforeEach(() => {
+      action = new SetupBrakes();
+      // iRacing exposes dcBrakeBias in percent units (54, not 0.54).
+      (action.sdkController.getCurrentTelemetry as any).mockReturnValue({ dcBrakeBias: 56 });
+    });
+
+    it("renders the formatted telemetry value for a View setting on willAppear", async () => {
+      const ev = fakeEvent("action-1", { setting: "view-brake-bias" }) as any;
+      await action.onWillAppear(ev);
+
+      // The icon SVG carries the formatted value via the {{value}} placeholder.
+      const calls = (action.setKeyImage as any).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const svg = decodeURIComponent(calls[0][1] as string);
+      expect(svg).toContain("56.0%");
+    });
+
+    it("does not call tapBinding when a View setting is pressed", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
+      await action.onDialDown(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { setting: "view-brake-bias" }, 1) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("subscribes to telemetry on willAppear and unsubscribes on willDisappear", async () => {
+      const subscribe = action.sdkController.subscribe as any;
+      const unsubscribe = action.sdkController.unsubscribe as any;
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
+
+      expect(subscribe).toHaveBeenCalledWith("action-1", expect.any(Function));
+
+      await action.onWillDisappear({ action: { id: "action-1" }, payload: { settings: {} } } as any);
+      expect(unsubscribe).toHaveBeenCalledWith("action-1");
+    });
+
+    it("clears active binding when switching to a View setting", async () => {
+      const setActive = action.setActiveBinding as any;
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
+
+      // setActiveBinding is called with null for view sub-modes.
+      expect(setActive).toHaveBeenCalledWith(null);
     });
   });
 });

@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -23,19 +24,28 @@ import fuelCutPositionIncreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-cut
 import fuelMixtureDecreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture-decrease.svg";
 import fuelMixtureIncreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture-increase.svg";
 import lowFuelAcceptIconSvg from "@iracedeck/icons/setup-fuel/low-fuel-accept.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-type SetupFuelSetting =
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+
+type SetupFuelAdjustSetting =
   | "fuel-mixture"
   | "fuel-cut-position"
   | "disable-fuel-cut"
   | "low-fuel-accept"
   | "fcy-mode-toggle";
 
+/**
+ * The combined `setting` type is the union of `SetupFuelAdjustSetting` and the two View
+ * IDs in `setup-view.ts`. Code paths narrow back to `SetupFuelAdjustSetting` after
+ * `isViewSetting` gates the View branch; nothing needs the full union as a name.
+ */
+
 type DirectionType = "increase" | "decrease";
 
 /** Controls that have +/- direction */
-const DIRECTIONAL_CONTROLS: Set<SetupFuelSetting> = new Set(["fuel-mixture", "fuel-cut-position"]);
+const DIRECTIONAL_CONTROLS: Set<SetupFuelAdjustSetting> = new Set(["fuel-mixture", "fuel-cut-position"]);
 
 /**
  * Flat icon lookup record mapping setting + direction keys to imported SVGs.
@@ -81,7 +91,17 @@ export const SETUP_FUEL_GLOBAL_KEYS: Record<string, string> = {
 
 const SetupFuelSettings = CommonSettings.extend({
   setting: z
-    .enum(["fuel-mixture", "fuel-cut-position", "disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"])
+    .enum([
+      // View sub-modes.
+      "view-fuel-mixture",
+      "view-fuel-cut-position",
+      // Adjustment sub-modes.
+      "fuel-mixture",
+      "fuel-cut-position",
+      "disable-fuel-cut",
+      "low-fuel-accept",
+      "fcy-mode-toggle",
+    ])
     .default("fuel-mixture"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
@@ -91,10 +111,23 @@ type SetupFuelSettings = z.infer<typeof SetupFuelSettings>;
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup fuel action.
+ * Generates an SVG data URI icon for the setup fuel action's adjustment sub-modes.
+ * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
 export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
-  const { setting, direction } = settings;
+  if (isViewSetting(settings.setting)) {
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: fuelMixtureIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
+  const setting = settings.setting as SetupFuelAdjustSetting;
+  const { direction } = settings;
 
   const iconKey = DIRECTIONAL_CONTROLS.has(setting) ? `${setting}-${direction}` : setting;
   const iconSvg = SETUP_FUEL_ICONS[iconKey] || SETUP_FUEL_ICONS["disable-fuel-cut"];
@@ -118,56 +151,84 @@ export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
 export const SETUP_FUEL_UUID = "com.iracedeck.sd.core.setup-fuel" as const;
 
 export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupFuelSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupFuelSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupFuelSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupFuelSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupFuelSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupFuelSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupFuelSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
+    const adjustSetting = settings.setting as SetupFuelAdjustSetting;
+
     // Non-directional controls have no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_CONTROLS.has(settings.setting)) {
-      this.logger.debug(`Rotation ignored for ${settings.setting}`);
+    if (!DIRECTIONAL_CONTROLS.has(adjustSetting)) {
+      this.logger.debug(`Rotation ignored for ${adjustSetting}`);
 
       return;
     }
 
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeSetting(settings.setting, direction);
+    await this.executeSetting(adjustSetting, direction);
   }
 
   private parseSettings(settings: unknown): SetupFuelSettings {
@@ -176,7 +237,21 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     return parsed.success ? parsed.data : SetupFuelSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupFuelSetting, direction: DirectionType): Promise<void> {
+  private applyActiveBinding(settings: SetupFuelSettings): void {
+    if (isViewSetting(settings.setting)) {
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+  }
+
+  private async executeSetting(setting: SetupFuelAdjustSetting, direction: DirectionType): Promise<void> {
     const settingKey = this.resolveGlobalKey(setting, direction);
 
     if (!settingKey) {
@@ -188,7 +263,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     await this.tapBinding(settingKey);
   }
 
-  private resolveGlobalKey(setting: SetupFuelSetting, direction: DirectionType): string | null {
+  private resolveGlobalKey(setting: SetupFuelAdjustSetting, direction: DirectionType): string | null {
     if (DIRECTIONAL_CONTROLS.has(setting)) {
       const key = `${setting}-${direction}`;
 
@@ -202,9 +277,53 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     ev: IDeckWillAppearEvent<SetupFuelSettings> | IDeckDidReceiveSettingsEvent<SetupFuelSettings>,
     settings: SetupFuelSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupFuelSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupFuelSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupFuelSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: fuelMixtureIncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupFuelSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupFuelSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: fuelMixtureIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

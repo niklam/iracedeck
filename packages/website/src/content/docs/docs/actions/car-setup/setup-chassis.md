@@ -3,15 +3,31 @@ title: Setup Chassis
 description: Adjust chassis setup options — differential, anti-roll bars, springs, shocks, and power steering — during a session.
 sidebar:
   badge:
-    text: "13 modes"
+    text: "22 modes"
     variant: tip
 ---
 
 Adjust chassis setup options from the cockpit: differential curves, anti-roll bars, spring preloads, shock absorbers, and power steering.
 
+## View sub-modes
+
+The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+
+| View setting | Telemetry source | Format | Typical range |
+|---|---|---|---|
+| View Diff Preload | `dcDiffPreload` | integer | car-dependent slot |
+| View Diff Entry | `dcDiffEntry` | integer | car-dependent slot |
+| View Diff Middle | `dcDiffMiddle` | integer | car-dependent slot |
+| View Diff Exit | `dcDiffExit` | integer | car-dependent slot |
+| View Anti-Roll Front | `dcAntiRollFront` | integer | car-dependent slot |
+| View Anti-Roll Rear | `dcAntiRollRear` | integer | car-dependent slot |
+| View Power Steering | `dcPowerSteering` | integer | car-dependent slot |
+| View Weight Jacker Left | `dcWeightJackerLeft` | signed percent | ±a few % |
+| View Weight Jacker Right | `dcWeightJackerRight` | signed percent | ±a few % |
+
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. Every chassis mode is directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does.
+Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes are read-only and do not use Direction.
 
 ### Differential Preload
 

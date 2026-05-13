@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -29,9 +30,12 @@ import engineBrakingDecreaseIconSvg from "@iracedeck/icons/setup-brakes/engine-b
 import engineBrakingIncreaseIconSvg from "@iracedeck/icons/setup-brakes/engine-braking-increase.svg";
 import peakBrakeBiasDecreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-decrease.svg";
 import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-increase.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-type SetupBrakesSetting =
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+
+type SetupBrakesAdjustSetting =
   | "abs-toggle"
   | "abs-adjust"
   | "brake-bias"
@@ -40,10 +44,16 @@ type SetupBrakesSetting =
   | "brake-misc"
   | "engine-braking";
 
+/**
+ * The combined `setting` type is the union of `SetupBrakesAdjustSetting` and the six View
+ * IDs in `setup-view.ts`. Code paths narrow back to `SetupBrakesAdjustSetting` after
+ * `isViewSetting` gates the View branch; nothing needs the full union as a name.
+ */
+
 type DirectionType = "increase" | "decrease";
 
 /** Controls that have +/- direction */
-const DIRECTIONAL_CONTROLS: Set<SetupBrakesSetting> = new Set([
+const DIRECTIONAL_CONTROLS: Set<SetupBrakesAdjustSetting> = new Set([
   "abs-adjust",
   "brake-bias",
   "brake-bias-fine",
@@ -115,6 +125,14 @@ export const SETUP_BRAKES_GLOBAL_KEYS: Record<string, string> = {
 const SetupBrakesSettings = CommonSettings.extend({
   setting: z
     .enum([
+      // View sub-modes (read-only telemetry display) — listed first to appear at the top of the PI dropdown.
+      "view-brake-bias",
+      "view-brake-bias-fine",
+      "view-peak-brake-bias",
+      "view-brake-misc",
+      "view-engine-braking",
+      "view-abs-adjust",
+      // Adjustment sub-modes (existing).
       "abs-toggle",
       "abs-adjust",
       "brake-bias",
@@ -130,9 +148,10 @@ const SetupBrakesSettings = CommonSettings.extend({
 type SetupBrakesSettings = z.infer<typeof SetupBrakesSettings>;
 
 /**
- * Resolves the flat icon lookup key for a given setting and direction.
+ * Resolves the flat icon lookup key for a given adjustment setting and direction.
+ * View sub-modes use a separate render path (`generateSetupViewSvg`) and never reach this.
  */
-function resolveIconKey(setting: SetupBrakesSetting, direction: DirectionType): string {
+function resolveIconKey(setting: SetupBrakesAdjustSetting, direction: DirectionType): string {
   if (DIRECTIONAL_CONTROLS.has(setting)) {
     return `${setting}-${direction}`;
   }
@@ -143,10 +162,25 @@ function resolveIconKey(setting: SetupBrakesSetting, direction: DirectionType): 
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup brakes action.
+ * Generates an SVG data URI icon for the setup brakes action's adjustment sub-modes.
+ * View sub-modes call `generateSetupViewSvg` via `renderSettingIcon` instead.
  */
 export function generateSetupBrakesSvg(settings: SetupBrakesSettings): string {
-  const { setting, direction } = settings;
+  if (isViewSetting(settings.setting)) {
+    // View sub-modes have no static icon — they render telemetry through the shared template.
+    // Return a placeholder so callers that ignore telemetry get a stable string.
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: brakeBiasIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
+  const setting = settings.setting as SetupBrakesAdjustSetting;
+  const { direction } = settings;
 
   const iconKey = resolveIconKey(setting, direction);
   const iconSvg = SETUP_BRAKES_ICONS[iconKey] || SETUP_BRAKES_ICONS["abs-toggle"];
@@ -170,56 +204,88 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings): string {
 export const SETUP_BRAKES_UUID = "com.iracedeck.sd.core.setup-brakes" as const;
 
 export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupBrakesSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupBrakesSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    // Subscribe always; the callback no-ops for non-View settings. View entries can be
+    // toggled in / out via `onDidReceiveSettings` without resubscribing.
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupBrakesSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupBrakesSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    // Bust the memo cache so the next tick re-renders even if the new mode happens to
+    // resolve to the same display string as the previous mode.
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupBrakesSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupBrakesSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupBrakesSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
+    const adjustSetting = settings.setting as SetupBrakesAdjustSetting;
+
     // Non-directional controls have no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_CONTROLS.has(settings.setting)) {
-      this.logger.debug(`Rotation ignored for ${settings.setting}`);
+    if (!DIRECTIONAL_CONTROLS.has(adjustSetting)) {
+      this.logger.debug(`Rotation ignored for ${adjustSetting}`);
 
       return;
     }
 
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeSetting(settings.setting, direction);
+    await this.executeSetting(adjustSetting, direction);
   }
 
   private parseSettings(settings: unknown): SetupBrakesSettings {
@@ -228,7 +294,23 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     return parsed.success ? parsed.data : SetupBrakesSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupBrakesSetting, direction: DirectionType): Promise<void> {
+  private applyActiveBinding(settings: SetupBrakesSettings): void {
+    if (isViewSetting(settings.setting)) {
+      // View sub-modes don't fire any binding — clear the active binding so the
+      // readiness overlay reflects "no binding" instead of carrying a stale key.
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+  }
+
+  private async executeSetting(setting: SetupBrakesAdjustSetting, direction: DirectionType): Promise<void> {
     const settingKey = this.resolveGlobalKey(setting, direction);
 
     if (!settingKey) {
@@ -240,7 +322,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     await this.tapBinding(settingKey);
   }
 
-  private resolveGlobalKey(setting: SetupBrakesSetting, direction: DirectionType): string | null {
+  private resolveGlobalKey(setting: SetupBrakesAdjustSetting, direction: DirectionType): string | null {
     if (DIRECTIONAL_CONTROLS.has(setting)) {
       const key = `${setting}-${direction}`;
 
@@ -254,9 +336,53 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     ev: IDeckWillAppearEvent<SetupBrakesSettings> | IDeckDidReceiveSettingsEvent<SetupBrakesSettings>,
     settings: SetupBrakesSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupBrakesSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupBrakesSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupBrakesSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: brakeBiasIncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupBrakesSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupBrakesSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: brakeBiasIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

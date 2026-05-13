@@ -581,6 +581,12 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-brake-bias", "label": "View Brake Bias", "controlType": "view" },
+            { "setting": "view-brake-bias-fine", "label": "View Brake Bias Fine", "controlType": "view" },
+            { "setting": "view-peak-brake-bias", "label": "View Peak Brake Bias", "controlType": "view" },
+            { "setting": "view-brake-misc", "label": "View Brake Misc", "controlType": "view" },
+            { "setting": "view-engine-braking", "label": "View Engine Braking", "controlType": "view" },
+            { "setting": "view-abs-adjust", "label": "View ABS Adjust", "controlType": "view" },
             { "setting": "abs-toggle", "label": "ABS Toggle" },
             { "setting": "abs-adjust", "direction": "increase", "label": "ABS Increase" },
             { "setting": "abs-adjust", "direction": "decrease", "label": "ABS Decrease" },
@@ -603,6 +609,15 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-diff-preload", "label": "View Diff Preload", "controlType": "view" },
+            { "setting": "view-diff-entry", "label": "View Diff Entry", "controlType": "view" },
+            { "setting": "view-diff-middle", "label": "View Diff Middle", "controlType": "view" },
+            { "setting": "view-diff-exit", "label": "View Diff Exit", "controlType": "view" },
+            { "setting": "view-anti-roll-front", "label": "View Anti-Roll Front", "controlType": "view" },
+            { "setting": "view-anti-roll-rear", "label": "View Anti-Roll Rear", "controlType": "view" },
+            { "setting": "view-power-steering", "label": "View Power Steering", "controlType": "view" },
+            { "setting": "view-weight-jacker-left", "label": "View Weight Jacker Left", "controlType": "view" },
+            { "setting": "view-weight-jacker-right", "label": "View Weight Jacker Right", "controlType": "view" },
             { "setting": "front-anti-roll-bar", "direction": "increase", "label": "Front ARB Stiffer" },
             { "setting": "front-anti-roll-bar", "direction": "decrease", "label": "Front ARB Softer" },
             { "setting": "rear-anti-roll-bar", "direction": "increase", "label": "Rear ARB Stiffer" },
@@ -638,6 +653,8 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-front-wing", "label": "View Front Wing", "controlType": "view" },
+            { "setting": "view-rear-wing", "label": "View Rear Wing", "controlType": "view" },
             { "setting": "front-wing", "direction": "increase", "label": "Front Wing More" },
             { "setting": "front-wing", "direction": "decrease", "label": "Front Wing Less" },
             { "setting": "rear-wing", "direction": "increase", "label": "Rear Wing More" },
@@ -654,6 +671,9 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-engine-power", "label": "View Engine Power", "controlType": "view" },
+            { "setting": "view-throttle-shape", "label": "View Throttle Shape", "controlType": "view" },
+            { "setting": "view-launch-rpm", "label": "View Launch RPM", "controlType": "view" },
             { "setting": "engine-power", "direction": "increase", "label": "Engine Power Increase" },
             { "setting": "engine-power", "direction": "decrease", "label": "Engine Power Decrease" },
             { "setting": "throttle-shaping", "direction": "increase", "label": "Throttle Shaping Increase" },
@@ -671,6 +691,8 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-fuel-mixture", "label": "View Fuel Mixture", "controlType": "view" },
+            { "setting": "view-fuel-cut-position", "label": "View Fuel Cut Position", "controlType": "view" },
             { "setting": "fuel-mixture", "direction": "increase", "label": "Fuel Mixture Richer" },
             { "setting": "fuel-mixture", "direction": "decrease", "label": "Fuel Mixture Leaner" },
             { "setting": "fuel-cut-position", "direction": "increase", "label": "Fuel Cut Position Increase" },
@@ -687,6 +709,9 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-mguk-deploy-mode", "label": "View MGU-K Deploy Mode", "controlType": "view" },
+            { "setting": "view-mguk-regen-gain", "label": "View MGU-K Regen Gain", "controlType": "view" },
+            { "setting": "view-mguk-deploy-fixed", "label": "View MGU-K Deploy Fixed", "controlType": "view" },
             { "setting": "mguk-regen-gain", "direction": "increase", "label": "MGU-K Regen Gain Increase" },
             { "setting": "mguk-regen-gain", "direction": "decrease", "label": "MGU-K Regen Gain Decrease" },
             { "setting": "mguk-deploy-mode", "direction": "increase", "label": "MGU-K Deploy Mode Up" },
@@ -705,15 +730,19 @@
           "encoder": true,
           "settingsKeys": ["setting", "direction"],
           "modes": [
+            { "setting": "view-tc-slot-1", "label": "View TC1", "controlType": "view" },
+            { "setting": "view-tc-slot-2", "label": "View TC2", "controlType": "view" },
+            { "setting": "view-tc-slot-3", "label": "View TC3", "controlType": "view" },
+            { "setting": "view-tc-slot-4", "label": "View TC4", "controlType": "view" },
             { "setting": "tc-toggle", "label": "TC Toggle" },
-            { "setting": "tc-slot-1", "direction": "increase", "label": "TC Slot 1 Increase" },
-            { "setting": "tc-slot-1", "direction": "decrease", "label": "TC Slot 1 Decrease" },
-            { "setting": "tc-slot-2", "direction": "increase", "label": "TC Slot 2 Increase" },
-            { "setting": "tc-slot-2", "direction": "decrease", "label": "TC Slot 2 Decrease" },
-            { "setting": "tc-slot-3", "direction": "increase", "label": "TC Slot 3 Increase" },
-            { "setting": "tc-slot-3", "direction": "decrease", "label": "TC Slot 3 Decrease" },
-            { "setting": "tc-slot-4", "direction": "increase", "label": "TC Slot 4 Increase" },
-            { "setting": "tc-slot-4", "direction": "decrease", "label": "TC Slot 4 Decrease" }
+            { "setting": "tc-slot-1", "direction": "increase", "label": "TC1 Increase" },
+            { "setting": "tc-slot-1", "direction": "decrease", "label": "TC1 Decrease" },
+            { "setting": "tc-slot-2", "direction": "increase", "label": "TC2 Increase" },
+            { "setting": "tc-slot-2", "direction": "decrease", "label": "TC2 Decrease" },
+            { "setting": "tc-slot-3", "direction": "increase", "label": "TC3 Increase" },
+            { "setting": "tc-slot-3", "direction": "decrease", "label": "TC3 Decrease" },
+            { "setting": "tc-slot-4", "direction": "increase", "label": "TC4 Increase" },
+            { "setting": "tc-slot-4", "direction": "decrease", "label": "TC4 Decrease" }
           ]
         }
       ]

@@ -8,12 +8,19 @@
 
 		<sdpi-item label="Setting">
 			<sdpi-select id="setting-select" setting="setting" default="mguk-regen-gain">
-				<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
-				<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
-				<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
-				<option value="hys-boost">HYS Boost</option>
-				<option value="hys-regen">HYS Regen</option>
-				<option value="hys-no-boost">HYS No Boost</option>
+				<optgroup label="Adjust">
+					<option value="hys-boost">HYS Boost</option>
+					<option value="hys-no-boost">HYS No Boost</option>
+					<option value="hys-regen">HYS Regen</option>
+					<option value="mguk-deploy-mode">MGU-K Deploy Mode</option>
+					<option value="mguk-fixed-deploy">MGU-K Fixed Deploy</option>
+					<option value="mguk-regen-gain">MGU-K Re-Gen Gain</option>
+				</optgroup>
+				<optgroup label="Display value">
+					<option value="view-mguk-deploy-fixed">View MGU-K Deploy Fixed</option>
+					<option value="view-mguk-deploy-mode">View MGU-K Deploy Mode</option>
+					<option value="view-mguk-regen-gain">View MGU-K Regen Gain</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -50,7 +57,8 @@
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
 				if (!directionItem) return;
-				directionItem.classList.toggle("hidden", NON_DIRECTIONAL.has(setting));
+				const hide = NON_DIRECTIONAL.has(setting) || setting.startsWith("view-");
+				directionItem.classList.toggle("hidden", hide);
 			}
 
 			async function initialize() {

@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -25,14 +26,23 @@ import tcSlot3IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-3-in
 import tcSlot4DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-decrease.svg";
 import tcSlot4IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-increase.svg";
 import tcToggleIconSvg from "@iracedeck/icons/setup-traction/tc-toggle.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-type SetupTractionSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+
+type SetupTractionAdjustSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
+
+/**
+ * The combined `setting` type is the union of `SetupTractionAdjustSetting` and the two
+ * View IDs in `setup-view.ts`. Code paths narrow back to `SetupTractionAdjustSetting`
+ * after `isViewSetting` gates the View branch; nothing needs the full union as a name.
+ */
 
 type DirectionType = "increase" | "decrease";
 
 /** Controls that have +/- direction */
-const DIRECTIONAL_CONTROLS: Set<SetupTractionSetting> = new Set([
+const DIRECTIONAL_CONTROLS: Set<SetupTractionAdjustSetting> = new Set([
   "tc-slot-1",
   "tc-slot-2",
   "tc-slot-3",
@@ -59,14 +69,14 @@ const SETUP_TRACTION_ICONS: Record<string, string> = {
  */
 const SETUP_TRACTION_TITLES: Record<string, string> = {
   "tc-toggle": "TOGGLE\nTC",
-  "tc-slot-1-increase": "INCREASE\nTC SLOT 1",
-  "tc-slot-1-decrease": "DECREASE\nTC SLOT 1",
-  "tc-slot-2-increase": "INCREASE\nTC SLOT 2",
-  "tc-slot-2-decrease": "DECREASE\nTC SLOT 2",
-  "tc-slot-3-increase": "INCREASE\nTC SLOT 3",
-  "tc-slot-3-decrease": "DECREASE\nTC SLOT 3",
-  "tc-slot-4-increase": "INCREASE\nTC SLOT 4",
-  "tc-slot-4-decrease": "DECREASE\nTC SLOT 4",
+  "tc-slot-1-increase": "INCREASE\nTC1",
+  "tc-slot-1-decrease": "DECREASE\nTC1",
+  "tc-slot-2-increase": "INCREASE\nTC2",
+  "tc-slot-2-decrease": "DECREASE\nTC2",
+  "tc-slot-3-increase": "INCREASE\nTC3",
+  "tc-slot-3-decrease": "DECREASE\nTC3",
+  "tc-slot-4-increase": "INCREASE\nTC4",
+  "tc-slot-4-decrease": "DECREASE\nTC4",
 };
 
 /**
@@ -88,7 +98,22 @@ export const SETUP_TRACTION_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const SetupTractionSettings = CommonSettings.extend({
-  setting: z.enum(["tc-toggle", "tc-slot-1", "tc-slot-2", "tc-slot-3", "tc-slot-4"]).default("tc-toggle"),
+  setting: z
+    .enum([
+      // View sub-modes (read-only telemetry display) — one per TC slot, paired with the
+      // matching `tc-slot-N` adjustment entry in the PI dropdown.
+      "view-tc-slot-1",
+      "view-tc-slot-2",
+      "view-tc-slot-3",
+      "view-tc-slot-4",
+      // Adjustment sub-modes.
+      "tc-toggle",
+      "tc-slot-1",
+      "tc-slot-2",
+      "tc-slot-3",
+      "tc-slot-4",
+    ])
+    .default("tc-toggle"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
@@ -97,7 +122,7 @@ type SetupTractionSettings = z.infer<typeof SetupTractionSettings>;
 /**
  * Resolves the flat icon lookup key from setting and direction.
  */
-function resolveIconKey(setting: SetupTractionSetting, direction: DirectionType): string {
+function resolveIconKey(setting: SetupTractionAdjustSetting, direction: DirectionType): string {
   if (DIRECTIONAL_CONTROLS.has(setting)) {
     return `${setting}-${direction}`;
   }
@@ -108,10 +133,23 @@ function resolveIconKey(setting: SetupTractionSetting, direction: DirectionType)
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup traction action.
+ * Generates an SVG data URI icon for the setup traction action's adjustment sub-modes.
+ * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
 export function generateSetupTractionSvg(settings: SetupTractionSettings): string {
-  const iconKey = resolveIconKey(settings.setting, settings.direction);
+  if (isViewSetting(settings.setting)) {
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: tcSlot1IncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
+  const setting = settings.setting as SetupTractionAdjustSetting;
+  const iconKey = resolveIconKey(setting, settings.direction);
 
   const iconSvg = SETUP_TRACTION_ICONS[iconKey] || SETUP_TRACTION_ICONS["tc-toggle"];
   const defaultTitle = SETUP_TRACTION_TITLES[iconKey] || "SETUP\nTC";
@@ -128,62 +166,90 @@ export function generateSetupTractionSvg(settings: SetupTractionSettings): strin
 
 /**
  * Setup Traction Action
- * Provides traction control in-car adjustments (TC Toggle, TC Slots 1-4)
+ * Provides traction control in-car adjustments (TC Toggle, TC1–TC4)
  * via keyboard shortcuts.
  */
 export const SETUP_TRACTION_UUID = "com.iracedeck.sd.core.setup-traction" as const;
 
 export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupTractionSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupTractionSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupTractionSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupTractionSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
-
-    if (activeKey) {
-      this.setActiveBinding(activeKey);
-    }
-
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupTractionSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupTractionSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupTractionSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
+    const adjustSetting = settings.setting as SetupTractionAdjustSetting;
+
     // Non-directional controls have no +/- adjustment — ignore rotation
-    if (!DIRECTIONAL_CONTROLS.has(settings.setting)) {
-      this.logger.debug(`Rotation ignored for ${settings.setting}`);
+    if (!DIRECTIONAL_CONTROLS.has(adjustSetting)) {
+      this.logger.debug(`Rotation ignored for ${adjustSetting}`);
 
       return;
     }
 
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
-    await this.executeSetting(settings.setting, direction);
+    await this.executeSetting(adjustSetting, direction);
   }
 
   private parseSettings(settings: unknown): SetupTractionSettings {
@@ -192,7 +258,21 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
     return parsed.success ? parsed.data : SetupTractionSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupTractionSetting, direction: DirectionType): Promise<void> {
+  private applyActiveBinding(settings: SetupTractionSettings): void {
+    if (isViewSetting(settings.setting)) {
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    const activeKey = this.resolveGlobalKey(settings.setting, settings.direction);
+
+    if (activeKey) {
+      this.setActiveBinding(activeKey);
+    }
+  }
+
+  private async executeSetting(setting: SetupTractionAdjustSetting, direction: DirectionType): Promise<void> {
     const settingKey = this.resolveGlobalKey(setting, direction);
 
     if (!settingKey) {
@@ -204,7 +284,7 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
     await this.tapBinding(settingKey);
   }
 
-  private resolveGlobalKey(setting: SetupTractionSetting, direction: DirectionType): string | null {
+  private resolveGlobalKey(setting: SetupTractionAdjustSetting, direction: DirectionType): string | null {
     if (DIRECTIONAL_CONTROLS.has(setting)) {
       const key = `${setting}-${direction}`;
 
@@ -218,9 +298,53 @@ export class SetupTraction extends ConnectionStateAwareAction<SetupTractionSetti
     ev: IDeckWillAppearEvent<SetupTractionSettings> | IDeckDidReceiveSettingsEvent<SetupTractionSettings>,
     settings: SetupTractionSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupTractionSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupTractionSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupTractionSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: tcSlot1IncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupTractionSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupTractionSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: tcSlot1IncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

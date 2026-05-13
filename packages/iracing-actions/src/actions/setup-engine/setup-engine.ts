@@ -11,6 +11,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -24,9 +25,18 @@ import launchRpmDecreaseIconSvg from "@iracedeck/icons/setup-engine/launch-rpm-d
 import launchRpmIncreaseIconSvg from "@iracedeck/icons/setup-engine/launch-rpm-increase.svg";
 import throttleShapingDecreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-decrease.svg";
 import throttleShapingIncreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-increase.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-type SetupEngineSetting = "engine-power" | "throttle-shaping" | "boost-level" | "launch-rpm";
+import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+
+type SetupEngineAdjustSetting = "engine-power" | "throttle-shaping" | "boost-level" | "launch-rpm";
+
+/**
+ * The combined `setting` type is the union of `SetupEngineAdjustSetting` and the three
+ * View IDs in `setup-view.ts`. Code paths narrow back to `SetupEngineAdjustSetting`
+ * after `isViewSetting` gates the View branch; nothing needs the full union as a name.
+ */
 
 type DirectionType = "increase" | "decrease";
 
@@ -76,7 +86,19 @@ export const SETUP_ENGINE_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const SetupEngineSettings = CommonSettings.extend({
-  setting: z.enum(["engine-power", "throttle-shaping", "boost-level", "launch-rpm"]).default("engine-power"),
+  setting: z
+    .enum([
+      // View sub-modes.
+      "view-engine-power",
+      "view-throttle-shape",
+      "view-launch-rpm",
+      // Adjustment sub-modes.
+      "engine-power",
+      "throttle-shaping",
+      "boost-level",
+      "launch-rpm",
+    ])
+    .default("engine-power"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
 });
 
@@ -85,10 +107,23 @@ type SetupEngineSettings = z.infer<typeof SetupEngineSettings>;
 /**
  * @internal Exported for testing
  *
- * Generates an SVG data URI icon for the setup engine action.
+ * Generates an SVG data URI icon for the setup engine action's adjustment sub-modes.
+ * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
 export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
-  const { setting, direction } = settings;
+  if (isViewSetting(settings.setting)) {
+    return generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry: null,
+      colorSourceSvg: enginePowerIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+  }
+
+  const setting = settings.setting as SetupEngineAdjustSetting;
+  const { direction } = settings;
 
   const iconKey = `${setting}-${direction}`;
   const iconSvg = SETUP_ENGINE_ICONS[iconKey] || SETUP_ENGINE_ICONS["engine-power-increase"];
@@ -112,36 +147,72 @@ export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
 export const SETUP_ENGINE_UUID = "com.iracedeck.sd.core.setup-engine" as const;
 
 export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings> {
+  /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
+  private readonly activeContexts = new Map<string, SetupEngineSettings>();
+
+  /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
+  private readonly lastRenderedValue = new Map<string, string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupEngineSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(SETUP_ENGINE_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+    this.activeContexts.set(ev.action.id, settings);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
+
+    this.sdkController.subscribe(ev.action.id, (telemetry) => {
+      const stored = this.activeContexts.get(ev.action.id);
+
+      if (stored && isViewSetting(stored.setting)) {
+        void this.updateDisplayFromTelemetry(ev.action.id, telemetry, stored);
+      }
+    });
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<SetupEngineSettings>): Promise<void> {
+    this.sdkController.unsubscribe(ev.action.id);
+    this.activeContexts.delete(ev.action.id);
+    this.lastRenderedValue.delete(ev.action.id);
+    await super.onWillDisappear(ev);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SetupEngineSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
-    this.setActiveBinding(SETUP_ENGINE_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+    this.activeContexts.set(ev.action.id, settings);
+    this.lastRenderedValue.delete(ev.action.id);
+    this.applyActiveBinding(settings);
     await this.updateDisplay(ev, settings);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SetupEngineSettings>): Promise<void> {
-    this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) {
+      this.logger.debug("View sub-mode is read-only, ignoring key press");
+
+      return;
+    }
+
+    this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupEngineSettings>): Promise<void> {
-    this.logger.info("Dial down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial down received");
     await this.executeSetting(settings.setting, settings.direction);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupEngineSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (isViewSetting(settings.setting)) return;
+
+    this.logger.info("Dial rotated");
     // Clockwise (ticks > 0) = increase, Counter-clockwise (ticks < 0) = decrease
     const direction: DirectionType = ev.payload.ticks > 0 ? "increase" : "decrease";
     await this.executeSetting(settings.setting, direction);
@@ -153,7 +224,17 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
     return parsed.success ? parsed.data : SetupEngineSettings.parse({});
   }
 
-  private async executeSetting(setting: SetupEngineSetting, direction: DirectionType): Promise<void> {
+  private applyActiveBinding(settings: SetupEngineSettings): void {
+    if (isViewSetting(settings.setting)) {
+      this.setActiveBinding(null);
+
+      return;
+    }
+
+    this.setActiveBinding(SETUP_ENGINE_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+  }
+
+  private async executeSetting(setting: SetupEngineAdjustSetting, direction: DirectionType): Promise<void> {
     const settingKey = SETUP_ENGINE_GLOBAL_KEYS[`${setting}-${direction}`];
 
     if (!settingKey) {
@@ -169,9 +250,53 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
     ev: IDeckWillAppearEvent<SetupEngineSettings> | IDeckDidReceiveSettingsEvent<SetupEngineSettings>,
     settings: SetupEngineSettings,
   ): Promise<void> {
-    const svgDataUri = generateSetupEngineSvg(settings);
+    const svgDataUri = this.renderIcon(settings);
+
+    if (isViewSetting(settings.setting)) {
+      const telemetry = this.sdkController.getCurrentTelemetry();
+      this.lastRenderedValue.set(ev.action.id, formatViewValue(settings.setting, telemetry));
+    }
+
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSetupEngineSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: SetupEngineSettings): string {
+    if (isViewSetting(settings.setting)) {
+      return generateSetupViewSvg({
+        viewId: settings.setting,
+        telemetry: this.sdkController.getCurrentTelemetry(),
+        colorSourceSvg: enginePowerIncreaseIconSvg,
+        colorOverrides: settings.colorOverrides,
+        titleOverrides: settings.titleOverrides,
+        borderOverrides: settings.borderOverrides,
+      });
+    }
+
+    return generateSetupEngineSvg(settings);
+  }
+
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    telemetry: TelemetryData | null,
+    settings: SetupEngineSettings,
+  ): Promise<void> {
+    if (!isViewSetting(settings.setting)) return;
+
+    const value = formatViewValue(settings.setting, telemetry);
+
+    if (this.lastRenderedValue.get(contextId) === value) return;
+
+    this.lastRenderedValue.set(contextId, value);
+    const svgDataUri = generateSetupViewSvg({
+      viewId: settings.setting,
+      telemetry,
+      colorSourceSvg: enginePowerIncreaseIconSvg,
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+    });
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 }

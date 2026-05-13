@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 52" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TC SLOT 2\nDECREASE"},"border":{"color":"#3a5a3a"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#1a2a1a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TC2\nDECREASE"},"border":{"color":"#3a5a3a"}}</desc>
 
 
     <circle cx="58" cy="26" r="24" fill="none" stroke="{{graphic1Color}}" stroke-width="4"/>
