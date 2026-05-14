@@ -6,7 +6,7 @@
  *
  * Per-diff-module unit tests (pure functions) live next to their modules.
  */
-import { _resetEventBus, getEventBus, initializeEventBus, type SimEventOf } from "@iracedeck/event-bus";
+import { _resetEventBus, getEventBus, initializeEventBus, type SimEventOf, TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   EngineWarnings,
@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getSessionStartConditions,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
 } from "./translator.js";
@@ -1135,6 +1136,56 @@ describe("sim-events-iracing translator", () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
+    // Issue #542 regression: joining a session leaves iRacing in replay
+    // (`IsReplayPlaying: true`, `IsOnTrack: false`) until the driver clicks
+    // "Drive". The fire must land on the replay → live-on-track transition,
+    // not be swallowed by the replay guard's per-tick state reset.
+    it("emits driver.firstOnTrack on the replay → live-on-track transition", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // In the session menu / garage: iRacing is in replay, not on track.
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
+      // Driver clicks "Drive" — replay ends and the car is on track.
+      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire driver.firstOnTrack while still in replay, even if a replay frame is on-track", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // A replay frame can have IsOnTrack true, but the driver isn't live.
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: true }));
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: true }));
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("fires driver.firstOnTrack only once across a car → exit → car cycle", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
+      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true })); // drive out — fires
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false })); // back to garage
+      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true })); // drive out again
+
+      // The lifetime milestone survives the replay guard's resets — no re-fire.
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
     it("does not synthesize lap.started when Lap resets to a lower number (session flip)", () => {
       const controller = createMockController();
       const bus = getEventBus();
@@ -1147,6 +1198,124 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 1 }));
 
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("session-start conditions (issue #542)", () => {
+    const SESSION_INFO = {
+      SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
+    };
+
+    it("returns null before any telemetry tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getSessionStartConditions()).toBeNull();
+    });
+
+    it("returns null when session info is unavailable", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getSessionStartConditions()).toBeNull();
+    });
+
+    it("returns null when track wetness is still Unknown", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getSessionStartConditions()).toBeNull();
+    });
+
+    it("resolves metric conditions (km/h, Celsius) and rounds temps", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          DisplayUnits: 1,
+          TrackWetness: TrackWetness.MostlyDry,
+          TrackTempCrew: 28.4,
+          AirTemp: 19.6,
+        }),
+      );
+
+      expect(getSessionStartConditions()).toEqual({
+        sessionType: "race",
+        pitSpeedLimit: 80,
+        speedUnit: "kmh",
+        trackTemp: 28,
+        airTemp: 20,
+        tempUnit: "celsius",
+        wetness: TrackWetness.MostlyDry,
+      });
+    });
+
+    it("converts to imperial (mph, Fahrenheit) when DisplayUnits is English", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          DisplayUnits: 0,
+          TrackWetness: TrackWetness.Dry,
+          TrackTempCrew: 28,
+          AirTemp: 20,
+        }),
+      );
+
+      // 80 km/h ≈ 49.7 mph → 50; 28 °C → 82.4 °F → 82; 20 °C → 68 °F.
+      expect(getSessionStartConditions()).toEqual({
+        sessionType: "race",
+        pitSpeedLimit: 50,
+        speedUnit: "mph",
+        trackTemp: 82,
+        airTemp: 68,
+        tempUnit: "fahrenheit",
+        wetness: TrackWetness.Dry,
+      });
+    });
+
+    it("defaults to metric when DisplayUnits is absent", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      const conditions = getSessionStartConditions();
+      expect(conditions?.speedUnit).toBe("kmh");
+      expect(conditions?.tempUnit).toBe("celsius");
+    });
+
+    it.each([
+      ["Practice", "practice"],
+      ["Lone Practice", "practice"],
+      ["Offline Testing", "practice"],
+      ["Open Qualify", "qualifying"],
+      ["Lone Qualify", "qualifying"],
+      ["Race", "race"],
+      ["Warmup", "race"],
+    ] as const)("classifies %s as %s", (sessionType, expected) => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: sessionType }] },
+        WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getSessionStartConditions()?.sessionType).toBe(expected);
     });
   });
 

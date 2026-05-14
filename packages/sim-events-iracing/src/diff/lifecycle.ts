@@ -2,11 +2,14 @@
  * Session-level lifecycle events.
  *
  * Emits:
- *   - driver.firstOnTrack — the first tick where IsOnTrack is true per
- *     translator lifetime (cleared on disconnect).
  *   - session.changed { from, to } — SessionNum delta.
  *   - engine.startup — RPM jumps from 0 to >0 (engine ignited).
  *   - lap.started { lap } — Lap counter increments.
+ *
+ * `driver.firstOnTrack` is NOT emitted here — it's a connection-lifetime
+ * milestone that must survive the per-tick state resets the replay guard
+ * performs, so it lives in `diffFirstOnTrack` (in `translator.ts`) keyed off
+ * translator-instance state rather than `TranslatorState`.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -16,7 +19,6 @@ import type { EmitFn } from "./types.js";
 const ENGINE_STARTUP_RPM_THRESHOLD = 200;
 
 export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
-  const isOnTrack = telemetry.IsOnTrack ?? false;
   const sessionNum = typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : null;
   const rpm = typeof telemetry.RPM === "number" ? telemetry.RPM : 0;
   const engineRunning = rpm > ENGINE_STARTUP_RPM_THRESHOLD;
@@ -24,23 +26,14 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
 
   // First tick — seed from the current snapshot and bail. Without this,
   // connecting while the engine is already spinning would fire a bogus
-  // `engine.startup`, and reconnecting while already on track would fire
-  // `driver.firstOnTrack` on a reconnect event that isn't actually the
-  // driver's first on-track moment.
+  // `engine.startup`.
   if (!state.lifecycleInitialized) {
     state.lifecycleInitialized = true;
-    state.firstOnTrackFired = isOnTrack;
     state.lastSessionNum = sessionNum;
     state.lastEngineRunning = engineRunning;
     state.lastLap = lap;
 
     return;
-  }
-
-  // ── First time on track this lifetime ──────────────────────────────────
-  if (!state.firstOnTrackFired && isOnTrack) {
-    state.firstOnTrackFired = true;
-    emit({ event: "driver.firstOnTrack", data: {} });
   }
 
   // ── Session change ─────────────────────────────────────────────────────

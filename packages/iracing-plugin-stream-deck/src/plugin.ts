@@ -14,6 +14,8 @@ import {
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
   registerPitCrew,
+  SESSION_START_CALLOUT_SETTING_KEYS,
+  type SessionStartCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -33,6 +35,7 @@ import {
   initPluginConfig,
   onGlobalSettingsChange,
   type PluginConfig,
+  resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
@@ -111,7 +114,12 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
-import { getReadbackSnapshot, initializeSimEventsIracing, isPitActionsAllowed } from "@iracedeck/sim-events-iracing";
+import {
+  getReadbackSnapshot,
+  getSessionStartConditions,
+  initializeSimEventsIracing,
+  isPitActionsAllowed,
+} from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -246,6 +254,23 @@ registerPitCrew(
   // next event without cutting an in-flight clip.
   (id: IncidentCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Session-start ("car entry") callout opt-in (issue #542). Single subject;
+  // same live-read pattern as the other callout families.
+  (id: SessionStartCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[SESSION_START_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Session-start conditions snapshot (issue #542). Composes the
+  // telemetry-derived conditions from sim-events-iracing with the PI-picked
+  // driver name. Returns null (scenario skipped) when conditions aren't
+  // available or no driver-name clips exist.
+  () => {
+    const conditions = getSessionStartConditions();
+
+    if (!conditions) return null;
+
+    const driverName = resolveActiveDriverName(driverNames, "driver");
+
+    return driverName ? { ...conditions, driverName } : null;
+  },
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

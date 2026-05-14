@@ -13,6 +13,8 @@ export type {
   IncidentType,
   PitReadbackSnapshot,
   PitServiceKind,
+  SessionStartConditions,
+  SessionStartSnapshot,
   SimEvent,
   SimEventMap,
   SimEventName,

@@ -43,6 +43,8 @@ Flag transitions are also voiced — every flag the iRacing translator publishes
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
 - **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
 
+The engineer also reads a **session-start brief** the first time you go on track each session: a greeting by name, the session type (practice / qualifying / race), the pit speed limit, track and air temperature, and track wetness. Units follow iRacing's display setting; the pit speed limit is spoken exactly, and is skipped when the live limit isn't a value the engineer has a clip for. It can be toggled off independently in the **Race Engineer Callouts → Session Start** Property Inspector section.
+
 ## Settings
 
 | Setting | Type | Default | Description |

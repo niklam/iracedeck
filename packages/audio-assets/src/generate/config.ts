@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 
+import type { SynthesizeOptions } from "./elevenlabs.ts";
 import type { Manifest } from "./manifest.ts";
 
 // Voice and group keys must start with a letter — they're category labels and
@@ -278,4 +280,238 @@ export function resolveRequestIds(
 
     return target.requestId;
   });
+}
+
+/** A located config entry — its group plus the entry object. */
+export type EntryRef = { groupName: string; entry: Entry };
+
+/**
+ * Build a `<group>/<entry-name>` → entry lookup for one voice. Used by
+ * `entryHash` to recurse into request-id dependencies and by the generator
+ * to map references back to their config entries.
+ */
+export function buildEntryLookup(voice: VoiceConfig): Map<string, EntryRef> {
+  const lookup = new Map<string, EntryRef>();
+
+  for (const [groupName, entries] of Object.entries(voice.groups)) {
+    for (const entry of entries) {
+      lookup.set(`${groupName}/${entry.name}`, { groupName, entry });
+    }
+  }
+
+  return lookup;
+}
+
+/**
+ * Reject any reference *cycle* in a voice's `<group>/<entry-name>` request-id
+ * graph (A → B → … → A). The generator requires an acyclic graph because:
+ *   - `entryHash` hashes dependencies recursively — a cycle would recurse
+ *     forever (and conceptually has no fixed-point content hash);
+ *   - `resolveRequestIds` needs each dependency generated *before* its
+ *     dependents, which a cycle makes impossible from an empty manifest.
+ *
+ * Runs before any generation work so a cyclic config fails fast with the
+ * exact cycle path rather than looping or deadlocking mid-run. Raw
+ * passthrough IDs (no `/`) are not graph edges and are ignored.
+ */
+export function detectReferenceCycles(voiceId: string, voice: VoiceConfig): void {
+  const adjacency = new Map<string, string[]>();
+
+  for (const [groupName, entries] of Object.entries(voice.groups)) {
+    for (const entry of entries) {
+      const refs = [...(entry.previous_request_ids ?? []), ...(entry.next_request_ids ?? [])].filter(isReference);
+      adjacency.set(`${groupName}/${entry.name}`, refs);
+    }
+  }
+
+  // Standard 3-colour DFS: white = unseen, grey = on the current DFS stack,
+  // black = fully explored. An edge into a grey node closes a cycle.
+  const WHITE = 0;
+  const GREY = 1;
+  const BLACK = 2;
+  const colour = new Map<string, number>();
+  const stack: string[] = [];
+
+  const visit = (node: string): void => {
+    colour.set(node, GREY);
+    stack.push(node);
+
+    for (const next of adjacency.get(node) ?? []) {
+      const state = colour.get(next) ?? WHITE;
+
+      if (state === GREY) {
+        const cycle = [...stack.slice(stack.indexOf(next)), next];
+
+        throw new Error(
+          `Reference cycle detected in voice "${voiceId}":\n  ${cycle.join(" → ")}\n` +
+            `request-id references must form an acyclic graph — break the cycle by removing one of ` +
+            `the previous_request_ids / next_request_ids links above.`,
+        );
+      }
+
+      if (state === WHITE) visit(next);
+    }
+
+    stack.pop();
+    colour.set(node, BLACK);
+  };
+
+  for (const node of adjacency.keys()) {
+    if ((colour.get(node) ?? WHITE) === WHITE) visit(node);
+  }
+}
+
+/**
+ * Sort-keyed JSON so hashes are insensitive to property insertion order.
+ * Arrays preserve order (order matters for them semantically).
+ */
+export function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+
+  if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+
+  return "{" + entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",") + "}";
+}
+
+/**
+ * Construct the `synthesizeSpeech` options for one entry, resolving
+ * voice-level then per-entry fields in that order.
+ *
+ * `previous_request_ids` / `next_request_ids` are left as their **raw**
+ * `<group>/<entry-name>` reference strings (or raw passthrough IDs) here —
+ * they are resolved to provider request IDs only at API-call time via
+ * `resolveEntryRequestIds`. Keeping them raw is what lets `entryHash` stay
+ * a pure function of config *content* rather than volatile provider IDs.
+ * `apiKey` is injected separately at the call site.
+ */
+export function buildEntryOptions(entry: Entry, voice: VoiceConfig): Omit<SynthesizeOptions, "apiKey"> {
+  // Resolve the 2-level voice_settings stack (voice → entry) and split off
+  // language_code so it ships as the top-level body field per the
+  // ElevenLabs API contract — `voice_settings` itself stays clean.
+  const merged = resolveVoiceSettings(voice, entry);
+  const { language_code, ...voice_settings } = merged;
+
+  return {
+    voice_id: voice.id,
+    text: entry.text,
+    model_id: entry.model_id ?? voice.model_id,
+    voice_settings,
+    seed: entry.seed,
+    previous_text: entry.previous_text,
+    next_text: entry.next_text,
+    previous_request_ids: entry.previous_request_ids,
+    next_request_ids: entry.next_request_ids,
+    language_code,
+    apply_text_normalization: entry.apply_text_normalization ?? voice.apply_text_normalization,
+    apply_language_text_normalization:
+      entry.apply_language_text_normalization ?? voice.apply_language_text_normalization,
+    pronunciation_dictionary_locators:
+      entry.pronunciation_dictionary_locators ?? voice.pronunciation_dictionary_locators,
+    use_pvc_as_ivc: entry.use_pvc_as_ivc ?? voice.use_pvc_as_ivc,
+    output_format: entry.output_format ?? voice.output_format,
+    // `enable_logging` is excluded from the hash (it doesn't change the
+    // audio), so keep it voice-level only.
+    enable_logging: voice.enable_logging,
+    optimize_streaming_latency: entry.optimize_streaming_latency ?? voice.optimize_streaming_latency,
+  };
+}
+
+/**
+ * Resolve the raw `<group>/<entry-name>` references in an options object
+ * (from `buildEntryOptions`) to concrete provider request IDs for the API
+ * call. Separated from `buildEntryOptions` so the hash never sees the
+ * volatile resolved IDs.
+ */
+export function resolveEntryRequestIds(
+  options: Omit<SynthesizeOptions, "apiKey">,
+  voiceName: string,
+  manifest: Manifest,
+): Omit<SynthesizeOptions, "apiKey"> {
+  return {
+    ...options,
+    previous_request_ids: resolveRequestIds(options.previous_request_ids, voiceName, manifest),
+    next_request_ids: resolveRequestIds(options.next_request_ids, voiceName, manifest),
+  };
+}
+
+/**
+ * Content hash for one entry — the generator's cache key.
+ *
+ * Hashes the entry's own audio-affecting config (text, voice settings,
+ * model, seed, the **raw** request-id reference strings, …) plus, for every
+ * `<group>/<entry-name>` reference, the recursively-computed `entryHash` of
+ * that dependency. So the key changes when the entry's own config changes
+ * *or* when any (transitive) dependency's config changes — but NOT when a
+ * dependency is merely re-cut and handed a fresh provider request ID.
+ *
+ * This is why request-id stitching no longer makes the cache thrash: the
+ * provider returns a new request ID on every generation, and hashing those
+ * would re-cut every dependent on every run (and loop forever on a cycle).
+ * Hashing config content instead is stable and still cascades correctly on
+ * a real change. The recursion terminates because `detectReferenceCycles`
+ * guarantees the graph is acyclic; the `visiting` guard turns any missed
+ * cycle into a clear error rather than a stack overflow.
+ *
+ * An entry with **no** `<group>/<entry-name>` dependencies keeps the
+ * pre-existing cache-key shape (hash of its options alone) — its hashing
+ * semantics never changed, so it must stay a cache hit. Only entries that
+ * actually have dependency references move to the `{ self, deps }` shape.
+ *
+ * `memo` is shared across a voice's entries so each entry is hashed once.
+ */
+export function entryHash(
+  entry: Entry,
+  groupName: string,
+  voice: VoiceConfig,
+  lookup: Map<string, EntryRef>,
+  memo: Map<string, string> = new Map(),
+  visiting: Set<string> = new Set(),
+): string {
+  const key = `${groupName}/${entry.name}`;
+  const cached = memo.get(key);
+
+  if (cached !== undefined) return cached;
+
+  if (visiting.has(key)) {
+    throw new Error(
+      `Reference cycle reached "${key}" while hashing — call detectReferenceCycles() before entryHash().`,
+    );
+  }
+
+  visiting.add(key);
+
+  const { enable_logging: _omitted, ...selfOptions } = buildEntryOptions(entry, voice);
+
+  const depHashes: string[] = [];
+
+  for (const id of [...(entry.previous_request_ids ?? []), ...(entry.next_request_ids ?? [])]) {
+    if (!isReference(id)) continue;
+
+    const dep = lookup.get(id);
+
+    if (!dep) {
+      // `validateReferences` already rejects unknown references at load time;
+      // this guards against a lookup built from a different voice.
+      throw new Error(`entryHash: reference "${id}" on "${key}" has no matching entry in the lookup.`);
+    }
+
+    depHashes.push(entryHash(dep.entry, dep.groupName, voice, lookup, memo, visiting));
+  }
+
+  visiting.delete(key);
+
+  // Ref-less entries hash their options directly (the historical shape), so
+  // a config that doesn't use request-id chains sees no churn from this
+  // change. Entries with dependencies fold in the recursive dep hashes.
+  const hashInput = depHashes.length === 0 ? selfOptions : { self: selfOptions, deps: depHashes };
+
+  const hash = createHash("sha256").update(stableStringify(hashInput)).digest("hex").slice(0, 16);
+
+  memo.set(key, hash);
+
+  return hash;
 }

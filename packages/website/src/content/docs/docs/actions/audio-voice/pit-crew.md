@@ -107,6 +107,12 @@ Once the car is in the box, iRacing's status display tells you whether the crew 
 
 The eight callouts share a single family so a positioning correction (e.g. *"too far left"* → *"too far right"* while you wiggle into the box) cleanly preempts the previous one without queueing. Closing transitions back to the idle state are silent.
 
+## Session Start
+
+The first time you go on track in a session, the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to race. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice, qualifying, and race.
+
+Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is spoken exactly (never rounded); if the live limit isn't one the engineer has a clip for, the pit-speed part of the brief is simply skipped rather than guessing a number. The readout fires once per session, a few seconds after you first go on track, and does not re-fire when you return to the garage and back out.
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
@@ -138,6 +144,10 @@ Disabling a status only suppresses future events of that subject; an in-flight c
 Under **Damage**, one callout is toggleable, enabled by default:
 
 - **Repair needed** — the spoken heads-up the engineer plays the first time iRacing reports damage that requires repair (rising edge of `EngineWarnings & (MandRepNeeded | OptRepNeeded)`). Disabling this only silences the live damage callout; the pit-service readback's damage-aware fast-repair line is unaffected.
+
+Under **Session Start**, one callout is toggleable, enabled by default:
+
+- **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track each session. Disabling it silences only the start-of-session readout.
 
 ## Notes
 

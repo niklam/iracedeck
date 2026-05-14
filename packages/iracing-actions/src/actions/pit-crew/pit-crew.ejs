@@ -154,6 +154,17 @@
 			var incidentCheckboxes = incidentCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Session-start ("car entry") readout (issue #542). Single subject —
+			// one toggle for the whole greeting + conditions brief fired on the
+			// driver's first time on track each session.
+			var sessionStartCallouts = [
+				{ setting: "calloutEnabledSessionStart", label: "Car entry conditions" },
+			];
+			var sessionStartRowCount = Math.ceil(sessionStartCallouts.length / 2);
+			var sessionStartCheckboxes = sessionStartCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -188,6 +199,11 @@
 				'<sdpi-item label="Incidents">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + incidentRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						incidentCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Session Start">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + sessionStartRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						sessionStartCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>

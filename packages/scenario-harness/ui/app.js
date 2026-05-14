@@ -722,6 +722,42 @@ function wireReadbackComposer() {
   pushReadbackSnapshot();
 }
 
+// ── Session Start composer ────────────────────────────────────────────────
+//
+// Unlike the readback composer (which round-trips through telemetry), the
+// session-start snapshot carries a non-telemetry `driverName`, so it's held
+// directly on the server. Fire = push the composed snapshot to
+// `/api/session-start/snapshot`, then publish `driver.firstOnTrack`.
+
+function readSessionStartSnapshot() {
+  const driverName = ($("session-start-driver").value || "").trim().toLowerCase() || "driver";
+
+  return {
+    driverName,
+    sessionType: $("session-start-session-type").value,
+    pitSpeedLimit: Math.round(Number($("session-start-pit-speed").value)),
+    speedUnit: $("session-start-speed-unit").value,
+    trackTemp: Math.round(Number($("session-start-track-temp").value)),
+    airTemp: Math.round(Number($("session-start-air-temp").value)),
+    tempUnit: $("session-start-temp-unit").value,
+    wetness: Number($("session-start-wetness").value),
+  };
+}
+
+function wireSessionStartComposer() {
+  $("session-start-fire").addEventListener("click", async () => {
+    try {
+      // Push the composed snapshot first so the scenario's resolver sees it,
+      // then publish the trigger event. `/api/session-start/snapshot` awaits
+      // a 204 before we publish, so there's no push-vs-fire race.
+      await post("/api/session-start/snapshot", readSessionStartSnapshot());
+      await post("/api/bus/publish", { event: "driver.firstOnTrack", data: {} });
+    } catch (e) {
+      alert(`Session start fire failed: ${e.message}`);
+    }
+  });
+}
+
 // ── Wire up controls ──────────────────────────────────────────────────────
 
 function wire() {
@@ -880,6 +916,7 @@ function wire() {
     renderEngineWarningsPanel();
     wire();
     wireReadbackComposer();
+    wireSessionStartComposer();
     wireEngineWarnings();
     connectWebSocket();
   } catch (e) {
