@@ -29,7 +29,7 @@ The tap direction is a single plugin-wide setting under **Global Common Settings
 
 ## Modes
 
-Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes are read-only and do not use Direction.
+Select the mode from the **Setting** dropdown in the Property Inspector. **Adjust** modes are directional — pick **Increase** or **Decrease** in the **Direction** setting to control what a button press does. **View** modes show a live readout and, with **Enable dual-press** on (default), also accept short / long presses — see [View sub-modes](#view-sub-modes) above. They don't use the per-action **Direction** setting; the tap direction is the plugin-wide **Global Common Settings → Dual-Press → Directions**.
 
 ### Engine Power
 

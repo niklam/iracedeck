@@ -1,6 +1,11 @@
+import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupHybridSvg, SETUP_HYBRID_GLOBAL_KEYS, SetupHybrid } from "./setup-hybrid.js";
+
+// Convenience handle so dual-press tests can switch the live tap direction the same
+// way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
+const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
 const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -554,6 +559,108 @@ describe("SetupHybrid", () => {
 
       expect(mockTapBinding).not.toHaveBeenCalled();
       expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("dual-press dispatch (issue #540)", () => {
+    let action: SetupHybrid;
+
+    beforeEach(() => {
+      action = new SetupHybrid();
+    });
+
+    it("records keyDown on View + dual-press enabled and does not fire on its own", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: true }) as any);
+
+      expect(tracker.recordKeyDown).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not record keyDown when dual-press is disabled", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(
+        fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: false }) as any,
+      );
+
+      expect(tracker.recordKeyDown).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("fires the increase binding on a short press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainIncrease");
+    });
+
+    it("fires the decrease binding on a long press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("decrease");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainDecrease");
+    });
+
+    it("inverts directions when the global dualPressDirections is tap-decreases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-decreases");
+      // The mock passes the chosen outcome through computeOutcome unchanged, so
+      // we set the return based on what the tap direction should be.
+      tracker.computeOutcome.mockImplementation((_id: string, tap: string, _long: string) => tap);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupHybridMgukRegenGainDecrease");
+    });
+
+    it("does not fire when the tracker returns undefined (stray key-up)", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue(undefined);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not fire when dual-press is disabled on key-up", async () => {
+      const tracker = (action as any).dualPress as {
+        computeOutcome: ReturnType<typeof vi.fn>;
+        clear: ReturnType<typeof vi.fn>;
+      };
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-mguk-regen-gain", dualPressEnabled: false }) as any);
+
+      expect(tracker.computeOutcome).not.toHaveBeenCalled();
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("releases the held binding on key-up for non-View settings (hold path is unaffected)", async () => {
+      // setup-hybrid merges the dual-press View path and the existing hold/release
+      // path in a single onKeyUp — a non-View key-up still routes to releaseBinding.
+      await action.onKeyUp(fakeEvent("action-1", { setting: "mguk-regen-gain", direction: "increase" }) as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("clears tracker on willDisappear", async () => {
+      const tracker = (action as any).dualPress as { clear: ReturnType<typeof vi.fn> };
+
+      await action.onWillDisappear({
+        action: { id: "action-1" },
+        payload: { settings: { setting: "view-mguk-regen-gain" } },
+      } as any);
+
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
     });
   });
 });

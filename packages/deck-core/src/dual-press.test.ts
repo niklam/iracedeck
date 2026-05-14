@@ -8,8 +8,12 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
 } from "./dual-press.js";
-import { _resetGlobalSettings, initGlobalSettings, updateGlobalSettings } from "./global-settings.js";
+// Namespace import so the unrecognised-value test can spy on getGlobalSettings;
+// the named bindings below keep the rest of the file unchanged.
+import * as globalSettings from "./global-settings.js";
 import type { IDeckPlatformAdapter } from "./types.js";
+
+const { _resetGlobalSettings, initGlobalSettings, updateGlobalSettings } = globalSettings;
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -184,9 +188,21 @@ describe("getDualPressDirections", () => {
   });
 
   it("falls back when the stored value is unrecognised", () => {
-    initGlobalSettings(createMockAdapter(), createMockLogger());
-    // Bypass the schema by writing through the passthrough cache directly.
-    updateGlobalSettings({ dualPressDirections: "tap-increases" });
-    expect(getDualPressDirections()).toBe("tap-increases");
+    // The GlobalSettingsSchema enum rejects invalid values, so an unrecognised
+    // dualPressDirections can only reach the reader if the settings cache is
+    // bypassed. Stub getGlobalSettings directly to exercise the defensive branch.
+    type Settings = ReturnType<typeof globalSettings.getGlobalSettings>;
+    const spy = vi.spyOn(globalSettings, "getGlobalSettings");
+
+    // Sanity check the spy is intercepting: "tap-decreases" is not the cache
+    // default, so getting it back proves the reader read through the stub.
+    spy.mockReturnValue({ dualPressDirections: "tap-decreases" } as unknown as Settings);
+    expect(getDualPressDirections()).toBe("tap-decreases");
+
+    // An unrecognised value resolves to the defensive fallback.
+    spy.mockReturnValue({ dualPressDirections: "sideways" } as unknown as Settings);
+    expect(getDualPressDirections()).toBe(DUAL_PRESS_DIRECTIONS_FALLBACK);
+
+    spy.mockRestore();
   });
 });
