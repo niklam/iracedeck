@@ -29,6 +29,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('dual-press-overrides') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-fuel'] }) %>
@@ -50,14 +52,22 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// Non-directional controls: hide direction dropdown. View sub-modes also hide it (read-only).
+			// Non-directional controls hide Direction; View sub-modes are read-only displays — they
+			// also hide Direction but show the dual-press opt-in instead.
 			const NON_DIRECTIONAL = new Set(["disable-fuel-cut", "low-fuel-accept", "fcy-mode-toggle"]);
+
+			function isViewSetting(setting) {
+				return typeof setting === "string" && setting.startsWith("view-");
+			}
 
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				const hide = NON_DIRECTIONAL.has(setting) || setting.startsWith("view-");
-				directionItem.classList.toggle("hidden", hide);
+				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+
+				const view = isViewSetting(setting);
+				const hideDirection = NON_DIRECTIONAL.has(setting) || view;
+				directionItem?.classList.toggle("hidden", hideDirection);
+				dualEnabledItem?.classList.toggle("hidden", !view);
 			}
 
 			async function initialize() {
@@ -69,14 +79,10 @@
 					const initialValue = settingSelect.value || "fuel-mixture";
 					updateVisibility(initialValue);
 
-					settingSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "fuel-mixture");
-					});
-					settingSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "fuel-mixture");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "fuel-mixture");
+					settingSelect.addEventListener("change", onChange);
+					settingSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
 					let lastValue = settingSelect.value || "fuel-mixture";
 					setInterval(() => {
 						const currentValue = settingSelect.value;

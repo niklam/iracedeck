@@ -504,6 +504,30 @@
       "label": "Power Steering -",
       "default": "",
       "setting": "setupChassisPowerSteeringDecrease"
+    },
+    {
+      "id": "weightJackerLeftIncrease",
+      "label": "Weight Jacker Left +",
+      "default": "",
+      "setting": "setupChassisWeightJackerLeftIncrease"
+    },
+    {
+      "id": "weightJackerLeftDecrease",
+      "label": "Weight Jacker Left -",
+      "default": "",
+      "setting": "setupChassisWeightJackerLeftDecrease"
+    },
+    {
+      "id": "weightJackerRightIncrease",
+      "label": "Weight Jacker Right +",
+      "default": "",
+      "setting": "setupChassisWeightJackerRightIncrease"
+    },
+    {
+      "id": "weightJackerRightDecrease",
+      "label": "Weight Jacker Right -",
+      "default": "",
+      "setting": "setupChassisWeightJackerRightDecrease"
     }
   ],
   "setupAero": [

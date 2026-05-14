@@ -1,7 +1,12 @@
+// Convenience handle so dual-press tests can switch the live tap direction the same
+// way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
+import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupBrakesSvg, SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes.js";
 import { SetupBrakes } from "./setup-brakes.js";
+
+const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
 const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +81,14 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
+  DualPressTracker: class MockDualPressTracker {
+    recordKeyDown = vi.fn();
+    computeOutcome = vi.fn(() => undefined);
+    clear = vi.fn();
+    hasPending = vi.fn(() => false);
+  },
+  getDualPressThresholdMs: vi.fn(() => 500),
+  getDualPressDirections: vi.fn(() => "tap-increases"),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -510,12 +523,109 @@ describe("SetupBrakes", () => {
       expect(unsubscribe).toHaveBeenCalledWith("action-1");
     });
 
-    it("clears active binding when switching to a View setting", async () => {
+    it("clears active binding when switching to a View setting with dual-press off", async () => {
       const setActive = action.setActiveBinding as any;
-      await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias" }) as any);
+      await action.onWillAppear(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: false }) as any);
 
-      // setActiveBinding is called with null for view sub-modes.
       expect(setActive).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe("dual-press dispatch (issue #540)", () => {
+    let action: SetupBrakes;
+
+    beforeEach(() => {
+      action = new SetupBrakes();
+    });
+
+    it("records keyDown on View + dual-press enabled and does not fire on its own", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: true }) as any);
+
+      expect(tracker.recordKeyDown).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not record keyDown when dual-press is disabled", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: false }) as any);
+
+      expect(tracker.recordKeyDown).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("fires the increase binding on a short press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+    });
+
+    it("fires the decrease binding on a long press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("decrease");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasDecrease");
+    });
+
+    it("inverts directions when the global dualPressDirections is tap-decreases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-decreases");
+      // The mock passes the chosen outcome through computeOutcome unchanged, so
+      // we set the return based on what the tap direction should be.
+      tracker.computeOutcome.mockImplementation((_id: string, tap: string, _long: string) => tap);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasDecrease");
+    });
+
+    it("does not fire when the tracker returns undefined (stray key-up)", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue(undefined);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not fire when dual-press is disabled on key-up", async () => {
+      const tracker = (action as any).dualPress as {
+        computeOutcome: ReturnType<typeof vi.fn>;
+        clear: ReturnType<typeof vi.fn>;
+      };
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-brake-bias", dualPressEnabled: false }) as any);
+
+      expect(tracker.computeOutcome).not.toHaveBeenCalled();
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("clears tracker on key-up for non-View settings (so future View presses start clean)", async () => {
+      const tracker = (action as any).dualPress as { clear: ReturnType<typeof vi.fn> };
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "brake-bias", direction: "increase" }) as any);
+
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
+    });
+
+    it("clears tracker on willDisappear", async () => {
+      const tracker = (action as any).dualPress as { clear: ReturnType<typeof vi.fn> };
+
+      await action.onWillDisappear({
+        action: { id: "action-1" },
+        payload: { settings: { setting: "view-brake-bias" } },
+      } as any);
+
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
     });
   });
 });

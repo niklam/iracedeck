@@ -11,13 +11,21 @@ Control hybrid energy recovery and deployment settings from the cockpit: MGU-K r
 
 ## View sub-modes
 
-The **View …** entries are read-only live readouts. No Direction, no key fires on press.
+The **View …** entries turn the key into a continuously updating display of the current value in the car. With **dual-press** enabled (default) the same key also adjusts the value: a short press fires one direction and a long press fires the opposite — so one key replaces the separate Increase / Decrease keys you'd otherwise need.
 
 | View setting | Telemetry source | Format | Typical range |
 |---|---|---|---|
 | View MGU-K Deploy Mode | `dcMGUKDeployMode` | integer | 0–4 |
 | View MGU-K Regen Gain | `dcMGUKRegenGain` | integer | car-dependent slot |
 | View MGU-K Deploy Fixed | `dcMGUKDeployFixed` | integer | car-dependent slot |
+
+### Dual-press control
+
+Each View sub-mode exposes a single extra setting in the Property Inspector:
+
+- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View MGU-K Regen Gain dispatches to *MGU-K Regen Gain +* / *MGU-K Regen Gain −*), so configure those bindings in the **Global Settings → Setup Hybrid** section.
+
+The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
 ## Modes
 

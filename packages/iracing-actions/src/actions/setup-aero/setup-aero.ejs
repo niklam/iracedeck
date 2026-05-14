@@ -28,6 +28,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('dual-press-overrides') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-aero'] }) %>
@@ -49,12 +51,20 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// RF Brake Attached is non-directional; View sub-modes are read-only — both hide Direction.
+			// RF Brake Attached is non-directional; View sub-modes are read-only displays —
+			// both hide Direction. View sub-modes additionally show the dual-press opt-in.
+			function isViewSetting(setting) {
+				return typeof setting === "string" && setting.startsWith("view-");
+			}
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				const hide = setting === "rf-brake-attached" || setting.startsWith("view-");
-				directionItem.classList.toggle("hidden", hide);
+				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+
+				const view = isViewSetting(setting);
+				const hideDirection = setting === "rf-brake-attached" || view;
+				directionItem?.classList.toggle("hidden", hideDirection);
+				dualEnabledItem?.classList.toggle("hidden", !view);
 			}
 
 			async function initialize() {
@@ -66,14 +76,10 @@
 					const initialValue = settingSelect.value || "front-wing";
 					updateVisibility(initialValue);
 
-					settingSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "front-wing");
-					});
-					settingSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "front-wing");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "front-wing");
+					settingSelect.addEventListener("change", onChange);
+					settingSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
 					let lastValue = settingSelect.value || "front-wing";
 					setInterval(() => {
 						const currentValue = settingSelect.value;

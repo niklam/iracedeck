@@ -440,3 +440,49 @@ describe("flagFlashDurationSeconds (issue #490)", () => {
     expect(() => GlobalSettingsSchema.parse({ flagFlashDurationSeconds: 31 })).toThrow();
   });
 });
+
+describe("dualPressThresholdMs (issue #540)", () => {
+  it("defaults to 500 when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.dualPressThresholdMs).toBe(500);
+  });
+
+  it("accepts the lower bound (200 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ dualPressThresholdMs: 200 }) as Record<string, unknown>;
+    expect(parsed.dualPressThresholdMs).toBe(200);
+  });
+
+  it("accepts the upper bound (2000 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ dualPressThresholdMs: 2000 }) as Record<string, unknown>;
+    expect(parsed.dualPressThresholdMs).toBe(2000);
+  });
+
+  it("coerces a numeric string from the Property Inspector slider", () => {
+    const parsed = GlobalSettingsSchema.parse({ dualPressThresholdMs: "750" }) as Record<string, unknown>;
+    expect(parsed.dualPressThresholdMs).toBe(750);
+  });
+
+  it("rejects values below 200", () => {
+    expect(() => GlobalSettingsSchema.parse({ dualPressThresholdMs: 199 })).toThrow();
+  });
+
+  it("rejects values above 2000", () => {
+    expect(() => GlobalSettingsSchema.parse({ dualPressThresholdMs: 2001 })).toThrow();
+  });
+});
+
+describe("dualPressDirections (issue #540)", () => {
+  it("defaults to tap-increases when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.dualPressDirections).toBe("tap-increases");
+  });
+
+  it("accepts tap-decreases", () => {
+    const parsed = GlobalSettingsSchema.parse({ dualPressDirections: "tap-decreases" }) as Record<string, unknown>;
+    expect(parsed.dualPressDirections).toBe("tap-decreases");
+  });
+
+  it("rejects unknown enum values", () => {
+    expect(() => GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" })).toThrow();
+  });
+});

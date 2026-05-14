@@ -1,6 +1,11 @@
+import { getDualPressDirections } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSetupChassisSvg, SETUP_CHASSIS_GLOBAL_KEYS, SetupChassis } from "./setup-chassis.js";
+
+// Convenience handle so dual-press tests can switch the live tap direction the same
+// way the runtime does (via the @iracedeck/deck-core getDualPressDirections reader).
+const mockGetDualPressDirections = getDualPressDirections as unknown as ReturnType<typeof vi.fn>;
 
 const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
@@ -114,6 +119,14 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
+  DualPressTracker: class MockDualPressTracker {
+    recordKeyDown = vi.fn();
+    computeOutcome = vi.fn(() => undefined);
+    clear = vi.fn();
+    hasPending = vi.fn(() => false);
+  },
+  getDualPressThresholdMs: vi.fn(() => 500),
+  getDualPressDirections: vi.fn(() => "tap-increases"),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -307,8 +320,15 @@ describe("SetupChassis", () => {
       expect(SETUP_CHASSIS_GLOBAL_KEYS["power-steering-decrease"]).toBe("setupChassisPowerSteeringDecrease");
     });
 
-    it("should have exactly 26 entries", () => {
-      expect(Object.keys(SETUP_CHASSIS_GLOBAL_KEYS)).toHaveLength(26);
+    it("should have correct mappings for weight-jacker dual-press targets (issue #540)", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-left-increase"]).toBe("setupChassisWeightJackerLeftIncrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-left-decrease"]).toBe("setupChassisWeightJackerLeftDecrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-right-increase"]).toBe("setupChassisWeightJackerRightIncrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-right-decrease"]).toBe("setupChassisWeightJackerRightDecrease");
+    });
+
+    it("should have exactly 30 entries (26 chassis adjust + 4 weight-jacker dual-press targets)", () => {
+      expect(Object.keys(SETUP_CHASSIS_GLOBAL_KEYS)).toHaveLength(30);
     });
   });
 
@@ -601,6 +621,104 @@ describe("SetupChassis", () => {
       await action.onKeyDown(fakeEvent("action-1", { setting: "view-power-steering" }) as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("dual-press dispatch (issue #540)", () => {
+    let action: SetupChassis;
+
+    beforeEach(() => {
+      action = new SetupChassis();
+    });
+
+    it("records keyDown on View + dual-press enabled and does not fire on its own", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: true }) as any);
+
+      expect(tracker.recordKeyDown).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not record keyDown when dual-press is disabled", async () => {
+      const tracker = (action as any).dualPress as { recordKeyDown: ReturnType<typeof vi.fn> };
+      await action.onKeyDown(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: false }) as any);
+
+      expect(tracker.recordKeyDown).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("fires the increase binding on a short press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("increase");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadIncrease");
+    });
+
+    it("fires the decrease binding on a long press with tap-increases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue("decrease");
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadDecrease");
+    });
+
+    it("inverts directions when the global dualPressDirections is tap-decreases", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-decreases");
+      // The mock passes the chosen outcome through computeOutcome unchanged, so
+      // we set the return based on what the tap direction should be.
+      tracker.computeOutcome.mockImplementation((_id: string, tap: string, _long: string) => tap);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisDifferentialPreloadDecrease");
+    });
+
+    it("does not fire when the tracker returns undefined (stray key-up)", async () => {
+      const tracker = (action as any).dualPress as { computeOutcome: ReturnType<typeof vi.fn> };
+      mockGetDualPressDirections.mockReturnValue("tap-increases");
+      tracker.computeOutcome.mockReturnValue(undefined);
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: true }) as any);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("does not fire when dual-press is disabled on key-up", async () => {
+      const tracker = (action as any).dualPress as {
+        computeOutcome: ReturnType<typeof vi.fn>;
+        clear: ReturnType<typeof vi.fn>;
+      };
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "view-diff-preload", dualPressEnabled: false }) as any);
+
+      expect(tracker.computeOutcome).not.toHaveBeenCalled();
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("clears tracker on key-up for non-View settings (so future View presses start clean)", async () => {
+      const tracker = (action as any).dualPress as { clear: ReturnType<typeof vi.fn> };
+
+      await action.onKeyUp(fakeEvent("action-1", { setting: "differential-preload", direction: "increase" }) as any);
+
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
+    });
+
+    it("clears tracker on willDisappear", async () => {
+      const tracker = (action as any).dualPress as { clear: ReturnType<typeof vi.fn> };
+
+      await action.onWillDisappear({
+        action: { id: "action-1" },
+        payload: { settings: { setting: "view-diff-preload" } },
+      } as any);
+
+      expect(tracker.clear).toHaveBeenCalledWith("action-1");
     });
   });
 });

@@ -402,6 +402,25 @@ export const GlobalSettingsSchema = z
      * concept and stays a constant.
      */
     flagFlashDurationSeconds: z.coerce.number().min(0).max(30).default(15),
+    /**
+     * Threshold in milliseconds separating a short tap from a long press for
+     * dual-press controls (issue #540). On a View sub-mode of a setup action,
+     * a press shorter than this fires the configured tap direction and a
+     * press at or above it fires the opposite direction. Range 200–2000 ms,
+     * default 500 ms. The fallback used by `getDualPressThresholdMs()` when
+     * settings are unavailable matches this default.
+     */
+    dualPressThresholdMs: z.coerce.number().min(200).max(2000).default(500),
+    /**
+     * Which direction a short press fires on a dual-press setup View sub-mode
+     * (issue #540). The long-press always fires the opposite. Plugin-wide
+     * because drivers want a consistent muscle-memory rule across every setup
+     * action, not a per-key choice.
+     *
+     * - `"tap-increases"` — tap fires Increase, long-press fires Decrease (default)
+     * - `"tap-decreases"` — tap fires Decrease, long-press fires Increase
+     */
+    dualPressDirections: z.enum(["tap-increases", "tap-decreases"]).default("tap-increases"),
   })
   .passthrough();
 

@@ -11,7 +11,7 @@ Adjust brake-related setup options from the cockpit — ABS level, brake bias (c
 
 ## View sub-modes
 
-The **View …** entries at the top of the Setting dropdown are read-only live readouts of the current value in the car. Pick "View Brake Bias" to turn the key into a continuously updating display of the current brake bias percentage — no Direction setting, no key fires on press.
+The **View …** entries at the top of the Setting dropdown turn the key into a continuously updating display of the current value in the car. With **dual-press** enabled (default) the same key also adjusts the value: a short press fires one direction and a long press fires the opposite — so one key replaces the separate Increase / Decrease keys you'd otherwise need.
 
 | View setting | Telemetry source | Format | Typical range |
 |---|---|---|---|
@@ -21,6 +21,14 @@ The **View …** entries at the top of the Setting dropdown are read-only live r
 | View Brake Misc | `dcBrakeMisc` | integer | car-dependent |
 | View Engine Braking | `dcEngineBraking` | integer | car-dependent slot |
 | View ABS Adjust | `dcABS` | integer | car-dependent slot |
+
+### Dual-press control
+
+Each View sub-mode exposes a single extra setting in the Property Inspector:
+
+- **Enable dual-press** (default *on*) — when off, the key stays a pure read-only display and presses do nothing. When on, presses dispatch to the matching adjustment binding (e.g. View Brake Bias dispatches to *Brake Bias +* / *Brake Bias −*), so configure those bindings in the **Global Settings → Setup Brakes** section.
+
+The tap direction is a single plugin-wide setting under **Global Common Settings → Dual-Press → Directions** (default *Tap increases, long-press decreases*; the long-press always fires the opposite of the tap). The threshold separating "short" from "long" is a sibling setting **Long-press threshold (ms)** (200–2000 ms, default 500 ms). Both take effect on the next press without needing a restart.
 
 ## Modes
 

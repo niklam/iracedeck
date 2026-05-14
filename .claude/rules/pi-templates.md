@@ -119,6 +119,24 @@ Located in `packages/pi-components/partials/`:
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped)
 - **version.ejs** - Version footer with downloads link
 
+## Shared CSS Classes
+
+Common style classes are defined in `head-common.ejs` (loaded by every PI page). Use these classes — never inline `style="..."` attributes — so styling stays consistent and changes apply everywhere at once.
+
+- **`ird-section-subtitle`** — uppercase group label inside an accordion (e.g. "Window Focus", "SimHub Server").
+- **`ird-supporting-text`** — help/explanatory text shown directly beneath an `sdpi-item`. The class includes a 95px left padding so the text aligns under the control column (not the label), matching the `sdpi-item` layout. Always use this class for help blurbs:
+
+  ```html
+  <sdpi-item label="Directions">
+    <sdpi-select setting="dualPressDirections" default="tap-increases" global>...</sdpi-select>
+  </sdpi-item>
+  <div class="ird-supporting-text">
+    Which direction a short press fires; the long-press always fires the opposite.
+  </div>
+  ```
+
+When a new shared style is needed, add the class to `head-common.ejs` and document it here — do not introduce inline styles in partials or per-action templates.
+
 ## Title Overrides Partial
 
 Adds per-action title customization controls. Settings are stored under the `titleOverrides` key in action settings.

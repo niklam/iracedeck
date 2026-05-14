@@ -29,6 +29,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('dual-press-overrides') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-engine'] }) %>
@@ -50,11 +52,18 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// View sub-modes are read-only — hide Direction when one is selected.
+			// View sub-modes are read-only displays — hide Direction and show the dual-press opt-in.
+			function isViewSetting(setting) {
+				return typeof setting === "string" && setting.startsWith("view-");
+			}
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				directionItem.classList.toggle("hidden", setting.startsWith("view-"));
+				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+
+				const view = isViewSetting(setting);
+				directionItem?.classList.toggle("hidden", view);
+				dualEnabledItem?.classList.toggle("hidden", !view);
 			}
 
 			async function initialize() {
@@ -66,14 +75,10 @@
 					const initialValue = settingSelect.value || "engine-power";
 					updateVisibility(initialValue);
 
-					settingSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "engine-power");
-					});
-					settingSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "engine-power");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "engine-power");
+					settingSelect.addEventListener("change", onChange);
+					settingSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
 					let lastValue = settingSelect.value || "engine-power";
 					setInterval(() => {
 						const currentValue = settingSelect.value;

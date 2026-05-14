@@ -35,6 +35,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('dual-press-overrides') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-brakes'] }) %>
@@ -56,12 +58,20 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// ABS Toggle is non-directional; View sub-modes are read-only — both hide Direction.
+			// ABS Toggle is non-directional; View sub-modes are read-only displays — both hide Direction.
+			// View sub-modes show the dual-press opt-in; non-View sub-modes hide it.
+			function isViewSetting(setting) {
+				return typeof setting === "string" && setting.startsWith("view-");
+			}
+
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				const hide = setting === "abs-toggle" || setting.startsWith("view-");
-				directionItem.classList.toggle("hidden", hide);
+				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+
+				const view = isViewSetting(setting);
+				const hideDirection = setting === "abs-toggle" || view;
+				directionItem?.classList.toggle("hidden", hideDirection);
+				dualEnabledItem?.classList.toggle("hidden", !view);
 			}
 
 			async function initialize() {
@@ -73,14 +83,11 @@
 					const initialValue = settingSelect.value || "brake-bias";
 					updateVisibility(initialValue);
 
-					settingSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "brake-bias");
-					});
-					settingSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "brake-bias");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "brake-bias");
+					settingSelect.addEventListener("change", onChange);
+					settingSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
+					// Polling fallback — sdpi-select events can be unreliable.
 					let lastValue = settingSelect.value || "brake-bias";
 					setInterval(() => {
 						const currentValue = settingSelect.value;

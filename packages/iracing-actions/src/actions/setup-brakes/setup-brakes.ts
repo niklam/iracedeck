@@ -2,6 +2,8 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  DualPressTracker,
+  getDualPressDirections,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -10,6 +12,7 @@ import {
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   resolveBorderSettings,
@@ -33,7 +36,12 @@ import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-bra
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+import {
+  formatViewValue,
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+} from "../../shared/setup-view.js";
 
 type SetupBrakesAdjustSetting =
   | "abs-toggle"
@@ -143,6 +151,18 @@ const SetupBrakesSettings = CommonSettings.extend({
     ])
     .default("brake-bias"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  /**
+   * Dual-press opt-in for View sub-modes (issue #540). When `true` (default),
+   * a View key fires the global tap direction on a short press and the
+   * opposite on a long press (held ≥ `dualPressThresholdMs`). When `false`,
+   * the View stays purely read-only. Ignored for adjustment / toggle
+   * sub-modes. The tap direction itself is the plugin-wide
+   * `dualPressDirections` global setting.
+   */
+  dualPressEnabled: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true")
+    .default(true),
 });
 
 type SetupBrakesSettings = z.infer<typeof SetupBrakesSettings>;
@@ -210,6 +230,9 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
   private readonly lastRenderedValue = new Map<string, string>();
 
+  /** Per-context key-down timestamps for dual-press dispatch on View sub-modes (#540). */
+  private readonly dualPress = new DualPressTracker();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupBrakesSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -232,6 +255,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedValue.delete(ev.action.id);
+    this.dualPress.clear(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
@@ -250,13 +274,57 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     const settings = this.parseSettings(ev.payload.settings);
 
     if (isViewSetting(settings.setting)) {
-      this.logger.debug("View sub-mode is read-only, ignoring key press");
+      if (settings.dualPressEnabled) {
+        this.dualPress.recordKeyDown(ev.action.id);
+      } else {
+        this.logger.debug("View sub-mode is read-only (dual-press off), ignoring key press");
+      }
 
       return;
     }
 
     this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<SetupBrakesSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (!isViewSetting(settings.setting) || !settings.dualPressEnabled) {
+      // Non-View modes already fired on key-down; dual-press disabled means read-only.
+      this.dualPress.clear(ev.action.id);
+
+      return;
+    }
+
+    const adjustMode = getAdjustmentModeForView(settings.setting);
+
+    if (!adjustMode) {
+      this.dualPress.clear(ev.action.id);
+
+      return;
+    }
+
+    const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+    const longDir: DirectionType = tapDir === "increase" ? "decrease" : "increase";
+    const direction = this.dualPress.computeOutcome(ev.action.id, tapDir, longDir);
+
+    if (direction === undefined) {
+      // Stray key-up with no matching key-down (e.g. dual-press just enabled mid-press).
+      return;
+    }
+
+    this.logger.info("Dual-press dispatch");
+    this.logger.debug(`Dual-press: ${adjustMode} ${direction}`);
+    const settingKey = SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-${direction}`];
+
+    if (!settingKey) {
+      this.logger.warn(`No global key mapping for dual-press ${adjustMode} ${direction}`);
+
+      return;
+    }
+
+    await this.tapBinding(settingKey);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupBrakesSettings>): Promise<void> {
@@ -296,9 +364,20 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
 
   private applyActiveBinding(settings: SetupBrakesSettings): void {
     if (isViewSetting(settings.setting)) {
-      // View sub-modes don't fire any binding — clear the active binding so the
-      // readiness overlay reflects "no binding" instead of carrying a stale key.
-      this.setActiveBinding(null);
+      if (!settings.dualPressEnabled) {
+        // Read-only View — no binding drives the key, so clear the readiness overlay.
+        this.setActiveBinding(null);
+
+        return;
+      }
+
+      // Dual-press is active: the tap direction is the primary action, so the
+      // readiness overlay tracks that binding. (Long-press fires the opposite,
+      // but a single chip can only show one — pick the tap.)
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+      const activeKey = adjustMode ? (SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
+      this.setActiveBinding(activeKey);
 
       return;
     }
