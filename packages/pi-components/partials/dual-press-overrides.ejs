@@ -1,0 +1,16 @@
+<!--
+  Dual-Press Overrides (issue #540)
+
+  Per-action opt-in for a setup View sub-mode's dual-press control. When checked,
+  a short press fires the global tap direction (see Global Common Settings →
+  Dual-Press → Directions) and a long press fires the opposite. When unchecked,
+  the View stays purely read-only.
+
+  Hidden by `updateVisibility(setting)` when the selected `setting` is not a
+  View sub-mode. The global threshold (`dualPressThresholdMs`) and direction
+  (`dualPressDirections`) live in Global Common Settings since they apply to
+  every action that uses dual-press.
+-->
+<sdpi-item label="Dual-Press" id="dual-press-enabled-item">
+  <sdpi-checkbox setting="dualPressEnabled" label="Enable dual-press" default="true"></sdpi-checkbox>
+</sdpi-item>

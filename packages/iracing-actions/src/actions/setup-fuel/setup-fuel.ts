@@ -2,6 +2,8 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  DualPressTracker,
+  getDualPressDirections,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -10,6 +12,7 @@ import {
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   resolveBorderSettings,
@@ -27,7 +30,12 @@ import lowFuelAcceptIconSvg from "@iracedeck/icons/setup-fuel/low-fuel-accept.sv
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import { formatViewValue, generateSetupViewSvg, isViewSetting } from "../../shared/setup-view.js";
+import {
+  formatViewValue,
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+} from "../../shared/setup-view.js";
 
 type SetupFuelAdjustSetting =
   | "fuel-mixture"
@@ -104,6 +112,18 @@ const SetupFuelSettings = CommonSettings.extend({
     ])
     .default("fuel-mixture"),
   direction: z.enum(["increase", "decrease"]).default("increase"),
+  /**
+   * Dual-press opt-in for View sub-modes (issue #540). When `true` (default),
+   * a View key fires the global tap direction on a short press and the
+   * opposite on a long press (held ≥ `dualPressThresholdMs`). When `false`,
+   * the View stays purely read-only. Ignored for adjustment / toggle
+   * sub-modes. The tap direction itself is the plugin-wide
+   * `dualPressDirections` global setting.
+   */
+  dualPressEnabled: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "true")
+    .default(true),
 });
 
 type SetupFuelSettings = z.infer<typeof SetupFuelSettings>;
@@ -157,6 +177,9 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
   /** Last rendered View value per context — memoizes the icon so we only re-emit on actual change. */
   private readonly lastRenderedValue = new Map<string, string>();
 
+  /** Per-context key-down timestamps for dual-press dispatch on View sub-modes (#540). */
+  private readonly dualPress = new DualPressTracker();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupFuelSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -177,6 +200,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastRenderedValue.delete(ev.action.id);
+    this.dualPress.clear(ev.action.id);
     await super.onWillDisappear(ev);
   }
 
@@ -193,13 +217,53 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     const settings = this.parseSettings(ev.payload.settings);
 
     if (isViewSetting(settings.setting)) {
-      this.logger.debug("View sub-mode is read-only, ignoring key press");
+      if (settings.dualPressEnabled) {
+        this.dualPress.recordKeyDown(ev.action.id);
+      } else {
+        this.logger.debug("View sub-mode is read-only (dual-press off), ignoring key press");
+      }
 
       return;
     }
 
     this.logger.info("Key down received");
     await this.executeSetting(settings.setting, settings.direction);
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<SetupFuelSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (!isViewSetting(settings.setting) || !settings.dualPressEnabled) {
+      this.dualPress.clear(ev.action.id);
+
+      return;
+    }
+
+    const adjustMode = getAdjustmentModeForView(settings.setting);
+
+    if (!adjustMode) {
+      this.dualPress.clear(ev.action.id);
+
+      return;
+    }
+
+    const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+    const longDir: DirectionType = tapDir === "increase" ? "decrease" : "increase";
+    const direction = this.dualPress.computeOutcome(ev.action.id, tapDir, longDir);
+
+    if (direction === undefined) return;
+
+    this.logger.info("Dual-press dispatch");
+    this.logger.debug(`Dual-press: ${adjustMode} ${direction}`);
+    const settingKey = SETUP_FUEL_GLOBAL_KEYS[`${adjustMode}-${direction}`];
+
+    if (!settingKey) {
+      this.logger.warn(`No global key mapping for dual-press ${adjustMode} ${direction}`);
+
+      return;
+    }
+
+    await this.tapBinding(settingKey);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupFuelSettings>): Promise<void> {
@@ -239,7 +303,16 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
 
   private applyActiveBinding(settings: SetupFuelSettings): void {
     if (isViewSetting(settings.setting)) {
-      this.setActiveBinding(null);
+      if (!settings.dualPressEnabled) {
+        this.setActiveBinding(null);
+
+        return;
+      }
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+      const activeKey = adjustMode ? (SETUP_FUEL_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
+      this.setActiveBinding(activeKey);
 
       return;
     }

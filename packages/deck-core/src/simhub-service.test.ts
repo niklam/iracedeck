@@ -82,6 +82,8 @@ describe("SimHub Service", () => {
       calloutEnabledIncidentCollisionCar: true,
       calloutEnabledTrackWetness: true,
       flagFlashDurationSeconds: 15,
+      dualPressThresholdMs: 500,
+      dualPressDirections: "tap-increases",
     });
   });
 
@@ -213,6 +215,8 @@ describe("SimHub Service", () => {
         calloutEnabledIncidentCollisionCar: true,
         calloutEnabledTrackWetness: true,
         flagFlashDurationSeconds: 15,
+        dualPressThresholdMs: 500,
+        dualPressDirections: "tap-increases",
       });
 
       initializeSimHub(mockLogger);

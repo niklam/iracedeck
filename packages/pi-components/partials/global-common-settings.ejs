@@ -18,7 +18,7 @@
         global
       ></sdpi-checkbox>
     </sdpi-item>
-    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+    <div class="ird-supporting-text">
       Automatically focuses the iRacing window before sending key inputs.
       Enable if actions aren't working when iRacing is in the background.
     </div>
@@ -29,9 +29,28 @@
     <sdpi-item label="Port">
       <sdpi-textfield setting="simHubPort" default="8888" global pattern="[0-9]{1,5}" inputmode="numeric"></sdpi-textfield>
     </sdpi-item>
-    <div style="padding: 0 16px 8px; font-size: 11px; color: #999;">
+    <div class="ird-supporting-text">
       Connection settings for SimHub Control Mapper integration.
       Default: 127.0.0.1:8888
+    </div>
+    <div class="ird-section-subtitle">Dual-Press</div>
+    <sdpi-item label="Long-press threshold (ms)">
+      <ird-range-input setting="dualPressThresholdMs" min="200" max="2000" step="50" default="500" global showlabels></ird-range-input>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      How long a key must be held before a setup View sub-mode treats it as a long-press
+      (firing the opposite direction). Shorter values feel snappier; longer values are
+      more forgiving against accidental long-presses.
+    </div>
+    <sdpi-item label="Directions">
+      <sdpi-select setting="dualPressDirections" default="tap-increases" global>
+        <option value="tap-increases">Tap increases, long-press decreases</option>
+        <option value="tap-decreases">Tap decreases, long-press increases</option>
+      </sdpi-select>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Which direction a short press fires on a setup View sub-mode; the long-press
+      always fires the opposite. Applies plugin-wide to every dual-press View.
     </div>
   `
 }) %>

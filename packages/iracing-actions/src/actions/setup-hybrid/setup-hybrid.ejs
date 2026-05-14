@@ -31,6 +31,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<%- include('dual-press-overrides') %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['setup-hybrid'] }) %>
@@ -52,13 +54,22 @@
 		<%- include('global-common-settings') %>
 
 		<script>
+			// HYS hold-style controls are non-directional; View sub-modes are read-only displays —
+			// both hide Direction. View sub-modes additionally show the dual-press opt-in.
 			const NON_DIRECTIONAL = new Set(["hys-boost", "hys-regen", "hys-no-boost"]);
+
+			function isViewSetting(setting) {
+				return typeof setting === "string" && setting.startsWith("view-");
+			}
 
 			function updateVisibility(setting) {
 				const directionItem = document.getElementById("direction-item");
-				if (!directionItem) return;
-				const hide = NON_DIRECTIONAL.has(setting) || setting.startsWith("view-");
-				directionItem.classList.toggle("hidden", hide);
+				const dualEnabledItem = document.getElementById("dual-press-enabled-item");
+
+				const view = isViewSetting(setting);
+				const hideDirection = NON_DIRECTIONAL.has(setting) || view;
+				directionItem?.classList.toggle("hidden", hideDirection);
+				dualEnabledItem?.classList.toggle("hidden", !view);
 			}
 
 			async function initialize() {
@@ -70,14 +81,10 @@
 					const initialValue = settingSelect.value || "mguk-regen-gain";
 					updateVisibility(initialValue);
 
-					settingSelect.addEventListener("change", (ev) => {
-						updateVisibility(ev.target.value || "mguk-regen-gain");
-					});
-					settingSelect.addEventListener("input", (ev) => {
-						updateVisibility(ev.target.value || "mguk-regen-gain");
-					});
+					const onChange = (ev) => updateVisibility(ev.target.value || "mguk-regen-gain");
+					settingSelect.addEventListener("change", onChange);
+					settingSelect.addEventListener("input", onChange);
 
-					// Polling fallback for reliable detection
 					let lastValue = settingSelect.value || "mguk-regen-gain";
 					setInterval(() => {
 						const currentValue = settingSelect.value;

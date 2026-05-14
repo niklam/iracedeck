@@ -211,6 +211,16 @@ export {
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 
+// Dual-press tracker (issue #540)
+export {
+  DualPressTracker,
+  DUAL_PRESS_THRESHOLD_FALLBACK_MS,
+  DUAL_PRESS_DIRECTIONS_FALLBACK,
+  type DualPressDirections,
+  getDualPressThresholdMs,
+  getDualPressDirections,
+} from "./dual-press.js";
+
 // Plugin config singleton
 export {
   initPluginConfig,

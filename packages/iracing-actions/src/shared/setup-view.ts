@@ -10,6 +10,8 @@
  * exposes more dc* fields.
  */
 import {
+  type BorderOverrides,
+  type ColorSlots,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -20,6 +22,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
   svgToDataUri,
+  type TitleOverrides,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -127,6 +130,15 @@ interface ViewDef {
    * (e.g. "54.0%") and would otherwise crowd the edges.
    */
   readonly valueFontSize?: number;
+  /**
+   * Adjustment-mode id this View maps to for dual-press dispatch (issue #540).
+   * The per-action `SETUP_*_GLOBAL_KEYS` map uses this id (plus `-increase` /
+   * `-decrease`) to look up the global key binding to tap on key-up. The id
+   * is *not* always the View id with `view-` stripped — setup-engine has
+   * `view-throttle-shape` mapping to `throttle-shaping`, setup-chassis has
+   * `view-diff-*` mapping to `differential-*`, etc.
+   */
+  readonly adjustmentMode: string;
 }
 
 const VIEW_VALUE_FONT_SIZE_DEFAULT = 36;
@@ -145,34 +157,44 @@ export const VIEW_DEFS: Record<ViewSettingId, ViewDef> = {
   // already in percentage units (e.g. 54.0), so use `formatPercentRaw` rather than the
   // ratio-multiplying `formatPercent`. The "%-decimal" values stay at the default size to
   // avoid crowding the key edges; short-integer entries bump up to LARGE.
-  "view-brake-bias": { telemetryField: "dcBrakeBias", label: "BRAKE BIAS", format: (v) => formatPercentRaw(v, 1) },
+  "view-brake-bias": {
+    telemetryField: "dcBrakeBias",
+    label: "BRAKE BIAS",
+    format: (v) => formatPercentRaw(v, 1),
+    adjustmentMode: "brake-bias",
+  },
   "view-brake-bias-fine": {
     telemetryField: "dcBrakeBiasFine",
     label: "BIAS FINE",
     format: (v) => formatPercentRaw(v, 1),
+    adjustmentMode: "brake-bias-fine",
   },
   "view-peak-brake-bias": {
     telemetryField: "dcPeakBrakeBias",
     label: "PEAK BIAS",
     format: (v) => formatPercentRaw(v, 1),
+    adjustmentMode: "peak-brake-bias",
   },
   "view-brake-misc": {
     telemetryField: "dcBrakeMisc",
     label: "BRAKE MISC",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "brake-misc",
   },
   "view-engine-braking": {
     telemetryField: "dcEngineBraking",
     label: "ENG BRAKE",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "engine-braking",
   },
   "view-abs-adjust": {
     telemetryField: "dcABS",
     label: "ABS",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "abs-adjust",
   },
   // setup-traction — slot 1 is the canonical `dcTractionControl`; cars with multiple TC
   // presets expose the others as `dcTractionControl2`/`3`/`4`.
@@ -181,24 +203,28 @@ export const VIEW_DEFS: Record<ViewSettingId, ViewDef> = {
     label: "TC1",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "tc-slot-1",
   },
   "view-tc-slot-2": {
     telemetryField: "dcTractionControl2",
     label: "TC2",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "tc-slot-2",
   },
   "view-tc-slot-3": {
     telemetryField: "dcTractionControl3",
     label: "TC3",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "tc-slot-3",
   },
   "view-tc-slot-4": {
     telemetryField: "dcTractionControl4",
     label: "TC4",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "tc-slot-4",
   },
   // setup-fuel
   "view-fuel-mixture": {
@@ -206,12 +232,14 @@ export const VIEW_DEFS: Record<ViewSettingId, ViewDef> = {
     label: "FUEL MIX",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "fuel-mixture",
   },
   "view-fuel-cut-position": {
     telemetryField: "dcFuelCutPosition",
     label: "FUEL CUT",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "fuel-cut-position",
   },
   // setup-engine — Launch RPM keeps the default since it can render 4–5 digits (e.g. 12000).
   "view-engine-power": {
@@ -219,102 +247,136 @@ export const VIEW_DEFS: Record<ViewSettingId, ViewDef> = {
     label: "ENG POWER",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "engine-power",
   },
   "view-throttle-shape": {
     telemetryField: "dcThrottleShape",
     label: "THROTTLE",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "throttle-shaping",
   },
-  "view-launch-rpm": { telemetryField: "dcLaunchRPM", label: "LAUNCH RPM", format: formatInteger },
+  "view-launch-rpm": {
+    telemetryField: "dcLaunchRPM",
+    label: "LAUNCH RPM",
+    format: formatInteger,
+    adjustmentMode: "launch-rpm",
+  },
   // setup-aero
   "view-front-wing": {
     telemetryField: "dcFrontWing",
     label: "FRONT WING",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "front-wing",
   },
   "view-rear-wing": {
     telemetryField: "dcRearWing",
     label: "REAR WING",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "rear-wing",
   },
-  // setup-chassis
+  // setup-chassis — `view-diff-*` and `view-anti-roll-*` map to differently-named
+  // adjustment modes (`differential-*` / `*-arb`); weight-jacker ids are new
+  // dispatch-only keys added in #540 so the View can drive them via dual-press.
   "view-diff-preload": {
     telemetryField: "dcDiffPreload",
     label: "DIFF PRELOAD",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "differential-preload",
   },
   "view-diff-entry": {
     telemetryField: "dcDiffEntry",
     label: "DIFF ENTRY",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "differential-entry",
   },
   "view-diff-middle": {
     telemetryField: "dcDiffMiddle",
     label: "DIFF MIDDLE",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "differential-middle",
   },
   "view-diff-exit": {
     telemetryField: "dcDiffExit",
     label: "DIFF EXIT",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "differential-exit",
   },
   "view-anti-roll-front": {
     telemetryField: "dcAntiRollFront",
     label: "ARB FRONT",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "front-arb",
   },
   "view-anti-roll-rear": {
     telemetryField: "dcAntiRollRear",
     label: "ARB REAR",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "rear-arb",
   },
   "view-power-steering": {
     telemetryField: "dcPowerSteering",
     label: "PWR STEER",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "power-steering",
   },
   "view-weight-jacker-left": {
     telemetryField: "dcWeightJackerLeft",
     label: "WJKR LEFT",
     format: (v) => formatSignedPercent(v, 0),
     valueFontSize: VIEW_VALUE_FONT_SIZE_MEDIUM,
+    adjustmentMode: "weight-jacker-left",
   },
   "view-weight-jacker-right": {
     telemetryField: "dcWeightJackerRight",
     label: "WJKR RIGHT",
     format: (v) => formatSignedPercent(v, 0),
     valueFontSize: VIEW_VALUE_FONT_SIZE_MEDIUM,
+    adjustmentMode: "weight-jacker-right",
   },
-  // setup-hybrid
+  // setup-hybrid — `view-mguk-deploy-fixed` maps to the existing `mguk-fixed-deploy`
+  // adjustment mode (the View id was named in the noun-verb order to read more
+  // naturally on the icon, the adjustment id keeps the original verb-noun order).
   "view-mguk-deploy-mode": {
     telemetryField: "dcMGUKDeployMode",
     label: "DEPLOY MODE",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "mguk-deploy-mode",
   },
   "view-mguk-regen-gain": {
     telemetryField: "dcMGUKRegenGain",
     label: "REGEN GAIN",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "mguk-regen-gain",
   },
   "view-mguk-deploy-fixed": {
     telemetryField: "dcMGUKDeployFixed",
     label: "FIXED DEPLOY",
     format: formatInteger,
     valueFontSize: VIEW_VALUE_FONT_SIZE_LARGE,
+    adjustmentMode: "mguk-fixed-deploy",
   },
 };
+
+/**
+ * Look up the adjustment-mode id used to dispatch dual-press for a View (#540).
+ * Returns `undefined` if `id` isn't a known View — callers should pre-filter
+ * with `isViewSetting`.
+ */
+export function getAdjustmentModeForView(id: string): string | undefined {
+  return isViewSetting(id) ? VIEW_DEFS[id].adjustmentMode : undefined;
+}
 
 const VIEW_IDS: ReadonlySet<string> = new Set(Object.keys(VIEW_DEFS));
 
@@ -336,10 +398,11 @@ export function formatViewValue(viewId: ViewSettingId, telemetry: TelemetryData 
 }
 
 /**
- * Inputs the setup-action passes to the shared View renderer. The fields are
- * a subset of CommonSettings — typing them as `unknown` lets each per-action
- * settings shape pass through without coupling this module to the action's
- * Zod-inferred type.
+ * Inputs the setup-action passes to the shared View renderer. The override
+ * fields mirror the matching `CommonSettings` fields verbatim; importing the
+ * types here keeps the renderer type-checked end-to-end while still letting
+ * each per-action settings shape pass through (CommonSettings is the shared
+ * base, so every setup-action's Zod-inferred type is assignable).
  */
 export interface SetupViewRenderInputs {
   readonly viewId: ViewSettingId;
@@ -352,9 +415,9 @@ export interface SetupViewRenderInputs {
    * View template's own defaults when omitted.
    */
   readonly colorSourceSvg?: string;
-  readonly colorOverrides?: unknown;
-  readonly titleOverrides?: unknown;
-  readonly borderOverrides?: unknown;
+  readonly colorOverrides?: ColorSlots;
+  readonly titleOverrides?: TitleOverrides;
+  readonly borderOverrides?: BorderOverrides;
 }
 
 /**

@@ -43,7 +43,7 @@ When asked about actions or controls:
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
-| Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus read-only "View …" sub-modes that display live dc* telemetry on the key |
+| Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
 | **Total** | **31** | **289** | |
 

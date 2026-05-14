@@ -114,6 +114,14 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
+  DualPressTracker: class MockDualPressTracker {
+    recordKeyDown = vi.fn();
+    computeOutcome = vi.fn(() => undefined);
+    clear = vi.fn();
+    hasPending = vi.fn(() => false);
+  },
+  getDualPressThresholdMs: vi.fn(() => 500),
+  getDualPressDirections: vi.fn(() => "tap-increases"),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -307,8 +315,15 @@ describe("SetupChassis", () => {
       expect(SETUP_CHASSIS_GLOBAL_KEYS["power-steering-decrease"]).toBe("setupChassisPowerSteeringDecrease");
     });
 
-    it("should have exactly 26 entries", () => {
-      expect(Object.keys(SETUP_CHASSIS_GLOBAL_KEYS)).toHaveLength(26);
+    it("should have correct mappings for weight-jacker dual-press targets (issue #540)", () => {
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-left-increase"]).toBe("setupChassisWeightJackerLeftIncrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-left-decrease"]).toBe("setupChassisWeightJackerLeftDecrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-right-increase"]).toBe("setupChassisWeightJackerRightIncrease");
+      expect(SETUP_CHASSIS_GLOBAL_KEYS["weight-jacker-right-decrease"]).toBe("setupChassisWeightJackerRightDecrease");
+    });
+
+    it("should have exactly 30 entries (26 chassis adjust + 4 weight-jacker dual-press targets)", () => {
+      expect(Object.keys(SETUP_CHASSIS_GLOBAL_KEYS)).toHaveLength(30);
     });
   });
 

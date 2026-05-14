@@ -57,6 +57,14 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
+  DualPressTracker: class MockDualPressTracker {
+    recordKeyDown = vi.fn();
+    computeOutcome = vi.fn(() => undefined);
+    clear = vi.fn();
+    hasPending = vi.fn(() => false);
+  },
+  getDualPressThresholdMs: vi.fn(() => 500),
+  getDualPressDirections: vi.fn(() => "tap-increases"),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
