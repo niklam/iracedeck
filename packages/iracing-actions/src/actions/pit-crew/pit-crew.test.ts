@@ -748,7 +748,7 @@ describe("PitCrew action", () => {
     });
   });
 
-  describe("onKeyDown — race-engineer toggle acknowledgement (#554)", () => {
+  describe("onKeyDown — race-engineer toggle acknowledgment (#554)", () => {
     function setVoice(voice: string | null): void {
       voiceResolvers.resolveActiveRaceEngineerVoice.mockReturnValue(voice);
     }

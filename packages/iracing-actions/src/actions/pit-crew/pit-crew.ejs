@@ -166,12 +166,12 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
-			// Race Engineer toggle acknowledgement (issue #554). UI-side ack —
+			// Race Engineer toggle acknowledgment (issue #554). UI-side ack —
 			// not a sim-event-driven callout. Single subject covers both the
 			// "going silent" line on disable and "resuming communication" on
 			// enable.
 			var toggleAckCallouts = [
-				{ setting: "calloutEnabledToggleRaceEngineer", label: "Toggle on/off acknowledgement" },
+				{ setting: "calloutEnabledToggleRaceEngineer", label: "Toggle on/off acknowledgment" },
 			];
 			var toggleAckRowCount = Math.ceil(toggleAckCallouts.length / 2);
 			var toggleAckCheckboxes = toggleAckCallouts.map(function (c) {

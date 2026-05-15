@@ -89,7 +89,7 @@ function isRadarEnabled(): boolean {
 }
 
 /**
- * Read the per-callout opt-in for the Race Engineer toggle acknowledgement
+ * Read the per-callout opt-in for the Race Engineer toggle acknowledgment
  * (issue #554). Defaults to enabled — only an explicit `false` opts out, so
  * a fresh install (no persisted setting) and existing users get the ack
  * without editing settings. Read live on every toggle so the PI checkbox
@@ -162,7 +162,7 @@ export function _setRaceEngineerTestInFlightForTests(value: boolean): void {
 }
 
 /**
- * Whether a Race Engineer toggle acknowledgement ("going silent" /
+ * Whether a Race Engineer toggle acknowledgment ("going silent" /
  * "resuming") is currently playing. Same bypass mechanic as
  * `raceEngineerTestInFlight`: when true, `applyRaceEngineerAudio` leaves
  * `AudioBus.Voice` audible even though the master gate just flipped to
@@ -216,7 +216,7 @@ const RADIO_CHECK_SUB_PREFIX = "pitCrewRadioCheck:";
  * configured radar volume even when the radar gate is off. Without the
  * bypass, dragging the volume slider mid-preview (which fires the
  * global-settings listener → `applyRaceEngineerAudio`) would push the
- * bus back to 0 and cut the test off. The toggle acknowledgement bypass
+ * bus back to 0 and cut the test off. The toggle acknowledgment bypass
  * (`raceEngineerToggleInFlight`, issue #554) is the same shape: the
  * "going silent" line must keep playing on Voice after the gate flips
  * off, even though everything else on Voice/Background does silence
@@ -706,7 +706,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // on the same tick the user pressed the key. Relying on the global-
     // settings round-trip echo would let a clip continue for the IPC
     // round trip and the user perceives the toggle as broken. The toggle
-    // acknowledgement (issue #554) layers on top via
+    // acknowledgment (issue #554) layers on top via
     // `raceEngineerToggleInFlight` — when set, `applyRaceEngineerAudio`
     // leaves Voice audible so the "going silent" / "resuming" line plays
     // through, but Background and every other Voice consumer still mute
@@ -793,7 +793,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   }
 
   /**
-   * Play a toggle acknowledgement clip (`going-silent-01` /
+   * Play a toggle acknowledgment clip (`going-silent-01` /
    * `resuming-01`) on `AudioChannel.Voice`. Sets
    * `raceEngineerToggleInFlight` so `applyRaceEngineerAudio` keeps Voice
    * audible regardless of the master gate, forces the Voice bus to the

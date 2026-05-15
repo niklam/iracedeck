@@ -18,7 +18,7 @@ Both `raceEngineerEnabled` and `radarEnabled` ship **off** (issue #378). A fresh
 ## Behavior
 
 ### Button Press
-- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off (the default), both `AudioBus.Voice` (engineer messages, acks, toggle confirmations) and `AudioBus.Background` (pit ambient loop and walkie-talkie SFX) are zeroed synchronously, so any in-flight clip silences on the same key press. `AudioBus.Alerts` (radar) is intentionally untouched — radar has its own toggle. Re-enabling restores Voice to the configured `Race Engineer Volume` and Background to unity. The engineer plays a short voice acknowledgement on every press ("Okay, going silent." on disable, "Roger, resuming communication." on enable) — disable from **Race Engineer Callouts → Race Engineer Toggle** to keep the toggle silent.
+- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off (the default), both `AudioBus.Voice` (engineer messages, acks, toggle confirmations) and `AudioBus.Background` (pit ambient loop and walkie-talkie SFX) are zeroed synchronously, so any in-flight clip silences on the same key press. `AudioBus.Alerts` (radar) is intentionally untouched — radar has its own toggle. Re-enabling restores Voice to the configured `Race Engineer Volume` and Background to unity. The engineer plays a short voice acknowledgment on every press ("Okay, going silent." on disable, "Roger, resuming communication." on enable) — disable from **Race Engineer Callouts → Race Engineer Toggle** to keep the toggle silent.
 
 ### Telemetry-connect radio check
 
