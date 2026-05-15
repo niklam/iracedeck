@@ -21,6 +21,8 @@ src/catalog/pit-crew/
 ├── readback.ts               # Family: pit-readback (issues #476 / #481) — compositional scenarios
 ├── toggle-confirmations.ts   # Family: pit-action (issue #468) — fuel/tires/compound/windshield/fast-repair
 ├── track-conditions.ts       # Family: track-conditions (issue #526)
+├── session-start.ts          # Family: session-start (issue #542) — dynamic clip composition
+├── lap-time.ts               # Family: lap-time (issue #555) — dynamic clip composition
 ├── radar-engine.ts           # Imperative tick-loop engine — NOT a scenario; consumes radar.changed
 ├── …
 └── *.test.ts

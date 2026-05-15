@@ -52,6 +52,13 @@ import { getScenarioEngine } from "../../interpreter.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { INCIDENT_ALERTS } from "./incidents.js";
+import {
+  buildLapTimeScenario,
+  type LapCompletedSnapshotResolver,
+  type LapTimeCalloutId,
+  registerLapTimeVars,
+  SCENARIO_ID_TO_LAP_TIME_ID,
+} from "./lap-time.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
@@ -86,6 +93,15 @@ export {
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
+export {
+  buildLapTimeScenario,
+  LAP_TIME_CALLOUT_SETTING_KEYS,
+  type LapCompletedSnapshot,
+  type LapCompletedSnapshotResolver,
+  type LapTimeCalloutId,
+  lapTimeIsSpeakable,
+  splitLapTime,
+} from "./lap-time.js";
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -345,6 +361,18 @@ export function registerPitCrew(
   // `where:` short-circuit — a safe stub for tests that don't supply a
   // resolver.
   getSessionStartSnapshot: () => SessionStartSnapshot | null = () => null,
+  // User opt-in for the lap-time best-lap callout (issue #555). Same
+  // gate-at-event-arrival shape as the other callout families. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a
+  // closure.
+  getLapTimeCalloutEnabled: (id: LapTimeCalloutId) => boolean = () => true,
+  // Last `lap.completed` event payload (issue #555). Plugins wire this to a
+  // closure backed by an event-bus subscription that captures the most
+  // recent payload. Read at fire time inside the scenario's per-clip `var`
+  // resolvers so a deferred replay still speaks the lap data that was frozen
+  // at S/F crossing. Default `() => null` makes the var resolvers return
+  // null — a safe stub for tests that don't supply a resolver.
+  getLapCompletedSnapshot: LapCompletedSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -477,6 +505,21 @@ export function registerPitCrew(
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Lap-time best-lap callout (issue #555). Same register-vars-before-scenario
+  // ordering as session-start.
+  registerLapTimeVars(engine, getLapCompletedSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildLapTimeScenario(getLapCompletedSnapshot),
+        SCENARIO_ID_TO_LAP_TIME_ID,
+        getLapTimeCalloutEnabled,
+        "lap-time callout",
         logger,
       ),
     ),

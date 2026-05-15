@@ -9,6 +9,9 @@ import {
   type FlagCalloutId,
   INCIDENT_CALLOUT_SETTING_KEYS,
   type IncidentCalloutId,
+  LAP_TIME_CALLOUT_SETTING_KEYS,
+  type LapCompletedSnapshot,
+  type LapTimeCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
@@ -209,6 +212,24 @@ const driverNames = scanDriverNames(audioAssetsManifest);
 initializeAudioScenarios(eventBus, getAudio(), audioAssetsManifest, adapter.createLogger("AudioScenarios"), () =>
   resolveActiveRaceEngineerVoice(raceEngineerVoices),
 );
+
+// Cache the most recent `lap.completed` payload so the lap-time scenario's
+// var resolvers can read frozen lap data at fire time (issue #555).
+// Subscribed BEFORE `registerPitCrew` (which subscribes the scenario engine
+// to the same event via `defineScenario`) so this listener runs first and
+// the cache is up-to-date by the time the scenario evaluates its
+// `where:` predicate. The 2 000 ms initial pause in the scenario sequence
+// further guarantees the cache is populated by the time the var resolvers
+// run.
+const lapCompletedLogger = adapter.createLogger("LapCompleted");
+let lastLapCompleted: LapCompletedSnapshot | null = null;
+eventBus.subscribe("lap.completed", (ev) => {
+  lastLapCompleted = ev.data;
+  lapCompletedLogger.info(
+    `lap=${ev.data.lap} time=${ev.data.lapTime.toFixed(3)} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid}`,
+  );
+  lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
+});
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
 // effect mid-session without re-registering scenarios. The gate runs
 // at event-arrival time inside the scenario engine, before fire/expand,
@@ -271,6 +292,14 @@ registerPitCrew(
 
     return driverName ? { ...conditions, driverName } : null;
   },
+  // Lap-time best-lap callout opt-in (issue #555). Single subject; same
+  // live-read pattern as the other callout families.
+  (id: LapTimeCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[LAP_TIME_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Lap-time snapshot resolver (issue #555). Returns the cached
+  // `lap.completed` payload populated by the subscription above. The var
+  // resolvers read it at sequence-expansion time.
+  () => lastLapCompleted,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

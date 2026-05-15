@@ -108,6 +108,19 @@ export const EVENT_TEMPLATES = [
   { name: "session.changed", description: "Session number changed", data: { from: 0, to: 1 } },
   { name: "engine.startup", description: "Engine started", data: {} },
   { name: "lap.started", description: "New lap started", data: { lap: 2 } },
+  {
+    name: "lap.completed",
+    description: "Lap just completed at S/F (issue #555) — best-lap callout triggers when isBest is true",
+    data: {
+      lap: 5,
+      lapTime: 63.4,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 63.4,
+      previousBestLapTime: 64.1,
+      sessionType: "race",
+    },
+  },
 
   // ── Value-change ──
   { name: "radar.changed", description: "Proximity radar state changed", data: { from: "clear", to: "left" } },

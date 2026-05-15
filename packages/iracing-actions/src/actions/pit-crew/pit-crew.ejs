@@ -188,6 +188,17 @@
 			var telemetryConnectCheckboxes = telemetryConnectCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Lap-time best-lap callout (issue #555). Single subject — engineer
+			// announces the lap time when the driver sets a new personal best (or
+			// completes the first valid lap of the session).
+			var lapTimeCallouts = [
+				{ setting: "calloutEnabledLapTimeBestLap", label: "New best lap" },
+			];
+			var lapTimeRowCount = Math.ceil(lapTimeCallouts.length / 2);
+			var lapTimeCheckboxes = lapTimeCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -237,6 +248,11 @@
 				'<sdpi-item label="Telemetry Connect">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + telemetryConnectRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						telemetryConnectCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Lap Time">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + lapTimeRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						lapTimeCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
