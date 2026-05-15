@@ -45,27 +45,22 @@ function withCacheLock(operation) {
 // unchanged so SFX tones, ticks and squelch beeps stay clean.
 const VOICE_ROOT = "voice";
 
-function filterHash(chain) {
-  return createHash("sha256").update(chain).digest("hex").slice(0, 8);
+// Final encode parameters for the processed voice MP3s. The radio filter
+// band-limits the signal to 250-3500 Hz, so encoding above ~8 kHz Nyquist
+// would just waste bits — 11.025 kHz / mono / 24 kbps fits the band-limited
+// content with headroom and shrinks the per-clip size by ~4× vs. the
+// previous 44.1 kHz / VBR-q4 setup.
+const ENCODE_ARGS = ["-ar", "11025", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "24k"];
+
+// Cache key embeds both the filter chain and the encode args, so changing
+// either invalidates the processed-asset cache without manual wipe.
+function pipelineHash(chain, encodeArgs) {
+  return createHash("sha256").update(chain).update("\0").update(encodeArgs.join(" ")).digest("hex").slice(0, 8);
 }
 
 function runFfmpeg(ffmpegPath, inputPath, outputPath, filterChain) {
   return new Promise((resolve, reject) => {
-    const args = [
-      "-y",
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-i",
-      inputPath,
-      "-af",
-      filterChain,
-      "-codec:a",
-      "libmp3lame",
-      "-q:a",
-      "4",
-      outputPath,
-    ];
+    const args = ["-y", "-hide_banner", "-loglevel", "error", "-i", inputPath, "-af", filterChain, ...ENCODE_ARGS, outputPath];
     const proc = spawn(ffmpegPath, args);
     let stderr = "";
     proc.stderr.on("data", (chunk) => {
@@ -128,11 +123,12 @@ export function wipeProcessedCache() {
  * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
  * everything outside voice/ (currently sfx/, ambient/) is copied unchanged.
  *
- * Processed outputs are cached at `packages/audio-assets/.cache/<filter-hash>/`
- * keyed on the filter chain so that a filter-string change invalidates the
- * cache automatically. Per-file invalidation is mtime-based (rebuild if the
- * source MP3 is newer than its cached counterpart). The Rollup plugin and
- * the scenario harness both call this — the cache is shared across them.
+ * Processed outputs are cached at `packages/audio-assets/.cache/<pipeline-hash>/`
+ * keyed on the filter chain + ffmpeg encode args, so changing either
+ * invalidates the cache automatically. Per-file invalidation is mtime-based
+ * (rebuild if the source MP3 is newer than its cached counterpart). The
+ * Rollup plugin and the scenario harness both call this — the cache is
+ * shared across them.
  *
  * `logger` is an optional `(msg: string) => void` for build-summary output.
  *
@@ -151,7 +147,7 @@ export async function processAndCopyAudioAssets({ destRoot, logger, wipe = true 
 
 async function runProcessAndCopy({ destRoot, logger, wipe }) {
   const ffmpegPath = require("ffmpeg-static");
-  const hash = filterHash(RADIO_ENGINEER_FILTER);
+  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
   const cacheRoot = path.join(CACHE_ROOT, hash);
   const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
 
@@ -237,7 +233,7 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
   await runWithConcurrency(tasks, concurrency);
 
   logger?.(
-    `Audio assets: ${processed} processed, ${cached} cache-hit, ${copiedAsIs} copied as-is (filter hash ${hash})`,
+    `Audio assets: ${processed} processed, ${cached} cache-hit, ${copiedAsIs} copied as-is (pipeline hash ${hash})`,
   );
 }
 
