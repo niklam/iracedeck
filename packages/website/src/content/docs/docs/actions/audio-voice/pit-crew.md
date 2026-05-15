@@ -19,6 +19,10 @@ Select the mode from the **Mode** dropdown in the Property Inspector. For the Ra
 
 The default mode. Pressing the button flips `raceEngineerEnabled` in plugin-global settings (off by default). When off, both the engineer voice (Voice bus — messages, acknowledgments, toggle confirmations) and the pit ambience (Background bus — pit ambient loop and walkie-talkie SFX) are silenced synchronously, so any in-flight clip cuts off on the same key press. Radar ticks are unaffected — they have their own toggle. Re-enabling restores Voice to the configured Race Engineer Volume and Background to the configured Background Volume.
 
+The engineer plays a short voice acknowledgement on every press — *"Okay, going silent."* when you disable it and *"Roger, resuming communication."* when you re-enable. The disable line plays through after the gate flips off (every other Voice clip silences immediately so it's the only thing you hear), then Voice mutes once the line finishes. Disable from **Race Engineer Callouts → Race Engineer Toggle** in the Property Inspector to keep the toggle silent.
+
+When iRacing telemetry first starts flowing — typically a few seconds after you launch iRacing with Race Engineer already enabled — the engineer fires a short *"<name>, radio check. Standing by."* line so you have audible confirmation that the plugin is talking to iRacing. This is a separate opt-in (**Race Engineer Callouts → Telemetry Connect**) from the toggle acknowledgement, so you can keep one and silence the other. The line re-fires on a real reconnect (iRacing closed and reopened, or a transient SDK drop) but not on repeated telemetry ticks within the same connected session.
+
 #### Details
 
 - **Dial:** Not supported
@@ -148,6 +152,14 @@ Under **Damage**, one callout is toggleable, enabled by default:
 Under **Session Start**, one callout is toggleable, enabled by default:
 
 - **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track each session. Disabling it silences only the start-of-session readout.
+
+Under **Race Engineer Toggle**, one callout is toggleable, enabled by default:
+
+- **Toggle on/off acknowledgement** — the *"Okay, going silent." / "Roger, resuming communication."* line the engineer plays on every Pit Crew Race Engineer Toggle press. Disabling it keeps the toggle visually silent (only the button's status bar and border indicate the new state).
+
+Under **Telemetry Connect**, one callout is toggleable, enabled by default:
+
+- **Confirm Race Engineer on telemetry connect** — the *"<name>, radio check. Standing by."* line the engineer plays the first time iRacing telemetry starts flowing in a session. Also fires on a real reconnect (iRacing close + relaunch, transient SDK drop) but not on every telemetry tick. Gated on Race Engineer being enabled as well — if the master gate is off, no radio check fires regardless of this opt-in.
 
 ## Notes
 

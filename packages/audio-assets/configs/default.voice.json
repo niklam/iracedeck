@@ -1004,6 +1004,22 @@
         "text": "Nice to meet you. I'm your Race Engineer. Are you ready to race? Let's win some races together."
       }
     ],
+    "toggle": [
+      {
+        "name": "going-silent-01",
+        "text": "Okay, <break time=\"0.2s\"/> going silent.",
+        "seed": 2
+      },
+      {
+        "name": "resuming-01",
+        "text": "Roger that. <break time=\"0.3s\"/> Resuming communication."
+      },
+      {
+        "name": "radio-check-01",
+        "text": "Radio check, radio check. <break time=\"0.2s\"/> Standing by.",
+        "seed": 6
+      }
+    ],
     "session-start": [
       {
         "name": "session-practice",

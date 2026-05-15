@@ -165,6 +165,29 @@
 			var sessionStartCheckboxes = sessionStartCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Race Engineer toggle acknowledgement (issue #554). UI-side ack —
+			// not a sim-event-driven callout. Single subject covers both the
+			// "going silent" line on disable and "resuming communication" on
+			// enable.
+			var toggleAckCallouts = [
+				{ setting: "calloutEnabledToggleRaceEngineer", label: "Toggle on/off acknowledgement" },
+			];
+			var toggleAckRowCount = Math.ceil(toggleAckCallouts.length / 2);
+			var toggleAckCheckboxes = toggleAckCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
+			// Telemetry-connect radio check (issue #554 follow-up). Single subject
+			// — the "<name>, radio check. Standing by." line the engineer fires
+			// when iRacing telemetry first connects.
+			var telemetryConnectCallouts = [
+				{ setting: "calloutEnabledTelemetryConnectRadioCheck", label: "Confirm Race Engineer on telemetry connect" },
+			];
+			var telemetryConnectRowCount = Math.ceil(telemetryConnectCallouts.length / 2);
+			var telemetryConnectCheckboxes = telemetryConnectCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -204,6 +227,16 @@
 				'<sdpi-item label="Session Start">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + sessionStartRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						sessionStartCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Race Engineer Toggle">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + toggleAckRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						toggleAckCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Telemetry Connect">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + telemetryConnectRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						telemetryConnectCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
