@@ -1061,6 +1061,7 @@
       {
         "name": "wetness-intro",
         "text": "and the track is",
+        "seed": 4,
         "previous_request_ids": [
           "session-start/degrees-celsius",
           "session-start/degrees-fahrenheit"
@@ -1068,7 +1069,8 @@
       },
       {
         "name": "wetness-dry",
-        "text": "dry.",
+        "text": "completely dry.",
+        "seed": 2,
         "previous_request_ids": [
           "session-start/wetness-intro"
         ]
@@ -1076,7 +1078,7 @@
       {
         "name": "wetness-mostly-dry",
         "text": "mostly dry.",
-        "seed": 2,
+        "seed": 3,
         "previous_request_ids": [
           "session-start/wetness-intro"
         ]
@@ -1099,7 +1101,8 @@
       },
       {
         "name": "wetness-moderately-wet",
-        "text": "moderately wet.",
+        "text": "wet.",
+        "seed": 3,
         "previous_request_ids": [
           "session-start/wetness-intro"
         ]
@@ -1115,7 +1118,7 @@
       {
         "name": "wetness-extremely-wet",
         "text": "extremely wet.",
-        "seed": 2,
+        "seed": 5,
         "previous_request_ids": [
           "session-start/wetness-intro"
         ]
@@ -1747,6 +1750,7 @@
       {
         "name": "0",
         "text": "zero",
+        "seed": 2,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1755,6 +1759,8 @@
       {
         "name": "1",
         "text": "one",
+        "next_text": " degrees Celsius,",
+        "seed": 10,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1819,6 +1825,8 @@
       {
         "name": "9",
         "text": "nine",
+        "next_text": " degrees Celsius,",
+        "seed": 2,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1827,6 +1835,8 @@
       {
         "name": "10",
         "text": "ten",
+        "next_text": " degrees Celsius,",
+        "seed": 3,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1835,6 +1845,8 @@
       {
         "name": "11",
         "text": "eleven",
+        "next_text": " degrees Celsius,",
+        "seed": 2,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1850,11 +1862,16 @@
       },
       {
         "name": "13",
-        "text": "thirteen",
+        "text": "thirteen.",
+        "seed": 5,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
-        ]
+        ],
+        "voice_settings": {
+          "speed": 0.9
+        }
       },
       {
         "name": "14",
@@ -1867,6 +1884,7 @@
       {
         "name": "15",
         "text": "fifteen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1875,6 +1893,8 @@
       {
         "name": "16",
         "text": "sixteen",
+        "seed": 2,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1883,6 +1903,7 @@
       {
         "name": "17",
         "text": "seventeen",
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
@@ -1890,11 +1911,16 @@
       },
       {
         "name": "18",
-        "text": "eighteen",
+        "text": "eighteen.",
+        "seed": 4,
+        "next_text": " degrees Celsius,",
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
-        ]
+        ],
+        "voice_settings": {
+          "speed": 0.9
+        }
       },
       {
         "name": "19",
@@ -1940,6 +1966,7 @@
       {
         "name": "24",
         "text": "twenty four",
+        "seed": 4,
         "previous_request_ids": [
           "session-start/track-temp-intro",
           "session-start/air-temp-intro"
