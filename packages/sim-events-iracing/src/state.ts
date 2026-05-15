@@ -170,6 +170,34 @@ export type TranslatorState = {
   lastSessionNum: number | null;
   lastEngineRunning: boolean;
   lastLap: number;
+
+  // ── Lap completion (issue #555) ─────────────────────────────────────────
+  // Tracks `LapCompleted` (counter) and `LapBestLapTime` across ticks so the
+  // diff can emit one `lap.completed` per real lap completion and decide if
+  // the lap was the new session best. Seeded silently on first tick — without
+  // it, connecting mid-session would synthesize a spurious completion event.
+  // `lastLapBestLapTime` stores 0 when no valid lap has happened yet (the
+  // iRacing sentinel — matches `LapBestLapTime` being unset).
+  //
+  // `lastLapSessionNum` is tracked independently of `lastSessionNum` (used by
+  // diffLifecycle) so the lap diff can detect session boundaries on its own
+  // schedule and wipe the lap-completed tracking — a fast practice PB must
+  // not carry into qualifying or the race.
+  lapCompletedInitialized: boolean;
+  lastLapCompletedCounter: number;
+  lastLapBestLapTime: number;
+  lastLapSessionNum: number | null;
+  /**
+   * `LapLastLapTime` at the moment of the last emission. Used to detect when
+   * iRacing has refreshed `LapLastLapTime` for the just-completed lap: when
+   * `LapCompleted` increments, iRacing sometimes lags one or two ticks
+   * before updating `LapLastLapTime`, and reading the stale prior-lap value
+   * here would publish a duplicate `lap.completed` (with stale `lapTime`,
+   * `isBest: false`, and `previousBest === lapTime`). Waiting until the
+   * value strictly changes guarantees we publish each lap exactly once with
+   * its own time.
+   */
+  lastEmittedLapTime: number;
 };
 
 export function createInitialState(): TranslatorState {
@@ -249,5 +277,11 @@ export function createInitialState(): TranslatorState {
     lastSessionNum: null,
     lastEngineRunning: false,
     lastLap: -1,
+
+    lapCompletedInitialized: false,
+    lastLapCompletedCounter: -1,
+    lastLapBestLapTime: 0,
+    lastLapSessionNum: null,
+    lastEmittedLapTime: 0,
   };
 }

@@ -319,6 +319,8 @@ beforeEach(() => {
     (id) => incidentEnabled.get(id) ?? true,
     undefined, // getSessionStartCalloutEnabled
     undefined, // getSessionStartSnapshot
+    undefined, // getLapTimeCalloutEnabled
+    undefined, // getLapCompletedSnapshot
     () => voiceMasterEnabled,
   );
 });

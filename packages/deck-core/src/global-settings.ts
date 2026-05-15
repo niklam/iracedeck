@@ -433,6 +433,20 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the lap-time best-lap callout (issue #555). One boolean for
+     * the family — the engineer announces the lap time after S/F when the
+     * driver sets a new personal best (or completes their first valid lap of
+     * the session). Defaults `true` so a fresh install hears it; the user can
+     * silence it from the PI mid-session and the change takes effect on the
+     * next lap completion without cutting an in-flight clip. Canonical id↔key
+     * mapping in `LAP_TIME_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledLapTimeBestLap: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

@@ -348,4 +348,112 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   trackConditions("drying", "very-lightly-wet", "Very Lightly Wet", TrackWetness.VeryLightlyWet),
   trackConditions("drying", "mostly-dry", "Mostly Dry", TrackWetness.MostlyDry),
   trackConditions("drying", "dry", "Dry", TrackWetness.Dry),
+
+  // ── Lap Time ──
+  // `lap.completed` transitions where `isBest` is true (issue #555). Current
+  // clip scope is minutes 1–10, whole seconds 0–59, decimals 0–9 — laps over
+  // 10 minutes are dropped by the scenario's `where:` predicate (good for
+  // verifying the gate). Same-family preempt works between two shortcuts
+  // fired in quick succession.
+  {
+    id: "lap-best-1m-03s",
+    category: "Lap Time",
+    label: "Best Lap 1:03.4",
+    description:
+      'New PB with a prior best — engineer says "That was your best lap yet. One minute, three point four seconds."',
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 63.4,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 63.4,
+      previousBestLapTime: 64.1,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-best-1m-23s",
+    category: "Lap Time",
+    label: "Best Lap 1:23.4",
+    description:
+      'Mid-range PB exercising the expanded seconds coverage — "One minute, twenty three point four seconds."',
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 83.4,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 83.4,
+      previousBestLapTime: 85.0,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-best-sub-minute",
+    category: "Lap Time",
+    label: "Best Lap 0:34.8",
+    description:
+      'Sub-1-minute new PB — engineer skips the minute clip ("That was your best lap yet. Thirty four point eight seconds.")',
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 34.8,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 34.8,
+      previousBestLapTime: 35.5,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-first-valid-2m-07s",
+    category: "Lap Time",
+    label: "First Valid Lap 2:07.0",
+    description:
+      'Driver\'s first valid lap of the session — engineer uses the "That lap was" intro instead of "best lap yet".',
+    event: "lap.completed",
+    data: {
+      lap: 1,
+      lapTime: 127.0,
+      isBest: true,
+      isFirstValid: true,
+      bestLapTime: 127.0,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-best-boundary-10m-59s",
+    category: "Lap Time",
+    label: "Best Lap 10:59.9 (top boundary)",
+    description:
+      "Top of the current clip range — minutes=10, seconds=59, decimal=9. Verifies the upper boundary is speakable.",
+    event: "lap.completed",
+    data: {
+      lap: 3,
+      lapTime: 659.9,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 659.9,
+      previousBestLapTime: 662.4,
+      sessionType: "race",
+    },
+  },
+  {
+    id: "lap-out-of-scope",
+    category: "Lap Time",
+    label: "Best Lap 11:05.5 (out of scope)",
+    description:
+      "Minute component (11) exceeds LAP_TIME_MINUTE_MAX (10) — the scenario's `where:` predicate short-circuits and no audio plays. Use this to verify the gate still suppresses over-long laps.",
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 665.5,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 665.5,
+      previousBestLapTime: 670.0,
+      sessionType: "race",
+    },
+  },
 ];

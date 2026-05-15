@@ -32,6 +32,7 @@ import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
 import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
+import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
@@ -353,6 +354,13 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
   // the new stall flag. All other modules are independent.
   diffLifecycle(self.state, telemetry, emit);
+  // Lap completion (issue #555). Runs alongside diffLifecycle since they
+  // share the lap counter; classified session type passed through so the
+  // payload's `sessionType` field doesn't require a re-classification pass.
+  // `classifyLapSessionType` is stricter than `classifySessionType` —
+  // unresolved/unrecognized raw values yield `undefined` so the payload
+  // omits `sessionType` rather than defaulting it to "race".
+  diffLaps(self.state, telemetry, classifyLapSessionType(sessionType), emit);
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
@@ -415,6 +423,27 @@ function classifySessionType(raw: string): "practice" | "qualifying" | "race" {
   if (raw.includes("Qualify")) return "qualifying";
 
   return "race";
+}
+
+/**
+ * Stricter variant of {@link classifySessionType} for the `lap.completed`
+ * payload (issue #555): unresolved or unrecognized raw values return
+ * `undefined` so the bus event omits `sessionType` rather than reporting a
+ * false-positive "race" classification. Used only by `diffLaps` — the
+ * session-start callout retains the looser fallback because its "race"
+ * default is the right safe choice when the session info isn't yet
+ * available at the moment of `driver.firstOnTrack`.
+ */
+function classifyLapSessionType(raw: string): "practice" | "qualifying" | "race" | undefined {
+  if (!raw) return undefined;
+
+  if (raw.includes("Practice") || raw.includes("Testing")) return "practice";
+
+  if (raw.includes("Qualify")) return "qualifying";
+
+  if (raw.includes("Race")) return "race";
+
+  return undefined;
 }
 
 function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): number {

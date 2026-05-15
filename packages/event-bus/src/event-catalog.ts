@@ -269,6 +269,45 @@ export type SimEventMap = {
   "session.changed": SimEvent<"session.changed", { from: number; to: number }>;
   "engine.startup": SimEvent<"engine.startup", EmptySimEventPayload>;
   "lap.started": SimEvent<"lap.started", { lap: number }>;
+  /**
+   * A timed lap was just completed (issue #555). Fires once per lap when the
+   * sim publishes `LapLastLapTime` for the lap just crossed at S/F. Carries a
+   * rich payload so future lap-related callouts (delta-to-PB, consistency,
+   * pace, time-remaining) can subscribe without further bus changes.
+   *
+   * `isBest` is true iff this lap is the new session best (the sim's
+   * `LapBestLapTime` strictly decreased on this transition or transitioned
+   * 0 → non-zero). `isFirstValid` is true iff the driver had no prior best
+   * lap before this transition — used by the engineer voice to switch the
+   * intro line ("That was your best lap yet" vs "That lap was"). Both flags
+   * may be true simultaneously on the driver's first valid lap of a session.
+   *
+   * Sentinel suppression: the translator must not emit for pace laps
+   * (`LapCompleted < 0`) or for ticks where `LapLastLapTime <= 0`.
+   */
+  "lap.completed": SimEvent<
+    "lap.completed",
+    {
+      /** Lap number just completed (`LapCompleted`). */
+      lap: number;
+      /** Lap time in seconds (`LapLastLapTime`). */
+      lapTime: number;
+      /** True iff this lap is the new session best. */
+      isBest: boolean;
+      /** True iff this is the driver's first valid lap of the session. */
+      isFirstValid: boolean;
+      /** Current session best after this lap, if any. */
+      bestLapTime?: number;
+      /** Session best before this lap, if there was one. */
+      previousBestLapTime?: number;
+      /** Laps remaining in the session (`SessionLapsRemainEx`), if lap-limited. */
+      lapsRemaining?: number;
+      /** Time remaining in the session in seconds (`SessionTimeRemain`), if time-limited. */
+      timeRemaining?: number;
+      /** Current session type, if resolvable. */
+      sessionType?: "practice" | "qualifying" | "race";
+    }
+  >;
 
   // ── Value-change events (§6.2) — emit new state when derived value changes
   "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;

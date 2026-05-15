@@ -10,7 +10,7 @@
 import { processAndCopyAudioAssets, wipeProcessedCache } from "@iracedeck/audio-assets/build";
 import { AudioNative } from "@iracedeck/audio-native";
 import { initializeAudioScenarios } from "@iracedeck/audio-scenarios";
-import { registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import { type LapCompletedSnapshot, registerPitCrew, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import { initGlobalSettings, onGlobalSettingsChange, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -81,11 +81,24 @@ async function main(): Promise<void> {
   initializeAudioScenarios(eventBus, audio, manifest, logger.createScope("AudioScenarios"), () =>
     resolveActiveRaceEngineerVoice(raceEngineerVoices),
   );
+
+  // Cache the most recent `lap.completed` payload so the lap-time scenario's
+  // var resolvers can read frozen lap data at fire time (issue #555). Mirrors
+  // the production plugin pattern — subscribed BEFORE `registerPitCrew` so
+  // this listener runs before the scenario engine's, guaranteeing the cache
+  // is up-to-date by the time the scenario evaluates its `where:` predicate.
+  let lastLapCompleted: LapCompletedSnapshot | null = null;
+  eventBus.subscribe("lap.completed", (ev) => {
+    lastLapCompleted = ev.data;
+  });
+
   // Wire the pit-action cooldown so the harness sees the same suppression
   // window the production plugins do, the readback-snapshot resolver so
-  // deferred replays speak the current queue (issue #481), and the
+  // deferred replays speak the current queue (issue #481), the
   // session-start snapshot resolver so the "car entry" composer can fire
-  // the readout (issue #542). Other closures keep their defaults.
+  // the readout (issue #542), and the lap-time snapshot resolver so the
+  // best-lap composer can fire (issue #555). Other closures keep their
+  // defaults.
   registerPitCrew(
     eventBus,
     undefined,
@@ -100,6 +113,8 @@ async function main(): Promise<void> {
     undefined, // getIncidentCalloutEnabled
     undefined, // getSessionStartCalloutEnabled
     () => getHarnessSessionStartSnapshot(),
+    undefined, // getLapTimeCalloutEnabled
+    () => lastLapCompleted,
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────

@@ -3020,6 +3020,874 @@
           "session-start/air-temp-intro"
         ]
       }
+    ],
+    "lap-time-intro": [
+      {
+        "name": "best-lap-yet",
+        "text": "That was your best lap yet.",
+        "seed": 3
+      },
+      {
+        "name": "first-good-lap",
+        "text": "That lap was",
+        "seed": 4
+      }
+    ],
+    "lap-time-minute": [
+      {
+        "name": "1",
+        "text": "one minute",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "two minutes",
+        "seed": 4,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "three minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "four minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "five minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "six minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "seven minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "eight minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "nine minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "10",
+        "text": "ten minutes",
+        "seed": 2,
+        "previous_request_ids": [
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      }
+    ],
+    "lap-time-second": [
+      {
+        "name": "0",
+        "text": "zero",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "1",
+        "text": "one",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "two",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "three",
+        "seed": 2,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "four",
+        "seed": 6,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "five",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "six",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "seven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "eight",
+        "seed": 15,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "nine",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "10",
+        "text": "ten",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "11",
+        "text": "eleven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "12",
+        "text": "twelve",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "13",
+        "text": "thirteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "14",
+        "text": "fourteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "15",
+        "text": "fifteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "16",
+        "text": "sixteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "17",
+        "text": "seventeen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "18",
+        "text": "eighteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "19",
+        "text": "nineteen",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "20",
+        "text": "twenty",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "21",
+        "text": "twenty one",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "22",
+        "text": "twenty two",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "23",
+        "text": "twenty three",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "24",
+        "text": "twenty four",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "25",
+        "text": "twenty five",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "26",
+        "text": "twenty six",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "27",
+        "text": "twenty seven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "28",
+        "text": "twenty eight",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "29",
+        "text": "twenty nine",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "30",
+        "text": "thirty",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "31",
+        "text": "thirty one",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "32",
+        "text": "thirty two",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "33",
+        "text": "thirty three",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "34",
+        "text": "thirty four",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "35",
+        "text": "thirty five",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "36",
+        "text": "thirty six",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "37",
+        "text": "thirty seven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "38",
+        "text": "thirty eight",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "39",
+        "text": "thirty nine",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "40",
+        "text": "forty",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "41",
+        "text": "forty one",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "42",
+        "text": "forty two",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "43",
+        "text": "forty three",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "44",
+        "text": "forty four",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "45",
+        "text": "forty five",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "46",
+        "text": "forty six",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "47",
+        "text": "forty seven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "48",
+        "text": "forty eight",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "49",
+        "text": "forty nine",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "50",
+        "text": "fifty",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "51",
+        "text": "fifty one",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "52",
+        "text": "fifty two",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "53",
+        "text": "fifty three",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "54",
+        "text": "fifty four",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "55",
+        "text": "fifty five",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "56",
+        "text": "fifty six",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "57",
+        "text": "fifty seven",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "58",
+        "text": "fifty eight",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      },
+      {
+        "name": "59",
+        "text": "fifty nine",
+        "seed": 3,
+        "next_text": " point.",
+        "previous_request_ids": [
+          "lap-time-minute/1",
+          "lap-time-intro/best-lap-yet",
+          "lap-time-intro/first-good-lap"
+        ]
+      }
+    ],
+    "lap-time-decimal": [
+      {
+        "name": "0",
+        "text": "point zero seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "1",
+        "text": "point one seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "point two seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "point three seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "point four seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "point five seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "point six seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "point seven seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "point eight seconds.",
+        "seed": 5,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "point nine seconds.",
+        "seed": 1,
+        "previous_request_ids": [
+          "lap-time-second/1",
+          "lap-time-second/5",
+          "lap-time-second/10"
+        ]
+      }
     ]
   }
 }
