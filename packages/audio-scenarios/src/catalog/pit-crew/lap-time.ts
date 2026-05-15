@@ -130,12 +130,11 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 
     if (!s) return null;
 
-    // Use the "best lap yet" intro whenever there was a prior best to beat;
-    // the "first good lap" intro only fires on the driver's first valid lap
-    // of the session (where there is no prior best to compare against).
-    const useBestIntro = s.previousBestLapTime !== undefined;
-
-    return voicePath(LAP_TIME_GROUP_INTRO, useBestIntro ? "best-lap-yet" : "first-good-lap");
+    // Drive intro selection straight off the explicit `isFirstValid` flag
+    // rather than inferring it from companion fields (e.g. presence of
+    // `previousBestLapTime`). Keeps the behavior independent of how the
+    // emitter happens to populate the optional fields.
+    return voicePath(LAP_TIME_GROUP_INTRO, s.isFirstValid ? "first-good-lap" : "best-lap-yet");
   });
 
   engine.defineVar("lapTime.minute", () => {
@@ -202,7 +201,10 @@ export function buildLapTimeScenario(getSnapshot: LapCompletedSnapshotResolver):
 
         const data = ev.data as LapCompletedSnapshot;
 
-        return data.isBest && lapTimeIsSpeakable(data.lapTime);
+        // Fire on the new-PB case (`isBest`) AND the first-valid-lap case
+        // (`isFirstValid`) so an emitter that only marks the latter without
+        // setting `isBest` still surfaces the announcement.
+        return (data.isBest || data.isFirstValid) && lapTimeIsSpeakable(data.lapTime);
       },
     },
     channel: AudioChannel.Voice,
