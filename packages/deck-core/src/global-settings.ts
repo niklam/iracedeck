@@ -390,6 +390,20 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the session-start ("car entry") readout (issue #542). One
+     * boolean for the whole readout — the engineer's greeting + session-type
+     * line + pit speed limit + track/air temperature + track wetness, fired
+     * once per session on `driver.firstOnTrack`. Defaults `true` so a fresh
+     * install hears it; the user can silence it from the PI mid-session and
+     * the change takes effect on the next session without cutting an
+     * in-flight clip. Canonical id↔key mapping in
+     * `SESSION_START_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledSessionStart: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

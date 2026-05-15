@@ -162,8 +162,11 @@ export type TranslatorState = {
   lastLapsRemaining: number | null;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
+  // `driver.firstOnTrack` is tracked on the translator instance, not here —
+  // it's a connection-lifetime milestone that must survive the per-tick
+  // state resets the replay guard performs (see `diffFirstOnTrack` in
+  // `translator.ts`).
   lifecycleInitialized: boolean;
-  firstOnTrackFired: boolean;
   lastSessionNum: number | null;
   lastEngineRunning: boolean;
   lastLap: number;
@@ -243,7 +246,6 @@ export function createInitialState(): TranslatorState {
     lastLapsRemaining: null,
 
     lifecycleInitialized: false,
-    firstOnTrackFired: false,
     lastSessionNum: null,
     lastEngineRunning: false,
     lastLap: -1,

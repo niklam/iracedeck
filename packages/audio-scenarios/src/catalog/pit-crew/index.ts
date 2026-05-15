@@ -44,7 +44,7 @@
  * preempt) speaks the *current* queued-services state, not the one
  * frozen into the original event payload.
  */
-import type { IEventBus, PitReadbackSnapshot } from "@iracedeck/event-bus";
+import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 
 import type { Scenario } from "../../dsl.js";
@@ -57,6 +57,12 @@ import { POOLS } from "./pools.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
+import {
+  buildSessionStartScenario,
+  registerSessionStartVars,
+  SCENARIO_ID_TO_SESSION_START_ID,
+  type SessionStartCalloutId,
+} from "./session-start.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -80,6 +86,13 @@ export {
   type PitReadbackCalloutId,
   type ReadbackSnapshotResolver,
 } from "./readback.js";
+export {
+  buildSessionStartScenario,
+  SESSION_START_CALLOUT_SETTING_KEYS,
+  SESSION_START_SPEED_VALUES,
+  type SessionStartCalloutId,
+  type SessionStartSnapshotResolver,
+} from "./session-start.js";
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
@@ -318,6 +331,20 @@ export function registerPitCrew(
   // in-flight clip. Default `() => true` preserves legacy behavior for
   // tests that don't supply a closure.
   getIncidentCalloutEnabled: (id: IncidentCalloutId) => boolean = () => true,
+  // User opt-in for the session-start ("car entry") readout (issue #542).
+  // Plugins wire this to the `calloutEnabledSessionStart` global setting via
+  // `SESSION_START_CALLOUT_SETTING_KEYS` — read live, same gate-at-event-
+  // arrival shape as the other callout families. Default `() => true`
+  // preserves legacy behavior for tests that don't supply a closure.
+  getSessionStartCalloutEnabled: (id: SessionStartCalloutId) => boolean = () => true,
+  // Session-start conditions snapshot (issue #542). Plugins wire this to a
+  // closure that composes `getSessionStartConditions()` from
+  // `@iracedeck/sim-events-iracing` with the Property Inspector driver-name
+  // pick. Read at fire time inside the scenario's `where:` predicate and
+  // per-clip `var` resolvers. Default `() => null` makes the scenario's
+  // `where:` short-circuit — a safe stub for tests that don't supply a
+  // resolver.
+  getSessionStartSnapshot: () => SessionStartSnapshot | null = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -438,6 +465,22 @@ export function registerPitCrew(
       ),
     );
   }
+
+  // Session-start readout (issue #542). The scenario's `var` steps must be
+  // registered before `defineScenario` runs — load-time validation rejects a
+  // `{ var }` step whose name isn't registered yet.
+  registerSessionStartVars(engine, getSessionStartSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildSessionStartScenario(getSessionStartSnapshot),
+        SCENARIO_ID_TO_SESSION_START_ID,
+        getSessionStartCalloutEnabled,
+        "session-start callout",
+        logger,
+      ),
+    ),
+  );
 }
 
 /**

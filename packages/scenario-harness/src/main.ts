@@ -24,6 +24,7 @@ import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
+import { getHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
 
 /**
  * Resolve the package root from the running module's URL. Works whether
@@ -81,9 +82,10 @@ async function main(): Promise<void> {
     resolveActiveRaceEngineerVoice(raceEngineerVoices),
   );
   // Wire the pit-action cooldown so the harness sees the same suppression
-  // window the production plugins do, plus the readback-snapshot resolver
-  // so deferred replays speak the current queue (issue #481). Other
-  // closures keep their defaults.
+  // window the production plugins do, the readback-snapshot resolver so
+  // deferred replays speak the current queue (issue #481), and the
+  // session-start snapshot resolver so the "car entry" composer can fire
+  // the readout (issue #542). Other closures keep their defaults.
   registerPitCrew(
     eventBus,
     undefined,
@@ -92,6 +94,12 @@ async function main(): Promise<void> {
     () => isPitActionsAllowed(),
     undefined,
     () => getReadbackSnapshot(),
+    undefined, // getDamageCalloutEnabled
+    undefined, // getPitStatusCalloutEnabled
+    undefined, // getTrackConditionsCalloutEnabled
+    undefined, // getIncidentCalloutEnabled
+    undefined, // getSessionStartCalloutEnabled
+    () => getHarnessSessionStartSnapshot(),
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────

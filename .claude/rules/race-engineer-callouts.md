@@ -163,6 +163,7 @@ Manual: trigger from the scenario harness (no iRacing required), then in iRacing
 - **Pit-service status** — issue #479. Per-target opt-in across eight subjects; sentinel suppression (* → None).
 - **Damage** — issue #489. Single-subject family; debounced rising-edge detection in the diff.
 - **Pit readback** — issues #476 / #481. Compositional scenarios (multiple pools per fire) and snapshot-at-fire-time pattern.
+- **Session start ("car entry")** — issue #542. Single-subject family on the existing `driver.firstOnTrack` event; snapshot-at-fire-time conditions (`getSessionStartConditions()`) composed with the PI driver-name pick in each plugin; dynamic clips resolved via `engine.defineVar` (`registerSessionStartVars`) rather than enumerated `if` branches; a conditional clause (pit speed) gated on a curated value set.
 
 ## Why these rules exist
 

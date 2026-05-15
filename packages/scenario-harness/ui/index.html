@@ -184,6 +184,75 @@
         </div>
 
         <div class="panel">
+          <h2>Session Start</h2>
+          <div class="readback-composer">
+            <p class="hint">
+              Compose a "car entry" readout, then fire it. The harness holds this snapshot directly
+              (the driver name isn't telemetry-derived), so the values below are spoken verbatim.
+            </p>
+
+            <div class="readback-row">
+              <label class="readback-label" for="session-start-driver">Driver name</label>
+              <input type="text" id="session-start-driver" value="niklas" spellcheck="false" />
+            </div>
+            <div class="readback-row">
+              <label class="readback-label" for="session-start-session-type">Session type</label>
+              <select id="session-start-session-type">
+                <option value="practice">practice</option>
+                <option value="qualifying">qualifying</option>
+                <option value="race" selected>race</option>
+              </select>
+            </div>
+
+            <div class="readback-section">
+              <h3>Pit speed limit</h3>
+              <div class="readback-row">
+                <input type="number" id="session-start-pit-speed" value="80" min="0" step="1" />
+                <select id="session-start-speed-unit">
+                  <option value="kmh" selected>km/h</option>
+                  <option value="mph">mph</option>
+                </select>
+              </div>
+              <p class="hint">
+                Spoken only when the value is a known pit limit (±1). Set something off the list
+                (e.g. 100) to confirm the clause is skipped.
+              </p>
+            </div>
+
+            <div class="readback-section">
+              <h3>Temperatures</h3>
+              <div class="readback-row">
+                <label class="readback-label" for="session-start-track-temp">Track</label>
+                <input type="number" id="session-start-track-temp" value="28" step="1" />
+                <label class="readback-label" for="session-start-air-temp">Air</label>
+                <input type="number" id="session-start-air-temp" value="20" step="1" />
+                <select id="session-start-temp-unit">
+                  <option value="celsius" selected>°C</option>
+                  <option value="fahrenheit">°F</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="readback-row">
+              <label class="readback-label" for="session-start-wetness">Track wetness</label>
+              <select id="session-start-wetness">
+                <option value="1">Dry</option>
+                <option value="2" selected>Mostly Dry</option>
+                <option value="3">Very Lightly Wet</option>
+                <option value="4">Lightly Wet</option>
+                <option value="5">Moderately Wet</option>
+                <option value="6">Very Wet</option>
+                <option value="7">Extremely Wet</option>
+              </select>
+            </div>
+
+            <div class="actions">
+              <button id="session-start-fire" class="primary" type="button">Fire Session Start</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
           <h2>Event Log</h2>
           <div id="event-log" class="log"></div>
         </div>

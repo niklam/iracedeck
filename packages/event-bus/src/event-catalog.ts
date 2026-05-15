@@ -125,6 +125,42 @@ export type PitReadbackSnapshot = {
 };
 
 /**
+ * Telemetry-derived half of the session-start ("car entry") readout snapshot
+ * (issue #542). Built by the sim translator from the first-on-track telemetry
+ * tick + session info, read at fire time by the session-start scenario via a
+ * resolver closure (same deferred-snapshot pattern as {@link PitReadbackSnapshot}).
+ *
+ * Units are resolved here, not in the scenario: the translator reads iRacing's
+ * `DisplayUnits` and converts pit speed / temperatures into the user's display
+ * unit so the engineer matches the sim. `pitSpeedLimit` is the exact rounded
+ * integer — never stepped — because a rounded-up value would imply a false
+ * pit-speed-penalty risk; the scenario skips the pit-speed clause when the
+ * value isn't a clip it can speak.
+ */
+export type SessionStartConditions = {
+  sessionType: "practice" | "qualifying" | "race";
+  /** Exact pit speed limit in `speedUnit`, rounded to the nearest integer. */
+  pitSpeedLimit: number;
+  speedUnit: "kmh" | "mph";
+  /** Track temperature in `tempUnit`, rounded to the nearest integer. */
+  trackTemp: number;
+  /** Air temperature in `tempUnit`, rounded to the nearest integer. */
+  airTemp: number;
+  tempUnit: "celsius" | "fahrenheit";
+  wetness: TrackWetness;
+};
+
+/**
+ * Full session-start snapshot the scenario speaks to (issue #542):
+ * {@link SessionStartConditions} plus the driver name, which is not
+ * telemetry-derived — each plugin composes it from the Property Inspector
+ * "Your Name" picker (falling back to `"driver"`).
+ */
+export type SessionStartSnapshot = SessionStartConditions & {
+  driverName: string;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.

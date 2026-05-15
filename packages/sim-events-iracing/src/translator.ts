@@ -17,7 +17,14 @@
  *   - On disconnect it resets per-tick state so a later reconnect
  *     doesn't replay stale transitions.
  */
-import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName } from "@iracedeck/event-bus";
+import type {
+  IEventBus,
+  PitReadbackSnapshot,
+  SessionStartConditions,
+  SimEventMap,
+  SimEventName,
+} from "@iracedeck/event-bus";
+import { TrackWetness } from "@iracedeck/event-bus";
 import type { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -50,6 +57,15 @@ type TranslatorInstance = {
   pitSpeedLimitKey: string;
   /** Tracks the `IsReplayPlaying` edge so we can reset state on transition. */
   lastTickInReplay: boolean;
+  /**
+   * `driver.firstOnTrack` tracking. Connection-lifetime milestone — kept on
+   * the instance, not `TranslatorState`, so it survives the per-tick state
+   * resets the replay guard performs (seed-and-bail would otherwise re-run
+   * on every replay exit and swallow the genuine first-on-track moment).
+   * Both reset only on `handleDisconnect`. See `diffFirstOnTrack`.
+   */
+  firstOnTrackSeeded: boolean;
+  firstOnTrackFired: boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -77,6 +93,8 @@ export function initializeSimEventsIracing(
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
+    firstOnTrackSeeded: false,
+    firstOnTrackFired: false,
   };
 
   instance = self;
@@ -154,6 +172,54 @@ export function getReadbackSnapshot(): PitReadbackSnapshot | null {
 }
 
 /**
+ * Build the session-start ("car entry") conditions snapshot from the latest
+ * telemetry tick + session info (issue #542). Returns `null` when telemetry
+ * or session info is unavailable, or when track wetness is still `Unknown` —
+ * the session-start scenario treats null as "skip the callout" rather than
+ * speaking a nonsense line.
+ *
+ * Units are resolved here from iRacing's `DisplayUnits` so the engineer
+ * matches the sim: pit speed and temperatures are converted into the user's
+ * display unit and rounded to integers. Pit speed is rounded exactly (never
+ * stepped) — the scenario decides whether it can speak the value.
+ *
+ * Read at fire time (same deferred-snapshot rationale as
+ * {@link getReadbackSnapshot}).
+ */
+export function getSessionStartConditions(): SessionStartConditions | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  if (!sessionInfo) return null;
+
+  const wetness = telemetry.TrackWetness;
+
+  if (typeof wetness !== "number" || wetness < TrackWetness.Dry || wetness > TrackWetness.ExtremelyWet) {
+    return null;
+  }
+
+  // iRacing `DisplayUnits`: 0 = English (imperial), 1 = Metric. Undefined
+  // (telemetry field absent) defaults to metric.
+  const metric = telemetry.DisplayUnits !== 0;
+  const pitSpeedLimitMps = resolvePitSpeedLimit(instance, sessionInfo, telemetry);
+  const trackTempC = telemetry.TrackTempCrew ?? 0;
+  const airTempC = telemetry.AirTemp ?? 0;
+  const toDisplayTemp = (celsius: number): number => Math.round(metric ? celsius : celsius * 1.8 + 32);
+
+  return {
+    sessionType: classifySessionType(resolveSessionType(sessionInfo, telemetry)),
+    pitSpeedLimit: Math.round(pitSpeedLimitMps * (metric ? 3.6 : 2.236936)),
+    speedUnit: metric ? "kmh" : "mph",
+    trackTemp: toDisplayTemp(trackTempC),
+    airTemp: toDisplayTemp(airTempC),
+    tempUnit: metric ? "celsius" : "fahrenheit",
+    wetness: wetness as TrackWetness,
+  };
+}
+
+/**
  * Reset the translator singleton.
  * @internal Exported for test isolation only.
  */
@@ -192,9 +258,51 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.latestTelemetry = null;
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
+  // `driver.firstOnTrack` is a connection-lifetime milestone — cleared only
+  // here so a genuine reconnect re-seeds (and a mid-drive reconnect stays
+  // silent), while replay scrubbing within one connection does not.
+  self.firstOnTrackSeeded = false;
+  self.firstOnTrackFired = false;
+}
+
+/**
+ * `driver.firstOnTrack` detection — issue #542.
+ *
+ * Runs on EVERY tick, including replay-mode ticks, BEFORE the replay guard
+ * in `handleTick`. "Live on track" is `IsOnTrack && !IsReplayPlaying` — true
+ * only when the driver is genuinely in the car, not watching a replay or
+ * sitting in the session menu (where iRacing reports `IsReplayPlaying: true`
+ * and `IsOnTrack: false`).
+ *
+ * The first tick after connect seeds `firstOnTrackFired` to the current
+ * live-on-track value: a plugin that connects mid-drive seeds `true` and
+ * stays silent (not the driver's first on-track moment), while a connect in
+ * the garage / replay seeds `false` and fires on the genuine transition.
+ * Tracking lives on the instance (not `TranslatorState`) so the replay
+ * guard's per-tick resets can't re-run the seed and swallow the event.
+ */
+function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData): void {
+  const liveOnTrack = (telemetry.IsOnTrack ?? false) && telemetry.IsReplayPlaying !== true;
+
+  if (!self.firstOnTrackSeeded) {
+    self.firstOnTrackSeeded = true;
+    self.firstOnTrackFired = liveOnTrack;
+
+    return;
+  }
+
+  if (!self.firstOnTrackFired && liveOnTrack) {
+    self.firstOnTrackFired = true;
+    publish(self, { event: "driver.firstOnTrack", data: {} }, telemetry, Date.now());
+  }
 }
 
 function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
+  // `driver.firstOnTrack` is detected on every tick — including replay ticks
+  // — so the genuine garage/replay → live-on-track transition is never
+  // missed. Must run before the replay guard's early return below.
+  diffFirstOnTrack(self, telemetry);
+
   // Suppress every semantic event while iRacing is in replay mode. The
   // engineer voice should be quiet whenever the user isn't actively in
   // the car — replay scrubbing fires phantom flag transitions and pit
@@ -291,6 +399,22 @@ function resolveSessionType(sessionInfo: Record<string, unknown> | null, telemet
   const current = sessions?.[sessionNum as number];
 
   return (current?.SessionType as string) ?? "";
+}
+
+/**
+ * Collapse iRacing's raw `SessionType` string ("Practice", "Lone Practice",
+ * "Offline Testing", "Open Qualify", "Lone Qualify", "Race", "Warmup", …)
+ * into the three buckets the session-start callout records a line for.
+ * "Offline Testing" maps to "practice" — a test session is practice-like and
+ * "it's time to race" would be wrong there. Anything that isn't practice,
+ * testing, or qualifying (warmup, heat, race) reads as "race".
+ */
+function classifySessionType(raw: string): "practice" | "qualifying" | "race" {
+  if (raw.includes("Practice") || raw.includes("Testing")) return "practice";
+
+  if (raw.includes("Qualify")) return "qualifying";
+
+  return "race";
 }
 
 function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): number {

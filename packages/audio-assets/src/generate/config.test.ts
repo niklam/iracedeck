@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildEntryLookup,
+  buildEntryOptions,
+  detectReferenceCycles,
+  entryHash,
   EntrySchema,
   isReference,
   resolveRequestIds,
@@ -285,5 +289,129 @@ describe("resolveRequestIds", () => {
     expect(() => resolveRequestIds(["openers/null-id"], "default", manifest)).toThrow(
       /resolved to manifest entry .* but it has no requestId/,
     );
+  });
+});
+
+describe("detectReferenceCycles", () => {
+  it("accepts an acyclic reference graph", () => {
+    const voice = buildVoiceConfig({
+      intro: [{ name: "x", text: "intro" }],
+      numbers: [
+        { name: "1", text: "one", previous_request_ids: ["intro/x"] },
+        { name: "2", text: "two", previous_request_ids: ["intro/x"], next_request_ids: ["numbers/1"] },
+      ],
+    });
+
+    expect(() => detectReferenceCycles("default", voice)).not.toThrow();
+  });
+
+  it("rejects a direct two-node cycle and names the path", () => {
+    const voice = buildVoiceConfig({
+      a: [{ name: "1", text: "a", previous_request_ids: ["b/1"] }],
+      b: [{ name: "1", text: "b", next_request_ids: ["a/1"] }],
+    });
+
+    expect(() => detectReferenceCycles("default", voice)).toThrow(/Reference cycle detected in voice "default"/);
+    expect(() => detectReferenceCycles("default", voice)).toThrow(/a\/1 → b\/1 → a\/1/);
+  });
+
+  it("rejects a longer cycle", () => {
+    const voice = buildVoiceConfig({
+      a: [{ name: "1", text: "a", previous_request_ids: ["b/1"] }],
+      b: [{ name: "1", text: "b", previous_request_ids: ["c/1"] }],
+      c: [{ name: "1", text: "c", previous_request_ids: ["a/1"] }],
+    });
+
+    expect(() => detectReferenceCycles("default", voice)).toThrow(/Reference cycle detected/);
+  });
+
+  it("ignores raw passthrough IDs — they are not graph edges", () => {
+    const voice = buildVoiceConfig({
+      numbers: [{ name: "1", text: "one", previous_request_ids: ["a-raw-provider-id"] }],
+    });
+
+    expect(() => detectReferenceCycles("default", voice)).not.toThrow();
+  });
+});
+
+describe("buildEntryOptions", () => {
+  it("keeps request_ids as their raw reference strings (not resolved)", () => {
+    const voice = buildVoiceConfig({
+      intro: [{ name: "x", text: "intro" }],
+      numbers: [{ name: "1", text: "one", previous_request_ids: ["intro/x"], next_request_ids: ["raw-id"] }],
+    });
+    const entry = buildEntryLookup(voice).get("numbers/1")!.entry;
+
+    const options = buildEntryOptions(entry, voice);
+
+    expect(options.previous_request_ids).toEqual(["intro/x"]);
+    expect(options.next_request_ids).toEqual(["raw-id"]);
+  });
+});
+
+describe("entryHash", () => {
+  function hashOf(voice: VoiceConfig, ref: string): string {
+    const lookup = buildEntryLookup(voice);
+    const dep = lookup.get(ref);
+
+    if (!dep) throw new Error(`test setup: no entry "${ref}"`);
+
+    return entryHash(dep.entry, dep.groupName, voice, lookup);
+  }
+
+  it("is stable for the same config", () => {
+    const voice = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] });
+
+    expect(hashOf(voice, "numbers/1")).toBe(hashOf(voice, "numbers/1"));
+  });
+
+  it("changes when the entry's own text changes", () => {
+    const a = buildVoiceConfig({ numbers: [{ name: "1", text: "one" }] });
+    const b = buildVoiceConfig({ numbers: [{ name: "1", text: "uno" }] });
+
+    expect(hashOf(a, "numbers/1")).not.toBe(hashOf(b, "numbers/1"));
+  });
+
+  it("cascades a dependency's content change into dependents, transitively", () => {
+    const make = (introText: string): VoiceConfig =>
+      buildVoiceConfig({
+        intro: [{ name: "x", text: introText }],
+        mid: [{ name: "x", text: "mid", previous_request_ids: ["intro/x"] }],
+        leaf: [{ name: "x", text: "leaf", previous_request_ids: ["mid/x"] }],
+      });
+    const a = make("the pit speed limit is");
+    const b = make("the pit lane limit is");
+
+    // Direct dependent and the transitive (grandparent-removed) dependent
+    // both shift when the root entry's config changes.
+    expect(hashOf(a, "mid/x")).not.toBe(hashOf(b, "mid/x"));
+    expect(hashOf(a, "leaf/x")).not.toBe(hashOf(b, "leaf/x"));
+  });
+
+  it("leaves an entry that doesn't reference the changed one untouched", () => {
+    const make = (introText: string): VoiceConfig =>
+      buildVoiceConfig({
+        intro: [{ name: "x", text: introText }],
+        numbers: [
+          { name: "1", text: "one", previous_request_ids: ["intro/x"] },
+          { name: "2", text: "two" },
+        ],
+      });
+    const a = make("intro a");
+    const b = make("intro b");
+
+    expect(hashOf(a, "numbers/1")).not.toBe(hashOf(b, "numbers/1")); // references intro/x
+    expect(hashOf(a, "numbers/2")).toBe(hashOf(b, "numbers/2")); // independent
+  });
+
+  it("guards against a reference cycle instead of recursing forever", () => {
+    // `detectReferenceCycles` is the real gate, but `entryHash` must also
+    // fail loudly rather than overflow the stack if ever handed a cycle.
+    const voice = buildVoiceConfig({
+      units: [{ name: "kmh", text: "kilometers per hour", previous_request_ids: ["numbers/80"] }],
+      numbers: [{ name: "80", text: "eighty", next_request_ids: ["units/kmh"] }],
+    });
+
+    expect(() => hashOf(voice, "units/kmh")).toThrow(/Reference cycle reached/);
   });
 });

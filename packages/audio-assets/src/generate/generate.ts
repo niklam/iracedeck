@@ -4,10 +4,12 @@
  *
  * Reads every `configs/<voice-id>.voice.json` file, iterates each voice's
  * groups × entries, skips any entry whose output MP3 already exists AND
- * whose hash in `generate.manifest.json` matches the current (voice +
- * model + settings + text + seed + all other audio-affecting options)
- * tuple. Remaining entries are fetched from the ElevenLabs TTS API and
- * written to `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
+ * whose content hash in `generate.manifest.json` matches the current one.
+ * The hash (`entryHash`) is a pure function of config content — the entry's
+ * own audio-affecting options plus the recursive hashes of its request-id
+ * dependencies — so it's stable across runs and re-cuts only on a real
+ * config change. Remaining entries are fetched from the ElevenLabs TTS API
+ * and written to `packages/audio-assets/voice/<voice>/<group>/<name>.mp3`.
  *
  * Per-voice file shape
  *   Every voice is fully self-contained. There is no shared root config:
@@ -33,14 +35,18 @@
  *       current voice from `generate.manifest.json`, or
  *     - a raw ElevenLabs request-id string (no `/`, passed through verbatim).
  *   References are resolved per-voice — the same chain block produces a
- *   per-voice link without duplication. The resolved IDs feed the
- *   audio-affecting hash, so a re-cut dependency cascades into a hash
- *   change for every dependent and they re-cut on the next run.
+ *   per-voice link without duplication. The resolved provider IDs feed only
+ *   the API call; the cache hash uses the *raw reference strings* plus the
+ *   referenced entries' content hashes, so re-cutting a dependency (which
+ *   gets a fresh provider ID) does NOT thrash every dependent — only a real
+ *   config change to a dependency cascades.
  *
- *   Run dependencies before dependents, either by ordering groups in the
- *   config so deps come first, or by scoping with `--voice <v> --group <g>`.
- *   A reference whose target is missing from the manifest fails that entry
- *   loudly with the offending ref, the lookup path, and a suggested command.
+ *   The reference graph must be acyclic — `detectReferenceCycles` rejects
+ *   cycles up front. Run dependencies before dependents, either by ordering
+ *   groups in the config so deps come first, or by scoping with
+ *   `--voice <v> --group <g>`. A reference whose target is missing from the
+ *   manifest fails that entry loudly with the offending ref, the lookup
+ *   path, and a suggested command.
  *
  *   Unknown reference names (typos) are caught at config-parse time with a
  *   list of valid `<group>/<entry-name>` candidates.
@@ -71,15 +77,21 @@
  *   pnpm --filter @iracedeck/audio-assets generate --group acknowledgment
  *   pnpm --filter @iracedeck/audio-assets generate --voice default --group numbers
  */
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import url from "node:url";
 
-import { type Entry, loadVoiceConfigs, resolveRequestIds, resolveVoiceSettings, type VoiceConfig } from "./config.ts";
+import {
+  buildEntryLookup,
+  buildEntryOptions,
+  detectReferenceCycles,
+  entryHash,
+  loadVoiceConfigs,
+  resolveEntryRequestIds,
+} from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
-import { loadManifest, type Manifest, saveManifest } from "./manifest.ts";
+import { loadManifest, saveManifest } from "./manifest.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -125,79 +137,6 @@ function loadDotenv(): void {
   }
 }
 
-/**
- * Construct the complete `synthesizeSpeech` options for one entry, resolving
- * voice-level then per-entry fields in that order. `apiKey` is injected
- * separately at the call site (or omitted for hashing).
- *
- * `<group>/<entry-name>` references in `previous_request_ids` /
- * `next_request_ids` are resolved against the manifest for `voiceName` here,
- * so the resolved IDs feed both the API call and the audio-affecting hash —
- * a re-cut dependency cascades into a hash change for every dependent.
- */
-function buildSynthesizeOptions(
-  voiceName: string,
-  voice: VoiceConfig,
-  entry: Entry,
-  manifest: Manifest,
-): Omit<SynthesizeOptions, "apiKey"> {
-  // Resolve the 2-level voice_settings stack (voice → entry) and split off
-  // language_code so it ships as the top-level body field per the
-  // ElevenLabs API contract — `voice_settings` itself stays clean.
-  const merged = resolveVoiceSettings(voice, entry);
-  const { language_code, ...voice_settings } = merged;
-
-  return {
-    voice_id: voice.id,
-    text: entry.text,
-    model_id: entry.model_id ?? voice.model_id,
-    voice_settings,
-    seed: entry.seed,
-    previous_text: entry.previous_text,
-    next_text: entry.next_text,
-    previous_request_ids: resolveRequestIds(entry.previous_request_ids, voiceName, manifest),
-    next_request_ids: resolveRequestIds(entry.next_request_ids, voiceName, manifest),
-    language_code,
-    apply_text_normalization: entry.apply_text_normalization ?? voice.apply_text_normalization,
-    apply_language_text_normalization:
-      entry.apply_language_text_normalization ?? voice.apply_language_text_normalization,
-    pronunciation_dictionary_locators:
-      entry.pronunciation_dictionary_locators ?? voice.pronunciation_dictionary_locators,
-    use_pvc_as_ivc: entry.use_pvc_as_ivc ?? voice.use_pvc_as_ivc,
-    output_format: entry.output_format ?? voice.output_format,
-    // `enable_logging` is excluded from the hash, so per-entry overrides on
-    // it would never invalidate the cache — keep it voice-level only.
-    enable_logging: voice.enable_logging,
-    optimize_streaming_latency: entry.optimize_streaming_latency ?? voice.optimize_streaming_latency,
-  };
-}
-
-/**
- * Sort-keyed JSON so hashes are insensitive to property insertion order.
- * Arrays preserve order (order matters for them semantically).
- */
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-
-  if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
-
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-
-  return "{" + entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",") + "}";
-}
-
-/**
- * Hash every option that influences the generated audio. `enable_logging`
- * and `apiKey` are excluded because they don't change the output.
- */
-function entryHash(options: Omit<SynthesizeOptions, "apiKey">): string {
-  const { enable_logging: _omitted, ...hashable } = options;
-
-  return createHash("sha256").update(stableStringify(hashable)).digest("hex").slice(0, 16);
-}
-
 function textPreview(text: string, max = 60): string {
   return text.length <= max ? text : text.slice(0, max - 1) + "…";
 }
@@ -237,6 +176,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Reject reference cycles up front — `entryHash` recurses through
+  // dependencies, and a cyclic graph can't be generated from an empty
+  // manifest anyway. Fail fast with the cycle path before any API work.
+  try {
+    for (const [voiceName, voice] of voiceConfigs) {
+      detectReferenceCycles(voiceName, voice);
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   const manifest = loadManifest(MANIFEST_PATH);
 
   const scopeSummary = formatScope(scope);
@@ -252,6 +203,11 @@ async function main(): Promise<void> {
   for (const [voiceName, voice] of voiceConfigs) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
 
+    // `entryHash` hashes dependencies recursively — build the lookup and a
+    // shared memo once per voice so each entry is hashed at most once.
+    const lookup = buildEntryLookup(voice);
+    const hashMemo = new Map<string, string>();
+
     for (const [groupName, entries] of Object.entries(voice.groups)) {
       if (scope.groups && !scope.groups.includes(groupName)) continue;
 
@@ -259,20 +215,11 @@ async function main(): Promise<void> {
         const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
         const absPath = path.join(packageRoot, relPath);
 
-        let synthOptions: Omit<SynthesizeOptions, "apiKey">;
-
-        try {
-          synthOptions = buildSynthesizeOptions(voiceName, voice, entry, manifest);
-        } catch (err) {
-          // Reference resolution failure (missing dep in manifest, etc.).
-          // Treat as a per-entry failure so the rest of the run continues.
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`[generate] ${relPath}  —  FAILED: ${message}`);
-          failed++;
-          continue;
-        }
-
-        const hash = entryHash(synthOptions);
+        // The cache key is a pure function of config content (this entry's
+        // own settings + the recursive hashes of its references) — it does
+        // NOT depend on the manifest or any volatile provider request ID,
+        // so it's stable across runs and cycle-safe.
+        const hash = entryHash(entry, groupName, voice, lookup, hashMemo);
         const manifestEntry = manifest.entries[relPath];
 
         if (manifestEntry?.hash === hash && existsSync(absPath)) {
@@ -285,6 +232,21 @@ async function main(): Promise<void> {
 
         if (dryRun) {
           generated++;
+          continue;
+        }
+
+        let synthOptions: Omit<SynthesizeOptions, "apiKey">;
+
+        try {
+          // Resolve `<group>/<entry-name>` references to concrete provider
+          // request IDs for the API call. Can fail if a dependency isn't in
+          // the manifest yet (first-ever run, or wrong --group scope order);
+          // treat as a per-entry failure so the rest of the run continues.
+          synthOptions = resolveEntryRequestIds(buildEntryOptions(entry, voice), voiceName, manifest);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[generate] ${relPath}  —  FAILED: ${message}`);
+          failed++;
           continue;
         }
 

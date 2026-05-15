@@ -22,6 +22,7 @@ import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import type { MockSDKController } from "./mock-sdk-controller.js";
 import { snapshotToTelemetryPatch } from "./pit-readback-telemetry.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
+import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 5750;
@@ -402,6 +403,22 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     // the response returns — eliminates the publish-vs-tick race when the
     // UI fires the readback right after a control change.
     ctx.controller.tickOnce();
+
+    return reply.code(204).send();
+  });
+
+  // Session-start ("car entry") composer (issue #542). The session-start
+  // snapshot carries a `driverName` that isn't telemetry-derived, so unlike
+  // the pit-readback composer it's held directly rather than round-tripped
+  // through telemetry — `main.ts` wires `getHarnessSessionStartSnapshot` as
+  // the scenario's resolver. The UI pushes here, then publishes
+  // `driver.firstOnTrack` via `/api/bus/publish` to fire the readout.
+  app.post("/api/session-start/snapshot", async (req, reply) => {
+    const snapshot = validateSessionStartSnapshot(req.body);
+
+    if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
+
+    setHarnessSessionStartSnapshot(snapshot);
 
     return reply.code(204).send();
   });
