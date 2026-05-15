@@ -1,10 +1,11 @@
 /**
  * Lap-time best-lap callout — issue #555.
  *
- * Fires on `lap.completed` when the driver sets a new session best (or
- * completes their first valid lap of the session, which the engineer
- * announces with the "best lap yet" intro since the first valid lap *is*
- * the new best by definition).
+ * Fires on `lap.completed` when the driver sets a new session best (`isBest`)
+ * or completes their first valid lap of the session (`isFirstValid`). The
+ * intro selector picks `"first-good-lap"` for the first-valid case and
+ * `"best-lap-yet"` for every subsequent improvement, driven straight off the
+ * payload's `isFirstValid` flag.
  *
  * Script:
  *   [radio open]
@@ -237,3 +238,12 @@ export const SCENARIO_ID_TO_LAP_TIME_ID: Record<string, LapTimeCalloutId> = {
 };
 
 export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best"];
+
+/**
+ * Empty — the lap-time readout is composed entirely from `engine.defineVar`
+ * resolvers, not pools. Exported anyway for parity with the family-completeness
+ * check used by the other pit-crew catalog files. The broader convention
+ * alignment (static `LAP_TIME_ALERTS` + constructor helper) is tracked in
+ * issue #558.
+ */
+export const LAP_TIME_POOL_NAMES: readonly string[] = [];
