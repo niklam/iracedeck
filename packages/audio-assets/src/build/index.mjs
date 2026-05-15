@@ -46,11 +46,14 @@ function withCacheLock(operation) {
 const VOICE_ROOT = "voice";
 
 // Final encode parameters for the processed voice MP3s. The radio filter
-// band-limits the signal to 250-3500 Hz, so encoding above ~8 kHz Nyquist
-// would just waste bits — 11.025 kHz / mono / 24 kbps fits the band-limited
-// content with headroom and shrinks the per-clip size by ~4× vs. the
-// previous 44.1 kHz / VBR-q4 setup.
-const ENCODE_ARGS = ["-ar", "11025", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "24k"];
+// band-limits the signal to 250-3500 Hz, so encoding at the source's
+// 44.1 kHz / VBR-q4 wasted bits on frequencies that no longer exist.
+// 16 kHz / mono / 32 kbps gives Nyquist (8 kHz) generous headroom over
+// the 3.5 kHz lowpass cutoff and stays in libmp3lame's MPEG-2 LSF profile
+// (dropping to 11.025 kHz pushes the encoder into MPEG-2.5, which produces
+// an audibly hollow character on vocal formants). 32 kbps gives the
+// formants enough bits to stay clear at this sample rate.
+const ENCODE_ARGS = ["-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "32k"];
 
 // Cache key embeds both the filter chain and the encode args, so changing
 // either invalidates the processed-asset cache without manual wipe.
