@@ -32,6 +32,7 @@ import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
 import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
+import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
@@ -353,6 +354,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
   // the new stall flag. All other modules are independent.
   diffLifecycle(self.state, telemetry, emit);
+  // Lap completion (issue #555). Runs alongside diffLifecycle since they
+  // share the lap counter; classified session type passed through so the
+  // payload's `sessionType` field doesn't require a re-classification pass.
+  diffLaps(self.state, telemetry, classifySessionType(sessionType), emit);
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
