@@ -88,6 +88,27 @@ function isRadarEnabled(): boolean {
   return (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
 }
 
+/**
+ * Read the per-callout opt-in for the Race Engineer toggle acknowledgment
+ * (issue #554). Defaults to enabled — only an explicit `false` opts out, so
+ * a fresh install (no persisted setting) and existing users get the ack
+ * without editing settings. Read live on every toggle so the PI checkbox
+ * takes effect immediately without re-registering anything.
+ */
+function isToggleAckEnabled(): boolean {
+  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledToggleRaceEngineer !== false;
+}
+
+/**
+ * Read the per-callout opt-in for the telemetry-connect radio check
+ * (issue #554 follow-up). Same defaults-to-enabled, `!== false`, live-read
+ * shape as `isToggleAckEnabled` — a mid-session toggle takes effect on the
+ * very next connection event without anyone re-registering anything.
+ */
+function isRadioCheckEnabled(): boolean {
+  return (getGlobalSettings() as Record<string, unknown>).calloutEnabledTelemetryConnectRadioCheck !== false;
+}
+
 function readRadarVolume(): number {
   const raw = (getGlobalSettings() as Record<string, unknown>).radarVolume;
   const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
@@ -141,6 +162,44 @@ export function _setRaceEngineerTestInFlightForTests(value: boolean): void {
 }
 
 /**
+ * Whether a Race Engineer toggle acknowledgment ("going silent" /
+ * "resuming") is currently playing. Same bypass mechanic as
+ * `raceEngineerTestInFlight`: when true, `applyRaceEngineerAudio` leaves
+ * `AudioBus.Voice` audible even though the master gate just flipped to
+ * off — without it, flipping `pitCrewRaceEngineerEnabled` synchronously
+ * (which is mandatory so Background and other in-flight callouts mute on
+ * the tick the user pressed) would also mute the very clip that's
+ * announcing the gate change. See issue #554.
+ */
+let raceEngineerToggleInFlight = false;
+
+/** @internal Exposed for testing. */
+export function _setRaceEngineerToggleInFlightForTests(value: boolean): void {
+  raceEngineerToggleInFlight = value;
+}
+
+/**
+ * Last observed SDK connection state across every visible Pit Crew
+ * instance — module-scope so the telemetry-connect radio check fires at
+ * most once per real false→true transition no matter how many Pit Crew
+ * buttons happen to be subscribed. Each instance still observes the
+ * same SDK tick, but only the first one to see the rising edge wins;
+ * everyone else short-circuits via this comparison. `null` is the cold
+ * start (no observation yet) so the very first tick decides the
+ * baseline without firing a spurious ack against an undefined prior
+ * state.
+ */
+let lastTelemetryConnected: boolean | null = null;
+
+/** @internal Exposed for testing. */
+export function _setLastTelemetryConnectedForTests(value: boolean | null): void {
+  lastTelemetryConnected = value;
+}
+
+/** SDK subscription id prefix for the per-instance radio-check listener. */
+const RADIO_CHECK_SUB_PREFIX = "pitCrewRadioCheck:";
+
+/**
  * @internal Exported for testing.
  *
  * Apply the Race Engineer master gate to the relevant audio buses:
@@ -157,15 +216,19 @@ export function _setRaceEngineerTestInFlightForTests(value: boolean): void {
  * configured radar volume even when the radar gate is off. Without the
  * bypass, dragging the volume slider mid-preview (which fires the
  * global-settings listener → `applyRaceEngineerAudio`) would push the
- * bus back to 0 and cut the test off. `AudioBus.Alerts` (radar) is
- * intentionally untouched — it has its own toggle.
+ * bus back to 0 and cut the test off. The toggle acknowledgment bypass
+ * (`raceEngineerToggleInFlight`, issue #554) is the same shape: the
+ * "going silent" line must keep playing on Voice after the gate flips
+ * off, even though everything else on Voice/Background does silence
+ * immediately. `AudioBus.Alerts` (radar) is intentionally untouched —
+ * it has its own toggle.
  */
 export function applyRaceEngineerAudio(): void {
   const enabled = isRaceEngineerEnabled();
   const voice = readRaceEngineerVolume() / 100;
   const background = readBackgroundVolume() / 100;
 
-  const voiceUnmuted = enabled || raceEngineerTestInFlight;
+  const voiceUnmuted = enabled || raceEngineerTestInFlight || raceEngineerToggleInFlight;
   const backgroundUnmuted = enabled || isBackgroundTestInFlight();
 
   getAudio().setBusVolume(AudioBus.Voice, voiceUnmuted ? voice : 0);
@@ -508,6 +571,17 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     applyRadarEnabled();
     applyRaceEngineerAudio();
 
+    // Telemetry-connect radio check (issue #554). The base class already
+    // subscribes for readiness tracking; this is a *second* subscription
+    // dedicated to detecting false→true connection transitions. We can't
+    // hook the base class callback because it's private and concerns
+    // overlay readiness, not audio. Module-level `lastTelemetryConnected`
+    // dedups across every visible instance so the ack fires at most once
+    // per real transition.
+    this.sdkController.subscribe(RADIO_CHECK_SUB_PREFIX + contextId, () => {
+      this.handleConnectionTickForRadioCheck();
+    });
+
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
 
     this.setRegenerateCallback(contextId, () => {
@@ -529,6 +603,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     this.lastRadarTestTimestamps.delete(contextId);
     this.lastRaceEngineerTestTimestamps.delete(contextId);
     this.lastBackgroundTestTimestamps.delete(contextId);
+    this.sdkController.unsubscribe(RADIO_CHECK_SUB_PREFIX + contextId);
 
     await super.onWillDisappear(ev);
   }
@@ -625,13 +700,130 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
   private toggleRaceEngineer(): void {
     const next = !isRaceEngineerEnabled();
     this.logger.info(`Race Engineer ${next ? "enabled" : "disabled"}`);
+
+    // Mirror the radar pattern: flip the gate and apply it to Voice +
+    // Background synchronously so an in-flight engineer clip is silenced
+    // on the same tick the user pressed the key. Relying on the global-
+    // settings round-trip echo would let a clip continue for the IPC
+    // round trip and the user perceives the toggle as broken. The toggle
+    // acknowledgment (issue #554) layers on top via
+    // `raceEngineerToggleInFlight` — when set, `applyRaceEngineerAudio`
+    // leaves Voice audible so the "going silent" / "resuming" line plays
+    // through, but Background and every other Voice consumer still mute
+    // immediately on the same tick.
     updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
-    // Mirror the radar pattern: apply the gate to Voice + Background
-    // synchronously so an in-flight engineer clip is silenced on the same
-    // tick the user pressed the key. Relying on the global-settings
-    // round-trip echo would let a clip continue for the IPC round trip,
-    // and the user perceives the toggle as broken.
     applyRaceEngineerAudio();
+
+    if (isToggleAckEnabled()) {
+      this.playToggleAck(next ? "resuming-01" : "going-silent-01");
+    }
+  }
+
+  /**
+   * Telemetry-connect tick handler. Reads the current SDK connection
+   * status and, when it transitions false→true, fires the radio check
+   * if Race Engineer is enabled and the radio-check opt-in is on. The
+   * `lastTelemetryConnected` check is module-scope so concurrent Pit
+   * Crew instances dedup the ack — only the first instance to observe
+   * the rising edge fires the clip; everyone else short-circuits.
+   *
+   * Disconnect is tracked too: true→false flips `lastTelemetryConnected`
+   * back to `false` so the next reconnect plays the radio check again.
+   * Without this, an iRacing close + relaunch (or even a transient SDK
+   * disconnect) would carry the "already connected" baseline and
+   * suppress the next radio check.
+   */
+  private handleConnectionTickForRadioCheck(): void {
+    const connected = this.sdkController.getConnectionStatus();
+
+    if (connected && lastTelemetryConnected !== true) {
+      lastTelemetryConnected = true;
+
+      if (!isRaceEngineerEnabled()) {
+        this.logger.debug("Radio check skipped — Race Engineer is disabled");
+
+        return;
+      }
+
+      if (!isRadioCheckEnabled()) {
+        this.logger.debug("Radio check skipped — opt-in is off");
+
+        return;
+      }
+
+      this.playRadioCheck();
+    } else if (!connected && lastTelemetryConnected !== false) {
+      lastTelemetryConnected = false;
+    }
+  }
+
+  /**
+   * Play the "Radio check. <break /> Standing by." sequence after telemetry
+   * connects. Composes the active driver-name clip with `toggle/radio-check-01`
+   * so the line is personalized; falls back to the resolver's default name
+   * ("driver") when the user hasn't picked one yet. Skipped silently when
+   * no voice is available or no driver-name clip can be resolved — the
+   * gate state is unaffected (this is a confirmation, not a state
+   * change). No in-flight bypass: the Race Engineer master gate is on by
+   * definition when this fires (gate-off path short-circuits earlier),
+   * so `AudioBus.Voice` is already audible at the slider value.
+   */
+  private playRadioCheck(): void {
+    const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+
+    if (!voice) {
+      this.logger.debug("Radio check skipped — no voice available");
+
+      return;
+    }
+
+    const driverName = resolveActiveDriverName(readJsonStringArray("_driverNames"), "driver");
+
+    if (!driverName) {
+      this.logger.debug("Radio check skipped — no driver name available");
+
+      return;
+    }
+
+    this.logger.info("Telemetry connected — playing radio check");
+    playVoiceSequence([
+      `voice/${voice}/names/${driverName}.mp3`,
+      `voice/${voice}/toggle/radio-check-01.mp3`,
+    ]);
+  }
+
+  /**
+   * Play a toggle acknowledgment clip (`going-silent-01` /
+   * `resuming-01`) on `AudioChannel.Voice`. Sets
+   * `raceEngineerToggleInFlight` so `applyRaceEngineerAudio` keeps Voice
+   * audible regardless of the master gate, forces the Voice bus to the
+   * current `raceEngineerVolume`, and clears the flag + re-applies audio
+   * when the clip finishes (or fails to start — `playVoiceSequence` fires
+   * `onComplete` synchronously on a missing-clip failure so the flag
+   * never gets stuck).
+   *
+   * Skipped silently when no voice is available (fresh install before
+   * the voice list has been pushed); the toggle itself still applies so
+   * the user's gate state can never desync from the audio state.
+   */
+  private playToggleAck(clipName: "going-silent-01" | "resuming-01"): void {
+    const voice = resolveActiveRaceEngineerVoice(readJsonStringArray("_raceEngineerVoices"));
+
+    if (!voice) {
+      this.logger.debug(`Toggle ack ${clipName} skipped — no voice available`);
+
+      return;
+    }
+
+    raceEngineerToggleInFlight = true;
+    // Force Voice to the slider value so the ack is audible regardless of
+    // the master gate. Mirrors how the Voice Test bypasses the gate.
+    getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
+
+    playVoiceSequence([`voice/${voice}/toggle/${clipName}.mp3`], () => {
+      raceEngineerToggleInFlight = false;
+      applyRaceEngineerAudio();
+    });
   }
 
   private toggleRadar(): void {

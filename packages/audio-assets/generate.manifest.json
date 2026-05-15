@@ -5456,6 +5456,30 @@
       "textPreview": "Ok, Zeus,",
       "generatedAt": "2026-05-14T18:37:44.757Z",
       "requestId": "STPzPODGvOA4EoeX30y2"
+    },
+    "voice/default/toggle/going-silent-01.mp3": {
+      "hash": "3d44aa2f1cdabdaa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Okay, <break time=\"0.2s\"/> going silent.",
+      "generatedAt": "2026-05-15T08:39:06.281Z",
+      "requestId": "slSg2hMLwzJKenM6C13H"
+    },
+    "voice/default/toggle/resuming-01.mp3": {
+      "hash": "82a5e88e4cb48868",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Roger that. <break time=\"0.3s\"/> Resuming communication.",
+      "generatedAt": "2026-05-15T08:37:19.739Z",
+      "requestId": "g86buUOsILIsg7EtZXTk"
+    },
+    "voice/default/toggle/radio-check-01.mp3": {
+      "hash": "f32dc1ead87e45be",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Radio check, radio check. <break time=\"0.2s\"/> Standing by.",
+      "generatedAt": "2026-05-15T09:08:41.863Z",
+      "requestId": "pSTgW6tQpnWBWEQ460Gz"
     }
   }
 }

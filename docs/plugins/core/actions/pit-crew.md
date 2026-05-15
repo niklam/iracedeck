@@ -18,7 +18,11 @@ Both `raceEngineerEnabled` and `radarEnabled` ship **off** (issue #378). A fresh
 ## Behavior
 
 ### Button Press
-- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off (the default), both `AudioBus.Voice` (engineer messages, acks, toggle confirmations) and `AudioBus.Background` (pit ambient loop and walkie-talkie SFX) are zeroed synchronously, so any in-flight clip silences on the same key press. `AudioBus.Alerts` (radar) is intentionally untouched — radar has its own toggle. Re-enabling restores Voice to the configured `Race Engineer Volume` and Background to unity.
+- **Race Engineer Toggle mode**: Flips the plugin-global `raceEngineerEnabled` gate. When off (the default), both `AudioBus.Voice` (engineer messages, acks, toggle confirmations) and `AudioBus.Background` (pit ambient loop and walkie-talkie SFX) are zeroed synchronously, so any in-flight clip silences on the same key press. `AudioBus.Alerts` (radar) is intentionally untouched — radar has its own toggle. Re-enabling restores Voice to the configured `Race Engineer Volume` and Background to unity. The engineer plays a short voice acknowledgment on every press ("Okay, going silent." on disable, "Roger, resuming communication." on enable) — disable from **Race Engineer Callouts → Race Engineer Toggle** to keep the toggle silent.
+
+### Telemetry-connect radio check
+
+When iRacing telemetry first starts flowing into the plugin (false → true SDK connection transition), the Race Engineer announces "<name>, radio check. Standing by." so the driver has audible confirmation that the plugin is talking to iRacing. Gated on both the Race Engineer master gate AND a dedicated per-callout opt-in (**Race Engineer Callouts → Telemetry Connect**) so the user can keep the master ack but suppress the connect line, or vice versa. Module-level dedup across every visible Pit Crew instance ensures the line fires at most once per real connect; reconnecting (iRacing close + relaunch, transient SDK drop) replays it.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Off by default — pressing the key once starts the loop. Used by Radar alongside the per-instance Radar Test button.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off.
 

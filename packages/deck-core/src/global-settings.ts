@@ -404,6 +404,35 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the Race Engineer audible toggle acknowledgement
+     * (issue #554). When enabled, pressing the Race Engineer button on the
+     * Pit Crew action plays a short voice line confirming the new state
+     * ("going silent" on disable, "resuming communication" on enable). UI-side
+     * acknowledgement only — the scenario engine isn't involved. Read live in
+     * `PitCrew.toggleRaceEngineer()`; if disabled, the toggle remains silent
+     * (border/status indicator still updates). Default `true` so existing
+     * users get the ack without editing settings.
+     */
+    calloutEnabledToggleRaceEngineer: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Opt-in for the Race Engineer radio check fired when iRacing telemetry
+     * starts flowing (issue #554 follow-up). On a false→true transition of
+     * the SDK controller's connection state, the Pit Crew action plays the
+     * driver-name clip followed by `toggle/radio-check-01` — "<name>, …
+     * radio check. Standing by." — so the user has audible confirmation
+     * that the plugin is talking to iRacing. Gated on Race Engineer being
+     * enabled (master gate) AND this opt-in. UI-side, no scenario engine.
+     * Read live so a mid-session PI toggle takes effect on the next
+     * connect. Default `true`.
+     */
+    calloutEnabledTelemetryConnectRadioCheck: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course
