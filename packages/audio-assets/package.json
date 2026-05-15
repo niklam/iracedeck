@@ -12,6 +12,7 @@
     "./presets": "./src/presets.mjs"
   },
   "scripts": {
+    "build": "node src/build/prebuild.mjs",
     "generate": "tsx src/generate/generate.ts",
     "generate:dry-run": "tsx src/generate/generate.ts --dry-run",
     "generate:manifest": "node scripts/generate-audio-manifest.mjs"
