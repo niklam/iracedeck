@@ -22,13 +22,18 @@ const CACHE_ROOT = path.join(packageRoot, ".cache");
 const SKIP_FOLDERS = new Set([".cache", "node_modules", "scripts", "src"]);
 
 // Serializes operations that mutate the shared `.cache/` tree
-// (`processAndCopyAudioAssets`, `wipeProcessedCache`). The harness exposes
-// both as separate "Reload audio" / "Wipe ffmpeg cache" buttons, and a
-// rapid Wipe-then-Reload (or vice versa) would otherwise race: an rmSync
-// can drop a file the other call just stat'd or is mid-write into, with
-// ENOENT or partial-output as fallout. The Rollup build path only invokes
-// `processAndCopyAudioAssets` once per build so it's not affected, but
-// the lock costs nothing in the single-call case.
+// (`processAndCopyAudioAssets`, `prebuildAudioAssetCache`, `wipeProcessedCache`).
+// The harness exposes Reload and Wipe as separate buttons, and a rapid
+// Wipe-then-Reload (or vice versa) would otherwise race: an rmSync can drop
+// a file the other call just stat'd or is mid-write into, with ENOENT or
+// partial-output as fallout.
+//
+// Cross-process contention on the shared cache is handled architecturally
+// rather than here — `@iracedeck/audio-assets#build` warms the cache via
+// `prebuildAudioAssetCache` before the parallel plugin builds run, so each
+// plugin's Rollup `processAndCopyAudioAssets` call only reads cache files.
+// This in-process lock is the residual guard for the harness UI and for
+// single-process watcher rebuilds.
 let cacheLock = Promise.resolve();
 function withCacheLock(operation) {
   // `.then(fn, fn)` makes the queue continue even if a prior operation
@@ -121,6 +126,96 @@ export function wipeProcessedCache() {
   });
 }
 
+// Recursively walk a voice subtree, queuing every .mp3 for radio-filter
+// processing or cache-hit copying. The caller picks behaviour via callbacks
+// so the same walk drives both the prebuild cache-warm pass (which only
+// writes to `cacheDir`) and the per-plugin copy pass (which also writes
+// to `destDir`).
+//
+// `onFresh(cachedPath, destDir, fileName)` is invoked when the cache file
+// is newer than the source. `onMiss(srcPath, cachedPath, destDir, fileName)`
+// is invoked when the cache is stale or missing — the ffmpeg call has not
+// been made yet, the callback decides whether to run it and whether to
+// follow it with a copy.
+function buildVoiceTreeTasks(srcDir, cacheDir, destDir, { onFresh, onMiss }) {
+  const tasks = [];
+
+  const walk = (currentSrc, currentCache, currentDest) => {
+    mkdirSync(currentCache, { recursive: true });
+    if (currentDest) mkdirSync(currentDest, { recursive: true });
+
+    for (const entry of readdirSync(currentSrc, { withFileTypes: true })) {
+      const srcPath = path.join(currentSrc, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(srcPath, path.join(currentCache, entry.name), currentDest ? path.join(currentDest, entry.name) : null);
+        continue;
+      }
+
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
+
+      const cachedPath = path.join(currentCache, entry.name);
+
+      if (cacheIsFresh(srcPath, cachedPath)) {
+        tasks.push(() => onFresh(cachedPath, currentDest, entry.name));
+      } else {
+        tasks.push(() => onMiss(srcPath, cachedPath, currentDest, entry.name));
+      }
+    }
+  };
+
+  walk(srcDir, cacheDir, destDir);
+  return tasks;
+}
+
+/**
+ * Warm `.cache/<pipeline-hash>/voice/...` by running every source voice clip
+ * through ffmpeg, without copying anywhere. Intended to run as its own turbo
+ * task (`@iracedeck/audio-assets#build`) before the plugin builds, so the
+ * parallel per-plugin `processAndCopyAudioAssets` calls find a fully-warm
+ * cache and only ever read from it — no two processes contend over the same
+ * `.cache/.../68.mp3` write.
+ *
+ * Per-file mtime check (`cacheIsFresh`) makes a warm cache a no-op, so this
+ * is cheap to run on every build.
+ *
+ * `logger` is an optional `(msg: string) => void` for build-summary output.
+ */
+export async function prebuildAudioAssetCache({ logger } = {}) {
+  if (!existsSync(audioAssetsPath)) return;
+  return withCacheLock(() => runPrebuildCache({ logger }));
+}
+
+async function runPrebuildCache({ logger }) {
+  const ffmpegPath = require("ffmpeg-static");
+  const hash = pipelineHash(RADIO_ENGINEER_FILTER, ENCODE_ARGS);
+  const cacheRoot = path.join(CACHE_ROOT, hash);
+  const concurrency = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length));
+
+  const voiceSrc = path.join(audioAssetsPath, VOICE_ROOT);
+  if (!existsSync(voiceSrc)) {
+    logger?.(`Audio assets prebuild: no voice/ tree under ${audioAssetsPath} (pipeline hash ${hash})`);
+    return;
+  }
+
+  let processed = 0;
+  let cached = 0;
+
+  const tasks = buildVoiceTreeTasks(voiceSrc, path.join(cacheRoot, VOICE_ROOT), null, {
+    onFresh: () => {
+      cached++;
+    },
+    onMiss: async (srcPath, cachedPath) => {
+      await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+      processed++;
+    },
+  });
+
+  await runWithConcurrency(tasks, concurrency);
+
+  logger?.(`Audio assets prebuild: ${processed} processed, ${cached} cache-hit (pipeline hash ${hash})`);
+}
+
 /**
  * Copies `packages/audio-assets/` into `destRoot`. Every .mp3 under voice/
  * (at any depth) passes through ffmpeg with RADIO_ENGINEER_FILTER applied;
@@ -170,40 +265,6 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
   let cached = 0;
   let copiedAsIs = 0;
 
-  // Recursively walk a voice subtree, queuing every .mp3 for radio-filter
-  // processing. Preserves directory structure under destRoot/cacheRoot.
-  const queueVoiceTree = (srcDir, destDir, cacheDir) => {
-    mkdirSync(destDir, { recursive: true });
-    mkdirSync(cacheDir, { recursive: true });
-
-    for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-      const srcPath = path.join(srcDir, entry.name);
-
-      if (entry.isDirectory()) {
-        queueVoiceTree(srcPath, path.join(destDir, entry.name), path.join(cacheDir, entry.name));
-        continue;
-      }
-
-      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".mp3")) continue;
-
-      const cachedPath = path.join(cacheDir, entry.name);
-      const destPath = path.join(destDir, entry.name);
-
-      if (cacheIsFresh(srcPath, cachedPath)) {
-        tasks.push(async () => {
-          copyFileSync(cachedPath, destPath);
-          cached++;
-        });
-      } else {
-        tasks.push(async () => {
-          await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
-          copyFileSync(cachedPath, destPath);
-          processed++;
-        });
-      }
-    }
-  };
-
   const copyTreeAsIs = (srcDir, destDir) => {
     cpSync(srcDir, destDir, { recursive: true });
     // cpSync copies recursively, so the counter has to walk recursively
@@ -226,7 +287,19 @@ async function runProcessAndCopy({ destRoot, logger, wipe }) {
     const destDir = path.join(destRoot, entry.name);
 
     if (entry.name === VOICE_ROOT) {
-      queueVoiceTree(srcDir, destDir, path.join(cacheRoot, VOICE_ROOT));
+      tasks.push(
+        ...buildVoiceTreeTasks(srcDir, path.join(cacheRoot, VOICE_ROOT), destDir, {
+          onFresh: async (cachedPath, currentDest, fileName) => {
+            copyFileSync(cachedPath, path.join(currentDest, fileName));
+            cached++;
+          },
+          onMiss: async (srcPath, cachedPath, currentDest, fileName) => {
+            await runFfmpeg(ffmpegPath, srcPath, cachedPath, RADIO_ENGINEER_FILTER);
+            copyFileSync(cachedPath, path.join(currentDest, fileName));
+            processed++;
+          },
+        }),
+      );
     } else {
       mkdirSync(destDir, { recursive: true });
       copyTreeAsIs(srcDir, destDir);

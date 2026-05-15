@@ -14,4 +14,10 @@ export function processAndCopyAudioAssetsPlugin(options: { sdPlugin: string }): 
   generateBundle: () => Promise<void>;
 };
 
+export type PrebuildAudioAssetCacheOptions = {
+  logger?: (message: string) => void;
+};
+
+export function prebuildAudioAssetCache(options?: PrebuildAudioAssetCacheOptions): Promise<void>;
+
 export function wipeProcessedCache(): Promise<void>;
