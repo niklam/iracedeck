@@ -5480,6 +5480,54 @@
       "textPreview": "Radio check, radio check. <break time=\"0.2s\"/> Standing by.",
       "generatedAt": "2026-05-15T09:08:41.863Z",
       "requestId": "pSTgW6tQpnWBWEQ460Gz"
+    },
+    "voice/default/names/miguel.mp3": {
+      "hash": "0c208a41b627ffd7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Miguel",
+      "generatedAt": "2026-05-15T12:17:16.669Z",
+      "requestId": "weiCGLjF2xP58jVHiek3"
+    },
+    "voice/default/session-start-greeting/miguel.mp3": {
+      "hash": "9becb8365f77ebcd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Miguel,",
+      "generatedAt": "2026-05-15T12:17:24.231Z",
+      "requestId": "cunrc0lamGMH42AuXSXo"
+    },
+    "voice/default/names/dominic.mp3": {
+      "hash": "db2627912115d50d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Dominic",
+      "generatedAt": "2026-05-15T12:53:43.830Z",
+      "requestId": "fHDAtHN8nzjPHhGahA5o"
+    },
+    "voice/default/names/jasper.mp3": {
+      "hash": "e4e784e6837cd1bb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jasper",
+      "generatedAt": "2026-05-15T12:53:43.992Z",
+      "requestId": "tZu2fdVTrE4b8zbiqE8e"
+    },
+    "voice/default/session-start-greeting/dominic.mp3": {
+      "hash": "061c1140563552c9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Dominic,",
+      "generatedAt": "2026-05-15T12:53:50.899Z",
+      "requestId": "Tgung7TT1LP624nc36Tq"
+    },
+    "voice/default/session-start-greeting/jasper.mp3": {
+      "hash": "74c760bfb6eaa976",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Jasper,",
+      "generatedAt": "2026-05-15T12:53:51.059Z",
+      "requestId": "hCPv6XDEutBnSwnpnSPu"
     }
   }
 }
