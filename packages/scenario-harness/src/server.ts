@@ -210,6 +210,16 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
   const sessionPresets = loadPresets(join(ctx.packageRoot, "presets", "session"));
   const presetByName = (presets: Preset[], name: string): Preset | undefined => presets.find((p) => p.name === name);
 
+  // ── Localhost-only guard ─────────────────────────────────────────────────
+  app.addHook("onRequest", (req, reply, done) => {
+    const addr = req.socket.remoteAddress;
+    if (addr !== "127.0.0.1" && addr !== "::1" && addr !== "::ffff:127.0.0.1") {
+      reply.code(403).send({ error: "Forbidden: local access only" });
+      return;
+    }
+    done();
+  });
+
   // ── Routes ──────────────────────────────────────────────────────────────
 
   app.get("/api/state", () => {
