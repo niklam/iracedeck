@@ -146,9 +146,9 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-tick-open.mp3",
     "sfx/IRD-tick-close.mp3",
     "sfx/IRD-ambient-pit.mp3",
-    `voice/${VOICE}/position-intro-better/that-puts-us-to.mp3`,
-    `voice/${VOICE}/position-intro-worse/currently.mp3`,
-    `voice/${VOICE}/position-intro-pole/that-puts-us-on-pole.mp3`,
+    `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
+    `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+    `voice/${VOICE}/position-intro-pole/that-puts-us-on-pole-01.mp3`,
     ...NUMBER_NAMES.map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
@@ -295,16 +295,16 @@ describe("position-change scenario", () => {
   it("plays the better intro and number for an improvement", () => {
     fire(snap({ position: 3, previousPosition: 5 }));
 
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(true);
-    expect(hasClip("/position-intro-worse/currently.mp3")).toBe(false);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(false);
     expect(hasClip("/position-number/3.mp3")).toBe(true);
   });
 
   it("plays the worse intro and number for a worsening", () => {
     fire(snap({ position: 5, previousPosition: 3 }));
 
-    expect(hasClip("/position-intro-worse/currently.mp3")).toBe(true);
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(false);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
     expect(hasClip("/position-number/5.mp3")).toBe(true);
   });
 
@@ -312,14 +312,14 @@ describe("position-change scenario", () => {
     // Position 4 chosen so we don't trigger the qualifying pole branch (P1).
     fire(snap({ position: 4, isFirstValid: true }));
 
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
     expect(hasClip("/position-number/4.mp3")).toBe(true);
   });
 
   it("speaks the status update when position is unchanged on a non-PB lap", () => {
     fire(snap({ position: 5, previousPosition: 5, isBest: false }));
 
-    expect(hasClip("/position-intro-worse/currently.mp3")).toBe(true);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
     expect(hasClip("/position-number/5.mp3")).toBe(true);
   });
 
@@ -340,7 +340,7 @@ describe("position-change scenario", () => {
 
     // Class position improved (4 → 2), even though overall also improved.
     // The number clip must be the class position, not the overall.
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
     expect(hasClip("/position-number/2.mp3")).toBe(true);
     expect(hasClip("/position-number/12.mp3")).toBe(false);
   });
@@ -372,7 +372,7 @@ describe("position-change scenario", () => {
   it("fires in qualifying sessions", () => {
     fire(snap({ position: 3, previousPosition: 5, sessionType: "qualifying" }));
 
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(true);
   });
 
   it("is suppressed when the per-callout opt-in is off", () => {
@@ -387,24 +387,24 @@ describe("position-change scenario — qualifying pole", () => {
   it("plays the pole clip (no number) when improving to P1 in qualifying", () => {
     fire(snap({ position: 1, previousPosition: 3, sessionType: "qualifying" }));
 
-    expect(hasClip("/position-intro-pole/that-puts-us-on-pole.mp3")).toBe(true);
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(true);
     // Pole is self-contained — neither the standard intro nor the number plays.
-    expect(hasClip("/position-intro-better/that-puts-us-to.mp3")).toBe(false);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
     expect(hasClip("/position-number/1.mp3")).toBe(false);
   });
 
   it("plays the pole clip when first valid lap lands at P1 in qualifying", () => {
     fire(snap({ position: 1, isFirstValid: true, sessionType: "qualifying" }));
 
-    expect(hasClip("/position-intro-pole/that-puts-us-on-pole.mp3")).toBe(true);
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(true);
     expect(hasClip("/position-number/1.mp3")).toBe(false);
   });
 
   it("plays the standard status line when holding P1 on a slow lap (does not repeat pole)", () => {
     fire(snap({ position: 1, previousPosition: 1, isBest: false, sessionType: "qualifying" }));
 
-    expect(hasClip("/position-intro-pole/that-puts-us-on-pole.mp3")).toBe(false);
-    expect(hasClip("/position-intro-worse/currently.mp3")).toBe(true);
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(false);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
     expect(hasClip("/position-number/1.mp3")).toBe(true);
   });
 
@@ -426,7 +426,7 @@ describe("position-change scenario — qualifying pole", () => {
       }),
     );
 
-    expect(hasClip("/position-intro-pole/that-puts-us-on-pole.mp3")).toBe(true);
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(true);
     expect(hasClip("/position-number/1.mp3")).toBe(false);
     expect(hasClip("/position-number/12.mp3")).toBe(false);
   });

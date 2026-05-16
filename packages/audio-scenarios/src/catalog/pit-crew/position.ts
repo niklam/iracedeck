@@ -236,8 +236,8 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
     if (!s) return null;
 
     return isBetterChange(s)
-      ? voicePath(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to")
-      : voicePath(POSITION_GROUP_INTRO_WORSE, "currently");
+      ? voicePath(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to-01")
+      : voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01");
   });
 
   engine.defineVar("position.number", () => {
@@ -260,7 +260,7 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
 
     if (!s) return null;
 
-    return voicePath(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole");
+    return voicePath(POSITION_GROUP_INTRO_POLE, "that-puts-us-on-pole-01");
   });
 }
 
