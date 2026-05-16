@@ -199,6 +199,17 @@
 			var lapTimeCheckboxes = lapTimeCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Position-change callout (issue #566). Single subject — engineer
+			// announces the driver's current position after each lap when it
+			// changed since the previous lap. Fires in race + qualifying only.
+			var positionCallouts = [
+				{ setting: "calloutEnabledPositionChange", label: "Position changed" },
+			];
+			var positionRowCount = Math.ceil(positionCallouts.length / 2);
+			var positionCheckboxes = positionCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -253,6 +264,11 @@
 				'<sdpi-item label="Lap Time">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + lapTimeRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						lapTimeCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Position">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + positionRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						positionCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>

@@ -456,7 +456,28 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `classifyLapSessionType` is stricter than `classifySessionType` —
   // unresolved/unrecognized raw values yield `undefined` so the payload
   // omits `sessionType` rather than defaulting it to "race".
-  diffLaps(self.state, telemetry, classifyLapSessionType(sessionType), emit);
+  //
+  // Multi-class flag (issue #566) is resolved from session info here and
+  // passed through; the diff has no business poking at `DriverInfo.Drivers`
+  // itself. `null` is the absent-session-info sentinel — the diff treats it
+  // as "unknown" and omits `isMultiClass` from the payload.
+  //
+  // Position is sourced from `ResultsPositions` (issue #566), not the live
+  // `PlayerCarPosition` telemetry field — the latter can momentarily report
+  // 0 at the lap-completion tick in qualifying. Resolved here so the diff
+  // stays out of session-info parsing; null means "unavailable, can't read
+  // standings" and the diff will defer the emit (with a timeout) until the
+  // standings catch up.
+  const playerResults = resolvePlayerResultsSnapshot(sessionInfo, playerCarIdx, telemetry.SessionNum ?? 0);
+  diffLaps(
+    self.state,
+    telemetry,
+    classifyLapSessionType(sessionType),
+    resolveIsMultiClass(sessionInfo),
+    playerResults,
+    now,
+    emit,
+  );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, emit);
   diffFlags(self.state, telemetry, emit);
@@ -548,6 +569,102 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
+}
+
+/**
+ * Player's standings snapshot pulled from
+ * `SessionInfo.Sessions[current].ResultsPositions[player]` (issue #566). The
+ * authoritative leaderboard source, used in preference to the live
+ * `PlayerCarPosition` / `PlayerCarClassPosition` telemetry fields — the latter
+ * can transiently read 0 at the lap-completion tick in qualifying while the
+ * sim recomputes order.
+ *
+ * `lapsComplete` is paired with the position fields so the lap diff can verify
+ * ResultsPositions has caught up to the lap counter before emitting the
+ * `lap.completed` event (the standings table updates a tick or two after the
+ * lap counter increments).
+ *
+ * `classPosition` is the **raw 0-indexed value** from `ResultsPositions`. The
+ * diff converts to 1-indexed (`+1`) when populating the event payload so it
+ * matches the `PlayerCarClassPosition` telemetry convention.
+ *
+ * Returns `null` when session info / current session / player entry isn't
+ * resolvable — the diff treats null as "ResultsPositions unavailable for this
+ * tick" and waits (up to a timeout) before emitting.
+ */
+export type PlayerResultsSnapshot = {
+  lapsComplete: number;
+  /** 1-indexed overall position. */
+  position: number;
+  /** Raw 0-indexed class position straight from `ResultsPositions`. */
+  classPosition: number;
+};
+
+/**
+ * Look up the player's `ResultsPositions` entry for the **current** session
+ * (matched by `SessionNum`, not array index — the Sessions array order isn't
+ * a contract). Returns `null` when any step misses.
+ */
+function resolvePlayerResultsSnapshot(
+  sessionInfo: Record<string, unknown> | null,
+  playerCarIdx: number,
+  currentSessionNum: number,
+): PlayerResultsSnapshot | null {
+  if (!sessionInfo || playerCarIdx < 0) return null;
+
+  const info = sessionInfo.SessionInfo as Record<string, unknown> | undefined;
+  const sessions = info?.Sessions as Array<Record<string, unknown>> | undefined;
+
+  if (!Array.isArray(sessions)) return null;
+
+  const currentSession = sessions.find((s) => s.SessionNum === currentSessionNum);
+
+  if (!currentSession) return null;
+
+  const results = currentSession.ResultsPositions as Array<Record<string, unknown>> | undefined;
+
+  if (!Array.isArray(results)) return null;
+
+  const entry = results.find((r) => r.CarIdx === playerCarIdx);
+
+  if (!entry) return null;
+
+  const lapsComplete = typeof entry.LapsComplete === "number" ? entry.LapsComplete : -1;
+  const position = typeof entry.Position === "number" ? entry.Position : 0;
+  const classPosition = typeof entry.ClassPosition === "number" ? entry.ClassPosition : -1;
+
+  return { lapsComplete, position, classPosition };
+}
+
+/**
+ * Whether the current session has more than one distinct car class on track
+ * (issue #566). Returns `null` when session info isn't available so the
+ * lap-completed diff can omit `isMultiClass` from the payload rather than
+ * fabricate a default. Filters out the pace car and spectators — those
+ * entries share `CarClassID: -1` (pace car) or aren't competing for
+ * position. A single class with a pace car is still single-class.
+ */
+function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boolean | null {
+  if (!sessionInfo) return null;
+
+  const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as Array<Record<string, unknown>> | undefined;
+
+  if (!Array.isArray(drivers)) return null;
+
+  const classIds = new Set<number>();
+
+  for (const driver of drivers) {
+    if (driver.CarIsPaceCar === 1) continue;
+
+    if (driver.IsSpectator === 1) continue;
+
+    const id = driver.CarClassID;
+
+    if (typeof id === "number" && id >= 0) classIds.add(id);
+  }
+
+  return classIds.size > 1;
 }
 
 function resolvePitSpeedLimit(

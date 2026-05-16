@@ -306,6 +306,32 @@ export type SimEventMap = {
       timeRemaining?: number;
       /** Current session type, if resolvable. */
       sessionType?: "practice" | "qualifying" | "race";
+      /**
+       * Overall position at lap completion (`PlayerCarPosition`). Omitted when
+       * unavailable / invalid (issue #566). Together with {@link previousPosition}
+       * powers the position-change callout. `classPosition` is the parallel
+       * field for multi-class series — consumers decide which to use via
+       * {@link isMultiClass}.
+       */
+      position?: number;
+      /**
+       * Overall position before this lap, if a baseline was established
+       * (issue #566). `undefined` on the driver's first valid lap of the session
+       * — combined with `isFirstValid`, the position-change scenario treats
+       * "no previous position" as a "better" trigger.
+       */
+      previousPosition?: number;
+      /** Class position at lap completion (`PlayerCarClassPosition`). Issue #566. */
+      classPosition?: number;
+      /** Class position before this lap, if a baseline was established. Issue #566. */
+      previousClassPosition?: number;
+      /**
+       * True iff the current session has more than one car class on track
+       * (issue #566). Derived from `SessionInfo.DriverInfo.Drivers[].CarClassID`
+       * with the pace car filtered out. Position-aware callouts use this to pick
+       * `classPosition` over `position`.
+       */
+      isMultiClass?: boolean;
     }
   >;
 

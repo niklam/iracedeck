@@ -23,6 +23,8 @@ import {
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
+  POSITION_CALLOUT_SETTING_KEYS,
+  type PositionCalloutId,
   registerPitCrew,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
@@ -220,7 +222,10 @@ let lastLapCompleted: LapCompletedSnapshot | null = null;
 eventBus.subscribe("lap.completed", (ev) => {
   lastLapCompleted = ev.data;
   lapCompletedLogger.info(
-    `lap=${ev.data.lap} time=${ev.data.lapTime.toFixed(3)} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid}`,
+    `lap=${ev.data.lap} time=${ev.data.lapTime.toFixed(3)} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid} ` +
+      `sessionType=${ev.data.sessionType ?? "?"} position=${ev.data.position ?? "?"} previousPosition=${ev.data.previousPosition ?? "?"} ` +
+      `classPosition=${ev.data.classPosition ?? "?"} previousClassPosition=${ev.data.previousClassPosition ?? "?"} ` +
+      `isMultiClass=${ev.data.isMultiClass ?? "?"}`,
   );
   lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
 });
@@ -290,8 +295,13 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[LAP_TIME_CALLOUT_SETTING_KEYS[id]] !== false,
   // Lap-time snapshot resolver (issue #555). Returns the cached
   // `lap.completed` payload populated by the subscription above. The var
-  // resolvers read it at sequence-expansion time.
+  // resolvers read it at sequence-expansion time. Shared with the
+  // position-change callout below.
   () => lastLapCompleted,
+  // Position-change callout opt-in (issue #566). Single subject; same
+  // live-read pattern as the other callout families.
+  (id: PositionCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[POSITION_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

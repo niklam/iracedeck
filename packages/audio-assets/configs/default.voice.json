@@ -3888,6 +3888,605 @@
           "lap-time-second/10"
         ]
       }
+    ],
+    "position-intro-better": [
+      {
+        "name": "that-puts-us-to",
+        "text": "That puts us to <break time=\"0.15s\" />",
+        "seed": 1
+      }
+    ],
+    "position-intro-worse": [
+      {
+        "name": "currently",
+        "text": "We're currently <break time=\"0.15s\" />",
+        "seed": 1
+      }
+    ],
+    "position-intro-pole": [
+      {
+        "name": "that-puts-us-on-pole",
+        "text": "That puts us on pole.",
+        "seed": 1
+      }
+    ],
+    "position-number": [
+      {
+        "name": "1",
+        "text": "pee one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "2",
+        "text": "pee two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "3",
+        "text": "pee three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "4",
+        "text": "pee four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "5",
+        "text": "pee five.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "6",
+        "text": "pee six.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "7",
+        "text": "pee seven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "8",
+        "text": "pee eight.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "9",
+        "text": "pee nine.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "10",
+        "text": "pee ten.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "11",
+        "text": "pee eleven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "12",
+        "text": "pee twelve.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "13",
+        "text": "pee thirteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "14",
+        "text": "pee fourteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "15",
+        "text": "pee fifteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "16",
+        "text": "pee sixteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "17",
+        "text": "pee seventeen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "18",
+        "text": "pee eighteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "19",
+        "text": "pee nineteen.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "20",
+        "text": "pee twenty.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "21",
+        "text": "pee twenty one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "22",
+        "text": "pee twenty two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "23",
+        "text": "pee twenty three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "24",
+        "text": "pee twenty four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "25",
+        "text": "pee twenty five.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "26",
+        "text": "pee twenty six.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "27",
+        "text": "pee twenty seven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "28",
+        "text": "pee twenty eight.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "29",
+        "text": "pee twenty nine.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "30",
+        "text": "pee thirty.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "31",
+        "text": "pee thirty one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "32",
+        "text": "pee thirty two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "33",
+        "text": "pee thirty three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "34",
+        "text": "pee thirty four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "35",
+        "text": "pee thirty five.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "36",
+        "text": "pee thirty six.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "37",
+        "text": "pee thirty seven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "38",
+        "text": "pee thirty eight.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "39",
+        "text": "pee thirty nine.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "40",
+        "text": "pee forty.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "41",
+        "text": "pee forty one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "42",
+        "text": "pee forty two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "43",
+        "text": "pee forty three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "44",
+        "text": "pee forty four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "45",
+        "text": "pee forty five.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "46",
+        "text": "pee forty six.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "47",
+        "text": "pee forty seven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "48",
+        "text": "pee forty eight.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "49",
+        "text": "pee forty nine.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "50",
+        "text": "pee fifty.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "51",
+        "text": "pee fifty one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "52",
+        "text": "pee fifty two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "53",
+        "text": "pee fifty three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "54",
+        "text": "pee fifty four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "55",
+        "text": "pee fifty five.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "56",
+        "text": "pee fifty six.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "57",
+        "text": "pee fifty seven.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "58",
+        "text": "pee fifty eight.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "59",
+        "text": "pee fifty nine.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "60",
+        "text": "pee sixty.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "61",
+        "text": "pee sixty one.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "62",
+        "text": "pee sixty two.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "63",
+        "text": "pee sixty three.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      },
+      {
+        "name": "64",
+        "text": "pee sixty four.",
+        "seed": 1,
+        "previous_request_ids": [
+          "position-intro-better/that-puts-us-to",
+          "position-intro-worse/currently"
+        ]
+      }
     ]
   }
 }

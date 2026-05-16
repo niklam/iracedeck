@@ -447,6 +447,20 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the position-change callout (issue #566). One boolean for the
+     * family — the engineer announces the driver's current position after each
+     * lap when it changed since the previous lap (better, worse, or first valid
+     * lap of the session). Fires only in race + qualifying sessions. Defaults
+     * `true` so a fresh install hears it; the user can silence it from the PI
+     * mid-session and the change takes effect on the next lap completion
+     * without cutting an in-flight clip. Canonical id↔key mapping in
+     * `POSITION_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledPositionChange: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course
