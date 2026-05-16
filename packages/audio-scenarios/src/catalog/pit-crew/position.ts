@@ -335,11 +335,14 @@ export const POSITION_CALLOUT_SETTING_KEYS: Record<PositionCalloutId, string> = 
   change: "calloutEnabledPositionChange",
 };
 
-export const SCENARIO_ID_TO_POSITION_ID: Record<string, PositionCalloutId> = {
+// `as const` so the element type is a literal union the `SCENARIO_ID_TO_POSITION_ID`
+// map below can be typed against — TS errors out at build time if a scenario id
+// is renamed, missing, or extra. Cheaper than a runtime completeness assertion.
+export const POSITION_SCENARIO_IDS = ["pit-crew.position-change"] as const;
+
+export const SCENARIO_ID_TO_POSITION_ID: Record<(typeof POSITION_SCENARIO_IDS)[number], PositionCalloutId> = {
   "pit-crew.position-change": "change",
 };
-
-export const POSITION_SCENARIO_IDS: readonly string[] = ["pit-crew.position-change"];
 
 /**
  * Empty — the position readout is composed entirely from `engine.defineVar`
