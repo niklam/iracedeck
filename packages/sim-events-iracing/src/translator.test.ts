@@ -1463,4 +1463,114 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data).toEqual({});
     });
   });
+
+  describe("lap.completed — multi-class detection + ResultsPositions (issue #566)", () => {
+    // ResultsPositions ClassPosition is 0-indexed (the leader's ClassPosition
+    // is 0). The translator-side resolver passes it through raw; the diff
+    // converts to 1-indexed when populating the payload.
+    function singleClassSessionInfo(playerLapsComplete: number, playerPosition: number): Record<string, unknown> {
+      return {
+        SessionInfo: {
+          Sessions: [
+            {
+              SessionNum: 0,
+              SessionType: "Race",
+              ResultsPositions: [
+                {
+                  CarIdx: 0,
+                  Position: playerPosition,
+                  ClassPosition: playerPosition - 1,
+                  LapsComplete: playerLapsComplete,
+                },
+              ],
+            },
+          ],
+        },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 1, CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+      };
+    }
+
+    function multiClassSessionInfo(
+      playerLapsComplete: number,
+      playerPosition: number,
+      playerClassPosition: number,
+    ): Record<string, unknown> {
+      return {
+        SessionInfo: {
+          Sessions: [
+            {
+              SessionNum: 0,
+              SessionType: "Race",
+              ResultsPositions: [
+                {
+                  CarIdx: 0,
+                  Position: playerPosition,
+                  ClassPosition: playerClassPosition - 1, // 0-indexed on the wire
+                  LapsComplete: playerLapsComplete,
+                },
+              ],
+            },
+          ],
+        },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 2, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+            // Pace car must be filtered — sharing a CarClassID isn't valid signal.
+            { CarIdx: 3, CarClassID: -1, CarIsPaceCar: 1, IsSpectator: 0 },
+          ],
+        },
+      };
+    }
+
+    it("emits isMultiClass=false with position from ResultsPositions in a single-class field", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("lap.completed", handler);
+      // Standings reflect the lap the driver is about to complete.
+      controller.__setSessionInfo(singleClassSessionInfo(/* playerLapsComplete */ 1, /* playerPosition */ 5));
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Seed tick.
+      controller.__tick(telemetry({ LapCompleted: 0, LapLastLapTime: 0 }));
+      // Lap completion — ResultsPositions already has LapsComplete=1 so the
+      // sync gate passes immediately and the diff emits without waiting.
+      controller.__tick(telemetry({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"lap.completed">;
+      expect(ev.data.isMultiClass).toBe(false);
+      expect(ev.data.position).toBe(5);
+      expect(ev.data.classPosition).toBe(5);
+    });
+
+    it("emits isMultiClass=true with class position from ResultsPositions (+1 for 0-indexed convert)", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("lap.completed", handler);
+      controller.__setSessionInfo(
+        multiClassSessionInfo(/* playerLapsComplete */ 1, /* playerPosition */ 4, /* playerClassPosition */ 1),
+      );
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ LapCompleted: 0, LapLastLapTime: 0 }));
+      controller.__tick(telemetry({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"lap.completed">;
+      expect(ev.data.isMultiClass).toBe(true);
+      expect(ev.data.position).toBe(4);
+      expect(ev.data.classPosition).toBe(1);
+    });
+  });
 });

@@ -306,6 +306,46 @@ export type SimEventMap = {
       timeRemaining?: number;
       /** Current session type, if resolvable. */
       sessionType?: "practice" | "qualifying" | "race";
+      /**
+       * Overall position at lap completion (issue #566). The sim translator
+       * sources this **standings-first** from
+       * `SessionInfo.Sessions[current].ResultsPositions[player].Position`, with
+       * a fallback to the live `PlayerCarPosition` telemetry field when
+       * standings haven't caught up to the lap counter within the
+       * sync-wait timeout. Omitted entirely when neither source has a valid
+       * position. Together with {@link previousPosition} powers the
+       * position-change callout. `classPosition` is the parallel field for
+       * multi-class series — consumers decide which to use via {@link isMultiClass}.
+       */
+      position?: number;
+      /**
+       * Overall position before this lap, if a baseline was established
+       * (issue #566). Captured from the previous emission's resolved
+       * {@link position} (whichever source it came from). `undefined` on the
+       * driver's first valid lap of the session — combined with `isFirstValid`,
+       * the position-change scenario treats "no previous position" as a
+       * "better" trigger.
+       */
+      previousPosition?: number;
+      /**
+       * Class position at lap completion (issue #566). Standings-first
+       * (`ResultsPositions[player].ClassPosition`, converted from iRacing's
+       * 0-indexed value to 1-indexed on the wire) with a fallback to live
+       * `PlayerCarClassPosition` telemetry. Same omission semantics as {@link position}.
+       */
+      classPosition?: number;
+      /**
+       * Class position before this lap, if a baseline was established (issue #566).
+       * Captured from the previous emission's resolved {@link classPosition}.
+       */
+      previousClassPosition?: number;
+      /**
+       * True iff the current session has more than one car class on track
+       * (issue #566). Derived from `SessionInfo.DriverInfo.Drivers[].CarClassID`
+       * with the pace car filtered out. Position-aware callouts use this to pick
+       * `classPosition` over `position`.
+       */
+      isMultiClass?: boolean;
     }
   >;
 

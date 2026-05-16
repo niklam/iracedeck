@@ -64,10 +64,42 @@ import type { EmitFn } from "./types.js";
  */
 export type LapSessionType = "practice" | "qualifying" | "race";
 
+/**
+ * Player standings snapshot pulled from
+ * `SessionInfo.Sessions[current].ResultsPositions[player]` (issue #566).
+ * Resolved by the translator; the diff treats it as the authoritative source
+ * for position fields on the `lap.completed` payload.
+ *
+ * `classPosition` is the **raw 0-indexed value** from iRacing — the diff
+ * converts to 1-indexed when populating the payload so consumers see the
+ * same convention as `PlayerCarClassPosition` telemetry.
+ */
+export type PlayerResultsForLap = {
+  lapsComplete: number;
+  position: number;
+  classPosition: number;
+};
+
+/**
+ * Max time (ms) the diff waits for `ResultsPositions.LapsComplete` to catch
+ * up to `telemetry.LapCompleted` after a lap-time refresh before falling
+ * back to the live telemetry position (issue #566). iRacing's session info
+ * (where `ResultsPositions` lives) refreshes on a slower cadence than the
+ * per-tick telemetry — typically every 1–3 seconds, so a sub-second timeout
+ * misses the refresh window. 3000 ms covers the usual session-info refresh
+ * comfortably; if it still hasn't landed by then, the diff sources position
+ * from `PlayerCarPosition` / `PlayerCarClassPosition` so the lap is never
+ * silently emitted without standings data.
+ */
+export const LAP_RESULTS_SYNC_MAX_WAIT_MS = 3000;
+
 export function diffLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionType: LapSessionType | undefined,
+  isMultiClass: boolean | null,
+  playerResults: PlayerResultsForLap | null,
+  now: number,
   emit: EmitFn,
 ): void {
   const lapCompleted = typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1;
@@ -81,12 +113,19 @@ export function diffLaps(
   // practice ultra-lap) would be classified `isBest: false` instead of
   // `isFirstValid: true` — the engineer would stay silent on the first
   // qualifying lap. Same applies to qualifying → race and any other
-  // SessionNum transition.
+  // SessionNum transition. Position baselines (issue #566) are wiped on the
+  // same trigger so a P3 finish in practice doesn't ride into the qualifying
+  // session as the "previous" position for the first lap there. The pending
+  // sync timer also resets so a stale pending-emit from the old session
+  // doesn't immediately fire in the new one.
   if (sessionNum !== null && state.lastLapSessionNum !== null && sessionNum !== state.lastLapSessionNum) {
     state.lapCompletedInitialized = false;
     state.lastLapCompletedCounter = -1;
     state.lastLapBestLapTime = 0;
     state.lastEmittedLapTime = 0;
+    state.lastLapPosition = 0;
+    state.lastLapClassPosition = 0;
+    state.lapResultsPendingSince = 0;
   }
 
   state.lastLapSessionNum = sessionNum;
@@ -97,6 +136,14 @@ export function diffLaps(
   // existing PB is treated as "previous", not as a fresh first-valid lap.
   // Also runs immediately after a session-change reset above, so the new
   // session seeds from its own clean state.
+  //
+  // Position baselines (issue #566) intentionally stay at 0 ("no baseline
+  // yet") on first-tick seeding so the driver's first valid lap of the
+  // session triggers the "no previous position" branch in the position-change
+  // scenario — same shape as how `lastLapBestLapTime` stays 0 to drive
+  // `isFirstValid: true`. Mid-session reconnects also seed to 0; the user
+  // gets a fresh position fix on their next lap completion regardless of
+  // what position they were in when they reconnected.
   if (!state.lapCompletedInitialized) {
     state.lapCompletedInitialized = true;
     state.lastLapCompletedCounter = lapCompleted;
@@ -130,7 +177,41 @@ export function diffLaps(
   //      is worth it; swap for a "wait at most N ticks" timeout if it
   //      ever becomes a real concern.
   if (lapLastLapTime <= 0 || lapLastLapTime === state.lastEmittedLapTime) {
+    state.lapResultsPendingSince = 0;
+
     return;
+  }
+
+  // Lap-time refresh detected. Before emitting, wait for `ResultsPositions`
+  // to catch up to the lap counter (issue #566). The standings table updates
+  // a tick or two after `LapCompleted` increments; emitting before it has
+  // caught up would carry a stale (or zero) position from the leaderboard,
+  // and `PlayerCarPosition` telemetry has the same lag in qualifying — there
+  // is no faster authoritative source. So we defer the entire `lap.completed`
+  // event (lap-time included) until standings are coherent, capped by
+  // `LAP_RESULTS_SYNC_MAX_WAIT_MS` so a stuck / missing `ResultsPositions`
+  // can't permanently swallow a lap.
+  //
+  // `lapResultsPendingSince` is set on the first tick of the wait and
+  // cleared on emit (or on session change / time-refresh re-entry above).
+  // Each subsequent tick re-evaluates `playerResults.lapsComplete` against
+  // `lapCompleted` and either fires (synced) or returns (still waiting).
+  const resultsSynced = playerResults !== null && playerResults.lapsComplete >= lapCompleted;
+
+  if (!resultsSynced) {
+    if (state.lapResultsPendingSince === 0) {
+      state.lapResultsPendingSince = now;
+
+      return;
+    }
+
+    if (now - state.lapResultsPendingSince < LAP_RESULTS_SYNC_MAX_WAIT_MS) {
+      return;
+    }
+
+    // Timeout exceeded — emit without position fields. Lap-time-best still
+    // fires; position-change `where:` will reject the missing position and
+    // stay silent for this lap.
   }
 
   // Real lap completion. Use `lapLastLapTime` (the time of the lap just
@@ -159,6 +240,11 @@ export function diffLaps(
     lapsRemaining?: number;
     timeRemaining?: number;
     sessionType?: LapSessionType;
+    position?: number;
+    previousPosition?: number;
+    classPosition?: number;
+    previousClassPosition?: number;
+    isMultiClass?: boolean;
   } = {
     lap: lapCompleted,
     lapTime: lapLastLapTime,
@@ -180,9 +266,66 @@ export function diffLaps(
 
   if (timeRemaining !== undefined && timeRemaining >= 0) data.timeRemaining = timeRemaining;
 
+  // Position fields (issue #566). Primary source is `ResultsPositions` — the
+  // authoritative leaderboard — when it has caught up to the lap counter.
+  // Fallback when standings haven't synced within the timeout: read the
+  // live `PlayerCarPosition` / `PlayerCarClassPosition` telemetry. iRacing
+  // session info refreshes on a slower cadence than telemetry (every 1–3 s);
+  // the timeout sometimes wins the race. Telemetry is one tick behind the
+  // standings on PB laps (qualifying recomputes order before the field
+  // settles), but accurate on every other lap — far better than silently
+  // omitting position. The class-position from `ResultsPositions` is
+  // 0-indexed; convert to 1-indexed (`+ 1`) to match the
+  // `PlayerCarClassPosition` telemetry convention so downstream consumers
+  // don't need to know the source.
+  //
+  // `previousPosition` / `previousClassPosition` come from baselines we
+  // captured at the previous emission, regardless of how this emission's
+  // position was resolved — `0` baseline = first-valid-lap, field omitted.
+  let positionForEmit = 0;
+  let classPositionForEmit = 0;
+
+  if (resultsSynced && playerResults && playerResults.position > 0) {
+    positionForEmit = playerResults.position;
+
+    if (playerResults.classPosition >= 0) classPositionForEmit = playerResults.classPosition + 1;
+  } else {
+    const telPos =
+      typeof telemetry.PlayerCarPosition === "number" && telemetry.PlayerCarPosition > 0
+        ? telemetry.PlayerCarPosition
+        : 0;
+    const telClass =
+      typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
+        ? telemetry.PlayerCarClassPosition
+        : 0;
+    positionForEmit = telPos;
+    classPositionForEmit = telClass;
+  }
+
+  if (positionForEmit > 0) data.position = positionForEmit;
+
+  if (state.lastLapPosition > 0) data.previousPosition = state.lastLapPosition;
+
+  if (classPositionForEmit > 0) data.classPosition = classPositionForEmit;
+
+  if (state.lastLapClassPosition > 0) data.previousClassPosition = state.lastLapClassPosition;
+
+  if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+
   emit({ event: "lap.completed", data });
 
   state.lastLapCompletedCounter = lapCompleted;
   state.lastLapBestLapTime = newBest > 0 ? newBest : previousBest;
   state.lastEmittedLapTime = lapLastLapTime;
+
+  // Only advance the position baselines when we have a real reading. With
+  // the telemetry fallback this should almost always succeed; the rare zero
+  // case (e.g. session info AND telemetry both stale before any standings
+  // are computed) carries the baseline over so the next lap doesn't read a
+  // "P3 → ? → P3" gap as two changes.
+  if (positionForEmit > 0) state.lastLapPosition = positionForEmit;
+
+  if (classPositionForEmit > 0) state.lastLapClassPosition = classPositionForEmit;
+
+  state.lapResultsPendingSince = 0;
 }

@@ -321,6 +321,7 @@ beforeEach(() => {
     undefined, // getSessionStartSnapshot
     undefined, // getLapTimeCalloutEnabled
     undefined, // getLapCompletedSnapshot
+    undefined, // getPositionCalloutEnabled (issue #566)
     () => voiceMasterEnabled,
   );
 });

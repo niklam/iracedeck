@@ -198,6 +198,24 @@ export type TranslatorState = {
    * its own time.
    */
   lastEmittedLapTime: number;
+  /**
+   * Position baselines captured at the previous `lap.completed` emission
+   * (issue #566). `0` is the sentinel for "no baseline yet" — mirroring how
+   * `lastLapBestLapTime` uses `0` to mean "no prior best". Cleared by the
+   * session-change reset alongside the other lap baselines so a position
+   * gain in practice doesn't carry into qualifying.
+   */
+  lastLapPosition: number;
+  lastLapClassPosition: number;
+  /**
+   * Timestamp (ms since epoch) when the lap diff first detected a settled
+   * lap-time refresh but `ResultsPositions` had not yet caught up (issue
+   * #566). The diff defers the `lap.completed` emit until standings sync,
+   * but with a hard timeout (`LAP_RESULTS_SYNC_MAX_WAIT_MS`) so a stale or
+   * missing `ResultsPositions` never permanently swallows a lap. `0` while
+   * not pending; reset on emit and on session-change / disconnect.
+   */
+  lapResultsPendingSince: number;
 };
 
 export function createInitialState(): TranslatorState {
@@ -283,5 +301,8 @@ export function createInitialState(): TranslatorState {
     lastLapBestLapTime: 0,
     lastLapSessionNum: null,
     lastEmittedLapTime: 0,
+    lastLapPosition: 0,
+    lastLapClassPosition: 0,
+    lapResultsPendingSince: 0,
   };
 }

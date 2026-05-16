@@ -61,6 +61,12 @@ import {
 } from "./lap-time.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
+import {
+  buildPositionScenario,
+  type PositionCalloutId,
+  registerPositionVars,
+  SCENARIO_ID_TO_POSITION_ID,
+} from "./position.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
@@ -102,6 +108,16 @@ export {
   lapTimeIsSpeakable,
   splitLapTime,
 } from "./lap-time.js";
+export {
+  buildPositionScenario,
+  POSITION_CALLOUT_SETTING_KEYS,
+  POSITION_NUMBER_MAX,
+  POSITION_NUMBER_MIN,
+  type PositionCalloutId,
+  positionChangeIsAnnounceable,
+  positionNumberIsSpeakable,
+  selectEffectivePosition,
+} from "./position.js";
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -281,6 +297,10 @@ export const TRACK_CONDITIONS_CALLOUT_SETTING_KEYS: Record<TrackConditionsCallou
   wetness: "calloutEnabledTrackWetness",
 };
 
+// Position callout id is defined in ./position.ts and re-exported above.
+// The setting-key map and scenario-id map both live there too so the
+// canonical id↔key↔scenario triplet stays in one file.
+
 const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Record<string, TrackConditionsCalloutId> = {
   "pit-crew.track-conditions-worsening-mostly-dry": "wetness",
   "pit-crew.track-conditions-worsening-very-lightly-wet": "wetness",
@@ -371,8 +391,15 @@ export function registerPitCrew(
   // recent payload. Read at fire time inside the scenario's per-clip `var`
   // resolvers so a deferred replay still speaks the lap data that was frozen
   // at S/F crossing. Default `() => null` makes the var resolvers return
-  // null — a safe stub for tests that don't supply a resolver.
+  // null — a safe stub for tests that don't supply a resolver. Reused by the
+  // position-change callout (issue #566) — both scenarios subscribe to the
+  // same `lap.completed` event and share the snapshot cache.
   getLapCompletedSnapshot: LapCompletedSnapshotResolver = () => null,
+  // User opt-in for the position-change callout (issue #566). Single subject;
+  // same gate-at-event-arrival shape as the other callout families. Default
+  // `() => true` preserves legacy behavior for tests that don't supply a
+  // closure.
+  getPositionCalloutEnabled: (id: PositionCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -520,6 +547,27 @@ export function registerPitCrew(
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Position-change callout (issue #566). Ordering with the lap-time scenario
+  // above is enforced by the position scenario's `priority: "low"`, NOT by
+  // registration order — the engine drops (not queues) cross-family
+  // normal-priority scenarios when the bus is busy, but defers and replays
+  // `low`-priority fires once the bus goes idle (see `position.ts` header).
+  // Reuses the same `getLapCompletedSnapshot` resolver as lap-time — both
+  // scenarios speak to the same frozen lap payload, and the deferred replay
+  // carries the original event so the snapshot stays consistent.
+  registerPositionVars(engine, getLapCompletedSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildPositionScenario(getLapCompletedSnapshot),
+        SCENARIO_ID_TO_POSITION_ID,
+        getPositionCalloutEnabled,
+        "position callout",
         logger,
       ),
     ),
