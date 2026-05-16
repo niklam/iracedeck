@@ -1177,13 +1177,108 @@ describe("sim-events-iracing translator", () => {
       bus.subscribe("driver.firstOnTrack", handler);
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
-      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
-      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true })); // drive out — fires
-      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false })); // back to garage
-      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true })); // drive out again
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true })); // drive out — fires
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false })); // back to garage
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true })); // drive out again
 
-      // The lifetime milestone survives the replay guard's resets — no re-fire.
+      // Same session throughout — no re-fire across garage cycles.
       expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    // Issue #564: session-start callout must re-fire when SessionNum changes
+    // (practice → qualifying → race), even though it stays single-fire within
+    // a session. Three scenarios cover the bug end-to-end.
+
+    it("re-fires driver.firstOnTrack when SessionNum changes mid-drive", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Practice: on track, callout fires.
+      controller.__tick(telemetry({ SessionNum: 0, IsOnTrack: false }));
+      controller.__tick(telemetry({ SessionNum: 0, IsOnTrack: true }));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Qualifying starts while still on track — must re-fire.
+      controller.__tick(telemetry({ SessionNum: 1, IsOnTrack: true }));
+      expect(handler).toHaveBeenCalledTimes(2);
+
+      // Race starts — must re-fire again.
+      controller.__tick(telemetry({ SessionNum: 2, IsOnTrack: true }));
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+
+    it("re-fires driver.firstOnTrack on the replay → live-on-track transition that follows a session change", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("driver.firstOnTrack", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Practice: drive out, callout fires.
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true }));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Practice ends → iRacing returns to replay/menu, then qualifying starts.
+      // The SessionNum delta arrives on a replay-mode tick (the realistic path:
+      // user is in the session-load screen when the number flips).
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+      controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: true, IsOnTrack: false }));
+      expect(handler).toHaveBeenCalledTimes(1); // still in replay — no fire yet
+
+      // Driver clicks Drive in qualifying — fires on the live-on-track edge.
+      controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+      expect(handler).toHaveBeenCalledTimes(2);
+    });
+
+    it("still publishes session.changed on the tick that triggers the session reset", () => {
+      // The instance-level session-num tracker drives the state wipe, but the
+      // bus event must keep firing through `diffLifecycle` so external
+      // subscribers (scenario harness, future consumers) keep working. The
+      // reset preserves `state.lastSessionNum` exactly for this reason.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("session.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ SessionNum: 0 }));
+      controller.__tick(telemetry({ SessionNum: 1 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
+      expect(ev.data).toEqual({ from: 0, to: 1 });
+    });
+
+    it("wipes per-session diff state on SessionNum change so the next tick re-seeds", () => {
+      // Sanity check that the reset isn't limited to `firstOnTrackFired` —
+      // representative per-session state must clear too. We use the toggles
+      // diff: it tracks `lastP2PActive` and emits `carControl.p2pToggled` only
+      // on a rising edge. If practice ended with P2P active, the reset must
+      // let qualifying re-emit on a fresh rising edge instead of suppressing
+      // it as "unchanged".
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("carControl.p2pToggled", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Practice: P2P off → on (rising edge fires once).
+      controller.__tick(telemetry({ SessionNum: 0, P2P_Status: false }));
+      controller.__tick(telemetry({ SessionNum: 0, P2P_Status: true }));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Session changes to qualifying. The toggles diff's `lastP2PActive` was
+      // `true` at the moment of the change; the reset wipes it back to `false`
+      // (toggleStateInitialized: false), so the first qual tick re-seeds and
+      // the next rising edge fires fresh.
+      controller.__tick(telemetry({ SessionNum: 1, P2P_Status: false })); // re-seed in qual
+      controller.__tick(telemetry({ SessionNum: 1, P2P_Status: true })); // rising edge in qual
+      expect(handler).toHaveBeenCalledTimes(2);
     });
 
     it("does not synthesize lap.started when Lap resets to a lower number (session flip)", () => {

@@ -59,11 +59,24 @@ type TranslatorInstance = {
   /** Tracks the `IsReplayPlaying` edge so we can reset state on transition. */
   lastTickInReplay: boolean;
   /**
-   * `driver.firstOnTrack` tracking. Connection-lifetime milestone — kept on
-   * the instance, not `TranslatorState`, so it survives the per-tick state
-   * resets the replay guard performs (seed-and-bail would otherwise re-run
-   * on every replay exit and swallow the genuine first-on-track moment).
-   * Both reset only on `handleDisconnect`. See `diffFirstOnTrack`.
+   * `telemetry.SessionNum` tracker for session-change detection (issue #564).
+   * Kept on the instance — not in `TranslatorState` — so it survives the
+   * replay guard's per-tick state wipes. iRacing's between-session transition
+   * commonly passes through `IsReplayPlaying: true` ticks, and if the tracker
+   * lived in state the wipe would null it out before the SessionNum delta
+   * could be detected. `null` until the first tick observes a value; reset
+   * only by `handleDisconnect`.
+   */
+  lastObservedSessionNum: number | null;
+  /**
+   * `driver.firstOnTrack` tracking — session-scoped (issue #564), not
+   * connection-scoped. Kept on the instance (not `TranslatorState`) so it
+   * survives the replay guard's per-tick state wipes; reset by
+   * `resetPerSessionState` on a `SessionNum` change and by `handleDisconnect`
+   * on a fresh connection. Seeding stays `true` across session resets — if
+   * the driver is already on track at the moment of the transition,
+   * re-seeding would silently mark fired and swallow the very fire we want.
+   * See `diffFirstOnTrack`.
    */
   firstOnTrackSeeded: boolean;
   firstOnTrackFired: boolean;
@@ -94,6 +107,7 @@ export function initializeSimEventsIracing(
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
+    lastObservedSessionNum: null,
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
   };
@@ -259,10 +273,51 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.latestTelemetry = null;
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
-  // `driver.firstOnTrack` is a connection-lifetime milestone — cleared only
-  // here so a genuine reconnect re-seeds (and a mid-drive reconnect stays
-  // silent), while replay scrubbing within one connection does not.
+  self.lastObservedSessionNum = null;
+  // `driver.firstOnTrack` seeding is reset only here (not on session change)
+  // so a mid-drive reconnect seeds silently and doesn't synthesize a welcome.
+  // Session-change resets clear only `firstOnTrackFired` — see
+  // `resetPerSessionState`.
   self.firstOnTrackSeeded = false;
+  self.firstOnTrackFired = false;
+}
+
+/**
+ * Wipe per-session state on a `SessionNum` change (issue #564). The Race
+ * Engineer's "everything is in session context" model: practice, qualifying,
+ * and race each get a fresh slate for callouts that should fire once per
+ * session (session-start, fuel thresholds, incident counters, …).
+ *
+ * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
+ * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
+ * that, the reset would put `lifecycleInitialized = false`, the very next
+ * `diffLifecycle` call this same tick would silently re-seed `lastSessionNum`
+ * to the new value (skipping the emit), and `session.changed` would never
+ * reach subscribers. Preserving the baselines also avoids synthesizing a
+ * spurious `engine.startup` (`lastEngineRunning` would be the sentinel
+ * `false` against a still-running engine) on every session transition. The
+ * lifecycle state IS the diff-baseline channel — not the session state — so
+ * preserving it through a session boundary is the correct semantic.
+ *
+ * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
+ * seeding would silently mark fired = true if the driver is already on track
+ * at the transition and swallow the very fire we want.
+ *
+ * Track-level instance fields (`pitSpeedLimitMps` / `pitSpeedLimitKey`) self-
+ * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
+ * and need no reset here.
+ */
+function resetPerSessionState(self: TranslatorInstance): void {
+  const preservedLifecycle = {
+    lifecycleInitialized: self.state.lifecycleInitialized,
+    lastSessionNum: self.state.lastSessionNum,
+    lastEngineRunning: self.state.lastEngineRunning,
+    lastLap: self.state.lastLap,
+  };
+
+  self.state = createInitialState();
+  Object.assign(self.state, preservedLifecycle);
+
   self.firstOnTrackFired = false;
 }
 
@@ -299,6 +354,30 @@ function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData): v
 }
 
 function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
+  // Session-change reset (issue #564). Runs on every tick — including replay
+  // ticks — because iRacing's between-session transition commonly passes
+  // through replay-mode ticks (waiting for the next session to load). Using
+  // the instance-level `lastObservedSessionNum` (not `state.lastSessionNum`)
+  // means the tracker survives the replay guard's per-tick state wipes that
+  // would otherwise null out the comparison baseline and let the transition
+  // slip past. The reset wipes `state` (preserving `lastSessionNum` so
+  // `diffLifecycle` can still emit `session.changed`) and clears
+  // `firstOnTrackFired` so the session-start callout re-fires on the next
+  // live-on-track tick.
+  const currentSessionNum = telemetry.SessionNum ?? null;
+
+  if (
+    currentSessionNum !== null &&
+    self.lastObservedSessionNum !== null &&
+    currentSessionNum !== self.lastObservedSessionNum
+  ) {
+    resetPerSessionState(self);
+  }
+
+  if (currentSessionNum !== null) {
+    self.lastObservedSessionNum = currentSessionNum;
+  }
+
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
   // — so the genuine garage/replay → live-on-track transition is never
   // missed. Must run before the replay guard's early return below.
