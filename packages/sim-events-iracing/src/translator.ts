@@ -288,6 +288,14 @@ function handleDisconnect(self: TranslatorInstance): void {
  * and race each get a fresh slate for callouts that should fire once per
  * session (session-start, fuel thresholds, incident counters, …).
  *
+ * Publishes a `radar.changed → clear` teardown before wiping state — mirrors
+ * `handleDisconnect`. Without it, a downstream radar audio engine latched on
+ * the prior session's "left" / "right" beep would stay latched: the post-
+ * wipe `state.radarState` is already `"clear"`, so the replay guard's
+ * teardown check would see no edge and skip the emit, leaving the engine
+ * mid-loop indefinitely. Any future active-state subsystem with a similar
+ * latch contract plugs in here the same way.
+ *
  * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
  * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
  * that, the reset would put `lifecycleInitialized = false`, the very next
@@ -307,7 +315,16 @@ function handleDisconnect(self: TranslatorInstance): void {
  * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
  * and need no reset here.
  */
-function resetPerSessionState(self: TranslatorInstance): void {
+function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
+  if (self.state.radarState !== "clear") {
+    publish(
+      self,
+      { event: "radar.changed", data: { from: self.state.radarState, to: "clear" } },
+      telemetry,
+      Date.now(),
+    );
+  }
+
   const preservedLifecycle = {
     lifecycleInitialized: self.state.lifecycleInitialized,
     lastSessionNum: self.state.lastSessionNum,
@@ -371,7 +388,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     self.lastObservedSessionNum !== null &&
     currentSessionNum !== self.lastObservedSessionNum
   ) {
-    resetPerSessionState(self);
+    resetPerSessionState(self, telemetry);
   }
 
   if (currentSessionNum !== null) {

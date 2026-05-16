@@ -1254,6 +1254,35 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data).toEqual({ from: 0, to: 1 });
     });
 
+    it("publishes radar.changed → clear when SessionNum changes with radar active", () => {
+      // Mirrors the `handleDisconnect` teardown contract: a downstream radar
+      // audio engine latched on the prior session's "left"/"right" beep
+      // would stay latched if the reset wiped `radarState` without emitting
+      // the clear edge first. Covers the replay-mode session-transition path
+      // explicitly because that's where the bug bites — the replay guard's
+      // own teardown check would see the already-cleared state and skip.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("radar.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Practice: car appears on the left, radar emits left.
+      controller.__tick(telemetry({ SessionNum: 0, CarLeftRight: CarLeftRight.Off }));
+      controller.__tick(telemetry({ SessionNum: 0, CarLeftRight: CarLeftRight.CarLeft }));
+      expect(handler).toHaveBeenCalledTimes(1);
+      const activate = handler.mock.calls[0]![0] as SimEventOf<"radar.changed">;
+      expect(activate.data).toEqual({ from: "clear", to: "left" });
+
+      // Session flips to qualifying on a replay-mode tick (the path that
+      // would otherwise swallow the teardown). The reset must fire the clear
+      // edge before wiping state so the audio engine stops the beep.
+      controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: true, CarLeftRight: CarLeftRight.CarLeft }));
+      expect(handler).toHaveBeenCalledTimes(2);
+      const teardown = handler.mock.calls[1]![0] as SimEventOf<"radar.changed">;
+      expect(teardown.data).toEqual({ from: "left", to: "clear" });
+    });
+
     it("wipes per-session diff state on SessionNum change so the next tick re-seeds", () => {
       // Sanity check that the reset isn't limited to `firstOnTrackFired` —
       // representative per-session state must clear too. We use the toggles
