@@ -6712,6 +6712,14 @@
       "textPreview": "pee sixty four.",
       "generatedAt": "2026-05-16T16:21:13.917Z",
       "requestId": "ny8khTrPuWEhHU1HfXKZ"
+    },
+    "voice/default/position-intro-pole/that-puts-us-on-pole.mp3": {
+      "hash": "a7450e14d5d4aad7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That puts us on pole.",
+      "generatedAt": "2026-05-16T17:36:34.402Z",
+      "requestId": "SVwDa39FwXNmh4S8jP0d"
     }
   }
 }
