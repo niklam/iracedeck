@@ -1152,6 +1152,76 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     );
     expect(state.lastPositionChangeLap).toBe(-1);
   });
+
+  it("uses effective (class) position for change detection in multi-class", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
+
+    // Lap 1 — establish baseline: overall P12, class P3.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 3),
+      NOW,
+      emit,
+    );
+    expect(positionChangedEvents(events)).toHaveLength(0);
+    expect(state.lastPositionChangeLap).toBe(1);
+
+    // Lap 2 — class position improves (P3 → P2) but overall stays at P12.
+    // Effective position is class in multi-class, so this MUST emit
+    // position.changed and reset the cadence anchor.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 63.5, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 2),
+      NOW,
+      emit,
+    );
+    const changes = positionChangedEvents(events);
+    expect(changes).toHaveLength(1);
+    expect(changes[0].data.classPosition).toBe(2);
+    expect(changes[0].data.previousClassPosition).toBe(3);
+    expect(state.lastPositionChangeLap).toBe(2);
+  });
+
+  it("ignores overall-only churn in multi-class (class position unchanged)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
+
+    // Lap 1 — establish baseline: overall P12, class P3.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 3),
+      NOW,
+      emit,
+    );
+
+    // Lap 2 — overall moves P12 → P10 (other-class shuffle ahead) but class
+    // position holds at P3. Should NOT emit position.changed and should NOT
+    // reset the cadence anchor — the driver doesn't race overall in
+    // multi-class, only their class matters.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 63.5, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(10, 3),
+      NOW,
+      emit,
+    );
+    expect(positionChangedEvents(events)).toHaveLength(0);
+    expect(state.lastPositionChangeLap).toBe(1); // anchor stays put
+  });
 });
 
 describe("diffLaps — race.finished (issue #569)", () => {

@@ -320,14 +320,24 @@ export function diffLaps(
 
   if (isMultiClass !== null) data.isMultiClass = isMultiClass;
 
-  // Position-change detection (issue #569). Driven by overall position — the
-  // race-status callout uses `selectEffectivePosition` at fire time to pick
-  // class vs overall, but the cadence anchor is uniform across modes so a
-  // single race never has two competing anchors. Emit `position.changed`
-  // only when a real prior baseline existed (skips the driver's first valid
-  // lap of the session — the change scenario has no "previous" to compare
-  // against and the issue's payload requires `previousPosition`).
-  const positionChanged = positionForEmit > 0 && state.lastLapPosition > 0 && positionForEmit !== state.lastLapPosition;
+  // Position-change detection (issue #569). Driven by the EFFECTIVE position
+  // — class in multi-class series, overall otherwise — to match the rest of
+  // the system's effective-position contract (`selectEffectivePosition` in
+  // the position-change / race-status / race-end scenarios). In multi-class,
+  // a class-only gain/loss is what the driver actually races for: it must
+  // reset the cadence and emit `position.changed`; an overall-only churn
+  // (e.g. another class shuffles around you with your class position
+  // unchanged) is noise and shouldn't. The `position.changed` payload still
+  // carries both raw fields so future consumers can pick what they need.
+  // Emit only when a real prior baseline existed (skips the driver's first
+  // valid lap of the session — the change scenario has no "previous" to
+  // compare against and the issue's payload requires `previousPosition`).
+  const effectivePositionForEmit = isMultiClass === true ? classPositionForEmit : positionForEmit;
+  const effectivePreviousPosition = isMultiClass === true ? state.lastLapClassPosition : state.lastLapPosition;
+  const positionChanged =
+    effectivePositionForEmit > 0 &&
+    effectivePreviousPosition > 0 &&
+    effectivePositionForEmit !== effectivePreviousPosition;
 
   if (positionChanged) {
     state.lastPositionChangeLap = lapCompleted;
@@ -352,10 +362,10 @@ export function diffLaps(
     if (isMultiClass !== null) changeData.isMultiClass = isMultiClass;
 
     emit({ event: "position.changed", data: changeData });
-  } else if (state.lastPositionChangeLap < 0 && positionForEmit > 0) {
-    // First lap.completed where we know our position — anchor the
-    // every-3-laps cadence to this lap so a driver who holds position from
-    // race start still hears status updates. Without this anchor,
+  } else if (state.lastPositionChangeLap < 0 && effectivePositionForEmit > 0) {
+    // First lap.completed where we know our (effective) position — anchor
+    // the every-3-laps cadence to this lap so a driver who holds position
+    // from race start still hears status updates. Without this anchor,
     // `lapsSincePositionChange` would stay omitted until a real change
     // happened, and a P5-from-start-to-finish driver would never get any
     // race-status callout.

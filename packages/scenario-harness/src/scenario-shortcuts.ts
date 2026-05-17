@@ -754,7 +754,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Position",
     label: "Improved in Race",
     description:
-      'Race lap with an improvement P5 → P3. Engineer says "That puts us to pee three." Issue #569 enabled the family in race for real changes.',
+      'Race lap with an improvement P5 → P3. Engineer says "We\'re currently pee three." Issue #569 enabled the family in race for real changes; race always uses the "currently" intro (never "that puts us to") because race standings don\'t follow from lap times.',
     event: "lap.completed",
     data: {
       lap: 5,

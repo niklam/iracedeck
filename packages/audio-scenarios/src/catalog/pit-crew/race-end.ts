@@ -185,7 +185,21 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
     id: "pit-crew.race-end",
     when: {
       event: "race.finished",
-      where: () => getSnapshot() !== null,
+      where: () => {
+        // Tighter than `snapshot !== null` — also require a speakable
+        // effective position so we don't open the radio, say the driver's
+        // name, then have every per-position branch fall through silent.
+        // Without this, an off-range position (e.g. P65 in some hypothetical
+        // monster split) or a snapshot that resolves to null position via
+        // `selectEffectiveFinalPosition` would produce a greeting-only fire.
+        const snapshot = getSnapshot();
+
+        if (!snapshot) return false;
+
+        const position = selectEffectiveFinalPosition(snapshot);
+
+        return position !== null && positionNumberIsSpeakable(position);
+      },
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
