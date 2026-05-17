@@ -386,6 +386,66 @@ export type SimEventMap = {
        * `classPosition` over `position`.
        */
       isMultiClass?: boolean;
+      /**
+       * Number of laps completed since the driver's effective position last
+       * changed (issue #569). `0` on the lap where the change was detected,
+       * `1` on the next lap, etc. Omitted when no baseline has been
+       * established (e.g. driver's first valid lap of the session).
+       *
+       * The race-status callout uses this to fire the every-3-laps
+       * status update during races: a value of N where `N > 0 && N % 3 === 0`
+       * triggers the announcement.
+       *
+       * "Effective" position uses the same class-vs-overall pick as the
+       * other position fields above (driven by {@link isMultiClass}).
+       */
+      lapsSincePositionChange?: number;
+    }
+  >;
+  /**
+   * Effective position changed (issue #569). Fires once per lap when the
+   * driver's effective position differs from the previous emission. Plumbing
+   * for future per-change race-position callouts — no audio consumer ships
+   * with this issue. `previousPosition` is the value the change moved away
+   * from; both overall and class are carried so consumers can pick per
+   * {@link isMultiClass}.
+   *
+   * Sentinel: not emitted on the driver's first valid lap of the session
+   * (no baseline to compare against).
+   */
+  "position.changed": SimEvent<
+    "position.changed",
+    {
+      /** Lap that completed when the change was detected. */
+      lap: number;
+      /** New overall position. */
+      position: number;
+      /** Overall position before this lap. */
+      previousPosition: number;
+      /** New class position (1-indexed). */
+      classPosition?: number;
+      /** Class position before this lap (1-indexed). */
+      previousClassPosition?: number;
+      /** True iff the current session has more than one car class. */
+      isMultiClass?: boolean;
+    }
+  >;
+  /**
+   * Race session has ended for the driver (issue #569). Fires once per race
+   * session, on the first `lap.completed` after iRacing raised the checkered
+   * flag in a race session. Carries the final positions so the race-end
+   * callout can speak the result. Reset on session change / disconnect, so a
+   * later race session re-arms the latch.
+   */
+  "race.finished": SimEvent<
+    "race.finished",
+    {
+      /** Final overall position. */
+      position: number;
+      /** Final class position (1-indexed). */
+      classPosition?: number;
+      /** True iff the current session has more than one car class. */
+      isMultiClass?: boolean;
     }
   >;
 

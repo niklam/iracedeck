@@ -123,6 +123,33 @@ A couple of seconds after you cross the start/finish line, the Race Engineer ann
 
 Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). Lap times of 11 minutes or longer stay silent — the engineer never speaks a partial readout, and the minute-clip range stops at 10 for now. The minute coverage will expand in follow-up releases.
 
+On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead.
+
+## Position Change (qualifying + race)
+
+After each completed lap in qualifying or race, the engineer announces your current position when it changed since the previous lap.
+
+In qualifying the wording follows the standings-after-lap-time model: *"That puts us to pee three."* on a gain, *"We're currently pee five."* on a loss. The engineer also speaks the status line on a slow lap where position holds, and an improvement to P1 gets a dedicated *"That puts us on pole."*
+
+In race the wording is always *"We're currently pee N."* regardless of direction — race standings come from overtakes and pit stops, not lap times, so "that puts us to" reads wrong there. The pole call doesn't apply in race either. The every-3-laps race-status callout below handles hold-position updates, and the final lap stays silent so the race-end result has the floor. Practice and test sessions stay silent entirely.
+
+## Race Position Status (every 3 laps)
+
+During race sessions, the Race Engineer announces your current position every 3 laps as long as your position holds — *"We're currently pee five."* The lap counter resets every time your effective position changes, so a gain or loss restarts the cadence cleanly. When you're running first, you get a dedicated line — *"We're still leading the race. Keep it up."* — instead of the generic status.
+
+The status is suppressed on the final lap; the race-end callout speaks the result there instead. Qualifying, practice, and test sessions stay silent — the qualifying position-change callout already covers those.
+
+## Race End (final result)
+
+When you cross start/finish under the checkered flag in a race session, the Race Engineer greets you by name and speaks the result once per session:
+
+- **P1** — *"Niklas, we won! We won! Well done. Amazing job. You deserved this win."*
+- **P2** — *"Niklas, that's second place. Very well done."*
+- **P3** — *"Niklas, we made it to the podium. We're third. Well done."*
+- **P4 and below** — *"Niklas, the race is over. The final result for us is pee seven."*
+
+In multi-class series the engineer reads your class position, not the overall — winning your class always plays the *"we won!"* line even if you crossed the line behind faster cars from another class. Disabling this in the Property Inspector silences only the final-result line; the periodic status callout above remains independent.
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
@@ -170,6 +197,15 @@ Under **Telemetry Connect**, one callout is toggleable, enabled by default:
 Under **Lap Time**, one callout is toggleable, enabled by default:
 
 - **New best lap** — the post-S/F announcement of your lap time when you set a new personal best (or complete the first valid lap of the session). Disabling this silences only the best-lap callout; future lap-related callouts will be independently toggleable.
+
+Under **Position**, one callout is toggleable, enabled by default:
+
+- **Position changed** — the qualifying / race per-lap callout that fires when your effective position changes (improvement, worsening, or first-fix), plus the qualifying-only pole call and hold-position status. Disabling this silences only the per-change announcement; the every-3-laps race-status callout below stays independent.
+
+Under **Race**, two callouts are toggleable, both enabled by default:
+
+- **Position status (every 3 laps)** — the periodic *"We're currently pee five."* status (or *"We're still leading the race. Keep it up."* when you're P1) the engineer reads every 3 laps while your effective position holds. Race sessions only.
+- **Final result** — the *"Niklas, we won!"* / *"second place"* / *"podium"* / *"the race is over. The final result for us is pee seven."* line that fires once when you cross the line under the checkered. Race sessions only.
 
 ## Notes
 

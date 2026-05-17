@@ -27,6 +27,11 @@ import {
   type PositionCalloutId,
   QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
   type QualifyingInvalidationCalloutId,
+  RACE_END_CALLOUT_SETTING_KEYS,
+  RACE_STATUS_CALLOUT_SETTING_KEYS,
+  type RaceEndCalloutId,
+  type RaceFinishedSnapshot,
+  type RaceStatusCalloutId,
   registerPitCrew,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
@@ -134,6 +139,7 @@ import {
   getSessionStartConditions,
   initializeSimEventsIracing,
   isPitActionsAllowed,
+  isRaceFinished,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -228,9 +234,23 @@ eventBus.subscribe("lap.completed", (ev) => {
     `lap=${ev.data.lap} time=${ev.data.lapTime.toFixed(3)} isBest=${ev.data.isBest} isFirstValid=${ev.data.isFirstValid} ` +
       `sessionType=${ev.data.sessionType ?? "?"} position=${ev.data.position ?? "?"} previousPosition=${ev.data.previousPosition ?? "?"} ` +
       `classPosition=${ev.data.classPosition ?? "?"} previousClassPosition=${ev.data.previousClassPosition ?? "?"} ` +
-      `isMultiClass=${ev.data.isMultiClass ?? "?"}`,
+      `isMultiClass=${ev.data.isMultiClass ?? "?"} lapsSincePositionChange=${ev.data.lapsSincePositionChange ?? "?"}`,
   );
   lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
+});
+
+// Cache the most recent `race.finished` payload so the race-end scenario's
+// snapshot resolver can compose it with the PI-picked driver name at fire
+// time (issue #569). Subscribed BEFORE `registerPitCrew` so this listener
+// runs before the scenario engine's subscriber — by the time the scenario
+// evaluates its `where:` predicate the cache holds the just-fired payload.
+const raceFinishedLogger = adapter.createLogger("RaceFinished");
+let lastRaceFinished: { position: number; classPosition?: number; isMultiClass?: boolean } | null = null;
+eventBus.subscribe("race.finished", (ev) => {
+  lastRaceFinished = ev.data;
+  raceFinishedLogger.info(
+    `position=${ev.data.position} classPosition=${ev.data.classPosition ?? "?"} isMultiClass=${ev.data.isMultiClass ?? "?"}`,
+  );
 });
 
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
@@ -315,6 +335,29 @@ registerPitCrew(
   // owns the `lapStartedFromPits` flag and applies the `SessionLapsRemainEx
   // - 1` adjustment so the scenario reads a clean, semantic snapshot.
   () => getQualifyingInvalidationSnapshot(),
+  // Race-status callout opt-in (issue #569). Single subject; same live-read
+  // pattern as the other callout families.
+  (id: RaceStatusCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[RACE_STATUS_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Race-finished latch resolver (issue #569). Reads the translator's
+  // `state.raceFinishedFired` so race-status's `where:` suppresses the
+  // periodic status callout on the final lap (race-end fires on the same
+  // `lap.completed` tick — race.finished is emitted first into the pending
+  // queue, latch flips synchronously before lap.completed publishes).
+  () => isRaceFinished(),
+  // Race-end callout opt-in (issue #569). Single subject.
+  (id: RaceEndCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[RACE_END_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Race-end snapshot resolver (issue #569). Composes the cached
+  // `race.finished` payload with the PI-picked driver name; null when the
+  // cache is empty or no driver-name clips exist.
+  (): RaceFinishedSnapshot | null => {
+    if (!lastRaceFinished) return null;
+
+    const driverName = resolveActiveDriverName(driverNames, "driver");
+
+    return driverName ? { ...lastRaceFinished, driverName } : null;
+  },
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

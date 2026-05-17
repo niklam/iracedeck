@@ -179,8 +179,18 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
  * Build the lap-time scenario bound to a snapshot resolver. The resolver is
  * read by the per-clip `var` resolvers at sequence-expansion time and by the
  * conditional `if` step that gates the minute clip.
+ *
+ * `getRaceFinishedFired` suppresses the callout on the final lap of a race
+ * (issue #569) — race-end is the only thing the engineer should say when the
+ * driver crosses S/F under the checkered. Without this gate the best-lap
+ * announcement would fire alongside the race result on a PB final lap and the
+ * two would queue head-to-tail. Default `() => false` (race never ends)
+ * preserves legacy behavior for tests that don't supply a closure.
  */
-export function buildLapTimeScenario(getSnapshot: LapCompletedSnapshotResolver): Scenario {
+export function buildLapTimeScenario(
+  getSnapshot: LapCompletedSnapshotResolver,
+  getRaceFinishedFired: () => boolean = () => false,
+): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     { var: "lapTime.intro" },
@@ -201,6 +211,11 @@ export function buildLapTimeScenario(getSnapshot: LapCompletedSnapshotResolver):
         if (ev.event !== "lap.completed") return false;
 
         const data = ev.data as LapCompletedSnapshot;
+
+        // Race finished — defer to race-end (issue #569). The diff sets the
+        // latch synchronously before publishing `lap.completed`, so by the
+        // time this where: runs the latch reads true on the final lap.
+        if (data.sessionType === "race" && getRaceFinishedFired()) return false;
 
         // Fire on the new-PB case (`isBest`) AND the first-valid-lap case
         // (`isFirstValid`) so an emitter that only marks the latter without

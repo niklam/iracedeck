@@ -15,6 +15,7 @@ export {
   getSessionType,
   initializeSimEventsIracing,
   isPitActionsAllowed,
+  isRaceFinished,
   isSimEventsIracingInitialized,
 } from "./translator.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";

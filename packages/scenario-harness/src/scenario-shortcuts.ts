@@ -750,11 +750,11 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     },
   },
   {
-    id: "position-race-silent",
+    id: "position-race-improved",
     category: "Position",
-    label: "Improved in Race (silent)",
+    label: "Improved in Race",
     description:
-      "Race sessions don't fire position callouts — the position family is qualifying-only because the standings phrasings don't fit race semantics. Verifies the session-type gate.",
+      'Race lap with an improvement P5 → P3. Engineer says "That puts us to pee three." Issue #569 enabled the family in race for real changes.',
     event: "lap.completed",
     data: {
       lap: 5,
@@ -767,6 +767,28 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       classPosition: 3,
       previousClassPosition: 5,
       isMultiClass: false,
+      lapsSincePositionChange: 0,
+    },
+  },
+  {
+    id: "position-race-hold-silent",
+    category: "Position",
+    label: "Hold in Race (silent — race-status owns hold)",
+    description:
+      "Race lap with no change on a non-PB lap. Position-change stays silent — the every-3-laps race-status callout owns hold-position updates per #569. Verifies the race-specific suppression in positionChangeIsAnnounceable.",
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "race",
+      position: 5,
+      previousPosition: 5,
+      classPosition: 5,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapsSincePositionChange: 1,
     },
   },
   {
@@ -787,5 +809,138 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       previousClassPosition: 5,
       isMultiClass: false,
     },
+  },
+  // Race-status (issue #569). Fires when lapsSincePositionChange > 0 && % 3 === 0
+  // in a race session. Each shortcut sets the cadence-hit value directly so the
+  // scenario reads as if the diff had anchored or reset position several laps
+  // back.
+  {
+    id: "race-status-cadence-hit",
+    category: "Race",
+    label: "Status update (P5 on lap 7)",
+    description:
+      'Race session, P5 held for 3 laps since last change. Engineer says "We\'re currently pee five." Fires the every-3-laps cadence.',
+    event: "lap.completed",
+    data: {
+      lap: 7,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "race",
+      position: 5,
+      previousPosition: 5,
+      classPosition: 5,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapsSincePositionChange: 3,
+    },
+  },
+  {
+    id: "race-status-leader",
+    category: "Race",
+    label: "Leader status (P1 on lap 6)",
+    description:
+      'Race leader at the every-3 cadence. Engineer says "We\'re still leading the race. Keep it up." (single self-contained clip — no number).',
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 83.5,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "race",
+      position: 1,
+      previousPosition: 1,
+      classPosition: 1,
+      previousClassPosition: 1,
+      isMultiClass: false,
+      lapsSincePositionChange: 3,
+    },
+  },
+  {
+    id: "race-status-silent-not-cadence",
+    category: "Race",
+    label: "Not on cadence (silent)",
+    description: "Race session, 2 laps since change (not a multiple of 3). where: short-circuits — no audio plays.",
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "race",
+      position: 5,
+      previousPosition: 5,
+      classPosition: 5,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapsSincePositionChange: 2,
+    },
+  },
+  {
+    id: "race-status-silent-qualifying",
+    category: "Race",
+    label: "Qualifying (silent)",
+    description:
+      "Qualifying sessions don't fire race-status — the position family from #566 handles qualifying. Verifies the session-type gate.",
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "qualifying",
+      position: 5,
+      previousPosition: 5,
+      classPosition: 5,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapsSincePositionChange: 3,
+    },
+  },
+  // Race-end (issue #569). Fires off race.finished directly — the bus event
+  // carries the final positions; the plugin caches it and composes with the
+  // PI driver-name pick before the scenario speaks.
+  {
+    id: "race-end-won",
+    category: "Race",
+    label: "Race over — P1 (we won!)",
+    description:
+      'Race finished, P1. Engineer says "<Name>, we won! We won! Well done. Amazing job. You deserved this win."',
+    event: "race.finished",
+    data: { position: 1, classPosition: 1, isMultiClass: false },
+  },
+  {
+    id: "race-end-second",
+    category: "Race",
+    label: "Race over — P2 (second place)",
+    description: 'Race finished, P2. Engineer says "<Name>, that\'s second place. Very well done."',
+    event: "race.finished",
+    data: { position: 2, classPosition: 2, isMultiClass: false },
+  },
+  {
+    id: "race-end-third",
+    category: "Race",
+    label: "Race over — P3 (podium)",
+    description: 'Race finished, P3. Engineer says "<Name>, we made it to the podium. We\'re third. Well done."',
+    event: "race.finished",
+    data: { position: 3, classPosition: 3, isMultiClass: false },
+  },
+  {
+    id: "race-end-mid-pack",
+    category: "Race",
+    label: "Race over — P9 (mid-pack)",
+    description:
+      'Race finished, P9. Engineer says "<Name>, the race is over. The final result for us is pee nine." Tests the composed P4+ readout.',
+    event: "race.finished",
+    data: { position: 9, classPosition: 9, isMultiClass: false },
+  },
+  {
+    id: "race-end-multi-class-class-win",
+    category: "Race",
+    label: "Race over — multi-class P15 / class P1",
+    description:
+      'Multi-class race finish — overall P15 but class winner. Engineer says "<Name>, we won!" (class wins narrate as a win, same rule as #566).',
+    event: "race.finished",
+    data: { position: 15, classPosition: 1, isMultiClass: true },
   },
 ];

@@ -224,6 +224,27 @@ export type TranslatorState = {
    * not pending; reset on emit and on session-change / disconnect.
    */
   lapResultsPendingSince: number;
+  /**
+   * Lap counter value (`LapCompleted`) at the most recent position change
+   * (issue #569). Used to compute `lapsSincePositionChange` on the
+   * `lap.completed` payload, which the race-status callout uses to drive its
+   * every-3-laps cadence. `-1` until the first change is detected — before
+   * then the diff omits `lapsSincePositionChange` from the payload (no
+   * baseline yet).
+   *
+   * "Effective" position drives the change detection: class in multi-class
+   * series, overall in single-class. The counter resets on every detected
+   * change so the every-3 cadence restarts cleanly when the driver gains or
+   * loses a place.
+   */
+  lastPositionChangeLap: number;
+  /**
+   * Once-per-session latch for `race.finished` (issue #569). Set the first
+   * time `lap.completed` fires in a race session after iRacing raised the
+   * checkered flag. Cleared on session change / disconnect so a later race
+   * session re-arms the latch.
+   */
+  raceFinishedFired: boolean;
 };
 
 export function createInitialState(): TranslatorState {
@@ -313,5 +334,7 @@ export function createInitialState(): TranslatorState {
     lastLapPosition: 0,
     lastLapClassPosition: 0,
     lapResultsPendingSince: 0,
+    lastPositionChangeLap: -1,
+    raceFinishedFired: false,
   };
 }

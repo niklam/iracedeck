@@ -447,16 +447,16 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
-     * Opt-in for the position-change callout (issue #566). One boolean for the
-     * family — the engineer announces the driver's current position after each
-     * qualifying lap (improvement, worsening, pole achievement on improving to
-     * P1, or a status line when position holds on a non-PB lap). **Fires only
-     * in qualifying sessions** — race / practice / test stay silent because the
-     * standings-based phrasings don't fit race semantics (a race-flavoured
-     * callout family lives behind a separate scenario). Defaults `true` so a
-     * fresh install hears it; the user can silence it from the PI mid-session
-     * and the change takes effect on the next lap completion without cutting
-     * an in-flight clip. Canonical id↔key mapping in
+     * Opt-in for the position-change callout (issues #566 + #569). One boolean
+     * for the family — the engineer announces the driver's current position
+     * after a qualifying or race lap whose effective position changed. In
+     * qualifying the engineer also speaks a status line when position holds on
+     * a non-PB lap and a dedicated pole call on an improvement to P1; in race
+     * only real changes fire, because the every-3-laps race-status callout
+     * (`calloutEnabledRaceStatus`) owns hold-position updates. Practice /
+     * test sessions stay silent. Defaults `true`; the user can silence it
+     * mid-session and the change takes effect on the next lap completion
+     * without cutting an in-flight clip. Canonical id↔key mapping in
      * `POSITION_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
      */
     calloutEnabledPositionChange: z
@@ -477,6 +477,34 @@ export const GlobalSettingsSchema = z
      * `@iracedeck/audio-scenarios`).
      */
     calloutEnabledQualifyingLapInvalidated: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Opt-in for the race-status periodic position update (issue #569). One
+     * boolean for the family — the engineer announces the driver's current
+     * position every 3 laps as long as position holds (counter resets on every
+     * position change). **Fires only in race sessions**; qualifying / practice /
+     * test stay silent because the standings-after-lap model doesn't fit. Leader
+     * gets a dedicated "We're still leading the race. Keep it up." line;
+     * everyone else hears the reused "We're currently P[n]" status. Defaults
+     * `true` so a fresh install hears it. Canonical id↔key mapping in
+     * `RACE_STATUS_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledRaceStatus: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Opt-in for the race-end final-result callout (issue #569). One boolean
+     * for the family — the engineer greets the driver by name and speaks the
+     * final result after the driver crosses S/F under the checkered flag in a
+     * race session. Per-position branches: P1 ("we won!"), P2 ("second place"),
+     * P3 ("podium"), P4+ ("the race is over. The final result for us is P[n]").
+     * Defaults `true` so a fresh install hears it. Canonical id↔key mapping in
+     * `RACE_END_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledRaceEnd: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
