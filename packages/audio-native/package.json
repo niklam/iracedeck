@@ -19,12 +19,12 @@
     "src/*.h"
   ],
   "devDependencies": {
-    "@types/node": "25.6.0",
+    "@types/node": "25.8.0",
     "node-addon-api": "8.7.0",
     "node-gyp": "12.3.0",
     "rimraf": "6.1.3",
     "typescript": "5.9.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.6"
   },
   "engines": {
     "node": ">=24.0.0"
