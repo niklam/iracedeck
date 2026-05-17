@@ -183,7 +183,7 @@ export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInval
   ];
 
   return {
-    id: "pit-crew.qualifying-lap-invalidated",
+    id: "pit-crew.qualifying-invalidation-lap-invalidated",
     when: {
       event: "incident.occurred",
       where: () => {
@@ -218,11 +218,20 @@ export const QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS: Record<QualifyingInva
   "lap-invalidated": "calloutEnabledQualifyingLapInvalidated",
 };
 
-export const SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID: Record<string, QualifyingInvalidationCalloutId> = {
-  "pit-crew.qualifying-lap-invalidated": "lap-invalidated",
-};
+// `as const` so the element type is a literal union the
+// `SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID` `Record` key can be tightened
+// against — a typo in either constant fails at compile time instead of
+// slipping past as a `string` mismatch (mirrors the pattern in `position.ts`).
+export const QUALIFYING_INVALIDATION_SCENARIO_IDS = [
+  "pit-crew.qualifying-invalidation-lap-invalidated",
+] as const;
 
-export const QUALIFYING_INVALIDATION_SCENARIO_IDS: readonly string[] = ["pit-crew.qualifying-lap-invalidated"];
+export const SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID: Record<
+  (typeof QUALIFYING_INVALIDATION_SCENARIO_IDS)[number],
+  QualifyingInvalidationCalloutId
+> = {
+  "pit-crew.qualifying-invalidation-lap-invalidated": "lap-invalidated",
+};
 
 /**
  * Pool names this catalog draws from — kept here so tests can assert the

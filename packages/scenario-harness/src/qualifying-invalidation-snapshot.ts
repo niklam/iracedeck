@@ -33,13 +33,21 @@ function isAcceptedSessionType(value: unknown): value is AcceptedSessionType {
 
 /**
  * Shape-check an incoming `/api/qualifying-invalidation/snapshot` body. Returns
- * the snapshot on success or a user-facing error string on the first failed
- * field — same lightweight validation style as the other harness snapshot
+ * the snapshot on success, `null` when the caller explicitly wants to clear
+ * the stored snapshot, or a user-facing error string on the first failed
+ * field. Same lightweight validation style as the other harness snapshot
  * endpoints. `sessionType` accepts `undefined` (omitted) for the explicit
  * "no session info available" path the scenario must handle.
+ *
+ * Accepting `null` lets the harness reset the snapshot between unrelated
+ * incident tests without restarting the server — otherwise a previous
+ * test's snapshot bleeds into the next, since `setHarnessQualifyingInvalidationSnapshot`
+ * already accepts `null` but had no way to receive it from the endpoint.
  */
-export function validateQualifyingInvalidationSnapshot(body: unknown): QualifyingInvalidationSnapshot | string {
-  if (typeof body !== "object" || body === null) return "body must be an object";
+export function validateQualifyingInvalidationSnapshot(body: unknown): QualifyingInvalidationSnapshot | null | string {
+  if (body === null) return null;
+
+  if (typeof body !== "object") return "body must be an object or null";
 
   const b = body as Record<string, unknown>;
 

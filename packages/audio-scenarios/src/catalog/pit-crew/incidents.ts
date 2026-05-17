@@ -43,7 +43,7 @@ function incidentScenario(id: string, type: IncidentType, body: Step[]): Scenari
     when: {
       event: "incident.occurred",
       // No session-type gate here. In qualifying sessions, the
-      // `pit-crew.qualifying-lap-invalidated` scenario (issue #567) is
+      // `pit-crew.qualifying-invalidation-lap-invalidated` scenario (#567) is
       // registered BEFORE these incidents in `index.ts` and grabs the Voice
       // bus first on a valid flying lap, so the incident scenario's
       // attemptFire is dropped by the bus-busy check. On out-laps,
