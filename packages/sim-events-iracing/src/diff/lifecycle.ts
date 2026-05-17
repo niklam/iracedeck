@@ -53,8 +53,23 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
   state.lastEngineRunning = engineRunning;
 
   // ── Lap started ────────────────────────────────────────────────────────
-  // Strict `>` so a session reset (e.g. practice → race flips Lap 12 → 1)
-  // doesn't synthesize a fake `lap.started` event.
+  // Clear the post-pit-exit flag on ANY Lap change (issue #567) — not just
+  // when `lap.started` fires below. The event has a `lastLap > 0` guard
+  // that suppresses 0→1 transitions (iRacing can report `Lap=0` for the
+  // first lap of a qualifying session, in which case the out-lap → flying-
+  // lap-1 transition is 0→1 and `lap.started` would not fire). Tracking the
+  // raw Lap delta here means the flag clears at any S/F crossing, including
+  // session resets — that's fine because a fresh session re-arms the flag
+  // through the next `pitLane.exited` anyway. If the new lap is itself a
+  // from-pits lap (driver crosses S/F while in pit lane), the pit-lane diff
+  // runs later in this same tick and sets the flag back.
+  if (lap !== state.lastLap) {
+    state.lapStartedFromPits = false;
+  }
+
+  // Strict `>` (with both-positive guard) so a session reset (e.g. practice
+  // → race flips Lap 12 → 1) doesn't synthesize a fake `lap.started` event
+  // for downstream consumers that listen for it.
   if (lap > 0 && state.lastLap > 0 && lap > state.lastLap) {
     emit({ event: "lap.started", data: { lap } });
   }

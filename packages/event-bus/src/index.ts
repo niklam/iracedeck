@@ -13,6 +13,7 @@ export type {
   IncidentType,
   PitReadbackSnapshot,
   PitServiceKind,
+  QualifyingInvalidationSnapshot,
   SessionStartConditions,
   SessionStartSnapshot,
   SimEvent,

@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
 import { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import { MockSDKController } from "./mock-sdk-controller.js";
+import { getHarnessQualifyingInvalidationSnapshot } from "./qualifying-invalidation-snapshot.js";
 import { DEFAULT_HOST, DEFAULT_PORT, startServer } from "./server.js";
 import { getHarnessSessionStartSnapshot } from "./session-start-snapshot.js";
 
@@ -115,6 +116,9 @@ async function main(): Promise<void> {
     () => getHarnessSessionStartSnapshot(),
     undefined, // getLapTimeCalloutEnabled
     () => lastLapCompleted,
+    undefined, // getPositionCalloutEnabled
+    undefined, // getQualifyingInvalidationCalloutEnabled
+    () => getHarnessQualifyingInvalidationSnapshot(),
   );
 
   // ── deck-core global-settings pipeline ──────────────────────────────────

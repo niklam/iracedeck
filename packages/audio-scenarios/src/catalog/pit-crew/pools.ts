@@ -155,4 +155,22 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "track-conditions-drying-lightly-wet": ["voice/{voice}/track-conditions/drying-lightly-wet-01.mp3"],
   "track-conditions-drying-moderately-wet": ["voice/{voice}/track-conditions/drying-moderately-wet-01.mp3"],
   "track-conditions-drying-very-wet": ["voice/{voice}/track-conditions/drying-very-wet-01.mp3"],
+
+  // Qualifying lap-invalidation pools (issue #567). The core "invalidated"
+  // line always fires; the tail picks one of these branches based on the
+  // snapshot's `lapsRemaining`:
+  //   0      → qualifying-out-of-laps
+  //   1..5   → qualifying-N-laps-left  (each clip carries its own unique
+  //            motivational line, so the scenario is just a pool lookup)
+  //   6+     → qualifying-plenty-of-laps
+  // Time-limited qualifying is gated upstream (no `lapLimited` snapshot field
+  // → tail skipped, core line only).
+  "qualifying-invalidated": ["voice/{voice}/qualifying-invalidation/invalidated-01.mp3"],
+  "qualifying-out-of-laps": ["voice/{voice}/qualifying-invalidation/out-of-laps-01.mp3"],
+  "qualifying-plenty-of-laps": ["voice/{voice}/qualifying-invalidation/plenty-of-laps-01.mp3"],
+  "qualifying-1-lap-left": ["voice/{voice}/qualifying-invalidation/1-lap-left-01.mp3"],
+  "qualifying-2-laps-left": ["voice/{voice}/qualifying-invalidation/2-laps-left-01.mp3"],
+  "qualifying-3-laps-left": ["voice/{voice}/qualifying-invalidation/3-laps-left-01.mp3"],
+  "qualifying-4-laps-left": ["voice/{voice}/qualifying-invalidation/4-laps-left-01.mp3"],
+  "qualifying-5-laps-left": ["voice/{voice}/qualifying-invalidation/5-laps-left-01.mp3"],
 };

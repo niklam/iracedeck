@@ -322,6 +322,8 @@ beforeEach(() => {
     undefined, // getLapTimeCalloutEnabled
     undefined, // getLapCompletedSnapshot
     undefined, // getPositionCalloutEnabled (issue #566)
+    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
+    undefined, // getQualifyingInvalidationSnapshot (issue #567)
     () => voiceMasterEnabled,
   );
 });
@@ -738,6 +740,26 @@ describe("incident callout live gating (issue #530)", () => {
 
     expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
   });
+
+  // Issue #567: the qualifying lap-invalidation scenario is registered
+  // BEFORE the incident scenarios in `index.ts`, so when both could fire on
+  // a qualifying flying lap the qualifying scenario grabs the Voice bus and
+  // the incident scenario drops. This test setup wires no qualifying-
+  // invalidation snapshot resolver (default `() => null`), so the qualifying
+  // scenario's `where:` short-circuits and the incident scenario fires
+  // normally in every session type — confirming there's no spurious
+  // suppression when the qualifying-invalidation snapshot isn't available.
+  it.each(["Lone Qualify", "Open Qualify", "Race", "Practice", "Lone Practice", "Warmup", ""])(
+    "incident callouts fire in %s sessions when the qualifying snapshot is null",
+    (sessionType) => {
+      mockSessionType.mockReturnValue(sessionType);
+      audio._played.length = 0;
+      bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" } as never);
+      flush(audio);
+
+      expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
+    },
+  );
 });
 
 // Issue #515: the Race Engineer master gate ANDs the user's

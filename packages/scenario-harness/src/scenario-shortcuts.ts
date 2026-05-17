@@ -11,6 +11,7 @@
  * stable `category` string and add at least one entry under it. Order in
  * the array drives display order in the UI.
  */
+import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
 import { type SimEventName, TrackWetness } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 
@@ -21,6 +22,14 @@ export type ScenarioShortcut = {
   description?: string;
   event: SimEventName;
   data: Record<string, unknown>;
+  /**
+   * Optional snapshot for the qualifying lap-invalidation scenario (issue #567).
+   * When present, the UI POSTs `/api/qualifying-invalidation/snapshot` with this
+   * payload BEFORE publishing `event`, so the scenario's resolver returns the
+   * intended snapshot at fire time. A single click therefore drives both the
+   * snapshot setup and the trigger event.
+   */
+  qualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshot;
 };
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
@@ -66,6 +75,23 @@ function pitStatus(id: string, label: string, target: PitSvStatus, description?:
     // engine sees identical `family: "pit-status"` metadata regardless
     // of the `from` value.
     data: { from: PitSvStatus.None, to: target },
+  };
+}
+
+function qualifyingInvalidation(
+  id: string,
+  label: string,
+  snapshot: Omit<QualifyingInvalidationSnapshot, "lapStartedFromPits"> & { lapStartedFromPits?: boolean },
+  options: { description?: string; incidentType?: string; delta?: number } = {},
+): ScenarioShortcut {
+  return {
+    id: `qualifying-invalidation-${id}`,
+    category: "Qualifying Invalidation",
+    label,
+    description: options.description,
+    event: "incident.occurred",
+    data: { delta: options.delta ?? 1, type: options.incidentType ?? "off-track" },
+    qualifyingInvalidationSnapshot: { lapStartedFromPits: false, ...snapshot },
   };
 }
 
@@ -286,6 +312,85 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "offTrack.started",
     data: {},
   },
+  // ── Qualifying Invalidation ──
+  // Issue #567. Each shortcut posts its embedded `qualifyingInvalidationSnapshot`
+  // to `/api/qualifying-invalidation/snapshot` before publishing the trigger
+  // event, so a single click drives both the snapshot setup and the
+  // `incident.occurred` fire. Together they cover every code path through the
+  // scenario: out-of-laps, counted-singular, counted-plural, plenty fallback,
+  // time-limited (core only), session gating, and the per-lap latch.
+  qualifyingInvalidation(
+    "lap-limited-3-laps-left",
+    "Off-Track — 3 laps left",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 3, lapLimited: true, lapCompleted: 1 },
+    { description: "Qualifying with 3 laps to go — composed plural tail." },
+  ),
+  qualifyingInvalidation(
+    "lap-limited-1-lap-left",
+    "Contact-Car — 1 lap left",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 1, lapLimited: true, lapCompleted: 2 },
+    {
+      description: "Qualifying with 1 lap to go — composed singular tail.",
+      incidentType: "contact-car",
+      delta: 0,
+    },
+  ),
+  qualifyingInvalidation(
+    "lap-limited-out-of-laps",
+    "Off-Track — out of laps",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 0, lapLimited: true, lapCompleted: 3 },
+    { description: "Qualifying with no laps remaining — out-of-laps branch." },
+  ),
+  qualifyingInvalidation(
+    "lap-limited-plenty",
+    "Off-Track — plenty of laps",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 8, lapLimited: true, lapCompleted: 4 },
+    { description: "Qualifying with 6+ laps to go — fallback to plenty-of-laps clip." },
+  ),
+  qualifyingInvalidation(
+    "time-limited",
+    "Off-Track — time-limited",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: undefined, lapLimited: false, lapCompleted: 5 },
+    { description: "Time-limited qualifying — core line only, tail skipped." },
+  ),
+  qualifyingInvalidation(
+    "race-session-silent",
+    "Off-Track in Race (silent)",
+    { sessionType: "race", sessionNum: 0, lapsRemaining: 3, lapLimited: true, lapCompleted: 6 },
+    { description: "Session-gating check — should produce no audio." },
+  ),
+  qualifyingInvalidation(
+    "practice-session-silent",
+    "Off-Track in Practice (silent)",
+    { sessionType: "practice", sessionNum: 0, lapsRemaining: 3, lapLimited: true, lapCompleted: 7 },
+    { description: "Session-gating check — should produce no audio." },
+  ),
+  qualifyingInvalidation(
+    "latch-repeat",
+    "Same Lap Again (latch)",
+    { sessionType: "qualifying", sessionNum: 1, lapsRemaining: 3, lapLimited: true, lapCompleted: 1 },
+    {
+      description:
+        "Fires the same (sessionNum=1, lapCompleted=1) as the first qualifying shortcut — should be silent on the second click thanks to the per-lap latch. Reset by clicking any other qualifying-invalidation shortcut (different lapCompleted) or by a server restart.",
+    },
+  ),
+  qualifyingInvalidation(
+    "pit-exit-lap-silent",
+    "Off-Track on pit-exit lap (silent)",
+    {
+      sessionType: "qualifying",
+      sessionNum: 1,
+      lapsRemaining: 2,
+      lapLimited: true,
+      lapCompleted: 3,
+      lapStartedFromPits: true,
+    },
+    {
+      description:
+        "Lap began at pit exit (lapStartedFromPits=true) — should produce no audio. Covers both the session out-lap and any mid-session post-pit-exit lap: neither is a timed attempt.",
+    },
+  ),
+
   {
     id: "off-track-ended",
     category: "Incidents",
