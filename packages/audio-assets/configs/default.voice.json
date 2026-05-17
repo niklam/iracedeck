@@ -3892,15 +3892,17 @@
     "position-intro-better": [
       {
         "name": "that-puts-us-to-01",
-        "text": "That puts us to <break time=\"0.15s\" />",
-        "seed": 1
+        "text": "That puts us to",
+        "seed": 1,
+        "next_text": " pee five."
       }
     ],
     "position-intro-worse": [
       {
         "name": "currently-01",
-        "text": "We're currently <break time=\"0.15s\" />",
-        "seed": 1
+        "text": "We're currently",
+        "seed": 1,
+        "next_text": " pee five."
       }
     ],
     "position-intro-pole": [
@@ -4549,6 +4551,90 @@
         "previous_request_ids": [
           "qualifying-invalidation/invalidated-01"
         ]
+      }
+    ],
+    "race-status": [
+      {
+        "name": "still-leading-01",
+        "text": "We're still leading the race. Keep it up.",
+        "seed": 1
+      }
+    ],
+    "race-end-greeting": [
+      { "name": "adam", "text": "Adam," },
+      { "name": "al", "text": "Al," },
+      { "name": "andre", "text": "André," },
+      { "name": "andrew", "text": "Andrew," },
+      { "name": "andy", "text": "Andy," },
+      { "name": "bob", "text": "Bob," },
+      { "name": "boss", "text": "Boss," },
+      { "name": "brenton", "text": "Brenton," },
+      { "name": "casey", "text": "Casey," },
+      { "name": "champ", "text": "Champ," },
+      { "name": "chris", "text": "Chris," },
+      { "name": "cole", "text": "Cole," },
+      { "name": "daniel", "text": "Daniel," },
+      { "name": "dave", "text": "Dave," },
+      { "name": "david", "text": "David," },
+      { "name": "dominic", "text": "Dominic," },
+      { "name": "driver", "text": "Driver," },
+      { "name": "felix", "text": "Felix," },
+      { "name": "fredrich", "text": "Fredrich," },
+      { "name": "glen", "text": "Glen," },
+      { "name": "hector", "text": "Hector," },
+      { "name": "hesham", "text": "Hesham," },
+      { "name": "ivan", "text": "Ivan," },
+      { "name": "jace", "text": "Jace," },
+      { "name": "jasper", "text": "Jasper," },
+      { "name": "johan", "text": "Johan," },
+      { "name": "jorge", "text": "Jorge," },
+      { "name": "jose", "text": "Jose," },
+      { "name": "justin", "text": "Justin," },
+      { "name": "kev", "text": "Kev," },
+      { "name": "kevin", "text": "Kevin," },
+      { "name": "kris", "text": "Kris," },
+      { "name": "lee", "text": "Lee," },
+      { "name": "lorenzo", "text": "Lorenzo," },
+      { "name": "marcus", "text": "Marcus," },
+      { "name": "mark", "text": "Mark," },
+      { "name": "mate", "text": "Mate," },
+      { "name": "matt", "text": "Matt," },
+      { "name": "matthew", "text": "Matthew," },
+      { "name": "miguel", "text": "Miguel," },
+      { "name": "miquel", "text": "Miquel," },
+      { "name": "nick", "text": "Nick," },
+      { "name": "niklas", "text": "Niklas," },
+      { "name": "oivindl", "text": "Öivin," },
+      { "name": "pablo", "text": "Pablo," },
+      { "name": "patrick", "text": "Patrick," },
+      { "name": "raymond", "text": "Raymond," },
+      { "name": "rich", "text": "Rich," },
+      { "name": "rob", "text": "Rob," },
+      { "name": "shawn", "text": "Shawn," },
+      { "name": "tim", "text": "Tim," },
+      { "name": "ville", "text": "Ville," },
+      { "name": "zeus", "text": "Zeus," }
+    ],
+    "race-end": [
+      {
+        "name": "we-won-01",
+        "text": "well done, <break time=\"0.3s\"/> that's a win. <break time=\"0.3s\"/> Congratulations!!!",
+        "seed": 3
+      },
+      {
+        "name": "second-place-01",
+        "text": "that's second place. Very well done.",
+        "seed": 1
+      },
+      {
+        "name": "podium-third-01",
+        "text": "we made it to the podium. We're third. Well done.",
+        "seed": 1
+      },
+      {
+        "name": "race-over-result-is-01",
+        "text": "the race is over. The final result for us is",
+        "seed": 1
       }
     ]
   }

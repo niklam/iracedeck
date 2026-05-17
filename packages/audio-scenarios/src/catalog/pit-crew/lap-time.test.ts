@@ -158,6 +158,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let lastSnapshot: LapCompletedSnapshot | null;
 let lapTimeEnabled: boolean;
+let raceFinished: boolean;
 
 function fire(data: LapCompletedSnapshot | null): void {
   lastSnapshot = data;
@@ -181,6 +182,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   lastSnapshot = null;
   lapTimeEnabled = true;
+  raceFinished = false;
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -200,6 +202,11 @@ beforeEach(() => {
     undefined, // getSessionStartSnapshot
     () => lapTimeEnabled,
     () => lastSnapshot,
+    undefined, // getPositionCalloutEnabled
+    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
+    undefined, // getQualifyingInvalidationSnapshot (issue #567)
+    undefined, // getRaceStatusCalloutEnabled (issue #569)
+    () => raceFinished,
   );
 });
 
@@ -332,6 +339,29 @@ describe("lap-time scenario", () => {
     fire(snap({ lapTime: 63.4 }));
 
     expect(voicePaths()).toEqual([]);
+  });
+
+  it("is suppressed on the final lap of a race when race-end fires (issue #569)", () => {
+    raceFinished = true;
+    fire(snap({ lapTime: 63.4, sessionType: "race" }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("still fires on a race PB lap when race is not over", () => {
+    raceFinished = false;
+    fire(snap({ lapTime: 63.4, sessionType: "race" }));
+
+    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
+  });
+
+  it("still fires on a qualifying PB lap even if a stray latch reads true", () => {
+    // The race-finished gate only suppresses race sessions — qualifying PBs
+    // remain unaffected because the race-end callout doesn't exist there.
+    raceFinished = true;
+    fire(snap({ lapTime: 63.4, sessionType: "qualifying" }));
+
+    expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
   });
 
   it("plays the readout immediately on lap.completed (no leading pause)", () => {

@@ -51,7 +51,7 @@
  *   - `sessionType`: resolved by the orchestrator (translator.ts) since it
  *     reads session info; the diff just consumes the classified value.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -126,6 +126,13 @@ export function diffLaps(
     state.lastLapPosition = 0;
     state.lastLapClassPosition = 0;
     state.lapResultsPendingSince = 0;
+    // Position-change cadence + race-end latch (issue #569). New session ⇒
+    // re-arm both: a position-change baseline carried in from practice would
+    // skew the race-status every-3 cadence on the first race lap; a stale
+    // `raceFinishedFired` from the prior race would swallow the new race's
+    // emission entirely.
+    state.lastPositionChangeLap = -1;
+    state.raceFinishedFired = false;
   }
 
   state.lastLapSessionNum = sessionNum;
@@ -245,6 +252,7 @@ export function diffLaps(
     classPosition?: number;
     previousClassPosition?: number;
     isMultiClass?: boolean;
+    lapsSincePositionChange?: number;
   } = {
     lap: lapCompleted,
     lapTime: lapLastLapTime,
@@ -311,6 +319,86 @@ export function diffLaps(
   if (state.lastLapClassPosition > 0) data.previousClassPosition = state.lastLapClassPosition;
 
   if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+
+  // Position-change detection (issue #569). Driven by the EFFECTIVE position
+  // — class in multi-class series, overall otherwise — to match the rest of
+  // the system's effective-position contract (`selectEffectivePosition` in
+  // the position-change / race-status / race-end scenarios). In multi-class,
+  // a class-only gain/loss is what the driver actually races for: it must
+  // reset the cadence and emit `position.changed`; an overall-only churn
+  // (e.g. another class shuffles around you with your class position
+  // unchanged) is noise and shouldn't. The `position.changed` payload still
+  // carries both raw fields so future consumers can pick what they need.
+  // Emit only when a real prior baseline existed (skips the driver's first
+  // valid lap of the session — the change scenario has no "previous" to
+  // compare against and the issue's payload requires `previousPosition`).
+  const effectivePositionForEmit = isMultiClass === true ? classPositionForEmit : positionForEmit;
+  const effectivePreviousPosition = isMultiClass === true ? state.lastLapClassPosition : state.lastLapPosition;
+  const positionChanged =
+    effectivePositionForEmit > 0 &&
+    effectivePreviousPosition > 0 &&
+    effectivePositionForEmit !== effectivePreviousPosition;
+
+  if (positionChanged) {
+    state.lastPositionChangeLap = lapCompleted;
+
+    const changeData: {
+      lap: number;
+      position: number;
+      previousPosition: number;
+      classPosition?: number;
+      previousClassPosition?: number;
+      isMultiClass?: boolean;
+    } = {
+      lap: lapCompleted,
+      position: positionForEmit,
+      previousPosition: state.lastLapPosition,
+    };
+
+    if (classPositionForEmit > 0) changeData.classPosition = classPositionForEmit;
+
+    if (state.lastLapClassPosition > 0) changeData.previousClassPosition = state.lastLapClassPosition;
+
+    if (isMultiClass !== null) changeData.isMultiClass = isMultiClass;
+
+    emit({ event: "position.changed", data: changeData });
+  } else if (state.lastPositionChangeLap < 0 && effectivePositionForEmit > 0) {
+    // First lap.completed where we know our (effective) position — anchor
+    // the every-3-laps cadence to this lap so a driver who holds position
+    // from race start still hears status updates. Without this anchor,
+    // `lapsSincePositionChange` would stay omitted until a real change
+    // happened, and a P5-from-start-to-finish driver would never get any
+    // race-status callout.
+    state.lastPositionChangeLap = lapCompleted;
+  }
+
+  if (state.lastPositionChangeLap >= 0) {
+    data.lapsSincePositionChange = lapCompleted - state.lastPositionChangeLap;
+  }
+
+  // Race-end detection (issue #569). Once per race session: fires the first
+  // `lap.completed` in a race session after iRacing has raised the checkered
+  // flag. The latch only flips when we successfully emit (position field is
+  // populated) — without a position the race-end callout can't speak, so a
+  // suppressed emit leaves the latch open for the next lap.completed retry.
+  // Reading `SessionFlags` directly avoids depending on whether the user was
+  // connected when `flag.checkered.raised` was emitted by diffFlags (after a
+  // replay-state wipe the activeFlags set re-seeds without re-emitting).
+  const checkeredRaised = hasFlag(telemetry.SessionFlags ?? 0, Flags.Checkered);
+
+  if (!state.raceFinishedFired && sessionType === "race" && checkeredRaised && positionForEmit > 0) {
+    state.raceFinishedFired = true;
+
+    const finishedData: { position: number; classPosition?: number; isMultiClass?: boolean } = {
+      position: positionForEmit,
+    };
+
+    if (classPositionForEmit > 0) finishedData.classPosition = classPositionForEmit;
+
+    if (isMultiClass !== null) finishedData.isMultiClass = isMultiClass;
+
+    emit({ event: "race.finished", data: finishedData });
+  }
 
   emit({ event: "lap.completed", data });
 

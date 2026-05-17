@@ -174,6 +174,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let lastSnapshot: LapPayload | null;
 let positionEnabled: boolean;
+let raceFinished: boolean;
 
 function fire(data: LapPayload | null): void {
   lastSnapshot = data;
@@ -197,6 +198,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   lastSnapshot = null;
   positionEnabled = true;
+  raceFinished = false;
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -217,6 +219,10 @@ beforeEach(() => {
     () => false, // disable lap-time so it doesn't compete on the same event
     () => lastSnapshot,
     () => positionEnabled,
+    undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
+    undefined, // getQualifyingInvalidationSnapshot (issue #567)
+    undefined, // getRaceStatusCalloutEnabled (issue #569)
+    () => raceFinished, // getRaceFinishedFired (issue #569)
   );
 });
 
@@ -278,8 +284,20 @@ describe("positionChangeIsAnnounceable", () => {
     expect(positionChangeIsAnnounceable(snap({ position: 4 }))).toBe(true);
   });
 
-  it("returns true when position is unchanged on a non-PB lap (status update)", () => {
-    expect(positionChangeIsAnnounceable(snap({ position: 5, previousPosition: 5, isBest: false }))).toBe(true);
+  it("returns true when position is unchanged on a non-PB lap in qualifying (status update)", () => {
+    expect(
+      positionChangeIsAnnounceable(
+        snap({ position: 5, previousPosition: 5, isBest: false, sessionType: "qualifying" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when position is unchanged on a non-PB lap in race (race-status owns hold)", () => {
+    // Issue #569 — in race the unchanged-status case is suppressed because
+    // the every-3-laps race-status callout handles hold-position updates.
+    expect(
+      positionChangeIsAnnounceable(snap({ position: 5, previousPosition: 5, isBest: false, sessionType: "race" })),
+    ).toBe(false);
   });
 
   it("returns false when position is unchanged on a PB lap (lap-time-best already speaks)", () => {
@@ -351,8 +369,39 @@ describe("position-change scenario", () => {
     expect(hasClip("/position-number/4.mp3")).toBe(true);
   });
 
-  it("stays silent in race sessions (qualifying-only family)", () => {
+  it("fires on a real change in race sessions (improvement uses 'currently', not 'that puts us to')", () => {
+    // Issue #569 — race fires the position callout on real changes, but the
+    // intro is always "We're currently P[n]" regardless of direction. "That
+    // puts us to P[n]" implies lap-times-drive-standings which is true in
+    // qualifying but wrong in race.
     fire(snap({ position: 3, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
+  it("fires on a real change in race sessions (worsening)", () => {
+    fire(snap({ position: 7, previousPosition: 5, sessionType: "race" }));
+
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-number/7.mp3")).toBe(true);
+  });
+
+  it("stays silent when position is unchanged on a non-PB lap in race (race-status owns hold)", () => {
+    // The unchanged-on-non-PB status line fires in qualifying only — in race
+    // the every-3-laps race-status callout handles hold-position updates.
+    fire(snap({ position: 5, previousPosition: 5, isBest: false, sessionType: "race" }));
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("stays silent on the final lap of a race when race-end fires (issue #569)", () => {
+    // Race finished — position-change must defer to race-end, otherwise the
+    // engine queues "We're currently P6" behind race-end (both `priority:
+    // "low"`, no shared family) and the user hears it after the result speech.
+    raceFinished = true;
+    fire(snap({ position: 6, previousPosition: 5, sessionType: "race" }));
 
     expect(voicePaths()).toEqual([]);
   });
@@ -408,10 +457,17 @@ describe("position-change scenario — qualifying pole", () => {
     expect(hasClip("/position-number/1.mp3")).toBe(true);
   });
 
-  it("stays silent for P1 improvements in race sessions (whole family is qualifying-only)", () => {
+  it("plays the 'currently' intro (never pole or 'puts us to') for P1 improvements in race", () => {
+    // Pole branch is qualifying-only — "on pole" doesn't apply to race
+    // leadership. The "that puts us to" intro is also qualifying-only — race
+    // standings don't follow from lap times. So a P1 improvement in race
+    // speaks the standard "We're currently P1" status (issue #569 fix).
     fire(snap({ position: 1, previousPosition: 3, sessionType: "race" }));
 
-    expect(voicePaths()).toEqual([]);
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(false);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-number/1.mp3")).toBe(true);
   });
 
   it("uses pole on class-P1 improvement in multi-class qualifying", () => {

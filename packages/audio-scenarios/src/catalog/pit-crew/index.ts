@@ -73,6 +73,19 @@ import {
   type QualifyingInvalidationSnapshotResolver,
   SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID,
 } from "./qualifying-invalidation.js";
+import {
+  buildRaceEndScenario,
+  type RaceEndCalloutId,
+  type RaceFinishedSnapshotResolver,
+  registerRaceEndVars,
+  SCENARIO_ID_TO_RACE_END_ID,
+} from "./race-end.js";
+import {
+  buildRaceStatusScenario,
+  type RaceStatusCalloutId,
+  registerRaceStatusVars,
+  SCENARIO_ID_TO_RACE_STATUS_ID,
+} from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
@@ -132,6 +145,21 @@ export {
   type QualifyingInvalidationSnapshotResolver,
   resetQualifyingInvalidationLatch,
 } from "./qualifying-invalidation.js";
+export {
+  buildRaceEndScenario,
+  RACE_END_CALLOUT_SETTING_KEYS,
+  type RaceEndCalloutId,
+  type RaceFinishedSnapshot,
+  type RaceFinishedSnapshotResolver,
+  selectEffectiveFinalPosition,
+} from "./race-end.js";
+export {
+  buildRaceStatusScenario,
+  RACE_STATUS_CALLOUT_SETTING_KEYS,
+  RACE_STATUS_LAP_INTERVAL,
+  type RaceStatusCalloutId,
+  raceStatusCadenceHits,
+} from "./race-status.js";
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -427,6 +455,32 @@ export function registerPitCrew(
   // Default `() => null` makes the scenario's `where:` short-circuit — a safe
   // stub for tests that don't supply a resolver.
   getQualifyingInvalidationSnapshot: QualifyingInvalidationSnapshotResolver = () => null,
+  // User opt-in for the race-status periodic position update (issue #569).
+  // Single subject; same gate-at-event-arrival shape as the other callout
+  // families. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
+  getRaceStatusCalloutEnabled: (id: RaceStatusCalloutId) => boolean = () => true,
+  // Race-end latch (issue #569). Plugins wire this to a getter exposed by
+  // `@iracedeck/sim-events-iracing` that reads the translator's
+  // `state.raceFinishedFired`. Race-status `where:` reads it live so the
+  // periodic status callout suppresses itself on the final lap (race-end
+  // fires on the same `lap.completed` tick — the diff emits `race.finished`
+  // first into the pending queue, latch flips synchronously before
+  // `lap.completed` publishes). Default `() => false` (race never ends) keeps
+  // legacy behavior for tests that don't supply a closure.
+  getRaceFinishedFired: () => boolean = () => false,
+  // User opt-in for the race-end final-result callout (issue #569). Single
+  // subject; same gate-at-event-arrival shape as the other callout families.
+  // Default `() => true` preserves legacy behavior for tests that don't
+  // supply a closure.
+  getRaceEndCalloutEnabled: (id: RaceEndCalloutId) => boolean = () => true,
+  // Race-end snapshot resolver (issue #569). Plugins compose this from the
+  // cached `race.finished` event payload plus the Property Inspector
+  // driver-name pick. Read at fire time inside the scenario's `where:`
+  // predicate and per-clip `var` resolvers — same deferred-snapshot pattern
+  // as session-start. Default `() => null` makes the scenario's `where:`
+  // short-circuit — a safe stub for tests that don't supply a resolver.
+  getRaceFinishedSnapshot: RaceFinishedSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -607,7 +661,10 @@ export function registerPitCrew(
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildLapTimeScenario(getLapCompletedSnapshot),
+        // Pass the race-finished resolver so the best-lap callout is
+        // suppressed on the final lap of a race (issue #569) — race-end
+        // takes the floor.
+        buildLapTimeScenario(getLapCompletedSnapshot, getRaceFinishedFired),
         SCENARIO_ID_TO_LAP_TIME_ID,
         getLapTimeCalloutEnabled,
         "lap-time callout",
@@ -628,10 +685,49 @@ export function registerPitCrew(
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildPositionScenario(getLapCompletedSnapshot),
+        // Pass the race-finished resolver so position-change is suppressed on
+        // the final lap of a race (issue #569) — race-end takes the floor, and
+        // without the gate position-change would queue "We're currently P[n]"
+        // behind race-end and play it after the result speech.
+        buildPositionScenario(getLapCompletedSnapshot, getRaceFinishedFired),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Race-status periodic position update (issue #569). Reuses the same
+  // `getLapCompletedSnapshot` resolver as lap-time / position — all three
+  // scenarios subscribe to `lap.completed` and read the same frozen payload.
+  // `priority: "low"` defers when lap-time-best (`normal`) takes the bus on a
+  // PB lap; the deferred replay carries the original event so the cadence
+  // check stays consistent.
+  registerRaceStatusVars(engine, getLapCompletedSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildRaceStatusScenario(getLapCompletedSnapshot, getRaceFinishedFired),
+        SCENARIO_ID_TO_RACE_STATUS_ID,
+        getRaceStatusCalloutEnabled,
+        "race-status callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Race-end final-result callout (issue #569). Snapshot resolver is owned by
+  // the plugin (caches `race.finished` payload via event-bus subscription,
+  // composes with the Property Inspector driver-name pick).
+  registerRaceEndVars(engine, getRaceFinishedSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildRaceEndScenario(getRaceFinishedSnapshot),
+        SCENARIO_ID_TO_RACE_END_ID,
+        getRaceEndCalloutEnabled,
+        "race-end callout",
         logger,
       ),
     ),

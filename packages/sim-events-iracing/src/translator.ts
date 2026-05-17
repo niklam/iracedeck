@@ -170,6 +170,22 @@ export function isPitActionsAllowed(): boolean {
 }
 
 /**
+ * Whether the race-end latch has fired in the current race session (issue #569).
+ * Set inside `diffLaps` the first time `lap.completed` lands with the checkered
+ * flag raised in a race session — the diff publishes `race.finished` first into
+ * the pending queue and updates the latch synchronously, so by the time the
+ * race-status scenario's `where:` runs against the same `lap.completed`, this
+ * returns `true` and the periodic status callout is suppressed for the final
+ * lap. Clears on session change / disconnect, so a later race session re-arms.
+ * Returns `false` when the translator hasn't been initialized yet.
+ */
+export function isRaceFinished(): boolean {
+  if (!instance) return false;
+
+  return instance.state.raceFinishedFired;
+}
+
+/**
  * Build a pit-readback snapshot from the latest telemetry tick (issue
  * #481). Returns `null` if no telemetry has arrived yet — callers (the
  * audio scenarios, via the resolver passed into `registerPitCrew`)

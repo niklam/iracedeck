@@ -121,6 +121,17 @@ export const EVENT_TEMPLATES = [
       sessionType: "race",
     },
   },
+  {
+    name: "position.changed",
+    description:
+      "Effective position changed at a lap boundary (issue #569) — plumbing for future per-change race callouts",
+    data: { lap: 5, position: 4, previousPosition: 5 },
+  },
+  {
+    name: "race.finished",
+    description: "Race finished — fires once when checkered + S/F crossing land in a race session (issue #569)",
+    data: { position: 3 },
+  },
 
   // ── Value-change ──
   { name: "radar.changed", description: "Proximity radar state changed", data: { from: "clear", to: "left" } },

@@ -28,17 +28,20 @@
  *   [radio close]
  *
  * The intro is data-driven via `engine.defineVar`:
- *   - Driver gained positions, OR `previousPosition` is unset (first valid
- *     lap of the session — `isFirstValid: true` aligns with #555) →
- *     "That puts us to <break /> pee N." ("better" intro)
- *   - Driver lost positions, OR position unchanged on a non-PB lap →
- *     "We're currently <break /> pee N." ("worse" intro)
- *   - Position unchanged on a PB lap → `where:` short-circuits, scenario
- *     silent (lap-time-best already narrates the lap).
- *   - **Qualifying pole** — improvement to effective P1 in qualifying →
- *     "That puts us on pole." (one clip, no number). Holding P1 stays on
- *     the standard status line ("We're currently P1") so the pole call
- *     doesn't repeat each subsequent lap.
+ *   - **Qualifying**: driver gained positions OR `previousPosition` is unset
+ *     (first valid lap — `isFirstValid: true` aligns with #555) →
+ *     "That puts us to <break /> pee N." ("better" intro). Driver lost
+ *     positions OR position unchanged on a non-PB lap → "We're currently
+ *     <break /> pee N." ("worse" intro). Position unchanged on a PB lap →
+ *     `where:` short-circuits, scenario silent (lap-time-best already
+ *     narrates the lap). Improvement to effective P1 in qualifying →
+ *     "That puts us on pole." (one clip, no number — pole branch).
+ *   - **Race** (issue #569): every direction uses the "currently" intro —
+ *     race standings don't follow from lap times, so "That puts us to P3"
+ *     reads wrong; "We're currently P3" works whether you gained or lost
+ *     the place. Pole branch is skipped (qualifying-only). Hold-position
+ *     status is owned by the every-3-laps race-status callout; the
+ *     position-change callout in race fires only on real changes.
  *
  * The "effective" position picks between class and overall based on the
  * payload's `isMultiClass` flag (translator-resolved from session info):
@@ -53,14 +56,17 @@
  * driver holds when the engineer finally gets bus time.
  *
  * `where:` filters:
- *   - **Qualifying only** — the standings-based phrasings fit qualifying's
- *     standings-after-best-lap model. Race / practice / test stay silent.
+ *   - **Qualifying or race** — qualifying fires on every lap update
+ *     (improvement, worsening, or hold-status on a non-PB lap). Race only
+ *     fires on real changes (improvement / worsening / first-fix); the
+ *     hold-position status is owned by the every-3-laps race-status callout
+ *     (issue #569) so we don't double-narrate. Practice / test stay silent.
  *     See `isAnnounceableSessionType` for the rationale.
  *   - Position is in the announceable range (`POSITION_NUMBER_MIN..MAX`).
  *     Out-of-range positions cause the scenario not to fire at all
  *     rather than producing a partial readout.
- *   - Position change detected OR position unchanged on a non-PB lap
- *     (the status-update path; see `positionChangeIsAnnounceable`).
+ *   - Position change detected OR (qualifying only) position unchanged on a
+ *     non-PB lap (the status-update path; see `positionChangeIsAnnounceable`).
  *
  * Sentinel: when neither overall nor class position is populated (e.g.
  * `PlayerCarPosition === 0` on a session reset), the scenario does NOT
@@ -158,11 +164,15 @@ export function positionChangeIsAnnounceable(snapshot: SimEventOf<"lap.completed
     return true;
   }
 
-  // Position unchanged. Fire the status update unless lap-time-best is
-  // already handling this lap (PB or first-valid). `isBest === true` is the
-  // condition lap-time-best fires on; `isFirstValid` always coincides with
-  // `isBest` (the first valid lap is necessarily the new best), so checking
+  // Position unchanged. In race, the every-3-laps race-status callout
+  // (issue #569) owns the hold-position status updates, so we stay silent
+  // here to avoid stacking two callouts on the same lap. In qualifying the
+  // status update fires unless lap-time-best is already handling this lap
+  // (PB or first-valid): `isBest === true` is the condition lap-time-best
+  // fires on; `isFirstValid` always coincides with `isBest`, so checking
   // `isBest` alone is sufficient to avoid double-narrating.
+  if (snapshot.sessionType === "race") return false;
+
   return snapshot.isBest !== true;
 }
 
@@ -211,17 +221,15 @@ function isPoleAchievement(snapshot: SimEventOf<"lap.completed">["data"]): boole
 
 /**
  * Whether the snapshot is in a session type that should produce a position
- * callout. **Qualifying only** for now — the standings-based phrasings
- * ("That puts us to P5", "We're currently P5", "That puts us on pole")
- * fit qualifying's standings-after-best-lap model. Race position changes
- * happen dynamically through overtakes and pit stops rather than at lap
- * boundaries; a race-flavoured callout family will be a separate scenario
- * if/when we add it. Practice and test sessions also stay silent.
- * `undefined` (unresolved session info) defaults to silent so a
- * misconfigured tick never produces an unintended fire.
+ * callout. **Qualifying and race** — in qualifying every lap update fires
+ * (improvement, worsening, or status hold on a non-PB lap); in race only
+ * the real change cases fire (issue #569) because the every-3-laps
+ * race-status callout owns the hold-position status updates. Practice and
+ * test sessions stay silent. `undefined` (unresolved session info) defaults
+ * to silent so a misconfigured tick never produces an unintended fire.
  */
 function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]): boolean {
-  return snapshot.sessionType === "qualifying";
+  return snapshot.sessionType === "qualifying" || snapshot.sessionType === "race";
 }
 
 /**
@@ -234,6 +242,16 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
     const s = getSnapshot();
 
     if (!s) return null;
+
+    // In race, force the "currently" intro for every direction (issue #569).
+    // "That puts us to P3" implies lap-times-drive-standings — true in
+    // qualifying, semantically wrong in race where position changes from
+    // overtakes and pit stops rather than from the lap just completed.
+    // "We're currently P3" reads correctly as a standings status regardless
+    // of whether you gained or lost the place.
+    if (s.sessionType === "race") {
+      return voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01");
+    }
 
     return isBetterChange(s)
       ? voicePath(POSITION_GROUP_INTRO_BETTER, "that-puts-us-to-01")
@@ -265,13 +283,21 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
 }
 
 /**
- * Build the position-change scenario. Takes a snapshot resolver only to
- * power the qualifying-pole branch's `if:` predicate at expansion time —
- * the per-clip `var` resolvers receive their own resolver reference via
- * {@link registerPositionVars}. The `where:` predicate reads `ev.data`
- * directly so it can decide whether to fire without the snapshot.
+ * Build the position-change scenario. Takes a snapshot resolver to power the
+ * qualifying-pole branch's `if:` predicate at expansion time (the per-clip
+ * `var` resolvers receive their own resolver reference via {@link
+ * registerPositionVars}), plus an optional `getRaceFinishedFired` so the
+ * `where:` short-circuits on the final lap of a race (issue #569). Without
+ * the race-finished gate, a position change on the final lap would queue
+ * "We're currently P[n]" behind race-end and play after the result speech
+ * — same `priority: "low"` as race-end with no shared family, so the engine
+ * defers but does not drop it. Default `() => false` (race never ends)
+ * preserves legacy behavior for tests / qualifying.
  */
-export function buildPositionScenario(getSnapshot: LapCompletedSnapshotResolver): Scenario {
+export function buildPositionScenario(
+  getSnapshot: LapCompletedSnapshotResolver,
+  getRaceFinishedFired: () => boolean = () => false,
+): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     {
@@ -300,6 +326,15 @@ export function buildPositionScenario(getSnapshot: LapCompletedSnapshotResolver)
         const data = ev.data as SimEventOf<"lap.completed">["data"];
 
         if (!isAnnounceableSessionType(data)) return false;
+
+        // Race finished — defer to race-end (issue #569). The diff sets the
+        // latch synchronously before publishing `lap.completed`, so by the
+        // time this where: runs the latch reads true on the final lap.
+        // Without this gate the engine would defer position-change behind
+        // race-end (both `priority: "low"`, no shared family) and replay it
+        // after the result speech — the user would hear "Niklas, we made it
+        // to the podium" followed by "We're currently P6".
+        if (data.sessionType === "race" && getRaceFinishedFired()) return false;
 
         return positionChangeIsAnnounceable(data);
       },

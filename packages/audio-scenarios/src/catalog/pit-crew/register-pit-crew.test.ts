@@ -324,6 +324,10 @@ beforeEach(() => {
     undefined, // getPositionCalloutEnabled (issue #566)
     undefined, // getQualifyingInvalidationCalloutEnabled (issue #567)
     undefined, // getQualifyingInvalidationSnapshot (issue #567)
+    undefined, // getRaceStatusCalloutEnabled (issue #569)
+    undefined, // getRaceFinishedFired (issue #569)
+    undefined, // getRaceEndCalloutEnabled (issue #569)
+    undefined, // getRaceFinishedSnapshot (issue #569)
     () => voiceMasterEnabled,
   );
 });

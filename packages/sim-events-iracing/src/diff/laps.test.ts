@@ -14,7 +14,7 @@
  *   - sentinel session-info-absent (undefined sessionType) omits the field
  *   - session reset (LapCompleted decreases) does not synthesize an event
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
@@ -958,5 +958,463 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
     const fired = lapEvents(events);
     expect(fired).toHaveLength(1);
     expect(fired[0].data.position).toBe(7);
+  });
+});
+
+describe("diffLaps — position-change + race-status cadence (issue #569)", () => {
+  function positionChangedEvents(events: PendingEvent[]): Array<Extract<PendingEvent, { event: "position.changed" }>> {
+    return events.filter(
+      (e): e is Extract<PendingEvent, { event: "position.changed" }> => e.event === "position.changed",
+    );
+  }
+
+  it("anchors the lapsSincePositionChange cadence to the first valid lap when no change happens", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+
+    // Lap 1 — first valid lap, anchors cadence at 1 since there's no
+    // previous baseline to detect a change against. Each subsequent lap uses
+    // a slightly different time so the diff's "LapLastLapTime changed"
+    // gate doesn't swallow the emission.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 64.0, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 3, LapLastLapTime: 64.1, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 4, LapLastLapTime: 64.2, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+
+    const fired = lapEvents(events);
+    expect(fired).toHaveLength(4);
+    expect(fired[0].data.lapsSincePositionChange).toBe(0);
+    expect(fired[1].data.lapsSincePositionChange).toBe(1);
+    expect(fired[2].data.lapsSincePositionChange).toBe(2);
+    expect(fired[3].data.lapsSincePositionChange).toBe(3);
+    // No position changes detected — only the anchor was set.
+    expect(positionChangedEvents(events)).toHaveLength(0);
+  });
+
+  it("emits position.changed and resets the cadence when position differs from the prior lap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 64.0, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+    // Position improves on lap 3 — emits position.changed and resets cadence.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 3, LapLastLapTime: 64.1, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(4, 4),
+      NOW,
+      emit,
+    );
+    // Lap 4 — same new position, lapsSincePositionChange counts from the
+    // change on lap 3.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 4, LapLastLapTime: 64.2, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(4, 4),
+      NOW,
+      emit,
+    );
+
+    const fired = lapEvents(events);
+    expect(fired).toHaveLength(4);
+    expect(fired[2].data.lapsSincePositionChange).toBe(0); // reset
+    expect(fired[3].data.lapsSincePositionChange).toBe(1);
+
+    const changes = positionChangedEvents(events);
+    expect(changes).toHaveLength(1);
+    expect(changes[0].data.lap).toBe(3);
+    expect(changes[0].data.position).toBe(4);
+    expect(changes[0].data.previousPosition).toBe(5);
+  });
+
+  it("omits lapsSincePositionChange on the first valid lap when position is unknown (no baseline anchor)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    // First lap has no position resolvable from either source — cadence
+    // can't anchor, so the field stays omitted.
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        PlayerCarPosition: 0,
+        PlayerCarClassPosition: 0,
+      }),
+      "race",
+      false,
+      { lapsComplete: 9999, position: 0, classPosition: -1 },
+      NOW,
+      emit,
+    );
+
+    const fired = lapEvents(events);
+    expect(fired).toHaveLength(1);
+    expect(fired[0].data.lapsSincePositionChange).toBeUndefined();
+  });
+
+  it("does not emit position.changed on the first valid lap (no prior baseline to compare)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+
+    expect(positionChangedEvents(events)).toHaveLength(0);
+  });
+
+  it("wipes lastPositionChangeLap on session change", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    diffLaps(state, tick({ SessionNum: 0 }), "practice", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.0, LapBestLapTime: 60.0 }),
+      "practice",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+    expect(state.lastPositionChangeLap).toBe(1);
+
+    // Session change — anchor should reset to -1, then re-anchor on the new
+    // session's first lap.
+    diffLaps(
+      state,
+      tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0, LapBestLapTime: 0 }),
+      "race",
+      false,
+      synced(2, 2),
+      NOW,
+      emit,
+    );
+    expect(state.lastPositionChangeLap).toBe(-1);
+  });
+
+  it("uses effective (class) position for change detection in multi-class", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
+
+    // Lap 1 — establish baseline: overall P12, class P3.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 3),
+      NOW,
+      emit,
+    );
+    expect(positionChangedEvents(events)).toHaveLength(0);
+    expect(state.lastPositionChangeLap).toBe(1);
+
+    // Lap 2 — class position improves (P3 → P2) but overall stays at P12.
+    // Effective position is class in multi-class, so this MUST emit
+    // position.changed and reset the cadence anchor.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 63.5, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 2),
+      NOW,
+      emit,
+    );
+    const changes = positionChangedEvents(events);
+    expect(changes).toHaveLength(1);
+    expect(changes[0].data.classPosition).toBe(2);
+    expect(changes[0].data.previousClassPosition).toBe(3);
+    expect(state.lastPositionChangeLap).toBe(2);
+  });
+
+  it("ignores overall-only churn in multi-class (class position unchanged)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
+
+    // Lap 1 — establish baseline: overall P12, class P3.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(12, 3),
+      NOW,
+      emit,
+    );
+
+    // Lap 2 — overall moves P12 → P10 (other-class shuffle ahead) but class
+    // position holds at P3. Should NOT emit position.changed and should NOT
+    // reset the cadence anchor — the driver doesn't race overall in
+    // multi-class, only their class matters.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 63.5, LapBestLapTime: 63.0 }),
+      "race",
+      true,
+      synced(10, 3),
+      NOW,
+      emit,
+    );
+    expect(positionChangedEvents(events)).toHaveLength(0);
+    expect(state.lastPositionChangeLap).toBe(1); // anchor stays put
+  });
+});
+
+describe("diffLaps — race.finished (issue #569)", () => {
+  function raceFinishedEvents(events: PendingEvent[]): Array<Extract<PendingEvent, { event: "race.finished" }>> {
+    return events.filter((e): e is Extract<PendingEvent, { event: "race.finished" }> => e.event === "race.finished");
+  }
+
+  it("emits race.finished once when checkered + lap.completed land in a race session", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+
+    const finished = raceFinishedEvents(events);
+    expect(finished).toHaveLength(1);
+    expect(finished[0].data.position).toBe(3);
+    expect(state.raceFinishedFired).toBe(true);
+  });
+
+  it("does not re-emit race.finished on subsequent laps in the same session", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+    // Another lap completes — checkered still raised, but the latch holds.
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 6,
+        LapLastLapTime: 64.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+
+    expect(raceFinishedEvents(events)).toHaveLength(1);
+  });
+
+  it("does not emit race.finished in non-race sessions even with checkered flag", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "qualifying",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+
+    expect(raceFinishedEvents(events)).toHaveLength(0);
+    expect(state.raceFinishedFired).toBe(false);
+  });
+
+  it("defers the latch when position is missing so the next lap.completed retries", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", false, synced(), NOW, emit);
+    // Lap with checkered but no position — latch should NOT flip.
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+        PlayerCarPosition: 0,
+        PlayerCarClassPosition: 0,
+      }),
+      "race",
+      false,
+      { lapsComplete: 9999, position: 0, classPosition: -1 },
+      NOW,
+      emit,
+    );
+    expect(raceFinishedEvents(events)).toHaveLength(0);
+    expect(state.raceFinishedFired).toBe(false);
+
+    // Next lap arrives with position resolved — emit + latch fire now.
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 6,
+        LapLastLapTime: 64.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      false,
+      synced(4, 4),
+      NOW,
+      emit,
+    );
+    expect(raceFinishedEvents(events)).toHaveLength(1);
+    expect(state.raceFinishedFired).toBe(true);
+  });
+
+  it("re-arms the latch on session change so a later race session can fire again", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    diffLaps(state, tick({ SessionNum: 0 }), "race", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        SessionNum: 0,
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+    expect(state.raceFinishedFired).toBe(true);
+
+    // New session (next race in the schedule).
+    diffLaps(
+      state,
+      tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0, LapBestLapTime: 0 }),
+      "race",
+      false,
+      synced(),
+      NOW,
+      emit,
+    );
+    expect(state.raceFinishedFired).toBe(false);
+  });
+
+  it("carries classPosition + isMultiClass into the race.finished payload", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", true, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 5,
+        LapLastLapTime: 63.0,
+        LapBestLapTime: 63.0,
+        SessionFlags: Flags.Checkered,
+      }),
+      "race",
+      true,
+      synced(8, 2),
+      NOW,
+      emit,
+    );
+
+    const finished = raceFinishedEvents(events);
+    expect(finished).toHaveLength(1);
+    expect(finished[0].data.position).toBe(8);
+    expect(finished[0].data.classPosition).toBe(2);
+    expect(finished[0].data.isMultiClass).toBe(true);
   });
 });
