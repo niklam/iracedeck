@@ -26,6 +26,14 @@ export type TranslatorState = {
   lastInPitStall: boolean;
   approachExitingSuppressed: boolean;
   approachAlertFired: boolean;
+  /**
+   * Whether the current lap began at pit exit. Set true by `diffPitLane`
+   * when emitting `pitLane.exited`; cleared by `diffLifecycle` when
+   * emitting `lap.started`. Used by the qualifying lap-invalidation
+   * snapshot (issue #567) to suppress the callout on the session out-lap
+   * and any mid-session post-pit-exit lap — neither is a timed attempt.
+   */
+  lapStartedFromPits: boolean;
 
   // ── Flags ───────────────────────────────────────────────────────────────
   flagStateInitialized: boolean;
@@ -222,6 +230,7 @@ export function createInitialState(): TranslatorState {
   return {
     pitLaneInitialized: false,
     lastOnPitRoad: false,
+    lapStartedFromPits: false,
     lastInPitStall: false,
     approachExitingSuppressed: false,
     approachAlertFired: false,

@@ -4487,6 +4487,69 @@
           "position-intro-worse/currently-01"
         ]
       }
+    ],
+    "qualifying-invalidation": [
+      {
+        "name": "invalidated-01",
+        "text": "This lap will be invalidated.",
+        "seed": 1
+      },
+      {
+        "name": "out-of-laps-01",
+        "text": "We're out of qualifying laps, so that's it for now.",
+        "seed": 1,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "plenty-of-laps-01",
+        "text": "We still have plenty of laps left. Take your time to settle in.",
+        "seed": 1,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "1-lap-left-01",
+        "text": "One lap left. Make sure to have a flying start for the last lap.",
+        "seed": 2,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "2-laps-left-01",
+        "text": "Two laps left. Take a breath, reset, and go again.",
+        "seed": 1,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "3-laps-left-01",
+        "text": "Three laps left. Plenty of runway <break time=\"0.2s\"/> take it lap by lap.",
+        "seed": 3,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "4-laps-left-01",
+        "text": "Four laps left. No need to rush, <break time=\"0.2s\"/> build into it.",
+        "seed": 6,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      },
+      {
+        "name": "5-laps-left-01",
+        "text": "Five laps left. Lots of time to find the pace.",
+        "seed": 1,
+        "previous_request_ids": [
+          "qualifying-invalidation/invalidated-01"
+        ]
+      }
     ]
   }
 }

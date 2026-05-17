@@ -322,6 +322,14 @@ function renderShortcuts() {
       if (s.description) btn.title = s.description;
       btn.addEventListener("click", async () => {
         try {
+          // Issue #567 — qualifying-invalidation shortcuts carry an embedded
+          // snapshot the scenario reads at fire time. Push it first so the
+          // resolver returns the intended snapshot when the trigger event
+          // arrives. `/api/qualifying-invalidation/snapshot` awaits a 204
+          // before we publish, so there's no push-vs-fire race.
+          if (s.qualifyingInvalidationSnapshot) {
+            await post("/api/qualifying-invalidation/snapshot", s.qualifyingInvalidationSnapshot);
+          }
           await post("/api/bus/publish", { event: s.event, data: s.data });
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);

@@ -67,6 +67,12 @@ import {
   registerPositionVars,
   SCENARIO_ID_TO_POSITION_ID,
 } from "./position.js";
+import {
+  buildQualifyingInvalidationScenario,
+  type QualifyingInvalidationCalloutId,
+  type QualifyingInvalidationSnapshotResolver,
+  SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID,
+} from "./qualifying-invalidation.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
@@ -118,6 +124,14 @@ export {
   positionNumberIsSpeakable,
   selectEffectivePosition,
 } from "./position.js";
+export {
+  buildQualifyingInvalidationScenario,
+  QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
+  type QualifyingInvalidationCalloutId,
+  type QualifyingInvalidationSnapshot,
+  type QualifyingInvalidationSnapshotResolver,
+  resetQualifyingInvalidationLatch,
+} from "./qualifying-invalidation.js";
 export {
   buildSessionStartScenario,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -400,6 +414,19 @@ export function registerPitCrew(
   // `() => true` preserves legacy behavior for tests that don't supply a
   // closure.
   getPositionCalloutEnabled: (id: PositionCalloutId) => boolean = () => true,
+  // User opt-in for the qualifying lap-invalidation callout (issue #567).
+  // Single subject; same gate-at-event-arrival shape as the other callout
+  // families. Default `() => true` preserves legacy behavior for tests that
+  // don't supply a closure.
+  getQualifyingInvalidationCalloutEnabled: (id: QualifyingInvalidationCalloutId) => boolean = () => true,
+  // Snapshot resolver for the qualifying lap-invalidation callout (issue
+  // #567). Plugins wire this to a closure that builds the snapshot from the
+  // latest telemetry tick + session info. Read at fire time inside the
+  // scenario's `where:` predicate (qualifying gate + per-lap latch) and again
+  // inside the tail's conditional branches and the lap-count `var` resolver.
+  // Default `() => null` makes the scenario's `where:` short-circuit — a safe
+  // stub for tests that don't supply a resolver.
+  getQualifyingInvalidationSnapshot: QualifyingInvalidationSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -512,6 +539,43 @@ export function registerPitCrew(
       ),
     );
   }
+
+  // Qualifying lap-invalidation callout (issue #567). MUST be registered
+  // BEFORE the incident scenarios below — both gate on `incident.occurred`,
+  // share the Voice bus, and run as `priority: "normal"` in different families.
+  // The scenario engine dispatches subscribers in registration order, and a
+  // second normal-priority scenario hitting a busy bus is silently dropped
+  // (see `attemptFire` in interpreter.ts). The shape we want:
+  //
+  //   Qualifying + valid flying lap → qualifying scenario grabs the bus,
+  //                                     incident scenario drops (no double-up).
+  //   Qualifying + out-lap / post-pit lap → qualifying scenario's `where:`
+  //                                     returns false (no fire, no bus grab),
+  //                                     incident scenario fires with generic
+  //                                     "mind the kerbs" coaching.
+  //   Race / practice / unknown        → qualifying scenario's `where:`
+  //                                     returns false (sessionType mismatch),
+  //                                     incident scenario fires normally.
+  //
+  // Registration order is the SOLE mechanism here — incident.ts deliberately
+  // does NOT gate on session type, because doing so would silence incidents
+  // on out-laps too (where the qualifying scenario also stays silent).
+  //
+  // The per-lap latch is module-scope inside qualifying-invalidation.ts and
+  // rolls over naturally as `(sessionNum, lapCompleted)` advances. No
+  // `defineVar` call — every tail branch is a direct pool lookup keyed on
+  // `lapsRemaining`.
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildQualifyingInvalidationScenario(getQualifyingInvalidationSnapshot),
+        SCENARIO_ID_TO_QUALIFYING_INVALIDATION_ID,
+        getQualifyingInvalidationCalloutEnabled,
+        "qualifying lap-invalidation callout",
+        logger,
+      ),
+    ),
+  );
 
   for (const s of INCIDENT_ALERTS) {
     engine.defineScenario(

@@ -18,6 +18,8 @@ import {
   type PitStatusCalloutId,
   POSITION_CALLOUT_SETTING_KEYS,
   type PositionCalloutId,
+  QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
+  type QualifyingInvalidationCalloutId,
   registerPitCrew,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
@@ -120,6 +122,7 @@ import {
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import {
+  getQualifyingInvalidationSnapshot,
   getReadbackSnapshot,
   getSessionStartConditions,
   initializeSimEventsIracing,
@@ -235,6 +238,7 @@ eventBus.subscribe("lap.completed", (ev) => {
   );
   lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
 });
+
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
 // effect mid-session without re-registering scenarios. The gate runs
 // at event-arrival time inside the scenario engine, before fire/expand,
@@ -311,6 +315,16 @@ registerPitCrew(
   // live-read pattern as the other callout families.
   (id: PositionCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[POSITION_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Qualifying lap-invalidation callout opt-in (issue #567). Single subject;
+  // same live-read pattern as the other callout families.
+  (id: QualifyingInvalidationCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Qualifying lap-invalidation snapshot resolver (issue #567). Built by
+  // sim-events-iracing from the latest telemetry tick — same shape as
+  // `getReadbackSnapshot` / `getSessionStartConditions`. The translator
+  // owns the `lapStartedFromPits` flag and applies the `SessionLapsRemainEx
+  // - 1` adjustment so the scenario reads a clean, semantic snapshot.
+  () => getQualifyingInvalidationSnapshot(),
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

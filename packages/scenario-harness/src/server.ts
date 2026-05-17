@@ -21,6 +21,10 @@ import { ALL_EVENT_NAMES, EVENT_TEMPLATES } from "./event-names.js";
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
 import type { MockSDKController } from "./mock-sdk-controller.js";
 import { snapshotToTelemetryPatch } from "./pit-readback-telemetry.js";
+import {
+  setHarnessQualifyingInvalidationSnapshot,
+  validateQualifyingInvalidationSnapshot,
+} from "./qualifying-invalidation-snapshot.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
 
@@ -419,6 +423,21 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
 
     setHarnessSessionStartSnapshot(snapshot);
+
+    return reply.code(204).send();
+  });
+
+  // Qualifying lap-invalidation composer (issue #567). Same shape as the
+  // session-start composer: the UI pushes a fully-formed snapshot here, then
+  // publishes `incident.occurred` via `/api/bus/publish` to fire the scenario.
+  // Pre-baked shortcuts in `scenario-shortcuts.ts` carry the snapshot inline so
+  // a single click hits both endpoints in sequence.
+  app.post("/api/qualifying-invalidation/snapshot", async (req, reply) => {
+    const snapshot = validateQualifyingInvalidationSnapshot(req.body);
+
+    if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
+
+    setHarnessQualifyingInvalidationSnapshot(snapshot);
 
     return reply.code(204).send();
   });

@@ -161,6 +161,46 @@ export type SessionStartSnapshot = SessionStartConditions & {
 };
 
 /**
+ * Snapshot the qualifying lap-invalidation scenario reads at fire time
+ * (issue #567). Built by the sim translator from the latest telemetry tick
+ * plus the active session info. `sessionType: "qualifying"` is the only
+ * value that gates the callout open — `practice`, `race`, and `undefined`
+ * all suppress it.
+ *
+ * `lapLimited` is the build-side classification of `SessionLapsTotal <
+ * UNLIMITED_LAPS` (32767 is iRacing's "time-limited" sentinel). The
+ * scenario doesn't re-check the sentinel; the translator resolves it once.
+ *
+ * `lapsRemaining` is the **effective attempts remaining AFTER the current
+ * (about-to-be-invalidated) lap finishes** — not iRacing's raw
+ * `SessionLapsRemainEx`, which counts the current lap. The translator
+ * pre-adjusts (subtracts 1, clamped to 0) so a 2-lap qual on the first
+ * flying lap reports `1`, the second flying lap reports `0` (out-of-laps
+ * tail), etc. Snapshot authors that don't have this quirk (test fixtures,
+ * harness) populate the field directly with the post-adjustment value.
+ *
+ * `lapCompleted` is the per-lap latch key — iRacing resets it per session,
+ * so the latch composite `(sessionNum, lapCompleted)` rolls over cleanly on
+ * session change.
+ *
+ * `lapStartedFromPits` is the pit-exit lap detector. The translator sets it
+ * to `true` between `pitLane.exited` and the next `lap.started`, covering
+ * both the session out-lap (driver exited the pit box at session start) and
+ * any mid-session post-pit-exit lap. Neither is a timed attempt, so an
+ * incident there shouldn't fire the "this lap will be invalidated" line.
+ *
+ * Sim-agnostic: any future translator can populate the same shape.
+ */
+export type QualifyingInvalidationSnapshot = {
+  sessionType: "practice" | "qualifying" | "race" | undefined;
+  sessionNum: number | undefined;
+  lapsRemaining: number | undefined;
+  lapLimited: boolean;
+  lapCompleted: number;
+  lapStartedFromPits: boolean;
+};
+
+/**
  * Discriminated union of every event the bus knows about, keyed by event
  * name. Each entry binds an event name to its payload type — adding an
  * event means adding an entry here.

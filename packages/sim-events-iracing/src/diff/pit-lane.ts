@@ -41,6 +41,10 @@ export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, em
     emit({ event: "pitLane.entered", data: {} });
   } else if (state.lastOnPitRoad && !onPitRoad) {
     emit({ event: "pitLane.exited", data: {} });
+    // Flag the now-current lap as "from pits" so the qualifying
+    // lap-invalidation snapshot (issue #567) suppresses the callout there.
+    // Cleared by `diffLifecycle` at the next `lap.started` (S/F crossing).
+    state.lapStartedFromPits = true;
   }
 
   // ── Pit stall on/off transitions ───────────────────────────────────────

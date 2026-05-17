@@ -210,6 +210,18 @@
 			var positionCheckboxes = positionCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Qualifying lap-invalidation callout (issue #567). Single subject —
+			// engineer announces "This lap will be invalidated." plus a per-N tail
+			// when an incident occurs during a qualifying lap. Fires in qualifying
+			// only; race / practice stay silent.
+			var qualifyingInvalidationCallouts = [
+				{ setting: "calloutEnabledQualifyingLapInvalidated", label: "Lap invalidated" },
+			];
+			var qualifyingInvalidationRowCount = Math.ceil(qualifyingInvalidationCallouts.length / 2);
+			var qualifyingInvalidationCheckboxes = qualifyingInvalidationCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -269,6 +281,11 @@
 				'<sdpi-item label="Position">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + positionRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						positionCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Qualifying">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + qualifyingInvalidationRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						qualifyingInvalidationCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
