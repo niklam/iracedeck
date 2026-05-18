@@ -34,6 +34,7 @@
 					<option value="prev-incident">Previous Incident</option>
 					<option value="jump-to-beginning">Jump to Beginning</option>
 					<option value="jump-to-live">Jump to Live</option>
+					<option value="jump-to-fastest-lap">Jump to Fastest Lap</option>
 				</optgroup>
 				<optgroup label="Camera">
 					<option value="jump-to-my-car">Jump to My Car</option>
@@ -47,6 +48,13 @@
 
 		<sdpi-item id="step-rate-setting" label="Step Rate" class="hidden">
 			<ird-range-input setting="stepRate" min="1" max="15" step="1" default="1" showlabels></ird-range-input>
+		</sdpi-item>
+
+		<sdpi-item id="fastest-lap-target-setting" label="Target" class="hidden">
+			<sdpi-radio setting="fastestLapTarget" default="viewed-car" columns="1">
+				<option value="viewed-car">Viewed Car</option>
+				<option value="always-my-car">Always my car</option>
+			</sdpi-radio>
 		</sdpi-item>
 
 		<sdpi-item id="speed-setting" label="Speed" class="hidden">
@@ -147,6 +155,13 @@
 					stepRateSetting?.classList.remove("hidden");
 				} else {
 					stepRateSetting?.classList.add("hidden");
+				}
+
+				const fastestLapTargetSetting = document.getElementById("fastest-lap-target-setting");
+				if (mode === "jump-to-fastest-lap") {
+					fastestLapTargetSetting?.classList.remove("hidden");
+				} else {
+					fastestLapTargetSetting?.classList.add("hidden");
 				}
 			}
 

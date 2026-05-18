@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-The website currently documents **31 actions with 289 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
+The website currently documents **31 actions with 290 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -45,7 +45,7 @@ When asked about actions or controls:
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **289** | |
+| **Total** | **31** | **290** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -84,7 +84,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | View Adjustment | 5 | fov (+/-), horizon (+/-), driver-height (+/-), recenter-vr, ui-size (+/-) |
-| Replay Control | 26 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind (FF/RW + slow-mo modes share a configurable Step Rate that walks the speed ladder per press), frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, next/prev car, next/prev car number |
+| Replay Control | 27 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind (FF/RW + slow-mo modes share a configurable Step Rate that walks the speed ladder per press), frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, jump-to-fastest-lap (target: Viewed Car / Always my car; session-scoped; no clean-lap filter; no encoder support), next/prev car, next/prev car number |
 | Camera Controls | 12 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / most exciting), switch (by position / car number), set-camera-state |
 | Camera Editor Adjustments | 15 | latitude, longitude, altitude, yaw, pitch, fov-zoom, key-step, vanish-x, vanish-y, blimp-radius, blimp-velocity, mic-gain (all +/-), auto-set-mic-gain, f-number (+/-), focus-depth (+/-) |
 | Camera Editor Controls | 30 | Open Camera Tool, 14 toggles (key accel/10x, parabolic mic, temp edits, dampening, zoom, beyond fence, in cockpit, mouse nav, pitch/roll gyro, limit shot range, show camera, shot selection, manual focus), cycle position/aim type, acquire start/end, camera CRUD (insert/remove/copy/paste), group CRUD (copy/paste), track/car save/load |

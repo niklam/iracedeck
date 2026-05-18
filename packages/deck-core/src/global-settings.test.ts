@@ -486,3 +486,33 @@ describe("dualPressDirections (issue #540)", () => {
     expect(() => GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" })).toThrow();
   });
 });
+
+describe("fastestLapSearchDelayMs (issue #577)", () => {
+  it("defaults to 400 when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.fastestLapSearchDelayMs).toBe(400);
+  });
+
+  it("accepts the lower bound (50 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 50 }) as Record<string, unknown>;
+    expect(parsed.fastestLapSearchDelayMs).toBe(50);
+  });
+
+  it("accepts the upper bound (1000 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 1000 }) as Record<string, unknown>;
+    expect(parsed.fastestLapSearchDelayMs).toBe(1000);
+  });
+
+  it("coerces a numeric string from the Property Inspector slider", () => {
+    const parsed = GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: "650" }) as Record<string, unknown>;
+    expect(parsed.fastestLapSearchDelayMs).toBe(650);
+  });
+
+  it("rejects values below 50", () => {
+    expect(() => GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 49 })).toThrow();
+  });
+
+  it("rejects values above 1000", () => {
+    expect(() => GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 1001 })).toThrow();
+  });
+});

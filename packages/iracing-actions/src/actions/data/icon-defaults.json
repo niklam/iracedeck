@@ -229,6 +229,10 @@
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff"
   },
+  "setup-view": {
+    "backgroundColor": "#2a3444",
+    "textColor": "#ffffff"
+  },
   "telemetry-display": {
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff"

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"FASTEST\nLAP"},"border":{"color":"#5a6a7a"}}</desc>
+
+
+    <rect x="23" y="2" width="10" height="8" rx="2" fill="#ffffff" stroke="none"/>
+    <circle cx="28" cy="32" r="22" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <polygon points="28,20 30.9,28 39.4,28.3 32.8,33.5 35.1,41.7 28,37 20.9,41.7 23.2,33.5 16.6,28.3 25.1,28" fill="#ffffff" stroke="none"/>
+
+</svg>

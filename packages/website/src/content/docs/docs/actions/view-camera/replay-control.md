@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "26 modes"
+    text: "27 modes"
     variant: tip
 ---
 
@@ -368,6 +368,31 @@ Jump the replay camera to your own car.
 #### Settings
 
 - No additional settings
+
+---
+
+### Jump to Fastest Lap
+
+Jump the replay cursor to a driver's fastest lap in the current replay session. The default target is **Viewed Car** so the same button can be reused — focus the camera on a competitor and press, focus on yourself and press, etc. Switch the target to **Always my car** to make the button always navigate to your own fastest lap regardless of which car the camera is currently watching.
+
+"Fastest" means the best lap time iRacing reports for that car. The lookup prefers the session's authoritative `ResultsPositions` table (available immediately when a replay is loaded, so the button works without first scrubbing through the replay) and falls back to live `CarIdxBestLapNum` for an in-progress session that hasn't published positions yet. There is no clean-lap filter — iRacing telemetry doesn't expose per-lap incident status, so a lap with a slide or off counts the same as a clean one. The search is also session-scoped: it jumps within whichever practice / qualifying / race session the replay cursor is currently in (matched by `SessionNum`) and does not cross session boundaries.
+
+If the target car hasn't completed a lap yet, the press is a no-op (nothing moves, no error). If the camera target can't be resolved (e.g., transitioning between cars), the press is also a no-op.
+
+The walker spaces each lap-search broadcast by **Common Settings → Replay → Fastest Lap Search Delay** (default 400 ms). iRacing resolves the exact lap-boundary position asynchronously after each step, so a too-short delay can leave the cursor parked mid-lap. Slower computers and longer tracks may need to increase the value; the slider accepts 50–1000 ms in 50 ms steps.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Setting: Target
+
+Which driver's fastest lap the button jumps to. Defaults to **Viewed Car**.
+
+- **Viewed Car** — the car the replay camera is currently focused on
+- **Always my car** — your own car, regardless of where the camera is pointed (the camera also moves onto your car so the lap you jump to is what you actually see)
 
 ---
 
