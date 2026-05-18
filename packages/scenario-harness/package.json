@@ -15,7 +15,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@fastify/static": "8.2.0",
+    "@fastify/static": "9.1.3",
     "@fastify/websocket": "11.2.0",
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
