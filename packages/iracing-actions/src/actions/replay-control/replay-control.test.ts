@@ -1483,6 +1483,21 @@ describe("ReplayControl", () => {
       switchNum: vi.fn(() => true),
     };
 
+    /** Shared helper — used by the dispatch + encoder describes below. */
+    function telemetryWithBest(carIdx: number, bestLapNum: number, currentLap: number) {
+      const bestLapNums: number[] = [];
+      const currentLaps: number[] = [];
+
+      bestLapNums[carIdx] = bestLapNum;
+      currentLaps[carIdx] = currentLap;
+
+      return {
+        CamCarIdx: carIdx,
+        CarIdxBestLapNum: bestLapNums,
+        CarIdxLap: currentLaps,
+      };
+    }
+
     let action: ReplayControl;
 
     beforeEach(async () => {
@@ -1521,20 +1536,6 @@ describe("ReplayControl", () => {
     });
 
     describe("dispatch", () => {
-      function telemetryWithBest(carIdx: number, bestLapNum: number, currentLap: number) {
-        const bestLapNums: number[] = [];
-        const currentLaps: number[] = [];
-
-        bestLapNums[carIdx] = bestLapNum;
-        currentLaps[carIdx] = currentLap;
-
-        return {
-          CamCarIdx: carIdx,
-          CarIdxBestLapNum: bestLapNums,
-          CarIdxLap: currentLaps,
-        };
-      }
-
       it("logs a warning and does nothing when no target car is available (viewed-car)", async () => {
         action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: -1 }) as any);
 
@@ -1549,6 +1550,45 @@ describe("ReplayControl", () => {
         expect(mockReplay.prevLap).not.toHaveBeenCalled();
         expect(mockCamera.switchNum).not.toHaveBeenCalled();
         expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+      });
+
+      it("rejects CarIdx 255 (no-driver/pace-car placeholder) before resolving the fastest lap", async () => {
+        // CamCarIdx=255 happens mid-camera-transition and on the pace car —
+        // never a real target. Should short-circuit before any walk starts.
+        action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: 255 }) as any);
+
+        await action.onWillAppear(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+        await action.onKeyDown(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+      });
+
+      it("aborts the walk and warns when camera.switchNum fails", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Camera switch returns false (SDK refused) — walker must not start.
+          mockCamera.switchNum.mockReturnValueOnce(false);
+          liveCursor(2, 5, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(2, 0, 0);
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("camera switch failed"));
+        } finally {
+          vi.useRealTimers();
+        }
       });
 
       it("logs info and skips when the target car has no best lap yet", async () => {
@@ -1987,20 +2027,6 @@ describe("ReplayControl", () => {
     });
 
     describe("encoder is a no-op for this mode", () => {
-      function telemetryWithBest(carIdx: number, bestLapNum: number, currentLap: number) {
-        const bestLapNums: number[] = [];
-        const currentLaps: number[] = [];
-
-        bestLapNums[carIdx] = bestLapNum;
-        currentLaps[carIdx] = currentLap;
-
-        return {
-          CamCarIdx: carIdx,
-          CarIdxBestLapNum: bestLapNums,
-          CarIdxLap: currentLaps,
-        };
-      }
-
       it("onDialDown does nothing", async () => {
         action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
 

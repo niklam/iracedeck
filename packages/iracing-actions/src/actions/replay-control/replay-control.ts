@@ -1205,9 +1205,14 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const sessionInfo = this.sdkController.getSessionInfo();
         const targetCarIdx = this.resolveFastestLapCarIdx(settings.fastestLapTarget, telemetry);
 
-        if (targetCarIdx < 0) {
+        // CarIdx 255 is iRacing's "no driver" placeholder — appears when the
+        // camera is mid-transition or focused on the pace car. The downstream
+        // `findFastestLapForCar` would just return null and we'd log
+        // "no best lap" anyway, but a direct guard is clearer and avoids
+        // burning a SessionInfo/telemetry read.
+        if (targetCarIdx < 0 || targetCarIdx === 255) {
           this.logger.warn("No target car available for jump to fastest lap");
-          this.logger.debug(`Target setting: ${settings.fastestLapTarget}`);
+          this.logger.debug(`Target setting: ${settings.fastestLapTarget}, carIdx: ${targetCarIdx}`);
           break;
         }
 
@@ -1230,7 +1235,16 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
-        getCommands().camera.switchNum(carNum, 0, 0);
+        const cameraSwitched = getCommands().camera.switchNum(carNum, 0, 0);
+
+        if (!cameraSwitched) {
+          // The walker depends on the camera being on the right car (iRacing's
+          // lap-search is camera-focus-relative). If the SDK refused, abort
+          // rather than burn the retry budget walking the wrong driver.
+          this.logger.warn("Jump to fastest lap: camera switch failed, aborting walk");
+          this.logger.debug(`Failed switchNum: carNum=${carNum}, carIdx=${targetCarIdx}`);
+          break;
+        }
 
         // iRacing's nextLap jumps to the *end* of the targeted lap (=start of
         // the lap after it). Subtract one so the cursor lands at the start of
