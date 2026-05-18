@@ -1,10 +1,16 @@
-import { getAllCarNumbers, getCarNumberFromSessionInfo, TrkLoc } from "@iracedeck/iracing-sdk";
+import {
+  getAllCarNumbers,
+  getCarNumberFromSessionInfo,
+  getCarNumberRawFromSessionInfo,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   calculateNeedleAngle,
   findAdjacentCarByNumber,
   findAdjacentCarOnTrack,
+  findFastestLapForCar,
   formatSetSpeedLabel,
   formatSpeedDisplay,
   generateReplayControlSvg,
@@ -82,6 +88,9 @@ vi.mock("@iracedeck/icons/replay-control/jump-to-live.svg", () => ({
 vi.mock("@iracedeck/icons/replay-control/jump-to-my-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-my-car {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/replay-control/jump-to-fastest-lap.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">jump-to-fastest-lap {{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/replay-control/next-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">next-car {{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -121,7 +130,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(() => null) };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: vi.fn(() => null),
+      getSessionInfo: vi.fn(() => null),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -160,6 +174,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
   parseSvgViewBox: vi.fn(() => undefined),
@@ -335,6 +350,7 @@ describe("ReplayControl", () => {
       "jump-to-beginning",
       "jump-to-live",
       "jump-to-my-car",
+      "jump-to-fastest-lap",
       "next-car",
       "prev-car",
       "next-car-number",
@@ -544,6 +560,13 @@ describe("ReplayControl", () => {
 
       expect(decoded).toContain("MY CAR");
       expect(decoded).toContain("JUMP TO");
+    });
+
+    it("should include FASTEST and LAP labels for jump-to-fastest-lap mode", () => {
+      const decoded = decodeURIComponent(generateReplayControlSvg({ mode: "jump-to-fastest-lap" }));
+
+      expect(decoded).toContain("FASTEST");
+      expect(decoded).toContain("LAP");
     });
 
     it("should include NEXT and CAR labels for next-car mode", () => {
@@ -919,6 +942,91 @@ describe("ReplayControl", () => {
       vi.mocked(getCarNumberFromSessionInfo).mockReturnValue("7");
 
       expect(findAdjacentCarByNumber({}, 0, "next")).toBe(3042);
+    });
+  });
+
+  describe("findFastestLapForCar", () => {
+    function sessionInfoWith(
+      sessions: Array<{ SessionNum: number; ResultsPositions?: Array<{ CarIdx: number; FastestLap: number }> }>,
+    ) {
+      return { SessionInfo: { Sessions: sessions } };
+    }
+
+    it("prefers ResultsPositions over telemetry CarIdxBestLapNum", () => {
+      const sessionInfo = sessionInfoWith([
+        {
+          SessionNum: 2,
+          ResultsPositions: [
+            { CarIdx: 5, FastestLap: 12 },
+            { CarIdx: 7, FastestLap: 9 },
+          ],
+        },
+      ]);
+      const telemetry = { SessionNum: 2, CarIdxBestLapNum: [0, 0, 0, 0, 0, 99, 0, 99] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 5)).toBe(12);
+      expect(findFastestLapForCar(sessionInfo, telemetry, 7)).toBe(9);
+    });
+
+    it("matches the right session by SessionNum field, not array index", () => {
+      // Sessions are sometimes listed out of order — never trust the index.
+      const sessionInfo = sessionInfoWith([
+        { SessionNum: 0, ResultsPositions: [{ CarIdx: 3, FastestLap: 7 }] },
+        { SessionNum: 2, ResultsPositions: [{ CarIdx: 3, FastestLap: 15 }] },
+        { SessionNum: 1, ResultsPositions: [{ CarIdx: 3, FastestLap: 11 }] },
+      ]);
+      const telemetry = { SessionNum: 1, CarIdxBestLapNum: [] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 3)).toBe(11);
+    });
+
+    it("returns null when ResultsPositions has no entry for the target car", () => {
+      const sessionInfo = sessionInfoWith([{ SessionNum: 0, ResultsPositions: [{ CarIdx: 1, FastestLap: 5 }] }]);
+      const telemetry = { SessionNum: 0 } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 99)).toBeNull();
+    });
+
+    it("falls back to telemetry when ResultsPositions is empty (live session)", () => {
+      const sessionInfo = sessionInfoWith([{ SessionNum: 0, ResultsPositions: [] }]);
+      const telemetry = { SessionNum: 0, CarIdxBestLapNum: [0, 0, 8] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 2)).toBe(8);
+    });
+
+    it("falls back to telemetry when ResultsPositions has the car but FastestLap is 0", () => {
+      // Practice session, driver completed an out-lap but no flying lap yet —
+      // ResultsPositions exists with FastestLap=0; only live telemetry has the recorded lap.
+      const sessionInfo = sessionInfoWith([{ SessionNum: 0, ResultsPositions: [{ CarIdx: 2, FastestLap: 0 }] }]);
+      const telemetry = { SessionNum: 0, CarIdxBestLapNum: [0, 0, 6] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 2)).toBe(6);
+    });
+
+    it("falls back to telemetry when sessionInfo lacks the current session", () => {
+      const sessionInfo = sessionInfoWith([{ SessionNum: 1, ResultsPositions: [{ CarIdx: 2, FastestLap: 5 }] }]);
+      const telemetry = { SessionNum: 0, CarIdxBestLapNum: [0, 0, 4] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 2)).toBe(4);
+    });
+
+    it("returns null when neither source has data", () => {
+      const sessionInfo = sessionInfoWith([{ SessionNum: 0, ResultsPositions: [] }]);
+      const telemetry = { SessionNum: 0, CarIdxBestLapNum: [] } as any;
+
+      expect(findFastestLapForCar(sessionInfo, telemetry, 2)).toBeNull();
+    });
+
+    it("returns null when telemetry is null and sessionInfo is empty", () => {
+      expect(findFastestLapForCar(null, null, 0)).toBeNull();
+    });
+
+    it("handles missing SessionNum on telemetry by falling back to telemetry-only path", () => {
+      const sessionInfo = sessionInfoWith([{ SessionNum: 0, ResultsPositions: [{ CarIdx: 2, FastestLap: 5 }] }]);
+      const telemetry = { CarIdxBestLapNum: [0, 0, 3] } as any;
+
+      // No SessionNum → skips ResultsPositions matching → falls back to telemetry.
+      expect(findFastestLapForCar(sessionInfo, telemetry, 2)).toBe(3);
     });
   });
 
@@ -1352,6 +1460,606 @@ describe("ReplayControl", () => {
       await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-session" }) as any);
 
       expect(action.setActiveBinding).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe("jump-to-fastest-lap", () => {
+    function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
+      return {
+        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    const mockReplay = {
+      play: vi.fn(() => true),
+      pause: vi.fn(() => true),
+      setPlaySpeed: vi.fn(() => true),
+      nextLap: vi.fn(() => true),
+      prevLap: vi.fn(() => true),
+    };
+
+    const mockCamera = {
+      switchNum: vi.fn(() => true),
+    };
+
+    /** Shared helper — used by the dispatch + encoder describes below. */
+    function telemetryWithBest(carIdx: number, bestLapNum: number, currentLap: number) {
+      const bestLapNums: number[] = [];
+      const currentLaps: number[] = [];
+
+      bestLapNums[carIdx] = bestLapNum;
+      currentLaps[carIdx] = currentLap;
+
+      return {
+        CamCarIdx: carIdx,
+        CarIdxBestLapNum: bestLapNums,
+        CarIdxLap: currentLaps,
+      };
+    }
+
+    let action: ReplayControl;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      const { getCommands } = await import("@iracedeck/deck-core");
+      // getCarNumberRawFromSessionInfo is mocked in the shared @iracedeck/iracing-sdk block;
+      // default it to returning the carIdx as the raw number so individual tests don't have
+      // to wire fake session info.
+      vi.mocked(getCarNumberRawFromSessionInfo).mockImplementation((_si: unknown, idx: number) => idx);
+      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: mockCamera } as any);
+      action = new ReplayControl();
+    });
+
+    describe("resolveFastestLapCarIdx", () => {
+      it("returns CamCarIdx when target is viewed-car", () => {
+        const carIdx = action.resolveFastestLapCarIdx("viewed-car", { CamCarIdx: 7 } as any);
+
+        expect(carIdx).toBe(7);
+      });
+
+      it("returns -1 when target is viewed-car and telemetry is null", () => {
+        expect(action.resolveFastestLapCarIdx("viewed-car", null)).toBe(-1);
+      });
+
+      it("returns DriverCarIdx from session info when target is always-my-car", () => {
+        action.sdkController.getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as any);
+
+        expect(action.resolveFastestLapCarIdx("always-my-car", { CamCarIdx: 99 } as any)).toBe(3);
+      });
+
+      it("returns -1 when target is always-my-car and session info is missing", () => {
+        action.sdkController.getSessionInfo = vi.fn(() => null);
+
+        expect(action.resolveFastestLapCarIdx("always-my-car", { CamCarIdx: 99 } as any)).toBe(-1);
+      });
+    });
+
+    describe("dispatch", () => {
+      it("logs a warning and does nothing when no target car is available (viewed-car)", async () => {
+        action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: -1 }) as any);
+
+        await action.onWillAppear(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+        await action.onKeyDown(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+      });
+
+      it("rejects CarIdx 255 (no-driver/pace-car placeholder) before resolving the fastest lap", async () => {
+        // CamCarIdx=255 happens mid-camera-transition and on the pace car —
+        // never a real target. Should short-circuit before any walk starts.
+        action.sdkController.getCurrentTelemetry = vi.fn(() => ({ CamCarIdx: 255 }) as any);
+
+        await action.onWillAppear(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+        await action.onKeyDown(
+          fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }) as any,
+        );
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("No target car"));
+      });
+
+      it("aborts the walk and warns when camera.switchNum fails", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Camera switch returns false (SDK refused) — walker must not start.
+          mockCamera.switchNum.mockReturnValueOnce(false);
+          liveCursor(2, 5, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(2, 0, 0);
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("camera switch failed"));
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("logs info and skips when the target car has no best lap yet", async () => {
+        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 0, 0) as any);
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+        expect(action.logger.info).toHaveBeenCalledWith(expect.stringContaining("no best lap"));
+      });
+
+      /**
+       * Build a telemetry source that returns the live `currentLap` ref on
+       * each call (the walker reads it between steps). `nextLap` / `prevLap`
+       * mutate the ref so the cursor "advances" each tick.
+       */
+      function liveCursor(
+        carIdx: number,
+        targetLap: number,
+        opts: { startLap: number; advanceOnNext?: boolean; advanceOnPrev?: boolean } = { startLap: 0 },
+      ) {
+        const state = { currentLap: opts.startLap };
+        const bestLapNums: number[] = [];
+
+        bestLapNums[carIdx] = targetLap;
+
+        action.sdkController.getCurrentTelemetry = vi.fn(() => {
+          const currentLaps: number[] = [];
+
+          currentLaps[carIdx] = state.currentLap;
+
+          return {
+            CamCarIdx: carIdx,
+            CarIdxBestLapNum: bestLapNums,
+            CarIdxLap: currentLaps,
+          } as any;
+        });
+
+        if (opts.advanceOnNext !== false) {
+          mockReplay.nextLap.mockImplementation(() => {
+            state.currentLap++;
+
+            return true;
+          });
+        }
+
+        if (opts.advanceOnPrev !== false) {
+          mockReplay.prevLap.mockImplementation(() => {
+            state.currentLap--;
+
+            return true;
+          });
+        }
+
+        return state;
+      }
+
+      it("walks the cursor up to one lap before the fastest lap (forward)", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // FastestLap = 10 means iRacing's nextLap would land on the end of
+          // lap 10; subtract 1 so the cursor ends at the start of lap 10.
+          const state = liveCursor(4, 10, { startLap: 5 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+          await vi.runAllTimersAsync();
+
+          // Walker target = 10 - 1 = 9. From lap 5 → lap 9 = 4 steps.
+          expect(state.currentLap).toBe(9);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(4);
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("walks the cursor down to one lap before the fastest lap (backward)", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const state = liveCursor(2, 3, { startLap: 8 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(2, 0, 0);
+          await vi.runAllTimersAsync();
+
+          // Walker target = 3 - 1 = 2. From lap 8 → lap 2 = 6 steps.
+          expect(state.currentLap).toBe(2);
+          expect(mockReplay.prevLap).toHaveBeenCalledTimes(6);
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("retries on dropped messages — re-sends nextLap when the cursor didn't advance", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Simulate iRacing dropping every other ReplaySearch broadcast: only
+          // every second call actually advances the cursor.
+          const state = { currentLap: 0 };
+          let callIdx = 0;
+
+          mockReplay.nextLap.mockImplementation(() => {
+            if (callIdx++ % 2 === 0) state.currentLap++;
+
+            return true;
+          });
+
+          const bestLapNums: number[] = [];
+
+          // FastestLap = 5 → walker target = 4.
+          bestLapNums[3] = 5;
+
+          action.sdkController.getCurrentTelemetry = vi.fn(() => {
+            const currentLaps: number[] = [];
+
+            currentLaps[3] = state.currentLap;
+
+            return { CamCarIdx: 3, CarIdxBestLapNum: bestLapNums, CarIdxLap: currentLaps } as any;
+          });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          // Cursor should still reach the walker target (4) — the walker just
+          // calls nextLap more times to compensate for the dropped messages.
+          expect(state.currentLap).toBe(4);
+          // 7 calls = 4 that landed (callIdx 0,2,4,6) + 3 dropped retries
+          // (callIdx 1,3,5). The walker detects target reached on iteration 8
+          // before sending another step.
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(7);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("does no lap steps when the cursor is already at the start of the fastest lap", async () => {
+        // FastestLap=7 → walker target=6. Cursor at lap 6 already means the
+        // cursor is sitting at the end of lap 6 = start of lap 7.
+        liveCursor(1, 7, { startLap: 6, advanceOnNext: false, advanceOnPrev: false });
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+        expect(mockCamera.switchNum).toHaveBeenCalledWith(1, 0, 0);
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+      });
+
+      it("uses DriverCarIdx (not CamCarIdx) when target is always-my-car", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const state = { currentLap: 2 };
+          const bestLapNums: number[] = [];
+
+          // FastestLap = 4 → walker target = 3. From cursor=2, 1 step needed.
+          bestLapNums[3] = 4;
+
+          action.sdkController.getCurrentTelemetry = vi.fn(() => {
+            const currentLaps: number[] = [];
+
+            currentLaps[3] = state.currentLap;
+
+            return {
+              CamCarIdx: 99, // viewer is watching some other car
+              CarIdxBestLapNum: bestLapNums,
+              CarIdxLap: currentLaps,
+            } as any;
+          });
+          action.sdkController.getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as any);
+          mockReplay.nextLap.mockImplementation(() => {
+            state.currentLap++;
+
+            return true;
+          });
+
+          await action.onWillAppear(
+            fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "always-my-car" }) as any,
+          );
+          await action.onKeyDown(
+            fakeEvent("ctx-1", { mode: "jump-to-fastest-lap", fastestLapTarget: "always-my-car" }) as any,
+          );
+          await vi.runAllTimersAsync();
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(3, 0, 0);
+          expect(state.currentLap).toBe(3);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("warns when the target car has no resolvable car number", async () => {
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+        liveCursor(2, 5, { startLap: 3, advanceOnNext: false });
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("car number"));
+      });
+
+      it("bails when the cursor is stuck (target unreachable)", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Cursor never advances — simulates the replay buffer not reaching
+          // the target lap.
+          liveCursor(2, 50, { startLap: 0, advanceOnNext: false });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          // LAP_WALK_STUCK_LIMIT (5) consecutive no-progress iterations before
+          // bail; nextLap is called on iterations 1..5 (iter 6 detects stuck
+          // and returns without sending).
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(5);
+          expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("stuck"));
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("hits the MAX_LAP_SEARCH_STEPS safety cap on a wildly large delta", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Target far beyond what the iteration cap permits; cursor keeps
+          // advancing on every call (no stuck bail).
+          liveCursor(0, 10_000, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          // Walker exits after MAX_LAP_SEARCH_STEPS body iterations.
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(150);
+          expect(action.logger.warn).toHaveBeenCalledWith(expect.stringContaining("safety cap"));
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("ignores a second press while a walk is already in flight on the same context", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // FastestLap = 10 → walker target = 9. From cursor=0, 9 steps.
+          liveCursor(2, 10, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          // First press kicks off the walker; before the timers drain, a second
+          // press arrives. The second press should not double-fire steps.
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          await vi.runAllTimersAsync();
+
+          // Only the first walk drove the cursor; second press was no-op
+          // (verified by count = exactly the delta).
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(9);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("uses ResultsPositions when telemetry CarIdxBestLapNum is empty (freshly-loaded replay)", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Replay load case: SessionInfo has authoritative ResultsPositions but
+          // CarIdxBestLapNum hasn't been populated yet because the cursor hasn't
+          // walked the laps. Without the ResultsPositions path this would no-op.
+          const state = { currentLap: 0 };
+
+          action.sdkController.getCurrentTelemetry = vi.fn(() => {
+            const currentLaps: number[] = [];
+
+            currentLaps[4] = state.currentLap;
+
+            return {
+              CamCarIdx: 4,
+              SessionNum: 2,
+              // CarIdxBestLapNum intentionally omitted (or empty)
+              CarIdxLap: currentLaps,
+            } as any;
+          });
+          action.sdkController.getSessionInfo = vi.fn(
+            () =>
+              ({
+                SessionInfo: {
+                  Sessions: [
+                    { SessionNum: 0, ResultsPositions: [{ CarIdx: 4, FastestLap: 99 }] },
+                    { SessionNum: 2, ResultsPositions: [{ CarIdx: 4, FastestLap: 8 }] },
+                  ],
+                },
+              }) as any,
+          );
+          mockReplay.nextLap.mockImplementation(() => {
+            state.currentLap++;
+
+            return true;
+          });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+          // FastestLap = 8 (Session 2's value, not Session 0's 99) → walker
+          // target = 7. From cursor=0, 7 steps to reach lap 7 (= start of lap 8).
+          expect(state.currentLap).toBe(7);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(7);
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("bails immediately when CarIdxLap for the target car is unavailable", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // CarIdxBestLapNum populated (so targetLap resolves) but CarIdxLap
+          // for that car isn't — walker can't compute delta, returns silently.
+          const bestLapNums: number[] = [];
+
+          bestLapNums[5] = 8;
+          action.sdkController.getCurrentTelemetry = vi.fn(
+            () =>
+              ({
+                CamCarIdx: 5,
+                CarIdxBestLapNum: bestLapNums,
+                // CarIdxLap intentionally omitted
+              }) as any,
+          );
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await vi.runAllTimersAsync();
+
+          expect(mockCamera.switchNum).toHaveBeenCalledWith(5, 0, 0);
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("reads fastestLapSearchDelayMs live on every iteration", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const { getGlobalSettings } = await import("@iracedeck/deck-core");
+          // Start with a fast delay.
+          vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 100 } as any);
+
+          // FastestLap = 5 → walker target = 4. From cursor=0: 4 steps.
+          liveCursor(2, 5, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          // iter 1: step fires immediately; walker is now sleeping on gap=100ms
+          // (read at the end of iter 1, before the change below).
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
+
+          // Change the mock — iter 2's gap read (still 100ms below) won't see
+          // this, but iter 3 onward will.
+          vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 500 } as any);
+
+          // 100ms elapses → iter 2 fires (gap from iter 1 was 100), reads
+          // currentLap=1, sends step, then reads the new gap=500.
+          await vi.advanceTimersByTimeAsync(100);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(2);
+
+          // 400ms isn't enough — iter 3's sleep is 500ms.
+          await vi.advanceTimersByTimeAsync(400);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(2);
+
+          // 100ms more → 500ms total since iter 2 ended; iter 3 fires.
+          await vi.advanceTimersByTimeAsync(100);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(3);
+
+          // Drain remaining iterations (iter 4 finishes at cursor=4 = target).
+          await vi.runAllTimersAsync();
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(4);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("clamps an out-of-range fastestLapSearchDelayMs setting", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const { getGlobalSettings } = await import("@iracedeck/deck-core");
+          // 5000 ms is above the 1000 ms cap — should clamp to 1000.
+          vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 5000 } as any);
+
+          // FastestLap = 3 → walker target = 2. From cursor=0: 2 steps total
+          // (gives us one inter-step delay to verify the clamp).
+          liveCursor(2, 3, { startLap: 0 });
+
+          await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+          await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
+          // 999 ms — below the clamped cap, no additional fires yet.
+          await vi.advanceTimersByTimeAsync(999);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
+          // 1 more ms = 1000 total → next step fires.
+          await vi.advanceTimersByTimeAsync(1);
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(2);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    describe("encoder is a no-op for this mode", () => {
+      it("onDialDown does nothing", async () => {
+        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        await action.onDialDown({
+          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" } },
+        } as any);
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockReplay.play).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+      });
+
+      it("onDialRotate does nothing in either direction", async () => {
+        action.sdkController.getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
+
+        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        await action.onDialRotate({
+          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }, ticks: 1 },
+        } as any);
+        await action.onDialRotate({
+          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }, ticks: -1 },
+        } as any);
+
+        expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        expect(mockReplay.prevLap).not.toHaveBeenCalled();
+        expect(mockReplay.play).not.toHaveBeenCalled();
+        expect(mockCamera.switchNum).not.toHaveBeenCalled();
+      });
     });
   });
 

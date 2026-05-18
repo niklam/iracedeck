@@ -540,6 +540,17 @@ export const GlobalSettingsSchema = z
      * - `"tap-decreases"` — tap fires Decrease, long-press fires Increase
      */
     dualPressDirections: z.enum(["tap-increases", "tap-decreases"]).default("tap-increases"),
+    /**
+     * Delay in milliseconds between consecutive replay lap-search broadcasts
+     * the Replay Control "Jump to Fastest Lap" mode emits while walking the
+     * cursor to the target lap (issue #577). Even when the replay is paused,
+     * iRacing resolves the exact lap-boundary position asynchronously after
+     * each `ReplaySearch`, and a follow-up broadcast that arrives before
+     * that work finishes leaves the cursor parked mid-lap. 400 ms is the
+     * empirical default that works reliably; slower machines and longer
+     * tracks may need higher values. Range 50–1000 ms, step 50.
+     */
+    fastestLapSearchDelayMs: z.coerce.number().min(50).max(1000).default(400),
   })
   .passthrough();
 

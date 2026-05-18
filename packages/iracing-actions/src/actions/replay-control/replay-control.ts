@@ -11,6 +11,7 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
+  getGlobalSettings,
   getGlobalTitleSettings,
   ICON_BASE_TEMPLATE,
   type IDeckDialDownEvent,
@@ -32,6 +33,7 @@ import fastForwardIconSvg from "@iracedeck/icons/replay-control/fast-forward.svg
 import frameBackwardIconSvg from "@iracedeck/icons/replay-control/frame-backward.svg";
 import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.svg";
 import jumpToBeginningIconSvg from "@iracedeck/icons/replay-control/jump-to-beginning.svg";
+import jumpToFastestLapIconSvg from "@iracedeck/icons/replay-control/jump-to-fastest-lap.svg";
 import jumpToLiveIconSvg from "@iracedeck/icons/replay-control/jump-to-live.svg";
 import jumpToMyCarIconSvg from "@iracedeck/icons/replay-control/jump-to-my-car.svg";
 import nextCarNumberIconSvg from "@iracedeck/icons/replay-control/next-car-number.svg";
@@ -89,6 +91,7 @@ const REPLAY_CONTROL_MODES = [
   "jump-to-beginning",
   "jump-to-live",
   "jump-to-my-car",
+  "jump-to-fastest-lap",
   "next-car",
   "prev-car",
   "next-car-number",
@@ -120,6 +123,7 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "jump-to-beginning": jumpToBeginningIconSvg,
   "jump-to-live": jumpToLiveIconSvg,
   "jump-to-my-car": jumpToMyCarIconSvg,
+  "jump-to-fastest-lap": jumpToFastestLapIconSvg,
   "next-car": nextCarIconSvg,
   "prev-car": prevCarIconSvg,
   "next-car-number": nextCarNumberIconSvg,
@@ -149,6 +153,7 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
   "jump-to-beginning": "JUMP TO\nBEGINNING",
   "jump-to-live": "JUMP TO\nLIVE",
   "jump-to-my-car": "JUMP TO\nMY CAR",
+  "jump-to-fastest-lap": "FASTEST\nLAP",
   "next-car": "CAR\nNEXT",
   "prev-car": "CAR\nPREVIOUS",
   "next-car-number": "CAR #\nNEXT",
@@ -217,6 +222,54 @@ const LONG_PRESS_INITIAL_DELAY = 500;
 const LONG_PRESS_REPEAT_GAP_MS = 250;
 /** Maximum duration for long-press repeat before auto-stop (safety net for missed keyUp) */
 const LONG_PRESS_MAX_DURATION_MS = 15_000;
+
+/**
+ * Safety cap on iterations the adaptive lap walker performs in a single
+ * press. Combined with `REPLAY_LAP_SEARCH_GAP_MS`, this bounds the worst-case
+ * wall-clock time at MAX × GAP. Each iteration reads telemetry first, so a
+ * normal delta finishes in `delta + a-few-retries` iterations; the cap only
+ * trips on a pathological scenario.
+ */
+const MAX_LAP_SEARCH_STEPS = 150;
+
+/**
+ * Default gap between consecutive replay lap-search broadcasts when the
+ * `fastestLapSearchDelayMs` global setting isn't set. Even when the replay
+ * is paused, the manual Next Lap / Previous Lap actions exhibit the same
+ * drift when pressed in rapid succession: iRacing appears to be resolving
+ * the exact lap-boundary position asynchronously after each `ReplaySearch`
+ * and a follow-up broadcast that arrives before that work finishes leaves
+ * the cursor parked mid-lap. 400 ms is the empirical default that works
+ * reliably; slower machines and longer tracks can raise it via Common
+ * Settings → Replay → Fastest Lap Search Delay.
+ */
+const REPLAY_LAP_SEARCH_GAP_DEFAULT_MS = 400;
+
+const REPLAY_LAP_SEARCH_GAP_MIN_MS = 50;
+const REPLAY_LAP_SEARCH_GAP_MAX_MS = 1000;
+
+/**
+ * Reads the live `fastestLapSearchDelayMs` global setting, clamped to the
+ * accepted range. Falls back to {@link REPLAY_LAP_SEARCH_GAP_DEFAULT_MS} on
+ * any non-numeric value so a corrupted persisted value can't break the
+ * walker.
+ */
+function readFastestLapSearchDelayMs(): number {
+  const raw = (getGlobalSettings() as Record<string, unknown>).fastestLapSearchDelayMs;
+  const value = typeof raw === "number" ? raw : Number(raw);
+
+  if (!Number.isFinite(value)) return REPLAY_LAP_SEARCH_GAP_DEFAULT_MS;
+
+  return Math.min(Math.max(value, REPLAY_LAP_SEARCH_GAP_MIN_MS), REPLAY_LAP_SEARCH_GAP_MAX_MS);
+}
+
+/**
+ * Consecutive iterations the adaptive walker tolerates without the cursor
+ * advancing before giving up. Covers the case where the cursor is at a
+ * session boundary or the target lap is unreachable in the current replay
+ * buffer.
+ */
+const LAP_WALK_STUCK_LIMIT = 5;
 
 /**
  * @internal Exported for testing
@@ -430,6 +483,55 @@ export function findAdjacentCarOnTrack(telemetry: TelemetryData | null, directio
 /**
  * @internal Exported for testing
  *
+ * Resolves a car's fastest lap number for the **current replay session**,
+ * preferring `SessionInfo.Sessions[].ResultsPositions[].FastestLap` over
+ * live telemetry. `ResultsPositions` is the authoritative post-session
+ * record iRacing populates as soon as a replay is loaded — `CarIdxBestLapNum`
+ * only fills in for laps the replay cursor has actually visited, which is
+ * empty on a freshly-loaded replay.
+ *
+ * Session matching is by `SessionNum` field equality (not by array index),
+ * because the array order is not contractually tied to the session number.
+ *
+ * Returns `null` when neither source yields a positive lap number.
+ */
+export function findFastestLapForCar(
+  sessionInfo: unknown,
+  telemetry: TelemetryData | null,
+  carIdx: number,
+): number | null {
+  const sessionNum = telemetry?.SessionNum as number | undefined;
+  const sessionInfoRoot = (sessionInfo as Record<string, unknown> | undefined)?.SessionInfo as
+    | Record<string, unknown>
+    | undefined;
+  const sessions = sessionInfoRoot?.Sessions as Array<Record<string, unknown>> | undefined;
+
+  if (sessions && typeof sessionNum === "number") {
+    const session = sessions.find((s) => (s?.SessionNum as number | undefined) === sessionNum);
+    const positions = session?.ResultsPositions as Array<Record<string, unknown>> | undefined;
+    const entry = positions?.find((p) => (p?.CarIdx as number | undefined) === carIdx);
+    const fastestLap = entry?.FastestLap as number | undefined;
+
+    if (typeof fastestLap === "number" && fastestLap > 0) {
+      return fastestLap;
+    }
+  }
+
+  // Fallback for live sessions where ResultsPositions hasn't been written yet
+  // (race in progress, practice without finalised positions, etc.).
+  const bestLapNums = telemetry?.CarIdxBestLapNum as number[] | undefined;
+  const telemetryLap = bestLapNums?.[carIdx];
+
+  if (typeof telemetryLap === "number" && telemetryLap > 0) {
+    return telemetryLap;
+  }
+
+  return null;
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Find the next or previous car by car number order.
  * Includes all cars (even in pits), skips the pace car.
  * Returns the CarNumberRaw value for camera API use, or null if not found.
@@ -471,6 +573,7 @@ const ReplayControlSettings = CommonSettings.extend({
   mode: z.enum(REPLAY_CONTROL_MODES).default("play-pause"),
   speed: z.string().default("1"),
   stepRate: z.coerce.number().int().min(1).max(15).default(1),
+  fastestLapTarget: z.enum(["viewed-car", "always-my-car"]).default("viewed-car"),
 });
 
 type ReplayControlSettings = z.infer<typeof ReplayControlSettings>;
@@ -504,6 +607,13 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
   /** Cached settings per context for telemetry-driven display updates */
   private activeContexts = new Map<string, ReplayControlSettings>();
+
+  /**
+   * Context IDs with an in-flight jump-to-fastest-lap walk. A second press
+   * while one is running is dropped (the in-flight walk is converging on the
+   * same target, so re-kicking would just race itself).
+   */
+  private fastestLapWalkInFlight = new Set<string>();
 
   /** Last rendered state key per context (prevents redundant re-renders) */
   private lastState = new Map<string, string>();
@@ -706,6 +816,107 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     return findAdjacentCarOnTrack(telemetry, direction);
+  }
+
+  /**
+   * @internal Exposed for testing.
+   *
+   * Resolves the carIdx whose fastest lap we should jump to. For
+   * `always-my-car` the lookup is the driver's own car (the same path
+   * `jump-to-my-car` uses). For `viewed-car` it's whichever car the replay
+   * camera is currently framing (`telemetry.CamCarIdx`). Returns `-1` when
+   * the resolution fails — caller is responsible for the warn.
+   */
+  resolveFastestLapCarIdx(target: "viewed-car" | "always-my-car", telemetry: TelemetryData | null): number {
+    if (target === "always-my-car") {
+      const sessionInfo = this.sdkController.getSessionInfo();
+      const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+
+      return (driverInfo?.DriverCarIdx as number) ?? -1;
+    }
+
+    return (telemetry?.CamCarIdx as number) ?? -1;
+  }
+
+  /**
+   * @internal Exposed for testing.
+   *
+   * Adaptive walker that drives the replay cursor to a target lap for a
+   * specific car. Reads `CarIdxLap[carIdx]` between each step and re-sends
+   * `nextLap`/`prevLap` when the cursor didn't advance — that recovers from
+   * iRacing dropping individual `ReplaySearch` broadcasts (the failure mode
+   * fixed-spacing bursts had at every tested gap, including 100 ms). Bails
+   * when the cursor sits still for {@link LAP_WALK_STUCK_LIMIT} consecutive
+   * iterations (e.g. target lap is outside the replay buffer) or when
+   * iterations reach {@link MAX_LAP_SEARCH_STEPS}. Only one walk per context
+   * runs at a time; second presses while one is in flight are ignored.
+   */
+  async walkToFastestLap(contextId: string, carIdx: number, targetLap: number): Promise<void> {
+    if (this.fastestLapWalkInFlight.has(contextId)) {
+      this.logger.debug(`Jump to fastest lap: walk already in flight for ${contextId}; ignoring`);
+
+      return;
+    }
+
+    this.fastestLapWalkInFlight.add(contextId);
+
+    try {
+      const replay = getCommands().replay;
+      let attempts = 0;
+      let lastObservedLap: number | null = null;
+      let stuckCount = 0;
+
+      while (attempts++ < MAX_LAP_SEARCH_STEPS) {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+        const currentLaps = telemetry?.CarIdxLap as number[] | undefined;
+        const currentLap = currentLaps?.[carIdx];
+
+        if (typeof currentLap !== "number" || currentLap < 0) {
+          this.logger.debug(`Jump to fastest lap: bail, CarIdxLap[${carIdx}] is unavailable`);
+
+          return;
+        }
+
+        if (currentLap === targetLap) {
+          this.logger.debug(`Jump to fastest lap: reached lap ${targetLap} after ${attempts} iterations`);
+
+          return;
+        }
+
+        // Detect the cursor not advancing — either a session-edge condition
+        // or the replay buffer doesn't reach the target lap.
+        if (lastObservedLap !== null && currentLap === lastObservedLap) {
+          stuckCount++;
+
+          if (stuckCount >= LAP_WALK_STUCK_LIMIT) {
+            this.logger.warn(`Jump to fastest lap: cursor stuck at lap ${currentLap} (target ${targetLap}); giving up`);
+
+            return;
+          }
+        } else {
+          stuckCount = 0;
+        }
+
+        lastObservedLap = currentLap;
+
+        if (currentLap < targetLap) {
+          replay.nextLap();
+        } else {
+          replay.prevLap();
+        }
+
+        // Read the gap live on every iteration so a user can drag the slider
+        // mid-walk and have the next step pick up the new value.
+        const gapMs = readFastestLapSearchDelayMs();
+        await new Promise<void>((resolve) => setTimeout(resolve, gapMs));
+      }
+
+      this.logger.warn(
+        `Jump to fastest lap: safety cap hit (${MAX_LAP_SEARCH_STEPS} iterations) at lap ${lastObservedLap}, target ${targetLap}`,
+      );
+    } finally {
+      this.fastestLapWalkInFlight.delete(contextId);
+    }
   }
 
   private executeMode(contextId: string, settings: ReplayControlSettings): void {
@@ -989,6 +1200,68 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
         break;
       }
+      case "jump-to-fastest-lap": {
+        const telemetry = this.sdkController.getCurrentTelemetry();
+        const sessionInfo = this.sdkController.getSessionInfo();
+        const targetCarIdx = this.resolveFastestLapCarIdx(settings.fastestLapTarget, telemetry);
+
+        // CarIdx 255 is iRacing's "no driver" placeholder — appears when the
+        // camera is mid-transition or focused on the pace car. The downstream
+        // `findFastestLapForCar` would just return null and we'd log
+        // "no best lap" anyway, but a direct guard is clearer and avoids
+        // burning a SessionInfo/telemetry read.
+        if (targetCarIdx < 0 || targetCarIdx === 255) {
+          this.logger.warn("No target car available for jump to fastest lap");
+          this.logger.debug(`Target setting: ${settings.fastestLapTarget}, carIdx: ${targetCarIdx}`);
+          break;
+        }
+
+        const targetLap = findFastestLapForCar(sessionInfo, telemetry, targetCarIdx);
+
+        if (targetLap === null) {
+          this.logger.info("Jump to fastest lap: no best lap recorded yet for target car");
+          this.logger.debug(`Target carIdx: ${targetCarIdx}`);
+          break;
+        }
+
+        // Switch the replay camera onto the target car so iRacing's lap-search
+        // operates against the right driver. For viewed-car this is usually a
+        // no-op (camera is already there); for always-my-car it actively
+        // re-frames before the lap walk.
+        const carNum = this.getCarNumberRawByIdx(targetCarIdx);
+
+        if (carNum === null) {
+          this.logger.warn("Could not find car number for jump-to-fastest-lap target");
+          break;
+        }
+
+        const cameraSwitched = getCommands().camera.switchNum(carNum, 0, 0);
+
+        if (!cameraSwitched) {
+          // The walker depends on the camera being on the right car (iRacing's
+          // lap-search is camera-focus-relative). If the SDK refused, abort
+          // rather than burn the retry budget walking the wrong driver.
+          this.logger.warn("Jump to fastest lap: camera switch failed, aborting walk");
+          this.logger.debug(`Failed switchNum: carNum=${carNum}, carIdx=${targetCarIdx}`);
+          break;
+        }
+
+        // iRacing's nextLap jumps to the *end* of the targeted lap (=start of
+        // the lap after it). Subtract one so the cursor lands at the start of
+        // the fastest lap, not at its end.
+        const walkTargetLap = targetLap - 1;
+
+        // Adaptive lap walk: read CarIdxLap between steps and re-send when the
+        // cursor didn't advance. iRacing's broadcast queue drops fixed-spacing
+        // bursts (observed at 50 / 100 ms in live testing), so polling between
+        // steps is the only reliable way to converge on the target lap.
+        // Fire-and-forget — the press handler returns immediately.
+        void this.walkToFastestLap(contextId, targetCarIdx, walkTargetLap);
+
+        this.logger.info("Jump to fastest lap executed");
+        this.logger.debug(`Target carIdx: ${targetCarIdx}, fastest lap: ${targetLap}, walker target: ${walkTargetLap}`);
+        break;
+      }
       case "next-car": {
         // Send the configured keystroke (default: V) so iRacing's own car-ordering
         // drives the cycle. Telemetry-driven selection picks the wrong driver during
@@ -1057,6 +1330,8 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
       this.executeMode(contextId, settings);
     } else if (mode === "jump-to-my-car") {
       this.executeMode(contextId, settings);
+    } else if (mode === "jump-to-fastest-lap") {
+      // Single-shot jump — no meaningful encoder push semantic.
     } else {
       // Transport modes: encoder push plays
       const success = replay.play();
@@ -1070,6 +1345,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   private executeDialRotate(contextId: string, mode: ReplayControlMode, ticks: number): void {
     const replay = getCommands().replay;
 
+    if (mode === "jump-to-fastest-lap") {
+      // Single-shot jump — rotation has no meaningful semantic.
+      return;
+    }
+
     if (mode === "speed-increase" || mode === "speed-decrease") {
       // Speed modes: rotate adjusts speed progressively
       const adjustedMode: ReplayControlMode = ticks > 0 ? "speed-increase" : "speed-decrease";
@@ -1077,6 +1357,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         mode: adjustedMode,
         speed: "1",
         stepRate: 1,
+        fastestLapTarget: "viewed-car",
         flagsOverlay: false,
         addedWithVersion: "0.0.0",
       });
@@ -1087,6 +1368,7 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         mode: nav,
         speed: "1",
         stepRate: 1,
+        fastestLapTarget: "viewed-car",
         flagsOverlay: false,
         addedWithVersion: "0.0.0",
       });

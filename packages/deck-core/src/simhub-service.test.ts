@@ -92,6 +92,7 @@ describe("SimHub Service", () => {
       flagFlashDurationSeconds: 15,
       dualPressThresholdMs: 500,
       dualPressDirections: "tap-increases",
+      fastestLapSearchDelayMs: 400,
     });
   });
 
@@ -233,6 +234,7 @@ describe("SimHub Service", () => {
         flagFlashDurationSeconds: 15,
         dualPressThresholdMs: 500,
         dualPressDirections: "tap-increases",
+        fastestLapSearchDelayMs: 400,
       });
 
       initializeSimHub(mockLogger);
