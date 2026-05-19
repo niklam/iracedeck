@@ -37,11 +37,13 @@ export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, 
   }
 
   // ── Session change ─────────────────────────────────────────────────────
+  // `session.changed` is published directly from `handleTick` in `translator.ts`
+  // (issue #568 follow-up) so the event survives the replay-mode state wipe
+  // that wipes `state.lastSessionNum`. We still track `lastSessionNum` here so
+  // that handleTick can pre-set it to the new value to suppress a duplicate
+  // emit on non-replay session-change ticks — i.e. this diff is the
+  // dedup-bookkeeping owner, not the emitter.
   if (sessionNum !== null) {
-    if (state.lastSessionNum !== null && sessionNum !== state.lastSessionNum) {
-      emit({ event: "session.changed", data: { from: state.lastSessionNum, to: sessionNum } });
-    }
-
     state.lastSessionNum = sessionNum;
   }
 

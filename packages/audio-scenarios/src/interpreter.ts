@@ -52,6 +52,12 @@ type CompiledScenario = {
   enabled: boolean;
   unsubscribe: (() => void) | null;
   lastFireAt: number;
+  /**
+   * Active `triggerDelay` timer handle, if any. New event arrivals cancel
+   * and replace the pending timer so the most recent trigger wins. Cleared
+   * on timer expiry, on `unsubscribe`, and on `defineScenario` replacement.
+   */
+  pendingTriggerTimer: ReturnType<typeof setTimeout> | null;
 };
 
 /**
@@ -168,6 +174,11 @@ class ScenarioEngine implements IScenarioEngine {
     if (existing) {
       this.logger.warn(`Scenario "${s.id}" redefined; replacing previous definition`);
       existing.unsubscribe?.();
+
+      if (existing.pendingTriggerTimer !== null) {
+        clearTimeout(existing.pendingTriggerTimer);
+        existing.pendingTriggerTimer = null;
+      }
     }
 
     let resolvedSequence: ResolvedStep[];
@@ -186,6 +197,7 @@ class ScenarioEngine implements IScenarioEngine {
       enabled: true,
       unsubscribe: null,
       lastFireAt: 0,
+      pendingTriggerTimer: null,
     };
 
     this.scenarios.set(s.id, entry);
@@ -288,17 +300,62 @@ class ScenarioEngine implements IScenarioEngine {
 
       if (!entry || !entry.enabled) return;
 
-      if (where) {
-        try {
-          if (!where(ev)) return;
-        } catch (err) {
-          this.logger.error(`Scenario "${id}" where() threw: ${err instanceof Error ? err.message : String(err)}`);
+      const triggerDelay = entry.raw.triggerDelay ?? 0;
 
-          return;
+      if (triggerDelay <= 0) {
+        // Immediate path — where: runs synchronously, attemptFire runs
+        // synchronously. Var resolvers will read current state at this
+        // moment.
+        if (where) {
+          try {
+            if (!where(ev)) return;
+          } catch (err) {
+            this.logger.error(`Scenario "${id}" where() threw: ${err instanceof Error ? err.message : String(err)}`);
+
+            return;
+          }
         }
+
+        this.attemptFire(entry, ev);
+
+        return;
       }
 
-      this.attemptFire(entry, ev);
+      // Deferred path — wait `triggerDelay` ms before evaluating where: and
+      // attempting fire. By the time the timer fires, both the predicate and
+      // any var resolvers will read telemetry that has had time to settle
+      // (critical for `session.changed` → race-start, where iRacing's
+      // TrackWetness can read Unknown at the transition tick).
+      //
+      // Cancel any pending timer for this scenario so the most recent event
+      // wins. Two rapid SessionNum advances would otherwise queue two fires.
+      if (entry.pendingTriggerTimer !== null) {
+        clearTimeout(entry.pendingTriggerTimer);
+      }
+
+      entry.pendingTriggerTimer = setTimeout(() => {
+        entry.pendingTriggerTimer = null;
+
+        // Re-check entry state — scenario may have been redefined or
+        // disabled during the wait.
+        const current = this.scenarios.get(id);
+
+        if (!current || !current.enabled || current !== entry) return;
+
+        if (where) {
+          try {
+            if (!where(ev)) return;
+          } catch (err) {
+            this.logger.error(
+              `Scenario "${id}" where() threw (deferred): ${err instanceof Error ? err.message : String(err)}`,
+            );
+
+            return;
+          }
+        }
+
+        this.attemptFire(current, ev);
+      }, triggerDelay);
     };
 
     return this.eventBus.subscribe(eventName, handler);

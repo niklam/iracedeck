@@ -4636,6 +4636,76 @@
         "text": "the race is over. The final result for us is",
         "seed": 1
       }
+    ],
+    "race-start": [
+      {
+        "name": "starting-from-pole-01",
+        "text": "We're starting from pole, <break time=\"0.1s\"/> Well done.",
+        "seed": 13
+      },
+      {
+        "name": "qualifying-put-us-to-01",
+        "text": "Qualifying put us to,",
+        "seed": 1,
+        "previous_request_ids": [
+          "race-start-greeting/driver"
+        ]
+      }
+    ],
+    "race-start-greeting": [
+      { "name": "adam", "text": "Time to race, Adam." },
+      { "name": "al", "text": "Time to race, Al." },
+      { "name": "andre", "text": "Time to race, André." },
+      { "name": "andrew", "text": "Time to race, Andrew." },
+      { "name": "andy", "text": "Time to race, Andy." },
+      { "name": "bob", "text": "Time to race, Bob." },
+      { "name": "boss", "text": "Time to race, Boss." },
+      { "name": "brenton", "text": "Time to race, Brenton." },
+      { "name": "casey", "text": "Time to race, Casey." },
+      { "name": "champ", "text": "Time to race, Champ." },
+      { "name": "chris", "text": "Time to race, Chris." },
+      { "name": "cole", "text": "Time to race, Cole." },
+      { "name": "daniel", "text": "Time to race, Daniel." },
+      { "name": "dave", "text": "Time to race, Dave." },
+      { "name": "david", "text": "Time to race, David." },
+      { "name": "dominic", "text": "Time to race, Dominic." },
+      { "name": "driver", "text": "Time to race, Driver." },
+      { "name": "felix", "text": "Time to race, Felix." },
+      { "name": "fredrich", "text": "Time to race, Fredrich." },
+      { "name": "glen", "text": "Time to race, Glen." },
+      { "name": "hector", "text": "Time to race, Hector." },
+      { "name": "hesham", "text": "Time to race, Hesham." },
+      { "name": "ivan", "text": "Time to race, Ivan." },
+      { "name": "jace", "text": "Time to race, Jace." },
+      { "name": "jasper", "text": "Time to race, Jasper." },
+      { "name": "johan", "text": "Time to race, Johan." },
+      { "name": "jorge", "text": "Time to race, Jorge." },
+      { "name": "jose", "text": "Time to race, Jose." },
+      { "name": "justin", "text": "Time to race, Justin." },
+      { "name": "kev", "text": "Time to race, Kev." },
+      { "name": "kevin", "text": "Time to race, Kevin." },
+      { "name": "kris", "text": "Time to race, Kris." },
+      { "name": "lee", "text": "Time to race, Lee." },
+      { "name": "lorenzo", "text": "Time to race, Lorenzo." },
+      { "name": "marcus", "text": "Time to race, Marcus." },
+      { "name": "mark", "text": "Time to race, Mark." },
+      { "name": "mate", "text": "Time to race, Mate." },
+      { "name": "matt", "text": "Time to race, Matt." },
+      { "name": "matthew", "text": "Time to race, Matthew." },
+      { "name": "miguel", "text": "Time to race, Miguel." },
+      { "name": "miquel", "text": "Time to race, Miquel." },
+      { "name": "nick", "text": "Time to race, Nick." },
+      { "name": "niklas", "text": "Time to race, Niklas." },
+      { "name": "oivindl", "text": "Time to race, Öivin." },
+      { "name": "pablo", "text": "Time to race, Pablo." },
+      { "name": "patrick", "text": "Time to race, Patrick." },
+      { "name": "raymond", "text": "Time to race, Raymond." },
+      { "name": "rich", "text": "Time to race, Rich." },
+      { "name": "rob", "text": "Time to race, Rob." },
+      { "name": "shawn", "text": "Time to race, Shawn." },
+      { "name": "tim", "text": "Time to race, Tim." },
+      { "name": "ville", "text": "Time to race, Ville." },
+      { "name": "zeus", "text": "Time to race, Zeus." }
     ]
   }
 }

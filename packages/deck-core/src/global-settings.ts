@@ -509,6 +509,23 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the race-start greeting + qualifying-position readout (issue
+     * #568). One boolean for the family — the engineer fires ~3 s after the
+     * iRacing session changes to a race session (even if the driver is still
+     * in pit/garage), greets the driver by name, reports the grid position,
+     * and reads the track + air temperature + wetness brief. **Replaces** the
+     * session-start callout in race sessions so there is no double-greeting.
+     * Defaults `true` so a fresh install hears it; the user can silence it
+     * from the PI mid-session and the change takes effect on the next
+     * `session.changed` without cutting an in-flight clip. Canonical id↔key
+     * mapping in `RACE_START_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledRaceStart: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

@@ -21,12 +21,13 @@ import type {
   IEventBus,
   PitReadbackSnapshot,
   QualifyingInvalidationSnapshot,
+  RaceStartConditions,
   SessionStartConditions,
   SimEventMap,
   SimEventName,
 } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import type { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
+import { type SDKController, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
@@ -81,6 +82,20 @@ type TranslatorInstance = {
    */
   firstOnTrackSeeded: boolean;
   firstOnTrackFired: boolean;
+  /**
+   * Fresh-connect race-start latch (issue #568 follow-up). When the plugin
+   * connects directly into a race session there's no prior SessionNum to
+   * drive a `session.changed` delta, so the race-start callout would never
+   * fire. We synthesize one `session.changed { from: -1, to: SessionNum }`
+   * on the first tick that satisfies the gating conditions (sessionType
+   * resolves to "race", `SessionState` is pre-green so we don't fire on a
+   * mid-race reconnect). Latched once the decision is made — either we
+   * fired, or we observed a state that disqualifies the synthesis (Racing
+   * or later, or a non-race session). `SessionState.Invalid` keeps the
+   * latch open so telemetry that hasn't settled yet doesn't slam the door.
+   * Cleared by `handleDisconnect` so a reconnect re-checks.
+   */
+  freshConnectFireChecked: boolean;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -111,6 +126,7 @@ export function initializeSimEventsIracing(
     lastObservedSessionNum: null,
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
+    freshConnectFireChecked: false,
   };
 
   instance = self;
@@ -252,6 +268,106 @@ export function getSessionStartConditions(): SessionStartConditions | null {
 }
 
 /**
+ * Build the race-start conditions snapshot from the latest telemetry tick +
+ * session info (issue #568). Returns `null` when telemetry or session info is
+ * unavailable, or when track wetness is still `Unknown` — the race-start
+ * scenario treats null as "skip the callout" rather than speaking a nonsense
+ * line.
+ *
+ * Differs from {@link getSessionStartConditions} in three ways:
+ *   - Pit speed limit is **not** read. Race start doesn't speak the limit.
+ *   - `sessionType` is not returned — the scenario's `where:` already gates on
+ *     `classifySessionType(getSessionType()) === "race"` so the conditions
+ *     contract for this readout is fixed.
+ *   - Adds `playerCarPosition` — the **starting grid position**. Sourced from
+ *     `sessionInfo.QualifyResultsInfo.Results` (the qualifying results, which
+ *     are populated even in race-only events: iRacing seeds them from iRating
+ *     in that case). Reported `undefined` if the qualify-results lookup
+ *     misses; the scenario then skips the position clause and speaks the
+ *     greeting + conditions only. We deliberately do NOT use
+ *     `telemetry.PlayerCarPosition` here because that field reads `0` in the
+ *     garage / pre-grid window — it's a live-standings reading, not a grid
+ *     position.
+ *
+ * Read at fire time (same deferred-snapshot rationale as
+ * {@link getReadbackSnapshot}).
+ */
+export function getRaceStartConditions(): RaceStartConditions | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  if (!sessionInfo) return null;
+
+  const wetness = telemetry.TrackWetness;
+
+  if (typeof wetness !== "number" || wetness < TrackWetness.Dry || wetness > TrackWetness.ExtremelyWet) {
+    return null;
+  }
+
+  // iRacing `DisplayUnits`: 0 = English (imperial), 1 = Metric. Undefined
+  // (telemetry field absent) defaults to metric.
+  const metric = telemetry.DisplayUnits !== 0;
+  const trackTempC = telemetry.TrackTempCrew ?? 0;
+  const airTempC = telemetry.AirTemp ?? 0;
+  const toDisplayTemp = (celsius: number): number => Math.round(metric ? celsius : celsius * 1.8 + 32);
+  const playerCarPosition = resolveStartingGridPosition(sessionInfo);
+
+  return {
+    trackTemp: toDisplayTemp(trackTempC),
+    airTemp: toDisplayTemp(airTempC),
+    tempUnit: metric ? "celsius" : "fahrenheit",
+    wetness: wetness as TrackWetness,
+    playerCarPosition,
+  };
+}
+
+/**
+ * Look up the player's **starting grid position** from session info (issue
+ * #568). Reads `sessionInfo.QualifyResultsInfo.Results[player].Position`,
+ * matched by `CarIdx` against `DriverInfo.DriverCarIdx`. iRacing populates
+ * this even for race-only events (seeded from iRating in that case), so it's
+ * the right field for the race-start brief — unlike `PlayerCarPosition` /
+ * `CarIdxPosition`, which both read `0` in the garage / pre-grid window
+ * because they're live-standings fields.
+ *
+ * The raw `Position` value is **0-indexed** (pole sitter reads `0`), matching
+ * the `ResultsPositions.ClassPosition` convention elsewhere in iRacing's
+ * session YAML. We convert to 1-indexed here so the value is directly usable
+ * by the audio scenarios (which speak "P 1" / "P 2" / …) and the
+ * {@link RaceStartConditions} contract is 1-indexed.
+ *
+ * Returns `undefined` when any step misses (no session info, no driver info,
+ * no qualify results, no entry for the player) or when `Position` is negative
+ * (iRacing's "no result" sentinel) — the scenario then skips the position
+ * clause.
+ *
+ * @internal Exported for testing.
+ */
+function resolveStartingGridPosition(sessionInfo: Record<string, unknown>): number | undefined {
+  const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
+  const playerCarIdx = driverInfo?.DriverCarIdx;
+
+  if (typeof playerCarIdx !== "number" || playerCarIdx < 0) return undefined;
+
+  const qualifyInfo = sessionInfo.QualifyResultsInfo as Record<string, unknown> | undefined;
+  const results = qualifyInfo?.Results as Array<Record<string, unknown>> | undefined;
+
+  if (!Array.isArray(results)) return undefined;
+
+  const entry = results.find((r) => r.CarIdx === playerCarIdx);
+
+  if (!entry) return undefined;
+
+  const position = entry.Position;
+
+  if (typeof position !== "number" || position < 0) return undefined;
+
+  return position + 1;
+}
+
+/**
  * `SessionLapsTotal` sentinel iRacing uses for time-limited sessions —
  * anything `>= UNLIMITED_LAPS` means there is no defined lap count.
  *
@@ -347,6 +463,9 @@ function handleDisconnect(self: TranslatorInstance): void {
   // `resetPerSessionState`.
   self.firstOnTrackSeeded = false;
   self.firstOnTrackFired = false;
+  // Re-arm the fresh-connect race-start synthesis so a reconnect into a race
+  // session re-checks the SessionState gate (issue #568 follow-up).
+  self.freshConnectFireChecked = false;
 }
 
 /**
@@ -365,14 +484,13 @@ function handleDisconnect(self: TranslatorInstance): void {
  *
  * The lifecycle diff's baselines (`lifecycleInitialized`, `lastSessionNum`,
  * `lastEngineRunning`, `lastLap`) are preserved across the wipe. Without
- * that, the reset would put `lifecycleInitialized = false`, the very next
- * `diffLifecycle` call this same tick would silently re-seed `lastSessionNum`
- * to the new value (skipping the emit), and `session.changed` would never
- * reach subscribers. Preserving the baselines also avoids synthesizing a
- * spurious `engine.startup` (`lastEngineRunning` would be the sentinel
- * `false` against a still-running engine) on every session transition. The
- * lifecycle state IS the diff-baseline channel — not the session state — so
- * preserving it through a session boundary is the correct semantic.
+ * that, the reset would put `lifecycleInitialized = false`, the next
+ * `diffLifecycle` call this same tick would silently re-seed
+ * `lastEngineRunning` against the still-running engine and synthesize a
+ * spurious `engine.startup`. `session.changed` is published directly from
+ * `handleTick` (it can't rely on `state` surviving the replay-mode wipe), but
+ * we still preserve `lastSessionNum` here so handleTick can use it as a
+ * dedup signal on non-replay session-change ticks.
  *
  * `firstOnTrackSeeded` stays `true`; only `firstOnTrackFired` clears. Re-
  * seeding would silently mark fired = true if the driver is already on track
@@ -438,24 +556,89 @@ function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData): v
 }
 
 function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
-  // Session-change reset (issue #564). Runs on every tick — including replay
-  // ticks — because iRacing's between-session transition commonly passes
-  // through replay-mode ticks (waiting for the next session to load). Using
-  // the instance-level `lastObservedSessionNum` (not `state.lastSessionNum`)
-  // means the tracker survives the replay guard's per-tick state wipes that
-  // would otherwise null out the comparison baseline and let the transition
-  // slip past. The reset wipes `state` (preserving `lastSessionNum` so
-  // `diffLifecycle` can still emit `session.changed`) and clears
-  // `firstOnTrackFired` so the session-start callout re-fires on the next
-  // live-on-track tick.
+  // Session-change detection + reset (issues #564, #568). Runs on every tick
+  // — including replay ticks — because iRacing's between-session transition
+  // commonly passes through replay-mode ticks (waiting for the next session
+  // to load). Using the instance-level `lastObservedSessionNum` (not
+  // `state.lastSessionNum`) means the tracker survives the replay guard's
+  // per-tick state wipes that would otherwise null out the comparison
+  // baseline and let the transition slip past. The reset wipes `state` and
+  // clears `firstOnTrackFired` so the session-start callout re-fires on the
+  // next live-on-track tick. `session.changed` is published from here
+  // directly (not via diffLifecycle's `emit` aggregator) so the event reaches
+  // subscribers even when the replay state wipe later this tick destroys
+  // `state.lastSessionNum` — the race-start callout (issue #568) depends on
+  // this.
   const currentSessionNum = telemetry.SessionNum ?? null;
+
+  // Fresh-connect race-start synthesis (issue #568 follow-up). On the first
+  // tick after connect (or reconnect) that satisfies the gating conditions,
+  // synthesize a `session.changed { from: -1, to: SessionNum }` so the race-
+  // start callout fires when the plugin lands directly in a race session
+  // (no prior session to drive a real delta). Pre-green gate so we don't
+  // fire the grid brief on a mid-race reconnect. Resolution latches the
+  // check — `SessionState.Invalid` (telemetry still settling) keeps it open.
+  // Runs BEFORE the delta check below so the latch is set before a real
+  // delta could trigger on a later tick.
+  if (!self.freshConnectFireChecked && currentSessionNum !== null) {
+    const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
+    const sessionType = classifySessionType(resolveSessionType(sessionInfo, telemetry));
+    const rawState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
+    const isPreGreen =
+      rawState === SessionState.GetInCar || rawState === SessionState.Warmup || rawState === SessionState.ParadeLaps;
+    const isAtOrAfterGreen =
+      rawState === SessionState.Racing || rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
+
+    if (sessionType !== "race") {
+      // Not a race session — fresh-connect synthesis doesn't apply here.
+      self.logger.info(
+        `Race-start fresh-connect: skipped (sessionType="${sessionType}", SessionNum=${currentSessionNum})`,
+      );
+      self.freshConnectFireChecked = true;
+    } else if (isPreGreen) {
+      self.logger.info(
+        `Race-start fresh-connect: firing synthetic session.changed (SessionNum=${currentSessionNum}, SessionState=${rawState})`,
+      );
+      publish(self, { event: "session.changed", data: { from: -1, to: currentSessionNum } }, telemetry, Date.now());
+      self.freshConnectFireChecked = true;
+    } else if (isAtOrAfterGreen) {
+      // Mid-race reconnect — too late to brief the grid. Latch silently.
+      self.logger.info(
+        `Race-start fresh-connect: skipped (mid-race reconnect, SessionState=${rawState}, SessionNum=${currentSessionNum})`,
+      );
+      self.freshConnectFireChecked = true;
+    }
+    // SessionState.Invalid (or any unknown value): keep waiting. Telemetry
+    // may still be settling on the first ticks after connect.
+  }
 
   if (
     currentSessionNum !== null &&
     self.lastObservedSessionNum !== null &&
     currentSessionNum !== self.lastObservedSessionNum
   ) {
+    const previousSessionNum = self.lastObservedSessionNum;
     resetPerSessionState(self, telemetry);
+    // Publish `session.changed` directly from the instance-level tracker so it
+    // survives the replay-mode state wipe below (issue #568 follow-up). When
+    // iRacing transitions between sessions through a replay-mode tick, the
+    // wipe at `IsReplayPlaying === true` clears `state.lastSessionNum` and the
+    // diffLifecycle path swallows the delta on the next non-replay tick (it
+    // re-seeds via `lifecycleInitialized = false` instead of comparing). Bug
+    // surface: race-start callout never fired through a qualifying → race
+    // transition. Pre-setting `state.lastSessionNum` to the new value here
+    // prevents `diffLifecycle` from double-emitting on the same tick when the
+    // transition does NOT pass through replay mode.
+    self.logger.info(
+      `session.changed: SessionNum ${previousSessionNum} → ${currentSessionNum} (IsReplayPlaying=${telemetry.IsReplayPlaying ?? false})`,
+    );
+    publish(
+      self,
+      { event: "session.changed", data: { from: previousSessionNum, to: currentSessionNum } },
+      telemetry,
+      Date.now(),
+    );
+    self.state.lastSessionNum = currentSessionNum;
   }
 
   if (currentSessionNum !== null) {

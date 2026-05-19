@@ -943,4 +943,23 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "race.finished",
     data: { position: 15, classPosition: 1, isMultiClass: true },
   },
+
+  // Race start (issue #568). Fires on `session.changed` — the actual fire is
+  // gated by `classifySessionType(getSessionType()) === "race"` in the
+  // scenario, so the harness must additionally set the session type to
+  // "Race" (via the session-type picker) for these shortcuts to fire. The
+  // grid position the readout speaks is taken from telemetry's
+  // `PlayerCarPosition`, NOT from this payload — the harness reads from a
+  // mocked telemetry fixture, so the position branches below assume that
+  // fixture is configured separately. Hold this as a known harness limitation;
+  // in real iRacing the position comes through naturally on session change.
+  {
+    id: "race-start-session-change",
+    category: "Race Start",
+    label: "Session change → Race",
+    description:
+      'Triggers the race-start greeting + grid-position readout (~3 s delay). Engineer says "Time to race, <Name>. <Position clause>. Track temperature is N degrees C, air temperature is N degrees C, and the track is <wetness>."',
+    event: "session.changed",
+    data: { from: 0, to: 1 },
+  },
 ];

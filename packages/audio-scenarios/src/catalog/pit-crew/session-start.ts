@@ -203,7 +203,20 @@ export function buildSessionStartScenario(getSnapshot: SessionStartSnapshotResol
     id: "pit-crew.session-start",
     when: {
       event: "driver.firstOnTrack",
-      where: () => getSnapshot() !== null,
+      where: () => {
+        const snapshot = getSnapshot();
+
+        if (snapshot === null) return false;
+
+        // Race sessions are handled exclusively by the race-start scenario
+        // (issue #568) which fires earlier and reads the grid position. Without
+        // this gate the engineer would say both the race-start brief (~3 s
+        // after `session.changed`) and the session-start brief (on
+        // `driver.firstOnTrack` once the driver enters the car).
+        if (snapshot.sessionType === "race") return false;
+
+        return true;
+      },
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,

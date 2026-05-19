@@ -14,6 +14,7 @@ import {
   IncidentFlags,
   PitSvFlags,
   type SDKController,
+  SessionState,
   type TelemetryCallback,
   type TelemetryData,
   TrkLoc,
@@ -24,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getRaceStartConditions,
   getSessionStartConditions,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
@@ -1107,6 +1109,174 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data).toEqual({ from: 0, to: 1 });
     });
 
+    // Issue #568 follow-up: iRacing's qualifying → race transition typically
+    // passes through replay-mode ticks (session-loading screen). The replay
+    // guard in `handleTick` wipes `state` on the IsReplayPlaying edge, which
+    // used to clear `state.lastSessionNum` and cause `diffLifecycle` to
+    // re-seed on the next non-replay tick instead of emitting `session.changed`.
+    // The race-start callout depends on this event, so it must survive the
+    // replay-mode transition.
+    it("emits session.changed even when SessionNum advances on a replay-mode tick", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("session.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Tick 1: qualifying live.
+      controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+      // Tick 2: iRacing flips into the session-loading state (replay mode)
+      // AND advances SessionNum on the same tick.
+      controller.__tick(telemetry({ SessionNum: 2, IsReplayPlaying: true, IsOnTrack: false }));
+      // Tick 3: still in replay while the next session loads.
+      controller.__tick(telemetry({ SessionNum: 2, IsReplayPlaying: true, IsOnTrack: false }));
+      // Tick 4: race goes live.
+      controller.__tick(telemetry({ SessionNum: 2, IsReplayPlaying: false, IsOnTrack: false }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
+      expect(ev.data).toEqual({ from: 1, to: 2 });
+    });
+
+    it("does not double-emit session.changed on a non-replay session transition", () => {
+      // The handleTick-level emit pre-sets `state.lastSessionNum` to the new
+      // value to prevent diffLifecycle from emitting the same delta on the
+      // same tick. This test pins that dedup.
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("session.changed", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false }));
+      controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    // Issue #568 follow-up: fresh-connect race-start synthesis. When the
+    // plugin connects directly into a race session there's no prior
+    // SessionNum to drive a delta, so the race-start callout would never
+    // fire. The translator synthesizes `session.changed { from: -1, to: N }`
+    // on the first tick that satisfies the SessionState pre-green gate.
+    describe("fresh-connect race-start synthesis", () => {
+      const RACE_SESSION_INFO = {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+      };
+
+      it.each([
+        ["GetInCar", SessionState.GetInCar],
+        ["Warmup", SessionState.Warmup],
+        ["ParadeLaps", SessionState.ParadeLaps],
+      ] as const)("synthesizes session.changed when SessionState=%s on fresh-connect race", (_label, state) => {
+        const controller = createMockController();
+        controller.__setSessionInfo(RACE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
+        expect(ev.data).toEqual({ from: -1, to: 0 });
+      });
+
+      it.each([
+        ["Racing", SessionState.Racing],
+        ["Checkered", SessionState.Checkered],
+        ["CoolDown", SessionState.CoolDown],
+      ] as const)("does NOT synthesize when SessionState=%s (mid-race reconnect)", (_label, state) => {
+        const controller = createMockController();
+        controller.__setSessionInfo(RACE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("waits while SessionState=Invalid then fires on the first pre-green tick", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(RACE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Telemetry settling: SessionState=Invalid for a few ticks.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
+        expect(handler).not.toHaveBeenCalled();
+
+        // SessionState settles to GetInCar — synthesis fires.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      it("does NOT synthesize on fresh-connect to qualifying", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Open Qualify" }] },
+          WeekendInfo: { TrackID: 42 },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("does NOT synthesize on fresh-connect to practice", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }] },
+          WeekendInfo: { TrackID: 42 },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("does not fire twice when synthesis fires and a later SessionNum delta also fires", () => {
+        // E.g. a hosted multi-race event where the plugin connects into race 1
+        // (synthesis fires) and later the lobby advances to race 2 (real delta
+        // fires). Each should produce exactly one event.
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }, { SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42 },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Fresh-connect into race 1 — synthesis fires.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+
+        // Lobby advances to race 2 — real delta fires.
+        controller.__tick(telemetry({ SessionNum: 1, SessionState: SessionState.GetInCar }));
+        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler.mock.calls[1]![0].data).toEqual({ from: 0, to: 1 });
+      });
+    });
+
     it("does not synthesize engine.startup when the first tick already has RPM > threshold", () => {
       const controller = createMockController();
       const bus = getEventBus();
@@ -1440,6 +1610,195 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
 
       expect(getSessionStartConditions()?.sessionType).toBe(expected);
+    });
+  });
+
+  describe("race-start conditions (issue #568)", () => {
+    // Helper: build a sessionInfo fixture with the player at the given grid
+    // position (1-indexed). The starting grid comes from
+    // `QualifyResultsInfo.Results`, where `Position` is 0-indexed in iRacing's
+    // session YAML (pole = 0). The translator converts to 1-indexed so the
+    // audio scenario can speak "P 1" / "P 2" / … directly.
+    function sessionInfoWithGridPosition(humanPosition: number) {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, TrackPitSpeedLimit: "80.00 kph" },
+        DriverInfo: { DriverCarIdx: 0 },
+        QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: humanPosition - 1 }] },
+      };
+    }
+
+    const SESSION_INFO_P7 = sessionInfoWithGridPosition(7);
+
+    it("returns null before any telemetry tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getRaceStartConditions()).toBeNull();
+    });
+
+    it("returns null when session info is unavailable", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()).toBeNull();
+    });
+
+    it("returns null when track wetness is still Unknown", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Unknown, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()).toBeNull();
+    });
+
+    it("resolves metric conditions (Celsius) and reads grid position from QualifyResultsInfo", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          DisplayUnits: 1,
+          TrackWetness: TrackWetness.MostlyDry,
+          TrackTempCrew: 28.4,
+          AirTemp: 19.6,
+        }),
+      );
+
+      expect(getRaceStartConditions()).toEqual({
+        trackTemp: 28,
+        airTemp: 20,
+        tempUnit: "celsius",
+        wetness: TrackWetness.MostlyDry,
+        playerCarPosition: 7,
+      });
+    });
+
+    it("converts to Fahrenheit when DisplayUnits is English", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfoWithGridPosition(1));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          DisplayUnits: 0,
+          TrackWetness: TrackWetness.Dry,
+          TrackTempCrew: 28,
+          AirTemp: 20,
+        }),
+      );
+
+      // 28 °C → 82.4 °F → 82; 20 °C → 68 °F.
+      expect(getRaceStartConditions()).toEqual({
+        trackTemp: 82,
+        airTemp: 68,
+        tempUnit: "fahrenheit",
+        wetness: TrackWetness.Dry,
+        playerCarPosition: 1,
+      });
+    });
+
+    it("reports playerCarPosition as undefined when QualifyResultsInfo is absent (still loading)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: { DriverCarIdx: 0 },
+        // No QualifyResultsInfo.
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(
+        telemetry({
+          TrackWetness: TrackWetness.Dry,
+          TrackTempCrew: 25,
+          AirTemp: 18,
+        }),
+      );
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBeUndefined();
+    });
+
+    it("reports playerCarPosition as undefined when the player's CarIdx is missing from results", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: { DriverCarIdx: 99 },
+        QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 1 }] },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBeUndefined();
+    });
+
+    it("ignores telemetry.PlayerCarPosition (which reads 0 in the garage / pre-grid)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(SESSION_INFO_P7);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Real-world pre-grid: telemetry.PlayerCarPosition reads 0, but the
+      // grid position from QualifyResultsInfo (P7) is what we want to speak.
+      controller.__tick(
+        telemetry({
+          TrackWetness: TrackWetness.Dry,
+          TrackTempCrew: 25,
+          AirTemp: 18,
+          PlayerCarPosition: 0,
+        }),
+      );
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBe(7);
+    });
+
+    it("converts raw Position=0 (pole, 0-indexed) to P1 (1-indexed)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: { DriverCarIdx: 0 },
+        QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 0 }] },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBe(1);
+    });
+
+    it("reports playerCarPosition as undefined when raw Position is negative (no-result sentinel)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: { DriverCarIdx: 0 },
+        QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: -1 }] },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBeUndefined();
+    });
+
+    it("does not include sessionType in the snapshot (scenario gates on getSessionType separately)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfoWithGridPosition(5));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      const conditions = getRaceStartConditions();
+      expect(conditions).not.toBeNull();
+      expect(conditions && "sessionType" in conditions).toBe(false);
     });
   });
 

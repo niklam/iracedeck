@@ -10,6 +10,7 @@ export {
   _resetSimEventsIracing,
   getLatestTelemetry,
   getQualifyingInvalidationSnapshot,
+  getRaceStartConditions,
   getReadbackSnapshot,
   getSessionStartConditions,
   getSessionType,

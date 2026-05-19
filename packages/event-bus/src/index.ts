@@ -14,6 +14,8 @@ export type {
   PitReadbackSnapshot,
   PitServiceKind,
   QualifyingInvalidationSnapshot,
+  RaceStartConditions,
+  RaceStartSnapshot,
   SessionStartConditions,
   SessionStartSnapshot,
   SimEvent,

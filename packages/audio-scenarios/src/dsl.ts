@@ -76,6 +76,35 @@ export type Scenario = {
    * Scenarios without a family use the priority-based preempt rules only.
    */
   family?: string;
+  /**
+   * Defer the where: predicate and sequence-expansion (including var
+   * resolution) by N milliseconds after the trigger event. Use this when the
+   * data the scenario needs takes a moment to settle in the underlying
+   * telemetry — e.g. iRacing's `session.changed` lands on a tick where
+   * `TrackWetness` may still read `Unknown` for a beat. A leading
+   * `{ pause: N }` step inside the sequence does NOT solve this — vars are
+   * resolved at expansion time (synchronously when the scenario fires),
+   * before any pause executes. `triggerDelay` delays the entire fire decision
+   * so the where: predicate and var resolvers see telemetry that has
+   * settled.
+   *
+   * Behavior:
+   *   - On event arrival, the where: predicate is NOT evaluated immediately.
+   *   - The engine schedules a one-shot timer for N ms.
+   *   - When the timer fires, where: is evaluated against current state
+   *     (telemetry may have changed since the trigger event landed).
+   *   - If where: returns true, attemptFire runs and vars are resolved
+   *     against current telemetry.
+   *   - If a new event for the same scenario arrives while a timer is
+   *     pending, the pending timer is canceled and replaced with a fresh
+   *     one — the most recent event wins.
+   *
+   * The bus is NOT locked during the delay window, so higher-priority
+   * scenarios can still fire and claim the channel; if the bus is busy when
+   * the delayed fire attempts, the standard priority/family rules apply
+   * (defer, drop, or preempt).
+   */
+  triggerDelay?: number;
   /** Optional path prefix applied to clip/pool members; leading `/` on a path escapes it. */
   base?: string;
   sequence: Step[];

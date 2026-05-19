@@ -161,6 +161,46 @@ export type SessionStartSnapshot = SessionStartConditions & {
 };
 
 /**
+ * Telemetry-derived half of the race-start readout snapshot (issue #568).
+ * Built by the sim translator at the moment the race-start scenario fires
+ * (~3 s after a `session.changed` lands in a race session) and read at fire
+ * time via a resolver closure (same deferred-snapshot pattern as
+ * {@link SessionStartConditions}).
+ *
+ * Differs from {@link SessionStartConditions} in two ways:
+ *   - No `pitSpeedLimit` / `speedUnit`. Race start doesn't speak the pit
+ *     limit — the driver heard it during practice / qualifying and the
+ *     opening lap is full-attack. Dropped to keep the readout tight.
+ *   - Adds `playerCarPosition` — the grid position iRacing assigns from the
+ *     qualifying result (or starting grid lineup for race-only events).
+ *     `undefined` when telemetry hasn't populated `PlayerCarPosition` yet;
+ *     the scenario then skips the position clause and speaks the greeting +
+ *     conditions only.
+ *
+ * Sim-agnostic: any future translator can populate the same shape.
+ */
+export type RaceStartConditions = {
+  /** Track temperature in `tempUnit`, rounded to the nearest integer. */
+  trackTemp: number;
+  /** Air temperature in `tempUnit`, rounded to the nearest integer. */
+  airTemp: number;
+  tempUnit: "celsius" | "fahrenheit";
+  wetness: TrackWetness;
+  /** Grid position (`PlayerCarPosition`), or `undefined` if not yet populated. */
+  playerCarPosition: number | undefined;
+};
+
+/**
+ * Full race-start snapshot the scenario speaks to (issue #568):
+ * {@link RaceStartConditions} plus the driver name, which is not
+ * telemetry-derived — each plugin composes it from the Property Inspector
+ * "Your Name" picker (falling back to `"driver"`).
+ */
+export type RaceStartSnapshot = RaceStartConditions & {
+  driverName: string;
+};
+
+/**
  * Snapshot the qualifying lap-invalidation scenario reads at fire time
  * (issue #567). Built by the sim translator from the latest telemetry tick
  * plus the active session info. `sessionType: "qualifying"` is the only
