@@ -526,6 +526,25 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-ins for the overtake gain / loss callouts (issue #574). Two booleans
+     * — independently toggleable so a driver who wants congratulations but not
+     * chastisement (or vice versa) gets per-direction control. The engineer
+     * fires mid-race when the driver gains a position ("Nice pass. That puts
+     * us to P[n].") or loses one ("Come on, [name]. Don't give up positions
+     * like that. We're now in P[n]."), and the gain side has a dedicated
+     * "we're now leading race" line when the pass takes the player to P1.
+     * Both default `true`. Canonical id↔key mapping in
+     * `OVERTAKE_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledOvertakeGained: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledOvertakeLost: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

@@ -343,7 +343,73 @@ export type SimEventMap = {
   "offTrack.started": SimEvent<"offTrack.started", EmptySimEventPayload>;
   "offTrack.ended": SimEvent<"offTrack.ended", EmptySimEventPayload>;
 
-  "overtake.completed": SimEvent<"overtake.completed", { carIdx: number; sustained: number }>;
+  /**
+   * Player gained a race position and held the new spot for the sustainment
+   * window (issue #574). The original gain-only event (`{ carIdx, sustained }`)
+   * has been extended with position context so the Race Engineer scenario can
+   * speak the resulting position without a separate snapshot pull.
+   *
+   * `position` / `previousPosition` are the overall (1-indexed) race positions
+   * before and after the pass settled; `gapBehindMeters` is the physical gap
+   * to the just-passed car at the emission tick (derived from
+   * `CarIdxLapDistPct` × track length, omitted when track length isn't yet
+   * parsed). `isLeader` is `position === 1` and surfaces the "we're now
+   * leading race" branch without re-checking. The class-position fields
+   * mirror `lap.completed` (#566) so multi-class consumers can pick the
+   * class rank via `isMultiClass`.
+   */
+  "overtake.completed": SimEvent<
+    "overtake.completed",
+    {
+      /** Player's own car index (for correlation only). */
+      carIdx: number;
+      /** Hold duration in milliseconds (≥ OVERTAKE_HOLD_MS). */
+      sustained: number;
+      /** Overall race position after the pass settled (1-based). */
+      position: number;
+      /** Overall race position before the pass started (1-based). */
+      previousPosition: number;
+      /** Physical gap in meters to the just-passed car at emission tick, when computable. */
+      gapBehindMeters?: number;
+      /** True iff `position === 1` after the pass. */
+      isLeader: boolean;
+      /** Class position (1-indexed) after the pass, when class info is available. */
+      classPosition?: number;
+      /** Class position (1-indexed) before the pass, when class info is available. */
+      previousClassPosition?: number;
+      /** True iff the current session has more than one car class on track. */
+      isMultiClass?: boolean;
+    }
+  >;
+  /**
+   * Player lost a race position and the new (worse) spot has held for the
+   * sustainment window (issue #574). Counterpart to `overtake.completed`;
+   * shares the gating rules (race-only, on-track, not under caution, not a
+   * sim-glitch jump > OVERTAKE_MAX_JUMP, plus a 10 m physical-gap gate).
+   * `gapAheadMeters` is the distance to the overtaker (now ahead of the
+   * player) at the emission tick.
+   */
+  "overtake.lost": SimEvent<
+    "overtake.lost",
+    {
+      /** Player's own car index (for correlation only). */
+      carIdx: number;
+      /** Hold duration in milliseconds (≥ OVERTAKE_HOLD_MS). */
+      sustained: number;
+      /** Overall race position after the loss settled (1-based, > previousPosition). */
+      position: number;
+      /** Overall race position before the loss started (1-based, < position). */
+      previousPosition: number;
+      /** Physical gap in meters to the overtaker (now ahead) at emission tick, when computable. */
+      gapAheadMeters?: number;
+      /** Class position (1-indexed) after the loss, when class info is available. */
+      classPosition?: number;
+      /** Class position (1-indexed) before the loss, when class info is available. */
+      previousClassPosition?: number;
+      /** True iff the current session has more than one car class on track. */
+      isMultiClass?: boolean;
+    }
+  >;
 
   "driver.firstOnTrack": SimEvent<"driver.firstOnTrack", EmptySimEventPayload>;
   "session.changed": SimEvent<"session.changed", { from: number; to: number }>;

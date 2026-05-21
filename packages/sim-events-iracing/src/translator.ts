@@ -754,7 +754,23 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitReadback(self.state, telemetry, now, emit, pending);
   diffIncidents(self.state, telemetry, now, emit);
   diffDamage(self.state, telemetry, now, emit);
-  diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
+  // Overtake gain/loss (issue #574). Track length powers the 10 m physical-gap
+  // gate; resolved here so the diff stays out of session-info parsing. `null`
+  // when the YAML hasn't been parsed yet — the diff treats it as "no gap data"
+  // and lets emissions through without gating on gap. `isMultiClass` is the
+  // same value passed to `diffLaps`; the overtake payload mirrors `lap.completed`
+  // so multi-class consumers can branch on class vs overall.
+  const trackLengthMeters = resolveTrackLengthMeters(self.state, sessionInfo, telemetry);
+  diffOvertakes(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    isRaceSession,
+    resolveIsMultiClass(sessionInfo),
+    trackLengthMeters,
+    now,
+    emit,
+  );
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);
   diffTrackWetness(self.state, telemetry, emit);
@@ -925,6 +941,49 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
   }
 
   return classIds.size > 1;
+}
+
+/**
+ * Parse `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") into
+ * meters and cache the result on `TranslatorState` keyed by `(TrackID, SessionNum)`
+ * (issue #574). Returns `null` when the YAML hasn't been seen yet, the field is
+ * absent, or the format doesn't parse — the overtake diff treats null as "no
+ * gap data" and lets emissions through without the physical-gap gate. Re-parses
+ * automatically on track or session change since the cache key invalidates.
+ */
+function resolveTrackLengthMeters(
+  state: TranslatorState,
+  sessionInfo: Record<string, unknown> | null,
+  telemetry: TelemetryData,
+): number | null {
+  if (!sessionInfo) return state.trackLengthMeters;
+
+  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+
+  if (trackId !== state.trackLengthKey) {
+    state.trackLengthKey = trackId;
+    state.trackLengthMeters = null;
+  } else if (state.trackLengthMeters !== null) {
+    return state.trackLengthMeters;
+  }
+
+  const raw = weekend?.TrackLength;
+
+  if (typeof raw === "string") {
+    const match = /([\d.]+)\s*(km|mi(?:les?)?)/i.exec(raw);
+
+    if (match) {
+      const value = parseFloat(match[1]!);
+      const unit = match[2]!.toLowerCase();
+
+      if (Number.isFinite(value) && value > 0) {
+        state.trackLengthMeters = unit.startsWith("mi") ? value * 1609.344 : value * 1000;
+      }
+    }
+  }
+
+  return state.trackLengthMeters;
 }
 
 function resolvePitSpeedLimit(

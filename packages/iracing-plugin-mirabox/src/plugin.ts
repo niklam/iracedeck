@@ -19,6 +19,8 @@ import {
   LAP_TIME_CALLOUT_SETTING_KEYS,
   type LapCompletedSnapshot,
   type LapTimeCalloutId,
+  OVERTAKE_CALLOUT_SETTING_KEYS,
+  type OvertakeCalloutId,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
@@ -256,6 +258,27 @@ eventBus.subscribe("race.finished", (ev) => {
   );
 });
 
+// Cache the most recent overtake.completed / overtake.lost payloads so the
+// overtake scenarios' var resolvers can read frozen position data at fire
+// time (issue #574). Mirrors the Stream Deck plugin.
+const overtakeLogger = adapter.createLogger("Overtake");
+let lastOvertakeGained: import("@iracedeck/event-bus").SimEventOf<"overtake.completed">["data"] | null = null;
+let lastOvertakeLost: import("@iracedeck/event-bus").SimEventOf<"overtake.lost">["data"] | null = null;
+eventBus.subscribe("overtake.completed", (ev) => {
+  lastOvertakeGained = ev.data;
+  overtakeLogger.info(
+    `gained position=${ev.data.position} previousPosition=${ev.data.previousPosition} isLeader=${ev.data.isLeader} ` +
+      `gapBehindMeters=${ev.data.gapBehindMeters?.toFixed(1) ?? "?"} sustained=${ev.data.sustained}`,
+  );
+});
+eventBus.subscribe("overtake.lost", (ev) => {
+  lastOvertakeLost = ev.data;
+  overtakeLogger.info(
+    `lost position=${ev.data.position} previousPosition=${ev.data.previousPosition} ` +
+      `gapAheadMeters=${ev.data.gapAheadMeters?.toFixed(1) ?? "?"} sustained=${ev.data.sustained}`,
+  );
+});
+
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
 // effect mid-session without re-registering scenarios. The gate runs
 // at event-arrival time inside the scenario engine, before fire/expand,
@@ -379,6 +402,17 @@ registerPitCrew(
 
     return driverName ? { ...conditions, driverName } : null;
   },
+  // Overtake gain/loss callout opt-ins (issue #574). Per-direction live-read
+  // — same gate-at-event-arrival pattern as the other callout families.
+  (id: OvertakeCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[OVERTAKE_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Snapshot resolvers for the gained / lost overtake scenarios (issue #574).
+  () => lastOvertakeGained,
+  () => lastOvertakeLost,
+  // Driver-name resolver for the loss-line "Come on, <name>" composition
+  // (issue #574). Reuses the same `resolveActiveDriverName` path as session-
+  // start and race-end.
+  () => resolveActiveDriverName(driverNames, "driver"),
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

@@ -238,6 +238,19 @@
 			var raceCheckboxes = raceCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Overtake callouts (issue #574). Two subjects — gained / lost —
+			// independently toggleable so a driver who wants the
+			// congratulations but not the chastisement (or vice versa) gets
+			// per-direction control.
+			var overtakeCallouts = [
+				{ setting: "calloutEnabledOvertakeGained", label: "Gained position" },
+				{ setting: "calloutEnabledOvertakeLost",   label: "Lost position" },
+			];
+			var overtakeRowCount = Math.ceil(overtakeCallouts.length / 2);
+			var overtakeCheckboxes = overtakeCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -307,6 +320,11 @@
 				'<sdpi-item label="Race">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + raceRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						raceCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Overtakes">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + overtakeRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						overtakeCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>

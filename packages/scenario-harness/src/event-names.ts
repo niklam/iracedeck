@@ -99,8 +99,28 @@ export const EVENT_TEMPLATES = [
   // ── Overtake ──
   {
     name: "overtake.completed",
-    description: "Overtake sustained long enough to count",
-    data: { carIdx: 7, sustained: 2500 },
+    description:
+      "Overtake gained — sustained long enough to count (issue #574). Payload carries the new + previous overall and class position, the physical gap to the just-passed car, and an `isLeader` flag the gained scenario branches on.",
+    data: {
+      carIdx: 7,
+      sustained: 3000,
+      position: 5,
+      previousPosition: 6,
+      gapBehindMeters: 15,
+      isLeader: false,
+    },
+  },
+  {
+    name: "overtake.lost",
+    description:
+      "Player just lost a position and the new (worse) spot has held (issue #574). Mirror of overtake.completed for the loss direction.",
+    data: {
+      carIdx: 7,
+      sustained: 3000,
+      position: 5,
+      previousPosition: 4,
+      gapAheadMeters: 15,
+    },
   },
 
   // ── Lifecycle / lap ──

@@ -59,6 +59,16 @@ import {
   registerLapTimeVars,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
+import {
+  buildOvertakeGainedScenario,
+  buildOvertakeLostScenario,
+  type OvertakeCalloutId,
+  type OvertakeDriverNameResolver,
+  type OvertakeGainedSnapshotResolver,
+  type OvertakeLostSnapshotResolver,
+  registerOvertakeVars,
+  SCENARIO_ID_TO_OVERTAKE_ID,
+} from "./overtake.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
 import {
@@ -184,6 +194,19 @@ export {
   type SessionStartCalloutId,
   type SessionStartSnapshotResolver,
 } from "./session-start.js";
+export {
+  buildOvertakeGainedScenario,
+  buildOvertakeLostScenario,
+  OVERTAKE_CALLOUT_SETTING_KEYS,
+  OVERTAKE_POSITION_MAX,
+  OVERTAKE_POSITION_MIN,
+  type OvertakeCalloutId,
+  type OvertakeDriverNameResolver,
+  type OvertakeGainedSnapshotResolver,
+  type OvertakeLostSnapshotResolver,
+  overtakeGainIsAnnounceable,
+  overtakeLossIsAnnounceable,
+} from "./overtake.js";
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
@@ -511,6 +534,27 @@ export function registerPitCrew(
   // `where:` short-circuit — a safe stub for tests that don't supply a
   // resolver.
   getRaceStartSnapshot: RaceStartSnapshotResolver = () => null,
+  // User opt-in for the overtake callouts (issue #574). Two subjects —
+  // `gained` and `lost` — independently toggleable. Same gate-at-event-
+  // arrival shape as the other callout families. Default `() => true`
+  // preserves legacy behavior for tests that don't supply a closure.
+  getOvertakeCalloutEnabled: (id: OvertakeCalloutId) => boolean = () => true,
+  // Snapshot resolvers for the gained / lost overtake var resolvers
+  // (issue #574). Plugins cache the most recent payload for each event
+  // via event-bus subscriptions and expose the cache via these closures.
+  // The two events are distinct (`overtake.completed` vs `overtake.lost`)
+  // so they cache separately and the resolvers stay direction-scoped.
+  // Default `() => null` makes the var resolvers return null — a safe
+  // stub for tests that don't supply a resolver.
+  getOvertakeGainedSnapshot: OvertakeGainedSnapshotResolver = () => null,
+  getOvertakeLostSnapshot: OvertakeLostSnapshotResolver = () => null,
+  // Driver-name resolver for the loss-line "Come on, <name>" composition
+  // (issue #574). Plugins wire this to `resolveActiveDriverName(driverNames,
+  // "driver")` so the resolver returns the user-picked name when valid and
+  // falls back to the pre-recorded `"driver"` clip otherwise — the loss
+  // line stays a complete sentence even when the user's name isn't in the
+  // greeting pool. Default `() => null` skips the name step (rare; tests).
+  getOvertakeDriverName: OvertakeDriverNameResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -777,6 +821,38 @@ export function registerPitCrew(
         SCENARIO_ID_TO_RACE_START_ID,
         getRaceStartCalloutEnabled,
         "race-start callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Overtake gained / lost callouts (issue #574). Two scenarios under the
+  // shared `overtake` family so a fast sequence of position swaps doesn't
+  // stack stale callouts — the newer fire preempts the in-flight family-mate.
+  // Snapshot resolvers are owned by the plugin (caches the most recent payload
+  // for each event via event-bus subscriptions). The driver-name resolver is
+  // composed in the plugin from `resolveActiveDriverName(driverNames, "driver")`
+  // so the loss line's name slot falls back cleanly when the user's pick isn't
+  // in the greeting pool.
+  registerOvertakeVars(engine, getOvertakeGainedSnapshot, getOvertakeLostSnapshot, getOvertakeDriverName);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildOvertakeGainedScenario(getOvertakeGainedSnapshot),
+        SCENARIO_ID_TO_OVERTAKE_ID,
+        getOvertakeCalloutEnabled,
+        "overtake callout",
+        logger,
+      ),
+    ),
+  );
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildOvertakeLostScenario(getOvertakeLostSnapshot),
+        SCENARIO_ID_TO_OVERTAKE_ID,
+        getOvertakeCalloutEnabled,
+        "overtake callout",
         logger,
       ),
     ),
