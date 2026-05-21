@@ -12,7 +12,7 @@
  * the array drives display order in the UI.
  */
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
-import { type SimEventName, TrackWetness } from "@iracedeck/event-bus";
+import { type RaceStartSnapshot, type SimEventName, TrackWetness } from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 
 export type ScenarioShortcut = {
@@ -30,6 +30,15 @@ export type ScenarioShortcut = {
    * snapshot setup and the trigger event.
    */
   qualifyingInvalidationSnapshot?: QualifyingInvalidationSnapshot;
+  /**
+   * Optional snapshot for the race-start scenario (issue #568). Same mechanism
+   * as `qualifyingInvalidationSnapshot`: the UI POSTs `/api/race-start/snapshot`
+   * BEFORE publishing `event` (always `session.changed`), so the scenario's
+   * resolver returns the intended snapshot — including the grid position, which
+   * the production translator reads from `QualifyResultsInfo` rather than the
+   * event payload. Lets QA exercise each position clause deterministically.
+   */
+  raceStartSnapshot?: RaceStartSnapshot;
 };
 
 const ALL_FOUR_TIRES = ["LF", "RF", "LR", "RR"] as const;
@@ -92,6 +101,40 @@ function qualifyingInvalidation(
     event: "incident.occurred",
     data: { delta: options.delta ?? 1, type: options.incidentType ?? "off-track" },
     qualifyingInvalidationSnapshot: { lapStartedFromPits: false, ...snapshot },
+  };
+}
+
+/**
+ * Race-start shortcut (issue #568). Each carries a fully-formed
+ * `raceStartSnapshot` so the UI sets it via `/api/race-start/snapshot` before
+ * publishing `session.changed` — letting QA exercise each position clause
+ * deterministically. `playerCarPosition` is the **1-indexed** value the
+ * scenario speaks (P1 → pole, P2..P64 → composed, > P64 / undefined → clause
+ * skipped); the production translator derives it from `QualifyResultsInfo`,
+ * but the harness supplies it directly. Other snapshot fields use fixed
+ * sample values — they drive the temp/wetness brief, not the position clause.
+ */
+function raceStart(
+  id: string,
+  label: string,
+  playerCarPosition: number | undefined,
+  description: string,
+): ScenarioShortcut {
+  return {
+    id: `race-start-${id}`,
+    category: "Race Start",
+    label,
+    description,
+    event: "session.changed",
+    data: { from: 0, to: 1 },
+    raceStartSnapshot: {
+      driverName: "niklas",
+      trackTemp: 28,
+      airTemp: 20,
+      tempUnit: "celsius",
+      wetness: TrackWetness.Dry,
+      playerCarPosition,
+    },
   };
 }
 
@@ -944,22 +987,42 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: { position: 15, classPosition: 1, isMultiClass: true },
   },
 
-  // Race start (issue #568). Fires on `session.changed` — the actual fire is
-  // gated by `classifySessionType(getSessionType()) === "race"` in the
-  // scenario, so the harness must additionally set the session type to
-  // "Race" (via the session-type picker) for these shortcuts to fire. The
-  // grid position the readout speaks is taken from telemetry's
-  // `PlayerCarPosition`, NOT from this payload — the harness reads from a
-  // mocked telemetry fixture, so the position branches below assume that
-  // fixture is configured separately. Hold this as a known harness limitation;
-  // in real iRacing the position comes through naturally on session change.
-  {
-    id: "race-start-session-change",
-    category: "Race Start",
-    label: "Session change → Race",
-    description:
-      'Triggers the race-start greeting + grid-position readout (~3 s delay). Engineer says "Time to race, <Name>. <Position clause>. Track temperature is N degrees C, air temperature is N degrees C, and the track is <wetness>."',
-    event: "session.changed",
-    data: { from: 0, to: 1 },
-  },
+  // Race start (issue #568). Each shortcut publishes `session.changed` AND
+  // carries a `raceStartSnapshot` the UI pushes to `/api/race-start/snapshot`
+  // first — so the scenario's resolver returns the intended grid position at
+  // fire time (the production translator reads it from `QualifyResultsInfo`,
+  // not from the event payload). The scenario still gates on
+  // `getSessionType() === "race"`, so set the session type to a race session
+  // (via the session picker / a race preset) for these to fire. Each variant
+  // exercises a distinct position clause; the ~3 s `triggerDelay` applies.
+  raceStart(
+    "p1",
+    "Race start — P1 (pole)",
+    1,
+    'Pole start. Engineer says "Time to race, <Name>. Starting from pole. Well done. <conditions>."',
+  ),
+  raceStart(
+    "p5",
+    "Race start — P5",
+    5,
+    'Composed position clause. Engineer says "Time to race, <Name>. Qualifying put us to P 5. <conditions>."',
+  ),
+  raceStart(
+    "p30",
+    "Race start — P30",
+    30,
+    'Mid-pack composed clause. Engineer says "Time to race, <Name>. Qualifying put us to P 30. <conditions>."',
+  ),
+  raceStart(
+    "p65",
+    "Race start — P65 (out of range)",
+    65,
+    "Above POSITION_MAX (64). Position clause is skipped entirely; greeting + conditions still play.",
+  ),
+  raceStart(
+    "no-position",
+    "Race start — no position",
+    undefined,
+    "Grid position unavailable (QualifyResultsInfo miss). Position clause skipped; greeting + conditions still play.",
+  ),
 ];

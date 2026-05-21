@@ -330,6 +330,13 @@ function renderShortcuts() {
           if (s.qualifyingInvalidationSnapshot) {
             await post("/api/qualifying-invalidation/snapshot", s.qualifyingInvalidationSnapshot);
           }
+          // Issue #568 — race-start shortcuts carry a snapshot the scenario
+          // reads at fire time (grid position the production translator pulls
+          // from QualifyResultsInfo). Push it first, same push-before-fire
+          // ordering as the qualifying-invalidation snapshot above.
+          if (s.raceStartSnapshot) {
+            await post("/api/race-start/snapshot", s.raceStartSnapshot);
+          }
           await post("/api/bus/publish", { event: s.event, data: s.data });
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);

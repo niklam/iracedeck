@@ -582,14 +582,24 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // delta could trigger on a later tick.
   if (!self.freshConnectFireChecked && currentSessionNum !== null) {
     const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
-    const sessionType = classifySessionType(resolveSessionType(sessionInfo, telemetry));
+    // Capture the RAW session type first. `classifySessionType("")` returns
+    // "race" (its safe default), so classifying before the session YAML has
+    // loaded would misread a not-yet-known session as race and could fire a
+    // false synthetic session.changed. Only classify once the raw value is
+    // non-empty; an empty raw value keeps the latch open (same as
+    // SessionState.Invalid) so we wait for session info to settle.
+    const rawSessionType = resolveSessionType(sessionInfo, telemetry);
+    const sessionType = rawSessionType ? classifySessionType(rawSessionType) : undefined;
     const rawState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
     const isPreGreen =
       rawState === SessionState.GetInCar || rawState === SessionState.Warmup || rawState === SessionState.ParadeLaps;
     const isAtOrAfterGreen =
       rawState === SessionState.Racing || rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
 
-    if (sessionType !== "race") {
+    if (sessionType === undefined) {
+      // Raw session type not known yet (session YAML still loading). Keep the
+      // latch open — don't classify or fire until we have a real value.
+    } else if (sessionType !== "race") {
       // Not a race session — fresh-connect synthesis doesn't apply here.
       self.logger.info(
         `Race-start fresh-connect: skipped (sessionType="${sessionType}", SessionNum=${currentSessionNum})`,

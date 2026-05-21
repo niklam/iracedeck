@@ -267,6 +267,16 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.debug(`Scenario "${scenarioId}" ${enabled ? "enabled" : "disabled"}`);
 
     if (!enabled) {
+      // Cancel a pending `triggerDelay` timer so a stale pre-disable event
+      // can't fire after the scenario is re-enabled before the timer expires.
+      // (The timer callback guards on `enabled`, but only at expiry — a
+      // disable→enable round-trip within the delay window would otherwise let
+      // the original event through.)
+      if (entry.pendingTriggerTimer !== null) {
+        clearTimeout(entry.pendingTriggerTimer);
+        entry.pendingTriggerTimer = null;
+      }
+
       // Cancel in-flight execution on any bus + clear deferred replays referring to this id.
       for (const state of this.busState.values()) {
         if (state.activeFire?.id === scenarioId) this.cancelActiveFire(state);

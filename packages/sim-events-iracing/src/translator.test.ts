@@ -1251,6 +1251,44 @@ describe("sim-events-iracing translator", () => {
         expect(handler).not.toHaveBeenCalled();
       });
 
+      // CodeRabbit #579: classifySessionType("") returns "race", so an
+      // unresolved session type (no session YAML yet) must NOT be treated as
+      // race — otherwise a non-race fresh connect would emit a false synthetic
+      // session.changed. The latch must stay open until the raw type is known.
+      it("does NOT synthesize when the raw session type is empty (session info not loaded)", () => {
+        const controller = createMockController();
+        // No __setSessionInfo → resolveSessionType returns "".
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("waits while the raw session type is empty, then synthesizes once it resolves to race", () => {
+        const controller = createMockController();
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // First tick: session info not loaded yet (raw type ""). Latch open.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        expect(handler).not.toHaveBeenCalled();
+
+        // Session YAML loads — now a race session. Synthesis fires.
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42 },
+        });
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+      });
+
       it("does not fire twice when synthesis fires and a later SessionNum delta also fires", () => {
         // E.g. a hosted multi-race event where the plugin connects into race 1
         // (synthesis fires) and later the lobby advances to race 2 (real delta
