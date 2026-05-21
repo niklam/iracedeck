@@ -28,9 +28,11 @@ import {
   QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
   type QualifyingInvalidationCalloutId,
   RACE_END_CALLOUT_SETTING_KEYS,
+  RACE_START_CALLOUT_SETTING_KEYS,
   RACE_STATUS_CALLOUT_SETTING_KEYS,
   type RaceEndCalloutId,
   type RaceFinishedSnapshot,
+  type RaceStartCalloutId,
   type RaceStatusCalloutId,
   registerPitCrew,
   SESSION_START_CALLOUT_SETTING_KEYS,
@@ -135,6 +137,7 @@ import {
 import { IRacingNative } from "@iracedeck/iracing-native";
 import {
   getQualifyingInvalidationSnapshot,
+  getRaceStartConditions,
   getReadbackSnapshot,
   getSessionStartConditions,
   initializeSimEventsIracing,
@@ -357,6 +360,24 @@ registerPitCrew(
     const driverName = resolveActiveDriverName(driverNames, "driver");
 
     return driverName ? { ...lastRaceFinished, driverName } : null;
+  },
+  // Race-start callout opt-in (issue #568). Single subject; same live-read
+  // pattern as the other callout families.
+  (id: RaceStartCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[RACE_START_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Race-start conditions snapshot (issue #568). Composes the telemetry-derived
+  // conditions (track temp / air temp / wetness / grid position) from
+  // sim-events-iracing with the PI-picked driver name. Returns null (scenario
+  // skipped) when conditions aren't yet available or no driver-name clips
+  // exist.
+  () => {
+    const conditions = getRaceStartConditions();
+
+    if (!conditions) return null;
+
+    const driverName = resolveActiveDriverName(driverNames, "driver");
+
+    return driverName ? { ...conditions, driverName } : null;
   },
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,

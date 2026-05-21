@@ -81,6 +81,13 @@ import {
   SCENARIO_ID_TO_RACE_END_ID,
 } from "./race-end.js";
 import {
+  buildRaceStartScenario,
+  type RaceStartCalloutId,
+  type RaceStartSnapshotResolver,
+  registerRaceStartVars,
+  SCENARIO_ID_TO_RACE_START_ID,
+} from "./race-start.js";
+import {
   buildRaceStatusScenario,
   type RaceStatusCalloutId,
   registerRaceStatusVars,
@@ -153,6 +160,16 @@ export {
   type RaceFinishedSnapshotResolver,
   selectEffectiveFinalPosition,
 } from "./race-end.js";
+export {
+  buildRaceStartScenario,
+  isRaceSession,
+  POSITION_MAX,
+  positionIsSpeakable,
+  RACE_START_CALLOUT_SETTING_KEYS,
+  RACE_START_DELAY_MS,
+  type RaceStartCalloutId,
+  type RaceStartSnapshotResolver,
+} from "./race-start.js";
 export {
   buildRaceStatusScenario,
   RACE_STATUS_CALLOUT_SETTING_KEYS,
@@ -481,6 +498,19 @@ export function registerPitCrew(
   // as session-start. Default `() => null` makes the scenario's `where:`
   // short-circuit — a safe stub for tests that don't supply a resolver.
   getRaceFinishedSnapshot: RaceFinishedSnapshotResolver = () => null,
+  // User opt-in for the race-start greeting + qualifying-position readout
+  // (issue #568). Single subject; same gate-at-event-arrival shape as the
+  // other callout families. Default `() => true` preserves legacy behavior
+  // for tests that don't supply a closure.
+  getRaceStartCalloutEnabled: (id: RaceStartCalloutId) => boolean = () => true,
+  // Race-start conditions snapshot (issue #568). Plugins wire this to a
+  // closure that composes `getRaceStartConditions()` from
+  // `@iracedeck/sim-events-iracing` with the Property Inspector driver-name
+  // pick. Read at fire time inside the scenario's `where:` predicate and
+  // per-clip `var` resolvers. Default `() => null` makes the scenario's
+  // `where:` short-circuit — a safe stub for tests that don't supply a
+  // resolver.
+  getRaceStartSnapshot: RaceStartSnapshotResolver = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -728,6 +758,25 @@ export function registerPitCrew(
         SCENARIO_ID_TO_RACE_END_ID,
         getRaceEndCalloutEnabled,
         "race-end callout",
+        logger,
+      ),
+    ),
+  );
+
+  // Race-start greeting + qualifying-position readout (issue #568). Fires on
+  // `session.changed` in race sessions only; the session-start scenario's
+  // `where:` already skips race sessions so the two never double-greet.
+  // Snapshot resolver is owned by the plugin (composes
+  // `getRaceStartConditions()` from `@iracedeck/sim-events-iracing` with the
+  // Property Inspector driver-name pick).
+  registerRaceStartVars(engine, getRaceStartSnapshot);
+  engine.defineScenario(
+    wrapWithMaster(
+      wrapCalloutScenario(
+        buildRaceStartScenario(getRaceStartSnapshot, logger),
+        SCENARIO_ID_TO_RACE_START_ID,
+        getRaceStartCalloutEnabled,
+        "race-start callout",
         logger,
       ),
     ),

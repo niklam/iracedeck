@@ -166,9 +166,12 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
+// Default to a qualifying snapshot — issue #568 moved race entries to the
+// dedicated race-start scenario, so session-start's `where:` skips
+// `sessionType === "race"` and a race-typed default snapshot would never fire.
 const BASE_SNAPSHOT: SessionStartSnapshot = {
   driverName: "niklas",
-  sessionType: "race",
+  sessionType: "qualifying",
   pitSpeedLimit: 80,
   speedUnit: "kmh",
   trackTemp: 28,
@@ -250,7 +253,7 @@ describe("session-start scenario", () => {
     fire(snap());
 
     expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
-    expect(hasClip("/session-start/session-race.mp3")).toBe(true);
+    expect(hasClip("/session-start/session-qualifying.mp3")).toBe(true);
     expect(hasClip("/session-start/pit-speed-intro.mp3")).toBe(true);
     expect(hasClip("/session-start-speed-numbers/80.mp3")).toBe(true);
     expect(hasClip("/session-start/speed-unit-kmh.mp3")).toBe(true);
@@ -293,11 +296,19 @@ describe("session-start scenario", () => {
     it.each([
       ["practice", "session-practice"],
       ["qualifying", "session-qualifying"],
-      ["race", "session-race"],
     ] as const)("%s → %s", (sessionType, clip) => {
       fire(snap({ sessionType }));
 
       expect(hasClip(`/session-start/${clip}.mp3`)).toBe(true);
+    });
+
+    // Issue #568: race entries are spoken exclusively by the race-start
+    // scenario, so session-start's `where:` skips `sessionType === "race"` to
+    // prevent the double-greeting.
+    it("race sessions are skipped entirely (handled by race-start scenario)", () => {
+      fire(snap({ sessionType: "race" }));
+
+      expect(voicePaths()).toEqual([]);
     });
   });
 

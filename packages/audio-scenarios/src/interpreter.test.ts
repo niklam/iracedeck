@@ -728,6 +728,112 @@ describe("event subscription", () => {
   });
 });
 
+// ─── triggerDelay (issue #568) ──────────────────────────────────────────────
+
+describe("triggerDelay", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("defers the fire by triggerDelay ms, then plays", () => {
+    engine.defineScenario({
+      id: "test.delayed",
+      when: { event: "pitLane.entered" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      triggerDelay: 1000,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    bus.publishEvent("pitLane.entered", {});
+
+    // Nothing yet — still inside the delay window.
+    vi.advanceTimersByTime(900);
+    flushVoiceAndSfx(audio);
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice)).toEqual([]);
+
+    // Past the delay — the scenario fires.
+    vi.advanceTimersByTime(200);
+    flushVoiceAndSfx(audio);
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path)).toEqual([
+      "pit-crew/greeting/a.mp3",
+    ]);
+  });
+
+  it("re-evaluates where: at the deferred fire time", () => {
+    let allow = false;
+    engine.defineScenario({
+      id: "test.delayed-where",
+      when: { event: "pitLane.entered", where: () => allow },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      triggerDelay: 1000,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    // where: is false at event arrival but flips true during the delay window.
+    bus.publishEvent("pitLane.entered", {});
+    allow = true;
+    vi.advanceTimersByTime(1000);
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path)).toEqual([
+      "pit-crew/greeting/a.mp3",
+    ]);
+  });
+
+  it("clears a pending delayed trigger on disable so a re-enable can't replay the stale event", () => {
+    engine.defineScenario({
+      id: "test.delayed-toggle",
+      when: { event: "pitLane.entered" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      triggerDelay: 1000,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    // Event arrives → timer scheduled. Disable, then re-enable, before expiry.
+    bus.publishEvent("pitLane.entered", {});
+    engine.setEnabled("test.delayed-toggle", false);
+    engine.setEnabled("test.delayed-toggle", true);
+
+    // Timer would have expired here — but it was cleared on disable, so the
+    // stale pre-disable event must NOT fire.
+    vi.advanceTimersByTime(1000);
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice)).toEqual([]);
+  });
+
+  it("a fresh event after re-enable still fires normally", () => {
+    engine.defineScenario({
+      id: "test.delayed-rearm",
+      when: { event: "pitLane.entered" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      triggerDelay: 1000,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    bus.publishEvent("pitLane.entered", {});
+    engine.setEnabled("test.delayed-rearm", false);
+    engine.setEnabled("test.delayed-rearm", true);
+
+    // New event after re-enable schedules a fresh timer.
+    bus.publishEvent("pitLane.entered", {});
+    vi.advanceTimersByTime(1000);
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path)).toEqual([
+      "pit-crew/greeting/a.mp3",
+    ]);
+  });
+});
+
 // ─── Ambient side-effects ──────────────────────────────────────────────────
 
 describe("ambient side-effects", () => {

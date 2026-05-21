@@ -113,9 +113,21 @@ The eight callouts share a single family so a positioning correction (e.g. *"too
 
 ## Session Start
 
-The first time you go on track in a session, the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to race. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice, qualifying, and race.
+The first time you go on track in a **practice or qualifying** session, the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying.
 
 Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is spoken exactly (never rounded); if the live limit isn't one the engineer has a clip for, the pit-speed part of the brief is simply skipped rather than guessing a number. The readout fires once per session, a few seconds after you first go on track, and does not re-fire when you return to the garage and back out.
+
+In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
+
+## Race Start
+
+Around 3 seconds after iRacing changes to a race session — even if you're still in the pit or garage — the Race Engineer greets you by name, reports your grid position, and reads the same temperature + wetness brief as the session-start callout (without the pit speed limit, since you already heard it during practice / qualifying).
+
+- **P1** — *"Time to race, Adam. Starting from pole. Well done. Track temperature is twenty-eight degrees Celsius, air temperature is twenty degrees Celsius, and the track is mostly dry."*
+- **P2..P64** — *"Time to race, Niklas. Qualifying put us to P seven. Track temperature is thirty-two degrees Celsius, air temperature is twenty-four degrees Celsius, and the track is dry."*
+- **Position unknown or above P64** — the grid-position clause is skipped entirely; the engineer still speaks the greeting and conditions.
+
+Because the callout fires off the session-change event (not your first time on track), it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions are unaffected and continue to use the standard session-start brief above.
 
 ## Lap Time (Best Lap)
 
@@ -184,7 +196,7 @@ Under **Damage**, one callout is toggleable, enabled by default:
 
 Under **Session Start**, one callout is toggleable, enabled by default:
 
-- **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track each session. Disabling it silences only the start-of-session readout.
+- **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track in **practice or qualifying** sessions. Race sessions are covered by **Race → Race start** below — disabling this checkbox does not affect the race readout.
 
 Under **Race Engineer Toggle**, one callout is toggleable, enabled by default:
 
@@ -202,8 +214,9 @@ Under **Position**, one callout is toggleable, enabled by default:
 
 - **Position changed** — the qualifying / race per-lap callout that fires when your effective position changes (improvement, worsening, or first-fix), plus the qualifying-only pole call and hold-position status. Disabling this silences only the per-change announcement; the every-3-laps race-status callout below stays independent.
 
-Under **Race**, two callouts are toggleable, both enabled by default:
+Under **Race**, three callouts are toggleable, all enabled by default:
 
+- **Race start** — the greeting + grid-position + conditions brief the engineer reads ~3 s after the session changes to a race ("Time to race, Niklas. Qualifying put us to P seven. …"). Replaces the session-start callout in race sessions, so there's no double-greeting.
 - **Position status (every 3 laps)** — the periodic *"We're currently pee five."* status (or *"We're still leading the race. Keep it up."* when you're P1) the engineer reads every 3 laps while your effective position holds. Race sessions only.
 - **Final result** — the *"Niklas, we won!"* / *"second place"* / *"podium"* / *"the race is over. The final result for us is pee seven."* line that fires once when you cross the line under the checkered. Race sessions only.
 

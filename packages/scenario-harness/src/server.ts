@@ -25,6 +25,7 @@ import {
   setHarnessQualifyingInvalidationSnapshot,
   validateQualifyingInvalidationSnapshot,
 } from "./qualifying-invalidation-snapshot.js";
+import { setHarnessRaceStartSnapshot, validateRaceStartSnapshot } from "./race-start-snapshot.js";
 import { SCENARIO_SHORTCUTS } from "./scenario-shortcuts.js";
 import { setHarnessSessionStartSnapshot, validateSessionStartSnapshot } from "./session-start-snapshot.js";
 
@@ -438,6 +439,22 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
 
     setHarnessQualifyingInvalidationSnapshot(snapshot);
+
+    return reply.code(204).send();
+  });
+
+  // Race-start composer (issue #568). Same shape as the session-start and
+  // qualifying-invalidation composers: the UI pushes a fully-formed snapshot
+  // here, then publishes `session.changed` via `/api/bus/publish` to fire the
+  // scenario. Pre-baked per-position shortcuts in `scenario-shortcuts.ts`
+  // carry the snapshot inline so a single click hits both endpoints in
+  // sequence and QA can exercise each position clause deterministically.
+  app.post("/api/race-start/snapshot", async (req, reply) => {
+    const snapshot = validateRaceStartSnapshot(req.body);
+
+    if (typeof snapshot === "string") return reply.code(400).send({ error: snapshot });
+
+    setHarnessRaceStartSnapshot(snapshot);
 
     return reply.code(204).send();
   });

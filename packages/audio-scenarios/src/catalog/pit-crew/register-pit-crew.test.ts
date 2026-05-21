@@ -328,6 +328,8 @@ beforeEach(() => {
     undefined, // getRaceFinishedFired (issue #569)
     undefined, // getRaceEndCalloutEnabled (issue #569)
     undefined, // getRaceFinishedSnapshot (issue #569)
+    undefined, // getRaceStartCalloutEnabled (issue #568)
+    undefined, // getRaceStartSnapshot (issue #568)
     () => voiceMasterEnabled,
   );
 });

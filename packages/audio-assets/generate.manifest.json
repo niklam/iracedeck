@@ -7320,6 +7320,454 @@
       "textPreview": "pee sixty four.",
       "generatedAt": "2026-05-17T17:36:57.788Z",
       "requestId": "rT1WTeoQrlazFR5Dcpeb"
+    },
+    "voice/default/race-start/time-to-race-01.mp3": {
+      "hash": "9dbecab6a460465b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race,",
+      "generatedAt": "2026-05-18T16:12:08.057Z",
+      "requestId": "dnSPw6eYVTv76aDxTEm5"
+    },
+    "voice/default/race-start/starting-from-pole-01.mp3": {
+      "hash": "973c53bea3f99f84",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're starting from pole, <break time=\"0.1s\"/> Well done.",
+      "generatedAt": "2026-05-19T19:17:21.840Z",
+      "requestId": "t12tmtNc4n3GWWsu5ohP"
+    },
+    "voice/default/race-start/qualifying-put-us-to-01.mp3": {
+      "hash": "094b8d566f99d48c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Qualifying put us to,",
+      "generatedAt": "2026-05-19T19:14:46.928Z",
+      "requestId": "hATWaSkByRuxyzqlrgD8"
+    },
+    "voice/default/race-start-greeting/adam.mp3": {
+      "hash": "d9d33edb6408e5d0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Adam.",
+      "generatedAt": "2026-05-19T17:35:19.346Z",
+      "requestId": "QwNyoLrbYrD5WYL64J2l"
+    },
+    "voice/default/race-start-greeting/al.mp3": {
+      "hash": "276525ea1b1cf784",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Al.",
+      "generatedAt": "2026-05-19T17:35:19.512Z",
+      "requestId": "2rhpLxXzHsNUSEnvidqZ"
+    },
+    "voice/default/race-start-greeting/andre.mp3": {
+      "hash": "42cec6f6d1bdc1f4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, André.",
+      "generatedAt": "2026-05-19T17:35:19.664Z",
+      "requestId": "le3BdTjRuNn0rg6Fgt6E"
+    },
+    "voice/default/race-start-greeting/andrew.mp3": {
+      "hash": "9e1a6aa662eb2f39",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Andrew.",
+      "generatedAt": "2026-05-19T17:35:19.824Z",
+      "requestId": "qKfifHCxvkQU49CW0JKy"
+    },
+    "voice/default/race-start-greeting/andy.mp3": {
+      "hash": "017520a99ae22b5a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Andy.",
+      "generatedAt": "2026-05-19T17:35:19.997Z",
+      "requestId": "wI4ZlPGrY2JRPVOdlbxM"
+    },
+    "voice/default/race-start-greeting/bob.mp3": {
+      "hash": "7e7fd2cad5887997",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Bob.",
+      "generatedAt": "2026-05-19T17:35:20.141Z",
+      "requestId": "j4oggEnSkN5oApeMP0Xz"
+    },
+    "voice/default/race-start-greeting/boss.mp3": {
+      "hash": "f21e7ef9308c1634",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Boss.",
+      "generatedAt": "2026-05-19T17:35:20.309Z",
+      "requestId": "NUXIeanKlGUZTJlm52uk"
+    },
+    "voice/default/race-start-greeting/brenton.mp3": {
+      "hash": "635752c7e8f29d40",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Brenton.",
+      "generatedAt": "2026-05-19T17:35:20.472Z",
+      "requestId": "mQGYhid2fZ7gMhQOyoxb"
+    },
+    "voice/default/race-start-greeting/casey.mp3": {
+      "hash": "584613d1b2f7ec32",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Casey.",
+      "generatedAt": "2026-05-19T17:35:20.646Z",
+      "requestId": "PtCPAsxEiqZ1H4wd5lB1"
+    },
+    "voice/default/race-start-greeting/champ.mp3": {
+      "hash": "91a118ba3f0f01a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Champ.",
+      "generatedAt": "2026-05-19T17:35:20.796Z",
+      "requestId": "xjBpPW3wJIG2BK18xIZf"
+    },
+    "voice/default/race-start-greeting/chris.mp3": {
+      "hash": "dd785cc743cedd52",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Chris.",
+      "generatedAt": "2026-05-19T17:35:20.964Z",
+      "requestId": "1DL5tc29CXd7x5nJzoDO"
+    },
+    "voice/default/race-start-greeting/cole.mp3": {
+      "hash": "5f69fab2a07fba91",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Cole.",
+      "generatedAt": "2026-05-19T17:35:21.121Z",
+      "requestId": "bSJqlCywKaXlmG03rImk"
+    },
+    "voice/default/race-start-greeting/daniel.mp3": {
+      "hash": "44a7f3b2de1ac06d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Daniel.",
+      "generatedAt": "2026-05-19T17:35:21.265Z",
+      "requestId": "hrGH10hpNrASFCDxU7VU"
+    },
+    "voice/default/race-start-greeting/dave.mp3": {
+      "hash": "3df31dbb29927803",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Dave.",
+      "generatedAt": "2026-05-19T17:35:21.421Z",
+      "requestId": "zgnuujyUXIeMRYPvCoxP"
+    },
+    "voice/default/race-start-greeting/david.mp3": {
+      "hash": "f1b72823efa93b40",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, David.",
+      "generatedAt": "2026-05-19T17:35:21.581Z",
+      "requestId": "uHenBfMk4KHkp8Aedfg3"
+    },
+    "voice/default/race-start-greeting/dominic.mp3": {
+      "hash": "e27596a2d313a352",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Dominic.",
+      "generatedAt": "2026-05-19T17:35:21.743Z",
+      "requestId": "Ju4KH9bEEhAyQkQCKEnz"
+    },
+    "voice/default/race-start-greeting/driver.mp3": {
+      "hash": "33ff0b1465800880",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Driver.",
+      "generatedAt": "2026-05-19T17:35:21.902Z",
+      "requestId": "5uTUCLGxl5pCcoiIznWf"
+    },
+    "voice/default/race-start-greeting/felix.mp3": {
+      "hash": "1243c089a6cdc6e5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Felix.",
+      "generatedAt": "2026-05-19T17:35:22.065Z",
+      "requestId": "TVY6IK7KJpkcz9qFj4s3"
+    },
+    "voice/default/race-start-greeting/fredrich.mp3": {
+      "hash": "719583d18758711e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Fredrich.",
+      "generatedAt": "2026-05-19T17:35:22.210Z",
+      "requestId": "Vgtl5pyfhw89SiBCKnKK"
+    },
+    "voice/default/race-start-greeting/glen.mp3": {
+      "hash": "ecad33eb2d34c334",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Glen.",
+      "generatedAt": "2026-05-19T17:35:22.364Z",
+      "requestId": "U9dZnOl6Y1OEOY8qkCsD"
+    },
+    "voice/default/race-start-greeting/hector.mp3": {
+      "hash": "f419bbcae92011da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Hector.",
+      "generatedAt": "2026-05-19T17:35:22.537Z",
+      "requestId": "1hyyIHqybwIaJhkirn2U"
+    },
+    "voice/default/race-start-greeting/hesham.mp3": {
+      "hash": "33c02833c3f1b30b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Hesham.",
+      "generatedAt": "2026-05-19T17:35:22.697Z",
+      "requestId": "J0EsCs7jOEZbvooWi3T9"
+    },
+    "voice/default/race-start-greeting/ivan.mp3": {
+      "hash": "99f6f47dc7a6a0d7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Ivan.",
+      "generatedAt": "2026-05-19T17:35:22.856Z",
+      "requestId": "Qd7VyP9iEI9hVyDgAdMM"
+    },
+    "voice/default/race-start-greeting/jace.mp3": {
+      "hash": "c9244ce6b9f965da",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jace.",
+      "generatedAt": "2026-05-19T17:35:23.023Z",
+      "requestId": "3ZBnCDpiKp25vm7W3ZUv"
+    },
+    "voice/default/race-start-greeting/jasper.mp3": {
+      "hash": "347e975262ceedc9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jasper.",
+      "generatedAt": "2026-05-19T17:35:23.193Z",
+      "requestId": "ti3NRiaVYCWAdhXIJsP5"
+    },
+    "voice/default/race-start-greeting/johan.mp3": {
+      "hash": "8e9cccfbcc27313d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Johan.",
+      "generatedAt": "2026-05-19T17:35:23.364Z",
+      "requestId": "7oxRA02WmYsMLPPuCT4g"
+    },
+    "voice/default/race-start-greeting/jorge.mp3": {
+      "hash": "b686bb8d5f06ff4f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jorge.",
+      "generatedAt": "2026-05-19T17:35:23.530Z",
+      "requestId": "mwtNJVUTefjhzZrTdaTA"
+    },
+    "voice/default/race-start-greeting/jose.mp3": {
+      "hash": "dc0ab902ed834ce4",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jose.",
+      "generatedAt": "2026-05-19T17:35:23.678Z",
+      "requestId": "9FYaA4CdD84clzLiNwRa"
+    },
+    "voice/default/race-start-greeting/justin.mp3": {
+      "hash": "78c069f194536b2e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Justin.",
+      "generatedAt": "2026-05-19T17:35:23.840Z",
+      "requestId": "nIbfrP14w6EWxQZLbP2a"
+    },
+    "voice/default/race-start-greeting/kev.mp3": {
+      "hash": "df19fc03d62fabf8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Kev.",
+      "generatedAt": "2026-05-19T17:35:23.995Z",
+      "requestId": "tr8g49zSATfIE6GoErVJ"
+    },
+    "voice/default/race-start-greeting/kevin.mp3": {
+      "hash": "f7cd578db0267355",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Kevin.",
+      "generatedAt": "2026-05-19T17:35:24.153Z",
+      "requestId": "Bvx8sPxJvMT5wI9JqwbM"
+    },
+    "voice/default/race-start-greeting/kris.mp3": {
+      "hash": "f6b337f66434e48f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Kris.",
+      "generatedAt": "2026-05-19T17:35:24.316Z",
+      "requestId": "RaH48oudLaLYtnhI7xKB"
+    },
+    "voice/default/race-start-greeting/lee.mp3": {
+      "hash": "1219d87a2c385d2b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Lee.",
+      "generatedAt": "2026-05-19T17:35:24.474Z",
+      "requestId": "AxgXgH8YkdBjkDkySTkp"
+    },
+    "voice/default/race-start-greeting/lorenzo.mp3": {
+      "hash": "2d03b366749b32f2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Lorenzo.",
+      "generatedAt": "2026-05-19T17:35:24.630Z",
+      "requestId": "19BFcNcZB92MeGdvSp1T"
+    },
+    "voice/default/race-start-greeting/marcus.mp3": {
+      "hash": "906249c32ea79849",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Marcus.",
+      "generatedAt": "2026-05-19T17:35:24.788Z",
+      "requestId": "cNK4Zj2VQ4SITITYXwxW"
+    },
+    "voice/default/race-start-greeting/mark.mp3": {
+      "hash": "e5ab34b8484373ce",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Mark.",
+      "generatedAt": "2026-05-19T17:35:24.936Z",
+      "requestId": "SI45VBQAHp358DSHKMDV"
+    },
+    "voice/default/race-start-greeting/mate.mp3": {
+      "hash": "67aa153d06ff49b5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Mate.",
+      "generatedAt": "2026-05-19T17:35:25.092Z",
+      "requestId": "8XCkXf8YAYarvguBPJKe"
+    },
+    "voice/default/race-start-greeting/matt.mp3": {
+      "hash": "eda899c3fc5c459f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Matt.",
+      "generatedAt": "2026-05-19T17:35:25.248Z",
+      "requestId": "27o0ZPmSTb90UTKSDQ2t"
+    },
+    "voice/default/race-start-greeting/matthew.mp3": {
+      "hash": "adab5f1d1340326a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Matthew.",
+      "generatedAt": "2026-05-19T17:35:25.417Z",
+      "requestId": "auCJPI1oUTwIWage1W7F"
+    },
+    "voice/default/race-start-greeting/miguel.mp3": {
+      "hash": "d3e7e5dce0c5cbcd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Miguel.",
+      "generatedAt": "2026-05-19T17:35:25.564Z",
+      "requestId": "sBx5JwE0zYYhaOvfxSlN"
+    },
+    "voice/default/race-start-greeting/miquel.mp3": {
+      "hash": "d59d6ceb14cb9c0f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Miquel.",
+      "generatedAt": "2026-05-19T17:35:25.717Z",
+      "requestId": "LX6y3kTRzDBXSTaFwjDY"
+    },
+    "voice/default/race-start-greeting/nick.mp3": {
+      "hash": "cf324e2dc8f414a5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Nick.",
+      "generatedAt": "2026-05-19T17:35:25.861Z",
+      "requestId": "tGETwc79CeRJW6XZyQeG"
+    },
+    "voice/default/race-start-greeting/niklas.mp3": {
+      "hash": "810e6f0dba6e1ba8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Niklas.",
+      "generatedAt": "2026-05-19T17:35:26.024Z",
+      "requestId": "sDHGMAChzmLz6yLg4HA4"
+    },
+    "voice/default/race-start-greeting/oivindl.mp3": {
+      "hash": "23dd47c126967830",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Öivin.",
+      "generatedAt": "2026-05-19T17:35:26.181Z",
+      "requestId": "yMjb6qzvrS6xLTyweZ5O"
+    },
+    "voice/default/race-start-greeting/pablo.mp3": {
+      "hash": "bf5727bd6bee201d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Pablo.",
+      "generatedAt": "2026-05-19T17:35:26.338Z",
+      "requestId": "oA5e6kmnDliWOjdeD9s0"
+    },
+    "voice/default/race-start-greeting/patrick.mp3": {
+      "hash": "14c2a7d007492aa0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Patrick.",
+      "generatedAt": "2026-05-19T17:35:26.493Z",
+      "requestId": "SjTgm5Ir7qC78CUwTevx"
+    },
+    "voice/default/race-start-greeting/raymond.mp3": {
+      "hash": "0a73179cd7e89f08",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Raymond.",
+      "generatedAt": "2026-05-19T17:35:26.651Z",
+      "requestId": "IdYg7bpokC8PofEV4NaN"
+    },
+    "voice/default/race-start-greeting/rich.mp3": {
+      "hash": "daf876d48e6abd71",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Rich.",
+      "generatedAt": "2026-05-19T17:35:26.813Z",
+      "requestId": "JtUefo2Bdmkdp0SdmtkU"
+    },
+    "voice/default/race-start-greeting/rob.mp3": {
+      "hash": "a84ffe627b07c2a1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Rob.",
+      "generatedAt": "2026-05-19T17:35:26.958Z",
+      "requestId": "7CcHt0R6Y7Gpv8k2bQGL"
+    },
+    "voice/default/race-start-greeting/shawn.mp3": {
+      "hash": "0618a748ad3674bd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Shawn.",
+      "generatedAt": "2026-05-19T17:35:27.126Z",
+      "requestId": "xZu0Q4FpiLXqDUToeBTP"
+    },
+    "voice/default/race-start-greeting/tim.mp3": {
+      "hash": "afd611cdcc8a446d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Tim.",
+      "generatedAt": "2026-05-19T17:35:27.291Z",
+      "requestId": "fzZvqqwLHdgR9l19GGMs"
+    },
+    "voice/default/race-start-greeting/ville.mp3": {
+      "hash": "069822b8cd603836",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Ville.",
+      "generatedAt": "2026-05-19T17:35:27.433Z",
+      "requestId": "1NXA4Wc2rCrocllJppVF"
+    },
+    "voice/default/race-start-greeting/zeus.mp3": {
+      "hash": "541dc52551612666",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Zeus.",
+      "generatedAt": "2026-05-19T17:35:27.582Z",
+      "requestId": "BpLRXJDuhwQ1M3L2MjjA"
     }
   }
 }

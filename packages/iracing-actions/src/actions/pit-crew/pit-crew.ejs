@@ -223,11 +223,14 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
-			// Race-specific callouts (issue #569). Race-status fires the
+			// Race-specific callouts (issues #568 + #569). Race-start fires the
+			// grid-position greeting ~3 s after the session changes to a race
+			// (replaces session-start in race sessions); race-status fires the
 			// every-3-laps position update during races; race-end fires the
 			// final-result callout once when the driver crosses S/F under
 			// the checkered flag.
 			var raceCallouts = [
+				{ setting: "calloutEnabledRaceStart",  label: "Race start" },
 				{ setting: "calloutEnabledRaceStatus", label: "Position status (every 3 laps)" },
 				{ setting: "calloutEnabledRaceEnd",    label: "Final result" },
 			];
