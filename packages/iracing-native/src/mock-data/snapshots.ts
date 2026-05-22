@@ -75,6 +75,9 @@ export const SNAPSHOT_MID_STRAIGHT: MockSnapshotValues = {
   LapLastLapTime: 138.2,
   LapDeltaToBestLap: -0.3,
   LapDeltaToBestLap_OK: true,
+  LapDeltaToSessionBestLap_OK: true,
+  LapDeltaToSessionOptimalLap_OK: true,
+  LapDeltaToSessionLastlLap_OK: true, // iRacing typo: "Lastl" — preserve
 
   // On track status
   IsOnTrack: true,

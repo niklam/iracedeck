@@ -93,6 +93,30 @@ export type PlayerResultsForLap = {
  */
 export const LAP_RESULTS_SYNC_MAX_WAIT_MS = 3000;
 
+/**
+ * Lap-validity resolver (issue #572). iRacing exposes per-lap validity
+ * through the `LapDeltaTo*_OK` family — its own assessment of whether the
+ * delta-time reference frame is valid for the just-completed lap. The flags
+ * flip together when the lap is invalidated (track-limits cut, pit-lane
+ * violation, etc.), so any single `false` is enough to call the lap invalid.
+ *
+ * Returns `undefined` when none of the flags are present in the snapshot —
+ * downstream consumers should treat `undefined` as valid (don't suppress
+ * callouts on a missing signal).
+ */
+export function resolveLapIsValid(telemetry: TelemetryData): boolean | undefined {
+  const flags = [
+    telemetry.LapDeltaToBestLap_OK,
+    telemetry.LapDeltaToSessionBestLap_OK,
+    telemetry.LapDeltaToSessionOptimalLap_OK,
+    telemetry.LapDeltaToSessionLastlLap_OK,
+  ].filter((v): v is boolean => typeof v === "boolean");
+
+  if (flags.length === 0) return undefined;
+
+  return flags.every((v) => v === true);
+}
+
 export function diffLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -253,6 +277,7 @@ export function diffLaps(
     previousClassPosition?: number;
     isMultiClass?: boolean;
     lapsSincePositionChange?: number;
+    lapIsValid?: boolean;
   } = {
     lap: lapCompleted,
     lapTime: lapLastLapTime,
@@ -375,6 +400,14 @@ export function diffLaps(
   if (state.lastPositionChangeLap >= 0) {
     data.lapsSincePositionChange = lapCompleted - state.lastPositionChangeLap;
   }
+
+  // Lap validity (issue #572). Drives the "That lap didn't count." prefix on
+  // the position-change callout. `undefined` (no `_OK` flags present in the
+  // snapshot) is omitted from the payload so consumers fall through to the
+  // existing behavior on a missing signal.
+  const lapIsValid = resolveLapIsValid(telemetry);
+
+  if (lapIsValid !== undefined) data.lapIsValid = lapIsValid;
 
   // Race-end detection (issue #569). Once per race session: fires the first
   // `lap.completed` in a race session after iRacing has raised the checkered

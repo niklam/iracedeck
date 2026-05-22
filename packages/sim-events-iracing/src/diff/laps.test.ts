@@ -1418,3 +1418,82 @@ describe("diffLaps — race.finished (issue #569)", () => {
     expect(finished[0].data.isMultiClass).toBe(true);
   });
 });
+
+describe("diffLaps — lap validity (issue #572)", () => {
+  it("sets lapIsValid=true when all four _OK flags are true", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 84.2,
+        LapBestLapTime: 84.2,
+        LapDeltaToBestLap_OK: true,
+        LapDeltaToSessionBestLap_OK: true,
+        LapDeltaToSessionOptimalLap_OK: true,
+        LapDeltaToSessionLastlLap_OK: true,
+      }),
+      "qualifying",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data.lapIsValid).toBe(true);
+  });
+
+  it("sets lapIsValid=false when any _OK flag is false (single false among trues)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 84.2,
+        LapBestLapTime: 84.2,
+        LapDeltaToBestLap_OK: false,
+        LapDeltaToSessionBestLap_OK: true,
+        LapDeltaToSessionOptimalLap_OK: true,
+        LapDeltaToSessionLastlLap_OK: true,
+      }),
+      "qualifying",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data.lapIsValid).toBe(false);
+  });
+
+  it("omits lapIsValid when no _OK flag is present in telemetry", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 84.2,
+        LapBestLapTime: 84.2,
+      }),
+      "qualifying",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data.lapIsValid).toBeUndefined();
+  });
+});

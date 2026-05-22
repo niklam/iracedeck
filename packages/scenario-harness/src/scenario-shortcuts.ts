@@ -853,6 +853,74 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
     },
   },
+  // Invalid-lap prefix (issue #572). When the just-completed lap is flagged
+  // invalid by iRacing, the position scenario prepends "That lap didn't count."
+  // and forces the worse-framing intro — no pole, no "better" branch. Each
+  // shortcut sets `lapIsValid: false` so the invalid branch fires regardless
+  // of position delta.
+  {
+    id: "position-invalid-unchanged",
+    category: "Position",
+    label: "Invalid lap, unchanged P5",
+    description:
+      "Invalid lap with unchanged position — engineer says \"That lap didn't count. We're currently pee five.\" Verifies the prefix lands on the status-update path.",
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "qualifying",
+      position: 5,
+      previousPosition: 5,
+      classPosition: 5,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapIsValid: false,
+    },
+  },
+  {
+    id: "position-invalid-worsened",
+    category: "Position",
+    label: "Invalid lap, worsened 3 → 5",
+    description:
+      "Invalid lap with worsened position — engineer says \"That lap didn't count. We're currently pee five.\" Verifies the prefix lands on the worsened path.",
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "qualifying",
+      position: 5,
+      previousPosition: 3,
+      classPosition: 5,
+      previousClassPosition: 3,
+      isMultiClass: false,
+      lapIsValid: false,
+    },
+  },
+  {
+    id: "position-invalid-improved-on-paper",
+    category: "Position",
+    label: "Invalid lap, improved on paper 5 → 3",
+    description:
+      'Invalid lap with standings shifted from others\' laps — engineer still uses worse framing: "That lap didn\'t count. We\'re currently pee three." Verifies the invalid branch beats the "better" framing.',
+    event: "lap.completed",
+    data: {
+      lap: 5,
+      lapTime: 84.2,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "qualifying",
+      position: 3,
+      previousPosition: 5,
+      classPosition: 3,
+      previousClassPosition: 5,
+      isMultiClass: false,
+      lapIsValid: false,
+    },
+  },
   // Race-status (issue #569). Fires when lapsSincePositionChange > 0 && % 3 === 0
   // in a race session. Each shortcut sets the cadence-hit value directly so the
   // scenario reads as if the diff had anchored or reset position several laps
