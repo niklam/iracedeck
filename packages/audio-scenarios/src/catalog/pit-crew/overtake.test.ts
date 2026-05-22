@@ -1,0 +1,519 @@
+/**
+ * Race Engineer overtake callouts — scenario-engine integration tests (issue
+ * #574, split design). Each overtake produces a reaction (immediate) plus a
+ * separate `low`-priority position readout that defers behind the reaction and
+ * speaks "We're currently P[n]" from LIVE telemetry, gated by a shared
+ * cooldown and suppressed after the race ends.
+ */
+import type { IAudioService } from "@iracedeck/audio-service";
+import { AudioChannel } from "@iracedeck/audio-service";
+import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AudioAssetsManifest } from "../../interpreter.js";
+import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
+import { overtakeGainIsAnnounceable, overtakeLossIsAnnounceable } from "./overtake.js";
+import { canAnnouncePosition, POSITION_READOUT_COOLDOWN_MS, tryClaimPositionAnnouncement } from "./position-readout.js";
+import { _resetRadarEngine } from "./radar-engine.js";
+
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getSessionType: () => "Race",
+}));
+
+const mockLogger = {
+  trace: vi.fn(),
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  createScope: vi.fn(),
+  withLevel: vi.fn(),
+};
+
+function createMockBus(): IEventBus & {
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+} {
+  const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
+
+  return {
+    subscribe: <T extends SimEventName>(name: T, handler: (e: SimEventOf<T>) => void) => {
+      let set = handlers.get(name);
+
+      if (!set) {
+        set = new Set();
+        handlers.set(name, set);
+      }
+
+      set.add(handler as (e: SimEventOf<SimEventName>) => void);
+
+      return () => {
+        handlers.get(name)?.delete(handler as (e: SimEventOf<SimEventName>) => void);
+      };
+    },
+    unsubscribe: <T extends SimEventName>(name: T, handler: (e: SimEventOf<T>) => void) => {
+      handlers.get(name)?.delete(handler as (e: SimEventOf<SimEventName>) => void);
+    },
+    publish: (event: SimEventOf<SimEventName>) => {
+      for (const handler of Array.from(handlers.get(event.event as SimEventName) ?? [])) handler(event);
+    },
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+      this.publish({
+        event: name,
+        timestamp: Date.now(),
+        telemetry: null as unknown,
+        data: data as never,
+      } as SimEventOf<SimEventName>);
+    },
+  };
+}
+
+type FakeAudio = IAudioService & {
+  _triggerChannelEnd: (channel: AudioChannel) => void;
+  _played: { channel: AudioChannel; path: string }[];
+};
+
+function createFakeAudio(): FakeAudio {
+  const callbacks: Record<AudioChannel, (() => void) | null> = {
+    [AudioChannel.Ambient]: null,
+    [AudioChannel.SFX]: null,
+    [AudioChannel.Voice]: null,
+    [AudioChannel.Radar]: null,
+  };
+  const played: { channel: AudioChannel; path: string }[] = [];
+
+  return {
+    init: vi.fn(() => true),
+    destroy: vi.fn(),
+    playOnChannel: vi.fn((channel: AudioChannel, path: string) => {
+      played.push({ channel, path });
+
+      return true;
+    }),
+    stopChannel: vi.fn((channel: AudioChannel) => {
+      callbacks[channel] = null;
+    }),
+    stopAllChannels: vi.fn(),
+    setChannelVolume: vi.fn(),
+    setBusVolume: vi.fn(),
+    getBusVolume: vi.fn(() => 1.0),
+    isChannelPlaying: vi.fn(() => false),
+    onChannelComplete: vi.fn((channel: AudioChannel, cb: () => void) => {
+      callbacks[channel] = cb;
+    }),
+    playVoiceSequence: vi.fn(),
+    cancelVoiceSequence: vi.fn(),
+    onVoiceSequenceComplete: vi.fn(),
+    seekChannelRandom: vi.fn(),
+    getAudioDevices: vi.fn(() => []),
+    setAudioDevice: vi.fn(() => true),
+    _triggerChannelEnd: (channel: AudioChannel) => {
+      const cb = callbacks[channel];
+      callbacks[channel] = null;
+      cb?.();
+    },
+    _played: played,
+  } as unknown as FakeAudio;
+}
+
+function flush(audio: FakeAudio, iterations = 30): void {
+  for (let i = 0; i < iterations; i++) {
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    audio._triggerChannelEnd(AudioChannel.SFX);
+  }
+}
+
+const VOICE = "luca";
+
+const OVERTAKE_CLIPS = [
+  `voice/${VOICE}/position-overtake/nice-pass-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`,
+  `voice/${VOICE}/position-overtake/come-on-01.mp3`,
+  `voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`,
+  `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+  `voice/${VOICE}/session-start-greeting/niklas.mp3`,
+  `voice/${VOICE}/session-start-greeting/driver.mp3`,
+  ...Array.from({ length: 64 }, (_, i) => `voice/${VOICE}/position-number/${i + 1}.mp3`),
+];
+
+const manifest: AudioAssetsManifest = {
+  clips: ["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-ambient-pit.mp3", ...OVERTAKE_CLIPS],
+  ambientLoop: "sfx/IRD-ambient-pit.mp3",
+  ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
+};
+
+type GainedSnap = SimEventOf<"overtake.completed">["data"];
+type LostSnap = SimEventOf<"overtake.lost">["data"];
+type Live = { position: number; classPosition: number; isMultiClass: boolean };
+
+type Gate = {
+  carsAlongside: boolean;
+  onTrack: boolean;
+  speedKmh: number;
+  onPitRoad: boolean;
+  msSinceIncident: number | null;
+};
+
+const CLEAR_GATE: Gate = {
+  carsAlongside: false,
+  onTrack: true,
+  speedKmh: 200,
+  onPitRoad: false,
+  msSinceIncident: null,
+};
+
+let bus: ReturnType<typeof createMockBus>;
+let audio: FakeAudio;
+let currentDriverName: string | null;
+let currentLive: Live | null;
+let currentGate: Gate | null;
+let raceFinished: boolean;
+let overtakeEnabled: Record<"gained" | "lost", boolean>;
+
+function voicePaths(): string[] {
+  return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+}
+
+function fireGained(snapshot: Partial<GainedSnap>): void {
+  bus.publishEvent("overtake.completed", {
+    carIdx: 0,
+    sustained: 3000,
+    position: 5,
+    previousPosition: 6,
+    isLeader: false,
+    ...snapshot,
+  } as GainedSnap);
+  flush(audio);
+}
+
+function fireLost(snapshot: Partial<LostSnap>): void {
+  bus.publishEvent("overtake.lost", {
+    carIdx: 0,
+    sustained: 3000,
+    position: 5,
+    previousPosition: 4,
+    ...snapshot,
+  } as LostSnap);
+  flush(audio);
+}
+
+beforeEach(() => {
+  currentDriverName = "niklas";
+  currentLive = { position: 5, classPosition: 5, isMultiClass: false };
+  currentGate = { ...CLEAR_GATE };
+  raceFinished = false;
+  overtakeEnabled = { gained: true, lost: true };
+  _resetPositionReadoutCooldown();
+  bus = createMockBus();
+  audio = createFakeAudio();
+  initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+  registerPitCrew(
+    bus,
+    undefined, // getFlagCalloutEnabled
+    mockLogger as never,
+    undefined, // getPitReadbackEnabled
+    undefined, // getPitActionsAllowed
+    undefined, // getPitServiceRequestsEnabled
+    undefined, // getReadbackSnapshot
+    undefined, // getDamageCalloutEnabled
+    undefined, // getPitStatusCalloutEnabled
+    undefined, // getTrackConditionsCalloutEnabled
+    undefined, // getIncidentCalloutEnabled
+    undefined, // getSessionStartCalloutEnabled
+    undefined, // getSessionStartSnapshot
+    undefined, // getLapTimeCalloutEnabled
+    undefined, // getLapCompletedSnapshot
+    undefined, // getPositionCalloutEnabled
+    undefined, // getQualifyingInvalidationCalloutEnabled
+    undefined, // getQualifyingInvalidationSnapshot
+    undefined, // getRaceStatusCalloutEnabled
+    () => raceFinished, // getRaceFinishedFired
+    undefined, // getRaceEndCalloutEnabled
+    undefined, // getRaceFinishedSnapshot
+    undefined, // getRaceStartCalloutEnabled
+    undefined, // getRaceStartSnapshot
+    (id) => overtakeEnabled[id], // getOvertakeCalloutEnabled
+    () => currentDriverName, // getOvertakeDriverName
+    () => currentLive, // getLivePosition
+    () => currentGate, // getOvertakeGate
+  );
+});
+
+afterEach(() => {
+  _resetAudioScenarios();
+  _resetRadarEngine();
+  _resetPositionReadoutCooldown();
+  vi.clearAllMocks();
+});
+
+describe("overtakeGainIsAnnounceable / overtakeLossIsAnnounceable", () => {
+  it("accepts an in-range overall position", () => {
+    expect(
+      overtakeGainIsAnnounceable({
+        position: 5,
+        previousPosition: 6,
+        isLeader: false,
+        carIdx: 0,
+        sustained: 3000,
+      } as GainedSnap),
+    ).toBe(true);
+    expect(
+      overtakeLossIsAnnounceable({ position: 5, previousPosition: 4, carIdx: 0, sustained: 3000 } as LostSnap),
+    ).toBe(true);
+  });
+
+  it("rejects positions outside the speakable clip range", () => {
+    expect(
+      overtakeGainIsAnnounceable({
+        position: 100,
+        previousPosition: 101,
+        isLeader: false,
+        carIdx: 0,
+        sustained: 3000,
+      } as GainedSnap),
+    ).toBe(false);
+  });
+
+  it("uses class position when multi-class", () => {
+    expect(
+      overtakeGainIsAnnounceable({
+        position: 50,
+        classPosition: 3,
+        previousPosition: 51,
+        isMultiClass: true,
+        isLeader: false,
+        carIdx: 0,
+        sustained: 3000,
+      } as GainedSnap),
+    ).toBe(true);
+  });
+});
+
+describe("position-readout cooldown helper", () => {
+  beforeEach(() => _resetPositionReadoutCooldown());
+
+  // Use a realistic (non-zero) clock — `0` is the "never announced" sentinel.
+  const T0 = 1_000_000;
+
+  it("allows the first announcement, then suppresses within the window", () => {
+    expect(canAnnouncePosition(T0)).toBe(true);
+    expect(tryClaimPositionAnnouncement(T0)).toBe(true);
+    expect(tryClaimPositionAnnouncement(T0 + 1000)).toBe(false);
+    expect(tryClaimPositionAnnouncement(T0 + POSITION_READOUT_COOLDOWN_MS - 1)).toBe(false);
+  });
+
+  it("allows again once the cooldown elapses", () => {
+    expect(tryClaimPositionAnnouncement(T0)).toBe(true);
+    expect(tryClaimPositionAnnouncement(T0 + POSITION_READOUT_COOLDOWN_MS)).toBe(true);
+  });
+});
+
+describe("overtake reaction (immediate)", () => {
+  it("gained non-leader plays only 'Nice pass.' (no position in the reaction)", () => {
+    fireGained({ isLeader: false });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+  });
+
+  it("gained leader plays the standalone leader line", () => {
+    fireGained({ position: 1, previousPosition: 2, isLeader: true });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+  });
+
+  it("lost plays come-on + driver name + dont-give-up (no number)", () => {
+    fireLost({});
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/session-start-greeting/niklas.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`);
+  });
+
+  it("lost falls back to the 'driver' greeting clip", () => {
+    currentDriverName = "driver";
+    fireLost({});
+
+    expect(voicePaths()).toContain(`voice/${VOICE}/session-start-greeting/driver.mp3`);
+  });
+
+  it("does not fire the gained reaction when its opt-in is off", () => {
+    overtakeEnabled.gained = false;
+    fireGained({});
+
+    expect(voicePaths().some((p) => p.includes("nice-pass"))).toBe(false);
+  });
+
+  it("does not fire after the race has finished", () => {
+    raceFinished = true;
+    fireGained({});
+    fireLost({});
+
+    expect(voicePaths()).toEqual([]);
+  });
+});
+
+describe("overtake position readout (live, deferred)", () => {
+  it("gained non-leader follows the reaction with the LIVE position", () => {
+    // Event says P5, but live telemetry says P3 at speak-time → speaks P3.
+    currentLive = { position: 3, classPosition: 3, isMultiClass: false };
+    fireGained({ position: 5, previousPosition: 6, isLeader: false });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-number/3.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-number/5.mp3`);
+  });
+
+  it("gained LEADER gets no position readout (reaction is self-contained)", () => {
+    currentLive = { position: 1, classPosition: 1, isMultiClass: false };
+    fireGained({ position: 1, previousPosition: 2, isLeader: true });
+
+    expect(voicePaths()).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("lost follows the reaction with the LIVE position", () => {
+    currentLive = { position: 6, classPosition: 6, isMultiClass: false };
+    fireLost({ position: 5, previousPosition: 4 });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-number/6.mp3`);
+  });
+
+  it("reads the live CLASS position in multi-class", () => {
+    currentLive = { position: 12, classPosition: 2, isMultiClass: true };
+    fireGained({ position: 12, previousPosition: 13, isLeader: false });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-number/2.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-number/12.mp3`);
+  });
+
+  it("fires the position readout on EVERY overtake (no overtake-to-overtake suppression)", () => {
+    fireGained({});
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+
+    audio._played.length = 0;
+    // A second overtake within the position-cooldown window still announces
+    // position — the user's rule is "always call the position on an overtake".
+    fireLost({});
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("marks the shared position cooldown so lap/race-status readouts defer", () => {
+    expect(canAnnouncePosition()).toBe(true);
+    fireGained({});
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("no readout after the race has finished", () => {
+    raceFinished = true;
+    fireGained({});
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("no readout when live position is unreadable", () => {
+    currentLive = null;
+    fireGained({});
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+});
+
+describe("reaction catchphrase cooldown", () => {
+  it("throttles the 'Nice pass' catchphrase but still announces position", () => {
+    fireGained({});
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+
+    audio._played.length = 0;
+    // Second gain within the reaction cooldown → no catchphrase, position still fires.
+    fireGained({});
+    const played = voicePaths();
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("throttles the loss catchphrase but still announces position", () => {
+    fireLost({});
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+
+    audio._played.length = 0;
+    fireLost({});
+    const played = voicePaths();
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("gain and loss catchphrase cooldowns are independent", () => {
+    fireGained({});
+    audio._played.length = 0;
+    fireLost({});
+    // The loss catchphrase isn't blocked by the gain catchphrase cooldown.
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+  });
+
+  it("the leader line is exempt from the reaction cooldown", () => {
+    fireGained({}); // claims the 'gained' reaction cooldown
+    audio._played.length = 0;
+    fireGained({ position: 1, previousPosition: 2, isLeader: true });
+    // Taking the lead is always announced, even within the cooldown.
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+  });
+});
+
+describe("overtake context gate (suppresses the whole callout, both directions)", () => {
+  const REACTION = `voice/${VOICE}/position-overtake/nice-pass-01.mp3`;
+  const POSITION = `voice/${VOICE}/position-intro-worse/currently-01.mp3`;
+
+  it("fires when the context is clear", () => {
+    fireGained({});
+    const played = voicePaths();
+    expect(played).toContain(REACTION);
+    expect(played).toContain(POSITION);
+  });
+
+  it.each([
+    ["cars alongside", { carsAlongside: true }],
+    ["off track", { onTrack: false }],
+    ["below 50 km/h", { speedKmh: 30 }],
+    ["on pit road", { onPitRoad: true }],
+    ["recent incident", { msSinceIncident: 2000 }],
+  ])("suppresses a gain when %s", (_label, override) => {
+    currentGate = { ...CLEAR_GATE, ...override };
+    fireGained({});
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it.each([
+    ["cars alongside", { carsAlongside: true }],
+    ["off track", { onTrack: false }],
+    ["below 50 km/h", { speedKmh: 30 }],
+    ["on pit road", { onPitRoad: true }],
+    ["recent incident", { msSinceIncident: 2000 }],
+  ])("suppresses a loss when %s", (_label, override) => {
+    currentGate = { ...CLEAR_GATE, ...override };
+    fireLost({});
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("suppresses when telemetry (gate) is unavailable", () => {
+    currentGate = null;
+    fireGained({});
+    fireLost({});
+    expect(voicePaths()).toEqual([]);
+  });
+
+  it("an older incident (outside the window) does not suppress", () => {
+    currentGate = { ...CLEAR_GATE, msSinceIncident: 20_000 };
+    fireGained({});
+    expect(voicePaths()).toContain(REACTION);
+  });
+});

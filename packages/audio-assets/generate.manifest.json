@@ -7768,6 +7768,38 @@
       "textPreview": "Time to race, Zeus.",
       "generatedAt": "2026-05-19T17:35:27.582Z",
       "requestId": "BpLRXJDuhwQ1M3L2MjjA"
+    },
+    "voice/default/position-overtake/nice-pass-01.mp3": {
+      "hash": "68415e81c34c4869",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass",
+      "generatedAt": "2026-05-22T14:53:11.532Z",
+      "requestId": "VlOZ3b7OegP79amA4QkP"
+    },
+    "voice/default/position-overtake/nice-pass-leader-01.mp3": {
+      "hash": "0e66b194b99a1688",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> We're now leading race. <break time=\"0.4s\"/> Le…",
+      "generatedAt": "2026-05-22T14:52:27.491Z",
+      "requestId": "b5nk2mcX4r2HGzaim9Ad"
+    },
+    "voice/default/position-overtake/come-on-01.mp3": {
+      "hash": "b217b204c9ff134b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on,",
+      "generatedAt": "2026-05-18T16:05:36.534Z",
+      "requestId": "rclrnQVZOw19naC9Zn0L"
+    },
+    "voice/default/position-overtake/dont-give-up-positions-01.mp3": {
+      "hash": "7d3d3557a5fe3862",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": ". Don't give up positions like that.",
+      "generatedAt": "2026-05-21T18:29:56.543Z",
+      "requestId": "dCzzGEOD5kMqGRBmDgDr"
     }
   }
 }

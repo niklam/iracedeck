@@ -330,6 +330,10 @@ beforeEach(() => {
     undefined, // getRaceFinishedSnapshot (issue #569)
     undefined, // getRaceStartCalloutEnabled (issue #568)
     undefined, // getRaceStartSnapshot (issue #568)
+    undefined, // getOvertakeCalloutEnabled (issue #574)
+    undefined, // getOvertakeDriverName (issue #574)
+    undefined, // getLivePosition (issue #574)
+    undefined, // getOvertakeGate (issue #574)
     () => voiceMasterEnabled,
   );
 });

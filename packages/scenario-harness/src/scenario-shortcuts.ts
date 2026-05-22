@@ -1025,4 +1025,76 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     undefined,
     "Grid position unavailable (QualifyResultsInfo miss). Position clause skipped; greeting + conditions still play.",
   ),
+
+  // ── Overtakes (issue #574) ──
+  // Fire the bus events directly so you hear/see the scenario without driving
+  // `PlayerCarPosition` through `/api/telemetry` and waiting for the 3000 ms
+  // hold + 10 m gap gates to settle. Same-family preempt: fire two in a row
+  // to confirm the second cancels the first.
+  {
+    id: "overtake-gained-p5",
+    category: "Overtakes",
+    label: "Gained — now P5",
+    description:
+      'Player passed someone and held the new P5 for the sustainment window. Engineer says "Nice pass. That puts us to pee five."',
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 5,
+      previousPosition: 6,
+      gapBehindMeters: 15,
+      isLeader: false,
+    },
+  },
+  {
+    id: "overtake-gained-leader",
+    category: "Overtakes",
+    label: "Gained the lead (P2 → P1)",
+    description:
+      "Player took P1. Engineer fires the dedicated leader line: \"Nice pass! We're now leading race. Let's keep it that way!\"",
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 1,
+      previousPosition: 2,
+      gapBehindMeters: 15,
+      isLeader: true,
+    },
+  },
+  {
+    id: "overtake-lost-p5",
+    category: "Overtakes",
+    label: "Lost — now P5",
+    description:
+      "Player was passed and dropped from P4 to P5. Engineer says \"Come on, <name>. Don't give up positions like that. We're now in pee five.\"",
+    event: "overtake.lost",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 5,
+      previousPosition: 4,
+      gapAheadMeters: 15,
+    },
+  },
+  {
+    id: "overtake-gained-multi-class",
+    category: "Overtakes",
+    label: "Gained — multi-class (class P3 → P2)",
+    description:
+      'Multi-class gain — overall P12 (unchanged) but class position improved P3 → P2. Engineer says the CLASS number: "Nice pass. That puts us to pee two."',
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 12,
+      previousPosition: 12,
+      classPosition: 2,
+      previousClassPosition: 3,
+      isMultiClass: true,
+      gapBehindMeters: 15,
+      isLeader: false,
+    },
+  },
 ];

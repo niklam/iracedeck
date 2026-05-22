@@ -9,6 +9,8 @@
 export {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getLivePosition,
+  getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
   getReadbackSnapshot,
@@ -18,6 +20,8 @@ export {
   isPitActionsAllowed,
   isRaceFinished,
   isSimEventsIracingInitialized,
+  type LivePosition,
+  type OvertakeTelemetryGate,
 } from "./translator.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";

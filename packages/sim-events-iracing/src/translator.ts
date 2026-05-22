@@ -27,7 +27,14 @@ import type {
   SimEventName,
 } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import { type SDKController, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  calculateRacePositions,
+  CarLeftRight,
+  type SDKController,
+  SessionState,
+  type TelemetryData,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
@@ -41,7 +48,7 @@ import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
-import { diffRadar } from "./diff/radar.js";
+import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -418,6 +425,84 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
 }
 
 /**
+ * Player's CURRENT race position read from live telemetry (issue #574). Unlike
+ * the standings-first {@link PlayerResultsSnapshot} used by `lap.completed`,
+ * this is computed from the live `CarIdxLapDistPct` order via
+ * `calculateRacePositions` so it reflects the position at the exact moment the
+ * caller asks — not a value frozen at the last S/F crossing. Used by the
+ * "We're currently P[n]" voice readouts (overtake, race position-change,
+ * race-status) so the spoken position is accurate to speak-time even when the
+ * scenario plays seconds after the triggering event.
+ *
+ * Returns `null` when telemetry / session info / player car index isn't
+ * resolvable, or the computed overall position is 0 (inactive) — callers treat
+ * null as "can't read position right now" and stay silent.
+ */
+export type LivePosition = {
+  /** Live overall race position (1-based) from the calculated order. */
+  position: number;
+  /** Live class position (1-based) from `PlayerCarClassPosition`; 0 when unavailable. */
+  classPosition: number;
+  /** Whether the session has more than one car class on track. */
+  isMultiClass: boolean;
+};
+
+export function getLivePosition(): LivePosition | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
+
+  if (playerCarIdx < 0) return null;
+
+  const positions = calculateRacePositions(telemetry);
+  const position = positions[playerCarIdx] ?? 0;
+
+  if (position <= 0) return null;
+
+  const classPosition =
+    typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
+      ? telemetry.PlayerCarClassPosition
+      : 0;
+
+  return { position, classPosition, isMultiClass: resolveIsMultiClass(sessionInfo) === true };
+}
+
+/**
+ * Telemetry-derived gating signals for the overtake callouts (issue #574
+ * follow-up). All read from the latest tick so the gate reflects the moment
+ * the overtake scenario evaluates its `where:`. The plugin combines this with
+ * an incident timestamp (tracked off the bus) to form the full overtake gate.
+ *
+ * Returns `null` when telemetry isn't available — the scenario treats null as
+ * "can't verify it's a clean racing moment" and stays silent.
+ */
+export type OvertakeTelemetryGate = {
+  /** A car is immediately alongside (radar state is not "clear"). */
+  carsAlongside: boolean;
+  /** The player is genuinely on the racing surface (not off-track / pits / tow). */
+  onTrack: boolean;
+  /** Current speed in km/h. */
+  speedKmh: number;
+  /** The player is on pit road. */
+  onPitRoad: boolean;
+};
+
+export function getOvertakeTelemetryGate(): OvertakeTelemetryGate | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+
+  return {
+    carsAlongside: resolveRadarState(telemetry.CarLeftRight ?? CarLeftRight.Off) !== "clear",
+    onTrack: telemetry.PlayerTrackSurface === TrkLoc.OnTrack,
+    speedKmh: (telemetry.Speed ?? 0) * 3.6,
+    onPitRoad: telemetry.OnPitRoad === true,
+  };
+}
+
+/**
  * Reset the translator singleton.
  * @internal Exported for test isolation only.
  */
@@ -754,7 +839,23 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffPitReadback(self.state, telemetry, now, emit, pending);
   diffIncidents(self.state, telemetry, now, emit);
   diffDamage(self.state, telemetry, now, emit);
-  diffOvertakes(self.state, telemetry, playerCarIdx, isRaceSession, now, emit);
+  // Overtake gain/loss (issue #574). Track length powers the 10 m physical-gap
+  // gate; resolved here so the diff stays out of session-info parsing. `null`
+  // when the YAML hasn't been parsed yet — the diff treats it as "no gap data"
+  // and lets emissions through without gating on gap. `isMultiClass` is the
+  // same value passed to `diffLaps`; the overtake payload mirrors `lap.completed`
+  // so multi-class consumers can branch on class vs overall.
+  const trackLengthMeters = resolveTrackLengthMeters(self.state, sessionInfo, telemetry);
+  diffOvertakes(
+    self.state,
+    telemetry,
+    playerCarIdx,
+    isRaceSession,
+    resolveIsMultiClass(sessionInfo),
+    trackLengthMeters,
+    now,
+    emit,
+  );
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);
   diffTrackWetness(self.state, telemetry, emit);
@@ -925,6 +1026,49 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
   }
 
   return classIds.size > 1;
+}
+
+/**
+ * Parse `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") into
+ * meters and cache the result on `TranslatorState` keyed by `(TrackID, SessionNum)`
+ * (issue #574). Returns `null` when the YAML hasn't been seen yet, the field is
+ * absent, or the format doesn't parse — the overtake diff treats null as "no
+ * gap data" and lets emissions through without the physical-gap gate. Re-parses
+ * automatically on track or session change since the cache key invalidates.
+ */
+function resolveTrackLengthMeters(
+  state: TranslatorState,
+  sessionInfo: Record<string, unknown> | null,
+  telemetry: TelemetryData,
+): number | null {
+  if (!sessionInfo) return state.trackLengthMeters;
+
+  const weekend = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+  const trackId = `${String(weekend?.TrackID ?? "")}|${String(telemetry.SessionNum ?? "")}`;
+
+  if (trackId !== state.trackLengthKey) {
+    state.trackLengthKey = trackId;
+    state.trackLengthMeters = null;
+  } else if (state.trackLengthMeters !== null) {
+    return state.trackLengthMeters;
+  }
+
+  const raw = weekend?.TrackLength;
+
+  if (typeof raw === "string") {
+    const match = /([\d.]+)\s*(km|mi(?:les?)?)/i.exec(raw);
+
+    if (match) {
+      const value = parseFloat(match[1]!);
+      const unit = match[2]!.toLowerCase();
+
+      if (Number.isFinite(value) && value > 0) {
+        state.trackLengthMeters = unit.startsWith("mi") ? value * 1609.344 : value * 1000;
+      }
+    }
+  }
+
+  return state.trackLengthMeters;
 }
 
 function resolvePitSpeedLimit(

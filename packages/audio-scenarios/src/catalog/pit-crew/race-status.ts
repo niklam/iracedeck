@@ -53,12 +53,13 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
 import {
-  POSITION_NUMBER_MAX,
-  POSITION_NUMBER_MIN,
-  positionNumberIsSpeakable,
-  selectEffectivePosition,
-} from "./position.js";
+  liveCurrentlyAnnounceable,
+  type LivePositionResolver,
+  selectLivePosition,
+  tryClaimPositionAnnouncement,
+} from "./position-readout.js";
 
 export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN };
 
@@ -93,40 +94,28 @@ export function raceStatusCadenceHits(snapshot: SimEventOf<"lap.completed">["dat
  * Register the race-status scenario's variables on the scenario engine. Must
  * run before {@link buildRaceStatusScenario} is registered — load-time
  * validation rejects `{ var }` steps whose names aren't registered.
+ *
+ * The spoken number reads LIVE telemetry at speak-time (issue #574) so a
+ * deferred status update reflects the position now, not at the lap that
+ * triggered it. The cadence DECISION still uses the frozen snapshot in `where:`.
  */
-export function registerRaceStatusVars(engine: IScenarioEngine, getSnapshot: LapCompletedSnapshotResolver): void {
+export function registerRaceStatusVars(engine: IScenarioEngine, getLivePosition: LivePositionResolver): void {
   // Non-leader status intro: reuses the existing `currently` clip from #566.
-  engine.defineVar("raceStatus.intro", () => {
-    const s = getSnapshot();
+  engine.defineVar("raceStatus.intro", () => voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01"));
 
-    if (!s) return null;
-
-    return voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01");
-  });
-
-  // Non-leader status number: reuses the existing `position-number` clips
-  // from #566 ("pee one" through "pee sixty four").
+  // Non-leader status number: reads LIVE position and reuses the existing
+  // `position-number` clips from #566 ("pee one" through "pee sixty four").
   engine.defineVar("raceStatus.number", () => {
-    const s = getSnapshot();
+    const n = selectLivePosition(getLivePosition());
 
-    if (!s) return null;
+    if (n === null || !positionNumberIsSpeakable(n)) return null;
 
-    const effective = selectEffectivePosition(s);
-
-    if (!effective || !positionNumberIsSpeakable(effective.current)) return null;
-
-    return voicePath(POSITION_GROUP_NUMBER, String(effective.current));
+    return voicePath(POSITION_GROUP_NUMBER, String(n));
   });
 
   // Leader-only "still leading" clip — replaces the intro + number when
   // the driver holds P1 on the every-3 status tick.
-  engine.defineVar("raceStatus.stillLeading", () => {
-    const s = getSnapshot();
-
-    if (!s) return null;
-
-    return voicePath(RACE_STATUS_GROUP, "still-leading-01");
-  });
+  engine.defineVar("raceStatus.stillLeading", () => voicePath(RACE_STATUS_GROUP, "still-leading-01"));
 }
 
 /**
@@ -138,19 +127,14 @@ export function registerRaceStatusVars(engine: IScenarioEngine, getSnapshot: Lap
 export function buildRaceStatusScenario(
   getSnapshot: LapCompletedSnapshotResolver,
   getRaceFinishedFired: () => boolean,
+  getLivePosition: LivePositionResolver = () => null,
 ): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     {
-      if: () => {
-        const s = getSnapshot();
-
-        if (!s) return false;
-
-        const effective = selectEffectivePosition(s);
-
-        return effective !== null && effective.current === 1;
-      },
+      // Leader detection reads LIVE position (issue #574) so a deferred status
+      // update says "still leading" only if we're actually P1 at speak-time.
+      if: () => selectLivePosition(getLivePosition()) === 1,
       then: [{ var: "raceStatus.stillLeading" }],
       else: [{ var: "raceStatus.intro" }, { var: "raceStatus.number" }],
     },
@@ -173,13 +157,15 @@ export function buildRaceStatusScenario(
         // pending queue) and the latch reads true by the time we get here.
         if (getRaceFinishedFired()) return false;
 
+        // Cadence DECISION uses the frozen snapshot (laps-since-position-change).
         if (!raceStatusCadenceHits(data)) return false;
 
-        const effective = selectEffectivePosition(data);
+        // Spoken number/leader read LIVE (issue #574): gate on the live
+        // position being readable + share the position cooldown.
+        if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        if (!effective) return false;
-
-        return positionNumberIsSpeakable(effective.current);
+        // LAST gate: claim the shared position cooldown only when committing.
+        return tryClaimPositionAnnouncement();
       },
     },
     channel: AudioChannel.Voice,

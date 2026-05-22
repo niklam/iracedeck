@@ -158,6 +158,43 @@ export type TranslatorState = {
   pendingOvertakePos: number;
   pendingOvertakeTime: number;
   lastConfirmedOvertakeCarIdx: number;
+  /**
+   * Pre-gain baseline captured at the moment a pending gain is opened
+   * (issue #574). Persists across ticks where the pending state is
+   * being held / deepened, so the eventual `overtake.completed` payload's
+   * `previousPosition` reflects the position right before the pass
+   * started — not whatever `lastPosition` happens to be when the hold
+   * window settles. `0` when no pending gain is open.
+   */
+  pendingOvertakePrevPos: number;
+  pendingOvertakePrevClassPos: number;
+  /**
+   * Last observed class position (1-indexed; 0 = unknown). Tracked
+   * across ticks so a position gain/loss can resolve `previousClassPosition`
+   * without re-reading session info. Sourced from
+   * `telemetry.PlayerCarClassPosition`.
+   */
+  lastClassPosition: number;
+  /**
+   * Pending position-loss tracker (issue #574). Mirrors `pendingOvertakePos`
+   * but for the loss direction. `-1` when stable; otherwise stores the worst
+   * (highest-number) position observed since the loss began. Emitted as
+   * `overtake.lost` once the hold and physical-gap gates both pass.
+   */
+  pendingLossPos: number;
+  pendingLossTime: number;
+  pendingLossPrevPos: number;
+  pendingLossPrevClassPos: number;
+  /**
+   * Track length in meters, parsed once per track/session from
+   * `SessionInfo.WeekendInfo.TrackLength` (issue #574). Used to convert
+   * `CarIdxLapDistPct` deltas into a physical gap so the overtake gates can
+   * reject "3-second-clean but still side-by-side" passes. `null` until
+   * parsed; consumers omit the gap from the event payload when null.
+   */
+  trackLengthMeters: number | null;
+  /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
+  trackLengthKey: string;
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -312,6 +349,15 @@ export function createInitialState(): TranslatorState {
     pendingOvertakePos: -1,
     pendingOvertakeTime: 0,
     lastConfirmedOvertakeCarIdx: -1,
+    pendingOvertakePrevPos: 0,
+    pendingOvertakePrevClassPos: 0,
+    lastClassPosition: 0,
+    pendingLossPos: -1,
+    pendingLossTime: 0,
+    pendingLossPrevPos: 0,
+    pendingLossPrevClassPos: 0,
+    trackLengthMeters: null,
+    trackLengthKey: "",
 
     radarState: "clear",
 

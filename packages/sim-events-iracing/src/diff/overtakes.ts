@@ -1,15 +1,48 @@
 /**
- * Overtake detection.
+ * Overtake gain / loss detection (issue #574).
  *
- * Emits `overtake.completed { carIdx, sustained }` when the player's race
- * position improves and holds for OVERTAKE_HOLD_MS. Only during race
- * sessions, on track, not in pits, not under caution. Position jumps
- * greater than OVERTAKE_MAX_JUMP are treated as sim glitches (teleport,
- * tow) and ignored.
+ * Emits two paired events when the player's race position changes mid-race
+ * and the new position holds for the sustainment window:
  *
- * `carIdx` in the event payload is the player's own car index — the
- * translator doesn't know which car was passed without session scoring
- * snapshots, so we carry the player's idx for correlation.
+ *   - `overtake.completed` — gained at least one position
+ *   - `overtake.lost`      — dropped at least one position
+ *
+ * Both events carry the same shape (position / previousPosition / class
+ * fields / `isMultiClass` / physical-gap to the relevant neighbour). Same
+ * gating in both directions:
+ *
+ *   1. **Race-only.** Practice / qualifying / replay → no emission, state
+ *      reset on entry to those modes so a later race seeds cleanly.
+ *   2. **Not on pit road.** Pit entry/exit fires phantom position swings
+ *      against cars completing laps at racing speed — gate everything.
+ *   3. **Not under caution.** Yellow / caution flags freeze the baseline
+ *      silently so the recovery wave doesn't surface a chain of swaps as
+ *      the field shuffles into formation.
+ *   4. **First-tick seed.** Connecting mid-drive captures the current
+ *      position as the baseline and emits nothing — without this, the
+ *      diff would synthesize a "you just gained 5 positions" callout the
+ *      moment the user connects.
+ *   5. **Sustainment.** New position must hold for `OVERTAKE_HOLD_MS`
+ *      (3000 ms). Filters wheel-to-wheel oscillation that swaps the lead
+ *      every corner.
+ *   6. **Sim-glitch filter.** A jump of more than `OVERTAKE_MAX_JUMP`
+ *      positions in a single tick is treated as a teleport / tow / DC
+ *      and ignored.
+ *   7. **Physical-gap gate.** At the emission tick, the gap between the
+ *      player and the relevant neighbour (whoever's now immediately
+ *      behind for a gain; immediately ahead for a loss) must be at least
+ *      `OVERTAKE_MIN_GAP_M` meters. Filters the "3 seconds clean but
+ *      still side-by-side" edge case where the sustainment passes but
+ *      contact / re-pass is still imminent. When track length isn't
+ *      known yet (YAML not parsed), the gap is treated as unknown and
+ *      the emission proceeds without the gate (don't punish missing data).
+ *
+ * Class position is sourced from the LIVE `PlayerCarClassPosition` telemetry
+ * field — overtakes fire mid-lap so the standings-first source used by
+ * `lap.completed` (`ResultsPositions`) wouldn't help, and the live field is
+ * accurate at the second-precision the hold window already gives us.
+ * `isMultiClass` is resolved by the translator from session info and passed
+ * through; the diff doesn't poke at `DriverInfo.Drivers` itself.
  */
 import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -18,12 +51,22 @@ import type { EmitFn } from "./types.js";
 
 export const OVERTAKE_HOLD_MS = 3000;
 export const OVERTAKE_MAX_JUMP = 3;
+/**
+ * Minimum physical gap (meters) between the player and the relevant
+ * neighbour for an `overtake.*` event to emit (issue #574). 10 m
+ * approximates "the cars are clear of each other" on both road courses and
+ * ovals — a gap below this with the position swap held suggests the cars
+ * are still side-by-side and the swap could easily reverse.
+ */
+export const OVERTAKE_MIN_GAP_M = 10;
 
 export function diffOvertakes(
   state: TranslatorState,
   telemetry: TelemetryData,
   playerCarIdx: number,
   isRaceSession: boolean,
+  isMultiClass: boolean | null,
+  trackLengthMeters: number | null,
   now: number,
   emit: EmitFn,
 ): void {
@@ -31,9 +74,7 @@ export function diffOvertakes(
 
   if (!isRaceSession || onPitRoad) {
     if (state.overtakeInitialized) {
-      state.overtakeInitialized = false;
-      state.lastPosition = -1;
-      state.pendingOvertakePos = -1;
+      resetOvertakeState(state);
     }
 
     return;
@@ -51,46 +92,238 @@ export function diffOvertakes(
 
   if (currentPos === undefined || currentPos <= 0) return;
 
+  const rawClassPos =
+    typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
+      ? telemetry.PlayerCarClassPosition
+      : 0;
+
   if (underCaution) {
     state.lastPosition = currentPos;
+    state.lastClassPosition = rawClassPos;
     state.pendingOvertakePos = -1;
+    state.pendingLossPos = -1;
 
     return;
   }
 
   if (!state.overtakeInitialized) {
     state.lastPosition = currentPos;
+    state.lastClassPosition = rawClassPos;
     state.overtakeInitialized = true;
 
     return;
   }
 
+  // ── Confirm pending GAIN ──────────────────────────────────────────────
   if (state.pendingOvertakePos > 0) {
     if (currentPos <= state.pendingOvertakePos) {
       if (now - state.pendingOvertakeTime >= OVERTAKE_HOLD_MS) {
-        emit({
-          event: "overtake.completed",
-          data: { carIdx: playerCarIdx, sustained: now - state.pendingOvertakeTime },
-        });
-        state.pendingOvertakePos = -1;
+        const carBehindIdx = findCarIdxAtPosition(positions, currentPos + 1);
+        const gapBehindMeters = computeGapMeters(telemetry, playerCarIdx, carBehindIdx, trackLengthMeters);
+
+        if (gapBehindMeters === undefined || gapBehindMeters >= OVERTAKE_MIN_GAP_M) {
+          const data: {
+            carIdx: number;
+            sustained: number;
+            position: number;
+            previousPosition: number;
+            gapBehindMeters?: number;
+            isLeader: boolean;
+            classPosition?: number;
+            previousClassPosition?: number;
+            isMultiClass?: boolean;
+          } = {
+            carIdx: playerCarIdx,
+            sustained: now - state.pendingOvertakeTime,
+            position: currentPos,
+            previousPosition: state.pendingOvertakePrevPos,
+            isLeader: currentPos === 1,
+          };
+
+          if (gapBehindMeters !== undefined) data.gapBehindMeters = gapBehindMeters;
+
+          if (rawClassPos > 0) data.classPosition = rawClassPos;
+
+          if (state.pendingOvertakePrevClassPos > 0) data.previousClassPosition = state.pendingOvertakePrevClassPos;
+
+          if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+
+          emit({ event: "overtake.completed", data });
+
+          state.lastConfirmedOvertakeCarIdx = carBehindIdx;
+          state.pendingOvertakePos = -1;
+          state.pendingOvertakePrevPos = 0;
+          state.pendingOvertakePrevClassPos = 0;
+        }
+        // Gap still too small — hold the pending state, re-check next tick.
       }
 
-      if (currentPos < state.pendingOvertakePos) {
+      // Re-check pendingOvertakePos > 0 in case the emit above just reset it
+      // — `currentPos < -1` is naturally false for any valid position, so this
+      // guard is belt-and-braces parallel to the loss side where the inverse
+      // comparison would re-establish a phantom pending.
+      if (state.pendingOvertakePos > 0 && currentPos < state.pendingOvertakePos) {
+        // Player gained further (e.g. 5 → 4 → 3 within the same hold window).
+        // Update the pending pos AND the "previous" baseline stays where it
+        // was, so the emit's `previousPosition` still reflects pre-pass.
         state.pendingOvertakePos = currentPos;
       }
     } else {
+      // Player gave the spot back — drop the pending gain.
       state.pendingOvertakePos = -1;
+      state.pendingOvertakePrevPos = 0;
+      state.pendingOvertakePrevClassPos = 0;
     }
   }
 
+  // ── Confirm pending LOSS ──────────────────────────────────────────────
+  if (state.pendingLossPos > 0) {
+    if (currentPos >= state.pendingLossPos) {
+      if (now - state.pendingLossTime >= OVERTAKE_HOLD_MS) {
+        const carAheadIdx = findCarIdxAtPosition(positions, currentPos - 1);
+        const gapAheadMeters = computeGapMeters(telemetry, playerCarIdx, carAheadIdx, trackLengthMeters);
+
+        if (gapAheadMeters === undefined || gapAheadMeters >= OVERTAKE_MIN_GAP_M) {
+          const data: {
+            carIdx: number;
+            sustained: number;
+            position: number;
+            previousPosition: number;
+            gapAheadMeters?: number;
+            classPosition?: number;
+            previousClassPosition?: number;
+            isMultiClass?: boolean;
+          } = {
+            carIdx: playerCarIdx,
+            sustained: now - state.pendingLossTime,
+            position: currentPos,
+            previousPosition: state.pendingLossPrevPos,
+          };
+
+          if (gapAheadMeters !== undefined) data.gapAheadMeters = gapAheadMeters;
+
+          if (rawClassPos > 0) data.classPosition = rawClassPos;
+
+          if (state.pendingLossPrevClassPos > 0) data.previousClassPosition = state.pendingLossPrevClassPos;
+
+          if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+
+          emit({ event: "overtake.lost", data });
+
+          state.pendingLossPos = -1;
+          state.pendingLossPrevPos = 0;
+          state.pendingLossPrevClassPos = 0;
+        }
+        // Gap still too small — hold the pending state, re-check next tick.
+      }
+
+      // Re-check pendingLossPos > 0: the emit above resets it to -1, and
+      // `currentPos > -1` would otherwise re-establish a phantom pending on
+      // the same tick (every valid position is > -1). Without the guard,
+      // pendingLossPos rebounds to currentPos and the next tick re-emits.
+      if (state.pendingLossPos > 0 && currentPos > state.pendingLossPos) {
+        // Player lost further ground within the same hold window.
+        state.pendingLossPos = currentPos;
+      }
+    } else {
+      // Player won the spot back — drop the pending loss.
+      state.pendingLossPos = -1;
+      state.pendingLossPrevPos = 0;
+      state.pendingLossPrevClassPos = 0;
+    }
+  }
+
+  // ── Detect NEW gain ───────────────────────────────────────────────────
   if (state.lastPosition > 0 && currentPos < state.lastPosition && state.pendingOvertakePos < 0) {
     const jump = state.lastPosition - currentPos;
 
     if (jump <= OVERTAKE_MAX_JUMP) {
       state.pendingOvertakePos = currentPos;
       state.pendingOvertakeTime = now;
+      state.pendingOvertakePrevPos = state.lastPosition;
+      state.pendingOvertakePrevClassPos = state.lastClassPosition;
+    }
+  }
+
+  // ── Detect NEW loss ───────────────────────────────────────────────────
+  if (state.lastPosition > 0 && currentPos > state.lastPosition && state.pendingLossPos < 0) {
+    const jump = currentPos - state.lastPosition;
+
+    if (jump <= OVERTAKE_MAX_JUMP) {
+      state.pendingLossPos = currentPos;
+      state.pendingLossTime = now;
+      state.pendingLossPrevPos = state.lastPosition;
+      state.pendingLossPrevClassPos = state.lastClassPosition;
     }
   }
 
   state.lastPosition = currentPos;
+  state.lastClassPosition = rawClassPos;
+}
+
+/**
+ * Reset all overtake tracking — used when the player leaves an eligible
+ * state (race + on track + not in pit). Pulled out so the gain and loss
+ * trackers can never drift out of sync on a state-exit transition.
+ */
+function resetOvertakeState(state: TranslatorState): void {
+  state.overtakeInitialized = false;
+  state.lastPosition = -1;
+  state.lastClassPosition = 0;
+  state.pendingOvertakePos = -1;
+  state.pendingOvertakePrevPos = 0;
+  state.pendingOvertakePrevClassPos = 0;
+  state.pendingLossPos = -1;
+  state.pendingLossPrevPos = 0;
+  state.pendingLossPrevClassPos = 0;
+  state.lastConfirmedOvertakeCarIdx = -1;
+}
+
+/**
+ * Find the car index whose rank in the calculated race positions array
+ * equals `targetRank`. Returns `-1` when no car holds that rank (e.g. the
+ * field is smaller than `targetRank`, or the target slot is vacant
+ * because the car DCed mid-tick).
+ */
+function findCarIdxAtPosition(positions: number[], targetRank: number): number {
+  for (let i = 0; i < positions.length; i++) {
+    if (positions[i] === targetRank) return i;
+  }
+
+  return -1;
+}
+
+/**
+ * Compute the on-track gap in meters between two cars, using
+ * `CarIdxLapDistPct` (fractional progress on the current lap) and the
+ * parsed track length. Returns `undefined` when any input is unavailable
+ * — the caller treats that as "no gap data" and skips the physical-gap
+ * gate rather than punishing missing data.
+ *
+ * The distance wraps around the lap (a player at 0.95 lap pct and a car
+ * just behind them at 0.02 lap pct are ~7% of the lap apart, not 93%),
+ * so the delta is folded into the shorter direction before scaling.
+ */
+function computeGapMeters(
+  telemetry: TelemetryData,
+  idxA: number,
+  idxB: number,
+  trackLengthMeters: number | null,
+): number | undefined {
+  if (idxA < 0 || idxB < 0 || trackLengthMeters === null || trackLengthMeters <= 0) return undefined;
+
+  const distPct = telemetry.CarIdxLapDistPct as number[] | undefined;
+
+  if (!Array.isArray(distPct)) return undefined;
+
+  const pctA = distPct[idxA];
+  const pctB = distPct[idxB];
+
+  if (typeof pctA !== "number" || typeof pctB !== "number" || pctA < 0 || pctB < 0) return undefined;
+
+  let delta = Math.abs(pctA - pctB);
+
+  if (delta > 0.5) delta = 1 - delta;
+
+  return delta * trackLengthMeters;
 }
