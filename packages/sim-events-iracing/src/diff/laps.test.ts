@@ -1496,4 +1496,54 @@ describe("diffLaps — lap validity (issue #572)", () => {
     expect(laps).toHaveLength(1);
     expect(laps[0].data.lapIsValid).toBeUndefined();
   });
+
+  it("uses single-flag fallback: lapIsValid=true when the only present _OK flag is true", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 84.2,
+        LapBestLapTime: 84.2,
+        // Only one of the four _OK flags is populated — exercises the
+        // single-element `flags` path in resolveLapIsValid.
+        LapDeltaToBestLap_OK: true,
+      }),
+      "qualifying",
+      false,
+      synced(3, 3),
+      NOW,
+      emit,
+    );
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data.lapIsValid).toBe(true);
+  });
+
+  it("uses single-flag fallback: lapIsValid=false when the only present _OK flag is false", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
+    diffLaps(
+      state,
+      tick({
+        LapCompleted: 1,
+        LapLastLapTime: 84.2,
+        LapBestLapTime: 84.2,
+        LapDeltaToBestLap_OK: false,
+      }),
+      "qualifying",
+      false,
+      synced(5, 5),
+      NOW,
+      emit,
+    );
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data.lapIsValid).toBe(false);
+  });
 });
