@@ -77,6 +77,13 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
+import {
+  liveCurrentlyAnnounceable,
+  type LivePositionResolver,
+  selectLivePosition,
+  tryClaimPositionAnnouncement,
+} from "./position-readout.js";
 
 /**
  * Resolver for the most recent `lap.completed` payload — shared with the
@@ -85,15 +92,9 @@ import type { IScenarioEngine } from "../../interpreter.js";
  */
 export type LapCompletedSnapshotResolver = () => SimEventOf<"lap.completed">["data"] | null;
 
-/**
- * Inclusive announceable range. The voice config currently ships
- * `position-number/1..64` to cover the full iRacing field-size spectrum
- * (the largest oval events sit around 60-car splits). Positions outside
- * this range cause `where:` to skip the scenario rather than producing a
- * partial readout. Expand the bounds together with the voice config group.
- */
-export const POSITION_NUMBER_MIN = 1;
-export const POSITION_NUMBER_MAX = 64;
+// Re-exported from the leaf range module (issue #574) so existing importers
+// (`./index.js`, race-status.ts, overtake.ts) keep their import path.
+export { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable };
 
 const POSITION_GROUP_INTRO_BETTER = "position-intro-better";
 const POSITION_GROUP_INTRO_WORSE = "position-intro-worse";
@@ -120,15 +121,6 @@ export function selectEffectivePosition(
   if (typeof current !== "number" || current <= 0) return null;
 
   return { current, previous: typeof previous === "number" && previous > 0 ? previous : undefined };
-}
-
-/**
- * Whether `current` is inside the clip range. Defensive bound — `where:`
- * already filters via this so the var resolver should never see an
- * out-of-range value in practice.
- */
-export function positionNumberIsSpeakable(n: number): boolean {
-  return Number.isInteger(n) && n >= POSITION_NUMBER_MIN && n <= POSITION_NUMBER_MAX;
 }
 
 /**
@@ -237,7 +229,11 @@ function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]
  * before {@link buildPositionScenario} is registered — load-time validation
  * rejects `{ var }` steps whose names aren't registered.
  */
-export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCompletedSnapshotResolver): void {
+export function registerPositionVars(
+  engine: IScenarioEngine,
+  getSnapshot: LapCompletedSnapshotResolver,
+  getLivePosition: LivePositionResolver = () => null,
+): void {
   engine.defineVar("position.intro", () => {
     const s = getSnapshot();
 
@@ -263,6 +259,20 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
 
     if (!s) return null;
 
+    // Race: read the position LIVE at speak-time (issue #574) so a deferred
+    // readout reflects the position NOW, not the value frozen at S/F. The
+    // change-detection in `where:` still uses the snapshot — live drives only
+    // the spoken number.
+    if (s.sessionType === "race") {
+      const n = selectLivePosition(getLivePosition());
+
+      if (n === null || !positionNumberIsSpeakable(n)) return null;
+
+      return voicePath(POSITION_GROUP_NUMBER, String(n));
+    }
+
+    // Qualifying: the "that puts us to / on pole" flow needs the before/after
+    // comparison, so it stays on the frozen lap snapshot.
     const effective = selectEffectivePosition(s);
 
     if (!effective || !positionNumberIsSpeakable(effective.current)) return null;
@@ -297,6 +307,7 @@ export function registerPositionVars(engine: IScenarioEngine, getSnapshot: LapCo
 export function buildPositionScenario(
   getSnapshot: LapCompletedSnapshotResolver,
   getRaceFinishedFired: () => boolean = () => false,
+  getLivePosition: LivePositionResolver = () => null,
 ): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
@@ -327,16 +338,25 @@ export function buildPositionScenario(
 
         if (!isAnnounceableSessionType(data)) return false;
 
+        // Change-detection (improved / worsened / first-fix / qualifying hold)
+        // is decided from the frozen lap snapshot.
+        if (!positionChangeIsAnnounceable(data)) return false;
+
+        // Qualifying path: snapshot drives both the decision and the readout.
+        if (data.sessionType !== "race") return true;
+
+        // Race path (issue #574): the spoken number is read LIVE at speak-time,
+        // so gate on the live position being readable + share the cooldown.
+        //
         // Race finished — defer to race-end (issue #569). The diff sets the
         // latch synchronously before publishing `lap.completed`, so by the
         // time this where: runs the latch reads true on the final lap.
-        // Without this gate the engine would defer position-change behind
-        // race-end (both `priority: "low"`, no shared family) and replay it
-        // after the result speech — the user would hear "Niklas, we made it
-        // to the podium" followed by "We're currently P6".
-        if (data.sessionType === "race" && getRaceFinishedFired()) return false;
+        if (getRaceFinishedFired()) return false;
 
-        return positionChangeIsAnnounceable(data);
+        if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
+
+        // LAST gate: claim the shared position cooldown only when committing.
+        return tryClaimPositionAnnouncement();
       },
     },
     channel: AudioChannel.Voice,

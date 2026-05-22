@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { registerPitCrew } from "./index.js";
+import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
 import {
   POSITION_NUMBER_MAX,
   POSITION_NUMBER_MIN,
@@ -194,11 +194,27 @@ function hasClip(suffix: string): boolean {
   return voicePaths().some((p) => p.endsWith(suffix));
 }
 
+// Live position resolver mirrors the fired snapshot — these tests don't
+// simulate a mid-lap change between S/F and speak-time, so the live readout
+// speaks the snapshot's effective position (issue #574).
+function liveFromSnapshot(): { position: number; classPosition: number; isMultiClass: boolean } | null {
+  const s = lastSnapshot as Record<string, unknown> | null;
+
+  if (!s || typeof s.position !== "number" || s.position <= 0) return null;
+
+  return {
+    position: s.position,
+    classPosition: typeof s.classPosition === "number" ? (s.classPosition as number) : (s.position as number),
+    isMultiClass: s.isMultiClass === true,
+  };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   lastSnapshot = null;
   positionEnabled = true;
   raceFinished = false;
+  _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -223,6 +239,13 @@ beforeEach(() => {
     undefined, // getQualifyingInvalidationSnapshot (issue #567)
     undefined, // getRaceStatusCalloutEnabled (issue #569)
     () => raceFinished, // getRaceFinishedFired (issue #569)
+    undefined, // getRaceEndCalloutEnabled (issue #569)
+    undefined, // getRaceFinishedSnapshot (issue #569)
+    undefined, // getRaceStartCalloutEnabled (issue #568)
+    undefined, // getRaceStartSnapshot (issue #568)
+    undefined, // getOvertakeCalloutEnabled (issue #574)
+    undefined, // getOvertakeDriverName (issue #574)
+    liveFromSnapshot, // getLivePosition (issue #574)
   );
 });
 

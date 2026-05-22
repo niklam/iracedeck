@@ -27,7 +27,14 @@ import type {
   SimEventName,
 } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import { type SDKController, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  calculateRacePositions,
+  CarLeftRight,
+  type SDKController,
+  SessionState,
+  type TelemetryData,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
@@ -41,7 +48,7 @@ import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
-import { diffRadar } from "./diff/radar.js";
+import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
@@ -414,6 +421,84 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
     lapLimited: lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS,
     lapCompleted: typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : 0,
     lapStartedFromPits: instance.state.lapStartedFromPits,
+  };
+}
+
+/**
+ * Player's CURRENT race position read from live telemetry (issue #574). Unlike
+ * the standings-first {@link PlayerResultsSnapshot} used by `lap.completed`,
+ * this is computed from the live `CarIdxLapDistPct` order via
+ * `calculateRacePositions` so it reflects the position at the exact moment the
+ * caller asks — not a value frozen at the last S/F crossing. Used by the
+ * "We're currently P[n]" voice readouts (overtake, race position-change,
+ * race-status) so the spoken position is accurate to speak-time even when the
+ * scenario plays seconds after the triggering event.
+ *
+ * Returns `null` when telemetry / session info / player car index isn't
+ * resolvable, or the computed overall position is 0 (inactive) — callers treat
+ * null as "can't read position right now" and stay silent.
+ */
+export type LivePosition = {
+  /** Live overall race position (1-based) from the calculated order. */
+  position: number;
+  /** Live class position (1-based) from `PlayerCarClassPosition`; 0 when unavailable. */
+  classPosition: number;
+  /** Whether the session has more than one car class on track. */
+  isMultiClass: boolean;
+};
+
+export function getLivePosition(): LivePosition | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
+
+  if (playerCarIdx < 0) return null;
+
+  const positions = calculateRacePositions(telemetry);
+  const position = positions[playerCarIdx] ?? 0;
+
+  if (position <= 0) return null;
+
+  const classPosition =
+    typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
+      ? telemetry.PlayerCarClassPosition
+      : 0;
+
+  return { position, classPosition, isMultiClass: resolveIsMultiClass(sessionInfo) === true };
+}
+
+/**
+ * Telemetry-derived gating signals for the overtake callouts (issue #574
+ * follow-up). All read from the latest tick so the gate reflects the moment
+ * the overtake scenario evaluates its `where:`. The plugin combines this with
+ * an incident timestamp (tracked off the bus) to form the full overtake gate.
+ *
+ * Returns `null` when telemetry isn't available — the scenario treats null as
+ * "can't verify it's a clean racing moment" and stays silent.
+ */
+export type OvertakeTelemetryGate = {
+  /** A car is immediately alongside (radar state is not "clear"). */
+  carsAlongside: boolean;
+  /** The player is genuinely on the racing surface (not off-track / pits / tow). */
+  onTrack: boolean;
+  /** Current speed in km/h. */
+  speedKmh: number;
+  /** The player is on pit road. */
+  onPitRoad: boolean;
+};
+
+export function getOvertakeTelemetryGate(): OvertakeTelemetryGate | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+
+  return {
+    carsAlongside: resolveRadarState(telemetry.CarLeftRight ?? CarLeftRight.Off) !== "clear",
+    onTrack: telemetry.PlayerTrackSurface === TrkLoc.OnTrack,
+    speedKmh: (telemetry.Speed ?? 0) * 3.6,
+    onPitRoad: telemetry.OnPitRoad === true,
   };
 }
 

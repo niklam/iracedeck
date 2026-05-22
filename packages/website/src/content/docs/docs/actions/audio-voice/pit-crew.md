@@ -164,9 +164,20 @@ In multi-class series the engineer reads your class position, not the overall �
 
 ## Overtakes (gained / lost during a race)
 
-Mid-race position swaps fire as they happen. When you pass someone and hold the new spot for about three seconds, the Race Engineer says *"Nice pass. That puts us to pee five."* Taking the lead gets a dedicated line — *"Nice pass! We're now leading race. Let's keep it that way!"* — instead of the generic gain readout. When someone passes you and the new (worse) spot sticks for the same window, the engineer says *"Come on, Niklas. Don't give up positions like that. We're now in pee five."*
+Mid-race position swaps fire as they happen, in **two parts**: a reaction, then the current position. When you pass someone and hold the new spot for about three seconds, the engineer reacts — *"Nice pass."* — and then, a beat later, reads your position — *"We're currently pee five."* Taking the lead gets a single dedicated line instead — *"Nice pass! We're now leading race. Let's keep it that way!"* — with no position follow-up (it already says you're leading). When someone passes you and the new (worse) spot sticks for the same window, the engineer says *"Come on, Niklas. Don't give up positions like that."* and then *"We're currently pee five."*
 
-A 10 m physical-gap check on top of the sustainment filters the "three seconds clean but still side-by-side" case where the swap could easily reverse — the callout waits until the cars are actually clear of each other. Cautions, pit road, and sim-glitch position jumps (more than three places in a single tick — typically a tow or teleport) all suppress the callout silently.
+The position in that second part is read from **live telemetry at the moment it's spoken**, so it's accurate even if you've gained or lost another spot in the second or two since the pass settled. Every "We're currently P[n]" line works this way — the mid-race overtake readout, the per-lap position update, and the every-3-laps status all read your live position when they speak. **The position is announced on every overtake** — in a sustained battle you'll keep hearing where you are, even when the reaction catchphrase is throttled.
+
+The catchphrase itself ("Nice pass." / "Come on…") has its own **20-second per-direction cooldown** so it doesn't repeat on every pass — make three passes in quick succession and you'll hear "Nice pass." once, then just the position on the next two. Taking the lead is exempt: that line always plays. A separate 20-second cooldown stops the per-lap and every-3-laps position updates from piling on right after an overtake already told you where you are.
+
+The engineer stays quiet about a swap that wasn't a clean racing move. The whole callout — both the catchphrase and the position — is suppressed when:
+
+- **a car is alongside** (the proximity radar shows someone immediately left or right) — wheel-to-wheel, the position is unstable;
+- **you're off-track**, **crawling below 50 km/h**, or **on pit road** — you weren't racing for that spot;
+- **you just had an incident** (within the last 10 seconds) — the drop or gain is a consequence of the moment, not a clean fight;
+- the race has **already ended**.
+
+A 10 m physical-gap check on top of the three-second sustainment also filters the "clean but still side-by-side" case where the swap could easily reverse, and sim-glitch position jumps (more than three places in a single tick — a tow or teleport) are ignored.
 
 In multi-class series the engineer reads your class position, not the overall. The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
 

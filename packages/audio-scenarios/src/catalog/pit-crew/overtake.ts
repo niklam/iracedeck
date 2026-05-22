@@ -1,62 +1,34 @@
 /**
- * Race Engineer overtake callouts — issue #574.
+ * Race Engineer overtake callouts — issue #574 (split design, #574 follow-up).
  *
- * Two scenarios under the shared `family: "overtake"` so a fast sequence of
- * position swaps doesn't stack stale callouts (the engine preempts the
- * in-flight family-mate when a fresher fire arrives):
+ * Each overtake produces TWO announcements, deliberately separated so the
+ * position is spoken from LIVE telemetry at the moment it's said:
  *
- *   - `pit-crew.overtake-gained` — fires on `overtake.completed`. Two
- *     branches selected at expansion time via the `isLeader` flag on the
- *     event payload:
- *       * **Leader** (`isLeader === true`): one self-contained clip,
- *         "Nice pass! We're now leading race. Let's keep it that way!"
- *       * **Otherwise**: composed three-part — "Nice pass." +
- *         "That puts us to" + "P[n]" (the second reuses the
- *         `position-intro-better` clip shipped for #566; the third reuses
- *         the existing `position-number/<N>` pool).
+ *   1. **Reaction** (this file) — fires immediately on the bus event:
+ *      - gained, non-leader: "Nice pass."
+ *      - gained, leader (`isLeader`): "Nice pass! We're now leading race.
+ *        Let's keep it that way!" (self-contained — states the position, so it
+ *        gets NO follow-up readout)
+ *      - lost: "Come on, <name>. Don't give up positions like that." (the
+ *        driver-name slot reuses the session-start greeting pool, #542)
  *
- *   - `pit-crew.overtake-lost` — fires on `overtake.lost`. Composed
- *     four-part — "Come on," + "<driver name>" + ". Don't give up
- *     positions like that. We're now in" + "P[n]". The driver-name slot
- *     reuses the existing `session-start-greeting/<driverName>` pool from
- *     #542 — same name the engineer uses when greeting the driver at
- *     session start.
+ *   2. **Position readout** (position-readout.ts) — a separate `low`-priority
+ *      scenario that defers behind the reaction and then says "We're currently
+ *      P[n]" reading the position from live telemetry at speak-time. Shares a
+ *      cooldown with every other position readout so we don't double-announce.
  *
- * Both scenarios pick the EFFECTIVE position (class in multi-class series,
- * overall otherwise) the same way `lap.completed` consumers do — multi-class
- * drivers care about their class rank, not the mixed-field order.
- *
- * Snapshot-at-fire-time pattern: the var resolvers read closures bound to
- * the most recent payload for each event, cached by the plugin. Two
- * separate caches (gain and loss) because the events are distinct.
- *
- * Driver-name fallback: when the resolved driver name isn't in the greeting
- * pool, `resolveActiveDriverName(... , "driver")` falls back to the
- * pre-recorded `"driver"` clip — the line becomes "Come on, driver. Don't
- * give up positions..." cleanly.
- *
- * `where:` filters in both scenarios:
- *   - Effective position is in the announceable range (`POSITION_NUMBER_MIN..MAX`).
- *     Out-of-range positions cause the scenario not to fire at all rather than
- *     producing a partial readout.
+ * Both reaction scenarios share `family: "overtake"` (a fresh swap preempts an
+ * in-flight family-mate) and are suppressed once the race is over
+ * (`getRaceFinishedFired`) — no overtake commentary after the checkered.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position.js";
-
-/**
- * Resolver for the most recent `overtake.completed` payload. Returns `null`
- * when no gain has occurred yet — the scenario's `where:` short-circuits
- * before it gets here, but the var resolvers still guard against it
- * defensively in case of a deferred-replay edge case.
- */
-export type OvertakeGainedSnapshotResolver = () => SimEventOf<"overtake.completed">["data"] | null;
-
-/** Resolver for the most recent `overtake.lost` payload. Same shape as the gain resolver. */
-export type OvertakeLostSnapshotResolver = () => SimEventOf<"overtake.lost">["data"] | null;
+import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
+import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
+import { tryClaimReaction } from "./position-readout.js";
 
 /**
  * Resolver for the active driver name. Plugins wire this to
@@ -67,8 +39,6 @@ export type OvertakeLostSnapshotResolver = () => SimEventOf<"overtake.lost">["da
 export type OvertakeDriverNameResolver = () => string | null;
 
 const OVERTAKE_BASE = "position-overtake";
-const POSITION_NUMBER_GROUP = "position-number";
-const POSITION_INTRO_BETTER_GROUP = "position-intro-better";
 const SESSION_START_GREETING_GROUP = "session-start-greeting";
 
 /** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
@@ -84,8 +54,7 @@ function clipPath(filename: string): string {
 /**
  * Pick the effective overall vs class position from an overtake payload.
  * Multi-class series → class fields; single-class (or unknown) → overall.
- * Returns `null` when the chosen current position is missing — the scenario
- * stays silent.
+ * Returns `null` when the chosen current position is missing.
  */
 function selectEffectiveOvertakePosition(data: {
   position: number;
@@ -99,10 +68,9 @@ function selectEffectiveOvertakePosition(data: {
 }
 
 /**
- * Whether an `overtake.completed` payload should produce an audible callout.
- * The effective position must be inside the speakable range; everything else
- * is enforced by the translator (race-only, hold sustained, gap satisfied,
- * sim-glitch suppressed).
+ * Whether an `overtake.completed` payload should produce an audible reaction.
+ * The effective position must be inside the speakable range; the translator
+ * has already enforced race-only / hold / gap / sim-glitch suppression.
  */
 export function overtakeGainIsAnnounceable(data: SimEventOf<"overtake.completed">["data"]): boolean {
   const current = selectEffectiveOvertakePosition(data);
@@ -110,11 +78,7 @@ export function overtakeGainIsAnnounceable(data: SimEventOf<"overtake.completed"
   return current !== null && positionNumberIsSpeakable(current);
 }
 
-/**
- * Whether an `overtake.lost` payload should produce an audible callout.
- * Symmetric with {@link overtakeGainIsAnnounceable} — same speakable-position
- * check; the translator has already enforced gate / gap / race-only rules.
- */
+/** Symmetric with {@link overtakeGainIsAnnounceable} for the loss side. */
 export function overtakeLossIsAnnounceable(data: SimEventOf<"overtake.lost">["data"]): boolean {
   const current = selectEffectiveOvertakePosition(data);
 
@@ -122,44 +86,11 @@ export function overtakeLossIsAnnounceable(data: SimEventOf<"overtake.lost">["da
 }
 
 /**
- * Register the overtake scenarios' variables on the scenario engine. Must run
- * before the scenarios are defined — load-time validation rejects a `{ var }`
- * step whose name isn't registered.
- *
- * `getGainedSnapshot` / `getLostSnapshot` are independent: the gain scenario
- * reads the former, the loss scenario reads the latter. `getDriverName`
- * supplies the pre-resolved driver-name key for the loss line.
+ * Register the overtake reaction vars. Only the loss line needs a var (the
+ * driver-name slot); the gain reaction is static clips and reads `isLeader`
+ * straight off the event payload in its `if` step.
  */
-export function registerOvertakeVars(
-  engine: IScenarioEngine,
-  getGainedSnapshot: OvertakeGainedSnapshotResolver,
-  getLostSnapshot: OvertakeLostSnapshotResolver,
-  getDriverName: OvertakeDriverNameResolver,
-): void {
-  engine.defineVar("overtake.gained.number", () => {
-    const s = getGainedSnapshot();
-
-    if (!s) return null;
-
-    const current = selectEffectiveOvertakePosition(s);
-
-    if (current === null || !positionNumberIsSpeakable(current)) return null;
-
-    return voicePath(POSITION_NUMBER_GROUP, String(current));
-  });
-
-  engine.defineVar("overtake.lost.number", () => {
-    const s = getLostSnapshot();
-
-    if (!s) return null;
-
-    const current = selectEffectiveOvertakePosition(s);
-
-    if (current === null || !positionNumberIsSpeakable(current)) return null;
-
-    return voicePath(POSITION_NUMBER_GROUP, String(current));
-  });
-
+export function registerOvertakeVars(engine: IScenarioEngine, getDriverName: OvertakeDriverNameResolver): void {
   engine.defineVar("overtake.lost.driverName", () => {
     const name = getDriverName();
 
@@ -168,25 +99,22 @@ export function registerOvertakeVars(
 }
 
 /**
- * Build the gained-overtake scenario. The `if:` branch reads the snapshot at
- * expansion time so a deferred replay picks the same leader / non-leader
- * branch as the original fire.
+ * Build the gained-overtake REACTION scenario. The position follow-up is a
+ * separate scenario (see {@link buildOvertakeGainedPositionScenario} in
+ * position-readout.ts). Suppressed after the race ends.
  */
-export function buildOvertakeGainedScenario(getSnapshot: OvertakeGainedSnapshotResolver): Scenario {
+export function buildOvertakeGainedScenario(
+  getRaceFinishedFired: () => boolean = () => false,
+  getGate: OvertakeGateResolver = () => null,
+): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     {
-      if: () => {
-        const s = getSnapshot();
-
-        return s !== null && s.isLeader;
-      },
+      // `isLeader` is read straight off the event payload (ctx.data) — the
+      // reaction fires immediately so the payload is the live event.
+      if: (ctx) => Boolean((ctx.data as SimEventOf<"overtake.completed">["data"] | null)?.isLeader),
       then: [clipPath("nice-pass-leader-01.mp3")],
-      else: [
-        clipPath("nice-pass-01.mp3"),
-        `${POSITION_INTRO_BETTER_GROUP}/that-puts-us-to-01.mp3`,
-        { var: "overtake.gained.number" },
-      ],
+      else: [clipPath("nice-pass-01.mp3")],
     },
     "@pit-crew.radio-close",
   ];
@@ -198,7 +126,22 @@ export function buildOvertakeGainedScenario(getSnapshot: OvertakeGainedSnapshotR
       where: (ev) => {
         if (ev.event !== "overtake.completed") return false;
 
-        return overtakeGainIsAnnounceable(ev.data as SimEventOf<"overtake.completed">["data"]);
+        const data = ev.data as SimEventOf<"overtake.completed">["data"];
+
+        if (getRaceFinishedFired()) return false;
+
+        if (!overtakeGainIsAnnounceable(data)) return false;
+
+        // Clean-racing-moment gate (cars alongside / off-track / slow / pit /
+        // recent incident), both directions.
+        if (!overtakeContextAllows(getGate())) return false;
+
+        // Taking the lead is momentous — always announce, exempt from the
+        // catchphrase cooldown. Otherwise throttle the "Nice pass" catchphrase
+        // (the position readout still fires regardless).
+        if (data.isLeader) return true;
+
+        return tryClaimReaction("gained");
       },
     },
     channel: AudioChannel.Voice,
@@ -210,21 +153,16 @@ export function buildOvertakeGainedScenario(getSnapshot: OvertakeGainedSnapshotR
   };
 }
 
-/**
- * Build the lost-position scenario. Composes the four-part sequence. The
- * snapshot resolver passed to {@link registerOvertakeVars} powers the
- * per-clip `var` resolvers; the scenario itself reads the event's `data`
- * inline in `where:` and doesn't need the resolver here, so the parameter
- * is accepted for API symmetry with {@link buildOvertakeGainedScenario}
- * (every plugin call site passes both) but the body doesn't reference it.
- */
-export function buildOvertakeLostScenario(_getSnapshot: OvertakeLostSnapshotResolver): Scenario {
+/** Build the lost-position REACTION scenario. Self-contained — position follow-up is separate. */
+export function buildOvertakeLostScenario(
+  getRaceFinishedFired: () => boolean = () => false,
+  getGate: OvertakeGateResolver = () => null,
+): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     clipPath("come-on-01.mp3"),
     { var: "overtake.lost.driverName" },
     clipPath("dont-give-up-positions-01.mp3"),
-    { var: "overtake.lost.number" },
     "@pit-crew.radio-close",
   ];
 
@@ -235,7 +173,13 @@ export function buildOvertakeLostScenario(_getSnapshot: OvertakeLostSnapshotReso
       where: (ev) => {
         if (ev.event !== "overtake.lost") return false;
 
-        return overtakeLossIsAnnounceable(ev.data as SimEventOf<"overtake.lost">["data"]);
+        if (getRaceFinishedFired()) return false;
+
+        if (!overtakeLossIsAnnounceable(ev.data as SimEventOf<"overtake.lost">["data"])) return false;
+
+        if (!overtakeContextAllows(getGate())) return false;
+
+        return tryClaimReaction("lost");
       },
     },
     channel: AudioChannel.Voice,
@@ -249,43 +193,35 @@ export function buildOvertakeLostScenario(_getSnapshot: OvertakeLostSnapshotReso
 
 /**
  * Stable identifier for each user-toggleable overtake callout (issue #574).
- * One id per direction so the user can independently silence "gained" or
- * "lost" announcements (drivers who want congratulations but not chastisement,
- * or vice versa, get per-direction control).
+ * One id per direction — the opt-in covers both the reaction and the position
+ * readout for that direction.
  */
 export type OvertakeCalloutId = "gained" | "lost";
 
 /**
  * Canonical mapping from `OvertakeCalloutId` to its plugin-global setting key
- * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
- * opt-in without duplicating the key strings.
+ * in `GlobalSettingsSchema`.
  */
 export const OVERTAKE_CALLOUT_SETTING_KEYS: Record<OvertakeCalloutId, string> = {
   gained: "calloutEnabledOvertakeGained",
   lost: "calloutEnabledOvertakeLost",
 };
 
-// `as const` so the element type is a literal union the
-// `SCENARIO_ID_TO_OVERTAKE_ID` map below can be typed against — TS errors
-// out at build time if a scenario id is renamed, missing, or extra.
-export const OVERTAKE_SCENARIO_IDS = ["pit-crew.overtake-gained", "pit-crew.overtake-lost"] as const;
+// Both the reaction AND the position-readout scenario id for each direction map
+// to the same opt-in, so one toggle silences both. `as const` powers the
+// compile-time completeness check on `SCENARIO_ID_TO_OVERTAKE_ID`.
+export const OVERTAKE_SCENARIO_IDS = [
+  "pit-crew.overtake-gained",
+  "pit-crew.overtake-lost",
+  "pit-crew.overtake-gained-position",
+  "pit-crew.overtake-lost-position",
+] as const;
 
 export const SCENARIO_ID_TO_OVERTAKE_ID: Record<(typeof OVERTAKE_SCENARIO_IDS)[number], OvertakeCalloutId> = {
   "pit-crew.overtake-gained": "gained",
   "pit-crew.overtake-lost": "lost",
+  "pit-crew.overtake-gained-position": "gained",
+  "pit-crew.overtake-lost-position": "lost",
 };
 
-/**
- * Re-exported announceable range for the overtake number readout — matches
- * the position-change scenario (`position-number/<1..64>` covers the iRacing
- * field-size spectrum). Kept here so callers don't reach across into
- * position.ts directly.
- */
 export { POSITION_NUMBER_MAX as OVERTAKE_POSITION_MAX, POSITION_NUMBER_MIN as OVERTAKE_POSITION_MIN };
-
-/**
- * Empty — the overtake readouts are composed from `engine.defineVar` resolvers
- * plus static clip paths, not pools. Exported for parity with the
- * family-completeness check used by the other pit-crew catalog files.
- */
-export const OVERTAKE_POOL_NAMES: readonly string[] = [];

@@ -14,6 +14,7 @@ import {
   type LapTimeCalloutId,
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
+  type OvertakeGate,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
   type PitReadbackCalloutId,
@@ -131,6 +132,8 @@ import {
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
 import {
+  getLivePosition,
+  getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
   getReadbackSnapshot,
@@ -264,29 +267,41 @@ eventBus.subscribe("race.finished", (ev) => {
   );
 });
 
-// Cache the most recent overtake.completed / overtake.lost payloads so the
-// overtake scenarios' var resolvers can read frozen position data at fire
-// time (issue #574). Two caches — the events are distinct and the scenarios
-// read their own direction. Subscribed BEFORE `registerPitCrew` so these
-// listeners run before the scenario engine's subscribers (same ordering as
-// the lap.completed / race.finished caches above).
+// Log overtake events for debugging (issue #574). The reaction scenarios read
+// `isLeader` straight off the event payload, and the position readouts read
+// LIVE telemetry at speak-time via `getLivePosition()` — so no per-event cache
+// is needed here, just observability.
 const overtakeLogger = adapter.createLogger("Overtake");
-let lastOvertakeGained: import("@iracedeck/event-bus").SimEventOf<"overtake.completed">["data"] | null = null;
-let lastOvertakeLost: import("@iracedeck/event-bus").SimEventOf<"overtake.lost">["data"] | null = null;
 eventBus.subscribe("overtake.completed", (ev) => {
-  lastOvertakeGained = ev.data;
   overtakeLogger.info(
     `gained position=${ev.data.position} previousPosition=${ev.data.previousPosition} isLeader=${ev.data.isLeader} ` +
       `gapBehindMeters=${ev.data.gapBehindMeters?.toFixed(1) ?? "?"} sustained=${ev.data.sustained}`,
   );
 });
 eventBus.subscribe("overtake.lost", (ev) => {
-  lastOvertakeLost = ev.data;
   overtakeLogger.info(
     `lost position=${ev.data.position} previousPosition=${ev.data.previousPosition} ` +
       `gapAheadMeters=${ev.data.gapAheadMeters?.toFixed(1) ?? "?"} sustained=${ev.data.sustained}`,
   );
 });
+
+// Track the most recent incident so the overtake gate can suppress callouts
+// for a swap caused by an incident (issue #574 follow-up). `null` until the
+// first incident this session.
+let lastIncidentAt: number | null = null;
+eventBus.subscribe("incident.occurred", () => {
+  lastIncidentAt = Date.now();
+});
+
+// Compose the overtake gate from live telemetry + the tracked incident time.
+// Returns null when telemetry is unavailable (the scenario suppresses).
+const getOvertakeGate = (): OvertakeGate | null => {
+  const gate = getOvertakeTelemetryGate();
+
+  if (!gate) return null;
+
+  return { ...gate, msSinceIncident: lastIncidentAt === null ? null : Date.now() - lastIncidentAt };
+};
 
 // Pass a live-reading closure so per-flag opt-ins (issue #467) take
 // effect mid-session without re-registering scenarios. The gate runs
@@ -420,15 +435,20 @@ registerPitCrew(
   // — same gate-at-event-arrival pattern as the other callout families.
   (id: OvertakeCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[OVERTAKE_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Snapshot resolvers for the gained / lost overtake scenarios (issue #574).
-  // Read at fire time from the two caches above.
-  () => lastOvertakeGained,
-  () => lastOvertakeLost,
   // Driver-name resolver for the loss-line "Come on, <name>" composition
   // (issue #574). Reuses the same `resolveActiveDriverName` path as session-
   // start and race-end — falls back to the pre-recorded `"driver"` clip when
   // the user hasn't picked a name in the greeting pool.
   () => resolveActiveDriverName(driverNames, "driver"),
+  // Live position resolver (issue #574 follow-up). Powers the "We're currently
+  // P[n]" readouts (overtake, race position-change, race-status) — read at
+  // speak-time so the spoken position is accurate to the moment it's said.
+  () => getLivePosition(),
+  // Overtake gate (issue #574 follow-up). Suppresses the whole overtake callout
+  // when the swap wasn't a clean racing moment (cars alongside / off-track /
+  // crawling / pit road / recent incident). Composed from live telemetry +
+  // the tracked incident time above.
+  getOvertakeGate,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

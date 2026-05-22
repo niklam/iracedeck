@@ -4710,13 +4710,12 @@
     "position-overtake": [
       {
         "name": "nice-pass-01",
-        "text": "Nice pass.",
-        "seed": 1,
-        "next_text": " That puts us to pee four."
+        "text": "Nice pass",
+        "seed": 3
       },
       {
         "name": "nice-pass-leader-01",
-        "text": "Nice pass! <break time=\"0.3s\"/> We're now leading race. <break time=\"0.3s\"/> Let's keep it that way!",
+        "text": "Nice pass! <break time=\"0.3s\"/> We're now leading race. <break time=\"0.4s\"/> Let's keep it that way!",
         "seed": 1
       },
       {
@@ -4727,9 +4726,8 @@
       },
       {
         "name": "dont-give-up-positions-01",
-        "text": ". Don't give up positions like that. <break time=\"0.3s\"/> We're now in",
-        "seed": 1,
-        "next_text": " pee five."
+        "text": ". Don't give up positions like that.",
+        "seed": 1
       }
     ]
   }

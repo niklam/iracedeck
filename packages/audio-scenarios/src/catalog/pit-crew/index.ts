@@ -59,18 +59,23 @@ import {
   registerLapTimeVars,
   SCENARIO_ID_TO_LAP_TIME_ID,
 } from "./lap-time.js";
+import { type OvertakeGateResolver, PERMISSIVE_OVERTAKE_GATE } from "./overtake-gate.js";
 import {
   buildOvertakeGainedScenario,
   buildOvertakeLostScenario,
   type OvertakeCalloutId,
   type OvertakeDriverNameResolver,
-  type OvertakeGainedSnapshotResolver,
-  type OvertakeLostSnapshotResolver,
   registerOvertakeVars,
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
+import {
+  buildOvertakeGainedPositionScenario,
+  buildOvertakeLostPositionScenario,
+  type LivePositionResolver,
+  registerPositionReadoutVars,
+} from "./position-readout.js";
 import {
   buildPositionScenario,
   type PositionCalloutId,
@@ -202,11 +207,29 @@ export {
   OVERTAKE_POSITION_MIN,
   type OvertakeCalloutId,
   type OvertakeDriverNameResolver,
-  type OvertakeGainedSnapshotResolver,
-  type OvertakeLostSnapshotResolver,
   overtakeGainIsAnnounceable,
   overtakeLossIsAnnounceable,
 } from "./overtake.js";
+export {
+  _resetPositionReadoutCooldown,
+  buildOvertakeGainedPositionScenario,
+  buildOvertakeLostPositionScenario,
+  canAnnouncePosition,
+  type LivePosition,
+  type LivePositionResolver,
+  POSITION_READOUT_COOLDOWN_MS,
+  REACTION_COOLDOWN_MS,
+  tryClaimPositionAnnouncement,
+  tryClaimReaction,
+} from "./position-readout.js";
+export {
+  type OvertakeGate,
+  type OvertakeGateResolver,
+  OVERTAKE_MIN_SPEED_KMH,
+  OVERTAKE_RECENT_INCIDENT_MS,
+  overtakeContextAllows,
+  PERMISSIVE_OVERTAKE_GATE,
+} from "./overtake-gate.js";
 
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
@@ -539,15 +562,6 @@ export function registerPitCrew(
   // arrival shape as the other callout families. Default `() => true`
   // preserves legacy behavior for tests that don't supply a closure.
   getOvertakeCalloutEnabled: (id: OvertakeCalloutId) => boolean = () => true,
-  // Snapshot resolvers for the gained / lost overtake var resolvers
-  // (issue #574). Plugins cache the most recent payload for each event
-  // via event-bus subscriptions and expose the cache via these closures.
-  // The two events are distinct (`overtake.completed` vs `overtake.lost`)
-  // so they cache separately and the resolvers stay direction-scoped.
-  // Default `() => null` makes the var resolvers return null — a safe
-  // stub for tests that don't supply a resolver.
-  getOvertakeGainedSnapshot: OvertakeGainedSnapshotResolver = () => null,
-  getOvertakeLostSnapshot: OvertakeLostSnapshotResolver = () => null,
   // Driver-name resolver for the loss-line "Come on, <name>" composition
   // (issue #574). Plugins wire this to `resolveActiveDriverName(driverNames,
   // "driver")` so the resolver returns the user-picked name when valid and
@@ -555,6 +569,23 @@ export function registerPitCrew(
   // line stays a complete sentence even when the user's name isn't in the
   // greeting pool. Default `() => null` skips the name step (rare; tests).
   getOvertakeDriverName: OvertakeDriverNameResolver = () => null,
+  // Live position resolver (issue #574 follow-up). Plugins wire this to
+  // `getLivePosition()` from `@iracedeck/sim-events-iracing`. Read at
+  // speak-time inside the "We're currently P[n]" var resolvers (overtake
+  // readout, race position-change, race-status) so the spoken position is
+  // accurate to the moment it's said, not frozen at the triggering event.
+  // Default `() => null` makes those readouts stay silent — a safe stub for
+  // tests that don't supply a resolver.
+  getLivePosition: LivePositionResolver = () => null,
+  // Overtake gate (issue #574 follow-up). Plugins compose this from
+  // `getOvertakeTelemetryGate()` (`@iracedeck/sim-events-iracing`) plus a
+  // tracked `incident.occurred` timestamp. Read at event time to suppress the
+  // WHOLE overtake callout (reaction + position, both directions) when the
+  // swap wasn't a clean racing moment — cars alongside, off-track, crawling,
+  // pit road, or a recent incident. Default permissive so callers that don't
+  // wire it (tests) still fire; the real plugin gate returns `null` only when
+  // telemetry is unavailable, which suppresses.
+  getOvertakeGate: OvertakeGateResolver = () => PERMISSIVE_OVERTAKE_GATE,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -752,10 +783,11 @@ export function registerPitCrew(
   // registration order — the engine drops (not queues) cross-family
   // normal-priority scenarios when the bus is busy, but defers and replays
   // `low`-priority fires once the bus goes idle (see `position.ts` header).
-  // Reuses the same `getLapCompletedSnapshot` resolver as lap-time — both
-  // scenarios speak to the same frozen lap payload, and the deferred replay
-  // carries the original event so the snapshot stays consistent.
-  registerPositionVars(engine, getLapCompletedSnapshot);
+  // The change-DETECTION (improved/worsened/first-fix) reads the frozen
+  // `lap.completed` snapshot; in race the spoken NUMBER reads LIVE telemetry
+  // at speak-time via `getLivePosition` (issue #574) and shares the position
+  // cooldown so an overtake readout + a lap readout seconds apart don't double.
+  registerPositionVars(engine, getLapCompletedSnapshot, getLivePosition);
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
@@ -763,7 +795,7 @@ export function registerPitCrew(
         // the final lap of a race (issue #569) — race-end takes the floor, and
         // without the gate position-change would queue "We're currently P[n]"
         // behind race-end and play it after the result speech.
-        buildPositionScenario(getLapCompletedSnapshot, getRaceFinishedFired),
+        buildPositionScenario(getLapCompletedSnapshot, getRaceFinishedFired, getLivePosition),
         SCENARIO_ID_TO_POSITION_ID,
         getPositionCalloutEnabled,
         "position callout",
@@ -772,17 +804,15 @@ export function registerPitCrew(
     ),
   );
 
-  // Race-status periodic position update (issue #569). Reuses the same
-  // `getLapCompletedSnapshot` resolver as lap-time / position — all three
-  // scenarios subscribe to `lap.completed` and read the same frozen payload.
-  // `priority: "low"` defers when lap-time-best (`normal`) takes the bus on a
-  // PB lap; the deferred replay carries the original event so the cadence
-  // check stays consistent.
-  registerRaceStatusVars(engine, getLapCompletedSnapshot);
+  // Race-status periodic position update (issue #569). The cadence DECISION
+  // reads the frozen `lap.completed` snapshot; in race the spoken number +
+  // leader detection read LIVE telemetry at speak-time (issue #574) and share
+  // the position cooldown.
+  registerRaceStatusVars(engine, getLivePosition);
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStatusScenario(getLapCompletedSnapshot, getRaceFinishedFired),
+        buildRaceStatusScenario(getLapCompletedSnapshot, getRaceFinishedFired, getLivePosition),
         SCENARIO_ID_TO_RACE_STATUS_ID,
         getRaceStatusCalloutEnabled,
         "race-status callout",
@@ -826,37 +856,44 @@ export function registerPitCrew(
     ),
   );
 
-  // Overtake gained / lost callouts (issue #574). Two scenarios under the
-  // shared `overtake` family so a fast sequence of position swaps doesn't
-  // stack stale callouts — the newer fire preempts the in-flight family-mate.
-  // Snapshot resolvers are owned by the plugin (caches the most recent payload
-  // for each event via event-bus subscriptions). The driver-name resolver is
-  // composed in the plugin from `resolveActiveDriverName(driverNames, "driver")`
-  // so the loss line's name slot falls back cleanly when the user's pick isn't
-  // in the greeting pool.
-  registerOvertakeVars(engine, getOvertakeGainedSnapshot, getOvertakeLostSnapshot, getOvertakeDriverName);
-  engine.defineScenario(
-    wrapWithMaster(
-      wrapCalloutScenario(
-        buildOvertakeGainedScenario(getOvertakeGainedSnapshot),
-        SCENARIO_ID_TO_OVERTAKE_ID,
-        getOvertakeCalloutEnabled,
-        "overtake callout",
-        logger,
+  // Overtake callouts (issue #574). Each direction is TWO scenarios: a
+  // reaction (immediate, `family: "overtake"`) and a position readout
+  // (`low`-priority, `family: "position-readout"`) that defers behind the
+  // reaction and speaks "We're currently P[n]" from LIVE telemetry at
+  // speak-time. Both share the same per-direction opt-in via
+  // `SCENARIO_ID_TO_OVERTAKE_ID`, and all are suppressed once the race is over
+  // (`getRaceFinishedFired`). The driver-name resolver (loss reaction) is
+  // composed in the plugin from `resolveActiveDriverName(driverNames, "driver")`.
+  registerOvertakeVars(engine, getOvertakeDriverName);
+  registerPositionReadoutVars(engine, getLivePosition);
+
+  for (const s of [
+    buildOvertakeGainedScenario(getRaceFinishedFired, getOvertakeGate),
+    buildOvertakeLostScenario(getRaceFinishedFired, getOvertakeGate),
+  ]) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_OVERTAKE_ID, getOvertakeCalloutEnabled, "overtake callout", logger),
       ),
-    ),
-  );
-  engine.defineScenario(
-    wrapWithMaster(
-      wrapCalloutScenario(
-        buildOvertakeLostScenario(getOvertakeLostSnapshot),
-        SCENARIO_ID_TO_OVERTAKE_ID,
-        getOvertakeCalloutEnabled,
-        "overtake callout",
-        logger,
+    );
+  }
+
+  for (const s of [
+    buildOvertakeGainedPositionScenario(getLivePosition, getRaceFinishedFired, getOvertakeGate),
+    buildOvertakeLostPositionScenario(getLivePosition, getRaceFinishedFired, getOvertakeGate),
+  ]) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          s,
+          SCENARIO_ID_TO_OVERTAKE_ID,
+          getOvertakeCalloutEnabled,
+          "overtake position readout",
+          logger,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /**
