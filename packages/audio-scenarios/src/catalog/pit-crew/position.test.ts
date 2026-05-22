@@ -149,6 +149,7 @@ const manifest: AudioAssetsManifest = {
     `voice/${VOICE}/position-intro-better/that-puts-us-to-01.mp3`,
     `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
     `voice/${VOICE}/position-intro-pole/that-puts-us-on-pole-01.mp3`,
+    `voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`,
     ...NUMBER_NAMES.map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
@@ -330,6 +331,26 @@ describe("positionChangeIsAnnounceable", () => {
   it("returns false when position is out of range", () => {
     expect(positionChangeIsAnnounceable(snap({ position: POSITION_NUMBER_MAX + 1, previousPosition: 99 }))).toBe(false);
   });
+
+  it("returns true for an invalid lap with unchanged position (issue #572 — invalid branch still fires)", () => {
+    // The invalid-lap branch (issue #572) prefixes the readout with "That lap
+    // didn't count." and forces the worse-framing intro. It rides on the
+    // existing announceable path — an invalid lap is `isBest: false`, so the
+    // unchanged-non-PB status case in `positionChangeIsAnnounceable` already
+    // covers it. This test pins the contract so future predicate changes
+    // don't accidentally silence the invalid-lap branch.
+    expect(
+      positionChangeIsAnnounceable(
+        snap({
+          position: 5,
+          previousPosition: 5,
+          isBest: false,
+          sessionType: "qualifying",
+          lapIsValid: false,
+        }),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("position-change scenario", () => {
@@ -508,5 +529,80 @@ describe("position-change scenario — qualifying pole", () => {
     expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(true);
     expect(hasClip("/position-number/1.mp3")).toBe(false);
     expect(hasClip("/position-number/12.mp3")).toBe(false);
+  });
+});
+
+describe("position-change scenario — invalid lap (issue #572)", () => {
+  it("prefixes with 'that lap didn't count' and uses worse intro when lap is invalid + unchanged", () => {
+    fire(
+      snap({
+        position: 5,
+        previousPosition: 5,
+        isBest: false,
+        sessionType: "qualifying",
+        lapIsValid: false,
+      }),
+    );
+
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
+    expect(hasClip("/position-number/5.mp3")).toBe(true);
+  });
+
+  it("uses worse framing for an invalid lap even when standings improved on paper", () => {
+    // An invalid lap can't earn the "better" framing even if standings
+    // shifted from others' laps — pin the worse-intro behavior.
+    fire(
+      snap({
+        position: 3,
+        previousPosition: 5,
+        isBest: false,
+        sessionType: "qualifying",
+        lapIsValid: false,
+      }),
+    );
+
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-better/that-puts-us-to-01.mp3")).toBe(false);
+    expect(hasClip("/position-number/3.mp3")).toBe(true);
+  });
+
+  it("suppresses pole branch for an invalid lap landing at P1", () => {
+    fire(
+      snap({
+        position: 1,
+        previousPosition: 3,
+        isBest: false,
+        sessionType: "qualifying",
+        lapIsValid: false,
+      }),
+    );
+
+    expect(hasClip("/position-intro-pole/that-puts-us-on-pole-01.mp3")).toBe(false);
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(true);
+    expect(hasClip("/position-intro-worse/currently-01.mp3")).toBe(true);
+    expect(hasClip("/position-number/1.mp3")).toBe(true);
+  });
+
+  it("does not prefix when lapIsValid is undefined (missing signal — existing path)", () => {
+    fire(snap({ position: 5, previousPosition: 3, isBest: false, sessionType: "qualifying" }));
+
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(false);
+  });
+
+  it("does not prefix when lapIsValid is true (valid lap — existing path)", () => {
+    fire(
+      snap({
+        position: 5,
+        previousPosition: 3,
+        isBest: false,
+        sessionType: "qualifying",
+        lapIsValid: true,
+      }),
+    );
+
+    expect(hasClip("/position-invalid-lap/that-lap-didnt-count-01.mp3")).toBe(false);
   });
 });

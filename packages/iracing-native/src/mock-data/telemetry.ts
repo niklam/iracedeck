@@ -146,6 +146,30 @@ function buildVarHeaders(): VarHeader[] {
       unit: "s",
     },
     { type: VarType.Bool, count: 1, countAsTime: false, name: "LapDeltaToBestLap_OK", desc: "Delta valid", unit: "" },
+    {
+      type: VarType.Bool,
+      count: 1,
+      countAsTime: false,
+      name: "LapDeltaToSessionBestLap_OK",
+      desc: "Session-best delta valid",
+      unit: "",
+    },
+    {
+      type: VarType.Bool,
+      count: 1,
+      countAsTime: false,
+      name: "LapDeltaToSessionOptimalLap_OK",
+      desc: "Session-optimal delta valid",
+      unit: "",
+    },
+    {
+      type: VarType.Bool,
+      count: 1,
+      countAsTime: false,
+      name: "LapDeltaToSessionLastlLap_OK", // iRacing typo: "Lastl" — preserve
+      desc: "Session-last delta valid",
+      unit: "",
+    },
 
     // On track status
     { type: VarType.Bool, count: 1, countAsTime: false, name: "IsOnTrack", desc: "On track", unit: "" },

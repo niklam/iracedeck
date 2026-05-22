@@ -3889,6 +3889,14 @@
         ]
       }
     ],
+    "position-invalid-lap": [
+      {
+        "name": "that-lap-didnt-count-01",
+        "text": "That lap didn't count.",
+        "seed": 1,
+        "next_request_ids": ["position-intro-worse/currently-01"]
+      }
+    ],
     "position-intro-better": [
       {
         "name": "that-puts-us-to-01",

@@ -7800,6 +7800,14 @@
       "textPreview": ". Don't give up positions like that.",
       "generatedAt": "2026-05-21T18:29:56.543Z",
       "requestId": "dCzzGEOD5kMqGRBmDgDr"
+    },
+    "voice/default/position-invalid-lap/that-lap-didnt-count-01.mp3": {
+      "hash": "2a51c1db12520368",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "That lap didn't count.",
+      "generatedAt": "2026-05-18T16:07:33.192Z",
+      "requestId": "0WWFkonrGlVvreIPNnJj"
     }
   }
 }

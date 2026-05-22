@@ -20,7 +20,12 @@
  *
  * Script:
  *   [radio open]
- *   (if qualifying-pole condition)
+ *   (if qualifying lap was invalidated by iRacing — issue #572)
+ *     <didn't count>              "That lap didn't count."  (static clip)
+ *     <currently>                 "We're currently"  (static clip; invalid laps
+ *                                  never get the "better" framing or pole)
+ *     <number>                    pee one / pee two / … / pee sixty four
+ *   (else if qualifying-pole condition)
  *     <pole>                      "That puts us on pole."  (self-contained)
  *   (else)
  *     <intro>                     that-puts-us-to  OR  currently
@@ -36,6 +41,9 @@
  *     `where:` short-circuits, scenario silent (lap-time-best already
  *     narrates the lap). Improvement to effective P1 in qualifying →
  *     "That puts us on pole." (one clip, no number — pole branch).
+ *     Invalidated qualifying lap (`lapIsValid === false`, issue #572) →
+ *     "That lap didn't count. We're currently <break /> pee N." — the
+ *     invalid-lap branch beats the pole / "better" branches unconditionally.
  *   - **Race** (issue #569): every direction uses the "currently" intro —
  *     race standings don't follow from lap times, so "That puts us to P3"
  *     reads wrong; "We're currently P3" works whether you gained or lost
@@ -81,6 +89,7 @@ import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } f
 import {
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  POSITION_CURRENTLY_CLIP,
   selectLivePosition,
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
@@ -100,6 +109,14 @@ const POSITION_GROUP_INTRO_BETTER = "position-intro-better";
 const POSITION_GROUP_INTRO_WORSE = "position-intro-worse";
 const POSITION_GROUP_INTRO_POLE = "position-intro-pole";
 const POSITION_GROUP_NUMBER = "position-number";
+
+/**
+ * Static "That lap didn't count." clip path, relative to the `voice/{voice}`
+ * base (issue #572). Mirrors {@link POSITION_CURRENTLY_CLIP} — a bare clip
+ * step rather than a `{ var }`, because the prefix is the same line every
+ * time (no live data). Used only in the qualifying invalid-lap branch.
+ */
+const POSITION_DIDNT_COUNT_CLIP = "position-invalid-lap/that-lap-didnt-count-01.mp3";
 
 /** Build a full `voice/{voice}/...` path for a `var` resolver. */
 function voicePath(group: string, name: string): string {
@@ -312,17 +329,39 @@ export function buildPositionScenario(
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     {
-      // Qualifying pole branch — single self-contained "on pole" clip
-      // replaces the intro + number for an improvement to P1 in qualifying.
-      // Holding P1 on a slow lap falls through to the else branch (standard
-      // "We're currently P1" status line), so the pole call doesn't repeat.
+      // Invalid-lap branch (issue #572) — QUALIFYING ONLY. iRacing flagged the
+      // just-completed qualifying lap as invalid (track-limits cut, pit-lane
+      // violation, etc.). Prefix the readout with "That lap didn't count." and
+      // always speak the worse-framing "currently" intro: an invalid lap can't
+      // earn a "better" framing (no pole, no "That puts us to P[n]") even if
+      // standings shifted from others' laps. Gated to qualifying so the race
+      // path (which reads the spoken number LIVE at speak-time and shares the
+      // position cooldown, issue #574) is untouched — "that lap didn't count"
+      // has no meaning in a race where every lap counts. `lapIsValid` of `true`
+      // or `undefined` (no signal from telemetry) falls through to the existing
+      // path — don't suppress callouts on a missing signal. The frozen-snapshot
+      // `position.number` resolver returns the qualifying number here.
       if: () => {
         const s = getSnapshot();
 
-        return s !== null && isPoleAchievement(s);
+        return s !== null && s.sessionType === "qualifying" && s.lapIsValid === false;
       },
-      then: [{ var: "position.pole" }],
-      else: [{ var: "position.intro" }, { var: "position.number" }],
+      then: [POSITION_DIDNT_COUNT_CLIP, POSITION_CURRENTLY_CLIP, { var: "position.number" }],
+      else: [
+        {
+          // Qualifying pole branch — single self-contained "on pole" clip
+          // replaces the intro + number for an improvement to P1 in qualifying.
+          // Holding P1 on a slow lap falls through to the else branch (standard
+          // "We're currently P1" status line), so the pole call doesn't repeat.
+          if: () => {
+            const s = getSnapshot();
+
+            return s !== null && isPoleAchievement(s);
+          },
+          then: [{ var: "position.pole" }],
+          else: [{ var: "position.intro" }, { var: "position.number" }],
+        },
+      ],
     },
     "@pit-crew.radio-close",
   ];

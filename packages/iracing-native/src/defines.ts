@@ -568,6 +568,9 @@ export interface TelemetryData {
   LapDeltaToBestLap_OK?: boolean;
   LapDeltaToOptimalLap?: number;
   LapDeltaToSessionBestLap?: number;
+  LapDeltaToSessionBestLap_OK?: boolean;
+  LapDeltaToSessionOptimalLap_OK?: boolean;
+  LapDeltaToSessionLastlLap_OK?: boolean; // iRacing typo: "Lastl" — preserve
   RaceLaps?: number;
 
   // Session Info

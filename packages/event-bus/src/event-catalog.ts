@@ -506,6 +506,19 @@ export type SimEventMap = {
        * other position fields above (driven by {@link isMultiClass}).
        */
       lapsSincePositionChange?: number;
+      /**
+       * True iff iRacing considers the just-completed lap valid for standings
+       * purposes (no track-limits invalidation, no pit-lane violation, etc.).
+       * Derived from `LapDeltaToBestLap_OK` and the session-best/optimal/last
+       * variants at the lap-completion tick (issue #572). `undefined` when
+       * the translator can't determine validity — consumers should treat
+       * `undefined` as valid (don't suppress callouts on a missing signal).
+       *
+       * The position-change callout uses this to prefix the readout with
+       * "That lap didn't count." and force the worse-framing intro when the
+       * lap is invalid.
+       */
+      lapIsValid?: boolean;
     }
   >;
   /**
