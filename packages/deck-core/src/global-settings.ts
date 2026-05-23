@@ -587,6 +587,24 @@ export const GlobalSettingsSchema = z
      * tracks may need higher values. Range 50–1000 ms, step 50.
      */
     fastestLapSearchDelayMs: z.coerce.number().min(50).max(1000).default(400),
+    /**
+     * Delay in milliseconds the Chat > Send Message pipeline waits after
+     * opening the chat window (BeginChat) before pasting the message
+     * (issue #581). Also used by Race Admin "Type in Chat" for its
+     * open→paste wait. Too short and the paste lands before iRacing has
+     * focused the chat input, dropping the text — slower machines, heavy
+     * load, or a clipboard-manager app stealing focus all push this out.
+     * Range 0–2000 ms, step 100, default 200.
+     */
+    chatOpenToPasteDelayMs: z.coerce.number().min(0).max(2000).default(200),
+    /**
+     * Delay in milliseconds the Chat > Send Message pipeline waits after
+     * pasting before pressing Enter (issue #581). Too short and Enter fires
+     * before the paste has registered, sending an empty or partial message.
+     * Race Admin doesn't press Enter, so this delay doesn't apply there.
+     * Range 0–2000 ms, step 100, default 200.
+     */
+    chatPasteToEnterDelayMs: z.coerce.number().min(0).max(2000).default(200),
   })
   .passthrough();
 

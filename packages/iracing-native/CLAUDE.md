@@ -75,6 +75,21 @@ Writes a UTF-16 string to the Windows clipboard as `CF_UNICODETEXT`. Returns `tr
 
 Pasting is the caller's responsibility — `setClipboardText` only writes. Send `Ctrl+V` via `getKeyboard().sendKeyCombination(...)` from `@iracedeck/deck-core` to paste. Used by race-admin's "Type in Chat" driver-target mode and any future flows that need to put text on the clipboard without going through the full chat-send sequence.
 
+## Chat Functions
+
+### `sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean>`
+
+Runs the full chat-send pipeline (copy → `Cancel` → `BeginChat` → paste → `Enter` → `Cancel`) on a libuv worker thread and resolves `true` on success, `false` on failure. Concurrent sends are serialized natively via `g_chatSendMutex`.
+
+The two waits flanking the paste are caller-supplied (issue #581) and each default to `200` ms when omitted:
+
+- `openToPasteDelayMs` — wait after `BeginChat` before pasting. Sourced from the `chatOpenToPasteDelayMs` global setting by the action layer.
+- `pasteToEnterDelayMs` — wait after pasting before pressing `Enter`. Sourced from `chatPasteToEnterDelayMs`.
+
+Each delay is read defensively and clamped into `[0, kMaxChatDelayMs]` (10000 ms). Reading as a double (not `Uint32Value()`) avoids ECMAScript `ToUint32` wrapping a negative value into a huge `DWORD` and turning `Sleep()` into a multi-day stall while `g_chatSendMutex` is held.
+
+The cancel→begin and enter→close waits stay on the fixed `kChatStepDelayMs` (100 ms). The `Enter` keypress is split into key-down → `Sleep(kChatEnterHoldMs)` (40 ms) → key-up so a zero-duration press isn't dropped under load; `kChatEnterHoldMs` is a fixed native constant, not user-configurable.
+
 ## Cross-Package Sync
 
 The TypeScript wrapper in `src/index.ts` must mirror every function exported from `addon.cc`. When adding or modifying native keyboard functions:

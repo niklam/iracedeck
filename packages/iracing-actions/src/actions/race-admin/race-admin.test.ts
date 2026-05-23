@@ -103,6 +103,12 @@ const mockSendMessage = vi.fn(async () => true);
 const mockBeginChat = vi.fn(() => true);
 const mockSetClipboardText = vi.fn(() => true);
 const mockSendKeyCombination = vi.fn(async () => true);
+// Small default open→paste delay so the real-timer tests below resolve quickly.
+// vi.hoisted so the object-returning factory is initialized before the hoisted
+// vi.mock("@iracedeck/deck-core") factory references it.
+const { mockGetGlobalSettings } = vi.hoisted(() => ({
+  mockGetGlobalSettings: vi.fn(() => ({ chatOpenToPasteDelayMs: 10 })),
+}));
 
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
@@ -135,6 +141,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     camera: { switchNum: vi.fn(() => true) },
   })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
+  getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
@@ -538,7 +545,8 @@ describe("RaceAdmin", () => {
       const ev = makeKeyDownEvent(baseSettings);
 
       await action.onKeyDown(ev);
-      // Wait past the 100ms internal delay so the keyboard call has fired.
+      // Wait past the configurable open→paste delay (mocked to 10ms) so the
+      // keyboard call has fired.
       await new Promise((r) => setTimeout(r, 150));
 
       expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
@@ -557,6 +565,33 @@ describe("RaceAdmin", () => {
       });
       expect(enterCalls).toHaveLength(0);
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("type-in-chat: open→paste wait honors the chatOpenToPasteDelayMs setting", async () => {
+      mockGetGlobalSettings.mockReturnValueOnce({ chatOpenToPasteDelayMs: 800 });
+      vi.useFakeTimers();
+
+      try {
+        const action = new RaceAdmin();
+        const promise = action.onKeyDown(makeKeyDownEvent(baseSettings));
+
+        // Flush the synchronous pipeline (clipboard write + beginChat) up to the delay.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockSetClipboardText).toHaveBeenCalledTimes(1);
+        expect(mockBeginChat).toHaveBeenCalledTimes(1);
+        expect(mockSendKeyCombination).not.toHaveBeenCalled();
+
+        // Just before the configured delay elapses, the paste must not have fired.
+        await vi.advanceTimersByTimeAsync(799);
+        expect(mockSendKeyCombination).not.toHaveBeenCalled();
+
+        // Crossing the 800ms boundary fires the paste.
+        await vi.advanceTimersByTimeAsync(1);
+        await promise;
+        expect(mockSendKeyCombination).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("type-in-chat: clipboard write failure aborts before opening chat", async () => {

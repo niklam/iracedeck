@@ -11,7 +11,7 @@ export { IRacingSDK } from "./IRacingSDK.js";
 export { SDKController, TELEMETRY_INTERVAL_MS, TelemetryCallback } from "./SDKController.js";
 
 // Interfaces for dependency injection
-export type { INativeSDK } from "./interfaces.js";
+export type { ChatSendTiming, INativeSDK } from "./interfaces.js";
 
 // Factory functions for easy SDK creation
 export { createSDK, createCommands, type SDKBundle, type Commands } from "./factory.js";

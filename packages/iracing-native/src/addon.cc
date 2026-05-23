@@ -349,7 +349,15 @@ static void sendPaste()
     SendInput(4, inputs, sizeof(INPUT));
 }
 
+// Fixed delay for the two pipeline sleeps that stay non-configurable
+// (cancel→begin and enter→close). The open→paste and paste→enter waits are
+// caller-supplied (issue #581).
 static constexpr DWORD kChatStepDelayMs = 100;
+
+// Fixed hold for the Enter keypress (issue #581). A zero-duration down+up can
+// be dropped by iRacing under load; ~40ms gives the key event time to register
+// without feeling sluggish. Intentionally not user-configurable.
+static constexpr DWORD kChatEnterHoldMs = 40;
 
 /**
  * Async worker that runs the full chat-send pipeline on a libuv worker
@@ -361,6 +369,10 @@ static constexpr DWORD kChatStepDelayMs = 100;
  * ~400ms native pipeline. setTimeout callbacks and Stream Deck events
  * continue to flow while a chat message is being typed.
  *
+ * The open→paste and paste→enter waits are caller-supplied (issue #581) so
+ * users on slower machines can dial in reliable sends; the cancel→begin and
+ * enter→close waits stay on kChatStepDelayMs. Enter is held kChatEnterHoldMs.
+ *
  * Serialized via g_chatSendMutex so concurrent sends queue up instead of
  * clobbering each other: iRacing only has one chat window, and two
  * overlapping sends would fight over the clipboard.
@@ -368,9 +380,11 @@ static constexpr DWORD kChatStepDelayMs = 100;
 class ChatSendWorker : public Napi::AsyncWorker
 {
 public:
-    ChatSendWorker(Napi::Env env, std::u16string message)
+    ChatSendWorker(Napi::Env env, std::u16string message, DWORD openToPasteDelayMs, DWORD pasteToEnterDelayMs)
         : Napi::AsyncWorker(env),
           message_(std::move(message)),
+          openToPasteDelayMs_(openToPasteDelayMs),
+          pasteToEnterDelayMs_(pasteToEnterDelayMs),
           deferred_(Napi::Promise::Deferred::New(env)),
           result_(false)
     {
@@ -407,18 +421,26 @@ public:
         Sleep(kChatStepDelayMs);
 
         irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_BeginChat, 0);
-        Sleep(kChatStepDelayMs);
+        Sleep(openToPasteDelayMs_);
 
         sendPaste();
-        Sleep(kChatStepDelayMs);
+        Sleep(pasteToEnterDelayMs_);
 
-        INPUT enterInputs[2] = {};
-        enterInputs[0].type = INPUT_KEYBOARD;
-        enterInputs[0].ki.wVk = VK_RETURN;
-        enterInputs[1].type = INPUT_KEYBOARD;
-        enterInputs[1].ki.wVk = VK_RETURN;
-        enterInputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-        SendInput(2, enterInputs, sizeof(INPUT));
+        // Hold Enter for kChatEnterHoldMs rather than sending a zero-duration
+        // down+up batch — the instantaneous press can be dropped by iRacing
+        // under load, leaving the message typed but unsent (issue #581).
+        INPUT enterDown = {};
+        enterDown.type = INPUT_KEYBOARD;
+        enterDown.ki.wVk = VK_RETURN;
+        SendInput(1, &enterDown, sizeof(INPUT));
+
+        Sleep(kChatEnterHoldMs);
+
+        INPUT enterUp = {};
+        enterUp.type = INPUT_KEYBOARD;
+        enterUp.ki.wVk = VK_RETURN;
+        enterUp.ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(1, &enterUp, sizeof(INPUT));
 
         Sleep(kChatStepDelayMs);
 
@@ -441,9 +463,57 @@ public:
 
 private:
     std::u16string message_;
+    DWORD openToPasteDelayMs_;
+    DWORD pasteToEnterDelayMs_;
     Napi::Promise::Deferred deferred_;
     bool result_;
 };
+
+// Fallback delay (ms) used when the caller omits a timing argument. Matches
+// the chatOpenToPasteDelayMs / chatPasteToEnterDelayMs global-settings default.
+static constexpr DWORD kChatDefaultDelayMs = 200;
+
+// Safety ceiling (ms) for a caller-supplied chat delay. The Property Inspector
+// caps the settings at 2000 ms; this generous upper bound exists only so a
+// bad/out-of-range native caller can't turn Sleep() into a multi-day stall
+// while ChatSendWorker holds g_chatSendMutex (which would block every other
+// chat send).
+static constexpr DWORD kMaxChatDelayMs = 10000;
+
+/**
+ * Read an optional chat-delay argument and clamp it into [0, kMaxChatDelayMs].
+ *
+ * Falls back to kChatDefaultDelayMs when the argument is absent, non-numeric,
+ * or NaN. We read the value as a double rather than via Uint32Value() because
+ * Uint32Value() applies ECMAScript ToUint32, which would wrap a negative input
+ * (e.g. -1) into a huge DWORD (~4.29e9 ms ≈ 49 days) — exactly the runaway
+ * Sleep() this guards against.
+ */
+static DWORD readChatDelayArg(const Napi::CallbackInfo &info, size_t index)
+{
+    if (index >= info.Length() || !info[index].IsNumber())
+    {
+        return kChatDefaultDelayMs;
+    }
+
+    double value = info[index].As<Napi::Number>().DoubleValue();
+
+    // NaN is the only value not equal to itself; avoids needing <cmath>.
+    if (value != value)
+    {
+        return kChatDefaultDelayMs;
+    }
+    if (value < 0.0)
+    {
+        return 0;
+    }
+    if (value > static_cast<double>(kMaxChatDelayMs))
+    {
+        return kMaxChatDelayMs;
+    }
+
+    return static_cast<DWORD>(value);
+}
 
 /**
  * Send a complete chat message to iRacing using clipboard paste.
@@ -452,9 +522,13 @@ private:
  * The full pipeline runs on a libuv worker thread (see ChatSendWorker),
  * so the JS event loop remains responsive during the ~400ms native work.
  *
- * Each step waits kChatStepDelayMs to give iRacing time to process.
+ * The open→paste and paste→enter waits are caller-supplied (issue #581),
+ * each defaulting to kChatDefaultDelayMs when omitted. The cancel→begin and
+ * enter→close waits stay on kChatStepDelayMs; Enter is held kChatEnterHoldMs.
  *
  * @param message - The message to send
+ * @param openToPasteDelayMs - (optional) ms to wait after opening chat before pasting
+ * @param pasteToEnterDelayMs - (optional) ms to wait after pasting before pressing Enter
  * @returns Promise<boolean>
  */
 Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
@@ -463,13 +537,17 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 
     if (info.Length() < 1 || !info[0].IsString())
     {
-        Napi::TypeError::New(env, "Expected (message: string)").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Expected (message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number)")
+            .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     std::u16string message = info[0].As<Napi::String>().Utf16Value();
 
-    ChatSendWorker *worker = new ChatSendWorker(env, std::move(message));
+    DWORD openToPasteDelayMs = readChatDelayArg(info, 1);
+    DWORD pasteToEnterDelayMs = readChatDelayArg(info, 2);
+
+    ChatSendWorker *worker = new ChatSendWorker(env, std::move(message), openToPasteDelayMs, pasteToEnterDelayMs);
     Napi::Promise promise = worker->GetPromise();
     worker->Queue();
 

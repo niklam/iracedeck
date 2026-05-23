@@ -186,7 +186,15 @@ describe("SDKController", () => {
     it("should delegate to SDK", async () => {
       await controller.sendChatMessage("Hello");
 
-      expect(mockSdk.sendChatMessage).toHaveBeenCalledWith("Hello");
+      expect(mockSdk.sendChatMessage).toHaveBeenCalledWith("Hello", undefined);
+    });
+
+    it("should forward timing delays to SDK", async () => {
+      const timing = { openToPasteDelayMs: 300, pasteToEnterDelayMs: 450 };
+
+      await controller.sendChatMessage("Hello", timing);
+
+      expect(mockSdk.sendChatMessage).toHaveBeenCalledWith("Hello", timing);
     });
 
     it("should return SDK result", async () => {

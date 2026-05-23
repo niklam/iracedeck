@@ -14,6 +14,7 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
+  getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
   type IDeckDialDownEvent,
@@ -303,10 +304,13 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
         return;
       }
 
-      // Match the chat-send pipeline's kChatStepDelayMs (addon.cc:352): give
-      // iRacing a couple frames to actually focus the chat input box before
-      // pasting. Without this, Ctrl+V lands on an empty viewport.
-      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      // Give iRacing a couple frames to actually focus the chat input box
+      // before pasting. Without this, Ctrl+V lands on an empty viewport. The
+      // wait is the shared `chatOpenToPasteDelayMs` global setting (issue
+      // #581) so every paste-into-chat flow tunes from one place; Race Admin
+      // doesn't press Enter, so the paste→enter delay doesn't apply here.
+      const openToPasteDelayMs = getGlobalSettings().chatOpenToPasteDelayMs ?? 200;
+      await new Promise<void>((resolve) => setTimeout(resolve, openToPasteDelayMs));
 
       await getKeyboard().sendKeyCombination({ key: "v", code: "KeyV", modifiers: ["ctrl"] });
 

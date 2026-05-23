@@ -7,6 +7,7 @@ import {
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
+  getGlobalSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -439,8 +440,12 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
       this.logger.debug(`Resolved template: "${resolvedMessage}"`);
     }
 
+    const globalSettings = getGlobalSettings();
     const chat = getCommands().chat;
-    const success = await chat.sendMessage(resolvedMessage);
+    const success = await chat.sendMessage(resolvedMessage, {
+      openToPasteDelayMs: globalSettings.chatOpenToPasteDelayMs,
+      pasteToEnterDelayMs: globalSettings.chatPasteToEnterDelayMs,
+    });
 
     if (success) {
       this.logger.info("Send message executed");

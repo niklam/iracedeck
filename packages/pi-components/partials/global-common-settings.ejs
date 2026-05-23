@@ -63,5 +63,23 @@
       cursor parked mid-lap. Default 400 ms. Slower computers and longer tracks may
       need to increase the value.
     </div>
+    <div class="ird-section-subtitle">Chat</div>
+    <sdpi-item label="Open → Paste delay (ms)">
+      <ird-range-input setting="chatOpenToPasteDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Time the chat pipeline waits after opening the chat window before pasting the
+      message. Also used by Race Admin "Type in Chat". Too short and the paste can
+      land before iRacing has focused the chat input, dropping the text. Default 200 ms;
+      raise it on slower machines or if a clipboard-manager app interferes.
+    </div>
+    <sdpi-item label="Paste → Enter delay (ms)">
+      <ird-range-input setting="chatPasteToEnterDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Time the Send Message pipeline waits after pasting before pressing Enter. Too short
+      and Enter can fire before the paste registers, sending an empty or partial message.
+      Default 200 ms. (Race Admin doesn't press Enter, so this delay doesn't affect it.)
+    </div>
   `
 }) %>

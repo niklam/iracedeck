@@ -33,6 +33,17 @@ This means **whatever you had on your clipboard before pressing the button will 
 
 If you need to keep something on your clipboard, copy it again **after** using an iRaceDeck chat action.
 
+### Chat messages send empty, partial, or not at all
+
+The chat-send pipeline opens the chat window, pastes the message, then presses Enter — each step on a short timer. On slower machines, under load, or when a clipboard-manager app briefly steals focus, the default timing can be too tight: the paste lands before the chat input is focused (text lost), Enter fires before the paste registers (empty or partial send), or the keypress is dropped entirely.
+
+If you hit this, increase the two delays under **Common Settings → Chat** in any action's Property Inspector:
+
+- **Open → Paste delay** (default 200 ms) — the wait after opening chat before pasting.
+- **Paste → Enter delay** (default 200 ms) — the wait after pasting before pressing Enter.
+
+Both accept 0–2000 ms. The Enter keypress is also held briefly so it registers reliably. Changes take effect immediately — no restart needed.
+
 ## Need more help?
 
 - **Discord**: [Join the community](https://discord.gg/c6nRYywpah) for real-time support

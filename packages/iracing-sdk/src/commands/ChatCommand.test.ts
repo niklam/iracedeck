@@ -113,7 +113,15 @@ describe("ChatCommand", () => {
 
       await chatCommand.sendMessage("Hello world");
 
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello world");
+      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello world", undefined, undefined);
+    });
+
+    it("should forward timing delays to native sendChatMessage", async () => {
+      vi.mocked(mockNative.sendChatMessage).mockResolvedValue(true);
+
+      await chatCommand.sendMessage("Hello world", { openToPasteDelayMs: 350, pasteToEnterDelayMs: 500 });
+
+      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello world", 350, 500);
     });
 
     it("should return true when sendChatMessage succeeds", async () => {
@@ -168,7 +176,7 @@ describe("ChatCommand", () => {
       const result = await chatCommand.sendMessage("Hello! @driver #1 - good race!");
 
       expect(result).toBe(true);
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello! @driver #1 - good race!");
+      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello! @driver #1 - good race!", undefined, undefined);
     });
   });
 
