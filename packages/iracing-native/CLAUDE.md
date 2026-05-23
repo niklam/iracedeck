@@ -86,6 +86,8 @@ The two waits flanking the paste are caller-supplied (issue #581) and each defau
 - `openToPasteDelayMs` — wait after `BeginChat` before pasting. Sourced from the `chatOpenToPasteDelayMs` global setting by the action layer.
 - `pasteToEnterDelayMs` — wait after pasting before pressing `Enter`. Sourced from `chatPasteToEnterDelayMs`.
 
+Each delay is read defensively and clamped into `[0, kMaxChatDelayMs]` (10000 ms). Reading as a double (not `Uint32Value()`) avoids ECMAScript `ToUint32` wrapping a negative value into a huge `DWORD` and turning `Sleep()` into a multi-day stall while `g_chatSendMutex` is held.
+
 The cancel→begin and enter→close waits stay on the fixed `kChatStepDelayMs` (100 ms). The `Enter` keypress is split into key-down → `Sleep(kChatEnterHoldMs)` (40 ms) → key-up so a zero-duration press isn't dropped under load; `kChatEnterHoldMs` is a fixed native constant, not user-configurable.
 
 ## Cross-Package Sync

@@ -473,6 +473,48 @@ private:
 // the chatOpenToPasteDelayMs / chatPasteToEnterDelayMs global-settings default.
 static constexpr DWORD kChatDefaultDelayMs = 200;
 
+// Safety ceiling (ms) for a caller-supplied chat delay. The Property Inspector
+// caps the settings at 2000 ms; this generous upper bound exists only so a
+// bad/out-of-range native caller can't turn Sleep() into a multi-day stall
+// while ChatSendWorker holds g_chatSendMutex (which would block every other
+// chat send).
+static constexpr DWORD kMaxChatDelayMs = 10000;
+
+/**
+ * Read an optional chat-delay argument and clamp it into [0, kMaxChatDelayMs].
+ *
+ * Falls back to kChatDefaultDelayMs when the argument is absent, non-numeric,
+ * or NaN. We read the value as a double rather than via Uint32Value() because
+ * Uint32Value() applies ECMAScript ToUint32, which would wrap a negative input
+ * (e.g. -1) into a huge DWORD (~4.29e9 ms ≈ 49 days) — exactly the runaway
+ * Sleep() this guards against.
+ */
+static DWORD readChatDelayArg(const Napi::CallbackInfo &info, size_t index)
+{
+    if (index >= info.Length() || !info[index].IsNumber())
+    {
+        return kChatDefaultDelayMs;
+    }
+
+    double value = info[index].As<Napi::Number>().DoubleValue();
+
+    // NaN is the only value not equal to itself; avoids needing <cmath>.
+    if (value != value)
+    {
+        return kChatDefaultDelayMs;
+    }
+    if (value < 0.0)
+    {
+        return 0;
+    }
+    if (value > static_cast<double>(kMaxChatDelayMs))
+    {
+        return kMaxChatDelayMs;
+    }
+
+    return static_cast<DWORD>(value);
+}
+
 /**
  * Send a complete chat message to iRacing using clipboard paste.
  * Returns a Promise that resolves to true on success, false on failure.
@@ -502,12 +544,8 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 
     std::u16string message = info[0].As<Napi::String>().Utf16Value();
 
-    DWORD openToPasteDelayMs = (info.Length() > 1 && info[1].IsNumber())
-                                   ? static_cast<DWORD>(info[1].As<Napi::Number>().Uint32Value())
-                                   : kChatDefaultDelayMs;
-    DWORD pasteToEnterDelayMs = (info.Length() > 2 && info[2].IsNumber())
-                                    ? static_cast<DWORD>(info[2].As<Napi::Number>().Uint32Value())
-                                    : kChatDefaultDelayMs;
+    DWORD openToPasteDelayMs = readChatDelayArg(info, 1);
+    DWORD pasteToEnterDelayMs = readChatDelayArg(info, 2);
 
     ChatSendWorker *worker = new ChatSendWorker(env, std::move(message), openToPasteDelayMs, pasteToEnterDelayMs);
     Napi::Promise promise = worker->GetPromise();
