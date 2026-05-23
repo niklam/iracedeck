@@ -5,7 +5,7 @@
 import { ILogger, silentLogger } from "@iracedeck/logger";
 import yaml from "yaml";
 
-import type { INativeSDK } from "./interfaces.js";
+import type { ChatSendTiming, INativeSDK } from "./interfaces.js";
 import { SessionInfo, TelemetryData, VarHeader, VarType } from "./types.js";
 
 /**
@@ -261,15 +261,16 @@ export class IRacingSDK {
   /**
    * Send a custom chat message to iRacing
    * @param message The message to send
+   * @param timing Optional open→paste and paste→enter delays (ms)
    * @returns Promise resolving to true on success, false on failure
    */
-  sendChatMessage(message: string): Promise<boolean> {
+  sendChatMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {
     if (!this.isConnected()) {
       this.logger.warn("[IRacingSDK] Cannot send chat message - not connected");
 
       return Promise.resolve(false);
     }
 
-    return this.native.sendChatMessage(message);
+    return this.native.sendChatMessage(message, timing?.openToPasteDelayMs, timing?.pasteToEnterDelayMs);
   }
 }

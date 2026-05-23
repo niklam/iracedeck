@@ -4,6 +4,7 @@
  */
 import { ILogger, silentLogger } from "@iracedeck/logger";
 
+import type { ChatSendTiming } from "./interfaces.js";
 import { IRacingSDK } from "./IRacingSDK.js";
 import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
@@ -313,9 +314,10 @@ export class SDKController {
   /**
    * Send a custom chat message to iRacing
    * @param message The message to send
+   * @param timing Optional open→paste and paste→enter delays (ms)
    * @returns Promise resolving to true on success, false on failure
    */
-  sendChatMessage(message: string): Promise<boolean> {
-    return this.sdk.sendChatMessage(message);
+  sendChatMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {
+    return this.sdk.sendChatMessage(message, timing);
   }
 }

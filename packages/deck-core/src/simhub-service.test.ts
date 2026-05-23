@@ -96,6 +96,8 @@ describe("SimHub Service", () => {
       dualPressThresholdMs: 500,
       dualPressDirections: "tap-increases",
       fastestLapSearchDelayMs: 400,
+      chatOpenToPasteDelayMs: 200,
+      chatPasteToEnterDelayMs: 200,
     });
   });
 
@@ -241,6 +243,8 @@ describe("SimHub Service", () => {
         dualPressThresholdMs: 500,
         dualPressDirections: "tap-increases",
         fastestLapSearchDelayMs: 400,
+        chatOpenToPasteDelayMs: 200,
+        chatPasteToEnterDelayMs: 200,
       });
 
       initializeSimHub(mockLogger);

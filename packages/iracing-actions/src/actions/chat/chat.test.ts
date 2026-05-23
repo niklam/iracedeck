@@ -526,7 +526,24 @@ describe("Chat", () => {
     it("should call chat.sendMessage() on keyDown for send-message", async () => {
       await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
 
-      expect(mockSendMessage).toHaveBeenCalledWith("Hello!");
+      expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
+        openToPasteDelayMs: undefined,
+        pasteToEnterDelayMs: undefined,
+      });
+    });
+
+    it("should forward configured chat timing delays to chat.sendMessage()", async () => {
+      mockGetGlobalSettings.mockReturnValueOnce({
+        chatOpenToPasteDelayMs: 350,
+        chatPasteToEnterDelayMs: 500,
+      });
+
+      await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
+
+      expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
+        openToPasteDelayMs: 350,
+        pasteToEnterDelayMs: 500,
+      });
     });
 
     it("should not call chat.sendMessage() when message is empty", async () => {

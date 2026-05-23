@@ -130,6 +130,11 @@ describe("IRacingNativeMock", () => {
       expect(console.debug).toHaveBeenCalled();
     });
 
+    it("sendChatMessage should accept timing delays and resolve to true", async () => {
+      await expect(mock.sendChatMessage("test", 300, 450)).resolves.toBe(true);
+      expect(console.debug).toHaveBeenCalled();
+    });
+
     it("sendScanKeys should not throw", () => {
       expect(() => mock.sendScanKeys([0x1e])).not.toThrow();
       expect(console.debug).toHaveBeenCalled();

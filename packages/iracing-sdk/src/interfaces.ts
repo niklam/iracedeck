@@ -6,6 +6,22 @@
 import type { BroadcastMsg, IRSDKHeader, VarHeader } from "@iracedeck/iracing-native";
 
 /**
+ * Tunable delays for the Chat > Send Message pipeline (issue #581).
+ *
+ * Both are in milliseconds and optional — when omitted, the native layer
+ * falls back to its built-in default (200 ms). The action layer reads the
+ * `chatOpenToPasteDelayMs` / `chatPasteToEnterDelayMs` global settings and
+ * forwards them here; the SDK and native layers stay decoupled from
+ * `deck-core`.
+ */
+export interface ChatSendTiming {
+  /** Wait after opening the chat window (BeginChat) before pasting. */
+  openToPasteDelayMs?: number;
+  /** Wait after pasting before pressing Enter. */
+  pasteToEnterDelayMs?: number;
+}
+
+/**
  * Interface for the native iRacing SDK
  * Wraps the native addon functionality for dependency injection
  */
@@ -27,5 +43,5 @@ export interface INativeSDK {
   broadcastMsg(msg: BroadcastMsg | number, var1: number, var2?: number, var3?: number): void;
 
   // Chat
-  sendChatMessage(message: string): Promise<boolean>;
+  sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean>;
 }

@@ -5,7 +5,7 @@
  */
 import { ILogger } from "@iracedeck/logger";
 
-import type { INativeSDK } from "../interfaces.js";
+import type { ChatSendTiming, INativeSDK } from "../interfaces.js";
 import { BroadcastCommand } from "./BroadcastCommand.js";
 import { BroadcastMsg, ChatCommandMode } from "./constants.js";
 
@@ -81,9 +81,11 @@ export class ChatCommand extends BroadcastCommand {
    * remains responsive during the ~400ms native work.
    *
    * @param message The message to send
+   * @param timing Optional open→paste and paste→enter delays (ms). When
+   *   omitted, the native layer uses its built-in default (200 ms each).
    * @returns Promise resolving to true on success, false on failure
    */
-  async sendMessage(message: string): Promise<boolean> {
+  async sendMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {
     if (!message || message.trim().length === 0) {
       this.logger.warn("Cannot send empty message");
 
@@ -93,7 +95,11 @@ export class ChatCommand extends BroadcastCommand {
     try {
       this.logger.info(`Sending chat message: "${message}"`);
 
-      const result = await this.native.sendChatMessage(message);
+      const result = await this.native.sendChatMessage(
+        message,
+        timing?.openToPasteDelayMs,
+        timing?.pasteToEnterDelayMs,
+      );
 
       if (result) {
         this.logger.info("Chat message sent successfully");

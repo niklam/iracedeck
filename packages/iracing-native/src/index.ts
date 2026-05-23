@@ -185,11 +185,19 @@ export class IRacingNative {
    * thread and returns a Promise, so the JS event loop remains responsive
    * during the ~400ms native work. Concurrent sends are serialized natively.
    *
+   * The open→paste and paste→enter waits are caller-supplied (issue #581);
+   * each defaults to 200 ms when omitted. The Enter keypress is held a fixed
+   * ~40 ms natively (not configurable).
+   *
    * @param message - The message to send
+   * @param openToPasteDelayMs - (optional) ms to wait after opening chat before pasting
+   * @param pasteToEnterDelayMs - (optional) ms to wait after pasting before pressing Enter
    * @returns Promise resolving to true on success, false on failure
    */
-  sendChatMessage(message: string): Promise<boolean> {
-    return addon ? addon.sendChatMessage(message) : this.getMock().sendChatMessage(message);
+  sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean> {
+    return addon
+      ? addon.sendChatMessage(message, openToPasteDelayMs ?? 200, pasteToEnterDelayMs ?? 200)
+      : this.getMock().sendChatMessage(message, openToPasteDelayMs, pasteToEnterDelayMs);
   }
 
   // ============================================================================
