@@ -62,8 +62,14 @@
  * sustained long enough to be announced. Without this, only the down-leg of a
  * brief up-down flicker would be spoken ("you lost a position" right after a
  * gain to the same position). It's updated only when a callout is emitted,
- * seeded on the first eligible tick, rolled silently under caution, and
- * compared in the same effective space the detection uses.
+ * rolled silently under caution, and compared in the same effective space the
+ * detection uses. At a race start the first-tick seed anchors the baseline to
+ * the player's announced starting grid position (`startingGridPosition` — the
+ * same value the race-start callout speaks, #568) so early-race gain/loss is
+ * measured from the grid and a round-trip back to it is suppressed; this
+ * applies in single-class only, since the grid value is overall and
+ * multi-class detection runs in class space (it falls back to the live seed
+ * there). Without a grid position it seeds to the live position.
  */
 import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -90,6 +96,18 @@ export function diffOvertakes(
   trackLengthMeters: number | null,
   now: number,
   emit: EmitFn,
+  /**
+   * The player's announced starting grid position (overall, 1-indexed) — the
+   * same value the race-start callout speaks (`resolveStartingGridPosition`,
+   * #568). When available, the first-tick seed anchors the overtake baseline
+   * to it so the first move off the grid is measured from the grid and an
+   * early round-trip back to it is suppressed (#597 follow-up). Optional and
+   * trailing so the diff's many call sites stay unchanged; only the translator
+   * passes it. Used in single-class only — it's an OVERALL position, and
+   * multi-class detection runs in class space, so the live class seed is kept
+   * there.
+   */
+  startingGridPosition: number | null = null,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
 
@@ -148,9 +166,19 @@ export function diffOvertakes(
   }
 
   if (!state.overtakeInitialized) {
-    state.lastPosition = overallPos;
+    // Anchor the baseline to the announced starting grid position when it's
+    // available (#597 follow-up / #568). Both the detection baseline
+    // (`lastPosition`) and the suppression anchor (`lastCalledPosition`) start
+    // at the grid slot, so the first genuine move off the grid is announced
+    // and an early round-trip back to it is suppressed. The grid value is
+    // OVERALL (same source as the race-start callout), so it only applies in
+    // single-class — multi-class detection runs in class space, where the live
+    // class position is the correct seed.
+    const useGridSeed = !useClass && startingGridPosition !== null && startingGridPosition > 0;
+
+    state.lastPosition = useGridSeed ? startingGridPosition : overallPos;
     state.lastClassPosition = rawClassPos;
-    state.lastCalledPosition = currentPos;
+    state.lastCalledPosition = useGridSeed ? startingGridPosition : currentPos;
     state.overtakeInitialized = true;
 
     return;

@@ -846,6 +846,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // same value passed to `diffLaps`; the overtake payload mirrors `lap.completed`
   // so multi-class consumers can branch on class vs overall.
   const trackLengthMeters = resolveTrackLengthMeters(self.state, sessionInfo, telemetry);
+  // Starting grid position (overall, 1-indexed) — the same value the race-start
+  // callout announces (`resolveStartingGridPosition`, #568). The overtake diff
+  // seeds its baseline to it at race start so early-race gain/loss is measured
+  // from the grid and a round-trip back to it is suppressed (#597 follow-up).
+  // `null` until session info / qualifying results are parsed.
+  const startingGridPosition = sessionInfo ? (resolveStartingGridPosition(sessionInfo) ?? null) : null;
   diffOvertakes(
     self.state,
     telemetry,
@@ -855,6 +861,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     trackLengthMeters,
     now,
     emit,
+    startingGridPosition,
   );
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);

@@ -758,3 +758,81 @@ describe("diffOvertakes — round-trip suppression (#597)", () => {
     expect(overtakeEvents(events)).toHaveLength(0);
   });
 });
+
+describe("diffOvertakes — race-start grid seeding (#597 / #568)", () => {
+  it("anchors the baseline to the starting grid position, not the live first tick (single-class)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // First eligible race tick: the live computed position is already P8 (start
+    // shuffle), but the announced grid slot is P10. The seed must anchor to P10.
+    diffOvertakes(state, tick({ playerPosition: 8 }), PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit, 10);
+    expect(state.lastPosition).toBe(10);
+    expect(state.lastCalledPosition).toBe(10);
+    expect(overtakeEvents(events)).toHaveLength(0);
+
+    // Holding P8 is a real two-position gain off the grid → announced as P8 (prev 10).
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, carBehindPct: 0.4 }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+      10,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, carBehindPct: 0.4 }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+      10,
+    );
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ position: 8, previousPosition: 10 });
+  });
+
+  it("suppresses an early round-trip back to the starting grid position", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Seed at the grid slot P10 (gap left unknown via null track length so the
+    // gate passes and the round-trip suppression is what's exercised).
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 0, emit, 10);
+    // P10 → P9 (unannounced) → back to P10, held → round-trip to the grid stays silent.
+    diffOvertakes(state, tick({ playerPosition: 9 }), PLAYER_IDX, true, null, null, 100, emit, 10);
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 300, emit, 10);
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit, 10);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("ignores the overall grid seed in multi-class (keeps the live class seed)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Multi-class: live class P3, overall grid P10. The grid value is overall,
+    // so it must NOT seed the class-space baseline.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 10, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      0,
+      emit,
+      10,
+    );
+    expect(state.lastCalledPosition).toBe(3);
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+});
