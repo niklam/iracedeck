@@ -199,7 +199,7 @@ describe("IRacingSDK", () => {
 
       const result = await sdk.sendChatMessage("Hello");
 
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", undefined, undefined);
+      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", undefined, undefined, undefined);
       expect(result).toBe(true);
     });
 
@@ -207,9 +207,13 @@ describe("IRacingSDK", () => {
       vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
       sdk.connect();
 
-      await sdk.sendChatMessage("Hello", { openToPasteDelayMs: 300, pasteToEnterDelayMs: 450 });
+      await sdk.sendChatMessage("Hello", {
+        openToPasteDelayMs: 300,
+        pasteToEnterDelayMs: 450,
+        enterToCloseDelayMs: 600,
+      });
 
-      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", 300, 450);
+      expect(mockNative.sendChatMessage).toHaveBeenCalledWith("Hello", 300, 450, 600);
     });
   });
 

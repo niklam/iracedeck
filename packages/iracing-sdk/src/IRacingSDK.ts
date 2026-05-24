@@ -261,7 +261,7 @@ export class IRacingSDK {
   /**
    * Send a custom chat message to iRacing
    * @param message The message to send
-   * @param timing Optional open→paste and paste→enter delays (ms)
+   * @param timing Optional open→paste, paste→enter, and enter→close delays (ms)
    * @returns Promise resolving to true on success, false on failure
    */
   sendChatMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {
@@ -271,6 +271,11 @@ export class IRacingSDK {
       return Promise.resolve(false);
     }
 
-    return this.native.sendChatMessage(message, timing?.openToPasteDelayMs, timing?.pasteToEnterDelayMs);
+    return this.native.sendChatMessage(
+      message,
+      timing?.openToPasteDelayMs,
+      timing?.pasteToEnterDelayMs,
+      timing?.enterToCloseDelayMs,
+    );
   }
 }

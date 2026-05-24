@@ -1,4 +1,9 @@
-import { playBackgroundTest, playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
+import {
+  playBackgroundTest,
+  playRadarTest,
+  setRadarEnabled,
+  stopRaceEngineerScenarios,
+} from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -613,6 +618,17 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // immediately on the same tick.
     updateGlobalSettings({ pitCrewRaceEngineerEnabled: next });
     applyRaceEngineerAudio();
+
+    // Toggling off mid-callout must stop the in-flight scenario (and its
+    // looping ambient bed) and free the scenario bus. applyRaceEngineerAudio
+    // only mutes the buses — it doesn't stop the ambient loop, so without this
+    // the ambient is orphaned (audible again on re-enable) and the stuck
+    // `playingId` drops every later callout as "bus busy". The going-silent
+    // ack below plays directly on Voice, not through the engine, so it is
+    // unaffected by the cancel (issue #587).
+    if (!next) {
+      stopRaceEngineerScenarios();
+    }
 
     if (isToggleAckEnabled()) {
       this.playToggleAck(next ? "resuming-01" : "going-silent-01");

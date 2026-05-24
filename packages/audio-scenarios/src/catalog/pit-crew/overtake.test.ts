@@ -128,11 +128,10 @@ const VOICE = "luca";
 const OVERTAKE_CLIPS = [
   `voice/${VOICE}/position-overtake/nice-pass-01.mp3`,
   `voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`,
-  `voice/${VOICE}/position-overtake/come-on-01.mp3`,
   `voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`,
   `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
-  `voice/${VOICE}/session-start-greeting/niklas.mp3`,
-  `voice/${VOICE}/session-start-greeting/driver.mp3`,
+  `voice/${VOICE}/position-overtake-come-on/niklas.mp3`,
+  `voice/${VOICE}/position-overtake-come-on/driver.mp3`,
   ...Array.from({ length: 64 }, (_, i) => `voice/${VOICE}/position-number/${i + 1}.mp3`),
 ];
 
@@ -325,20 +324,21 @@ describe("overtake reaction (immediate)", () => {
     expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
   });
 
-  it("lost plays come-on + driver name + dont-give-up (no number)", () => {
+  it("lost plays the per-name come-on clip + dont-give-up (no number)", () => {
     fireLost({});
 
     const played = voicePaths();
-    expect(played).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
-    expect(played).toContain(`voice/${VOICE}/session-start-greeting/niklas.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
     expect(played).toContain(`voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`);
+    // The old generic "Come on," clip is no longer part of the line (#591).
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
   });
 
-  it("lost falls back to the 'driver' greeting clip", () => {
+  it("lost falls back to the 'driver' come-on clip", () => {
     currentDriverName = "driver";
     fireLost({});
 
-    expect(voicePaths()).toContain(`voice/${VOICE}/session-start-greeting/driver.mp3`);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/driver.mp3`);
   });
 
   it("does not fire the gained reaction when its opt-in is off", () => {
@@ -443,12 +443,12 @@ describe("reaction catchphrase cooldown", () => {
 
   it("throttles the loss catchphrase but still announces position", () => {
     fireLost({});
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
 
     audio._played.length = 0;
     fireLost({});
     const played = voicePaths();
-    expect(played).not.toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
     expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });
 
@@ -457,7 +457,7 @@ describe("reaction catchphrase cooldown", () => {
     audio._played.length = 0;
     fireLost({});
     // The loss catchphrase isn't blocked by the gain catchphrase cooldown.
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/come-on-01.mp3`);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
   });
 
   it("the leader line is exempt from the reaction cooldown", () => {

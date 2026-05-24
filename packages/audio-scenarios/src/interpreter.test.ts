@@ -858,3 +858,55 @@ describe("ambient side-effects", () => {
     expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Ambient);
   });
 });
+
+// ─── stopAll (Race Engineer toggle-off cleanup, issue #587) ─────────────────
+
+describe("stopAll", () => {
+  it("stops a mid-flight callout's ambient bed and frees the bus", () => {
+    engine.defineScenario({
+      id: "test.callout",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "pit-crew",
+      sequence: [{ ambient: "start" }, "greeting/a.mp3", "greeting/b.mp3", { ambient: "stop" }],
+    });
+    engine.defineScenario({
+      id: "test.next",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "pit-crew",
+      sequence: ["names/alice.mp3"],
+    });
+
+    // Fire but DON'T flush — the callout is mid-flight: the ambient bed is
+    // looping and the engine is waiting on the first voice clip's completion,
+    // so the trailing `ambient: "stop"` has not run yet.
+    engine.fire("test.callout");
+
+    expect(audio._played).toContainEqual({
+      channel: AudioChannel.Ambient,
+      path: "sfx/IRD-ambient-pit.mp3",
+      loop: true,
+    });
+    expect(audio._stopped).not.toContain(AudioChannel.Ambient);
+
+    engine.stopAll();
+
+    // The ambient channel is explicitly stopped (it's in the fire's
+    // `usedChannels`), so the orphaned loop can't linger.
+    expect(audio._stopped).toContain(AudioChannel.Ambient);
+
+    // The bus is no longer wedged: a fresh callout plays instead of being
+    // dropped as "bus busy" (the pre-fix failure mode).
+    engine.fire("test.next");
+    flushVoiceAndSfx(audio);
+
+    const voicePlays = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(voicePlays).toContain("pit-crew/names/alice.mp3");
+  });
+
+  it("is a no-op when nothing is playing", () => {
+    expect(() => engine.stopAll()).not.toThrow();
+    expect(audio._stopped).toEqual([]);
+  });
+});

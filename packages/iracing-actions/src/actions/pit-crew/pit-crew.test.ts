@@ -36,6 +36,7 @@ const hoisted = vi.hoisted(() => {
   const playRadarTest = vi.fn();
   const playBackgroundTest = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
+  const stopRaceEngineerScenarios = vi.fn();
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -78,6 +79,7 @@ const hoisted = vi.hoisted(() => {
     playRadarTest,
     playBackgroundTest,
     isBackgroundTestInFlight,
+    stopRaceEngineerScenarios,
     updateGlobalSettings,
     getGlobalSettings,
     globalSettingsListeners,
@@ -122,6 +124,7 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
+  stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
 }));
 
 vi.mock("@iracedeck/audio-service", () => ({
@@ -694,6 +697,30 @@ describe("PitCrew action", () => {
       await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
 
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
+    });
+
+    it("stops in-flight scenarios (and the orphaned ambient) when disabling (#587)", async () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 80 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: false });
+      expect(hoisted.stopRaceEngineerScenarios).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not stop scenarios when enabling — nothing is playing while gated off (#587)", async () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 80 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "race-engineer" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "race-engineer" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewRaceEngineerEnabled: true });
+      expect(hoisted.stopRaceEngineerScenarios).not.toHaveBeenCalled();
     });
 
     it("does not touch pitCrewRadarEnabled when toggling race engineer (independent feature gates)", async () => {

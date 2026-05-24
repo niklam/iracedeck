@@ -48,7 +48,7 @@ import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@irac
 import type { ILogger } from "@iracedeck/logger";
 
 import type { Scenario } from "../../dsl.js";
-import { getScenarioEngine } from "../../interpreter.js";
+import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
 import { DAMAGE_ALERTS } from "./damage-alerts.js";
 import { FLAG_ALERTS } from "./flag-alerts.js";
 import { INCIDENT_ALERTS } from "./incidents.js";
@@ -125,6 +125,20 @@ import {
   WINDSHIELD_TOGGLE_SCENARIOS,
 } from "./toggle-confirmations.js";
 import { TRACK_CONDITIONS_ALERTS } from "./track-conditions.js";
+
+/**
+ * Stop any in-flight Race Engineer callout (and its looping ambient bed) and
+ * free the scenario bus. Call this when the Race Engineer master gate is
+ * toggled off so a mid-callout disable stops cleanly — otherwise the ambient
+ * loop is orphaned (only muted by the bus volume, audible again on re-enable)
+ * and the stuck `playingId` drops every later callout as "bus busy" for the
+ * rest of the session (issue #587). No-op before the engine is initialized.
+ */
+export function stopRaceEngineerScenarios(): void {
+  if (!isAudioScenariosInitialized()) return;
+
+  getScenarioEngine().stopAll();
+}
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
 export {

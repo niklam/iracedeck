@@ -77,18 +77,19 @@ Pasting is the caller's responsibility — `setClipboardText` only writes. Send 
 
 ## Chat Functions
 
-### `sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean>`
+### `sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number, enterToCloseDelayMs?: number): Promise<boolean>`
 
 Runs the full chat-send pipeline (copy → `Cancel` → `BeginChat` → paste → `Enter` → `Cancel`) on a libuv worker thread and resolves `true` on success, `false` on failure. Concurrent sends are serialized natively via `g_chatSendMutex`.
 
-The two waits flanking the paste are caller-supplied (issue #581) and each default to `200` ms when omitted:
+The three waits around the paste and submit are caller-supplied (issues #581, #589) and each default to `200` ms when omitted:
 
 - `openToPasteDelayMs` — wait after `BeginChat` before pasting. Sourced from the `chatOpenToPasteDelayMs` global setting by the action layer.
 - `pasteToEnterDelayMs` — wait after pasting before pressing `Enter`. Sourced from `chatPasteToEnterDelayMs`.
+- `enterToCloseDelayMs` — wait after pressing `Enter` before the closing `Cancel` (issue #589). Sourced from `chatEnterToCloseDelayMs`. Too short and the `Cancel` lands before iRacing has processed the submit, so it's dropped and the chat window keeps focus.
 
 Each delay is read defensively and clamped into `[0, kMaxChatDelayMs]` (10000 ms). Reading as a double (not `Uint32Value()`) avoids ECMAScript `ToUint32` wrapping a negative value into a huge `DWORD` and turning `Sleep()` into a multi-day stall while `g_chatSendMutex` is held.
 
-The cancel→begin and enter→close waits stay on the fixed `kChatStepDelayMs` (100 ms). The `Enter` keypress is split into key-down → `Sleep(kChatEnterHoldMs)` (40 ms) → key-up so a zero-duration press isn't dropped under load; `kChatEnterHoldMs` is a fixed native constant, not user-configurable.
+The cancel→begin wait stays on the fixed `kChatStepDelayMs` (100 ms). The `Enter` keypress is split into key-down → `Sleep(kChatEnterHoldMs)` (100 ms) → key-up so a zero-duration press isn't dropped under load; `kChatEnterHoldMs` is a fixed native constant, not user-configurable.
 
 ## Cross-Package Sync
 
