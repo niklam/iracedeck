@@ -143,6 +143,27 @@ export function liveCurrentlyAnnounceable(live: LivePosition | null): boolean {
   return n !== null && positionNumberIsSpeakable(n);
 }
 
+/**
+ * Whether an overtake payload represents the player leading their **effective**
+ * field — class P1 in a multi-class race, overall P1 otherwise (issue #599).
+ * The overtake `isLeader` field is OVERALL-only, so a class leader running
+ * mid-pack overall reads `isLeader: false`; this helper keeps the leader
+ * concept aligned with the class-focused detection (#588) and readout. Shared
+ * by the overtake reaction (picks the "leading our class" line) and the gained
+ * position readout (suppresses the follow-up, since the leader line already
+ * states the position). Lives here, the lower-level shared module, so
+ * `overtake.ts` can import it without a cycle.
+ */
+export function isOvertakeEffectiveLeader(data: {
+  position: number;
+  classPosition?: number;
+  isMultiClass?: boolean;
+}): boolean {
+  const effective = data.isMultiClass === true ? data.classPosition : data.position;
+
+  return effective === 1;
+}
+
 function voicePath(group: string, name: string): string {
   return `voice/{voice}/${group}/${name}.mp3`;
 }
@@ -198,8 +219,10 @@ export function buildOvertakeGainedPositionScenario(
 
         const data = ev.data as SimEventOf<"overtake.completed">["data"];
 
-        // Leader reaction ("We're now leading race") already states position.
-        if (data.isLeader) return false;
+        // Leader reaction ("We're now leading the race/our class") already
+        // states the position. Effective leader = class P1 in multi-class,
+        // overall P1 otherwise (#599).
+        if (isOvertakeEffectiveLeader(data)) return false;
 
         // No position calling once the race is over.
         if (getRaceFinishedFired()) return false;

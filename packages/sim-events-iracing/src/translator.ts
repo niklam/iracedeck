@@ -332,12 +332,22 @@ export function getRaceStartConditions(): RaceStartConditions | null {
 
 /**
  * Look up the player's **starting grid position** from session info (issue
- * #568). Reads `sessionInfo.QualifyResultsInfo.Results[player].Position`,
- * matched by `CarIdx` against `DriverInfo.DriverCarIdx`. iRacing populates
- * this even for race-only events (seeded from iRating in that case), so it's
- * the right field for the race-start brief — unlike `PlayerCarPosition` /
- * `CarIdxPosition`, which both read `0` in the garage / pre-grid window
- * because they're live-standings fields.
+ * #568, made class-aware in #599). Reads
+ * `sessionInfo.QualifyResultsInfo.Results[player].Position`, matched by
+ * `CarIdx` against `DriverInfo.DriverCarIdx`. iRacing populates this even for
+ * race-only events (seeded from iRating in that case), so it's the right field
+ * for the race-start brief — unlike `PlayerCarPosition` / `CarIdxPosition`,
+ * which both read `0` in the garage / pre-grid window because they're
+ * live-standings fields.
+ *
+ * Returns the **effective** grid slot: the player's **class** grid slot in a
+ * multi-class race, the overall qualifying slot otherwise. In multi-class a
+ * driver cares about their position within their own class, not their overall
+ * rank among faster/slower classes — consistent with the class-aware overtake
+ * detection (#588) and the "we're currently P[n]" readout. Both consumers (the
+ * race-start callout and the overtake baseline seed in `diffOvertakes`) read
+ * this one function so they stay aligned by construction. See
+ * {@link resolveStartingClassPosition} for how the class slot is computed.
  *
  * The raw `Position` value is **0-indexed** (pole sitter reads `0`), matching
  * the `ResultsPositions.ClassPosition` convention elsewhere in iRacing's
@@ -371,7 +381,67 @@ function resolveStartingGridPosition(sessionInfo: Record<string, unknown>): numb
 
   if (typeof position !== "number" || position < 0) return undefined;
 
-  return position + 1;
+  // Single-class (or undeterminable): the overall qualifying slot IS the grid
+  // slot. 1-indexed.
+  if (resolveIsMultiClass(sessionInfo) !== true) return position + 1;
+
+  // Multi-class (issue #599): report the CLASS grid slot. Falls back to the
+  // overall slot when the player's class can't be resolved rather than guess.
+  return resolveStartingClassPosition(sessionInfo, results, playerCarIdx, position) ?? position + 1;
+}
+
+/**
+ * Compute the player's **class** starting grid slot from the qualifying results
+ * (issue #599). The session YAML has no direct class-grid field, so count the
+ * same-class entries that qualified ahead of the player (a lower overall
+ * `Position`) and add one. Build a `CarIdx → CarClassID` map from
+ * `DriverInfo.Drivers` to classify each qualifying entry (whose own records
+ * carry only `CarIdx` + overall `Position`).
+ *
+ * `playerPosition` is the player's raw (0-indexed) overall qualifying position,
+ * already validated by the caller; the returned value is 1-indexed. Returns
+ * `undefined` when the player's own class can't be resolved (no
+ * `DriverInfo.Drivers` entry for the player) so the caller falls back to the
+ * overall slot.
+ *
+ * @internal
+ */
+function resolveStartingClassPosition(
+  sessionInfo: Record<string, unknown>,
+  results: Array<Record<string, unknown>>,
+  playerCarIdx: number,
+  playerPosition: number,
+): number | undefined {
+  const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as Array<Record<string, unknown>> | undefined;
+
+  if (!Array.isArray(drivers)) return undefined;
+
+  const classByCarIdx = new Map<number, number>();
+
+  for (const driver of drivers) {
+    if (typeof driver.CarIdx === "number" && typeof driver.CarClassID === "number") {
+      classByCarIdx.set(driver.CarIdx, driver.CarClassID);
+    }
+  }
+
+  const playerClassId = classByCarIdx.get(playerCarIdx);
+
+  if (playerClassId === undefined) return undefined;
+
+  let ahead = 0;
+
+  for (const r of results) {
+    if (typeof r.CarIdx !== "number" || typeof r.Position !== "number") continue;
+
+    // Skip the player and anyone behind (positions are unique, so `>=` excludes
+    // the player's own entry); negative is iRacing's no-result sentinel.
+    if (r.Position < 0 || r.Position >= playerPosition) continue;
+
+    if (classByCarIdx.get(r.CarIdx) === playerClassId) ahead++;
+  }
+
+  return ahead + 1;
 }
 
 /**
@@ -846,11 +916,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // same value passed to `diffLaps`; the overtake payload mirrors `lap.completed`
   // so multi-class consumers can branch on class vs overall.
   const trackLengthMeters = resolveTrackLengthMeters(self.state, sessionInfo, telemetry);
-  // Starting grid position (overall, 1-indexed) — the same value the race-start
-  // callout announces (`resolveStartingGridPosition`, #568). The overtake diff
-  // seeds its baseline to it at race start so early-race gain/loss is measured
-  // from the grid and a round-trip back to it is suppressed (#597 follow-up).
-  // `null` until session info / qualifying results are parsed.
+  // Effective starting grid position (1-indexed) — the same value the
+  // race-start callout announces (`resolveStartingGridPosition`, #568). CLASS
+  // grid slot in a multi-class race, overall otherwise (#599). The overtake
+  // diff seeds its baseline to it at race start so early-race gain/loss is
+  // measured from the grid and a round-trip back to it is suppressed (#597
+  // follow-up); the diff applies the seed in the matching detection space
+  // (class in multi-class, overall otherwise). `null` until session info /
+  // qualifying results are parsed.
   const startingGridPosition = sessionInfo ? (resolveStartingGridPosition(sessionInfo) ?? null) : null;
   diffOvertakes(
     self.state,

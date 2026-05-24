@@ -6,9 +6,12 @@
  *
  *   1. **Reaction** (this file) — fires immediately on the bus event:
  *      - gained, non-leader: "Nice pass."
- *      - gained, leader (`isLeader`): "Nice pass! We're now leading race.
- *        Let's keep it that way!" (self-contained — states the position, so it
- *        gets NO follow-up readout)
+ *      - gained, leader: "Nice pass! We're now leading the race. Let's keep it
+ *        that way!" (self-contained — states the position, so it gets NO
+ *        follow-up readout). In a multi-class race the leader line is keyed on
+ *        CLASS position and reads "…leading our class…" (issue #599); leader is
+ *        the EFFECTIVE leader (class P1 in multi-class, overall P1 otherwise),
+ *        not the overall-only `isLeader` payload flag.
  *      - lost: "Come on, <name>. Don't give up positions like that." (the
  *        "Come on, <name>." part is a per-name full clip from the
  *        `position-overtake-come-on` group; #591)
@@ -29,7 +32,7 @@ import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
-import { tryClaimReaction } from "./position-readout.js";
+import { isOvertakeEffectiveLeader, tryClaimReaction } from "./position-readout.js";
 
 /**
  * Resolver for the active driver name. Plugins wire this to
@@ -50,6 +53,17 @@ function voicePath(group: string, name: string): string {
 /** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
 function clipPath(filename: string): string {
   return `${OVERTAKE_BASE}/${filename}`;
+}
+
+/**
+ * Effective leader from a step's `ctx.data` (the live `overtake.completed`
+ * payload): class P1 in multi-class, overall P1 otherwise (#599). Returns
+ * `false` for a null/absent payload.
+ */
+function leaderOf(data: unknown): boolean {
+  const d = data as SimEventOf<"overtake.completed">["data"] | null;
+
+  return d != null && isOvertakeEffectiveLeader(d);
 }
 
 /**
@@ -112,10 +126,19 @@ export function buildOvertakeGainedScenario(
   const sequence: Step[] = [
     "@pit-crew.radio-open",
     {
-      // `isLeader` is read straight off the event payload (ctx.data) — the
-      // reaction fires immediately so the payload is the live event.
-      if: (ctx) => Boolean((ctx.data as SimEventOf<"overtake.completed">["data"] | null)?.isLeader),
-      then: [clipPath("nice-pass-leader-01.mp3")],
+      // Effective leader read straight off the event payload (ctx.data) — the
+      // reaction fires immediately so the payload is the live event. Class P1
+      // in multi-class, overall P1 otherwise (#599).
+      if: (ctx) => leaderOf(ctx.data),
+      then: [
+        {
+          // Multi-class → "We're now leading our class"; single-class →
+          // "We're now leading the race" (#599).
+          if: (ctx) => Boolean((ctx.data as SimEventOf<"overtake.completed">["data"] | null)?.isMultiClass),
+          then: [clipPath("nice-pass-leader-class-01.mp3")],
+          else: [clipPath("nice-pass-leader-01.mp3")],
+        },
+      ],
       else: [clipPath("nice-pass-01.mp3")],
     },
     "@pit-crew.radio-close",
@@ -139,9 +162,10 @@ export function buildOvertakeGainedScenario(
         if (!overtakeContextAllows(getGate())) return false;
 
         // Taking the lead is momentous — always announce, exempt from the
-        // catchphrase cooldown. Otherwise throttle the "Nice pass" catchphrase
-        // (the position readout still fires regardless).
-        if (data.isLeader) return true;
+        // catchphrase cooldown. Effective leader = class P1 in multi-class,
+        // overall P1 otherwise (#599). Otherwise throttle the "Nice pass"
+        // catchphrase (the position readout still fires regardless).
+        if (isOvertakeEffectiveLeader(data)) return true;
 
         return tryClaimReaction("gained");
       },

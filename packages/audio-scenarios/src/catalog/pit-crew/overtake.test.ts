@@ -128,6 +128,7 @@ const VOICE = "luca";
 const OVERTAKE_CLIPS = [
   `voice/${VOICE}/position-overtake/nice-pass-01.mp3`,
   `voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-leader-class-01.mp3`,
   `voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`,
   `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
   `voice/${VOICE}/position-overtake-come-on/niklas.mp3`,
@@ -324,6 +325,39 @@ describe("overtake reaction (immediate)", () => {
     expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
   });
 
+  it("gained CLASS leader in multi-class plays the leading-our-class line, not the race-leader line (#599)", () => {
+    fireGained({
+      position: 8, // overall — not the race leader
+      classPosition: 1, // class leader
+      previousPosition: 9,
+      previousClassPosition: 2,
+      isMultiClass: true,
+      isLeader: false, // overall P1 only
+    });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-class-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+  });
+
+  it("gained overall+class leader in multi-class still speaks the class-leader line (focus on class, #599)", () => {
+    // Leading the race overall in a multi-class field also means class P1; the
+    // class-focused wording wins.
+    fireGained({
+      position: 1,
+      classPosition: 1,
+      previousPosition: 2,
+      previousClassPosition: 2,
+      isMultiClass: true,
+      isLeader: true,
+    });
+
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-class-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+  });
+
   it("lost plays the per-name come-on clip + dont-give-up (no number)", () => {
     fireLost({});
 
@@ -372,6 +406,20 @@ describe("overtake position readout (live, deferred)", () => {
   it("gained LEADER gets no position readout (reaction is self-contained)", () => {
     currentLive = { position: 1, classPosition: 1, isMultiClass: false };
     fireGained({ position: 1, previousPosition: 2, isLeader: true });
+
+    expect(voicePaths()).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("gained CLASS leader in multi-class gets no position readout (class-leader reaction states the position, #599)", () => {
+    currentLive = { position: 8, classPosition: 1, isMultiClass: true };
+    fireGained({
+      position: 8,
+      classPosition: 1,
+      previousPosition: 9,
+      previousClassPosition: 2,
+      isMultiClass: true,
+      isLeader: false,
+    });
 
     expect(voicePaths()).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });

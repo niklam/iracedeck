@@ -12,6 +12,7 @@
  *   [radio open]
  *   (if effective position === 1)
  *     <still-leading>                "We're still leading the race. Keep it up."
+ *                                    (multi-class → "…leading our class…", #599)
  *   (else)
  *     <intro>                        "We're currently"   (reuses position-intro-worse from #566)
  *     <number>                       "pee N"             (reuses position-number from #566)
@@ -113,9 +114,16 @@ export function registerRaceStatusVars(engine: IScenarioEngine, getLivePosition:
     return voicePath(POSITION_GROUP_NUMBER, String(n));
   });
 
-  // Leader-only "still leading" clip — replaces the intro + number when
-  // the driver holds P1 on the every-3 status tick.
-  engine.defineVar("raceStatus.stillLeading", () => voicePath(RACE_STATUS_GROUP, "still-leading-01"));
+  // Leader-only "still leading" clip — replaces the intro + number when the
+  // driver holds P1 on the every-3 status tick. In a multi-class race "P1" is
+  // the CLASS lead (the leader branch keys on `selectLivePosition`, which
+  // returns class position in multi-class), so speak "still leading our class"
+  // rather than "still leading the race" (#599).
+  engine.defineVar("raceStatus.stillLeading", () => {
+    const suffix = getLivePosition()?.isMultiClass ? "still-leading-class-01" : "still-leading-01";
+
+    return voicePath(RACE_STATUS_GROUP, suffix);
+  });
 }
 
 /**
