@@ -704,4 +704,57 @@ describe("diffOvertakes — round-trip suppression (#597)", () => {
     expect(fires[1]!.event).toBe("overtake.lost");
     expect(fires[1]!.data).toMatchObject({ position: 5, previousPosition: 4 });
   });
+
+  it("suppresses a multi-class round-trip on CLASS position (class P3 → P2 → P3)", () => {
+    // Seed multi-class directly so `lastCalledPosition` is seeded in class
+    // space (the `seedAt` helper seeds single-class). Overall position holds
+    // at P5 throughout; only the class position flickers.
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      0,
+      emit,
+    );
+
+    // Class improves to P2, then reverts to P3 before it can sustain — net no
+    // class change since the seed, so neither a gain nor a loss should fire.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 2 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      300,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      300 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
 });
