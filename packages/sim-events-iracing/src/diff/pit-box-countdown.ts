@@ -45,6 +45,17 @@ import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
 /**
+ * Tolerance (meters) for threshold comparisons. The remaining distance is
+ * computed as `pct × trackLength`, so a value meant to be an exact boundary
+ * lands a hair off it (e.g. 20.0000000000000018 m for the 20 m mark). Both the
+ * band selection and the entry seeding use this epsilon so a boundary value is
+ * treated consistently — `selectPitBoxMark` counts it as inside the band, and
+ * the seeding does NOT mark it already-passed — rather than dropping the mark
+ * for the whole visit on one side and not the other.
+ */
+const PIT_BOX_EPSILON_METERS = 1e-6;
+
+/**
  * Distance marks, largest threshold first. Each mark fires when the remaining
  * distance to the box (meters) first falls at or below its threshold and above
  * the next smaller one.
@@ -70,11 +81,10 @@ export function selectPitBoxMark(remainingMeters: number): PitBoxMark | null {
   let match: PitBoxMark | null = null;
 
   for (const { mark, meters } of PIT_BOX_COUNTDOWN_MARKS) {
-    // Epsilon makes the threshold inclusive against floating-point noise — a
-    // remaining distance computed as `pct × length` lands a hair above an exact
-    // boundary (e.g. 20.0000000000000018 m for the 20 m mark), which would
-    // otherwise drop into the next-larger band.
-    if (remainingMeters <= meters + 1e-6) {
+    // Epsilon makes the threshold inclusive against floating-point noise (see
+    // PIT_BOX_EPSILON_METERS) so a value a hair above an exact boundary doesn't
+    // drop into the next-larger band.
+    if (remainingMeters <= meters + PIT_BOX_EPSILON_METERS) {
       match = mark; // keep tightening toward the smallest matching threshold
     } else {
       break; // thresholds descend; once we're past one, no smaller band matches
@@ -131,7 +141,10 @@ export function diffPitBoxCountdown(
   // before the box position is known still seeds on the first tick it resolves.
   if (!state.pitBoxEntrySeeded) {
     for (const { mark, meters } of PIT_BOX_COUNTDOWN_MARKS) {
-      if (remainingMeters < meters) state.pitBoxMarksSpoken.add(mark);
+      // Strict, epsilon-symmetric with `selectPitBoxMark`'s inclusive bound: a
+      // threshold is "already passed" only when clearly below it, so a boundary
+      // value (within epsilon) is left fireable rather than dropped on entry.
+      if (remainingMeters < meters - PIT_BOX_EPSILON_METERS) state.pitBoxMarksSpoken.add(mark);
     }
 
     state.pitBoxEntrySeeded = true;
