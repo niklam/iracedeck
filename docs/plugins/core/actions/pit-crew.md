@@ -51,6 +51,8 @@ The engineer also reads a **session-start brief** the first time you go on track
 
 In **race** sessions the brief is replaced by a dedicated **race-start callout** fired ~3 s after the session changes to a race (you can still be in the pit/garage). It greets the driver by name, reports the qualifying-finish (grid) position — "Starting from pole. Well done." for P1, "Qualifying put us to P*n*." for P2..P64, or skips the position clause entirely if the position isn't yet populated or is out of range — and reads the same track + air temperature + wetness brief as the session-start callout (no pit speed limit; you heard it during practice / qualifying). It's toggleable independently from the session-start brief in **Race Engineer Callouts → Race → Race start**.
 
+The engineer also runs a **pit-box count-in** as you drive down pit road toward your box, counting the remaining distance down — "five" at 120 m, "four" at 100 m, "three" at 80 m, "two" at 60 m, "one" at 40 m, and "pit now" at 20 m — so you know when to stop without overshooting the stall. The box position comes from `DriverInfo.DriverPitTrkPct`, so it works on the first stop of a session; each mark fires once per pit-road visit and the count resets when you leave pit road. Toggle it in **Race Engineer Callouts → Pit Box**.
+
 ## Settings
 
 | Setting | Type | Default | Description |

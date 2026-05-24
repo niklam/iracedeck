@@ -172,6 +172,14 @@ A 10 m physical-gap check on top of the three-second sustainment also filters th
 
 In multi-class series the engineer reads your class position, not the overall — including the leader line: taking your **class** lead plays *"Nice pass! We're now leading our class. Let's keep it that way!"* (the overall-leader wording is reserved for single-class races). The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
 
+## Pit-box count-in
+
+As you drive down pit road toward your box, the Race Engineer counts the remaining distance down so you know exactly when to stop without overshooting the stall: *"Five… four… three… two… one… pit now."* The marks are spoken by distance to the box — five at 120 m, four at 100 m, three at 80 m, two at 60 m, one at 40 m, and "pit now" at 20 m remaining — so the count tracks your approach regardless of pit-lane speed.
+
+The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so the count-in works on your very first stop of a session — no need to have visited the box before. Each mark is spoken once per pit-road visit and the count resets when you leave pit road, so a second stop counts down again. If you join pit road already within range, only the marks still ahead of you are spoken, and once you've passed the box the count stops. The six marks share a `pit-box` family, so a quick approach that crosses two marks in close succession cleanly preempts the in-flight clip.
+
+The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
@@ -236,6 +244,10 @@ Under **Overtakes**, two callouts are toggleable, both enabled by default:
 - **Lost position** — the *"Come on, &lt;name&gt;. Don't give up positions like that. We're now in pee five."* line on a sustained mid-race loss.
 
 Each direction is independent — drivers who want the congratulations but not the chastisement (or vice versa) get per-direction control.
+
+Under **Pit Box**, one callout is toggleable, enabled by default:
+
+- **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
 
 ## Notes
 

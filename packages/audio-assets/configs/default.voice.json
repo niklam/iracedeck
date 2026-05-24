@@ -700,6 +700,38 @@
         "seed": 4
       }
     ],
+    "pit-box": [
+      {
+        "name": "five-01",
+        "text": "Five.",
+        "seed": 5
+      },
+      {
+        "name": "four-01",
+        "text": "Four.",
+        "seed": 4
+      },
+      {
+        "name": "three-01",
+        "text": "Three.",
+        "seed": 3
+      },
+      {
+        "name": "two-01",
+        "text": "Two.",
+        "seed": 2
+      },
+      {
+        "name": "one-01",
+        "text": "One.",
+        "seed": 1
+      },
+      {
+        "name": "pit-now-01",
+        "text": "Pit now.",
+        "seed": 6
+      }
+    ],
     "incidents": [
       {
         "name": "off-track-01",

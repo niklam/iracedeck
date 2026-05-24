@@ -8368,6 +8368,54 @@
       "textPreview": "Nice pass! <break time=\"0.3s\"/> We're now leading our class. <break time=\"0.4s\"…",
       "generatedAt": "2026-05-24T16:23:40.498Z",
       "requestId": "NHYyuYBmr5hZZc94QzNP"
+    },
+    "voice/default/pit-box/five-01.mp3": {
+      "hash": "992af8a9ff09137f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Five.",
+      "generatedAt": "2026-05-24T16:34:28.833Z",
+      "requestId": "g6RgOSvSnmSxITFor1JE"
+    },
+    "voice/default/pit-box/four-01.mp3": {
+      "hash": "d25c39dd88f42407",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Four.",
+      "generatedAt": "2026-05-24T16:34:28.979Z",
+      "requestId": "WDm7DK2lRB2dxhJy9PN4"
+    },
+    "voice/default/pit-box/three-01.mp3": {
+      "hash": "586b59ccd4ec8c65",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Three.",
+      "generatedAt": "2026-05-24T16:34:29.133Z",
+      "requestId": "ObtyQZe1mvq7qAGrc3Ij"
+    },
+    "voice/default/pit-box/two-01.mp3": {
+      "hash": "0ddbb05bdd358d9c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two.",
+      "generatedAt": "2026-05-24T16:34:29.284Z",
+      "requestId": "IDF7eyLXVmAh86fSCj7F"
+    },
+    "voice/default/pit-box/one-01.mp3": {
+      "hash": "092f4244e71bf089",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One.",
+      "generatedAt": "2026-05-24T16:34:29.426Z",
+      "requestId": "W83SNmdoehDrM5fIA3xl"
+    },
+    "voice/default/pit-box/pit-now-01.mp3": {
+      "hash": "369b4fae741ee18d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pit now.",
+      "generatedAt": "2026-05-24T16:34:29.599Z",
+      "requestId": "V05tJUZdC9XrGtjOVEDk"
     }
   }
 }

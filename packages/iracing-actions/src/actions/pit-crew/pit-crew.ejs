@@ -254,6 +254,16 @@
 			var overtakeCheckboxes = overtakeCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
+
+			// Pit-box count-in (issue #600). Single subject — one toggle for the
+			// whole five → pit-now distance countdown to the pit box.
+			var pitBoxCallouts = [
+				{ setting: "calloutEnabledPitBoxCountIn", label: "Count-in to pit box" },
+			];
+			var pitBoxRowCount = Math.ceil(pitBoxCallouts.length / 2);
+			var pitBoxCheckboxes = pitBoxCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
 		%>
 		<%- include('accordion', {
 			title: 'Race Engineer Callouts',
@@ -328,6 +338,11 @@
 				'<sdpi-item label="Overtakes">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + overtakeRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						overtakeCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Pit Box">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + pitBoxRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						pitBoxCheckboxes +
 					'</div>' +
 				'</sdpi-item>'
 		}) %>
