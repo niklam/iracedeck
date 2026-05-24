@@ -2,12 +2,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AUDIO_CONTROLS_GLOBAL_KEYS, AudioControls, generateAudioControlsSvg } from "./audio-controls.js";
 
-const { mockTapBinding, mockHoldBinding, mockReleaseBinding } = vi.hoisted(() => ({
-  mockTapBinding: vi.fn().mockResolvedValue(undefined),
-  mockHoldBinding: vi.fn().mockResolvedValue(undefined),
-  mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
+const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolume, mockStepRaceEngineerVolume } =
+  vi.hoisted(() => ({
+    mockTapBinding: vi.fn().mockResolvedValue(undefined),
+    mockHoldBinding: vi.fn().mockResolvedValue(undefined),
+    mockReleaseBinding: vi.fn().mockResolvedValue(undefined),
+    mockStepRadarVolume: vi.fn(() => 50),
+    mockStepRaceEngineerVolume: vi.fn(() => 50),
+  }));
+
+vi.mock("../../audio/audio-volume.js", () => ({
+  stepRadarVolume: mockStepRadarVolume,
+  stepRaceEngineerVolume: mockStepRaceEngineerVolume,
 }));
 
+vi.mock("@iracedeck/icons/audio-controls/race-engineer-volume-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/race-engineer-volume-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/radar-volume-up.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/audio-controls/radar-volume-down.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
 vi.mock("@iracedeck/icons/audio-controls/voice-chat-volume-up.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
@@ -449,6 +469,87 @@ describe("AudioControls", () => {
       await action.onWillDisappear(fakeEvent("action-1", { category: "push-to-talk" }) as any);
 
       expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+  });
+
+  describe("internal volume categories (#590)", () => {
+    let action: AudioControls;
+
+    beforeEach(() => {
+      action = new AudioControls();
+    });
+
+    it("has no global key mapping for race-engineer or radar", () => {
+      expect(AUDIO_CONTROLS_GLOBAL_KEYS["race-engineer-volume-up"]).toBeUndefined();
+      expect(AUDIO_CONTROLS_GLOBAL_KEYS["radar-volume-up"]).toBeUndefined();
+      // Still exactly the six keyboard-backed entries.
+      expect(Object.keys(AUDIO_CONTROLS_GLOBAL_KEYS)).toHaveLength(6);
+    });
+
+    it("generates labelled icons for race-engineer volume", () => {
+      const up = decodeURIComponent(generateAudioControlsSvg({ category: "race-engineer", action: "volume-up" }));
+      const down = decodeURIComponent(generateAudioControlsSvg({ category: "race-engineer", action: "volume-down" }));
+
+      expect(up).toContain("ENGINEER");
+      expect(up).toContain("VOL UP");
+      expect(down).toContain("ENGINEER");
+      expect(down).toContain("VOL DOWN");
+      expect(up).not.toBe(down);
+    });
+
+    it("generates labelled icons for radar volume", () => {
+      const up = decodeURIComponent(generateAudioControlsSvg({ category: "radar", action: "volume-up" }));
+      const down = decodeURIComponent(generateAudioControlsSvg({ category: "radar", action: "volume-down" }));
+
+      expect(up).toContain("RADAR");
+      expect(up).toContain("VOL UP");
+      expect(down).toContain("RADAR");
+      expect(down).toContain("VOL DOWN");
+    });
+
+    it("steps the Race Engineer volume up on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "race-engineer", action: "volume-up" }) as any);
+
+      expect(mockStepRaceEngineerVolume).toHaveBeenCalledWith("up");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("steps the Race Engineer volume down on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "race-engineer", action: "volume-down" }) as any);
+
+      expect(mockStepRaceEngineerVolume).toHaveBeenCalledWith("down");
+    });
+
+    it("steps the Radar volume up on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "volume-up" }) as any);
+
+      expect(mockStepRadarVolume).toHaveBeenCalledWith("up");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("steps the Radar volume down on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "volume-down" }) as any);
+
+      expect(mockStepRadarVolume).toHaveBeenCalledWith("down");
+    });
+
+    it("ignores dial rotation for internal categories (dial out of scope)", async () => {
+      await action.onDialRotate(
+        fakeDialRotateEvent("action-1", { category: "race-engineer", action: "volume-up" }, 1) as any,
+      );
+      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "radar", action: "volume-up" }, -1) as any);
+
+      expect(mockStepRaceEngineerVolume).not.toHaveBeenCalled();
+      expect(mockStepRadarVolume).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    });
+
+    it("ignores dial press for internal categories", async () => {
+      await action.onDialDown(fakeEvent("action-1", { category: "radar", action: "volume-up" }) as any);
+
+      expect(mockStepRadarVolume).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });

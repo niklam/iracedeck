@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-The website currently documents **31 actions with 290 modes** (the totals used in this file and in user-facing docs). `docs/reference/actions.json` has not yet been re-synced to the new per-mode counting convention; use this skill file or the website as the source of truth for action and mode counts, and treat `actions.json` as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **31 actions with 290 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -38,7 +38,7 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 8 | Live session data: incidents, laps, position, fuel, flags, track wetness |
-| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
+| Driving Controls | 6 | 31 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
 | Cockpit & Interface | 5 | 34 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
@@ -63,11 +63,11 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | AI Spotter Controls | 7 | damage-report, weather-report, toggle-report-laps, announce-leader, louder, quieter, silence |
-| Audio Controls | 3 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action) |
+| Audio Controls | 5 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action), race-engineer (with volume-up/down action; steps global raceEngineerVolume ±5, respects the master enable gate), radar (with volume-up/down action; steps global radarVolume ±5). The race-engineer/radar categories control iRaceDeck's own audio buses directly (no keyboard binding); dial control is out of scope for now (#590). |
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
-| Pit Crew | 2 | radar (toggles the directional proximity tick loop), radar-volume (with Direction up/down; steps global radarVolume by ±5, clamped 0–100). A Race Engineer voice mode is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. |
+| Pit Crew | 2 | race-engineer (Race Engineer Toggle — flips the engineer voice gate on/off), radar (toggles the directional proximity tick loop). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working. |
 
 ### Cockpit & Interface
 

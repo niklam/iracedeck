@@ -23,16 +23,33 @@ import masterMuteIconSvg from "@iracedeck/icons/audio-controls/master-mute.svg";
 import masterVolumeDownIconSvg from "@iracedeck/icons/audio-controls/master-volume-down.svg";
 import masterVolumeUpIconSvg from "@iracedeck/icons/audio-controls/master-volume-up.svg";
 import pushToTalkIconSvg from "@iracedeck/icons/audio-controls/push-to-talk.svg";
+import raceEngineerVolumeDownIconSvg from "@iracedeck/icons/audio-controls/race-engineer-volume-down.svg";
+import raceEngineerVolumeUpIconSvg from "@iracedeck/icons/audio-controls/race-engineer-volume-up.svg";
+import radarVolumeDownIconSvg from "@iracedeck/icons/audio-controls/radar-volume-down.svg";
+import radarVolumeUpIconSvg from "@iracedeck/icons/audio-controls/radar-volume-up.svg";
 import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 import z from "zod";
 
-type AudioCategory = "push-to-talk" | "voice-chat" | "master";
+import { stepRaceEngineerVolume, stepRadarVolume } from "../../audio/audio-volume.js";
+
+type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute";
 
 /** Categories that support mute */
 const MUTE_CATEGORIES: Set<AudioCategory> = new Set(["voice-chat"]);
+
+/**
+ * Categories that adjust iRaceDeck's own internal audio buses (Race Engineer
+ * voice, Radar ticks) rather than sending keyboard shortcuts to iRacing.
+ * These step a global setting and apply it to the audio engine directly via
+ * the shared {@link stepRaceEngineerVolume} / {@link stepRadarVolume} helpers,
+ * so they have no entry in {@link AUDIO_CONTROLS_GLOBAL_KEYS} and no keyboard
+ * binding. Dial/encoder control for them is intentionally out of scope for
+ * now (issue #590) — the dial handlers no-op for these categories.
+ */
+const INTERNAL_VOLUME_CATEGORIES: Set<AudioCategory> = new Set(["race-engineer", "radar"]);
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
@@ -45,6 +62,10 @@ const AUDIO_ICONS: Record<string, string> = {
   "master-volume-up": masterVolumeUpIconSvg,
   "master-volume-down": masterVolumeDownIconSvg,
   "master-mute": masterMuteIconSvg,
+  "race-engineer-volume-up": raceEngineerVolumeUpIconSvg,
+  "race-engineer-volume-down": raceEngineerVolumeDownIconSvg,
+  "radar-volume-up": radarVolumeUpIconSvg,
+  "radar-volume-down": radarVolumeDownIconSvg,
 };
 
 /**
@@ -58,6 +79,10 @@ const AUDIO_CONTROLS_TITLES: Record<string, string> = {
   "master-volume-up": "VOL UP\nMASTER",
   "master-volume-down": "VOL DOWN\nMASTER",
   "master-mute": "MUTE\nMASTER",
+  "race-engineer-volume-up": "VOL UP\nENGINEER",
+  "race-engineer-volume-down": "VOL DOWN\nENGINEER",
+  "radar-volume-up": "VOL UP\nRADAR",
+  "radar-volume-down": "VOL DOWN\nRADAR",
 };
 
 /**
@@ -75,7 +100,7 @@ export const AUDIO_CONTROLS_GLOBAL_KEYS: Record<string, string> = {
 };
 
 const AudioControlsSettings = CommonSettings.extend({
-  category: z.enum(["push-to-talk", "voice-chat", "master"]).default("push-to-talk"),
+  category: z.enum(["push-to-talk", "voice-chat", "master", "race-engineer", "radar"]).default("push-to-talk"),
   action: z.enum(["volume-up", "volume-down", "mute"]).default("volume-up"),
 });
 
@@ -156,6 +181,8 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       }
 
       await this.holdBinding(ev.action.id, settingKey);
+    } else if (INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
+      this.stepInternalVolume(settings.category, settings.action);
     } else {
       await this.executeControl(settings.category, settings.action);
     }
@@ -189,6 +216,10 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       }
 
       await this.holdBinding(ev.action.id, settingKey);
+    } else if (INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
+      // Dial control for the internal-volume categories is out of scope for
+      // now (issue #590) — the press does nothing.
+      return;
     } else if (MUTE_CATEGORIES.has(settings.category)) {
       await this.executeControl(settings.category, "mute");
     } else {
@@ -208,7 +239,9 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   override async onDialRotate(ev: IDeckDialRotateEvent<AudioControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
 
-    if (settings.category === "push-to-talk") {
+    // Push-to-talk has no volume axis; the internal-volume categories
+    // (Race Engineer / Radar) defer dial support to a follow-up (issue #590).
+    if (settings.category === "push-to-talk" || INTERNAL_VOLUME_CATEGORIES.has(settings.category)) {
       return;
     }
 
@@ -221,6 +254,27 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     const parsed = AudioControlsSettings.safeParse(settings);
 
     return parsed.success ? parsed.data : AudioControlsSettings.parse({});
+  }
+
+  /**
+   * Step an iRaceDeck-internal audio bus (Race Engineer voice or Radar ticks)
+   * up or down via the shared volume helpers. The helper persists the new
+   * value and applies it to the audio engine — Race Engineer stepping respects
+   * the master enable gate (the value updates but Voice stays muted while the
+   * Race Engineer feature is off). `mute` never reaches here (these categories
+   * expose only volume-up/down in the Property Inspector); treat anything that
+   * isn't `volume-down` as a step up.
+   */
+  private stepInternalVolume(category: AudioCategory, audioAction: AudioAction): void {
+    const direction = audioAction === "volume-down" ? "down" : "up";
+
+    if (category === "race-engineer") {
+      const next = stepRaceEngineerVolume(direction);
+      this.logger.info(`Race Engineer volume ${direction} → ${next}`);
+    } else if (category === "radar") {
+      const next = stepRadarVolume(direction);
+      this.logger.info(`Radar volume ${direction} → ${next}`);
+    }
   }
 
   private async executeControl(category: AudioCategory, audioAction: AudioAction): Promise<void> {

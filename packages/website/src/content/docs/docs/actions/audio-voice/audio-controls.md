@@ -1,17 +1,22 @@
 ---
 title: Audio Controls
-description: Adjust voice chat and master volume in iRacing, and hold push-to-talk.
+description: Adjust iRacing voice chat and master volume, hold push-to-talk, and adjust iRaceDeck's own Race Engineer and Radar volume.
 sidebar:
   badge:
-    text: "3 modes"
+    text: "5 modes"
     variant: tip
 ---
 
-Quick access to iRacing's audio settings: hold push-to-talk, raise / lower / mute voice chat volume, or raise / lower the master volume — all without navigating menus.
+Quick access to audio levels: hold push-to-talk, raise / lower / mute iRacing voice chat volume, raise / lower the iRacing master volume, and adjust iRaceDeck's own **Race Engineer** voice and **Radar** tick levels — all without navigating menus.
+
+The Mode dropdown is split into two groups:
+
+- **iRacing audio** — Push to Talk, Voice Chat, Master. These send key presses to iRacing, so they follow your configured key bindings.
+- **iRaceDeck audio** — Race Engineer Volume, Radar Volume. These adjust iRaceDeck's own audio buses directly, so they need no iRacing key binding. (These mirror the volume sliders in the Pit Crew settings.)
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. Voice Chat and Master modes also expose an **Action** setting for Volume Up / Volume Down (and Mute for Voice Chat).
+Select the mode from the **Mode** dropdown in the Property Inspector. Voice Chat and Master modes also expose an **Action** setting for Volume Up / Volume Down (and Mute for Voice Chat). Race Engineer Volume and Radar Volume expose an **Action** setting for Volume Up / Volume Down.
 
 ### Push to Talk
 
@@ -61,3 +66,37 @@ Control the iRacing master volume. The Master mode has no mute option — the Ac
 
 - **Volume Up** (default, default key `Shift+Alt+numpad_add`) — Pressing the button raises master volume
 - **Volume Down** (default key `Shift+Alt+numpad_subtract`) — Pressing the button lowers master volume
+
+---
+
+### Race Engineer Volume
+
+Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the Race Engineer Volume slider in the Pit Crew settings. This controls iRaceDeck audio, not iRacing, so it needs no iRacing key binding. While the Race Engineer is disabled the level still updates, but you won't hear it until the Race Engineer is enabled.
+
+#### Details
+
+- **Dial:** Not supported yet — only key presses adjust the volume
+- **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
+- **Telemetry-aware icon:** No
+
+#### Setting: Action
+
+- **Volume Up** (default) — Pressing the button raises the Race Engineer voice volume by 5% (max 100%)
+- **Volume Down** — Pressing the button lowers the Race Engineer voice volume by 5% (min 0%)
+
+---
+
+### Radar Volume
+
+Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the Radar Volume slider in the Pit Crew settings. This controls iRaceDeck audio, not iRacing, so it needs no iRacing key binding. (This replaces the Radar Volume mode that previously lived in the Pit Crew action.)
+
+#### Details
+
+- **Dial:** Not supported yet — only key presses adjust the volume
+- **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
+- **Telemetry-aware icon:** No
+
+#### Setting: Action
+
+- **Volume Up** (default) — Pressing the button raises the Radar volume by 5% (max 100%)
+- **Volume Down** — Pressing the button lowers the Radar volume by 5% (min 0%)

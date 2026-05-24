@@ -8,9 +8,15 @@
 
 		<sdpi-item label="Mode">
 			<sdpi-select id="category-select" setting="category" default="push-to-talk">
-				<option value="push-to-talk">Push to Talk</option>
-				<option value="voice-chat">Voice Chat</option>
-				<option value="master">Master</option>
+				<optgroup label="iRacing audio">
+					<option value="push-to-talk">Push to Talk</option>
+					<option value="voice-chat">Voice Chat</option>
+					<option value="master">Master</option>
+				</optgroup>
+				<optgroup label="iRaceDeck audio">
+					<option value="race-engineer">Race Engineer Volume</option>
+					<option value="radar">Radar Volume</option>
+				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -21,6 +27,10 @@
 				<option value="mute" id="mute-option">Mute</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<div class="ird-supporting-text hidden" id="internal-volume-note">
+			Adjusts iRaceDeck's own audio level. Stream Deck&nbsp;+ dial control is not available yet.
+		</div>
 
 		<%- include('title-overrides') %>
 
@@ -43,15 +53,23 @@
 		<%- include('global-common-settings') %>
 
 		<script>
-			// Master doesn't support mute. The option is removed from the DOM when Master
-			// is selected (style.display is ignored by sdpi-select, which re-renders options
-			// from the source list via a MutationObserver).
+			// Only Voice Chat supports mute. For every other category the mute option is
+			// removed from the DOM (style.display is ignored by sdpi-select, which re-renders
+			// options from the source list via a MutationObserver). The "iRaceDeck audio"
+			// categories (Race Engineer / Radar) also show a supporting note.
+			const MUTE_CATEGORIES = new Set(["voice-chat"]);
+			const INTERNAL_VOLUME_CATEGORIES = new Set(["race-engineer", "radar"]);
 			let muteOption = null;
 			let muteOptionParent = null;
 
 			function updateVisibility(category) {
 				const actionItem = document.getElementById("action-item");
 				const actionSelect = document.getElementById("action-select");
+				const internalNote = document.getElementById("internal-volume-note");
+
+				if (internalNote) {
+					internalNote.classList.toggle("hidden", !INTERNAL_VOLUME_CATEGORIES.has(category));
+				}
 
 				if (category === "push-to-talk") {
 					// Hide the entire action dropdown for PTT
@@ -64,9 +82,10 @@
 
 				const isAttached = muteOption.parentNode === muteOptionParent;
 
-				if (category === "master") {
-					// Switch selection away from mute before detaching the option so the
-					// persisted setting stays consistent with what's rendered.
+				if (!MUTE_CATEGORIES.has(category)) {
+					// Master / Race Engineer / Radar have no mute. Switch selection away
+					// from mute before detaching the option so the persisted setting stays
+					// consistent with what's rendered.
 					if (actionSelect && actionSelect.value === "mute") {
 						actionSelect.value = "volume-up";
 						actionSelect.dispatchEvent(new Event("input", { bubbles: true }));

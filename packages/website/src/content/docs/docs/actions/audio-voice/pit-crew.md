@@ -7,13 +7,15 @@ sidebar:
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off), **Radar** (directional proximity ticks when a car pulls alongside), and **Radar Volume** (Up/Down stepping for the radar volume).
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off) and **Radar** (directional proximity ticks when a car pulls alongside).
+
+Radar volume (Up/Down stepping) now lives in the [Audio Controls](/docs/actions/audio-voice/audio-controls/) action under the **Radar** mode, alongside the new **Race Engineer** volume buttons. Existing Pit Crew buttons configured for Radar Volume keep working, but new buttons set up volume control from Audio Controls.
 
 Both the Race Engineer and Radar gates ship **off by default** so a fresh install stays quiet until you opt in. The first press of each toggle is what enables it; the on/off state is plugin-wide, so two Pit Crew buttons (e.g. one on a Stream Deck, one on a Mirabox) always agree.
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. For the Radar Volume mode, also pick **Up** or **Down** from the **Direction** dropdown.
+Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Race Engineer Toggle
 
@@ -38,21 +40,6 @@ Toggles the directional proximity tick loop on/off. Pressing the button flips `r
 - **Dial:** Not supported
 - **Default binding:** None — button-driven feature, no keyboard binding
 - **Telemetry-aware icon:** Yes — the status bar reflects the current global flag
-
-### Radar Volume
-
-Steps the global Radar volume up or down. Takes effect immediately on `AudioBus.Alerts` so the next tick plays at the new level. Clamps at 0 (minimum, fully muted) and 100 (maximum). The key shows the current percentage in its title.
-
-#### Setting: Direction
-
-- **Up** — Bumps `radarVolume` by 5 (max 100)
-- **Down** — Reduces `radarVolume` by 5 (min 0)
-
-#### Details
-
-- **Dial:** Not supported
-- **Default binding:** None
-- **Telemetry-aware icon:** Yes — the title shows the current percentage
 
 ## Global Audio Settings (shared across every Pit Crew button)
 
