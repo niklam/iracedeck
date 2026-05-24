@@ -545,6 +545,23 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Opt-in for the pit-box count-in (issue #600). One boolean for the whole
+     * countdown — as the driver drives down pit road toward their box the
+     * engineer counts the remaining distance down ("five… four… three… two…
+     * one… pit now") so they know when to stop without overshooting the stall.
+     * The box position comes from `DriverInfo.DriverPitTrkPct`, so it works on
+     * the first stop of a session. Fires whenever the car is on pit road and
+     * approaching the box (including drive-throughs). Defaults `true` so a fresh
+     * install hears it; the user can silence it mid-session and the change takes
+     * effect on the next mark without cutting an in-flight clip. Canonical
+     * id↔key mapping in `PIT_BOX_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledPitBoxCountIn: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even
      * while the underlying iRacing flag is still raised, so long full-course

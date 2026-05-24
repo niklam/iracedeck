@@ -6,7 +6,7 @@
  * Initial state uses sentinel values (negative / null / empty sets) so the
  * first tick after connect seeds without firing spurious transition events.
  */
-import { type IncidentType, type RadarState, TrackWetness } from "@iracedeck/event-bus";
+import { type IncidentType, type PitBoxMark, type RadarState, TrackWetness } from "@iracedeck/event-bus";
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -26,6 +26,14 @@ export type TranslatorState = {
   lastInPitStall: boolean;
   approachExitingSuppressed: boolean;
   approachAlertFired: boolean;
+  /**
+   * Pit-box count-in marks already spoken during the current pit-road visit
+   * (issue #600). The diff fires each {@link PitBoxMark} at most once per
+   * visit; the set is cleared whenever the car is not on pit road, so a second
+   * stop counts down again. No `initialized` flag is needed — the diff fires
+   * purely on the live distance-to-box, never on a connect-time transition.
+   */
+  pitBoxMarksSpoken: Set<PitBoxMark>;
   /**
    * Whether the current lap began at pit exit. Set true by `diffPitLane`
    * when emitting `pitLane.exited`; cleared by `diffLifecycle` when
@@ -304,6 +312,7 @@ export function createInitialState(): TranslatorState {
     lastInPitStall: false,
     approachExitingSuppressed: false,
     approachAlertFired: false,
+    pitBoxMarksSpoken: new Set(),
 
     flagStateInitialized: false,
     activeFlags: new Set(),

@@ -11,6 +11,7 @@ export type {
   EmptySimEventPayload,
   FlagScope,
   IncidentType,
+  PitBoxMark,
   PitReadbackSnapshot,
   PitServiceKind,
   QualifyingInvalidationSnapshot,

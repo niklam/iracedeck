@@ -233,6 +233,17 @@ const INCIDENT_CLIP_PATHS = [
   `voice/${VOICE}/incidents/collision-car-03.mp3`,
 ] as const;
 
+// Pit-box count-in clips referenced from `pit-box.ts` (issue #600). One per
+// distance mark.
+const PIT_BOX_CLIP_PATHS = [
+  `voice/${VOICE}/pit-box/five-01.mp3`,
+  `voice/${VOICE}/pit-box/four-01.mp3`,
+  `voice/${VOICE}/pit-box/three-01.mp3`,
+  `voice/${VOICE}/pit-box/two-01.mp3`,
+  `voice/${VOICE}/pit-box/one-01.mp3`,
+  `voice/${VOICE}/pit-box/pit-now-01.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -243,6 +254,7 @@ const manifest: AudioAssetsManifest = {
     ...TOGGLE_CLIP_PATHS,
     ...DAMAGE_CLIP_PATHS,
     ...INCIDENT_CLIP_PATHS,
+    ...PIT_BOX_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -293,6 +305,7 @@ let enabled: Map<FlagCalloutId, boolean>;
 let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
+let pitBoxEnabled: boolean;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
@@ -300,6 +313,7 @@ beforeEach(() => {
   pitServiceRequestsEnabled = true;
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   incidentEnabled = makeIncidentEnabledMap(true);
+  pitBoxEnabled = true;
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -334,6 +348,7 @@ beforeEach(() => {
     undefined, // getOvertakeDriverName (issue #574)
     undefined, // getLivePosition (issue #574)
     undefined, // getOvertakeGate (issue #574)
+    () => pitBoxEnabled, // getPitBoxCalloutEnabled (issue #600)
     () => voiceMasterEnabled,
   );
 });
@@ -770,6 +785,65 @@ describe("incident callout live gating (issue #530)", () => {
       expect(voiceClipsPlayed().some((p) => p.includes("/incidents/off-track-"))).toBe(true);
     },
   );
+});
+
+// Issue #600: the pit-box count-in opt-in is a single subject (`count-in`)
+// gating all six per-mark scenarios. Same gate-at-event-arrival shape as the
+// other families — suppression doesn't cut in-flight playback, re-enabling
+// restores future fires.
+describe("pit-box count-in live gating (issue #600)", () => {
+  it.each(["five", "four", "three", "two", "one", "pit-now"] as const)("%s fires when enabled", (mark) => {
+    bus.publishEvent("pitBox.countdown", { mark } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes(`/pit-box/${mark}-`))).toBe(true);
+  });
+
+  it("is suppressed when the toggle is off", () => {
+    pitBoxEnabled = false;
+    bus.publishEvent("pitBox.countdown", { mark: "three" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line on suppression", () => {
+    pitBoxEnabled = false;
+    bus.publishEvent("pitBox.countdown", { mark: "three" } as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-box callout suppressed: count-in");
+  });
+
+  it("toggling off mid-clip does not cut the in-flight callout", () => {
+    bus.publishEvent("pitBox.countdown", { mark: "five" } as never);
+    expect(audio._played.length).toBeGreaterThan(0);
+
+    pitBoxEnabled = false;
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/pit-box/five-"))).toBe(true);
+  });
+
+  it("re-enabling restores future fires", () => {
+    pitBoxEnabled = false;
+    bus.publishEvent("pitBox.countdown", { mark: "two" } as never);
+    flush(audio);
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    pitBoxEnabled = true;
+    bus.publishEvent("pitBox.countdown", { mark: "two" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/pit-box/two-"))).toBe(true);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitBox.countdown", { mark: "pit-now" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
 });
 
 // Issue #515: the Race Engineer master gate ANDs the user's

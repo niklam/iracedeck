@@ -46,6 +46,17 @@ export type RadarState = "clear" | "left" | "right" | "both" | "two-left" | "two
 /** Pit service toggle categories that can be individually enabled/disabled. */
 export type PitServiceKind = "fuel" | "windshield" | "fastRepair";
 
+/**
+ * Pit-box count-in distance marks (issue #600). One per spoken cue as the
+ * driver closes on their pit box: `five`..`one` are the numeric countdown,
+ * `pit-now` is the final "stop here" cue. Sim-agnostic string union so any
+ * future translator can emit the same `pitBox.countdown` shape; the audio
+ * scenario maps each mark to its own clip. The marks are spaced by remaining
+ * distance to the box (`DriverPitTrkPct`), not by time, so the count tracks
+ * the approach regardless of pit-lane speed.
+ */
+export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
+
 /** Flag scope — "local" is a sector/area yellow, "full" is a full-course yellow. */
 export type FlagScope = "local" | "full";
 
@@ -252,6 +263,19 @@ export type SimEventMap = {
   "pitLane.exited": SimEvent<"pitLane.exited", EmptySimEventPayload>;
   "pitStall.entered": SimEvent<"pitStall.entered", EmptySimEventPayload>;
   "pitStall.departed": SimEvent<"pitStall.departed", EmptySimEventPayload>;
+  /**
+   * Pit-box count-in (issue #600). Fired once per distance mark as the player
+   * drives down pit road toward their own pit box: "five" (120 m remaining),
+   * "four" (100 m), "three" (80 m), "two" (60 m), "one" (40 m), and "pit-now"
+   * (20 m). The translator derives the box position from
+   * `SessionInfo.DriverInfo.DriverPitTrkPct` and the remaining distance from
+   * `LapDistPct` × track length, emitting each mark exactly once per pit-road
+   * visit (the spoken-marks set resets when the car leaves pit road). The audio
+   * scenario plays one clip per {@link PitBoxMark}; all six share `family:
+   * "pit-box"` so a faster approach that crosses two marks in quick succession
+   * preempts the in-flight clip cleanly.
+   */
+  "pitBox.countdown": SimEvent<"pitBox.countdown", { mark: PitBoxMark }>;
   /**
    * Pit-service readback request (issue #476). Fired by the sim translator
    * at three moments during a pit stop:

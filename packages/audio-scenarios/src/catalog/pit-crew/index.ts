@@ -68,6 +68,7 @@ import {
   registerOvertakeVars,
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
+import { PIT_BOX_ALERTS } from "./pit-box.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
 import { POOLS } from "./pools.js";
 import {
@@ -435,6 +436,33 @@ const SCENARIO_ID_TO_TRACK_CONDITIONS_ID: Record<string, TrackConditionsCalloutI
   "pit-crew.track-conditions-drying-very-wet": "wetness",
 };
 
+/**
+ * Stable identifier for the pit-box count-in family (issue #600). Single
+ * subject — one toggle covers the whole five → pit-now countdown. The six
+ * per-mark scenarios all map to this one id (the same multi-scenario →
+ * single-subject shape track-conditions uses), so the user gets one checkbox
+ * for the feature rather than six.
+ */
+export type PitBoxCalloutId = "count-in";
+
+/**
+ * Canonical mapping from `PitBoxCalloutId` to its plugin-global setting key in
+ * `GlobalSettingsSchema`. Plugin entry points use this to read the live opt-in
+ * without duplicating the key string.
+ */
+export const PIT_BOX_CALLOUT_SETTING_KEYS: Record<PitBoxCalloutId, string> = {
+  "count-in": "calloutEnabledPitBoxCountIn",
+};
+
+const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
+  "pit-crew.pit-box-five": "count-in",
+  "pit-crew.pit-box-four": "count-in",
+  "pit-crew.pit-box-three": "count-in",
+  "pit-crew.pit-box-two": "count-in",
+  "pit-crew.pit-box-one": "count-in",
+  "pit-crew.pit-box-pit-now": "count-in",
+};
+
 export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
@@ -600,6 +628,14 @@ export function registerPitCrew(
   // wire it (tests) still fire; the real plugin gate returns `null` only when
   // telemetry is unavailable, which suppresses.
   getOvertakeGate: OvertakeGateResolver = () => PERMISSIVE_OVERTAKE_GATE,
+  // User opt-in for the pit-box count-in (issue #600). Single subject
+  // (`count-in`) gating all six distance-mark scenarios. Same gate-at-event-
+  // arrival shape as the other callout families — toggling off mid-session
+  // takes effect on the next mark without cutting an in-flight clip. Placed
+  // before the master gate so the master stays the last per-callout opt-in.
+  // Default `() => true` preserves legacy behavior for tests that don't supply
+  // a closure.
+  getPitBoxCalloutEnabled: (id: PitBoxCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -709,6 +745,17 @@ export function registerPitCrew(
           "track-conditions callout",
           logger,
         ),
+      ),
+    );
+  }
+
+  // Pit-box count-in (issue #600). Six per-mark scenarios all gated by the one
+  // `count-in` opt-in via `SCENARIO_ID_TO_PIT_BOX_ID`. No registration-order
+  // concern — `pitBox.countdown` has no other subscribers.
+  for (const s of PIT_BOX_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_BOX_ID, getPitBoxCalloutEnabled, "pit-box callout", logger),
       ),
     );
   }

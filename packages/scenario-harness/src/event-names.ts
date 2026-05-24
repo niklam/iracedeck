@@ -25,6 +25,11 @@ export const EVENT_TEMPLATES = [
   { name: "pitStall.entered", description: "Stopped in your pit stall", data: {} },
   { name: "pitStall.departed", description: "Left pit stall", data: {} },
   {
+    name: "pitBox.countdown",
+    description: "Pit-box count-in mark (issue #600) — five 120 m → pit-now 20 m to the box",
+    data: { mark: "three" },
+  },
+  {
     name: "pitService.readbackRequested",
     description: "Engineer pit-service readback (entry / refire / exit)",
     data: {
