@@ -511,3 +511,139 @@ describe("diffOvertakes — suppression rules", () => {
     expect(overtakeEvents(events)).toHaveLength(0);
   });
 });
+
+describe("diffOvertakes — multi-class detection (#588)", () => {
+  it("stays silent when overall position churns but class position holds", () => {
+    // Class-leader (P1) whose OVERALL rank shuffles as other-class cars pass /
+    // pit / lap — the exact scenario that spammed "we're currently P1".
+    const { state } = seedAt(5, 1);
+    const { events, emit } = collect();
+
+    let t = 100;
+
+    for (const overall of [4, 6, 5, 7, 5, 4]) {
+      diffOvertakes(
+        state,
+        tick({ playerPosition: overall, playerClassPosition: 1 }),
+        PLAYER_IDX,
+        true,
+        true, // multi-class
+        TRACK_LENGTH_M,
+        t,
+        emit,
+      );
+      t += OVERTAKE_HOLD_MS; // give any (incorrectly) opened pending time to fire
+    }
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("fires overtake.lost on a class-position drop even when overall is unchanged", () => {
+    const { state } = seedAt(5, 2); // overall P5, class P2
+    const { events, emit } = collect();
+
+    // Class slips P2 → P3; overall holds P5.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    expect(overtakeEvents(events)).toHaveLength(0);
+    expect(state.pendingLossPos).toBe(3);
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.lost");
+    expect(fires[0]!.data).toMatchObject({
+      position: 5, // overall, unchanged
+      classPosition: 3,
+      previousClassPosition: 2,
+      isMultiClass: true,
+    });
+    // The physical-gap gate is skipped in multi-class.
+    expect(fires[0]!.data).not.toHaveProperty("gapAheadMeters");
+  });
+
+  it("fires overtake.completed on a class-position gain even when overall is unchanged", () => {
+    const { state } = seedAt(5, 3); // overall P5, class P3
+    const { events, emit } = collect();
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 2 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 2 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({
+      position: 5,
+      classPosition: 2,
+      previousClassPosition: 3,
+      isLeader: false,
+      isMultiClass: true,
+    });
+  });
+
+  it("keeps isLeader on OVERALL position — class P1 while overall P5 is not the race leader", () => {
+    const { state } = seedAt(5, 2);
+    const { events, emit } = collect();
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 1 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 1 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.data).toMatchObject({ classPosition: 1, isLeader: false });
+  });
+});
