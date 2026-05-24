@@ -314,7 +314,7 @@ export class SDKController {
   /**
    * Send a custom chat message to iRacing
    * @param message The message to send
-   * @param timing Optional open→paste and paste→enter delays (ms)
+   * @param timing Optional open→paste, paste→enter, and enter→close delays (ms)
    * @returns Promise resolving to true on success, false on failure
    */
   sendChatMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {

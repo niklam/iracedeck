@@ -81,8 +81,8 @@ export class ChatCommand extends BroadcastCommand {
    * remains responsive during the ~400ms native work.
    *
    * @param message The message to send
-   * @param timing Optional open→paste and paste→enter delays (ms). When
-   *   omitted, the native layer uses its built-in default (200 ms each).
+   * @param timing Optional open→paste, paste→enter, and enter→close delays
+   *   (ms). When omitted, the native layer uses its built-in default (200 ms each).
    * @returns Promise resolving to true on success, false on failure
    */
   async sendMessage(message: string, timing?: ChatSendTiming): Promise<boolean> {
@@ -99,6 +99,7 @@ export class ChatCommand extends BroadcastCommand {
         message,
         timing?.openToPasteDelayMs,
         timing?.pasteToEnterDelayMs,
+        timing?.enterToCloseDelayMs,
       );
 
       if (result) {

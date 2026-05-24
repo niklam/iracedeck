@@ -445,6 +445,7 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     const success = await chat.sendMessage(resolvedMessage, {
       openToPasteDelayMs: globalSettings.chatOpenToPasteDelayMs,
       pasteToEnterDelayMs: globalSettings.chatPasteToEnterDelayMs,
+      enterToCloseDelayMs: globalSettings.chatEnterToCloseDelayMs,
     });
 
     if (success) {

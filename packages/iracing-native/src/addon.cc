@@ -349,15 +349,16 @@ static void sendPaste()
     SendInput(4, inputs, sizeof(INPUT));
 }
 
-// Fixed delay for the two pipeline sleeps that stay non-configurable
-// (cancel→begin and enter→close). The open→paste and paste→enter waits are
-// caller-supplied (issue #581).
+// Fixed delay for the cancel→begin pipeline sleep that stays non-configurable.
+// The open→paste, paste→enter, and enter→close waits are caller-supplied
+// (issues #581, #589).
 static constexpr DWORD kChatStepDelayMs = 100;
 
-// Fixed hold for the Enter keypress (issue #581). A zero-duration down+up can
-// be dropped by iRacing under load; ~40ms gives the key event time to register
-// without feeling sluggish. Intentionally not user-configurable.
-static constexpr DWORD kChatEnterHoldMs = 40;
+// Fixed hold for the Enter keypress (issues #581, #589). A zero-duration down+up
+// can be dropped by iRacing under load; 100ms gives the key event ample time to
+// register so the message reliably submits before the chat box is closed.
+// Intentionally not user-configurable.
+static constexpr DWORD kChatEnterHoldMs = 100;
 
 /**
  * Async worker that runs the full chat-send pipeline on a libuv worker
@@ -369,9 +370,10 @@ static constexpr DWORD kChatEnterHoldMs = 40;
  * ~400ms native pipeline. setTimeout callbacks and Stream Deck events
  * continue to flow while a chat message is being typed.
  *
- * The open→paste and paste→enter waits are caller-supplied (issue #581) so
- * users on slower machines can dial in reliable sends; the cancel→begin and
- * enter→close waits stay on kChatStepDelayMs. Enter is held kChatEnterHoldMs.
+ * The open→paste, paste→enter, and enter→close waits are caller-supplied
+ * (issues #581, #589) so users on slower machines can dial in reliable sends;
+ * the cancel→begin wait stays on kChatStepDelayMs. Enter is held
+ * kChatEnterHoldMs.
  *
  * Serialized via g_chatSendMutex so concurrent sends queue up instead of
  * clobbering each other: iRacing only has one chat window, and two
@@ -380,11 +382,13 @@ static constexpr DWORD kChatEnterHoldMs = 40;
 class ChatSendWorker : public Napi::AsyncWorker
 {
 public:
-    ChatSendWorker(Napi::Env env, std::u16string message, DWORD openToPasteDelayMs, DWORD pasteToEnterDelayMs)
+    ChatSendWorker(Napi::Env env, std::u16string message, DWORD openToPasteDelayMs, DWORD pasteToEnterDelayMs,
+                   DWORD enterToCloseDelayMs)
         : Napi::AsyncWorker(env),
           message_(std::move(message)),
           openToPasteDelayMs_(openToPasteDelayMs),
           pasteToEnterDelayMs_(pasteToEnterDelayMs),
+          enterToCloseDelayMs_(enterToCloseDelayMs),
           deferred_(Napi::Promise::Deferred::New(env)),
           result_(false)
     {
@@ -442,7 +446,10 @@ public:
         enterUp.ki.dwFlags = KEYEVENTF_KEYUP;
         SendInput(1, &enterUp, sizeof(INPUT));
 
-        Sleep(kChatStepDelayMs);
+        // Wait before closing the chat box so iRacing finishes processing the
+        // Enter; otherwise the Cancel below lands too early, gets dropped, and
+        // the chat window keeps focus (issue #589). Caller-supplied.
+        Sleep(enterToCloseDelayMs_);
 
         irsdk_broadcastMsg(irsdk_BroadcastChatComand, irsdk_ChatCommand_Cancel, 0);
 
@@ -465,12 +472,14 @@ private:
     std::u16string message_;
     DWORD openToPasteDelayMs_;
     DWORD pasteToEnterDelayMs_;
+    DWORD enterToCloseDelayMs_;
     Napi::Promise::Deferred deferred_;
     bool result_;
 };
 
-// Fallback delay (ms) used when the caller omits a timing argument. Matches
-// the chatOpenToPasteDelayMs / chatPasteToEnterDelayMs global-settings default.
+// Fallback delay (ms) used when the caller omits a timing argument. Matches the
+// chatOpenToPasteDelayMs / chatPasteToEnterDelayMs / chatEnterToCloseDelayMs
+// global-settings default.
 static constexpr DWORD kChatDefaultDelayMs = 200;
 
 // Safety ceiling (ms) for a caller-supplied chat delay. The Property Inspector
@@ -522,13 +531,14 @@ static DWORD readChatDelayArg(const Napi::CallbackInfo &info, size_t index)
  * The full pipeline runs on a libuv worker thread (see ChatSendWorker),
  * so the JS event loop remains responsive during the ~400ms native work.
  *
- * The open→paste and paste→enter waits are caller-supplied (issue #581),
- * each defaulting to kChatDefaultDelayMs when omitted. The cancel→begin and
- * enter→close waits stay on kChatStepDelayMs; Enter is held kChatEnterHoldMs.
+ * The open→paste, paste→enter, and enter→close waits are caller-supplied
+ * (issues #581, #589), each defaulting to kChatDefaultDelayMs when omitted. The
+ * cancel→begin wait stays on kChatStepDelayMs; Enter is held kChatEnterHoldMs.
  *
  * @param message - The message to send
  * @param openToPasteDelayMs - (optional) ms to wait after opening chat before pasting
  * @param pasteToEnterDelayMs - (optional) ms to wait after pasting before pressing Enter
+ * @param enterToCloseDelayMs - (optional) ms to wait after pressing Enter before closing the chat box
  * @returns Promise<boolean>
  */
 Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
@@ -537,7 +547,7 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 
     if (info.Length() < 1 || !info[0].IsString())
     {
-        Napi::TypeError::New(env, "Expected (message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number)")
+        Napi::TypeError::New(env, "Expected (message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number, enterToCloseDelayMs?: number)")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
@@ -546,8 +556,9 @@ Napi::Value SendChatMessage(const Napi::CallbackInfo &info)
 
     DWORD openToPasteDelayMs = readChatDelayArg(info, 1);
     DWORD pasteToEnterDelayMs = readChatDelayArg(info, 2);
+    DWORD enterToCloseDelayMs = readChatDelayArg(info, 3);
 
-    ChatSendWorker *worker = new ChatSendWorker(env, std::move(message), openToPasteDelayMs, pasteToEnterDelayMs);
+    ChatSendWorker *worker = new ChatSendWorker(env, std::move(message), openToPasteDelayMs, pasteToEnterDelayMs, enterToCloseDelayMs);
     Napi::Promise promise = worker->GetPromise();
     worker->Queue();
 

@@ -529,6 +529,7 @@ describe("Chat", () => {
       expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
         openToPasteDelayMs: undefined,
         pasteToEnterDelayMs: undefined,
+        enterToCloseDelayMs: undefined,
       });
     });
 
@@ -536,6 +537,7 @@ describe("Chat", () => {
       mockGetGlobalSettings.mockReturnValueOnce({
         chatOpenToPasteDelayMs: 350,
         chatPasteToEnterDelayMs: 500,
+        chatEnterToCloseDelayMs: 600,
       });
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
@@ -543,6 +545,7 @@ describe("Chat", () => {
       expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
         openToPasteDelayMs: 350,
         pasteToEnterDelayMs: 500,
+        enterToCloseDelayMs: 600,
       });
     });
 

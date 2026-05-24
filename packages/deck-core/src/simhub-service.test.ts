@@ -98,6 +98,7 @@ describe("SimHub Service", () => {
       fastestLapSearchDelayMs: 400,
       chatOpenToPasteDelayMs: 200,
       chatPasteToEnterDelayMs: 200,
+      chatEnterToCloseDelayMs: 200,
     });
   });
 
@@ -245,6 +246,7 @@ describe("SimHub Service", () => {
         fastestLapSearchDelayMs: 400,
         chatOpenToPasteDelayMs: 200,
         chatPasteToEnterDelayMs: 200,
+        chatEnterToCloseDelayMs: 200,
       });
 
       initializeSimHub(mockLogger);

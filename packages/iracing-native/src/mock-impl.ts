@@ -90,9 +90,14 @@ export class IRacingNativeMock {
     console.debug(`[IRacingNativeMock] broadcastMsg(${msg}, ${var1}, ${var2 ?? 0}, ${var3 ?? 0})`);
   }
 
-  async sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean> {
+  async sendChatMessage(
+    message: string,
+    openToPasteDelayMs?: number,
+    pasteToEnterDelayMs?: number,
+    enterToCloseDelayMs?: number,
+  ): Promise<boolean> {
     console.debug(
-      `[IRacingNativeMock] sendChatMessage("${message}", ${openToPasteDelayMs ?? "default"}, ${pasteToEnterDelayMs ?? "default"})`,
+      `[IRacingNativeMock] sendChatMessage("${message}", ${openToPasteDelayMs ?? "default"}, ${pasteToEnterDelayMs ?? "default"}, ${enterToCloseDelayMs ?? "default"})`,
     );
 
     return true;

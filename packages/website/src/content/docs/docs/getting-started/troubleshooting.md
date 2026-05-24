@@ -35,14 +35,15 @@ If you need to keep something on your clipboard, copy it again **after** using a
 
 ### Chat messages send empty, partial, or not at all
 
-The chat-send pipeline opens the chat window, pastes the message, then presses Enter — each step on a short timer. On slower machines, under load, or when a clipboard-manager app briefly steals focus, the default timing can be too tight: the paste lands before the chat input is focused (text lost), Enter fires before the paste registers (empty or partial send), or the keypress is dropped entirely.
+The chat-send pipeline opens the chat window, pastes the message, presses Enter, then closes the chat window — each step on a short timer. On slower machines, under load, or when a clipboard-manager app briefly steals focus, the default timing can be too tight: the paste lands before the chat input is focused (text lost), Enter fires before the paste registers (empty or partial send), the keypress is dropped entirely, or the window closes before iRacing processes the message and keeps focus afterward.
 
-If you hit this, increase the two delays under **Common Settings → Chat** in any action's Property Inspector:
+If you hit this, increase the three delays under **Common Settings → Chat** in any action's Property Inspector:
 
 - **Open → Paste delay** (default 200 ms) — the wait after opening chat before pasting.
 - **Paste → Enter delay** (default 200 ms) — the wait after pasting before pressing Enter.
+- **Enter → Close delay** (default 200 ms) — the wait after pressing Enter before closing the chat window. Raise this if the chat window keeps focus after you send.
 
-Both accept 0–2000 ms. The Enter keypress is also held briefly so it registers reliably. Changes take effect immediately — no restart needed.
+All accept 0–2000 ms. The Enter keypress is also held briefly so it registers reliably. Changes take effect immediately — no restart needed.
 
 ## Need more help?
 

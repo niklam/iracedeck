@@ -190,7 +190,7 @@ describe("SDKController", () => {
     });
 
     it("should forward timing delays to SDK", async () => {
-      const timing = { openToPasteDelayMs: 300, pasteToEnterDelayMs: 450 };
+      const timing = { openToPasteDelayMs: 300, pasteToEnterDelayMs: 450, enterToCloseDelayMs: 600 };
 
       await controller.sendChatMessage("Hello", timing);
 

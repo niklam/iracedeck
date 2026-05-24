@@ -81,5 +81,14 @@
       and Enter can fire before the paste registers, sending an empty or partial message.
       Default 200 ms. (Race Admin doesn't press Enter, so this delay doesn't affect it.)
     </div>
+    <sdpi-item label="Enter → Close delay (ms)">
+      <ird-range-input setting="chatEnterToCloseDelayMs" min="0" max="2000" step="100" default="200" global showlabels></ird-range-input>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Time the Send Message pipeline waits after pressing Enter before closing the chat box.
+      Too short and the close can fire before iRacing has processed the message, leaving the
+      chat window with focus after sending. Default 200 ms; raise it if the chat window keeps
+      focus after you send. (Race Admin doesn't close the chat, so this delay doesn't affect it.)
+    </div>
   `
 }) %>
