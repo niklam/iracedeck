@@ -54,6 +54,22 @@
  * `previousClassPosition`; `isLeader` stays overall. The physical-gap gate is
  * skipped in multi-class (the class neighbour can't be found from the overall
  * `positions` array, and a sustained class change is already a real overtake).
+ *
+ * **Round-trip suppression (issue #597).** `state.lastCalledPosition` tracks the
+ * position last *announced* by a callout. A confirmed gain/loss is suppressed
+ * when the current position equals it — i.e. a round-trip back to the called
+ * position (e.g. P10 → P9 → P10) where the intermediate position never
+ * sustained long enough to be announced. Without this, only the down-leg of a
+ * brief up-down flicker would be spoken ("you lost a position" right after a
+ * gain to the same position). It's updated only when a callout is emitted,
+ * rolled silently under caution, and compared in the same effective space the
+ * detection uses. At a race start the first-tick seed anchors the baseline to
+ * the player's announced starting grid position (`startingGridPosition` — the
+ * same value the race-start callout speaks, #568) so early-race gain/loss is
+ * measured from the grid and a round-trip back to it is suppressed; this
+ * applies in single-class only, since the grid value is overall and
+ * multi-class detection runs in class space (it falls back to the live seed
+ * there). Without a grid position it seeds to the live position.
  */
 import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -80,6 +96,18 @@ export function diffOvertakes(
   trackLengthMeters: number | null,
   now: number,
   emit: EmitFn,
+  /**
+   * The player's announced starting grid position (overall, 1-indexed) — the
+   * same value the race-start callout speaks (`resolveStartingGridPosition`,
+   * #568). When available, the first-tick seed anchors the overtake baseline
+   * to it so the first move off the grid is measured from the grid and an
+   * early round-trip back to it is suppressed (#597 follow-up). Optional and
+   * trailing so the diff's many call sites stay unchanged; only the translator
+   * passes it. Used in single-class only — it's an OVERALL position, and
+   * multi-class detection runs in class space, so the live class seed is kept
+   * there.
+   */
+  startingGridPosition: number | null = null,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
 
@@ -127,6 +155,10 @@ export function diffOvertakes(
   if (underCaution) {
     state.lastPosition = overallPos;
     state.lastClassPosition = rawClassPos;
+    // Roll the called-position baseline silently too, so a position the field
+    // shuffles into during the caution doesn't surface as a phantom gain/loss
+    // when green flies (issue #597).
+    state.lastCalledPosition = currentPos;
     state.pendingOvertakePos = -1;
     state.pendingLossPos = -1;
 
@@ -134,8 +166,19 @@ export function diffOvertakes(
   }
 
   if (!state.overtakeInitialized) {
-    state.lastPosition = overallPos;
+    // Anchor the baseline to the announced starting grid position when it's
+    // available (#597 follow-up / #568). Both the detection baseline
+    // (`lastPosition`) and the suppression anchor (`lastCalledPosition`) start
+    // at the grid slot, so the first genuine move off the grid is announced
+    // and an early round-trip back to it is suppressed. The grid value is
+    // OVERALL (same source as the race-start callout), so it only applies in
+    // single-class — multi-class detection runs in class space, where the live
+    // class position is the correct seed.
+    const useGridSeed = !useClass && startingGridPosition !== null && startingGridPosition > 0;
+
+    state.lastPosition = useGridSeed ? startingGridPosition : overallPos;
     state.lastClassPosition = rawClassPos;
+    state.lastCalledPosition = useGridSeed ? startingGridPosition : currentPos;
     state.overtakeInitialized = true;
 
     return;
@@ -149,35 +192,45 @@ export function diffOvertakes(
         const gapBehindMeters = computeGapMeters(telemetry, playerCarIdx, carBehindIdx, trackLengthMeters);
 
         if (gapBehindMeters === undefined || gapBehindMeters >= OVERTAKE_MIN_GAP_M) {
-          const data: {
-            carIdx: number;
-            sustained: number;
-            position: number;
-            previousPosition: number;
-            gapBehindMeters?: number;
-            isLeader: boolean;
-            classPosition?: number;
-            previousClassPosition?: number;
-            isMultiClass?: boolean;
-          } = {
-            carIdx: playerCarIdx,
-            sustained: now - state.pendingOvertakeTime,
-            position: overallPos,
-            previousPosition: state.pendingOvertakePrevPos,
-            isLeader: overallPos === 1,
-          };
+          // Round-trip suppression (issue #597): when the confirmed position
+          // equals the last position we actually announced, the net change
+          // since the last callout is zero — e.g. P10 → P9 → P10 where the
+          // intermediate P9 never sustained long enough to be announced. Clear
+          // the pending without emitting so a round-trip back to the called
+          // position speaks neither a gain nor a loss.
+          if (currentPos !== state.lastCalledPosition) {
+            const data: {
+              carIdx: number;
+              sustained: number;
+              position: number;
+              previousPosition: number;
+              gapBehindMeters?: number;
+              isLeader: boolean;
+              classPosition?: number;
+              previousClassPosition?: number;
+              isMultiClass?: boolean;
+            } = {
+              carIdx: playerCarIdx,
+              sustained: now - state.pendingOvertakeTime,
+              position: overallPos,
+              previousPosition: state.pendingOvertakePrevPos,
+              isLeader: overallPos === 1,
+            };
 
-          if (gapBehindMeters !== undefined) data.gapBehindMeters = gapBehindMeters;
+            if (gapBehindMeters !== undefined) data.gapBehindMeters = gapBehindMeters;
 
-          if (rawClassPos > 0) data.classPosition = rawClassPos;
+            if (rawClassPos > 0) data.classPosition = rawClassPos;
 
-          if (state.pendingOvertakePrevClassPos > 0) data.previousClassPosition = state.pendingOvertakePrevClassPos;
+            if (state.pendingOvertakePrevClassPos > 0) data.previousClassPosition = state.pendingOvertakePrevClassPos;
 
-          if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+            if (isMultiClass !== null) data.isMultiClass = isMultiClass;
 
-          emit({ event: "overtake.completed", data });
+            emit({ event: "overtake.completed", data });
 
-          state.lastConfirmedOvertakeCarIdx = carBehindIdx;
+            state.lastCalledPosition = currentPos;
+            state.lastConfirmedOvertakeCarIdx = carBehindIdx;
+          }
+
           state.pendingOvertakePos = -1;
           state.pendingOvertakePrevPos = 0;
           state.pendingOvertakePrevClassPos = 0;
@@ -211,31 +264,38 @@ export function diffOvertakes(
         const gapAheadMeters = computeGapMeters(telemetry, playerCarIdx, carAheadIdx, trackLengthMeters);
 
         if (gapAheadMeters === undefined || gapAheadMeters >= OVERTAKE_MIN_GAP_M) {
-          const data: {
-            carIdx: number;
-            sustained: number;
-            position: number;
-            previousPosition: number;
-            gapAheadMeters?: number;
-            classPosition?: number;
-            previousClassPosition?: number;
-            isMultiClass?: boolean;
-          } = {
-            carIdx: playerCarIdx,
-            sustained: now - state.pendingLossTime,
-            position: overallPos,
-            previousPosition: state.pendingLossPrevPos,
-          };
+          // Round-trip suppression (issue #597) — mirror of the gain side: a
+          // loss back to the last announced position is a no-op since the last
+          // callout, so suppress it.
+          if (currentPos !== state.lastCalledPosition) {
+            const data: {
+              carIdx: number;
+              sustained: number;
+              position: number;
+              previousPosition: number;
+              gapAheadMeters?: number;
+              classPosition?: number;
+              previousClassPosition?: number;
+              isMultiClass?: boolean;
+            } = {
+              carIdx: playerCarIdx,
+              sustained: now - state.pendingLossTime,
+              position: overallPos,
+              previousPosition: state.pendingLossPrevPos,
+            };
 
-          if (gapAheadMeters !== undefined) data.gapAheadMeters = gapAheadMeters;
+            if (gapAheadMeters !== undefined) data.gapAheadMeters = gapAheadMeters;
 
-          if (rawClassPos > 0) data.classPosition = rawClassPos;
+            if (rawClassPos > 0) data.classPosition = rawClassPos;
 
-          if (state.pendingLossPrevClassPos > 0) data.previousClassPosition = state.pendingLossPrevClassPos;
+            if (state.pendingLossPrevClassPos > 0) data.previousClassPosition = state.pendingLossPrevClassPos;
 
-          if (isMultiClass !== null) data.isMultiClass = isMultiClass;
+            if (isMultiClass !== null) data.isMultiClass = isMultiClass;
 
-          emit({ event: "overtake.lost", data });
+            emit({ event: "overtake.lost", data });
+
+            state.lastCalledPosition = currentPos;
+          }
 
           state.pendingLossPos = -1;
           state.pendingLossPrevPos = 0;
@@ -300,6 +360,7 @@ function resetOvertakeState(state: TranslatorState): void {
   state.overtakeInitialized = false;
   state.lastPosition = -1;
   state.lastClassPosition = 0;
+  state.lastCalledPosition = -1;
   state.pendingOvertakePos = -1;
   state.pendingOvertakePrevPos = 0;
   state.pendingOvertakePrevClassPos = 0;

@@ -647,3 +647,192 @@ describe("diffOvertakes — multi-class detection (#588)", () => {
     expect(fires[0]!.data).toMatchObject({ classPosition: 1, isLeader: false });
   });
 });
+
+describe("diffOvertakes — round-trip suppression (#597)", () => {
+  it("suppresses a loss that merely reverses an unannounced gain (P5 → P4 → P5)", () => {
+    const { state } = seedAt(5); // lastCalledPosition seeds to P5
+    const { events, emit } = collect();
+
+    // Brief, unsustained dip to P4 — opens a pending gain but never confirms.
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100, emit);
+    // Back to P5 within the hold window — gain given back, opens a pending loss.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300, emit);
+    // Hold elapses at P5 — would emit "lost P5 (prev 4)", but P5 is the last
+    // announced position, so the round-trip stays silent.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("suppresses a gain that merely reverses an unannounced loss (P5 → P6 → P5)", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    diffOvertakes(state, tick({ playerPosition: 6 }), PLAYER_IDX, true, null, null, 100, emit);
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300, emit);
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("still fires a sustained announced gain and a later real loss back to the start", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    // Gain to P4, sustained → announced (lastCalledPosition becomes 4).
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100, emit);
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100 + OVERTAKE_HOLD_MS, emit);
+    let fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ position: 4, previousPosition: 5 });
+
+    // Real loss back to P5 — different from the last announced P4, so it fires.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 100 + OVERTAKE_HOLD_MS + 100, emit);
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5 }),
+      PLAYER_IDX,
+      true,
+      null,
+      null,
+      100 + 2 * OVERTAKE_HOLD_MS + 100,
+      emit,
+    );
+    fires = overtakeEvents(events);
+    expect(fires).toHaveLength(2);
+    expect(fires[1]!.event).toBe("overtake.lost");
+    expect(fires[1]!.data).toMatchObject({ position: 5, previousPosition: 4 });
+  });
+
+  it("suppresses a multi-class round-trip on CLASS position (class P3 → P2 → P3)", () => {
+    // Seed multi-class directly so `lastCalledPosition` is seeded in class
+    // space (the `seedAt` helper seeds single-class). Overall position holds
+    // at P5 throughout; only the class position flickers.
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      0,
+      emit,
+    );
+
+    // Class improves to P2, then reverts to P3 before it can sustain — net no
+    // class change since the seed, so neither a gain nor a loss should fire.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 2 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      300,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      300 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+});
+
+describe("diffOvertakes — race-start grid seeding (#597 / #568)", () => {
+  it("anchors the baseline to the starting grid position, not the live first tick (single-class)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // First eligible race tick: the live computed position is already P8 (start
+    // shuffle), but the announced grid slot is P10. The seed must anchor to P10.
+    diffOvertakes(state, tick({ playerPosition: 8 }), PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit, 10);
+    expect(state.lastPosition).toBe(10);
+    expect(state.lastCalledPosition).toBe(10);
+    expect(overtakeEvents(events)).toHaveLength(0);
+
+    // Holding P8 is a real two-position gain off the grid → announced as P8 (prev 10).
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, carBehindPct: 0.4 }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+      10,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, carBehindPct: 0.4 }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+      10,
+    );
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ position: 8, previousPosition: 10 });
+  });
+
+  it("suppresses an early round-trip back to the starting grid position", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Seed at the grid slot P10 (gap left unknown via null track length so the
+    // gate passes and the round-trip suppression is what's exercised).
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 0, emit, 10);
+    // P10 → P9 (unannounced) → back to P10, held → round-trip to the grid stays silent.
+    diffOvertakes(state, tick({ playerPosition: 9 }), PLAYER_IDX, true, null, null, 100, emit, 10);
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 300, emit, 10);
+    diffOvertakes(state, tick({ playerPosition: 10 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit, 10);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("ignores the overall grid seed in multi-class (keeps the live class seed)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Multi-class: live class P3, overall grid P10. The grid value is overall,
+    // so it must NOT seed the class-space baseline.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 10, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      0,
+      emit,
+      10,
+    );
+    expect(state.lastCalledPosition).toBe(3);
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+});
