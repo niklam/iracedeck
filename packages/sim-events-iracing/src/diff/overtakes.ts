@@ -43,6 +43,17 @@
  * accurate at the second-precision the hold window already gives us.
  * `isMultiClass` is resolved by the translator from session info and passed
  * through; the diff doesn't poke at `DriverInfo.Drivers` itself.
+ *
+ * **Multi-class detection (issue #588).** In a multi-class race the player's
+ * OVERALL position churns as other-class cars pass / pit / complete laps even
+ * while the player holds station in their own class, which produced a stream of
+ * phantom callouts. So change-detection runs on CLASS position when
+ * `isMultiClass`, overall position otherwise — i.e. on whichever position the
+ * Race Engineer actually speaks. The emitted payload still carries overall
+ * `position` / `previousPosition` and class `classPosition` /
+ * `previousClassPosition`; `isLeader` stays overall. The physical-gap gate is
+ * skipped in multi-class (the class neighbour can't be found from the overall
+ * `positions` array, and a sustained class change is already a real overtake).
  */
 import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -88,17 +99,33 @@ export function diffOvertakes(
     hasFlag(sessionFlags, Flags.YellowWaving);
 
   const positions = calculateRacePositions(telemetry);
-  const currentPos = playerCarIdx >= 0 ? positions[playerCarIdx] : -1;
+  const overallPos = playerCarIdx >= 0 ? positions[playerCarIdx] : -1;
 
-  if (currentPos === undefined || currentPos <= 0) return;
+  if (overallPos === undefined || overallPos <= 0) return;
 
   const rawClassPos =
     typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
       ? telemetry.PlayerCarClassPosition
       : 0;
 
+  // In a multi-class race the driver's OVERALL position churns constantly as
+  // faster- and slower-class cars pass, pit, and complete laps even while the
+  // driver holds station in their own class — which surfaced as a stream of
+  // phantom "lost / gained a position" callouts (issue #588). Detect on the
+  // position that's actually spoken: CLASS position in multi-class, overall
+  // otherwise. `position` / `previousPosition` in the payload stay overall and
+  // `classPosition` / `previousClassPosition` carry the class values (the
+  // consumer reads class in multi-class); `isLeader` stays overall because
+  // "leading the race" must mean overall P1, not class P1. The physical-gap
+  // gate is skipped in multi-class — the relevant neighbour is the class
+  // neighbour, which the overall `positions` array can't identify, and a class
+  // change held for the sustainment window is already a real class overtake.
+  const useClass = isMultiClass === true && rawClassPos > 0;
+  const currentPos = useClass ? rawClassPos : overallPos;
+  const lastEffective = useClass ? state.lastClassPosition : state.lastPosition;
+
   if (underCaution) {
-    state.lastPosition = currentPos;
+    state.lastPosition = overallPos;
     state.lastClassPosition = rawClassPos;
     state.pendingOvertakePos = -1;
     state.pendingLossPos = -1;
@@ -107,7 +134,7 @@ export function diffOvertakes(
   }
 
   if (!state.overtakeInitialized) {
-    state.lastPosition = currentPos;
+    state.lastPosition = overallPos;
     state.lastClassPosition = rawClassPos;
     state.overtakeInitialized = true;
 
@@ -118,7 +145,7 @@ export function diffOvertakes(
   if (state.pendingOvertakePos > 0) {
     if (currentPos <= state.pendingOvertakePos) {
       if (now - state.pendingOvertakeTime >= OVERTAKE_HOLD_MS) {
-        const carBehindIdx = findCarIdxAtPosition(positions, currentPos + 1);
+        const carBehindIdx = useClass ? -1 : findCarIdxAtPosition(positions, currentPos + 1);
         const gapBehindMeters = computeGapMeters(telemetry, playerCarIdx, carBehindIdx, trackLengthMeters);
 
         if (gapBehindMeters === undefined || gapBehindMeters >= OVERTAKE_MIN_GAP_M) {
@@ -135,9 +162,9 @@ export function diffOvertakes(
           } = {
             carIdx: playerCarIdx,
             sustained: now - state.pendingOvertakeTime,
-            position: currentPos,
+            position: overallPos,
             previousPosition: state.pendingOvertakePrevPos,
-            isLeader: currentPos === 1,
+            isLeader: overallPos === 1,
           };
 
           if (gapBehindMeters !== undefined) data.gapBehindMeters = gapBehindMeters;
@@ -180,7 +207,7 @@ export function diffOvertakes(
   if (state.pendingLossPos > 0) {
     if (currentPos >= state.pendingLossPos) {
       if (now - state.pendingLossTime >= OVERTAKE_HOLD_MS) {
-        const carAheadIdx = findCarIdxAtPosition(positions, currentPos - 1);
+        const carAheadIdx = useClass ? -1 : findCarIdxAtPosition(positions, currentPos - 1);
         const gapAheadMeters = computeGapMeters(telemetry, playerCarIdx, carAheadIdx, trackLengthMeters);
 
         if (gapAheadMeters === undefined || gapAheadMeters >= OVERTAKE_MIN_GAP_M) {
@@ -196,7 +223,7 @@ export function diffOvertakes(
           } = {
             carIdx: playerCarIdx,
             sustained: now - state.pendingLossTime,
-            position: currentPos,
+            position: overallPos,
             previousPosition: state.pendingLossPrevPos,
           };
 
@@ -234,8 +261,11 @@ export function diffOvertakes(
   }
 
   // ── Detect NEW gain ───────────────────────────────────────────────────
-  if (state.lastPosition > 0 && currentPos < state.lastPosition && state.pendingOvertakePos < 0) {
-    const jump = state.lastPosition - currentPos;
+  // Compare the EFFECTIVE position (class in multi-class) against its baseline,
+  // but record the overall + class "previous" values so the payload stays
+  // accurate in both spaces.
+  if (lastEffective > 0 && currentPos < lastEffective && state.pendingOvertakePos < 0) {
+    const jump = lastEffective - currentPos;
 
     if (jump <= OVERTAKE_MAX_JUMP) {
       state.pendingOvertakePos = currentPos;
@@ -246,8 +276,8 @@ export function diffOvertakes(
   }
 
   // ── Detect NEW loss ───────────────────────────────────────────────────
-  if (state.lastPosition > 0 && currentPos > state.lastPosition && state.pendingLossPos < 0) {
-    const jump = currentPos - state.lastPosition;
+  if (lastEffective > 0 && currentPos > lastEffective && state.pendingLossPos < 0) {
+    const jump = currentPos - lastEffective;
 
     if (jump <= OVERTAKE_MAX_JUMP) {
       state.pendingLossPos = currentPos;
@@ -257,7 +287,7 @@ export function diffOvertakes(
     }
   }
 
-  state.lastPosition = currentPos;
+  state.lastPosition = overallPos;
   state.lastClassPosition = rawClassPos;
 }
 
