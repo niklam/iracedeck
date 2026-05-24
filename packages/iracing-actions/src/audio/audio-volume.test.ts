@@ -229,10 +229,18 @@ describe("audio-volume", () => {
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
     });
 
-    it("is a no-op at the boundary", () => {
+    it("is a no-op at the upper boundary", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 100 });
 
       expect(stepRaceEngineerVolume("up")).toBe(100);
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op at the lower boundary", () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 0 });
+
+      expect(stepRaceEngineerVolume("down")).toBe(0);
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
