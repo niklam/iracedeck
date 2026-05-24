@@ -27,13 +27,24 @@ export type TranslatorState = {
   approachExitingSuppressed: boolean;
   approachAlertFired: boolean;
   /**
-   * Pit-box count-in marks already spoken during the current pit-road visit
-   * (issue #600). The diff fires each {@link PitBoxMark} at most once per
-   * visit; the set is cleared whenever the car is not on pit road, so a second
-   * stop counts down again. No `initialized` flag is needed — the diff fires
-   * purely on the live distance-to-box, never on a connect-time transition.
+   * Pit-box count-in marks already spoken (or seeded as already-passed) during
+   * the current pit-road visit (issue #600). The diff fires each
+   * {@link PitBoxMark} at most once per visit; the set is cleared whenever the
+   * car is not on pit road, so a second stop counts down again. On the first
+   * valid tick of a visit the thresholds the car is already past are seeded
+   * here so only marks still AHEAD can fire — true threshold-crossing semantics,
+   * so entering pit road mid-band never speaks a just-passed number.
    */
   pitBoxMarksSpoken: Set<PitBoxMark>;
+  /**
+   * Whether the one-time entry seeding has run for the current pit-road visit
+   * (issue #600). Reset to false when the car leaves pit road; set true after
+   * the first tick with a resolvable box position seeds already-passed marks
+   * into {@link pitBoxMarksSpoken}. Gated on valid data (not merely on
+   * `OnPitRoad`) so a visit that starts before the session YAML is parsed still
+   * seeds correctly on the first tick the box becomes known.
+   */
+  pitBoxEntrySeeded: boolean;
   /**
    * Whether the current lap began at pit exit. Set true by `diffPitLane`
    * when emitting `pitLane.exited`; cleared by `diffLifecycle` when
@@ -313,6 +324,7 @@ export function createInitialState(): TranslatorState {
     approachExitingSuppressed: false,
     approachAlertFired: false,
     pitBoxMarksSpoken: new Set(),
+    pitBoxEntrySeeded: false,
 
     flagStateInitialized: false,
     activeFlags: new Set(),

@@ -20,16 +20,23 @@
  *   - a normal approach fires each mark once as the car descends through the
  *     bands;
  *   - entering pit road already within range fires only the marks still ahead
- *     (no burst of skipped numbers);
+ *     (no burst of skipped numbers) — see the entry-seeding below;
  *   - beyond the first mark (>120 m) nothing fires, and once the box is passed
  *     the distance folds to ~a full lap so no band matches and the count stops.
  *
- * The spoken-marks set lives on `TranslatorState` and is cleared whenever the
- * car is not on pit road, so a second stop counts down again. No first-tick
- * seeding is needed — the diff fires purely on the live distance, never on a
- * connect-time transition. A car parked in its stall (`PlayerCarInPitStall`)
- * has arrived and needs no count-in, so it is gated out (this also suppresses a
- * spurious "pit now" when connecting while already in the box).
+ * **Threshold-crossing semantics.** On the first valid tick of a pit-road visit
+ * the diff seeds every threshold the car is already past into the spoken-marks
+ * set, so a mark only fires when the car genuinely crosses its threshold from
+ * above. Joining pit road mid-band (e.g. at 70 m) therefore never speaks a
+ * just-passed number ("three"); the count picks up at the next mark ahead.
+ *
+ * The spoken-marks set + the entry-seeded flag live on `TranslatorState` and are
+ * both cleared whenever the car is not on pit road, so a second stop counts down
+ * again. There is no connect-time seeding concern — the diff fires purely on the
+ * live distance, never on a connect-time transition. A car parked in its stall
+ * (`PlayerCarInPitStall`) has arrived and needs no count-in, so it is gated out
+ * (this also suppresses a spurious "pit now" when connecting while already in
+ * the box).
  */
 import type { PitBoxMark } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -90,6 +97,8 @@ export function diffPitBoxCountdown(
     // Reset per-visit tracking so the next pit-road entry counts down again.
     if (state.pitBoxMarksSpoken.size > 0) state.pitBoxMarksSpoken.clear();
 
+    state.pitBoxEntrySeeded = false;
+
     return;
   }
 
@@ -113,6 +122,20 @@ export function diffPitBoxCountdown(
   // short way round.
   const remainingFraction = (((boxTrkPct - lapDistPct) % 1) + 1) % 1;
   const remainingMeters = remainingFraction * trackLengthMeters;
+
+  // First valid tick of this pit-road visit: seed every threshold the car is
+  // already past so only marks still AHEAD can fire (true threshold-crossing
+  // semantics). Without this, joining pit road mid-band would speak a
+  // just-passed number — e.g. entering at 70 m would say "three" (the 80 m
+  // mark). Gated on valid data rather than `OnPitRoad` so a visit that starts
+  // before the box position is known still seeds on the first tick it resolves.
+  if (!state.pitBoxEntrySeeded) {
+    for (const { mark, meters } of PIT_BOX_COUNTDOWN_MARKS) {
+      if (remainingMeters < meters) state.pitBoxMarksSpoken.add(mark);
+    }
+
+    state.pitBoxEntrySeeded = true;
+  }
 
   const mark = selectPitBoxMark(remainingMeters);
 
