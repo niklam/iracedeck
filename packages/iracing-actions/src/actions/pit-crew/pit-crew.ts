@@ -1,9 +1,4 @@
-import {
-  isBackgroundTestInFlight,
-  playBackgroundTest,
-  playRadarTest,
-  setRadarEnabled,
-} from "@iracedeck/audio-scenarios/pit-crew";
+import { playBackgroundTest, playRadarTest, setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import {
   applyGraphicTransform,
@@ -35,12 +30,31 @@ import {
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
+import {
+  applyRaceEngineerAudio,
+  applyRadarVolume,
+  isRaceEngineerEnabled,
+  isRadarEnabled,
+  readBackgroundVolume,
+  readRaceEngineerVolume,
+  readRadarVolume,
+  setRaceEngineerTestInFlight,
+  setRaceEngineerToggleInFlight,
+  stepRadarVolume,
+} from "../../audio/audio-volume.js";
 import { borderColorForState, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 
+// Re-export the shared audio-volume helpers that the Pit Crew test suite
+// imports from this module by path (back-compat after the #590 extraction).
+// These local bindings are also used internally below.
+export {
+  applyRadarVolume,
+  applyRaceEngineerAudio,
+  setRaceEngineerTestInFlight as _setRaceEngineerTestInFlightForTests,
+  setRaceEngineerToggleInFlight as _setRaceEngineerToggleInFlightForTests,
+};
+
 const WHITE = "#ffffff";
-const VOLUME_STEP = 5;
-const VOLUME_MIN = 0;
-const VOLUME_MAX = 100;
 
 /** @internal Exported for testing */
 export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
@@ -54,9 +68,11 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  *   - `race-engineer`: flips the global `raceEngineerEnabled` gate.
  *   - `radar`: flips the global `radarEnabled` gate and stops/starts the
  *     directional tick loop synchronously.
- *   - `radar-volume`: steps the global `radarVolume` by ±{@link VOLUME_STEP},
- *     clamped to [{@link VOLUME_MIN}, {@link VOLUME_MAX}]. `direction`
- *     selects whether the step is up or down.
+ *   - `radar-volume`: steps the global `radarVolume` via `stepRadarVolume`
+ *     (shared with the Audio Controls action). `direction` selects whether
+ *     the step is up or down. Hidden from the Property Inspector (issue #590)
+ *     in favour of the Audio Controls "Radar" volume buttons, but kept
+ *     functional so existing buttons configured with this mode keep working.
  *
  * All user-visible feature state (enabled flags, volume) lives in global
  * settings so every Pit Crew button reflects the same values. Persisted
@@ -74,19 +90,6 @@ type PitCrewSettings = z.infer<typeof Settings>;
 type Mode = PitCrewSettings["mode"];
 
 // ─── Global-state helpers ─────────────────────────────────────────────────────
-
-function isRaceEngineerEnabled(): boolean {
-  // Both feature gates default to off — fresh installs and never-toggled
-  // setups stay quiet until the user opts in. Only an explicit `true`
-  // (set when the user presses the toggle) enables the feature.
-  // Key renamed from `raceEngineerEnabled` for issue #515.
-  return (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true;
-}
-
-function isRadarEnabled(): boolean {
-  // Key renamed from `radarEnabled` for issue #515.
-  return (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
-}
 
 /**
  * Read the per-callout opt-in for the Race Engineer toggle acknowledgment
@@ -109,75 +112,6 @@ function isRadioCheckEnabled(): boolean {
   return (getGlobalSettings() as Record<string, unknown>).calloutEnabledTelemetryConnectRadioCheck !== false;
 }
 
-function readRadarVolume(): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>).radarVolume;
-  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
-
-  if (!Number.isFinite(n)) return VOLUME_MAX;
-
-  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
-}
-
-/**
- * @internal Exported for testing.
- *
- * Copy the current global `radarVolume` onto `AudioBus.Alerts`. Called on
- * every action mount so the live audio bus matches persisted settings, and
- * whenever any Pit Crew instance steps the volume.
- */
-export function applyRadarVolume(): void {
-  getAudio().setBusVolume(AudioBus.Alerts, readRadarVolume() / 100);
-}
-
-function readRaceEngineerVolume(): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>).raceEngineerVolume;
-  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
-
-  if (!Number.isFinite(n)) return VOLUME_MAX;
-
-  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
-}
-
-function readBackgroundVolume(): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>).backgroundVolume;
-  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
-
-  if (!Number.isFinite(n)) return VOLUME_MAX;
-
-  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
-}
-
-/**
- * Whether the Race Engineer voice Test preview is currently playing.
- * Tracked at module scope so the global-settings listener (which calls
- * `applyRaceEngineerAudio` whenever any global changes) doesn't re-mute
- * `AudioBus.Voice` mid-preview when Race Engineer is off — moving the
- * volume slider during the test would otherwise cut it off.
- */
-let raceEngineerTestInFlight = false;
-
-/** @internal Exposed for testing. */
-export function _setRaceEngineerTestInFlightForTests(value: boolean): void {
-  raceEngineerTestInFlight = value;
-}
-
-/**
- * Whether a Race Engineer toggle acknowledgment ("going silent" /
- * "resuming") is currently playing. Same bypass mechanic as
- * `raceEngineerTestInFlight`: when true, `applyRaceEngineerAudio` leaves
- * `AudioBus.Voice` audible even though the master gate just flipped to
- * off — without it, flipping `pitCrewRaceEngineerEnabled` synchronously
- * (which is mandatory so Background and other in-flight callouts mute on
- * the tick the user pressed) would also mute the very clip that's
- * announcing the gate change. See issue #554.
- */
-let raceEngineerToggleInFlight = false;
-
-/** @internal Exposed for testing. */
-export function _setRaceEngineerToggleInFlightForTests(value: boolean): void {
-  raceEngineerToggleInFlight = value;
-}
-
 /**
  * Last observed SDK connection state across every visible Pit Crew
  * instance — module-scope so the telemetry-connect radio check fires at
@@ -198,42 +132,6 @@ export function _setLastTelemetryConnectedForTests(value: boolean | null): void 
 
 /** SDK subscription id prefix for the per-instance radio-check listener. */
 const RADIO_CHECK_SUB_PREFIX = "pitCrewRadioCheck:";
-
-/**
- * @internal Exported for testing.
- *
- * Apply the Race Engineer master gate to the relevant audio buses:
- *   - `AudioBus.Voice` — engineer voice clips, acks, toggle confirmations.
- *   - `AudioBus.Background` — pit ambient loop and walkie-talkie SFX.
- *
- * When the gate is on, Voice tracks `raceEngineerVolume` and Background
- * tracks `backgroundVolume` (issue #471 — separate slider so users with
- * audio-processing sensitivities can dial the background under the voice
- * without losing it entirely). When the gate is off, both buses are
- * silenced UNLESS a slider Test preview is currently playing — Test
- * buttons are explicit "I want to hear this regardless of the master
- * gate" actions, mirroring how the Radar Test always plays at the
- * configured radar volume even when the radar gate is off. Without the
- * bypass, dragging the volume slider mid-preview (which fires the
- * global-settings listener → `applyRaceEngineerAudio`) would push the
- * bus back to 0 and cut the test off. The toggle acknowledgment bypass
- * (`raceEngineerToggleInFlight`, issue #554) is the same shape: the
- * "going silent" line must keep playing on Voice after the gate flips
- * off, even though everything else on Voice/Background does silence
- * immediately. `AudioBus.Alerts` (radar) is intentionally untouched —
- * it has its own toggle.
- */
-export function applyRaceEngineerAudio(): void {
-  const enabled = isRaceEngineerEnabled();
-  const voice = readRaceEngineerVolume() / 100;
-  const background = readBackgroundVolume() / 100;
-
-  const voiceUnmuted = enabled || raceEngineerTestInFlight || raceEngineerToggleInFlight;
-  const backgroundUnmuted = enabled || isBackgroundTestInFlight();
-
-  getAudio().setBusVolume(AudioBus.Voice, voiceUnmuted ? voice : 0);
-  getAudio().setBusVolume(AudioBus.Background, backgroundUnmuted ? background : 0);
-}
 
 /**
  * Read a JSON-array global-settings value (used for the runtime-pushed
@@ -643,16 +541,16 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       // hold it at 0). Set the in-flight flag first so any global-settings
       // listener firing mid-preview (e.g. user dragging the volume slider)
       // doesn't re-mute the bus via applyRaceEngineerAudio.
-      _setRaceEngineerTestInFlightForTests(true);
+      setRaceEngineerTestInFlight(true);
       getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
       const started = playRaceEngineerVoiceTest(() => {
-        _setRaceEngineerTestInFlightForTests(false);
+        setRaceEngineerTestInFlight(false);
         applyRaceEngineerAudio();
       });
 
       if (!started) {
-        _setRaceEngineerTestInFlightForTests(false);
+        setRaceEngineerTestInFlight(false);
         applyRaceEngineerAudio();
         this.logger.warn("Race engineer voice test skipped — no voice available");
       }
@@ -689,9 +587,11 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       case "radar":
         this.toggleRadar();
         break;
-      case "radar-volume":
-        this.stepRadarVolume(settings.direction);
+      case "radar-volume": {
+        const next = stepRadarVolume(settings.direction);
+        this.logger.info(`Radar volume ${settings.direction} → ${next}`);
         break;
+      }
     }
 
     await this.rerenderAll();
@@ -815,13 +715,13 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       return;
     }
 
-    raceEngineerToggleInFlight = true;
+    setRaceEngineerToggleInFlight(true);
     // Force Voice to the slider value so the ack is audible regardless of
     // the master gate. Mirrors how the Voice Test bypasses the gate.
     getAudio().setBusVolume(AudioBus.Voice, readRaceEngineerVolume() / 100);
 
     playVoiceSequence([`voice/${voice}/toggle/${clipName}.mp3`], () => {
-      raceEngineerToggleInFlight = false;
+      setRaceEngineerToggleInFlight(false);
       applyRaceEngineerAudio();
     });
   }
@@ -834,20 +734,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // a tick fire after the user already released the key.
     setRadarEnabled(next);
     updateGlobalSettings({ pitCrewRadarEnabled: next });
-  }
-
-  private stepRadarVolume(direction: "up" | "down"): void {
-    const current = readRadarVolume();
-    const next = Math.max(
-      VOLUME_MIN,
-      Math.min(VOLUME_MAX, current + (direction === "up" ? VOLUME_STEP : -VOLUME_STEP)),
-    );
-
-    if (next === current) return;
-
-    this.logger.info(`Radar volume ${direction}: ${current} → ${next}`);
-    getAudio().setBusVolume(AudioBus.Alerts, next / 100);
-    updateGlobalSettings({ radarVolume: next });
   }
 
   private async rerenderAll(): Promise<void> {

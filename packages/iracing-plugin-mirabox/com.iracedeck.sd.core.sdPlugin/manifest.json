@@ -24,7 +24,7 @@
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (voice chat, master volume)",
+      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
         "Keypad",

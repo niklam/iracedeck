@@ -10,7 +10,10 @@
 			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
 				<option value="race-engineer">Race Engineer Toggle</option>
 				<option value="radar">Radar</option>
-				<option value="radar-volume">Radar Volume</option>
+				<!-- Radar Volume moved to the Audio Controls action (issue #590). The option
+				     is removed from this dropdown for new buttons but kept (via JS) when a
+				     button already uses it, so existing setups keep working. -->
+				<option value="radar-volume" id="radar-volume-option">Radar Volume</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -346,7 +349,24 @@
 				const directionItem = document.getElementById("direction-item");
 				if (!modeSelect || !directionItem) return;
 
+				// Radar Volume is deprecated here (issue #590) — it now lives in the
+				// Audio Controls action. Keep the option only when this button already
+				// uses it so existing setups keep a working PI; remove it otherwise so
+				// new buttons can't pick it.
+				const radarVolumeOption = modeSelect.querySelector('option[value="radar-volume"]');
+				const radarVolumeOptionParent = radarVolumeOption ? radarVolumeOption.parentNode : null;
+				const syncRadarVolumeOption = (mode) => {
+					if (!radarVolumeOption || !radarVolumeOptionParent) return;
+					const isAttached = radarVolumeOption.parentNode === radarVolumeOptionParent;
+					if (mode === "radar-volume") {
+						if (!isAttached) radarVolumeOptionParent.appendChild(radarVolumeOption);
+					} else if (isAttached) {
+						radarVolumeOption.remove();
+					}
+				};
+
 				const update = (mode) => {
+					syncRadarVolumeOption(mode);
 					if (mode === "radar-volume") directionItem.classList.remove("hidden");
 					else directionItem.classList.add("hidden");
 				};

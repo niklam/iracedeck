@@ -38,14 +38,14 @@ When asked about actions or controls:
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 8 | Live session data: incidents, laps, position, fuel, flags, track wetness |
-| Driving Controls | 6 | 30 | AI spotter, audio, black boxes, look direction, car control, pit crew (radar + radar-volume; Race Engineer voice mode planned) |
+| Driving Controls | 6 | 31 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (radar; Race Engineer voice mode planned) |
 | Cockpit & Interface | 5 | 34 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **290** | |
+| **Total** | **31** | **291** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -63,11 +63,11 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | AI Spotter Controls | 7 | damage-report, weather-report, toggle-report-laps, announce-leader, louder, quieter, silence |
-| Audio Controls | 3 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action) |
+| Audio Controls | 5 | push-to-talk (hold), voice-chat (with volume-up/down/mute action), master (with volume-up/down action), race-engineer (with volume-up/down action; steps global raceEngineerVolume ±5, respects the master enable gate), radar (with volume-up/down action; steps global radarVolume ±5). The race-engineer/radar categories control iRaceDeck's own audio buses directly (no keyboard binding); dial control is out of scope for now (#590). |
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
-| Pit Crew | 2 | radar (toggles the directional proximity tick loop), radar-volume (with Direction up/down; steps global radarVolume by ±5, clamped 0–100). A Race Engineer voice mode is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. |
+| Pit Crew | 1 | radar (toggles the directional proximity tick loop). The radar-volume mode moved to the Audio Controls action (#590) — it's hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working. A Race Engineer voice mode is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. |
 
 ### Cockpit & Interface
 

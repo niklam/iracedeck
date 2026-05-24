@@ -73,7 +73,11 @@
             { "category": "voice-chat", "action": "mute", "label": "Voice Chat Mute" },
             { "category": "master", "action": "volume-up", "label": "Master Volume Up" },
             { "category": "master", "action": "volume-down", "label": "Master Volume Down" },
-            { "category": "master", "action": "mute", "label": "Master Mute" }
+            { "category": "master", "action": "mute", "label": "Master Mute" },
+            { "category": "race-engineer", "action": "volume-up", "label": "Race Engineer Volume Up" },
+            { "category": "race-engineer", "action": "volume-down", "label": "Race Engineer Volume Down" },
+            { "category": "radar", "action": "volume-up", "label": "Radar Volume Up" },
+            { "category": "radar", "action": "volume-down", "label": "Radar Volume Down" }
           ]
         },
         {
@@ -137,20 +141,22 @@
           "file": "pit-crew.ts",
           "encoder": false,
           "settingsKeys": ["mode", "direction"],
-          "description": "Multi-mode action for the iRaceDeck audio framework. The initial release exposes only the directional Radar proximity ticks; a Race Engineer voice feature is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios.",
+          "description": "Multi-mode action for the iRaceDeck audio framework. The initial release exposes only the directional Radar proximity ticks; a Race Engineer voice feature is planned for a follow-up release and will return to the Mode dropdown alongside its voice scenarios. The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working.",
           "modes": [
             { "mode": "radar", "label": "Radar", "description": "Toggles the directional proximity tick loop on/off" },
             {
               "mode": "radar-volume",
               "direction": "up",
               "label": "Radar Volume Up",
-              "description": "Bumps the global Radar volume by 5 (max 100)"
+              "deprecated": true,
+              "description": "Deprecated (#590) — moved to Audio Controls. Hidden from the PI but kept functional. Bumps the global Radar volume by 5 (max 100)"
             },
             {
               "mode": "radar-volume",
               "direction": "down",
               "label": "Radar Volume Down",
-              "description": "Reduces the global Radar volume by 5 (min 0)"
+              "deprecated": true,
+              "description": "Deprecated (#590) — moved to Audio Controls. Hidden from the PI but kept functional. Reduces the global Radar volume by 5 (min 0)"
             }
           ]
         }
