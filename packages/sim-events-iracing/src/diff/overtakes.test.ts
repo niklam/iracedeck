@@ -815,24 +815,104 @@ describe("diffOvertakes — race-start grid seeding (#597 / #568)", () => {
     expect(overtakeEvents(events)).toHaveLength(0);
   });
 
-  it("ignores the overall grid seed in multi-class (keeps the live class seed)", () => {
+  it("anchors the class baseline to the class grid slot, not the live first tick, in multi-class (#599)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Multi-class: live class P3, overall grid P10. The grid value is overall,
-    // so it must NOT seed the class-space baseline.
+    // Multi-class race start: the live class position reads P3 on the first
+    // eligible tick (opening-lap shuffle), but the announced CLASS grid slot is
+    // P5. The translator now passes the class slot in multi-class (#599), so the
+    // seed anchors the CLASS baseline to it; the overall baseline keeps tracking
+    // the live overall position.
     diffOvertakes(
       state,
-      tick({ playerPosition: 10, playerClassPosition: 3 }),
+      tick({ playerPosition: 8, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true, // multi-class
+      TRACK_LENGTH_M,
+      0,
+      emit,
+      5, // class grid slot
+    );
+    expect(state.lastClassPosition).toBe(5);
+    expect(state.lastCalledPosition).toBe(5);
+    expect(state.lastPosition).toBe(8);
+    expect(overtakeEvents(events)).toHaveLength(0);
+
+    // Holding class P3 is a real two-spot class gain off the grid → announced
+    // as class P3 (previously class P5).
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+      5,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, playerClassPosition: 3 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+      5,
+    );
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ classPosition: 3, previousClassPosition: 5, isMultiClass: true });
+  });
+
+  it("does not announce settling from the unreliable live first tick to the class grid slot in multi-class (#599)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // The first eligible tick reads class P3 (start-line shuffle), but the
+    // authoritative class grid slot is P5. The baseline anchors to the grid
+    // slot, so the driver running at their actual class grid slot P5 is NOT
+    // announced as having "lost" two spots from the noisy first reading —
+    // mirrors the single-class anchor behaviour above.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, playerClassPosition: 3 }),
       PLAYER_IDX,
       true,
       true,
       TRACK_LENGTH_M,
       0,
       emit,
-      10,
+      5,
     );
-    expect(state.lastCalledPosition).toBe(3);
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, playerClassPosition: 5 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+      5,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 8, playerClassPosition: 5 }),
+      PLAYER_IDX,
+      true,
+      true,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+      5,
+    );
+
     expect(overtakeEvents(events)).toHaveLength(0);
   });
 });

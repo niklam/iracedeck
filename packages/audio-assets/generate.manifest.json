@@ -8353,6 +8353,22 @@
       "generatedAt": "2026-05-24T13:23:27.309Z",
       "requestId": "iQBJJAhXbcir27SPW5k9"
     },
+    "voice/default/race-status/still-leading-class-01.mp3": {
+      "hash": "c38cd58b6aa394b3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're still leading our class. Keep it up.",
+      "generatedAt": "2026-05-24T16:23:40.178Z",
+      "requestId": "ItJCw393gsudM67Tfecg"
+    },
+    "voice/default/position-overtake/nice-pass-leader-class-01.mp3": {
+      "hash": "03de52071e4fbb9d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> We're now leading our class. <break time=\"0.4s\"…",
+      "generatedAt": "2026-05-24T16:23:40.498Z",
+      "requestId": "NHYyuYBmr5hZZc94QzNP"
+    },
     "voice/default/pit-box/five-01.mp3": {
       "hash": "992af8a9ff09137f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

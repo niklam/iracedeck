@@ -1838,6 +1838,102 @@ describe("sim-events-iracing translator", () => {
       expect(conditions).not.toBeNull();
       expect(conditions && "sessionType" in conditions).toBe(false);
     });
+
+    it("reports the CLASS grid slot in a multi-class race, not the overall qualifying position (issue #599)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }, // player
+            { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 2, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 3, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 4, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+        // Overall qualifying order (0-indexed Position). The player (CarIdx 0)
+        // is overall P5, but only two same-class cars (CarIdx 1 @ overall P1,
+        // CarIdx 3 @ overall P3) start ahead of them in class → class P3.
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 0, Position: 4 },
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 2, Position: 1 },
+            { CarIdx: 3, Position: 2 },
+            { CarIdx: 4, Position: 3 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBe(3);
+    });
+
+    it("reports class pole (P1) when the player is first in their class but not overall in multi-class (issue #599)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }, // player
+            { CarIdx: 1, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 2, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+        // The player is overall P2 (a faster-class car qualified ahead), but
+        // first in their own class → class pole, P1.
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 0, Position: 1 },
+            { CarIdx: 2, Position: 2 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      expect(getRaceStartConditions()?.playerCarPosition).toBe(1);
+    });
+
+    it("falls back to the overall qualifying slot in multi-class when the player has no Drivers entry (issue #599)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          // Two classes make this multi-class, but the player's own CarClassID
+          // can't be resolved (CarIdx 0 absent from Drivers) → fall back to the
+          // overall grid slot rather than guess a class slot.
+          Drivers: [
+            { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 2, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 0, Position: 1 },
+            { CarIdx: 2, Position: 2 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ TrackWetness: TrackWetness.Dry, TrackTempCrew: 25, AirTemp: 18 }));
+
+      // Overall P2 (Position 1 + 1) — class slot unresolvable, so keep overall.
+      expect(getRaceStartConditions()?.playerCarPosition).toBe(2);
+    });
   });
 
   describe("envelope shape", () => {

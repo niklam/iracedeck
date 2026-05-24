@@ -64,12 +64,15 @@
  * gain to the same position). It's updated only when a callout is emitted,
  * rolled silently under caution, and compared in the same effective space the
  * detection uses. At a race start the first-tick seed anchors the baseline to
- * the player's announced starting grid position (`startingGridPosition` — the
- * same value the race-start callout speaks, #568) so early-race gain/loss is
- * measured from the grid and a round-trip back to it is suppressed; this
- * applies in single-class only, since the grid value is overall and
- * multi-class detection runs in class space (it falls back to the live seed
- * there). Without a grid position it seeds to the live position.
+ * the player's announced starting grid slot (`startingGridPosition` — the same
+ * value the race-start callout speaks, #568) so early-race gain/loss is
+ * measured from the grid and a round-trip back to it is suppressed. The grid
+ * slot is the EFFECTIVE slot (class in multi-class, overall otherwise, #599),
+ * so the seed is applied in the matching detection space: the class baseline in
+ * multi-class, the overall baseline in single-class. The transient multi-class
+ * tick before the class position populates detects in overall space while the
+ * grid value is a class slot, so it falls back to the live seed there. Without
+ * a grid position it seeds to the live position.
  */
 import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -97,15 +100,15 @@ export function diffOvertakes(
   now: number,
   emit: EmitFn,
   /**
-   * The player's announced starting grid position (overall, 1-indexed) — the
-   * same value the race-start callout speaks (`resolveStartingGridPosition`,
-   * #568). When available, the first-tick seed anchors the overtake baseline
-   * to it so the first move off the grid is measured from the grid and an
-   * early round-trip back to it is suppressed (#597 follow-up). Optional and
+   * The player's announced starting grid slot (1-indexed) — the same value the
+   * race-start callout speaks (`resolveStartingGridPosition`, #568). It's the
+   * EFFECTIVE slot: the CLASS slot in a multi-class race, overall otherwise
+   * (#599). When available, the first-tick seed anchors the overtake baseline
+   * to it in the matching detection space (class in multi-class, overall in
+   * single-class) so the first move off the grid is measured from the grid and
+   * an early round-trip back to it is suppressed (#597 follow-up). Optional and
    * trailing so the diff's many call sites stay unchanged; only the translator
-   * passes it. Used in single-class only — it's an OVERALL position, and
-   * multi-class detection runs in class space, so the live class seed is kept
-   * there.
+   * passes it.
    */
   startingGridPosition: number | null = null,
 ): void {
@@ -166,19 +169,27 @@ export function diffOvertakes(
   }
 
   if (!state.overtakeInitialized) {
-    // Anchor the baseline to the announced starting grid position when it's
-    // available (#597 follow-up / #568). Both the detection baseline
-    // (`lastPosition`) and the suppression anchor (`lastCalledPosition`) start
-    // at the grid slot, so the first genuine move off the grid is announced
-    // and an early round-trip back to it is suppressed. The grid value is
-    // OVERALL (same source as the race-start callout), so it only applies in
-    // single-class — multi-class detection runs in class space, where the live
-    // class position is the correct seed.
-    const useGridSeed = !useClass && startingGridPosition !== null && startingGridPosition > 0;
+    // Anchor the baseline to the announced starting grid slot when it's
+    // available (#597 follow-up / #568). Both the detection baseline and the
+    // suppression anchor (`lastCalledPosition`) start at the grid slot, so the
+    // first genuine move off the grid is announced and an early round-trip back
+    // to it is suppressed.
+    //
+    // `startingGridPosition` is the EFFECTIVE grid slot — the CLASS slot in a
+    // multi-class race, overall otherwise (#599) — so anchor in the SAME space
+    // the detection runs in: the class baseline when detecting in class space,
+    // the overall baseline when single-class. The transient multi-class window
+    // before the class position populates (`rawClassPos === 0`, so `useClass`
+    // is false) detects in OVERALL space while the grid value is a CLASS slot —
+    // a space mismatch, so fall back to the live seed rather than mis-anchor.
+    const haveGrid = startingGridPosition !== null && startingGridPosition > 0;
+    const seedInClassSpace = useClass && haveGrid;
+    const seedInOverallSpace = !useClass && isMultiClass !== true && haveGrid;
+    const gridValue = haveGrid ? startingGridPosition : 0; // narrowed to number; only read when a seed flag is set
 
-    state.lastPosition = useGridSeed ? startingGridPosition : overallPos;
-    state.lastClassPosition = rawClassPos;
-    state.lastCalledPosition = useGridSeed ? startingGridPosition : currentPos;
+    state.lastPosition = seedInOverallSpace ? gridValue : overallPos;
+    state.lastClassPosition = seedInClassSpace ? gridValue : rawClassPos;
+    state.lastCalledPosition = (useClass ? seedInClassSpace : seedInOverallSpace) ? gridValue : currentPos;
     state.overtakeInitialized = true;
 
     return;

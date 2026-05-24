@@ -114,6 +114,8 @@ Around 3 seconds after iRacing changes to a race session — even if you're stil
 - **P2..P64** — *"Time to race, Niklas. Qualifying put us to P seven. Track temperature is thirty-two degrees Celsius, air temperature is twenty-four degrees Celsius, and the track is dry."*
 - **Position unknown or above P64** — the grid-position clause is skipped entirely; the engineer still speaks the greeting and conditions.
 
+In a multi-class race the grid position is your **class** grid slot, not your overall qualifying rank — so a GT3 racer who qualified P15 overall but third in class hears *"Qualifying put us to P three,"* and leading your class off the line plays *"Starting from pole."* This matches how the rest of the race callouts focus on your class.
+
 Because the callout fires off the session-change event (not your first time on track), it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions are unaffected and continue to use the standard session-start brief above.
 
 ## Lap Time (Best Lap)
@@ -136,7 +138,7 @@ When iRacing flags the just-completed lap as invalid (track-limits cut, pit-lane
 
 ## Race Position Status (every 3 laps)
 
-During race sessions, the Race Engineer announces your current position every 3 laps as long as your position holds — *"We're currently pee five."* The lap counter resets every time your effective position changes, so a gain or loss restarts the cadence cleanly. When you're running first, you get a dedicated line — *"We're still leading the race. Keep it up."* — instead of the generic status.
+During race sessions, the Race Engineer announces your current position every 3 laps as long as your position holds — *"We're currently pee five."* The lap counter resets every time your effective position changes, so a gain or loss restarts the cadence cleanly. When you're running first, you get a dedicated line — *"We're still leading the race. Keep it up."* — instead of the generic status. In a multi-class race this tracks your **class** position, so leading your class plays *"We're still leading our class. Keep it up."*
 
 The status is suppressed on the final lap; the race-end callout speaks the result there instead. Qualifying, practice, and test sessions stay silent — the qualifying position-change callout already covers those.
 
@@ -168,7 +170,7 @@ The engineer stays quiet about a swap that wasn't a clean racing move. The whole
 
 A 10 m physical-gap check on top of the three-second sustainment also filters the "clean but still side-by-side" case where the swap could easily reverse, and sim-glitch position jumps (more than three places in a single tick — a tow or teleport) are ignored.
 
-In multi-class series the engineer reads your class position, not the overall. The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
+In multi-class series the engineer reads your class position, not the overall — including the leader line: taking your **class** lead plays *"Nice pass! We're now leading our class. Let's keep it that way!"* (the overall-leader wording is reserved for single-class races). The gain and loss callouts have independent opt-outs in the Property Inspector — disable one without affecting the other.
 
 ## Pit-box count-in
 
