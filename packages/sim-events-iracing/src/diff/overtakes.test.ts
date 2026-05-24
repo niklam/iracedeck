@@ -647,3 +647,61 @@ describe("diffOvertakes — multi-class detection (#588)", () => {
     expect(fires[0]!.data).toMatchObject({ classPosition: 1, isLeader: false });
   });
 });
+
+describe("diffOvertakes — round-trip suppression (#597)", () => {
+  it("suppresses a loss that merely reverses an unannounced gain (P5 → P4 → P5)", () => {
+    const { state } = seedAt(5); // lastCalledPosition seeds to P5
+    const { events, emit } = collect();
+
+    // Brief, unsustained dip to P4 — opens a pending gain but never confirms.
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100, emit);
+    // Back to P5 within the hold window — gain given back, opens a pending loss.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300, emit);
+    // Hold elapses at P5 — would emit "lost P5 (prev 4)", but P5 is the last
+    // announced position, so the round-trip stays silent.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("suppresses a gain that merely reverses an unannounced loss (P5 → P6 → P5)", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    diffOvertakes(state, tick({ playerPosition: 6 }), PLAYER_IDX, true, null, null, 100, emit);
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300, emit);
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 300 + OVERTAKE_HOLD_MS, emit);
+
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("still fires a sustained announced gain and a later real loss back to the start", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    // Gain to P4, sustained → announced (lastCalledPosition becomes 4).
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100, emit);
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, null, 100 + OVERTAKE_HOLD_MS, emit);
+    let fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ position: 4, previousPosition: 5 });
+
+    // Real loss back to P5 — different from the last announced P4, so it fires.
+    diffOvertakes(state, tick({ playerPosition: 5 }), PLAYER_IDX, true, null, null, 100 + OVERTAKE_HOLD_MS + 100, emit);
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5 }),
+      PLAYER_IDX,
+      true,
+      null,
+      null,
+      100 + 2 * OVERTAKE_HOLD_MS + 100,
+      emit,
+    );
+    fires = overtakeEvents(events);
+    expect(fires).toHaveLength(2);
+    expect(fires[1]!.event).toBe("overtake.lost");
+    expect(fires[1]!.data).toMatchObject({ position: 5, previousPosition: 4 });
+  });
+});

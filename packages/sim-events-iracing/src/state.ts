@@ -159,6 +159,18 @@ export type TranslatorState = {
   pendingOvertakeTime: number;
   lastConfirmedOvertakeCarIdx: number;
   /**
+   * Last position actually announced via an overtake gain/loss callout
+   * (issue #597). A confirmed gain/loss is suppressed when the current
+   * position equals this value — i.e. a round-trip back to the called
+   * position (e.g. P10 → P9 → P10) where the intermediate position never
+   * sustained long enough to be announced. Updated only when a callout is
+   * emitted; seeded on the first eligible tick and rolled silently under
+   * caution; compared in the same effective space the detection uses
+   * (class position in multi-class per #588, overall otherwise). `-1`
+   * before seeding.
+   */
+  lastCalledPosition: number;
+  /**
    * Pre-gain baseline captured at the moment a pending gain is opened
    * (issue #574). Persists across ticks where the pending state is
    * being held / deepened, so the eventual `overtake.completed` payload's
@@ -349,6 +361,7 @@ export function createInitialState(): TranslatorState {
     pendingOvertakePos: -1,
     pendingOvertakeTime: 0,
     lastConfirmedOvertakeCarIdx: -1,
+    lastCalledPosition: -1,
     pendingOvertakePrevPos: 0,
     pendingOvertakePrevClassPos: 0,
     lastClassPosition: 0,
