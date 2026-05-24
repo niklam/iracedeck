@@ -173,4 +173,14 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "qualifying-3-laps-left": ["voice/{voice}/qualifying-invalidation/3-laps-left-01.mp3"],
   "qualifying-4-laps-left": ["voice/{voice}/qualifying-invalidation/4-laps-left-01.mp3"],
   "qualifying-5-laps-left": ["voice/{voice}/qualifying-invalidation/5-laps-left-01.mp3"],
+
+  // Pit-box count-in pools (issue #600). One pool per distance mark; single-clip
+  // today, named `-NN` so future variants append cleanly. Terse delivery — no
+  // radio frame around the countdown (see `pit-box.ts`).
+  "pit-box-five": ["voice/{voice}/pit-box/five-01.mp3"],
+  "pit-box-four": ["voice/{voice}/pit-box/four-01.mp3"],
+  "pit-box-three": ["voice/{voice}/pit-box/three-01.mp3"],
+  "pit-box-two": ["voice/{voice}/pit-box/two-01.mp3"],
+  "pit-box-one": ["voice/{voice}/pit-box/one-01.mp3"],
+  "pit-box-pit-now": ["voice/{voice}/pit-box/pit-now-01.mp3"],
 };

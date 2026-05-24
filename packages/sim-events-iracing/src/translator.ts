@@ -45,6 +45,7 @@ import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
+import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
@@ -863,6 +864,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
     startingGridPosition,
   );
+  // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
+  // convert the LapDistPct→box gap into meters; the box itself comes from
+  // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
+  diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
   diffRadar(self.state, telemetry, emit);
   diffTrackWetness(self.state, telemetry, emit);
@@ -937,6 +942,27 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
+}
+
+/**
+ * Player's pit-box position as a 0–1 fraction of the lap, from
+ * `SessionInfo.DriverInfo.DriverPitTrkPct` (issue #600). iRacing reports the
+ * box up front, so the pit-box count-in works on the very first stop without
+ * having to learn the location. Returns `null` when session info is missing or
+ * the value is out of the open (0, 1) range (iRacing uses 0 / out-of-range as
+ * the "no assigned box" sentinel) — the count-in diff then stays silent.
+ *
+ * @internal Exported for testing.
+ */
+export function resolvePitBoxTrkPct(sessionInfo: Record<string, unknown> | null): number | null {
+  if (!sessionInfo) return null;
+
+  const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
+  const pct = driverInfo?.DriverPitTrkPct;
+
+  if (typeof pct !== "number" || pct <= 0 || pct >= 1) return null;
+
+  return pct;
 }
 
 /**

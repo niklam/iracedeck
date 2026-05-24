@@ -22,8 +22,10 @@ import {
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
+  PIT_BOX_CALLOUT_SETTING_KEYS,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
+  type PitBoxCalloutId,
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
   POSITION_CALLOUT_SETTING_KEYS,
@@ -434,6 +436,9 @@ registerPitCrew(
   // when the swap wasn't a clean racing moment (cars alongside / off-track /
   // crawling / pit road / recent incident).
   getOvertakeGate,
+  // Pit-box count-in opt-in (issue #600). Single subject (`count-in`) gating
+  // all six distance-mark scenarios; live-read like the other callout families.
+  (id: PitBoxCalloutId) => (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

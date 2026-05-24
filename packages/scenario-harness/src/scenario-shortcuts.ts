@@ -1165,4 +1165,57 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isLeader: false,
     },
   },
+
+  // ── Pit Box (issue #600) ──
+  // Fire each count-in mark directly so you hear the clip without driving
+  // LapDistPct toward DriverPitTrkPct through `/api/telemetry`. Same-family
+  // preempt: fire two in a row to confirm the second cancels the first.
+  {
+    id: "pit-box-five",
+    category: "Pit Box",
+    label: "Five (120 m)",
+    description: "Count-in mark fired at 120 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "five" },
+  },
+  {
+    id: "pit-box-four",
+    category: "Pit Box",
+    label: "Four (100 m)",
+    description: "Count-in mark fired at 100 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "four" },
+  },
+  {
+    id: "pit-box-three",
+    category: "Pit Box",
+    label: "Three (80 m)",
+    description: "Count-in mark fired at 80 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "three" },
+  },
+  {
+    id: "pit-box-two",
+    category: "Pit Box",
+    label: "Two (60 m)",
+    description: "Count-in mark fired at 60 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "two" },
+  },
+  {
+    id: "pit-box-one",
+    category: "Pit Box",
+    label: "One (40 m)",
+    description: "Count-in mark fired at 40 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "one" },
+  },
+  {
+    id: "pit-box-pit-now",
+    category: "Pit Box",
+    label: "Pit now (20 m)",
+    description: "Final count-in cue fired at 20 m remaining to the pit box.",
+    event: "pitBox.countdown",
+    data: { mark: "pit-now" },
+  },
 ];

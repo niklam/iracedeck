@@ -15,8 +15,10 @@ import {
   OVERTAKE_CALLOUT_SETTING_KEYS,
   type OvertakeCalloutId,
   type OvertakeGate,
+  PIT_BOX_CALLOUT_SETTING_KEYS,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
+  type PitBoxCalloutId,
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
   POSITION_CALLOUT_SETTING_KEYS,
@@ -449,6 +451,10 @@ registerPitCrew(
   // crawling / pit road / recent incident). Composed from live telemetry +
   // the tracked incident time above.
   getOvertakeGate,
+  // Pit-box count-in opt-in (issue #600). Single subject (`count-in`) gating
+  // all six distance-mark scenarios. Same live-read pattern as the other
+  // callout families so toggling off mid-session takes effect on the next mark.
+  (id: PitBoxCalloutId) => (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.
