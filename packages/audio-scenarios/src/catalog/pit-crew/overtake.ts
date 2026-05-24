@@ -10,7 +10,8 @@
  *        Let's keep it that way!" (self-contained — states the position, so it
  *        gets NO follow-up readout)
  *      - lost: "Come on, <name>. Don't give up positions like that." (the
- *        driver-name slot reuses the session-start greeting pool, #542)
+ *        "Come on, <name>." part is a per-name full clip from the
+ *        `position-overtake-come-on` group; #591)
  *
  *   2. **Position readout** (position-readout.ts) — a separate `low`-priority
  *      scenario that defers behind the reaction and then says "We're currently
@@ -39,7 +40,7 @@ import { tryClaimReaction } from "./position-readout.js";
 export type OvertakeDriverNameResolver = () => string | null;
 
 const OVERTAKE_BASE = "position-overtake";
-const SESSION_START_GREETING_GROUP = "session-start-greeting";
+const COME_ON_GROUP = "position-overtake-come-on";
 
 /** Build a full `voice/{voice}/...` path for a `var` resolver (no base applied). */
 function voicePath(group: string, name: string): string {
@@ -86,15 +87,16 @@ export function overtakeLossIsAnnounceable(data: SimEventOf<"overtake.lost">["da
 }
 
 /**
- * Register the overtake reaction vars. Only the loss line needs a var (the
- * driver-name slot); the gain reaction is static clips and reads `isLeader`
- * straight off the event payload in its `if` step.
+ * Register the overtake reaction vars. Only the loss line needs a var: the
+ * full "Come on, <name>." clip resolved per active driver name. The gain
+ * reaction is static clips and reads `isLeader` straight off the event payload
+ * in its `if` step.
  */
 export function registerOvertakeVars(engine: IScenarioEngine, getDriverName: OvertakeDriverNameResolver): void {
-  engine.defineVar("overtake.lost.driverName", () => {
+  engine.defineVar("overtake.lost.comeOn", () => {
     const name = getDriverName();
 
-    return name ? voicePath(SESSION_START_GREETING_GROUP, name) : null;
+    return name ? voicePath(COME_ON_GROUP, name) : null;
   });
 }
 
@@ -160,8 +162,7 @@ export function buildOvertakeLostScenario(
 ): Scenario {
   const sequence: Step[] = [
     "@pit-crew.radio-open",
-    clipPath("come-on-01.mp3"),
-    { var: "overtake.lost.driverName" },
+    { var: "overtake.lost.comeOn" },
     clipPath("dont-give-up-positions-01.mp3"),
     "@pit-crew.radio-close",
   ];
