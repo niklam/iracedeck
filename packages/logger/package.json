@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/logger",
-  "version": "1.18.0",
+  "version": "1.19.0-rc.0",
   "description": "Logger interface for iRaceDeck packages",
   "type": "module",
   "main": "dist/index.js",
