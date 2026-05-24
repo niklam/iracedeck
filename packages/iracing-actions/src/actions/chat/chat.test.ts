@@ -524,11 +524,20 @@ describe("Chat", () => {
     });
 
     it("should call chat.sendMessage() on keyDown for send-message", async () => {
+      // Mirror the schema-parsed global settings the action sees in production
+      // (getGlobalSettings() always returns the 200 ms defaults, never undefined).
+      mockGetGlobalSettings.mockReturnValueOnce({
+        chatOpenToPasteDelayMs: 200,
+        chatPasteToEnterDelayMs: 200,
+        chatEnterToCloseDelayMs: 200,
+      });
+
       await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
 
       expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
-        openToPasteDelayMs: undefined,
-        pasteToEnterDelayMs: undefined,
+        openToPasteDelayMs: 200,
+        pasteToEnterDelayMs: 200,
+        enterToCloseDelayMs: 200,
       });
     });
 
@@ -536,6 +545,7 @@ describe("Chat", () => {
       mockGetGlobalSettings.mockReturnValueOnce({
         chatOpenToPasteDelayMs: 350,
         chatPasteToEnterDelayMs: 500,
+        chatEnterToCloseDelayMs: 600,
       });
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "send-message", message: "Hello!" }) as any);
@@ -543,6 +553,7 @@ describe("Chat", () => {
       expect(mockSendMessage).toHaveBeenCalledWith("Hello!", {
         openToPasteDelayMs: 350,
         pasteToEnterDelayMs: 500,
+        enterToCloseDelayMs: 600,
       });
     });
 

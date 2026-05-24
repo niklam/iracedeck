@@ -6,19 +6,21 @@
 import type { BroadcastMsg, IRSDKHeader, VarHeader } from "@iracedeck/iracing-native";
 
 /**
- * Tunable delays for the Chat > Send Message pipeline (issue #581).
+ * Tunable delays for the Chat > Send Message pipeline (issues #581, #589).
  *
- * Both are in milliseconds and optional — when omitted, the native layer
+ * All are in milliseconds and optional — when omitted, the native layer
  * falls back to its built-in default (200 ms). The action layer reads the
- * `chatOpenToPasteDelayMs` / `chatPasteToEnterDelayMs` global settings and
- * forwards them here; the SDK and native layers stay decoupled from
- * `deck-core`.
+ * `chatOpenToPasteDelayMs` / `chatPasteToEnterDelayMs` / `chatEnterToCloseDelayMs`
+ * global settings and forwards them here; the SDK and native layers stay
+ * decoupled from `deck-core`.
  */
 export interface ChatSendTiming {
   /** Wait after opening the chat window (BeginChat) before pasting. */
   openToPasteDelayMs?: number;
   /** Wait after pasting before pressing Enter. */
   pasteToEnterDelayMs?: number;
+  /** Wait after pressing Enter before closing the chat box (Cancel) (issue #589). */
+  enterToCloseDelayMs?: number;
 }
 
 /**
@@ -43,5 +45,10 @@ export interface INativeSDK {
   broadcastMsg(msg: BroadcastMsg | number, var1: number, var2?: number, var3?: number): void;
 
   // Chat
-  sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number): Promise<boolean>;
+  sendChatMessage(
+    message: string,
+    openToPasteDelayMs?: number,
+    pasteToEnterDelayMs?: number,
+    enterToCloseDelayMs?: number,
+  ): Promise<boolean>;
 }

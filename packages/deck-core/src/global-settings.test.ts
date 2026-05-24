@@ -516,3 +516,33 @@ describe("fastestLapSearchDelayMs (issue #577)", () => {
     expect(() => GlobalSettingsSchema.parse({ fastestLapSearchDelayMs: 1001 })).toThrow();
   });
 });
+
+describe("chatEnterToCloseDelayMs (issue #589)", () => {
+  it("defaults to 200 when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.chatEnterToCloseDelayMs).toBe(200);
+  });
+
+  it("accepts the lower bound (0 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: 0 }) as Record<string, unknown>;
+    expect(parsed.chatEnterToCloseDelayMs).toBe(0);
+  });
+
+  it("accepts the upper bound (2000 ms)", () => {
+    const parsed = GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: 2000 }) as Record<string, unknown>;
+    expect(parsed.chatEnterToCloseDelayMs).toBe(2000);
+  });
+
+  it("coerces a numeric string from the Property Inspector slider", () => {
+    const parsed = GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: "300" }) as Record<string, unknown>;
+    expect(parsed.chatEnterToCloseDelayMs).toBe(300);
+  });
+
+  it("rejects values below 0", () => {
+    expect(() => GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: -1 })).toThrow();
+  });
+
+  it("rejects values above 2000", () => {
+    expect(() => GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: 2001 })).toThrow();
+  });
+});

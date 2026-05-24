@@ -605,6 +605,15 @@ export const GlobalSettingsSchema = z
      * Range 0–2000 ms, step 100, default 200.
      */
     chatPasteToEnterDelayMs: z.coerce.number().min(0).max(2000).default(200),
+    /**
+     * Delay in milliseconds the Chat > Send Message pipeline waits after
+     * pressing Enter before closing the chat box (Cancel broadcast) (issue
+     * #589). Too short and the close fires before iRacing has finished
+     * processing the submit, so the Cancel is dropped and the chat window
+     * keeps focus. Race Admin doesn't close the chat, so this delay doesn't
+     * apply there. Range 0–2000 ms, step 100, default 200.
+     */
+    chatEnterToCloseDelayMs: z.coerce.number().min(0).max(2000).default(200),
   })
   .passthrough();
 
