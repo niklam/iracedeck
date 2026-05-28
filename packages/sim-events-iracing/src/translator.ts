@@ -740,6 +740,15 @@ function handleTick(
   // subscribers even when the replay state wipe later this tick destroys
   // `state.lastSessionNum` — the race-start callout (issue #568) depends on
   // this.
+  //
+  // Issue #604: both pre-guard `session.changed` paths (the fresh-connect
+  // synthesis below and the SessionNum-delta block after it) are
+  // additionally gated on `!isReplayOnlySession(sessionInfo)`. The
+  // discriminator is iRacing's own `WeekendInfo.SimMode` — `"replay"` while
+  // the user is in the replay UI, `"full"` while live. It does NOT flip
+  // during the brief `IsReplayPlaying` flicker between live sessions, so the
+  // #568 path is preserved while replay-only scrubbing / standalone replay
+  // viewing stays silent.
   const currentSessionNum = telemetry.SessionNum ?? null;
 
   // Fresh-connect race-start synthesis (issue #568 follow-up). On the first
@@ -753,47 +762,76 @@ function handleTick(
   // delta could trigger on a later tick.
   if (!self.freshConnectFireChecked && currentSessionNum !== null) {
     const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
-    // Capture the RAW session type first. `classifySessionType("")` returns
-    // "race" (its safe default), so classifying before the session YAML has
-    // loaded would misread a not-yet-known session as race and could fire a
-    // false synthetic session.changed. Only classify once the raw value is
-    // non-empty; an empty raw value keeps the latch open (same as
-    // SessionState.Invalid) so we wait for session info to settle.
-    const rawSessionType = resolveSessionType(sessionInfo, telemetry);
-    const sessionType = rawSessionType ? classifySessionType(rawSessionType) : undefined;
-    const rawState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
-    const isPreGreen =
-      rawState === SessionState.GetInCar || rawState === SessionState.Warmup || rawState === SessionState.ParadeLaps;
-    const isAtOrAfterGreen =
-      rawState === SessionState.Racing || rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
 
-    if (sessionType === undefined) {
-      // Raw session type not known yet (session YAML still loading). Keep the
-      // latch open — don't classify or fire until we have a real value.
-    } else if (sessionType !== "race") {
-      // Not a race session — fresh-connect synthesis doesn't apply here.
-      self.logger.info(
-        `Race-start fresh-connect: skipped (sessionType="${sessionType}", SessionNum=${currentSessionNum})`,
-      );
-      self.freshConnectFireChecked = true;
-    } else if (isPreGreen) {
-      self.logger.info(
-        `Race-start fresh-connect: firing synthetic session.changed (SessionNum=${currentSessionNum}, SessionState=${rawState})`,
-      );
-      publish(self, { event: "session.changed", data: { from: -1, to: currentSessionNum } }, telemetry, Date.now());
-      self.freshConnectFireChecked = true;
-    } else if (isAtOrAfterGreen) {
-      // Mid-race reconnect — too late to brief the grid. Latch silently.
-      self.logger.info(
-        `Race-start fresh-connect: skipped (mid-race reconnect, SessionState=${rawState}, SessionNum=${currentSessionNum})`,
-      );
-      self.freshConnectFireChecked = true;
+    // Issue #604: skip the synthesis (and don't latch) while the user is
+    // watching a replay. The session YAML's `SimMode` distinguishes replay
+    // viewing from a live session that's transiently in replay mode during
+    // a qual → race transition — see `isReplayOnlySession`. Without this,
+    // connecting while a saved race replay is open synthesizes a
+    // session.changed { from: -1, to: race } and the race-start callout
+    // briefs a race the user isn't in.
+    if (isReplayOnlySession(sessionInfo)) {
+      // Don't latch — a later live tick (e.g. user exits the replay UI) re-
+      // evaluates and can still fire the synthesis.
+      self.logger.info(`Race-start fresh-connect: skipped (replay-only session, SessionNum=${currentSessionNum})`);
+    } else {
+      // Capture the RAW session type first. `classifySessionType("")` returns
+      // "race" (its safe default), so classifying before the session YAML has
+      // loaded would misread a not-yet-known session as race and could fire a
+      // false synthetic session.changed. Only classify once the raw value is
+      // non-empty; an empty raw value keeps the latch open (same as
+      // SessionState.Invalid) so we wait for session info to settle.
+      const rawSessionType = resolveSessionType(sessionInfo, telemetry);
+      const sessionType = rawSessionType ? classifySessionType(rawSessionType) : undefined;
+      const rawState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
+      const isPreGreen =
+        rawState === SessionState.GetInCar || rawState === SessionState.Warmup || rawState === SessionState.ParadeLaps;
+      const isAtOrAfterGreen =
+        rawState === SessionState.Racing || rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
+
+      if (sessionType === undefined) {
+        // Raw session type not known yet (session YAML still loading). Keep the
+        // latch open — don't classify or fire until we have a real value.
+      } else if (sessionType !== "race") {
+        // Not a race session — fresh-connect synthesis doesn't apply here.
+        self.logger.info(
+          `Race-start fresh-connect: skipped (sessionType="${sessionType}", SessionNum=${currentSessionNum})`,
+        );
+        self.freshConnectFireChecked = true;
+      } else if (isPreGreen) {
+        self.logger.info(
+          `Race-start fresh-connect: firing synthetic session.changed (SessionNum=${currentSessionNum}, SessionState=${rawState})`,
+        );
+        publish(self, { event: "session.changed", data: { from: -1, to: currentSessionNum } }, telemetry, Date.now());
+        self.freshConnectFireChecked = true;
+      } else if (isAtOrAfterGreen) {
+        // Mid-race reconnect — too late to brief the grid. Latch silently.
+        self.logger.info(
+          `Race-start fresh-connect: skipped (mid-race reconnect, SessionState=${rawState}, SessionNum=${currentSessionNum})`,
+        );
+        self.freshConnectFireChecked = true;
+      }
+      // SessionState.Invalid (or any unknown value): keep waiting. Telemetry
+      // may still be settling on the first ticks after connect.
     }
-    // SessionState.Invalid (or any unknown value): keep waiting. Telemetry
-    // may still be settling on the first ticks after connect.
   }
 
+  // Issue #604: any update that touches the SessionNum delta path must check
+  // for replay-only first. When the user scrubs across a session boundary in
+  // the replay UI, `currentSessionNum` flips to the scrubbed-to value — we
+  // must NOT publish session.changed (that would brief a race they're not in)
+  // AND we must NOT advance `lastObservedSessionNum` (otherwise exiting back
+  // to live would emit a phantom session.changed measured against the
+  // scrubbed value rather than the last live SessionNum). The `SimMode` field
+  // is unaffected by the brief `IsReplayPlaying` flicker during a live
+  // qual → race transition, so the #568 path stays intact.
+  const replayOnlySession =
+    currentSessionNum !== null
+      ? isReplayOnlySession(self.controller.getSessionInfo() as Record<string, unknown> | null)
+      : false;
+
   if (
+    !replayOnlySession &&
     currentSessionNum !== null &&
     self.lastObservedSessionNum !== null &&
     currentSessionNum !== self.lastObservedSessionNum
@@ -822,7 +860,7 @@ function handleTick(
     self.state.lastSessionNum = currentSessionNum;
   }
 
-  if (currentSessionNum !== null) {
+  if (currentSessionNum !== null && !replayOnlySession) {
     self.lastObservedSessionNum = currentSessionNum;
   }
 
@@ -1120,6 +1158,27 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
+}
+
+/**
+ * Is the user passively watching a replay rather than in a live session
+ * (issue #604)? Reads `WeekendInfo.SimMode` — iRacing's self-reported sim
+ * mode. Known values: `"full"` for live driving, `"replay"` for the replay
+ * UI. Critically, this does NOT flip during the brief replay-mode tick
+ * window in a live qualifying → race transition (that's a transient
+ * `IsReplayPlaying` flicker; `SimMode` stays `"full"`), so gating on it
+ * preserves the #568 pre-guard `session.changed` emit for live transitions
+ * while suppressing it when the user is only watching a replay.
+ *
+ * Defaults to `false` (not replay-only) when session info or the field is
+ * missing — same behavior as before this gate existed.
+ */
+function isReplayOnlySession(sessionInfo: Record<string, unknown> | null): boolean {
+  if (!sessionInfo) return false;
+
+  const weekendInfo = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+
+  return weekendInfo?.SimMode === "replay";
 }
 
 /**
