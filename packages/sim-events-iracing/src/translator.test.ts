@@ -1154,6 +1154,152 @@ describe("sim-events-iracing translator", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
+    // Issue #604: while the user is in iRacing's replay UI
+    // (`WeekendInfo.SimMode === "replay"`), session.changed must not fire —
+    // scrubbing across a saved replay's session boundary would brief a race
+    // the driver isn't in. The discriminator is iRacing's own SimMode field
+    // rather than `IsReplayPlaying`, which transiently flips true during a
+    // live qual → race transition (#568) and would otherwise mis-suppress
+    // genuine live transitions.
+    describe("replay-only session gate (issue #604)", () => {
+      it("does NOT emit session.changed on SessionNum delta in replay-only mode", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }, { SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "replay" },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Seed the tracker, then scrub the replay across a session boundary.
+        controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+        controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: true, IsOnTrack: false }));
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("does NOT synthesize session.changed on fresh-connect in replay-only mode", () => {
+        // Plugin connects while a saved race replay is open. SessionState is
+        // pre-green (in the replay frame) and SessionType is Race — the
+        // synthesis would fire without the replay-only gate.
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "replay" },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(
+          telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: true, IsOnTrack: false }),
+        );
+
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("does not latch the fresh-connect check while replay-only — fires later when SimMode flips to full", () => {
+        // Scenario: user opens a replay, plugin connects, then user closes
+        // the replay and starts a real race session. The fresh-connect
+        // synthesis must still fire once SimMode goes back to "full".
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "replay" },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Tick 1: replay-only, no synthesis.
+        controller.__tick(
+          telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: true, IsOnTrack: false }),
+        );
+        expect(handler).not.toHaveBeenCalled();
+
+        // User exits the replay UI; SimMode flips back to "full".
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full" },
+        });
+        controller.__tick(
+          telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar, IsReplayPlaying: false, IsOnTrack: false }),
+        );
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+      });
+
+      it("freezes lastObservedSessionNum during replay so exit-to-live emits no phantom session.changed", () => {
+        // Driver is live in qualifying (SessionNum=1), opens the replay UI,
+        // scrubs back into practice (SessionNum=0), then exits to live (still
+        // SessionNum=1). The phantom we're guarding against would be the
+        // exit-tick seeing currentSessionNum=1 vs lastObservedSessionNum=0
+        // and emitting session.changed { from: 0, to: 1 } — race-start
+        // briefing a race the driver still isn't in.
+        const controller = createMockController();
+        // Start live.
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Open Qualify" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full" },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Tick 1: live in qualifying. Seeds lastObservedSessionNum=1.
+        controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+        expect(handler).not.toHaveBeenCalled();
+
+        // Tick 2-3: user opens replay UI and scrubs back to practice.
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Open Qualify" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "replay" },
+        });
+        controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+        controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+
+        // Tick 4: user exits replay UI; back to live in qualifying.
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Open Qualify" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full" },
+        });
+        controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+
+        // No emit — lastObservedSessionNum was frozen at 1 during the scrub,
+        // so the exit-tick sees no delta.
+        expect(handler).not.toHaveBeenCalled();
+      });
+
+      it("still emits session.changed on a real live transition through the IsReplayPlaying flicker (#568 regression guard)", () => {
+        // A live qual → race transition briefly reports IsReplayPlaying=true
+        // while the next session loads. SimMode stays "full" the whole time,
+        // so the gate must not suppress the emit.
+        const controller = createMockController();
+        controller.__setSessionInfo({
+          SessionInfo: { Sessions: [{ SessionType: "Open Qualify" }, { SessionType: "Race" }] },
+          WeekendInfo: { TrackID: 42, SimMode: "full" },
+        });
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+        // Transient replay tick during session load.
+        controller.__tick(telemetry({ SessionNum: 2, IsReplayPlaying: true, IsOnTrack: false }));
+        // Race goes live.
+        controller.__tick(telemetry({ SessionNum: 2, IsReplayPlaying: false, IsOnTrack: false }));
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: 1, to: 2 });
+      });
+    });
+
     // Issue #568 follow-up: fresh-connect race-start synthesis. When the
     // plugin connects directly into a race session there's no prior
     // SessionNum to drive a delta, so the race-start callout would never
