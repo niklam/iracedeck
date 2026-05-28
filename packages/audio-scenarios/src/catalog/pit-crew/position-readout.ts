@@ -55,13 +55,27 @@ export type LivePositionResolver = () => LivePosition | null;
 export const POSITION_READOUT_COOLDOWN_MS = 20_000;
 
 /**
- * Cooldown (ms) for the overtake REACTION catchphrase ("Nice pass" / "Come on,
- * don't give up positions"), per direction (issue #574 follow-up). When a
- * catchphrase is on cooldown the reaction is skipped but the position readout
- * still fires — so a battle gives "Nice pass. We're currently P5." then just
- * "We're currently P4." on the next pass, instead of repeating the catchphrase.
+ * Probability that an ORDINARY (non-podium) overtake gain/loss adds the spoken
+ * reaction catchphrase ("Nice pass" / "Come on, don't give up positions")
+ * (issue #603). Replaces the old fixed 20 s reaction cooldown: most passes now
+ * get just the position readout, and roughly one in three also gets the
+ * catchphrase, so a busy mid-pack battle doesn't repeat "Nice pass" on every
+ * swap. Podium positions (P1/P2/P3) bypass this gate entirely — see
+ * {@link shouldReactToOvertake}.
  */
-export const REACTION_COOLDOWN_MS = 20_000;
+export const REACTION_CHANCE = 1 / 3;
+
+/** Highest position that always reacts, exempt from the random gate (podium). */
+export const REACTION_ALWAYS_MAX_POSITION = 3;
+
+/**
+ * Cooldown (ms) for the "We're currently" intro on the position readout (issue
+ * #603). If the intro was spoken within this window, the readout drops it and
+ * says just the bare position ("P[n]"); otherwise it says the full "We're
+ * currently P[n]". A change of more than one position always restores the full
+ * intro even inside the window — see the `positionReadout.intro` var.
+ */
+export const INTRO_COOLDOWN_MS = 30_000;
 
 const POSITION_GROUP_INTRO_WORSE = "position-intro-worse";
 const POSITION_GROUP_NUMBER = "position-number";
@@ -70,7 +84,12 @@ const POSITION_GROUP_NUMBER = "position-number";
 export const POSITION_CURRENTLY_CLIP = `${POSITION_GROUP_INTRO_WORSE}/currently-01.mp3`;
 
 let lastPositionAnnouncedAt = 0;
-const lastReactionAt: Record<"gained" | "lost", number> = { gained: 0, lost: 0 };
+/** Last time the "We're currently" intro was spoken (issue #603 bare/full logic). */
+let lastIntroAt = 0;
+/** Last position number actually spoken by a readout (issue #603 bare/full delta). */
+let lastSpokenPosition = 0;
+/** Injectable RNG for the reaction gate — overridable in tests. */
+let reactionRandom: () => number = Math.random;
 
 /** Read-only check of whether the position cooldown window has elapsed. */
 export function canAnnouncePosition(now: number = Date.now()): boolean {
@@ -103,25 +122,56 @@ export function markPositionAnnounced(now: number = Date.now()): void {
 }
 
 /**
- * Atomic check-and-set for the per-direction reaction-catchphrase cooldown.
- * Returns `true` (and starts a fresh window) iff the catchphrase for this
- * direction hasn't played within {@link REACTION_COOLDOWN_MS}.
+ * Whether an overtake gain/loss should speak the reaction catchphrase (issue
+ * #603). Podium positions (P1/P2/P3, by EFFECTIVE position) always react —
+ * gaining or defending a podium spot is always worth a word. Every other
+ * position rolls {@link REACTION_CHANCE} (~1 in 3); when it loses, only the
+ * position readout fires. The position readout itself is a separate scenario
+ * and is unaffected by this gate.
  */
-export function tryClaimReaction(direction: "gained" | "lost", now: number = Date.now()): boolean {
-  const last = lastReactionAt[direction];
+export function shouldReactToOvertake(effectivePosition: number): boolean {
+  if (effectivePosition >= 1 && effectivePosition <= REACTION_ALWAYS_MAX_POSITION) return true;
 
-  if (last !== 0 && now - last < REACTION_COOLDOWN_MS) return false;
-
-  lastReactionAt[direction] = now;
-
-  return true;
+  return reactionRandom() < REACTION_CHANCE;
 }
 
-/** Reset all position + reaction cooldowns. @internal test isolation only. */
+/**
+ * Decide whether a position readout should speak the full "We're currently"
+ * intro or just the bare "P[n]" (issue #603), and record this readout as the
+ * latest. The intro plays when: nothing has been spoken yet, the last intro was
+ * more than {@link INTRO_COOLDOWN_MS} ago, or the position changed by more than
+ * one since the last readout (a multi-position jump always gets the full intro,
+ * even inside the window). Otherwise the intro is dropped for the bare number.
+ * Has the side effect of advancing the intro/last-position trackers, so call it
+ * exactly once per readout (from the `positionReadout.intro` var).
+ */
+export function shouldSpeakIntro(currentPosition: number, now: number = Date.now()): boolean {
+  const useIntro =
+    lastSpokenPosition <= 0 ||
+    now - lastIntroAt >= INTRO_COOLDOWN_MS ||
+    Math.abs(currentPosition - lastSpokenPosition) > 1;
+
+  if (useIntro) lastIntroAt = now;
+
+  lastSpokenPosition = currentPosition;
+
+  return useIntro;
+}
+
+/**
+ * Override the reaction-gate RNG. @internal test isolation only — pass a stub
+ * returning a fixed value to make {@link shouldReactToOvertake} deterministic.
+ */
+export function _setReactionRandom(rng: () => number): void {
+  reactionRandom = rng;
+}
+
+/** Reset all position-readout cooldowns + reaction RNG. @internal test isolation only. */
 export function _resetPositionReadoutCooldown(): void {
   lastPositionAnnouncedAt = 0;
-  lastReactionAt.gained = 0;
-  lastReactionAt.lost = 0;
+  lastIntroAt = 0;
+  lastSpokenPosition = 0;
+  reactionRandom = Math.random;
 }
 
 /**
@@ -177,6 +227,18 @@ function voicePath(group: string, name: string): string {
  * {@link tryClaimPositionAnnouncement}.
  */
 export function registerPositionReadoutVars(engine: IScenarioEngine, getLivePosition: LivePositionResolver): void {
+  // "We're currently" intro — resolves to the intro clip when due, or `null` (a
+  // no-op step, leaving a bare "P[n]") inside the 30 s window for a ≤1-position
+  // move (issue #603). Runs before the number var in the sequence so it reads
+  // the previous spoken position for the delta and records this one.
+  engine.defineVar("positionReadout.intro", () => {
+    const n = selectLivePosition(getLivePosition());
+
+    if (n === null || !positionNumberIsSpeakable(n)) return null;
+
+    return shouldSpeakIntro(n) ? voicePath(POSITION_GROUP_INTRO_WORSE, "currently-01") : null;
+  });
+
   engine.defineVar("positionReadout.number", () => {
     const n = selectLivePosition(getLivePosition());
 
@@ -186,9 +248,18 @@ export function registerPositionReadoutVars(engine: IScenarioEngine, getLivePosi
   });
 }
 
-/** Shared readout sequence: radio frame + "We're currently" + live number. */
+/**
+ * Shared readout sequence: radio frame + (conditional) "We're currently" intro
+ * + live number. The intro var drops to a bare "P[n]" inside the 30 s intro
+ * window (issue #603).
+ */
 function readoutSequence(): Step[] {
-  return ["@pit-crew.radio-open", POSITION_CURRENTLY_CLIP, { var: "positionReadout.number" }, "@pit-crew.radio-close"];
+  return [
+    "@pit-crew.radio-open",
+    { var: "positionReadout.intro" },
+    { var: "positionReadout.number" },
+    "@pit-crew.radio-close",
+  ];
 }
 
 /**
@@ -196,8 +267,8 @@ function readoutSequence(): Step[] {
  * #574). Fires on `overtake.completed` but reads LIVE position at speak-time.
  * `priority: "low"` + `family: "position-readout"` so it defers behind the
  * reaction (normal, `family: "overtake"`) and plays once the bus is idle — the
- * "two announcements" the user asked for. Skips the leader case (the leader
- * reaction already states the position).
+ * "two announcements" the user asked for. Skips podium gains (P1/P2/P3): their
+ * dedicated reaction lines already state the position (issue #603).
  *
  * The position ALWAYS fires on a (gate-allowed) overtake — it does not check
  * the position cooldown, only {@link markPositionAnnounced}s it so the
@@ -219,10 +290,13 @@ export function buildOvertakeGainedPositionScenario(
 
         const data = ev.data as SimEventOf<"overtake.completed">["data"];
 
-        // Leader reaction ("We're now leading the race/our class") already
-        // states the position. Effective leader = class P1 in multi-class,
-        // overall P1 otherwise (#599).
-        if (isOvertakeEffectiveLeader(data)) return false;
+        // Podium gains (P1/P2/P3) get a dedicated reaction line that already
+        // states the position ("leading", "up to second/third"), so skip the
+        // follow-up readout for them (issue #603). Effective position = class
+        // P1/2/3 in multi-class, overall otherwise (#588/#599).
+        const effective = data.isMultiClass === true ? data.classPosition : data.position;
+
+        if (typeof effective === "number" && effective >= 1 && effective <= REACTION_ALWAYS_MAX_POSITION) return false;
 
         // No position calling once the race is over.
         if (getRaceFinishedFired()) return false;

@@ -8362,12 +8362,12 @@
       "requestId": "ItJCw393gsudM67Tfecg"
     },
     "voice/default/position-overtake/nice-pass-leader-class-01.mp3": {
-      "hash": "03de52071e4fbb9d",
+      "hash": "0d905486dd65b94f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Nice pass! <break time=\"0.3s\"/> We're now leading our class. <break time=\"0.4s\"…",
-      "generatedAt": "2026-05-24T16:23:40.498Z",
-      "requestId": "NHYyuYBmr5hZZc94QzNP"
+      "generatedAt": "2026-05-25T17:20:38.442Z",
+      "requestId": "dmvyDMadMi2EIn6nsb5x"
     },
     "voice/default/pit-box/five-01.mp3": {
       "hash": "992af8a9ff09137f",
@@ -8416,6 +8416,38 @@
       "textPreview": "Pit now.",
       "generatedAt": "2026-05-24T16:34:29.599Z",
       "requestId": "V05tJUZdC9XrGtjOVEDk"
+    },
+    "voice/default/position-overtake/nice-pass-p2-01.mp3": {
+      "hash": "bce651e7f6ae4252",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> We're up to second. <break time=\"0.3s\"/> The le…",
+      "generatedAt": "2026-05-25T17:21:11.380Z",
+      "requestId": "nDdPwE2V0nXjaUWDKn8f"
+    },
+    "voice/default/position-overtake/nice-pass-p2-class-01.mp3": {
+      "hash": "9732732a4eb23cc0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> Up to second in class. <break time=\"0.3s\"/> The…",
+      "generatedAt": "2026-05-25T17:21:28.215Z",
+      "requestId": "xhF2oORqb791HpV5t1Ux"
+    },
+    "voice/default/position-overtake/nice-pass-p3-01.mp3": {
+      "hash": "9834e4e26264399e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2\"/> we're th…",
+      "generatedAt": "2026-05-25T17:23:40.407Z",
+      "requestId": "Km9Y7eAYU5tQ9HjjTJxx"
+    },
+    "voice/default/position-overtake/nice-pass-p3-class-01.mp3": {
+      "hash": "c4a6c2580d91ac1e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> Third in class — podium positions now.",
+      "generatedAt": "2026-05-25T17:17:48.660Z",
+      "requestId": "OnnOzpjc4H9VWKUblugE"
     }
   }
 }

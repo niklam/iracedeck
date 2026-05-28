@@ -14,7 +14,12 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
 import { overtakeGainIsAnnounceable, overtakeLossIsAnnounceable } from "./overtake.js";
-import { canAnnouncePosition, POSITION_READOUT_COOLDOWN_MS, tryClaimPositionAnnouncement } from "./position-readout.js";
+import {
+  _setReactionRandom,
+  canAnnouncePosition,
+  POSITION_READOUT_COOLDOWN_MS,
+  tryClaimPositionAnnouncement,
+} from "./position-readout.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
@@ -129,6 +134,10 @@ const OVERTAKE_CLIPS = [
   `voice/${VOICE}/position-overtake/nice-pass-01.mp3`,
   `voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`,
   `voice/${VOICE}/position-overtake/nice-pass-leader-class-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-p2-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-p2-class-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-p3-01.mp3`,
+  `voice/${VOICE}/position-overtake/nice-pass-p3-class-01.mp3`,
   `voice/${VOICE}/position-overtake/dont-give-up-positions-01.mp3`,
   `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
   `voice/${VOICE}/position-overtake-come-on/niklas.mp3`,
@@ -204,6 +213,10 @@ beforeEach(() => {
   raceFinished = false;
   overtakeEnabled = { gained: true, lost: true };
   _resetPositionReadoutCooldown();
+  // Make the ~1/3 reaction gate (#603) deterministic: roll 0 → always react, so
+  // every non-podium reaction fires unless a test overrides it. Podium positions
+  // react regardless of the roll.
+  _setReactionRandom(() => 0);
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -444,13 +457,16 @@ describe("overtake position readout (live, deferred)", () => {
 
   it("fires the position readout on EVERY overtake (no overtake-to-overtake suppression)", () => {
     fireGained({});
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-number/5.mp3`);
 
     audio._played.length = 0;
-    // A second overtake within the position-cooldown window still announces
-    // position — the user's rule is "always call the position on an overtake".
+    // A second overtake within the position-cooldown window still announces the
+    // position — but the "We're currently" intro drops to a bare "P[n]" inside
+    // the 30 s intro window for a ≤1-position move (#603).
     fireLost({});
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-number/5.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });
 
   it("marks the shared position cooldown so lap/race-status readouts defer", () => {
@@ -476,44 +492,88 @@ describe("overtake position readout (live, deferred)", () => {
   });
 });
 
-describe("reaction catchphrase cooldown", () => {
-  it("throttles the 'Nice pass' catchphrase but still announces position", () => {
-    fireGained({});
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+describe("reaction gate (random ~1/3, podium-exempt) (#603)", () => {
+  it("non-podium gain reacts when the roll is under the chance, and reads the position", () => {
+    _setReactionRandom(() => 0);
+    fireGained({ position: 5, previousPosition: 6 });
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
 
-    audio._played.length = 0;
-    // Second gain within the reaction cooldown → no catchphrase, position still fires.
-    fireGained({});
+  it("non-podium gain skips the catchphrase when the roll is over the chance, but still reads the position", () => {
+    _setReactionRandom(() => 0.99);
+    fireGained({ position: 5, previousPosition: 6 });
     const played = voicePaths();
     expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
     expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });
 
-  it("throttles the loss catchphrase but still announces position", () => {
-    fireLost({});
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
-
-    audio._played.length = 0;
-    fireLost({});
+  it("non-podium loss skips the catchphrase when the roll is over the chance, but still reads the position", () => {
+    _setReactionRandom(() => 0.99);
+    currentLive = { position: 5, classPosition: 5, isMultiClass: false };
+    fireLost({ position: 5, previousPosition: 4 });
     const played = voicePaths();
     expect(played).not.toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
     expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });
 
-  it("gain and loss catchphrase cooldowns are independent", () => {
-    fireGained({});
-    audio._played.length = 0;
-    fireLost({});
-    // The loss catchphrase isn't blocked by the gain catchphrase cooldown.
-    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake-come-on/niklas.mp3`);
+  it("podium gain (P2) always reacts even when the roll is over the chance", () => {
+    _setReactionRandom(() => 0.99);
+    currentLive = { position: 2, classPosition: 2, isMultiClass: false };
+    fireGained({ position: 2, previousPosition: 3 });
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-p2-01.mp3`);
   });
 
-  it("the leader line is exempt from the reaction cooldown", () => {
-    fireGained({}); // claims the 'gained' reaction cooldown
-    audio._played.length = 0;
+  it("the leader line always reacts (podium-exempt)", () => {
+    _setReactionRandom(() => 0.99);
+    currentLive = { position: 1, classPosition: 1, isMultiClass: false };
     fireGained({ position: 1, previousPosition: 2, isLeader: true });
-    // Taking the lead is always announced, even within the cooldown.
     expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-leader-01.mp3`);
+  });
+});
+
+describe("podium reaction lines (#603)", () => {
+  it("gained P2 plays the dedicated second-place line and suppresses the follow-up readout", () => {
+    currentLive = { position: 2, classPosition: 2, isMultiClass: false };
+    fireGained({ position: 2, previousPosition: 3 });
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-p2-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    // The dedicated line states the position, so no "We're currently P[n]".
+    expect(played).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("gained P2 in multi-class plays the in-class second-place line", () => {
+    currentLive = { position: 12, classPosition: 2, isMultiClass: true };
+    fireGained({ position: 12, classPosition: 2, previousPosition: 12, previousClassPosition: 3, isMultiClass: true });
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-p2-class-01.mp3`);
+  });
+
+  it("gained P3 plays the dedicated third-place line and suppresses the readout", () => {
+    currentLive = { position: 3, classPosition: 3, isMultiClass: false };
+    fireGained({ position: 3, previousPosition: 4 });
+    const played = voicePaths();
+    expect(played).toContain(`voice/${VOICE}/position-overtake/nice-pass-p3-01.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+  });
+
+  it("gained P3 in multi-class plays the in-class third-place line", () => {
+    currentLive = { position: 20, classPosition: 3, isMultiClass: true };
+    fireGained({ position: 20, classPosition: 3, previousPosition: 21, previousClassPosition: 4, isMultiClass: true });
+    expect(voicePaths()).toContain(`voice/${VOICE}/position-overtake/nice-pass-p3-class-01.mp3`);
+  });
+});
+
+describe("retirement-driven gain (#603)", () => {
+  it("reads the new position but suppresses the Nice pass reaction", () => {
+    _setReactionRandom(() => 0); // would otherwise react
+    currentLive = { position: 13, classPosition: 13, isMultiClass: false };
+    fireGained({ position: 13, previousPosition: 14, fromRetirement: true });
+    const played = voicePaths();
+    expect(played).not.toContain(`voice/${VOICE}/position-overtake/nice-pass-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
+    expect(played).toContain(`voice/${VOICE}/position-number/13.mp3`);
   });
 });
 

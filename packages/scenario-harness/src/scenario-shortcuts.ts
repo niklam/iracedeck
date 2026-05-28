@@ -1151,7 +1151,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Overtakes",
     label: "Gained — multi-class (class P3 → P2)",
     description:
-      'Multi-class gain — overall P12 (unchanged) but class position improved P3 → P2. Engineer says the CLASS number: "Nice pass. That puts us to pee two."',
+      'Multi-class gain — overall P12 (unchanged) but class position improved P3 → P2. Engineer fires the dedicated P2 line on the CLASS position: "Nice pass! Up to second in class. The class lead is in our sights."',
     event: "overtake.completed",
     data: {
       carIdx: 0,
@@ -1163,6 +1163,54 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: true,
       gapBehindMeters: 15,
       isLeader: false,
+    },
+  },
+  {
+    id: "overtake-gained-p2",
+    category: "Overtakes",
+    label: "Gained — P3 → P2 (podium line)",
+    description:
+      'Player took P2 (podium, always reacts). Engineer fires the dedicated P2 line: "Nice pass! We\'re up to second. The lead is in our sights." No follow-up readout (the line states the position).',
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 2,
+      previousPosition: 3,
+      gapBehindMeters: 15,
+      isLeader: false,
+    },
+  },
+  {
+    id: "overtake-gained-p3",
+    category: "Overtakes",
+    label: "Gained — P4 → P3 (podium line)",
+    description:
+      "Player took P3 (podium, always reacts). Engineer fires the dedicated P3 line: \"Nice pass! That's the podium — we're third.\" No follow-up readout.",
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 3,
+      previousPosition: 4,
+      gapBehindMeters: 15,
+      isLeader: false,
+    },
+  },
+  {
+    id: "overtake-gained-retirement",
+    category: "Overtakes",
+    label: "Gained — retirement (readout only)",
+    description:
+      'A non-finished car ahead left the world (DNF / disconnect), promoting the player P14 → P13. `fromRetirement: true` suppresses the "Nice pass" reaction — only the position readout fires: "We\'re currently pee thirteen." (issue #603)',
+    event: "overtake.completed",
+    data: {
+      carIdx: 0,
+      sustained: 3000,
+      position: 13,
+      previousPosition: 14,
+      isLeader: false,
+      fromRetirement: true,
     },
   },
 

@@ -178,6 +178,18 @@ export type TranslatorState = {
   pendingOvertakeTime: number;
   lastConfirmedOvertakeCarIdx: number;
   /**
+   * Whether the pending gain currently being held was caused (at least in
+   * part) by a non-finished car ahead leaving the world — a retirement / DNF /
+   * disconnect (issue #603). Captured when the gain pending opens and LATCHED
+   * to `true` on any held tick where the retirement condition holds, so a
+   * blended retire-plus-pass within one hold window is flagged conservatively.
+   * Emitted as `overtake.completed.fromRetirement`; the audio layer then plays
+   * the position readout but suppresses the "Nice pass" reaction. Reset to
+   * `false` whenever the pending gain resets. Single-class detection only.
+   * `false` when no pending gain is open.
+   */
+  pendingOvertakeFromRetirement: boolean;
+  /**
    * Last position actually announced via an overtake gain/loss callout
    * (issue #597). A confirmed gain/loss is suppressed when the current
    * position equals this value — i.e. a round-trip back to the called
@@ -226,6 +238,40 @@ export type TranslatorState = {
   trackLengthMeters: number | null;
   /** Cache key (`${TrackID}|${SessionNum}`) for invalidating `trackLengthMeters`. */
   trackLengthKey: string;
+
+  // ── Self-managed running order (issue #603) ─────────────────────────────
+  /**
+   * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
+   * continuous on-track motion. iRacing zeroes the live `lc`/`dp` to `-1` the
+   * instant a car is `NotInWorld` (proven by dump-file inspection of the car8
+   * 1-tick blink), so we remember the last good value ourselves — that's the
+   * "manage state ourselves" model.
+   *
+   * `calculateFrozenRacePositions` ranks each car by `positionLastKnownScores[i]`
+   * while it's in {@link positionFrozen}; otherwise by the live `lc + dp`. The
+   * player only overtakes a frozen car when their own score genuinely exceeds
+   * the frozen point ("…until we've passed that point"). Updated each tick that
+   * the car is moving normally on track; preserved across blinks / teleports.
+   * `-1` (or absent index) means we haven't seen the car at all yet.
+   */
+  positionLastKnownScores: number[];
+  /**
+   * Cars currently FROZEN — either `NotInWorld` or showing a discontinuity from
+   * their last-known on-track score (teleport / tow / drifted-away post-blink).
+   * Members keep being ranked at their {@link positionLastKnownScores} entry
+   * until they resume continuous on-track motion close to that anchor. Reset
+   * via `createInitialState`; otherwise the set self-cleans tick-by-tick. Issue
+   * #603.
+   */
+  positionFrozen: Set<number>;
+  /**
+   * Previous-tick RAW active race positions (`calculateRacePositions` output,
+   * before the freeze), indexed by carIdx. Drives the overtake retirement
+   * classifier: a gain is `fromRetirement` when some car ranked ahead of the
+   * player last tick is now in {@link positionFrozen}. `[]` until the first
+   * tick. Issue #603.
+   */
+  lastActivePositions: number[];
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -382,6 +428,7 @@ export function createInitialState(): TranslatorState {
     pendingOvertakePos: -1,
     pendingOvertakeTime: 0,
     lastConfirmedOvertakeCarIdx: -1,
+    pendingOvertakeFromRetirement: false,
     lastCalledPosition: -1,
     pendingOvertakePrevPos: 0,
     pendingOvertakePrevClassPos: 0,
@@ -392,6 +439,10 @@ export function createInitialState(): TranslatorState {
     pendingLossPrevClassPos: 0,
     trackLengthMeters: null,
     trackLengthKey: "",
+
+    positionLastKnownScores: [],
+    positionFrozen: new Set(),
+    lastActivePositions: [],
 
     radarState: "clear",
 

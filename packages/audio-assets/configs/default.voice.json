@@ -4854,6 +4854,26 @@
       {
         "name": "nice-pass-leader-class-01",
         "text": "Nice pass! <break time=\"0.3s\"/> We're now leading our class. <break time=\"0.4s\"/> Let's keep it that way!",
+        "seed": 2
+      },
+      {
+        "name": "nice-pass-p2-01",
+        "text": "Nice pass! <break time=\"0.3s\"/> We're up to second. <break time=\"0.3s\"/> The lead is in our sights.",
+        "seed": 4
+      },
+      {
+        "name": "nice-pass-p2-class-01",
+        "text": "Nice pass! <break time=\"0.3s\"/> Up to second in class. <break time=\"0.3s\"/> The class lead is in our sights.",
+        "seed": 3
+      },
+      {
+        "name": "nice-pass-p3-01",
+        "text": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2\"/> we're third.",
+        "seed": 5
+      },
+      {
+        "name": "nice-pass-p3-class-01",
+        "text": "Nice pass! <break time=\"0.3s\"/> Third in class — podium positions now.",
         "seed": 1
       },
       {

@@ -169,6 +169,7 @@ const config = {
 				__CAPABILITY_SVG_MASKS__: JSON.stringify(platformFeatures.capabilities.svgMasks),
 				__CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
 				__FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
+				__FEATURE_TELEMETRY_POSITION_DUMP__: JSON.stringify(platformFeatures.features.telemetryPositionDump ?? false),
 			},
 		}),
 		piTemplatePlugin({

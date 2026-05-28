@@ -10,6 +10,7 @@ interface FeatureFlagGlobals {
   __CAPABILITY_SVG_MASKS__: boolean;
   __CAPABILITY_SVG_PATTERNS__: boolean;
   __FEATURE_BORDER_GLOW__: boolean;
+  __FEATURE_TELEMETRY_POSITION_DUMP__: boolean;
 }
 
 const featureFlagGlobals = globalThis as unknown as FeatureFlagGlobals;
@@ -17,3 +18,5 @@ featureFlagGlobals.__CAPABILITY_SVG_FILTERS__ = true;
 featureFlagGlobals.__CAPABILITY_SVG_MASKS__ = true;
 featureFlagGlobals.__CAPABILITY_SVG_PATTERNS__ = true;
 featureFlagGlobals.__FEATURE_BORDER_GLOW__ = true;
+// Dev diagnostic (issue #603), default OFF so tests never write dump files.
+featureFlagGlobals.__FEATURE_TELEMETRY_POSITION_DUMP__ = false;
