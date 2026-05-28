@@ -17,12 +17,12 @@
  *   - Multi-class `classPosition` / `previousClassPosition` fields
  *   - Track-length missing → emission proceeds (gap field omitted)
  */
-import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
 import { diffOvertakes, OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./overtakes.js";
-import { updatePositionTracking } from "./race-finish.js";
+import { calculateFrozenRacePositions, updatePositionTracking } from "./race-finish.js";
 import type { PendingEvent } from "./types.js";
 
 const TRACK_LENGTH_M = 1000;
@@ -921,7 +921,10 @@ describe("diffOvertakes — race-start grid seeding (#597 / #568)", () => {
 describe("diffOvertakes — finished / retired cars (#603)", () => {
   // Direct per-car telemetry so specific cars can be made inactive (left the
   // world). Player is PLAYER_IDX (0); positions derive from CarIdxLapDistPct.
-  function mkTel(lapDistPct: number[], opts: { lapCompleted?: number[]; classPos?: number } = {}): TelemetryData {
+  function mkTel(
+    lapDistPct: number[],
+    opts: { lapCompleted?: number[]; trackSurface?: number[]; classPos?: number } = {},
+  ): TelemetryData {
     const n = lapDistPct.length;
 
     return {
@@ -929,8 +932,34 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
       SessionFlags: 0,
       CarIdxLapCompleted: opts.lapCompleted ?? new Array(n).fill(5),
       CarIdxLapDistPct: lapDistPct,
+      CarIdxTrackSurface: opts.trackSurface ?? new Array(n).fill(TrkLoc.OnTrack),
       PlayerCarClassPosition: opts.classPos ?? 0,
     } as unknown as TelemetryData;
+  }
+
+  /**
+   * Mirror the translator's per-tick wiring: update the self-managed running
+   * order, compute the frozen rank vector, and pass it to {@link diffOvertakes}.
+   * Exercises the production path (CodeRabbit #605 comment 3) instead of the
+   * fallback `frozenPositions ?? calculateRacePositions(...)` branch.
+   */
+  function tickAt(state: TranslatorState, tel: TelemetryData, now: number, emit: (event: PendingEvent) => void): void {
+    updatePositionTracking(state, tel);
+    const frozen = calculateFrozenRacePositions(state, tel);
+
+    diffOvertakes(state, tel, PLAYER_IDX, true, null, TRACK_LENGTH_M, now, emit, null, frozen);
+  }
+
+  /**
+   * Realistic `NotInWorld` snapshot: iRacing snaps `lc`/`dp`/`ts` for that car
+   * to `-1` / `NotInWorld` on the same tick — proven from the dump-file
+   * analysis on issue #603. The freeze logic keys on all three so the test
+   * tick has to set them in sync.
+   */
+  function vanishCar(lc: number[], dp: number[], ts: number[], idx: number): void {
+    lc[idx] = -1;
+    dp[idx] = -1;
+    ts[idx] = TrkLoc.NotInWorld;
   }
 
   it("does not phantom-gain when a finished car ahead leaves the world (frozen positions injected)", () => {
@@ -962,27 +991,45 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     expect(state.pendingOvertakePos).toBe(-1);
   });
 
-  it("flags fromRetirement when a non-finished car ahead leaves the world", () => {
+  // Per-tick deltas are kept well below `TELEPORT_THRESHOLD = 0.05` so the
+  // self-managed running order never flags a car (least of all the PLAYER) as
+  // teleported. Real telemetry runs at 60 Hz with ~0.0003 lap/tick at racing
+  // speed; the values here are still tiny by comparison while staying readable.
+
+  it("flags fromRetirement when the player crosses a vanished car's frozen anchor (production path)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Seed: player P3. `updatePositionTracking` seeds the per-car anchors so
-    // the next tick can detect the freeze (mirrors the translator's order).
-    const seedTel = mkTel([0.5, 0.6, 0.7]);
+    // Seed: player P3, idx1 ahead at 0.510, idx2 ahead at 0.520.
+    tickAt(state, mkTel([0.5, 0.51, 0.52]), 0, emit);
 
-    updatePositionTracking(state, seedTel);
-    diffOvertakes(state, seedTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit);
+    // idx1 vanishes — telemetry snaps lc/dp/ts to the NotInWorld sentinels in
+    // a single tick (dump-file precedent). Player edges forward 0.002 lap so
+    // its own anchor stays continuous. With idx1 frozen at score 5.51, the
+    // frozen rank still has idx1 ahead — player stays P3, no pending opens.
+    const lc1 = [5, 5, 5];
+    const dp1 = [0.502, 0.51, 0.521];
+    const ts1 = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
 
-    // idx1 (ahead) goes NotInWorld → updatePositionTracking freezes it →
-    // diffOvertakes sees a frozen car ahead → fromRetirement.
-    const vanishTel = mkTel([0.5, -1, 0.7]);
+    vanishCar(lc1, dp1, ts1, 1);
+    tickAt(state, mkTel(dp1, { lapCompleted: lc1, trackSurface: ts1 }), 100, emit);
+    expect(state.pendingOvertakePos).toBe(-1);
+    expect(state.positionFrozen.has(1)).toBe(true);
 
-    updatePositionTracking(state, vanishTel);
-    diffOvertakes(state, vanishTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
+    // Player advances PAST idx1's frozen anchor (live score 5.515 > anchor
+    // 5.51) → P3 → P2. Pending opens with fromRetirement=true (idx1 ranked
+    // ahead in the previous tick's frozen ordering and is currently frozen).
+    const lc2 = [5, 5, 5];
+    const dp2 = [0.515, 0.51, 0.522];
+    const ts2 = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
+
+    vanishCar(lc2, dp2, ts2, 1);
+    tickAt(state, mkTel(dp2, { lapCompleted: lc2, trackSurface: ts2 }), 200, emit);
+    expect(state.pendingOvertakePos).toBe(2);
     expect(state.pendingOvertakeFromRetirement).toBe(true);
 
-    updatePositionTracking(state, vanishTel);
-    diffOvertakes(state, vanishTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 100 + OVERTAKE_HOLD_MS, emit);
+    // Hold elapsed → emit with fromRetirement=true.
+    tickAt(state, mkTel(dp2, { lapCompleted: lc2, trackSurface: ts2 }), 200 + OVERTAKE_HOLD_MS, emit);
 
     const fires = overtakeEvents(events);
     expect(fires).toHaveLength(1);
@@ -994,14 +1041,17 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Seed: player P3.
-    diffOvertakes(state, mkTel([0.5, 0.6, 0.7]), PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit);
+    // Seed: player P3, idx1 just ahead at 0.501, idx2 further up at 0.515.
+    tickAt(state, mkTel([0.5, 0.501, 0.515]), 0, emit);
 
-    // Player passes idx1 on track — idx1 stays active, now behind the player.
-    diffOvertakes(state, mkTel([0.65, 0.6, 0.7]), PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
+    // Player edges forward and idx1 drifts back so the post-pass gap clears
+    // OVERTAKE_MIN_GAP_M (10 m on TRACK_LENGTH_M=1000). Both deltas stay
+    // well below TELEPORT_THRESHOLD = 0.05 so nothing freezes.
+    tickAt(state, mkTel([0.51, 0.499, 0.515]), 100, emit);
+    expect(state.pendingOvertakePos).toBe(2);
     expect(state.pendingOvertakeFromRetirement).toBe(false);
 
-    diffOvertakes(state, mkTel([0.65, 0.6, 0.7]), PLAYER_IDX, true, null, TRACK_LENGTH_M, 100 + OVERTAKE_HOLD_MS, emit);
+    tickAt(state, mkTel([0.51, 0.499, 0.515]), 100 + OVERTAKE_HOLD_MS, emit);
 
     const fires = overtakeEvents(events);
     expect(fires).toHaveLength(1);
@@ -1012,29 +1062,31 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     const state = createInitialState();
     const { events, emit } = collect();
 
-    // Seed: player P4 (idx1 just ahead, idx2/idx3 further up).
-    const seedTel = mkTel([0.5, 0.55, 0.7, 0.8]);
+    // Seed: player P4 (idx1 just ahead at 0.501, idx2/idx3 further up).
+    tickAt(state, mkTel([0.5, 0.501, 0.515, 0.525]), 0, emit);
 
-    updatePositionTracking(state, seedTel);
-    diffOvertakes(state, seedTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit);
-
-    // t1: genuine pass of idx1 → P3 (idx1 still active, now behind). Not retirement.
-    const passTel = mkTel([0.6, 0.55, 0.7, 0.8]);
-
-    updatePositionTracking(state, passTel);
-    diffOvertakes(state, passTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
+    // t1: genuine on-track pass of idx1 — player ticks forward to 0.510 while
+    // idx1 drops back to 0.499, opening a >10 m gap so the confirm gate
+    // passes. Player score 5.510 < idx2 5.515, so player lands at P3.
+    tickAt(state, mkTel([0.51, 0.499, 0.515, 0.525]), 100, emit);
+    expect(state.pendingOvertakePos).toBe(3);
     expect(state.pendingOvertakeFromRetirement).toBe(false);
 
-    // t2 (within hold): idx2 (still ahead) retires → P2. Latches retirement.
-    const retireTel = mkTel([0.6, 0.55, -1, 0.8]);
+    // t2 (within hold): idx2 (still ranked ahead at frozen 5.515) vanishes.
+    // The player's rank doesn't move, but the latch re-evaluates each held
+    // tick: idx2 ranked ahead in the PREVIOUS tick's frozen positions and is
+    // now in `positionFrozen` → fromRetirement latches true.
+    const lc2 = [5, 5, 5, 5];
+    const dp2 = [0.511, 0.499, 0.515, 0.526];
+    const ts2 = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
 
-    updatePositionTracking(state, retireTel);
-    diffOvertakes(state, retireTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 200, emit);
+    vanishCar(lc2, dp2, ts2, 2);
+    tickAt(state, mkTel(dp2, { lapCompleted: lc2, trackSurface: ts2 }), 200, emit);
     expect(state.pendingOvertakeFromRetirement).toBe(true);
 
-    // t3: hold elapsed → confirm with the latched flag.
-    updatePositionTracking(state, retireTel);
-    diffOvertakes(state, retireTel, PLAYER_IDX, true, null, TRACK_LENGTH_M, 100 + OVERTAKE_HOLD_MS, emit);
+    // t3: hold elapsed → confirm with the latched flag. Gap behind to idx1 is
+    // (0.511 - 0.499) × 1000 = 12 m → passes the physical-gap gate.
+    tickAt(state, mkTel(dp2, { lapCompleted: lc2, trackSurface: ts2 }), 100 + OVERTAKE_HOLD_MS, emit);
 
     const fires = overtakeEvents(events);
     expect(fires).toHaveLength(1);
@@ -1046,20 +1098,18 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     const { events, emit } = collect();
 
     // Seed: player P3 — idx1/idx2 ahead, idx3 behind.
-    diffOvertakes(state, mkTel([0.5, 0.6, 0.7, 0.4]), PLAYER_IDX, true, null, TRACK_LENGTH_M, 0, emit);
+    tickAt(state, mkTel([0.5, 0.51, 0.52, 0.49]), 0, emit);
 
-    // idx3 (behind) leaves — the player's rank is unchanged, no callout.
-    diffOvertakes(state, mkTel([0.5, 0.6, 0.7, -1]), PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
-    diffOvertakes(
-      state,
-      mkTel([0.5, 0.6, 0.7, -1]),
-      PLAYER_IDX,
-      true,
-      null,
-      TRACK_LENGTH_M,
-      100 + OVERTAKE_HOLD_MS,
-      emit,
-    );
+    // idx3 (behind) vanishes — frozen keeps it ranked behind the player → no
+    // rank change, no pending, no callout. The retirement classifier also
+    // never triggers because idx3 wasn't ahead of the player last tick.
+    const lc = [5, 5, 5, 5];
+    const dp = [0.5, 0.51, 0.52, 0.49];
+    const ts = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
+
+    vanishCar(lc, dp, ts, 3);
+    tickAt(state, mkTel(dp, { lapCompleted: lc, trackSurface: ts }), 100, emit);
+    tickAt(state, mkTel(dp, { lapCompleted: lc, trackSurface: ts }), 100 + OVERTAKE_HOLD_MS, emit);
 
     expect(overtakeEvents(events)).toHaveLength(0);
   });

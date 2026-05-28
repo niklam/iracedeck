@@ -112,15 +112,14 @@ export function diffOvertakes(
    */
   startingGridPosition: number | null = null,
   /**
-   * Frozen overall race positions (issue #603) — `calculateFrozenRacePositions`
-   * output, which keeps a finished car counted at its finishing rank even after
-   * it leaves the world. Used in place of the live `calculateRacePositions` for
-   * gain/loss DETECTION so a finisher disappearing into the garage doesn't
-   * surface as a phantom gain. The RAW live positions are still computed
-   * internally for the retirement classification (a non-finished car ahead
-   * leaving). Optional and trailing; `null` means "compute live positions
-   * myself" (existing call sites / tests), in which case there are no frozen
-   * cars and the two are identical.
+   * Race positions with the self-managed corrections applied (issue #603) —
+   * `calculateFrozenRacePositions` output. A car blipped `NotInWorld`,
+   * teleported by a tow, or finished into the garage is kept counted at its
+   * last on-track anchor, so the player only "passes" it when their own score
+   * genuinely exceeds the anchor. Used for both gain/loss DETECTION and the
+   * retirement classifier (which compares against `state.lastFrozenPositions`
+   * from the previous tick). Optional and trailing; `null` means "compute live
+   * positions myself" (existing call sites / tests).
    */
   frozenPositions: number[] | null = null,
 ): void {
@@ -141,12 +140,14 @@ export function diffOvertakes(
     hasFlag(sessionFlags, Flags.Yellow) ||
     hasFlag(sessionFlags, Flags.YellowWaving);
 
-  // Detection uses the FROZEN positions (finished cars kept at their finishing
-  // rank, issue #603); the RAW live positions feed the retirement classifier.
-  // When `frozenPositions` isn't supplied (existing callers / tests) there are
-  // no frozen cars, so the two are identical and we compute once.
+  // Detection uses the FROZEN positions (issue #603). The retirement classifier
+  // also reads frozen positions — `state.lastFrozenPositions` from the previous
+  // tick — so it fires on the tick the player crosses a frozen car's anchor
+  // (the moment the rank actually changes in the frozen path), not just on the
+  // tick the car vanished. Without that, a finished car going to the garage
+  // would, several ticks later, produce a phantom "Nice pass" because the raw
+  // active order no longer remembers the frozen car was ever ahead.
   const positions = frozenPositions ?? calculateRacePositions(telemetry);
-  const rawActive = frozenPositions ? calculateRacePositions(telemetry) : positions;
   const overallPos = playerCarIdx >= 0 ? positions[playerCarIdx] : -1;
 
   if (overallPos === undefined || overallPos <= 0) return;
@@ -182,7 +183,7 @@ export function diffOvertakes(
     state.pendingOvertakePos = -1;
     state.pendingLossPos = -1;
     state.pendingOvertakeFromRetirement = false;
-    state.lastActivePositions = rawActive;
+    state.lastFrozenPositions = positions;
 
     return;
   }
@@ -209,7 +210,7 @@ export function diffOvertakes(
     state.lastPosition = seedInOverallSpace ? gridValue : overallPos;
     state.lastClassPosition = seedInClassSpace ? gridValue : rawClassPos;
     state.lastCalledPosition = (useClass ? seedInClassSpace : seedInOverallSpace) ? gridValue : currentPos;
-    state.lastActivePositions = rawActive;
+    state.lastFrozenPositions = positions;
     state.overtakeInitialized = true;
 
     return;
@@ -223,7 +224,7 @@ export function diffOvertakes(
   if (
     !useClass &&
     state.pendingOvertakePos > 0 &&
-    isRetirementGain(state.lastActivePositions, playerCarIdx, state.positionFrozen)
+    isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen)
   ) {
     state.pendingOvertakeFromRetirement = true;
   }
@@ -386,7 +387,7 @@ export function diffOvertakes(
       // Classify at open (issue #603, single-class): did a non-finished car
       // ahead just leave the world? Latched true on later held ticks too.
       state.pendingOvertakeFromRetirement =
-        !useClass && isRetirementGain(state.lastActivePositions, playerCarIdx, state.positionFrozen);
+        !useClass && isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen);
     }
   }
 
@@ -404,20 +405,26 @@ export function diffOvertakes(
 
   state.lastPosition = overallPos;
   state.lastClassPosition = rawClassPos;
-  // Raw (unfrozen) positions baseline for the next tick's retirement classifier
-  // (issue #603).
-  state.lastActivePositions = rawActive;
+  // Frozen-rank baseline for the next tick's retirement classifier (issue #603).
+  // Cached as the EFFECTIVE order the diff actually saw — `positions` already
+  // resolves to `frozenPositions ?? calculateRacePositions(telemetry)` upstream,
+  // so the classifier compares apples to apples on the next tick.
+  state.lastFrozenPositions = positions;
 }
 
 /**
- * Whether a position gain was caused by a non-finished car AHEAD leaving the
- * world (retirement / DNF / disconnect) rather than a genuine on-track pass
- * (issue #603). True when some car ranked ahead of the player in the previous
- * tick's RAW active positions is no longer active this tick and is NOT in the
- * finished set. Single-class only — the caller gates on `!useClass`.
+ * Whether a position gain was caused by a frozen car ahead being passed
+ * (retirement / blink / tow / disconnect / finished into the garage) rather
+ * than a genuine on-track pass (issue #603). True when at least one car ranked
+ * ahead of the player in the previous tick's FROZEN positions is currently in
+ * {@link TranslatorState.positionFrozen}. Using the previous frozen ordering —
+ * not the raw active one — is what lets the classifier fire on the tick the
+ * player CROSSES a frozen car's anchor (which is when the rank actually
+ * changes), not just on the tick the car vanished. Single-class only — the
+ * caller gates on `!useClass`.
  */
-function isRetirementGain(prevActive: number[], playerCarIdx: number, positionFrozen: Set<number>): boolean {
-  const prevPlayerRank = prevActive[playerCarIdx];
+function isRetirementGain(prevFrozen: number[], playerCarIdx: number, positionFrozen: Set<number>): boolean {
+  const prevPlayerRank = prevFrozen[playerCarIdx];
 
   if (typeof prevPlayerRank !== "number" || prevPlayerRank <= 0) return false;
 
@@ -425,10 +432,10 @@ function isRetirementGain(prevActive: number[], playerCarIdx: number, positionFr
   // player last tick is currently FROZEN (blinked NotInWorld / teleported /
   // disconnected / finished into the garage) — i.e. not a real on-track pass
   // by the player. Single-class only — the caller gates on `!useClass`.
-  for (let i = 0; i < prevActive.length; i++) {
+  for (let i = 0; i < prevFrozen.length; i++) {
     if (i === playerCarIdx) continue;
 
-    const prevRank = prevActive[i];
+    const prevRank = prevFrozen[i];
 
     if (typeof prevRank !== "number" || prevRank <= 0 || prevRank >= prevPlayerRank) continue;
 
@@ -456,7 +463,7 @@ function resetOvertakeState(state: TranslatorState): void {
   state.pendingLossPrevPos = 0;
   state.pendingLossPrevClassPos = 0;
   state.lastConfirmedOvertakeCarIdx = -1;
-  state.lastActivePositions = [];
+  state.lastFrozenPositions = [];
 }
 
 /**

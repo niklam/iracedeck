@@ -4868,7 +4868,7 @@
       },
       {
         "name": "nice-pass-p3-01",
-        "text": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2\"/> we're third.",
+        "text": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2s\"/> we're third.",
         "seed": 5
       },
       {

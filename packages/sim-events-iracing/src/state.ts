@@ -265,13 +265,22 @@ export type TranslatorState = {
    */
   positionFrozen: Set<number>;
   /**
-   * Previous-tick RAW active race positions (`calculateRacePositions` output,
-   * before the freeze), indexed by carIdx. Drives the overtake retirement
-   * classifier: a gain is `fromRetirement` when some car ranked ahead of the
-   * player last tick is now in {@link positionFrozen}. `[]` until the first
-   * tick. Issue #603.
+   * Previous-tick FROZEN race positions (`calculateFrozenRacePositions` output,
+   * with anchors applied), indexed by carIdx. Drives the overtake retirement
+   * classifier: a gain is `fromRetirement` when some car that was ranked ahead
+   * of the player in this snapshot is currently in {@link positionFrozen}.
+   *
+   * Using the frozen positions — not the raw `calculateRacePositions` — is what
+   * lets the classifier fire on the tick the player CROSSES a frozen car's
+   * anchor (which is when the rank actually changes in the production frozen
+   * path), not just on the tick the car vanished (which is when the raw rank
+   * shifts but the frozen rank is held by the anchor). Without this a finished
+   * car vanishing into the garage would, several ticks later, produce a phantom
+   * "Nice pass" because by then the raw `lastActivePositions` no longer
+   * remembers the frozen car was ever ahead. `[]` until the first tick.
+   * Issue #603.
    */
-  lastActivePositions: number[];
+  lastFrozenPositions: number[];
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -442,7 +451,7 @@ export function createInitialState(): TranslatorState {
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),
-    lastActivePositions: [],
+    lastFrozenPositions: [],
 
     radarState: "clear",
 
