@@ -27,14 +27,7 @@ import type {
   SimEventName,
 } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import {
-  calculateRacePositions,
-  CarLeftRight,
-  type SDKController,
-  SessionState,
-  type TelemetryData,
-  TrkLoc,
-} from "@iracedeck/iracing-sdk";
+import { CarLeftRight, type SDKController, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
@@ -49,11 +42,13 @@ import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
+import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { createInitialState, type TranslatorState } from "./state.js";
+import { dumpPositionChange } from "./telemetry-dump.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
 
@@ -104,6 +99,12 @@ type TranslatorInstance = {
    * Cleared by `handleDisconnect` so a reconnect re-checks.
    */
   freshConnectFireChecked: boolean;
+  /**
+   * Last player rank logged by the #603 position-debug tracer. Edge-trigger so
+   * the per-car telemetry dump fires only when the computed rank changes, not
+   * every tick. `-1` = not seeded; debug-only, no behavioral effect.
+   */
+  lastDebugPlayerRank: number;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -135,6 +136,7 @@ export function initializeSimEventsIracing(
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
+    lastDebugPlayerRank: -1,
   };
 
   instance = self;
@@ -148,8 +150,9 @@ export function initializeSimEventsIracing(
 
     if (!telemetry) return;
 
+    const previousTelemetry = self.latestTelemetry;
     self.latestTelemetry = telemetry;
-    handleTick(self, telemetry);
+    handleTick(self, telemetry, previousTelemetry);
   });
 
   logger.info("sim-events-iracing translator initialized");
@@ -499,9 +502,11 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
  * Player's CURRENT race position read from live telemetry (issue #574). Unlike
  * the standings-first {@link PlayerResultsSnapshot} used by `lap.completed`,
  * this is computed from the live `CarIdxLapDistPct` order via
- * `calculateRacePositions` so it reflects the position at the exact moment the
- * caller asks — not a value frozen at the last S/F crossing. Used by the
- * "We're currently P[n]" voice readouts (overtake, race position-change,
+ * `calculateFrozenRacePositions` so it reflects the position at the exact moment
+ * the caller asks — not a value frozen at the last S/F crossing. A finished car
+ * that has left the world is kept at its finishing rank (issue #603) so the
+ * spoken overall position doesn't climb as leaders peel into the garage. Used by
+ * the "We're currently P[n]" voice readouts (overtake, race position-change,
  * race-status) so the spoken position is accurate to speak-time even when the
  * scenario plays seconds after the triggering event.
  *
@@ -527,7 +532,11 @@ export function getLivePosition(): LivePosition | null {
 
   if (playerCarIdx < 0) return null;
 
-  const positions = calculateRacePositions(telemetry);
+  // Frozen positions (issue #603): finished cars that left the world stay
+  // counted at their finishing rank, so the spoken overall position is correct
+  // and stable while leaders peel into the garage. Class position comes from
+  // `PlayerCarClassPosition` (iRacing-authoritative) and needs no freeze.
+  const positions = calculateFrozenRacePositions(instance.state, telemetry);
   const position = positions[playerCarIdx] ?? 0;
 
   if (position <= 0) return null;
@@ -622,6 +631,8 @@ function handleDisconnect(self: TranslatorInstance): void {
   // Re-arm the fresh-connect race-start synthesis so a reconnect into a race
   // session re-checks the SessionState gate (issue #568 follow-up).
   self.freshConnectFireChecked = false;
+  // Re-seed the #603 position-debug tracer.
+  self.lastDebugPlayerRank = -1;
 }
 
 /**
@@ -711,7 +722,11 @@ function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData): v
   }
 }
 
-function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
+function handleTick(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  previousTelemetry: TelemetryData | null = null,
+): void {
   // Session-change detection + reset (issues #564, #568). Runs on every tick
   // — including replay ticks — because iRacing's between-session transition
   // commonly passes through replay-mode ticks (waiting for the next session
@@ -926,6 +941,18 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // (class in multi-class, overall otherwise). `null` until session info /
   // qualifying results are parsed.
   const startingGridPosition = sessionInfo ? (resolveStartingGridPosition(sessionInfo) ?? null) : null;
+  // Self-managed running order (issue #603). iRacing zeroes a car's
+  // lc/dp/ts to -1 the instant it's NotInWorld and teleports dp on a tow, so
+  // we maintain a per-car last-known on-track score ourselves and freeze cars
+  // whose telemetry is invalid or has drifted discontinuously from that anchor.
+  // Subsumes the earlier per-symptom patches (checkered finished-freeze,
+  // tow `-isTowed`, NotInWorld-blink churn). Runs every tick before the frozen
+  // positions are read.
+  updatePositionTracking(self.state, telemetry);
+  const frozenPositions = calculateFrozenRacePositions(self.state, telemetry);
+  // Diagnostic only (#603): trace per-car telemetry when the computed rank
+  // changes, to see what a departing / pitting / lapping car does to the order.
+  tracePositionChange(self, telemetry, previousTelemetry, frozenPositions, playerCarIdx, isRaceSession);
   diffOvertakes(
     self.state,
     telemetry,
@@ -936,6 +963,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     now,
     emit,
     startingGridPosition,
+    frozenPositions,
   );
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
@@ -958,6 +986,83 @@ function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: Tel
     data: pending.data,
   } as SimEventMap[SimEventName];
   self.bus.publish(envelope);
+}
+
+/**
+ * Diagnostic tracer (#603) — on every change of the player's computed race
+ * rank: (1) logs the surrounding cars (lap counter, lap-distance pct, track
+ * surface, pit flag) at `debug` level as a quick in-log breadcrumb, and (2) when
+ * the `__FEATURE_TELEMETRY_POSITION_DUMP__` build flag is on (off by default →
+ * tree-shaken from production), dumps the full previous + current telemetry to
+ * `<tmp>/iracedeck-pos-dumps/<SessionUniqueID>_<SessionTick>.json` for offline
+ * diffing. Edge-triggered on rank change, so neither path runs per tick. No
+ * behavioral effect.
+ */
+function tracePositionChange(
+  self: TranslatorInstance,
+  telemetry: TelemetryData,
+  previousTelemetry: TelemetryData | null,
+  positions: number[],
+  playerCarIdx: number,
+  isRaceSession: boolean,
+): void {
+  if (!isRaceSession || playerCarIdx < 0) {
+    self.lastDebugPlayerRank = -1;
+
+    return;
+  }
+
+  const lapCompleted = telemetry.CarIdxLapCompleted;
+  const lapDistPct = telemetry.CarIdxLapDistPct;
+
+  if (!Array.isArray(lapCompleted) || !Array.isArray(lapDistPct)) return;
+
+  const rank = positions[playerCarIdx] ?? 0;
+
+  if (rank === self.lastDebugPlayerRank) return;
+
+  const prev = self.lastDebugPlayerRank;
+  self.lastDebugPlayerRank = rank;
+
+  // First observation (or player unranked): seed the baseline, nothing to diff.
+  if (prev < 0 || rank <= 0) return;
+
+  const trackSurface = telemetry.CarIdxTrackSurface as number[] | undefined;
+  const onPitRoad = telemetry.CarIdxOnPitRoad as boolean[] | undefined;
+
+  const ranked: { idx: number; rank: number }[] = [];
+
+  for (let i = 0; i < positions.length; i++) {
+    if (positions[i] > 0) ranked.push({ idx: i, rank: positions[i] });
+  }
+
+  ranked.sort((a, b) => a.rank - b.rank);
+
+  const fmt = (idx: number): string => {
+    const dp = lapDistPct[idx];
+    const ts = trackSurface?.[idx];
+    const pit = onPitRoad?.[idx];
+
+    return (
+      `P${positions[idx]}=car${idx}[lc${lapCompleted[idx]} dp${typeof dp === "number" ? dp.toFixed(3) : dp}` +
+      `${ts !== undefined ? ` ts${ts}` : ""}${pit !== undefined ? ` pit${pit ? 1 : 0}` : ""}]${idx === playerCarIdx ? "*" : ""}`
+    );
+  };
+
+  // Cars within ±2 ranks of both the old and new player rank — captures whoever
+  // slid across the boundary.
+  const near = ranked
+    .filter((e) => Math.abs(e.rank - rank) <= 2 || Math.abs(e.rank - prev) <= 2)
+    .map((e) => fmt(e.idx));
+
+  self.logger.debug(
+    `PosDbg(#603): player car${playerCarIdx} rank ${prev}→${rank} active=${ranked.length} | ${near.join(" ")}`,
+  );
+
+  // Full telemetry dump (build-flagged, default off → tree-shaken from prod).
+  if (__FEATURE_TELEMETRY_POSITION_DUMP__) {
+    dumpPositionChange(previousTelemetry, telemetry, self.logger);
+  }
 }
 
 function resolveSessionType(sessionInfo: Record<string, unknown> | null, telemetry: TelemetryData): string {

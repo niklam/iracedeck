@@ -403,6 +403,17 @@ export type SimEventMap = {
       previousClassPosition?: number;
       /** True iff the current session has more than one car class on track. */
       isMultiClass?: boolean;
+      /**
+       * True iff at least one of the positions gained was vacated by a car that
+       * left the world WITHOUT finishing the race — a retirement / DNF /
+       * disconnect — rather than by a genuine on-track pass (issue #603). The
+       * Race Engineer plays only the position readout ("We're currently P[n]")
+       * and suppresses the "Nice pass" reaction. Omitted (treated as `false`)
+       * for a normal pass. Single-class only — in multi-class the diff detects
+       * on `PlayerCarClassPosition`, which iRacing recomputes correctly when a
+       * car leaves, so no retirement attribution is needed there.
+       */
+      fromRetirement?: boolean;
     }
   >;
   /**

@@ -227,15 +227,18 @@ export {
 } from "./overtake.js";
 export {
   _resetPositionReadoutCooldown,
+  _setReactionRandom,
   buildOvertakeGainedPositionScenario,
   buildOvertakeLostPositionScenario,
   canAnnouncePosition,
+  INTRO_COOLDOWN_MS,
   type LivePosition,
   type LivePositionResolver,
   POSITION_READOUT_COOLDOWN_MS,
-  REACTION_COOLDOWN_MS,
+  REACTION_CHANCE,
+  shouldReactToOvertake,
+  shouldSpeakIntro,
   tryClaimPositionAnnouncement,
-  tryClaimReaction,
 } from "./position-readout.js";
 export {
   type OvertakeGate,
