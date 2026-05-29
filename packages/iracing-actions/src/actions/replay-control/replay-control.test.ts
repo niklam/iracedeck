@@ -2166,6 +2166,11 @@ describe("ReplayControl", () => {
             // Bisection-driven setPlayPosition calls (skip the trailing back-step).
             const bisectionFrames = mockReplay.setPlayPosition.mock.calls.slice(0, -1).map((call) => call[1] as number);
 
+            // Guard against a vacuously-passing loop if the walker never
+            // actually bisected — without this the test would silently miss
+            // a regression where phase 3 was skipped entirely.
+            expect(bisectionFrames.length).toBeGreaterThan(0);
+
             for (const frame of bisectionFrames) {
               expect(frame).toBeGreaterThanOrEqual(10_000);
               expect(frame).toBeLessThanOrEqual(19_999);
