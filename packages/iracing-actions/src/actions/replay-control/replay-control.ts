@@ -62,6 +62,7 @@ import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  ReplayPosMode,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import z from "zod";
@@ -224,13 +225,163 @@ const LONG_PRESS_REPEAT_GAP_MS = 250;
 const LONG_PRESS_MAX_DURATION_MS = 15_000;
 
 /**
- * Safety cap on iterations the adaptive lap walker performs in a single
- * press. Combined with `REPLAY_LAP_SEARCH_GAP_MS`, this bounds the worst-case
- * wall-clock time at MAX × GAP. Each iteration reads telemetry first, so a
- * normal delta finishes in `delta + a-few-retries` iterations; the cap only
- * trips on a pathological scenario.
+ * Safety cap on bisection iterations (issue #607). log₂(N) jumps converge in
+ * ~24 steps for a 2-hour endurance replay at 60 Hz (~430 k frames), so 30 is
+ * a comfortable engineering ceiling that only trips on a pathological case
+ * (an `inWorld` predicate that never converges because the car was never
+ * in-world at any reachable frame). Distinct from the old `MAX_LAP_SEARCH_STEPS`
+ * cap, which had to absorb O(N) lap-by-lap walks and a `× gap` wall-clock
+ * budget — the bisection's wall-clock is ~`30 × gap` worst case.
  */
-const MAX_LAP_SEARCH_STEPS = 150;
+const MAX_BISECTION_STEPS = 30;
+
+// Issue #607 follow-up #3: live testing showed that bisecting on the whole
+// replay buffer doesn't reliably find the fastest lap when the target lap
+// sits in a non-current session (e.g. user in race trying to find quali's
+// fastest). Replaced the buffer-wide bisection with a three-phase walk:
+//
+//   1. Session map. On the first walk per `SessionUniqueID`, navigate
+//      `goToStart` → `nextSession` × N → `goToEnd`, recording the start
+//      frame of each session and the buffer's end frame. Cached at module
+//      scope and reused for every subsequent walk on the same replay.
+//   2. Bisect within the target session's bounds (looked up from the cache)
+//      until `CarIdxLap[carIdx]` is within `CLOSE_ENOUGH_LAPS` of the target
+//      — much faster than the prior whole-buffer bisection, and immune to
+//      cross-session lap-number weirdness.
+//   3. Lap-step refinement: `nextLap` / `prevLap` until `CarIdxLap[carIdx]
+//      === targetLap`. iRacing's lap-step lands at a clean lap boundary, so
+//      no backstep is needed to land at the start of the fastest lap.
+
+/**
+ * After bisection, the lap-step phase takes over. `CLOSE_ENOUGH_LAPS = 2`
+ * means the bisection exits when the player car is within 2 laps of the
+ * target either way — the lap-step phase finishes the job with at most a
+ * few `nextLap` / `prevLap` calls.
+ */
+const CLOSE_ENOUGH_LAPS = 2;
+
+/**
+ * Safety cap on the lap-step phase. iRacing's lap navigation is precise so
+ * this should never trip in practice; it exists for the case where the
+ * SDK's reported `CarIdxLap` doesn't change after a `nextLap` / `prevLap`
+ * broadcast (e.g. cursor at the buffer edge).
+ */
+const MAX_LAP_STEPS = 10;
+
+/**
+ * Sanity cap on the number of sessions in a single replay. Most iRacing
+ * sessions have at most 4 (practice / qualifying / warmup / race); 10 is
+ * generous headroom.
+ */
+const MAX_SESSIONS = 10;
+
+/**
+ * Threshold for `CarIdxLapDistPct` (0..1) at which the cursor is "close
+ * enough to the end of the lap". After lap-step lands on the right lap,
+ * if dist is below this we do one extra `nextLap` (with `prevLap` recovery
+ * on overshoot) so the cursor parks at the very end of the lap-before-the-
+ * fastest, ready for a Play press to show the line-crossing.
+ */
+const FASTEST_LAP_DIST_THRESHOLD = 0.999;
+
+/**
+ * Number of `prevFrame` calls applied as the very last step. At 60 Hz that's
+ * ~16 ms per tick, so 2 ticks ≈ 32 ms of buffer before the line-crossing —
+ * the cursor lands far enough back that the next Play press shows the car
+ * visibly approaching, not already crossing.
+ */
+const FASTEST_LAP_FINAL_BACKSTEP_TICKS = 2;
+
+/**
+ * One session's frame bounds within the replay buffer. `endFrame` for the
+ * LAST session is the buffer's live edge at the time of the map build —
+ * it can lag the true live edge if the replay keeps growing, but the
+ * fastest lap typically sits well inside the recorded window anyway.
+ */
+type SessionMapEntry = {
+  sessionNum: number;
+  startFrame: number;
+  endFrame: number;
+};
+
+type FastestLapSessionMap = {
+  /**
+   * Every `SessionUniqueID` we observed while building the map (one per
+   * session — iRacing increments SessionUniqueID per session, not per race
+   * weekend, so a single race-weekend has N IDs for N sessions). The cache
+   * is reused whenever the current walk's SessionUniqueID matches ANY of
+   * these — a press in practice and a press in race both reuse the same
+   * map, but starting a new race weekend (all-new IDs) misses cleanly.
+   */
+  sessionUniqueIds: Set<number>;
+  sessions: SessionMapEntry[];
+  /**
+   * Per-car cache of the final cursor frame for a `(carIdx, targetLap,
+   * sessionNum)` triple. Populated at the end of every successful walk;
+   * subsequent presses with the same triple jump straight to the cached
+   * frame with a single `setPlayPosition`, skipping the bisection +
+   * lap-step + nudge + tick-back phases. Stale entries (when the car
+   * sets a new fastest lap) naturally fall through to a cache miss
+   * because the `targetLap` part of the key changes.
+   */
+  fastestLapFrames: Map<string, number>;
+};
+
+function fastestLapCacheKey(carIdx: number, targetLap: number, targetSessionNum: number): string {
+  return `${carIdx}|${targetLap}|${targetSessionNum}`;
+}
+
+/**
+ * Module-level cache of the session map. Reused whenever the current walk's
+ * `SessionUniqueID` is one of the IDs we observed while building, so a
+ * single map covers every session in the race weekend.
+ */
+let cachedFastestLapSessionMap: FastestLapSessionMap | null = null;
+
+/**
+ * @internal Exported for testing — clears the module-level session-map +
+ * per-car frame cache so each test starts from a clean slate.
+ */
+export function _resetFastestLapSessionCache(): void {
+  cachedFastestLapSessionMap = null;
+}
+
+/**
+ * @internal Exported for testing — exposes the current cache state so tests
+ * can assert the per-car frame Map contents without poking at module-private
+ * variables.
+ */
+export function _getFastestLapSessionCache(): FastestLapSessionMap | null {
+  return cachedFastestLapSessionMap;
+}
+
+/**
+ * Within-session lap+dist range. A score is `SessionNum * SESSION_STRIDE +
+ * (lap + dist)`; the stride must exceed any plausible (lap + dist) value so
+ * `session` is the dominant comparison dimension. 24-hour endurance at 200
+ * km/h on a 5 km track ≈ 960 laps, so 10_000 has a 10× margin.
+ */
+const SESSION_STRIDE = 10_000;
+
+/**
+ * Multiplier applied to the configured `fastestLapSearchDelayMs` to cap how
+ * long the bisection waits for telemetry to LEAVE the `SessionNum = -1`
+ * transient that iRacing publishes between a `setPlayPosition` broadcast
+ * landing and the cursor settling at the new frame (issue #607). The base
+ * settle is the configured delay (default 400 ms); the cap is `× 4`, so the
+ * worst-case wait per probe is `delay × 4` (default 1.6 s). Observed first-
+ * jump transient is ~514 ms after a paused-replay `setPlayPosition`, so this
+ * gives plenty of headroom while still keeping the common case fast (one
+ * post-poll read after a 50 ms wait).
+ */
+const STABILIZATION_TIMEOUT_MULTIPLIER = 4;
+
+/**
+ * Interval the bisection polls `getCurrentTelemetry()` at while waiting for
+ * `SessionNum` to leave the `-1` transient. 50 ms is ~3 sim ticks at 60 Hz
+ * — short enough to catch the transition promptly without spinning.
+ */
+const STABILIZATION_POLL_INTERVAL_MS = 50;
 
 /**
  * Default gap between consecutive replay lap-search broadcasts when the
@@ -262,14 +413,6 @@ function readFastestLapSearchDelayMs(): number {
 
   return Math.min(Math.max(value, REPLAY_LAP_SEARCH_GAP_MIN_MS), REPLAY_LAP_SEARCH_GAP_MAX_MS);
 }
-
-/**
- * Consecutive iterations the adaptive walker tolerates without the cursor
- * advancing before giving up. Covers the case where the cursor is at a
- * session boundary or the target lap is unreachable in the current replay
- * buffer.
- */
-const LAP_WALK_STUCK_LIMIT = 5;
 
 /**
  * @internal Exported for testing
@@ -569,6 +712,49 @@ export function findAdjacentCarByNumber(
   }
 }
 
+/**
+ * Result of sampling the player's score at one bisection probe (issue #607).
+ * The walker compares this to `targetScore` to pick the next half-bracket and
+ * to detect convergence; the discriminated union keeps the "is the car
+ * in-world at this frame" check inline so the consumer can't accidentally
+ * trust a stale `lap`/`dist` from a NotInWorld tick.
+ */
+type FastestLapBisectionProbe =
+  | { kind: "in-world"; sessionNum: number; lap: number; dist: number; score: number }
+  | { kind: "out-of-world"; sessionNum: number }
+  | { kind: "missing" };
+
+/**
+ * @internal Exported for testing.
+ *
+ * Compute the bisection score for the current frame from a telemetry sample.
+ * Returns `in-world` with a monotonic `score` (`SessionNum * SESSION_STRIDE
+ * + CarIdxLap + CarIdxLapDistPct`) when the target car has valid lap +
+ * distance fields; `out-of-world` when the car is gone (lap or dist below
+ * zero) but `SessionNum` is still readable; `missing` when even `SessionNum`
+ * isn't available (caller must abort). Mirrors the #603 `frameScore`
+ * convention so a future shared helper can absorb both.
+ */
+export function computeFastestLapBisectionProbe(
+  telemetry: TelemetryData | null,
+  carIdx: number,
+): FastestLapBisectionProbe {
+  const sessionNum = telemetry?.SessionNum;
+
+  if (typeof sessionNum !== "number") return { kind: "missing" };
+
+  const lap = (telemetry?.CarIdxLap as number[] | undefined)?.[carIdx];
+  const dist = (telemetry?.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
+
+  if (typeof lap !== "number" || lap < 0 || typeof dist !== "number" || dist < 0) {
+    return { kind: "out-of-world", sessionNum };
+  }
+
+  const score = sessionNum * SESSION_STRIDE + lap + dist;
+
+  return { kind: "in-world", sessionNum, lap, dist, score };
+}
+
 const ReplayControlSettings = CommonSettings.extend({
   mode: z.enum(REPLAY_CONTROL_MODES).default("play-pause"),
   speed: z.string().default("1"),
@@ -841,17 +1027,31 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
   /**
    * @internal Exposed for testing.
    *
-   * Adaptive walker that drives the replay cursor to a target lap for a
-   * specific car. Reads `CarIdxLap[carIdx]` between each step and re-sends
-   * `nextLap`/`prevLap` when the cursor didn't advance — that recovers from
-   * iRacing dropping individual `ReplaySearch` broadcasts (the failure mode
-   * fixed-spacing bursts had at every tested gap, including 100 ms). Bails
-   * when the cursor sits still for {@link LAP_WALK_STUCK_LIMIT} consecutive
-   * iterations (e.g. target lap is outside the replay buffer) or when
-   * iterations reach {@link MAX_LAP_SEARCH_STEPS}. Only one walk per context
-   * runs at a time; second presses while one is in flight are ignored.
+   * Drives the replay cursor to the start of the fastest lap for a specific
+   * car (issue #607). Three phases:
+   *
+   *   1. **Session map.** On the first walk per `SessionUniqueID`, build a
+   *      cache of session bounds (start frame of each session + buffer's
+   *      live edge) by `goToStart` + `nextSession` × N + `goToEnd`.
+   *      Subsequent walks within the same replay skip straight to phase 2.
+   *   2. **Bisect within target session.** Look up the target session's
+   *      [startFrame, endFrame] from the map and bisect with
+   *      `setPlayPosition(Begin, mid)` until the player car is within
+   *      {@link CLOSE_ENOUGH_LAPS} of the target lap.
+   *   3. **Lap-step refinement.** `nextLap` / `prevLap` until
+   *      `CarIdxLap[carIdx] === targetLap`. iRacing's lap-step lands at a
+   *      clean lap boundary, so the cursor parks at the start of the
+   *      fastest lap with no further fix-up.
+   *
+   * Only one walk per context runs at a time; second presses while one is
+   * in flight are ignored.
    */
-  async walkToFastestLap(contextId: string, carIdx: number, targetLap: number): Promise<void> {
+  async walkToFastestLap(
+    contextId: string,
+    carIdx: number,
+    targetLap: number,
+    targetSessionNum: number,
+  ): Promise<void> {
     if (this.fastestLapWalkInFlight.has(contextId)) {
       this.logger.debug(`Jump to fastest lap: walk already in flight for ${contextId}; ignoring`);
 
@@ -862,57 +1062,349 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
     try {
       const replay = getCommands().replay;
-      let attempts = 0;
-      let lastObservedLap: number | null = null;
-      let stuckCount = 0;
+      const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-      while (attempts++ < MAX_LAP_SEARCH_STEPS) {
-        const telemetry = this.sdkController.getCurrentTelemetry();
-        const currentLaps = telemetry?.CarIdxLap as number[] | undefined;
-        const currentLap = currentLaps?.[carIdx];
+      /**
+       * Wait for the base settle gap to elapse, then poll the telemetry until
+       * `SessionNum >= 0` — the transient `-1` value iRacing publishes between
+       * a search / setPlayPosition broadcast landing and the cursor settling
+       * at the new frame (issue #607). Returns the stable telemetry sample or
+       * `null` if `SessionNum` never leaves the transient state within
+       * `STABILIZATION_TIMEOUT_MULTIPLIER × settle` ms.
+       */
+      const readStableTelemetry = async (): Promise<TelemetryData | null> => {
+        const baseSettleMs = readFastestLapSearchDelayMs();
 
-        if (typeof currentLap !== "number" || currentLap < 0) {
-          this.logger.debug(`Jump to fastest lap: bail, CarIdxLap[${carIdx}] is unavailable`);
+        await sleep(baseSettleMs);
+        const initial = this.sdkController.getCurrentTelemetry();
 
-          return;
+        if (typeof initial?.SessionNum === "number" && initial.SessionNum >= 0) return initial;
+
+        const deadline = Date.now() + baseSettleMs * (STABILIZATION_TIMEOUT_MULTIPLIER - 1);
+
+        while (Date.now() < deadline) {
+          await sleep(STABILIZATION_POLL_INTERVAL_MS);
+          const tel = this.sdkController.getCurrentTelemetry();
+
+          if (typeof tel?.SessionNum === "number" && tel.SessionNum >= 0) return tel;
         }
 
-        if (currentLap === targetLap) {
-          this.logger.debug(`Jump to fastest lap: reached lap ${targetLap} after ${attempts} iterations`);
+        return null;
+      };
 
-          return;
+      const buildSessionMap = async (): Promise<FastestLapSessionMap | null> => {
+        const sessionUniqueIds = new Set<number>();
+        const recordUniqueId = (tel: TelemetryData): void => {
+          if (typeof tel.SessionUniqueID === "number") sessionUniqueIds.add(tel.SessionUniqueID);
+        };
+
+        replay.goToStart();
+        const firstTel = await readStableTelemetry();
+
+        if (firstTel == null) {
+          this.logger.warn("Jump to fastest lap: telemetry did not stabilize after goToStart; aborting map build");
+
+          return null;
         }
 
-        // Detect the cursor not advancing — either a session-edge condition
-        // or the replay buffer doesn't reach the target lap.
-        if (lastObservedLap !== null && currentLap === lastObservedLap) {
-          stuckCount++;
+        recordUniqueId(firstTel);
+        const firstFrame = firstTel.ReplayFrameNum;
+        const firstSession = firstTel.SessionNum;
 
-          if (stuckCount >= LAP_WALK_STUCK_LIMIT) {
-            this.logger.warn(`Jump to fastest lap: cursor stuck at lap ${currentLap} (target ${targetLap}); giving up`);
+        if (typeof firstFrame !== "number" || typeof firstSession !== "number") {
+          this.logger.warn(
+            `Jump to fastest lap: missing fields after goToStart (frame=${firstFrame}, session=${firstSession}); aborting map build`,
+          );
 
-            return;
+          return null;
+        }
+
+        const sessions: SessionMapEntry[] = [{ sessionNum: firstSession, startFrame: firstFrame, endFrame: -1 }];
+        let lastFrame = firstFrame;
+        let lastSession = firstSession;
+
+        for (let i = 0; i < MAX_SESSIONS; i++) {
+          replay.nextSession();
+          const tel = await readStableTelemetry();
+
+          if (tel == null) {
+            this.logger.warn(`Jump to fastest lap: telemetry did not stabilize after nextSession #${i + 1}; aborting`);
+
+            return null;
           }
-        } else {
-          stuckCount = 0;
+
+          recordUniqueId(tel);
+          const frame = tel.ReplayFrameNum;
+          const session = tel.SessionNum;
+
+          if (typeof frame !== "number" || typeof session !== "number") {
+            this.logger.warn("Jump to fastest lap: missing fields after nextSession; aborting map build");
+
+            return null;
+          }
+
+          if (session === lastSession || frame === lastFrame) {
+            // nextSession was a no-op — we're already in the last session.
+            break;
+          }
+
+          sessions.push({ sessionNum: session, startFrame: frame, endFrame: -1 });
+          lastFrame = frame;
+          lastSession = session;
         }
 
-        lastObservedLap = currentLap;
+        replay.goToEnd();
+        const endTel = await readStableTelemetry();
 
-        if (currentLap < targetLap) {
-          replay.nextLap();
-        } else {
-          replay.prevLap();
+        if (endTel == null) {
+          this.logger.warn("Jump to fastest lap: telemetry did not stabilize after goToEnd; aborting map build");
+
+          return null;
         }
 
-        // Read the gap live on every iteration so a user can drag the slider
-        // mid-walk and have the next step pick up the new value.
-        const gapMs = readFastestLapSearchDelayMs();
-        await new Promise<void>((resolve) => setTimeout(resolve, gapMs));
+        recordUniqueId(endTel);
+        const endFrame = endTel.ReplayFrameNum;
+
+        if (typeof endFrame !== "number") {
+          this.logger.warn("Jump to fastest lap: ReplayFrameNum missing after goToEnd; aborting map build");
+
+          return null;
+        }
+
+        for (let i = 0; i < sessions.length; i++) {
+          sessions[i].endFrame = i + 1 < sessions.length ? sessions[i + 1].startFrame - 1 : endFrame;
+        }
+
+        return { sessionUniqueIds, sessions, fastestLapFrames: new Map<string, number>() };
+      };
+
+      // Pause first so the cursor doesn't drift between commands and the
+      // post-settle telemetry sample. `readStableTelemetry` rides out the
+      // ~500 ms SessionNum=-1 transient that the first paused-replay command
+      // produces; subsequent commands clear in ~100 ms.
+      replay.pause();
+      await sleep(readFastestLapSearchDelayMs());
+
+      // Phase 1: session map (cache or build).
+      const initialTel = await readStableTelemetry();
+
+      if (initialTel == null) {
+        this.logger.warn("Jump to fastest lap: telemetry did not stabilize after pause; aborting");
+
+        return;
       }
 
-      this.logger.warn(
-        `Jump to fastest lap: safety cap hit (${MAX_LAP_SEARCH_STEPS} iterations) at lap ${lastObservedLap}, target ${targetLap}`,
+      const sessionUniqueId = initialTel.SessionUniqueID;
+
+      if (typeof sessionUniqueId !== "number") {
+        this.logger.warn("Jump to fastest lap: SessionUniqueID unavailable; aborting");
+
+        return;
+      }
+
+      let sessionMap = cachedFastestLapSessionMap;
+      const cacheHit = sessionMap != null && sessionMap.sessionUniqueIds.has(sessionUniqueId);
+
+      this.logger.info(
+        `Jump to fastest lap: cache ${cacheHit ? "HIT" : "MISS"} (currentUniqueId=${sessionUniqueId}, cachedUniqueIds=${
+          sessionMap == null ? "<none>" : `{${[...sessionMap.sessionUniqueIds].join(",")}}`
+        })`,
+      );
+
+      if (sessionMap == null || !cacheHit) {
+        const built = await buildSessionMap();
+
+        if (built == null) return;
+
+        sessionMap = built;
+        cachedFastestLapSessionMap = built;
+        this.logger.info(
+          `Jump to fastest lap: session map built — uniqueIds={${[...sessionMap.sessionUniqueIds].join(",")}}, ${sessionMap.sessions
+            .map((s) => `S${s.sessionNum}[${s.startFrame}-${s.endFrame}]`)
+            .join(", ")}`,
+        );
+      } else {
+        this.logger.debug(`Jump to fastest lap: reusing cached session map (${sessionMap.sessions.length} sessions)`);
+      }
+
+      // Phase 2a: per-car cache check. If we've already walked this
+      // (carIdx, targetLap, sessionNum) triple, jump straight to the stored
+      // frame — no bisection, no lap-step, no nudge, no tick-back.
+      const cacheKey = fastestLapCacheKey(carIdx, targetLap, targetSessionNum);
+      const cachedFrame = sessionMap.fastestLapFrames.get(cacheKey);
+
+      if (typeof cachedFrame === "number") {
+        this.logger.info(
+          `Jump to fastest lap: per-car cache HIT (key=${cacheKey}, frame=${cachedFrame}); using stored frame`,
+        );
+        replay.setPlayPosition(ReplayPosMode.Begin, cachedFrame);
+        await readStableTelemetry();
+
+        return;
+      }
+
+      this.logger.info(`Jump to fastest lap: per-car cache MISS (key=${cacheKey}); walking`);
+
+      // Phase 2b: look up target session bounds.
+      const bounds = sessionMap.sessions.find((s) => s.sessionNum === targetSessionNum);
+
+      if (bounds == null) {
+        this.logger.warn(`Jump to fastest lap: target session ${targetSessionNum} not in session map; aborting`);
+
+        return;
+      }
+
+      let loFrame = bounds.startFrame;
+      let hiFrame = bounds.endFrame;
+
+      if (hiFrame <= loFrame) {
+        this.logger.warn(
+          `Jump to fastest lap: empty session bounds for session ${targetSessionNum} (lo=${loFrame}, hi=${hiFrame}); aborting`,
+        );
+
+        return;
+      }
+
+      // Target the lap BEFORE the fastest one — we want to land at the end
+      // of that lap (just before the S/F crossing into the fastest lap), so
+      // pressing Play immediately shows the line-crossing into the fast lap.
+      const targetLapMinus1 = Math.max(0, targetLap - 1);
+
+      // Phase 3: bisect within the target session until we're within
+      // CLOSE_ENOUGH_LAPS of the lap-before-fastest.
+      let bisectionSteps = 0;
+
+      for (let step = 0; step < MAX_BISECTION_STEPS; step++) {
+        if (hiFrame - loFrame <= 1) break;
+
+        const mid = Math.floor((loFrame + hiFrame) / 2);
+
+        replay.setPlayPosition(ReplayPosMode.Begin, mid);
+        const tel = await readStableTelemetry();
+
+        bisectionSteps = step + 1;
+
+        if (tel == null) {
+          this.logger.warn(
+            `Jump to fastest lap: telemetry did not stabilize at frame ${mid} (bisection step ${step}); aborting`,
+          );
+
+          return;
+        }
+
+        const lap = (tel.CarIdxLap as number[] | undefined)?.[carIdx];
+
+        if (typeof lap !== "number" || lap < 0) {
+          // Car not in world at this probe — assume we're before the target
+          // and advance the lower bound.
+          loFrame = mid;
+          continue;
+        }
+
+        if (Math.abs(lap - targetLapMinus1) <= CLOSE_ENOUGH_LAPS) {
+          this.logger.debug(
+            `Jump to fastest lap: bisection landed within ${CLOSE_ENOUGH_LAPS} laps after ${bisectionSteps} steps (frame=${mid}, lap=${lap}, target=${targetLapMinus1})`,
+          );
+          break;
+        }
+
+        if (lap < targetLapMinus1) {
+          loFrame = mid;
+        } else {
+          hiFrame = mid;
+        }
+      }
+
+      // Phase 4: lap-step until we're on the lap-before-fastest.
+      let lapSteps = 0;
+
+      for (let step = 0; step < MAX_LAP_STEPS; step++) {
+        const tel = await readStableTelemetry();
+
+        if (tel == null) {
+          this.logger.warn(`Jump to fastest lap: telemetry did not stabilize during lap-step ${step}; aborting`);
+
+          return;
+        }
+
+        const lap = (tel.CarIdxLap as number[] | undefined)?.[carIdx];
+
+        if (typeof lap !== "number" || lap < 0) {
+          this.logger.warn(`Jump to fastest lap: CarIdxLap unavailable during lap-step ${step} (lap=${lap}); aborting`);
+
+          return;
+        }
+
+        if (lap === targetLapMinus1) {
+          this.logger.debug(
+            `Jump to fastest lap: lap-step phase converged after ${lapSteps} steps (lap=${lap}, target=${targetLapMinus1})`,
+          );
+          break;
+        }
+
+        if (lap < targetLapMinus1) replay.nextLap();
+        else replay.prevLap();
+
+        lapSteps = step + 1;
+      }
+
+      // Phase 5: dist refinement. We're on the right lap but maybe not at
+      // the end. If dist < 0.999, press nextLap to advance to the end; if
+      // that overshoots into the next lap, press prevLap to come back.
+      const refineTel = await readStableTelemetry();
+      const refineLap = (refineTel?.CarIdxLap as number[] | undefined)?.[carIdx];
+      const refineDist = (refineTel?.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
+      let nudges = 0;
+
+      if (
+        typeof refineLap === "number" &&
+        typeof refineDist === "number" &&
+        refineLap === targetLapMinus1 &&
+        refineDist < FASTEST_LAP_DIST_THRESHOLD
+      ) {
+        this.logger.debug(
+          `Jump to fastest lap: nudging via nextLap (currently lap=${refineLap}, dist=${refineDist.toFixed(4)})`,
+        );
+        replay.nextLap();
+        nudges++;
+
+        const afterTel = await readStableTelemetry();
+        const afterLap = (afterTel?.CarIdxLap as number[] | undefined)?.[carIdx];
+
+        if (typeof afterLap === "number" && afterLap > targetLapMinus1) {
+          this.logger.debug(`Jump to fastest lap: nextLap overshot to lap=${afterLap}; recovering via prevLap`);
+          replay.prevLap();
+          nudges++;
+          await readStableTelemetry();
+        }
+      }
+
+      // Phase 6: single absolute-frame back-step. Read the current frame,
+      // jump to `frame - FASTEST_LAP_FINAL_BACKSTEP_TICKS` in one broadcast.
+      const preBackstepTel = await readStableTelemetry();
+      const preBackstepFrame = preBackstepTel?.ReplayFrameNum;
+
+      if (typeof preBackstepFrame === "number") {
+        const targetFrame = Math.max(0, preBackstepFrame - FASTEST_LAP_FINAL_BACKSTEP_TICKS);
+
+        replay.setPlayPosition(ReplayPosMode.Begin, targetFrame);
+        await readStableTelemetry();
+      }
+
+      // Final report + store the landed frame in the per-car cache so the
+      // next press for this (carIdx, targetLap, sessionNum) triple hits.
+      const finalTel = await readStableTelemetry();
+      const finalLap = (finalTel?.CarIdxLap as number[] | undefined)?.[carIdx];
+      const finalDist = (finalTel?.CarIdxLapDistPct as number[] | undefined)?.[carIdx];
+      const finalFrame = finalTel?.ReplayFrameNum;
+
+      if (typeof finalFrame === "number") {
+        sessionMap.fastestLapFrames.set(cacheKey, finalFrame);
+        this.logger.debug(`Jump to fastest lap: stored per-car cache entry (key=${cacheKey}, frame=${finalFrame})`);
+      }
+
+      this.logger.debug(
+        `Jump to fastest lap: converged after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${FASTEST_LAP_FINAL_BACKSTEP_TICKS}-tick back-step (lap=${finalLap}, dist=${typeof finalDist === "number" ? finalDist.toFixed(4) : "n/a"}, target=${targetLap}, session=${targetSessionNum})`,
       );
     } finally {
       this.fastestLapWalkInFlight.delete(contextId);
@@ -1246,20 +1738,21 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
           break;
         }
 
-        // iRacing's nextLap jumps to the *end* of the targeted lap (=start of
-        // the lap after it). Subtract one so the cursor lands at the start of
-        // the fastest lap, not at its end.
-        const walkTargetLap = targetLap - 1;
+        // Resolve the session at dispatch time so the bisection narrows to
+        // the right session in a multi-session replay (practice + qualifying
+        // + race). `findFastestLapForCar` already used the same `SessionNum`
+        // to look the lap number up.
+        const targetSessionNum = typeof telemetry?.SessionNum === "number" ? telemetry.SessionNum : 0;
 
-        // Adaptive lap walk: read CarIdxLap between steps and re-send when the
-        // cursor didn't advance. iRacing's broadcast queue drops fixed-spacing
-        // bursts (observed at 50 / 100 ms in live testing), so polling between
-        // steps is the only reliable way to converge on the target lap.
-        // Fire-and-forget — the press handler returns immediately.
-        void this.walkToFastestLap(contextId, targetCarIdx, walkTargetLap);
+        // Frame-based bisection (issue #607). Pauses the replay, brackets the
+        // buffer with toStart/toEnd, then binary-searches by absolute frame
+        // until the cursor lands at the start of `targetLap` for `targetCarIdx`
+        // within `targetSessionNum`. Fire-and-forget — the press handler
+        // returns immediately.
+        void this.walkToFastestLap(contextId, targetCarIdx, targetLap, targetSessionNum);
 
         this.logger.info("Jump to fastest lap executed");
-        this.logger.debug(`Target carIdx: ${targetCarIdx}, fastest lap: ${targetLap}, walker target: ${walkTargetLap}`);
+        this.logger.debug(`Target carIdx: ${targetCarIdx}, fastest lap: ${targetLap}, session: ${targetSessionNum}`);
         break;
       }
       case "next-car": {
