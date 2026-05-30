@@ -210,6 +210,8 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
+export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 
 // Dual-press tracker (issue #540)
 export {
