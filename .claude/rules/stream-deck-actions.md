@@ -218,6 +218,8 @@ Always include both scripts in PI HTML files:
 
 Persistence is by stable device id, not by enumeration index, so unplugging or reordering devices can't silently repoint the selection at a different device. When a saved id is no longer present in the current list, the component falls back to System Default and writes that fallback back through the bound setting.
 
+**`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally.
+
 **Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists.
 
 ### sdpi-components Library
