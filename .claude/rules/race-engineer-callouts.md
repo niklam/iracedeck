@@ -170,7 +170,7 @@ Manual: trigger from the scenario harness (no iRacing required), then in iRacing
 
 ## Reference implementations
 
-Worked precedents — one per past callout, naming the pattern it established and the reusable lesson — live in [`race-engineer-callout-examples.md`](race-engineer-callout-examples.md). Consult it when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, payload-extension cadence anchors, cause classification, self-managed running order, …). That file is scoped to the same `paths:` as this one, so it co-loads whenever you're working on callouts.
+Worked precedents — one per past callout, naming the pattern it established and the reusable lesson — live in `@.claude/rules/race-engineer-callout-examples.md`. Consult it when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, payload-extension cadence anchors, cause classification, self-managed running order, …). That file is scoped to the same `paths:` as this one, so it co-loads whenever you're working on callouts.
 
 ## Why these rules exist
 

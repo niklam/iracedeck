@@ -12,7 +12,7 @@ paths:
 ---
 # Race Engineer Callout — Reference Implementations
 
-Worked precedents for the how-to in [`race-engineer-callouts.md`](race-engineer-callouts.md). Each entry names the pattern a past callout established and the reusable lesson — consult one when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, cause classification, …). The full rationale for any entry also lives in its linked issue/PR.
+Worked precedents for the how-to in `@.claude/rules/race-engineer-callouts.md`. Each entry names the pattern a past callout established and the reusable lesson — consult one when a new callout needs a variation the checklist doesn't cover (continuous-distance triggers, multi-class projection, replay gating, cause classification, …). The full rationale for any entry also lives in its linked issue/PR.
 
 - **Track Conditions / Wetness change** — issue #526. End-to-end example covering a brand-new family with a new bus enum, directional predicate, single per-callout opt-in covering multiple subjects.
 - **Flag callouts** — issue #467. Per-subject opt-in (one boolean per flag colour); scope-aware predicate (`yellow.scope`); session-type branching (green/white/checkered).
