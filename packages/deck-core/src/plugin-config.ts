@@ -25,15 +25,6 @@ export interface PlatformCapabilities {
  */
 export interface PlatformFeatureFlags {
   borderGlow: boolean;
-  /**
-   * Dev diagnostic (issue #603): when true, the sim translator dumps the full
-   * previous + current telemetry to `<tmp>/iracedeck-pos-dumps/<SessionUniqueID>_<SessionTick>.json`
-   * each time the player's computed race position changes. Default `false` in
-   * both committed `platform-features.json` files so it never ships; enable
-   * locally via `feature-flags.local.json`. Optional so test fixtures need not
-   * set it. Gated at compile time via `__FEATURE_TELEMETRY_POSITION_DUMP__`.
-   */
-  telemetryPositionDump?: boolean;
 }
 
 export interface PlatformFeatures {

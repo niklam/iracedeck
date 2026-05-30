@@ -5,7 +5,6 @@
     "svgPatterns": true
   },
   "features": {
-    "borderGlow": true,
-    "telemetryPositionDump": false
+    "borderGlow": true
   }
 }
