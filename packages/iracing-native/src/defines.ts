@@ -742,3 +742,20 @@ export interface TelemetryData {
 export interface SessionInfo {
   [key: string]: unknown;
 }
+
+/**
+ * Result of the Administrator/integrity-level comparison between this process
+ * and iRacing (issue #610). All fields are `false` on non-Windows / mock.
+ */
+export interface ElevationStatus {
+  /** This process's token reports an elevated (Administrator) integrity. */
+  selfElevated: boolean;
+  /** The iRacing simulator window was found. */
+  iracingFound: boolean;
+  /** OpenProcess on iRacing failed with ERROR_ACCESS_DENIED (higher integrity). */
+  iracingQueryDenied: boolean;
+  /** iRacing's token reports elevated (only meaningful when the query succeeded). */
+  iracingElevated: boolean;
+  /** !selfElevated && iracingFound && (iracingQueryDenied || iracingElevated). */
+  mismatch: boolean;
+}
