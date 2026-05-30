@@ -75,6 +75,24 @@ Writes a UTF-16 string to the Windows clipboard as `CF_UNICODETEXT`. Returns `tr
 
 Pasting is the caller's responsibility — `setClipboardText` only writes. Send `Ctrl+V` via `getKeyboard().sendKeyCombination(...)` from `@iracedeck/deck-core` to paste. Used by race-admin's "Type in Chat" driver-target mode and any future flows that need to put text on the clipboard without going through the full chat-send sequence.
 
+## Elevation / Integrity Detection
+
+### `getElevationStatus(): ElevationStatus`
+
+Compares this process's elevation (integrity) level with iRacing's to detect the case where iRacing runs as Administrator while the plugin does not — Windows UIPI then silently drops every outbound command (scan-code injection and SDK broadcasts) while read-only telemetry keeps working (issue #610). A functional probe can't detect this (UIPI-blocked input still reports success), so the comparison of integrity levels is the only reliable signal.
+
+Returns `{ selfElevated, iracingFound, iracingQueryDenied, iracingElevated, mismatch }`:
+
+- `selfElevated` — this process's `TOKEN_ELEVATION.TokenIsElevated` via `OpenProcessToken` + `GetTokenInformation(TokenElevation)`.
+- `iracingFound` — `FindWindowA(NULL, "iRacing.com Simulator")` located the window.
+- `iracingQueryDenied` — `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` on iRacing's PID failed with `ERROR_ACCESS_DENIED` (it runs at a higher integrity level than us).
+- `iracingElevated` — iRacing's token reports elevated (only meaningful when the `OpenProcess` query succeeded).
+- `mismatch` — `!selfElevated && iracingFound && (iracingQueryDenied || iracingElevated)`. Computed in the N-API wrapper from the fields above.
+
+Because the signal is *relative* integrity, it also catches non-"Administrator" integrity differences, not just the literal Administrator case.
+
+This is **not** a keyboard function: it has no keyboard-service / `initializeKeyboard` wiring. The cross-package sync chain below applies only to its native↔TS↔mock mirror (`addon.cc` → `src/index.ts` → `src/mock-impl.ts`) and this document. Consumers (the plugins) read it directly via `new IRacingNative().getElevationStatus()`.
+
 ## Chat Functions
 
 ### `sendChatMessage(message: string, openToPasteDelayMs?: number, pasteToEnterDelayMs?: number, enterToCloseDelayMs?: number): Promise<boolean>`
