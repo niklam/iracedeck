@@ -63,7 +63,7 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 ### Position
 
-Display the current race position. Optionally shows total cars (e.g., `3/24`) by enabling the **Show Total** setting.
+Display your current race position — either within your own car class (the default) or overall across the whole field. Optionally shows the field size (e.g., `P3/24`) by enabling the **Show Total** setting.
 
 #### Details
 
@@ -71,10 +71,19 @@ Display the current race position. Optionally shows total cars (e.g., `3/24`) by
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the position updates live as drivers pass or are overtaken
 
+#### Setting: Position Type
+
+Which position to display. Defaults to **Class**.
+
+- **Class** (default) — Your position within your car class. In single-class races this matches your overall position.
+- **Overall** — Your position across the entire field, regardless of class.
+
 #### Setting: Show Total
 
-- **Off** (default) — Show just your position (e.g., `3`)
-- **On** — Show position out of field size (e.g., `3/24`)
+Whether to append the field size after your position. Defaults to **Off**.
+
+- **Off** (default) — Show just your position (e.g., `P3`)
+- **On** — Show your position out of the field size (e.g., `P3/24`). The total is scoped to match Position Type — cars in your class for **Class**, the whole field for **Overall**.
 
 #### Setting: Font Size
 
