@@ -21,6 +21,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['car-control']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item id="auto-hold-item" label="Auto Hold" class="hidden">
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
 		</sdpi-item>

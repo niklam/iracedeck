@@ -185,7 +185,7 @@ function resolveIconKey(setting: SetupBrakesAdjustSetting, direction: DirectionT
  * Generates an SVG data URI icon for the setup brakes action's adjustment sub-modes.
  * View sub-modes call `generateSetupViewSvg` via `renderSettingIcon` instead.
  */
-export function generateSetupBrakesSvg(settings: SetupBrakesSettings): string {
+export function generateSetupBrakesSvg(settings: SetupBrakesSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     // View sub-modes have no static icon — they render telemetry through the shared template.
     // Return a placeholder so callers that ignore telemetry get a stable string.
@@ -196,6 +196,7 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings): string {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -213,7 +214,7 @@ export function generateSetupBrakesSvg(settings: SetupBrakesSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -411,6 +412,33 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     return SETUP_BRAKES_GLOBAL_KEYS[setting] ?? null;
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings,
+   *   but only while dual-press is enabled (read-only Views need no binding).
+   * - Directional adjust modes require the single setting+direction binding.
+   * - Non-directional constants require the single setting binding.
+   */
+  private computeBindingMissing(settings: SetupBrakesSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(
+      this.resolveGlobalKey(settings.setting as SetupBrakesAdjustSetting, settings.direction),
+    );
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupBrakesSettings> | IDeckDidReceiveSettingsEvent<SetupBrakesSettings>,
     settings: SetupBrakesSettings,
@@ -428,6 +456,8 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
   }
 
   private renderIcon(settings: SetupBrakesSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -436,10 +466,11 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupBrakesSvg(settings);
+    return generateSetupBrakesSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -461,6 +492,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

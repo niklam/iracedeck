@@ -10,6 +10,7 @@
  * exposes more dc* fields.
  */
 import {
+  applyBindingWarning,
   type BorderOverrides,
   type ColorSlots,
   generateBorderParts,
@@ -418,6 +419,13 @@ export interface SetupViewRenderInputs {
   readonly colorOverrides?: ColorSlots;
   readonly titleOverrides?: TitleOverrides;
   readonly borderOverrides?: BorderOverrides;
+  /**
+   * When true, draw the centered binding-missing warning triangle over the
+   * dimmed value readout (issue #612). A View sub-mode requires a binding only
+   * when its dual-press opt-in is on AND the adjustment binding(s) it would
+   * dispatch are unconfigured; the caller computes this per-button.
+   */
+  readonly bindingMissing?: boolean;
 }
 
 /**
@@ -456,15 +464,22 @@ export function generateSetupViewSvg(inputs: SetupViewRenderInputs): string {
   // below center so it's well-separated from the title without hugging the top.
   const valueY = "79";
 
+  // When a required binding is missing (#612), draw the value via the warning
+  // overlay slot — dimmed beneath the centered warning triangle — and blank the
+  // template's own value slot so it isn't rendered twice at full opacity.
+  const valueText = `<text x="72" y="${valueY}" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${value}</text>`;
+  const warningContent = inputs.bindingMissing ? applyBindingWarning(valueText) : "";
+
   const svg = renderIconTemplate(setupViewTemplate, {
     backgroundColor: colors.backgroundColor,
     textColor: colors.textColor,
     titleContent,
     borderDefs: borderSvg.defs,
     borderContent: borderSvg.rects,
-    value,
+    value: inputs.bindingMissing ? "" : value,
     valueFontSize,
     valueY,
+    warningContent,
   });
 
   return svgToDataUri(svg);

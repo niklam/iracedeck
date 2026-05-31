@@ -25,6 +25,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['force-feedback']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item label="Direction" id="direction-item">
 			<sdpi-select id="direction-select" setting="direction" default="increase">
 				<option value="increase" id="increase-label">Increase</option>

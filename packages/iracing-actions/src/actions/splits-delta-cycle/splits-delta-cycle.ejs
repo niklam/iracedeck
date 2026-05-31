@@ -17,6 +17,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['splits-delta-cycle']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item id="direction-item" label="Direction">
 			<sdpi-select setting="direction" default="next">
 				<option value="next">Next</option>

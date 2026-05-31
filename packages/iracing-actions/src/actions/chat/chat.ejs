@@ -18,6 +18,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['chat']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item label="Message Text" id="message-item" class="hidden">
 			<sdpi-textarea setting="message" rows="3" placeholder="Enter message to send"></sdpi-textarea>
 		</sdpi-item>

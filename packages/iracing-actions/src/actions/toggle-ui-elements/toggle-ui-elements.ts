@@ -112,7 +112,7 @@ type ToggleUiElementsSettings = z.infer<typeof ToggleUiElementsSettings>;
  *
  * Generates an SVG data URI icon for the toggle UI elements action.
  */
-export function generateToggleUiElementsSvg(settings: ToggleUiElementsSettings): string {
+export function generateToggleUiElementsSvg(settings: ToggleUiElementsSettings, bindingMissing = false): string {
   const { element } = settings;
 
   const iconSvg = ELEMENT_ICONS[element] || ELEMENT_ICONS["dash-box"];
@@ -125,7 +125,7 @@ export function generateToggleUiElementsSvg(settings: ToggleUiElementsSettings):
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -224,9 +224,14 @@ export class ToggleUiElements extends ConnectionStateAwareAction<ToggleUiElement
     ev: IDeckWillAppearEvent<ToggleUiElementsSettings> | IDeckDidReceiveSettingsEvent<ToggleUiElementsSettings>,
     settings: ToggleUiElementsSettings,
   ): Promise<void> {
-    const svgDataUri = generateToggleUiElementsSvg(settings);
+    const svgDataUri = generateToggleUiElementsSvg(
+      settings,
+      this.isBindingMissing(UI_ELEMENT_GLOBAL_KEYS[settings.element]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateToggleUiElementsSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateToggleUiElementsSvg(settings, this.isBindingMissing(UI_ELEMENT_GLOBAL_KEYS[settings.element])),
+    );
   }
 }

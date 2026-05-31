@@ -16,6 +16,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['telemetry-control']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['telemetry-control'] }) %>

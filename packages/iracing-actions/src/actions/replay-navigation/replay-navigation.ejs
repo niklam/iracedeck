@@ -22,6 +22,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['replay-navigation']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item label="Frame Number" id="frame-item" class="hidden">
 			<sdpi-textfield setting="frameNumber" placeholder="0" type="number"></sdpi-textfield>
 		</sdpi-item>

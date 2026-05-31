@@ -113,6 +113,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    isBindingMissing = vi.fn(() => false);
   },
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {

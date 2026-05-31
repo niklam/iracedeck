@@ -217,7 +217,7 @@ type SetupChassisSettings = z.infer<typeof SetupChassisSettings>;
  * Generates an SVG data URI icon for the setup chassis action's adjustment sub-modes.
  * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
-export function generateSetupChassisSvg(settings: SetupChassisSettings): string {
+export function generateSetupChassisSvg(settings: SetupChassisSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     return generateSetupViewSvg({
       viewId: settings.setting,
@@ -226,6 +226,7 @@ export function generateSetupChassisSvg(settings: SetupChassisSettings): string 
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -242,7 +243,7 @@ export function generateSetupChassisSvg(settings: SetupChassisSettings): string 
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -405,6 +406,31 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
     await this.tapBinding(settingKey);
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings
+   *   (weight-jacker Views map to dispatch-only keys), but only while dual-press
+   *   is enabled (read-only Views need no binding).
+   * - Adjust modes (all directional here) require the single setting+direction binding.
+   */
+  private computeBindingMissing(settings: SetupChassisSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_CHASSIS_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_CHASSIS_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(SETUP_CHASSIS_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupChassisSettings> | IDeckDidReceiveSettingsEvent<SetupChassisSettings>,
     settings: SetupChassisSettings,
@@ -422,6 +448,8 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
   }
 
   private renderIcon(settings: SetupChassisSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -430,10 +458,11 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupChassisSvg(settings);
+    return generateSetupChassisSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -455,6 +484,7 @@ export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSetting
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

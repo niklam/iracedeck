@@ -46,6 +46,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['replay-control']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<sdpi-item id="step-rate-setting" label="Step Rate" class="hidden">
 			<ird-range-input setting="stepRate" min="1" max="15" step="1" default="1" showlabels></ird-range-input>
 		</sdpi-item>

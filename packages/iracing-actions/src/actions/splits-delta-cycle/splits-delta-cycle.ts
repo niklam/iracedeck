@@ -84,7 +84,7 @@ const MODE_KEY_MAP: Record<string, string> = {
 /**
  * @internal Exported for testing
  */
-export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings): string {
+export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings, bindingMissing = false): string {
   const { mode, direction } = settings;
 
   // toggle-ref-car uses a dedicated icon from splits-delta-cycle
@@ -101,7 +101,7 @@ export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings):
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    return assembleIcon({ graphicSvg: displayRefCarIconSvg, colors, title, border, graphic });
+    return assembleIcon({ graphicSvg: displayRefCarIconSvg, colors, title, border, graphic, bindingMissing });
   }
 
   const modeIconSvg = MODE_ICONS[mode];
@@ -119,7 +119,7 @@ export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings):
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    return assembleIcon({ graphicSvg: modeIconSvg, colors, title, border, graphic });
+    return assembleIcon({ graphicSvg: modeIconSvg, colors, title, border, graphic, bindingMissing });
   }
 
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS.next;
@@ -131,7 +131,7 @@ export function generateSplitsDeltaCycleSvg(settings: SplitsDeltaCycleSettings):
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -198,9 +198,11 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     ev: IDeckWillAppearEvent<SplitsDeltaCycleSettings> | IDeckDidReceiveSettingsEvent<SplitsDeltaCycleSettings>,
     settings: SplitsDeltaCycleSettings,
   ): Promise<void> {
-    const svgDataUri = generateSplitsDeltaCycleSvg(settings);
+    const svgDataUri = generateSplitsDeltaCycleSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings)));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateSplitsDeltaCycleSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateSplitsDeltaCycleSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings))),
+    );
   }
 }
