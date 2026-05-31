@@ -204,6 +204,18 @@ const verboseLogger = logger.withLevel(LogLevel.Trace);
 const quietLogger = logger.withLevel(LogLevel.Warn);
 ```
 
+## Default Log Level & Debug Toggle
+
+Production defaults to **`info`** (issue #609). Debug logging is opt-in for troubleshooting — it must not be the default, because it bloats the `.log`, leaks internal detail, and buries real signal during support.
+
+- **Global setting:** `debugLogging` (boolean, default `false`) in `GlobalSettingsSchema`. Persists across restarts.
+- **Property Inspector:** the "Enable debug logging" checkbox in the global "Common Settings" accordion ("Diagnostics" group, shared partial `global-common-settings.ejs`) — so both plugins expose it.
+- **Elgato:** `streamDeck.logger.setLevel(...)` is the single file-writer gate and is runtime-mutable. It takes a level string (`"info"` / `"debug"`), not the `@iracedeck/logger` enum. `plugin.ts` applies `settings.debugLogging ? "debug" : "info"` after init and re-applies on every `onGlobalSettingsChange`. The scoped-logger wrapper (`createSDLogger`) keeps forwarding debug so a runtime flip surfaces scoped debug logs without recreating loggers — gate at the `streamDeck.logger` layer only, not in the wrapper.
+- **Mirabox:** `createConsoleLogger` captures its level at creation, so the adapter holds a shared mutable level (`VSDPlatformAdapter.setLogLevel`) that loggers read live via a resolver (`createConsoleLogger(scope, () => this.logLevel)`). `plugin.ts` calls `adapter.setLogLevel(debugLogging ? LogLevel.Debug : LogLevel.Info)` after init and on every change — live, no restart.
+- **Mirabox file logging:** the Stream Dock host does **not** capture plugin stdout, so console output alone leaves the toggle with nothing to attach for support. The adapter therefore tees every logger to `<plugin>/log/<YYYY.M.D>.log` (`FileSink` + `withFileSink` in `deck-adapter-mirabox`), matching the host's own `log/` convention (unpadded month/day, e.g. `2026.5.31.log`). The plugin passes the directory as `new VSDPlatformAdapter(undefined, join(__binDir, "..", "log"))`. File writes share the same live level gate, so flipping `debugLogging` controls the file too. (Elgato needs no equivalent — `streamDeck.logger` already writes `<sdPlugin>/logs/`.)
+
+When changing how logging is gated, keep both plugins and the shared PI partial in sync.
+
 ## Summary
 
 1. Always use `createScope()` to create named logger scopes

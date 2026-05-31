@@ -153,8 +153,9 @@ import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 // 1. Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
 
-// 2. Enable logging
-streamDeck.logger.setLevel("debug");
+// 2. Enable logging — production defaults to info; the `debugLogging` global
+//    setting opts into verbose debug at runtime (see @.claude/rules/logging.md)
+streamDeck.logger.setLevel("info");
 
 // 3. Initialize SDK singleton (must come before sim-events-iracing)
 initializeSDK(adapter.createLogger("iRacingSDK"));

@@ -158,8 +158,17 @@ initPluginConfig(pluginConfig);
 // Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
 
-// Enable debug logging
-streamDeck.logger.setLevel("debug");
+// Default to info-level logging in production; the user opts into verbose
+// debug logging from the PI "Enable debug logging" toggle without a rebuild
+// (issue #609). streamDeck.logger.setLevel is runtime-mutable, so re-apply on
+// every settings change. The initial call reads the schema-default cache
+// (debugLogging=false → info); the host echo re-fires the listener with the
+// persisted value once global settings load.
+const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void => {
+  streamDeck.logger.setLevel(settings.debugLogging ? "debug" : "info");
+};
+onGlobalSettingsChange(applyDebugLogging);
+applyDebugLogging(getGlobalSettings());
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));

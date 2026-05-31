@@ -45,6 +45,20 @@ If you hit this, increase the three delays under **Common Settings → Chat** in
 
 All accept 0–2000 ms. The Enter keypress is also held briefly so it registers reliably. Changes take effect immediately — no restart needed.
 
+## Capturing logs for support
+
+iRaceDeck logs at the **info** level by default, which keeps the log file focused on the events that matter and avoids bloating it with internal detail. When you're troubleshooting a problem — or a maintainer asks for a log — enable verbose debug logging to capture the detail needed to diagnose it:
+
+1. Open any iRaceDeck action's Property Inspector and expand **Common Settings**.
+2. Under **Diagnostics**, turn on **Enable debug logging**. It takes effect immediately — no restart needed.
+3. Reproduce the issue, then attach the plugin's log file to your report.
+4. Turn the setting back off afterward to keep your logs clean.
+
+Where the log file lives:
+
+- **Stream Deck (Elgato)**: in the plugin's `logs` folder under `%APPDATA%\Elgato\StreamDeck\Plugins\com.iracedeck.sd.core.sdPlugin\`.
+- **Stream Dock (Mirabox)**: in the plugin's `log` folder under `%APPDATA%\HotSpot\StreamDock\plugins\com.iracedeck.sd.core.sdPlugin\`, named by date (e.g. `2026.5.31.log`).
+
 ## Need more help?
 
 - **Discord**: [Join the community](https://discord.gg/c6nRYywpah) for real-time support
