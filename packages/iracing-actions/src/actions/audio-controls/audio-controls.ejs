@@ -21,7 +21,7 @@
 		</sdpi-item>
 
 		<% var __comms = require('./data/action-comms.json')['audio-controls']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 		<sdpi-item label="Action" id="action-item">
 			<sdpi-select id="action-select" setting="action" default="volume-up">

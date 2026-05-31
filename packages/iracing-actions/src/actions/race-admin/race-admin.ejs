@@ -45,7 +45,7 @@
 		</sdpi-item>
 
 		<% var __comms = require('./data/action-comms.json')['race-admin']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 		<!-- Driver targeting (shown for modes that accept a driver parameter) -->
 		<div id="driver-section" class="hidden">

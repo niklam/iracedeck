@@ -19,7 +19,7 @@
 		</sdpi-item>
 
 		<% var __comms = require('./data/action-comms.json')['media-capture']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 		<%- include('title-overrides') %>
 

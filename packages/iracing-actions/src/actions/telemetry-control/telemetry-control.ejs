@@ -17,7 +17,7 @@
 		</sdpi-item>
 
 		<% var __comms = require('./data/action-comms.json')['telemetry-control']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%- JSON.stringify(__comms) %>'></ird-binding-status>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
 		<%- include('title-overrides') %>
 
