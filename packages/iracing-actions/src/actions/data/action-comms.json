@@ -330,34 +330,184 @@
         "keyBy": {
           "setting": "direction",
           "map": {
-            "increase": "cameraEditorLatitudeIncrease",
-            "decrease": "cameraEditorLatitudeDecrease"
+            "increase": "camEditLatitudeIncrease",
+            "decrease": "camEditLatitudeDecrease"
           }
         }
       }
     },
-    "roll": {
+    "longitude": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keyBy": {
           "setting": "direction",
           "map": {
-            "increase": "cameraEditorRollIncrease",
-            "decrease": "cameraEditorRollDecrease"
+            "increase": "camEditLongitudeIncrease",
+            "decrease": "camEditLongitudeDecrease"
           }
         }
       }
     },
-    "height": {
+    "altitude": {
       "method": "keybind",
       "binding": {
         "scope": "global",
         "keyBy": {
           "setting": "direction",
           "map": {
-            "increase": "cameraEditorHeightIncrease",
-            "decrease": "cameraEditorHeightDecrease"
+            "increase": "camEditAltitudeIncrease",
+            "decrease": "camEditAltitudeDecrease"
+          }
+        }
+      }
+    },
+    "yaw": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditYawIncrease",
+            "decrease": "camEditYawDecrease"
+          }
+        }
+      }
+    },
+    "pitch": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditPitchIncrease",
+            "decrease": "camEditPitchDecrease"
+          }
+        }
+      }
+    },
+    "fov-zoom": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditFovZoomIncrease",
+            "decrease": "camEditFovZoomDecrease"
+          }
+        }
+      }
+    },
+    "key-step": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditKeyStepIncrease",
+            "decrease": "camEditKeyStepDecrease"
+          }
+        }
+      }
+    },
+    "vanish-x": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditVanishXIncrease",
+            "decrease": "camEditVanishXDecrease"
+          }
+        }
+      }
+    },
+    "vanish-y": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditVanishYIncrease",
+            "decrease": "camEditVanishYDecrease"
+          }
+        }
+      }
+    },
+    "blimp-radius": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditBlimpRadiusIncrease",
+            "decrease": "camEditBlimpRadiusDecrease"
+          }
+        }
+      }
+    },
+    "blimp-velocity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditBlimpVelocityIncrease",
+            "decrease": "camEditBlimpVelocityDecrease"
+          }
+        }
+      }
+    },
+    "mic-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditMicGainIncrease",
+            "decrease": "camEditMicGainDecrease"
+          }
+        }
+      }
+    },
+    "auto-set-mic-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camEditAutoSetMicGain"
+      }
+    },
+    "f-number": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditFNumberIncrease",
+            "decrease": "camEditFNumberDecrease"
+          }
+        }
+      }
+    },
+    "focus-depth": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "camEditFocusDepthIncrease",
+            "decrease": "camEditFocusDepthDecrease"
           }
         }
       }
@@ -371,35 +521,210 @@
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "cameraEditorOpenCameraTool"
+        "key": "camCtrlOpenCameraTool"
       }
     },
-    "reset-camera": {
+    "key-acceleration-toggle": {
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "cameraEditorResetCamera"
+        "key": "camCtrlKeyAccelerationToggle"
       }
     },
-    "exit-car": {
+    "key-10x-toggle": {
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "cameraEditorExitCar"
+        "key": "camCtrlKey10xToggle"
       }
     },
-    "reset-to-pits": {
+    "parabolic-mic-toggle": {
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "cameraEditorResetToPits"
+        "key": "camCtrlParabolicMicToggle"
       }
     },
-    "tow": {
+    "cycle-position-type": {
       "method": "keybind",
       "binding": {
         "scope": "global",
-        "key": "cameraEditorTow"
+        "key": "camCtrlCyclePositionType"
+      }
+    },
+    "cycle-aim-type": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCycleAimType"
+      }
+    },
+    "acquire-start": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlAcquireStart"
+      }
+    },
+    "acquire-end": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlAcquireEnd"
+      }
+    },
+    "temporary-edits-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlTemporaryEditsToggle"
+      }
+    },
+    "dampening-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlDampeningToggle"
+      }
+    },
+    "zoom-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlZoomToggle"
+      }
+    },
+    "beyond-fence-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlBeyondFenceToggle"
+      }
+    },
+    "in-cockpit-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlInCockpitToggle"
+      }
+    },
+    "mouse-navigation-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlMouseNavigationToggle"
+      }
+    },
+    "pitch-gyro-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPitchGyroToggle"
+      }
+    },
+    "roll-gyro-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlRollGyroToggle"
+      }
+    },
+    "limit-shot-range-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLimitShotRangeToggle"
+      }
+    },
+    "show-camera-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlShowCameraToggle"
+      }
+    },
+    "shot-selection-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlShotSelectionToggle"
+      }
+    },
+    "manual-focus-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlManualFocusToggle"
+      }
+    },
+    "insert-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlInsertCamera"
+      }
+    },
+    "remove-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlRemoveCamera"
+      }
+    },
+    "copy-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCopyCamera"
+      }
+    },
+    "paste-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPasteCamera"
+      }
+    },
+    "copy-group": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlCopyGroup"
+      }
+    },
+    "paste-group": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlPasteGroup"
+      }
+    },
+    "save-track-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlSaveTrackCamera"
+      }
+    },
+    "load-track-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLoadTrackCamera"
+      }
+    },
+    "save-car-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlSaveCarCamera"
+      }
+    },
+    "load-car-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "camCtrlLoadCarCamera"
       }
     }
   },
@@ -700,6 +1025,1233 @@
     },
     "replay-ui": {
       "method": "api"
+    }
+  },
+  "ai-spotter-controls": {
+    "_meta": {
+      "modeSetting": "control"
+    },
+    "damage-report": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterDamageReport"
+      }
+    },
+    "weather-report": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterWeatherReport"
+      }
+    },
+    "toggle-report-laps": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterToggleReportLaps"
+      }
+    },
+    "announce-leader": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterAnnounceLeader"
+      }
+    },
+    "louder": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterLouder"
+      }
+    },
+    "quieter": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterQuieter"
+      }
+    },
+    "silence": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "spotterSilence"
+      }
+    }
+  },
+  "setup-aero": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-front-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupAeroFrontWingIncrease",
+          "setupAeroFrontWingDecrease"
+        ]
+      }
+    },
+    "view-rear-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupAeroRearWingIncrease",
+          "setupAeroRearWingDecrease"
+        ]
+      }
+    },
+    "front-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupAeroFrontWingIncrease",
+            "decrease": "setupAeroFrontWingDecrease"
+          }
+        }
+      }
+    },
+    "rear-wing": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupAeroRearWingIncrease",
+            "decrease": "setupAeroRearWingDecrease"
+          }
+        }
+      }
+    },
+    "qualifying-tape": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupAeroQualifyingTapeIncrease",
+            "decrease": "setupAeroQualifyingTapeDecrease"
+          }
+        }
+      }
+    },
+    "rf-brake-attached": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupAeroRfBrakeAttached"
+      }
+    }
+  },
+  "setup-brakes": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasIncrease",
+          "setupBrakesBrakeBiasDecrease"
+        ]
+      }
+    },
+    "view-brake-bias-fine": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasFineIncrease",
+          "setupBrakesBrakeBiasFineDecrease"
+        ]
+      }
+    },
+    "view-peak-brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesPeakBrakeBiasIncrease",
+          "setupBrakesPeakBrakeBiasDecrease"
+        ]
+      }
+    },
+    "view-brake-misc": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeMiscIncrease",
+          "setupBrakesBrakeMiscDecrease"
+        ]
+      }
+    },
+    "view-engine-braking": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesEngineBrakingIncrease",
+          "setupBrakesEngineBrakingDecrease"
+        ]
+      }
+    },
+    "view-abs-adjust": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesAbsAdjustIncrease",
+          "setupBrakesAbsAdjustDecrease"
+        ]
+      }
+    },
+    "abs-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupBrakesAbsToggle"
+      }
+    },
+    "abs-adjust": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesAbsAdjustIncrease",
+            "decrease": "setupBrakesAbsAdjustDecrease"
+          }
+        }
+      }
+    },
+    "brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesBrakeBiasIncrease",
+            "decrease": "setupBrakesBrakeBiasDecrease"
+          }
+        }
+      }
+    },
+    "brake-bias-fine": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesBrakeBiasFineIncrease",
+            "decrease": "setupBrakesBrakeBiasFineDecrease"
+          }
+        }
+      }
+    },
+    "peak-brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesPeakBrakeBiasIncrease",
+            "decrease": "setupBrakesPeakBrakeBiasDecrease"
+          }
+        }
+      }
+    },
+    "brake-misc": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesBrakeMiscIncrease",
+            "decrease": "setupBrakesBrakeMiscDecrease"
+          }
+        }
+      }
+    },
+    "engine-braking": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupBrakesEngineBrakingIncrease",
+            "decrease": "setupBrakesEngineBrakingDecrease"
+          }
+        }
+      }
+    }
+  },
+  "setup-chassis": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-diff-preload": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialPreloadIncrease",
+          "setupChassisDifferentialPreloadDecrease"
+        ]
+      }
+    },
+    "view-diff-entry": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialEntryIncrease",
+          "setupChassisDifferentialEntryDecrease"
+        ]
+      }
+    },
+    "view-diff-middle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialMiddleIncrease",
+          "setupChassisDifferentialMiddleDecrease"
+        ]
+      }
+    },
+    "view-diff-exit": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisDifferentialExitIncrease",
+          "setupChassisDifferentialExitDecrease"
+        ]
+      }
+    },
+    "view-anti-roll-front": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisFrontArbIncrease",
+          "setupChassisFrontArbDecrease"
+        ]
+      }
+    },
+    "view-anti-roll-rear": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisRearArbIncrease",
+          "setupChassisRearArbDecrease"
+        ]
+      }
+    },
+    "view-power-steering": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisPowerSteeringIncrease",
+          "setupChassisPowerSteeringDecrease"
+        ]
+      }
+    },
+    "view-weight-jacker-left": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisWeightJackerLeftIncrease",
+          "setupChassisWeightJackerLeftDecrease"
+        ]
+      }
+    },
+    "view-weight-jacker-right": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupChassisWeightJackerRightIncrease",
+          "setupChassisWeightJackerRightDecrease"
+        ]
+      }
+    },
+    "differential-preload": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisDifferentialPreloadIncrease",
+            "decrease": "setupChassisDifferentialPreloadDecrease"
+          }
+        }
+      }
+    },
+    "differential-entry": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisDifferentialEntryIncrease",
+            "decrease": "setupChassisDifferentialEntryDecrease"
+          }
+        }
+      }
+    },
+    "differential-middle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisDifferentialMiddleIncrease",
+            "decrease": "setupChassisDifferentialMiddleDecrease"
+          }
+        }
+      }
+    },
+    "differential-exit": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisDifferentialExitIncrease",
+            "decrease": "setupChassisDifferentialExitDecrease"
+          }
+        }
+      }
+    },
+    "front-arb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisFrontArbIncrease",
+            "decrease": "setupChassisFrontArbDecrease"
+          }
+        }
+      }
+    },
+    "rear-arb": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisRearArbIncrease",
+            "decrease": "setupChassisRearArbDecrease"
+          }
+        }
+      }
+    },
+    "left-spring": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisLeftSpringIncrease",
+            "decrease": "setupChassisLeftSpringDecrease"
+          }
+        }
+      }
+    },
+    "right-spring": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisRightSpringIncrease",
+            "decrease": "setupChassisRightSpringDecrease"
+          }
+        }
+      }
+    },
+    "lf-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisLfShockIncrease",
+            "decrease": "setupChassisLfShockDecrease"
+          }
+        }
+      }
+    },
+    "rf-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisRfShockIncrease",
+            "decrease": "setupChassisRfShockDecrease"
+          }
+        }
+      }
+    },
+    "lr-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisLrShockIncrease",
+            "decrease": "setupChassisLrShockDecrease"
+          }
+        }
+      }
+    },
+    "rr-shock": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisRrShockIncrease",
+            "decrease": "setupChassisRrShockDecrease"
+          }
+        }
+      }
+    },
+    "power-steering": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupChassisPowerSteeringIncrease",
+            "decrease": "setupChassisPowerSteeringDecrease"
+          }
+        }
+      }
+    }
+  },
+  "setup-engine": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-engine-power": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineEnginePowerIncrease",
+          "setupEngineEnginePowerDecrease"
+        ]
+      }
+    },
+    "view-throttle-shape": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineThrottleShapingIncrease",
+          "setupEngineThrottleShapingDecrease"
+        ]
+      }
+    },
+    "view-launch-rpm": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupEngineLaunchRpmIncrease",
+          "setupEngineLaunchRpmDecrease"
+        ]
+      }
+    },
+    "engine-power": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupEngineEnginePowerIncrease",
+            "decrease": "setupEngineEnginePowerDecrease"
+          }
+        }
+      }
+    },
+    "throttle-shaping": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupEngineThrottleShapingIncrease",
+            "decrease": "setupEngineThrottleShapingDecrease"
+          }
+        }
+      }
+    },
+    "boost-level": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupEngineBoostLevelIncrease",
+            "decrease": "setupEngineBoostLevelDecrease"
+          }
+        }
+      }
+    },
+    "launch-rpm": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupEngineLaunchRpmIncrease",
+            "decrease": "setupEngineLaunchRpmDecrease"
+          }
+        }
+      }
+    }
+  },
+  "setup-fuel": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-fuel-mixture": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupFuelFuelMixtureIncrease",
+          "setupFuelFuelMixtureDecrease"
+        ]
+      }
+    },
+    "view-fuel-cut-position": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupFuelFuelCutPositionIncrease",
+          "setupFuelFuelCutPositionDecrease"
+        ]
+      }
+    },
+    "fuel-mixture": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupFuelFuelMixtureIncrease",
+            "decrease": "setupFuelFuelMixtureDecrease"
+          }
+        }
+      }
+    },
+    "fuel-cut-position": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupFuelFuelCutPositionIncrease",
+            "decrease": "setupFuelFuelCutPositionDecrease"
+          }
+        }
+      }
+    },
+    "disable-fuel-cut": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupFuelDisableFuelCut"
+      }
+    },
+    "low-fuel-accept": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupFuelLowFuelAccept"
+      }
+    },
+    "fcy-mode-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupFuelFcyModeToggle"
+      }
+    }
+  },
+  "setup-hybrid": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-mguk-deploy-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukDeployModeIncrease",
+          "setupHybridMgukDeployModeDecrease"
+        ]
+      }
+    },
+    "view-mguk-regen-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukRegenGainIncrease",
+          "setupHybridMgukRegenGainDecrease"
+        ]
+      }
+    },
+    "view-mguk-deploy-fixed": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupHybridMgukFixedDeployIncrease",
+          "setupHybridMgukFixedDeployDecrease"
+        ]
+      }
+    },
+    "mguk-regen-gain": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupHybridMgukRegenGainIncrease",
+            "decrease": "setupHybridMgukRegenGainDecrease"
+          }
+        }
+      }
+    },
+    "mguk-deploy-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupHybridMgukDeployModeIncrease",
+            "decrease": "setupHybridMgukDeployModeDecrease"
+          }
+        }
+      }
+    },
+    "mguk-fixed-deploy": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupHybridMgukFixedDeployIncrease",
+            "decrease": "setupHybridMgukFixedDeployDecrease"
+          }
+        }
+      }
+    },
+    "hys-boost": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupHybridHysBoost"
+      }
+    },
+    "hys-regen": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupHybridHysRegen"
+      }
+    },
+    "hys-no-boost": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupHybridHysNoBoost"
+      }
+    }
+  },
+  "setup-traction": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "view-tc-slot-1": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot1Increase",
+          "setupTractionTcSlot1Decrease"
+        ]
+      }
+    },
+    "view-tc-slot-2": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot2Increase",
+          "setupTractionTcSlot2Decrease"
+        ]
+      }
+    },
+    "view-tc-slot-3": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot3Increase",
+          "setupTractionTcSlot3Decrease"
+        ]
+      }
+    },
+    "view-tc-slot-4": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupTractionTcSlot4Increase",
+          "setupTractionTcSlot4Decrease"
+        ]
+      }
+    },
+    "tc-toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupTractionTcToggle"
+      }
+    },
+    "tc-slot-1": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupTractionTcSlot1Increase",
+            "decrease": "setupTractionTcSlot1Decrease"
+          }
+        }
+      }
+    },
+    "tc-slot-2": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupTractionTcSlot2Increase",
+            "decrease": "setupTractionTcSlot2Decrease"
+          }
+        }
+      }
+    },
+    "tc-slot-3": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupTractionTcSlot3Increase",
+            "decrease": "setupTractionTcSlot3Decrease"
+          }
+        }
+      }
+    },
+    "tc-slot-4": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "setupTractionTcSlot4Increase",
+            "decrease": "setupTractionTcSlot4Decrease"
+          }
+        }
+      }
+    }
+  },
+  "media-capture": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "start-stop-video": {
+      "method": "api"
+    },
+    "video-timer": {
+      "method": "api"
+    },
+    "toggle-video-capture": {
+      "method": "api"
+    },
+    "take-screenshot": {
+      "method": "api"
+    },
+    "reload-all-textures": {
+      "method": "api"
+    },
+    "reload-car-textures": {
+      "method": "api"
+    },
+    "take-giant-screenshot": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "mediaCaptureGiantScreenshot"
+      }
+    }
+  },
+  "pit-quick-actions": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "clear-all-checkboxes": {
+      "method": "api"
+    },
+    "windshield-tearoff": {
+      "method": "api"
+    },
+    "request-fast-repair": {
+      "method": "api"
+    }
+  },
+  "replay-control": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "play-pause": {
+      "method": "api"
+    },
+    "play-backward": {
+      "method": "api"
+    },
+    "stop": {
+      "method": "api"
+    },
+    "fast-forward": {
+      "method": "api"
+    },
+    "rewind": {
+      "method": "api"
+    },
+    "slow-motion": {
+      "method": "api"
+    },
+    "slow-motion-rewind": {
+      "method": "api"
+    },
+    "frame-forward": {
+      "method": "api"
+    },
+    "frame-backward": {
+      "method": "api"
+    },
+    "speed-increase": {
+      "method": "api"
+    },
+    "speed-decrease": {
+      "method": "api"
+    },
+    "set-speed": {
+      "method": "api"
+    },
+    "speed-display": {
+      "method": "api"
+    },
+    "next-session": {
+      "method": "api"
+    },
+    "prev-session": {
+      "method": "api"
+    },
+    "next-lap": {
+      "method": "api"
+    },
+    "prev-lap": {
+      "method": "api"
+    },
+    "next-incident": {
+      "method": "api"
+    },
+    "prev-incident": {
+      "method": "api"
+    },
+    "jump-to-beginning": {
+      "method": "api"
+    },
+    "jump-to-live": {
+      "method": "api"
+    },
+    "jump-to-my-car": {
+      "method": "api"
+    },
+    "jump-to-fastest-lap": {
+      "method": "api"
+    },
+    "next-car-number": {
+      "method": "api"
+    },
+    "prev-car-number": {
+      "method": "api"
+    },
+    "next-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "replayControlNextCar"
+      }
+    },
+    "prev-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "replayControlPrevCar"
+      }
+    }
+  },
+  "replay-navigation": {
+    "_meta": {
+      "modeSetting": "navigation"
+    },
+    "next-session": {
+      "method": "api"
+    },
+    "prev-session": {
+      "method": "api"
+    },
+    "next-lap": {
+      "method": "api"
+    },
+    "prev-lap": {
+      "method": "api"
+    },
+    "next-incident": {
+      "method": "api"
+    },
+    "prev-incident": {
+      "method": "api"
+    },
+    "jump-to-start": {
+      "method": "api"
+    },
+    "jump-to-end": {
+      "method": "api"
+    },
+    "set-play-position": {
+      "method": "api"
+    },
+    "search-session-time": {
+      "method": "api"
+    },
+    "erase-tape": {
+      "method": "api"
+    }
+  },
+  "replay-speed": {
+    "_meta": {
+      "modeSetting": "direction"
+    },
+    "increase": {
+      "method": "api"
+    },
+    "decrease": {
+      "method": "api"
+    }
+  },
+  "replay-transport": {
+    "_meta": {
+      "modeSetting": "transport"
+    },
+    "play": {
+      "method": "api"
+    },
+    "pause": {
+      "method": "api"
+    },
+    "stop": {
+      "method": "api"
+    },
+    "fast-forward": {
+      "method": "api"
+    },
+    "rewind": {
+      "method": "api"
+    },
+    "slow-motion": {
+      "method": "api"
+    },
+    "frame-forward": {
+      "method": "api"
+    },
+    "frame-backward": {
+      "method": "api"
+    }
+  },
+  "telemetry-control": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "toggle-logging": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "telemetryControlToggleLogging"
+      }
+    },
+    "mark-event": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "telemetryControlMarkEvent"
+      }
+    },
+    "start-recording": {
+      "method": "api"
+    },
+    "stop-recording": {
+      "method": "api"
+    },
+    "restart-recording": {
+      "method": "api"
+    }
+  },
+  "race-admin": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "yellow": {
+      "method": "chat"
+    },
+    "black-flag": {
+      "method": "chat"
+    },
+    "dq-driver": {
+      "method": "chat"
+    },
+    "show-dqs-field": {
+      "method": "chat"
+    },
+    "show-dqs-driver": {
+      "method": "chat"
+    },
+    "clear-penalties": {
+      "method": "chat"
+    },
+    "clear-all": {
+      "method": "chat"
+    },
+    "wave-around": {
+      "method": "chat"
+    },
+    "eol": {
+      "method": "chat"
+    },
+    "pit-close": {
+      "method": "chat"
+    },
+    "pit-open": {
+      "method": "chat"
+    },
+    "pace-laps": {
+      "method": "chat"
+    },
+    "single-file-restart": {
+      "method": "chat"
+    },
+    "double-file-restart": {
+      "method": "chat"
+    },
+    "advance-session": {
+      "method": "chat"
+    },
+    "grid-set": {
+      "method": "chat"
+    },
+    "grid-start": {
+      "method": "chat"
+    },
+    "track-state": {
+      "method": "chat"
+    },
+    "grant-admin": {
+      "method": "chat"
+    },
+    "revoke-admin": {
+      "method": "chat"
+    },
+    "remove-driver": {
+      "method": "chat"
+    },
+    "enable-chat-all": {
+      "method": "chat"
+    },
+    "enable-chat-driver": {
+      "method": "chat"
+    },
+    "disable-chat-all": {
+      "method": "chat"
+    },
+    "disable-chat-driver": {
+      "method": "chat"
+    },
+    "message-all": {
+      "method": "chat"
+    },
+    "rc-message": {
+      "method": "chat"
     }
   }
 }

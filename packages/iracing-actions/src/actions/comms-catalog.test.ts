@@ -4,6 +4,40 @@ import { describe, expect, it } from "vitest";
 import { COMMS_CATALOG } from "./comms-catalog.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
+const KEY_BINDINGS_PATH = new URL("./data/key-bindings.json", import.meta.url);
+
+/** Every global binding key referenced anywhere in the catalog. */
+function catalogBindingKeys(): Set<string> {
+  const keys = new Set<string>();
+
+  for (const map of Object.values(COMMS_CATALOG)) {
+    for (const [mode, descriptor] of Object.entries(map)) {
+      if (mode === "_meta") continue;
+
+      const ref = (descriptor as { binding?: Record<string, unknown> }).binding;
+
+      if (!ref) continue;
+
+      if (typeof ref.key === "string") keys.add(ref.key);
+
+      if (Array.isArray(ref.keys)) for (const k of ref.keys as string[]) keys.add(k);
+
+      if (ref.keyBy) for (const k of Object.values((ref.keyBy as { map: Record<string, string> }).map)) keys.add(k);
+    }
+  }
+
+  return keys;
+}
+
+/** Every `setting` declared in the key-bindings accordions. */
+function keyBindingSettings(): Set<string> {
+  const data = JSON.parse(readFileSync(KEY_BINDINGS_PATH, "utf-8")) as Record<string, Array<{ setting: string }>>;
+  const settings = new Set<string>();
+
+  for (const list of Object.values(data)) for (const b of list) settings.add(b.setting);
+
+  return settings;
+}
 
 describe("action-comms catalog", () => {
   it("committed action-comms.json matches the TS catalog (run `pnpm generate:action-comms`)", () => {
@@ -44,5 +78,13 @@ describe("action-comms catalog", () => {
         if (hasMulti) expect((ref as { keys: string[] }).keys.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("every catalog binding key exists in key-bindings.json (the accordion source)", () => {
+    const declared = keyBindingSettings();
+    const missing = [...catalogBindingKeys()].filter((k) => !declared.has(k)).sort();
+    // A catalog key absent from key-bindings.json means the status line can't
+    // find an ird-key-binding for it → wrong/empty state. Catches typos too.
+    expect(missing, `binding keys missing from key-bindings.json: ${missing.join(", ")}`).toEqual([]);
   });
 });
