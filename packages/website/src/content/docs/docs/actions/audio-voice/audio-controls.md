@@ -78,7 +78,7 @@ Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the R
 
 #### Details
 
-- **Method:** Key binding
+- **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** Not supported yet — only key presses adjust the volume
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
 - **Telemetry-aware icon:** No
@@ -96,7 +96,7 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 
 #### Details
 
-- **Method:** Key binding
+- **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** Not supported yet — only key presses adjust the volume
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
 - **Telemetry-aware icon:** No
