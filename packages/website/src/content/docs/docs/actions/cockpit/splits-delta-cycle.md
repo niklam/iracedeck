@@ -19,6 +19,7 @@ Cycle through iRacing's splits delta display modes. When placed on a key, pressi
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation cycles splits delta modes (clockwise = next, counter-clockwise = previous); pressing the dial does nothing in this mode
 - **Default binding:** Depends on the selected direction — see the **Direction** setting below
 - **Telemetry-aware icon:** No
@@ -38,6 +39,7 @@ Toggle the reference car overlay on or off. Replaces the old "Display Reference 
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+C`
 - **Telemetry-aware icon:** No
@@ -54,6 +56,7 @@ Mark the start point for a custom sector on the current lap.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -70,6 +73,7 @@ Mark the end point for a custom sector on the current lap. Together with **Custo
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -86,6 +90,7 @@ Save the current car state — position, speed, temperatures — as a reset snap
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -102,6 +107,7 @@ Teleport the car back to the saved active reset snapshot. Solo practice sessions
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No

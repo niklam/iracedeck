@@ -9,6 +9,7 @@ Reports current network latency to the chat.
 | Action ID | `com.iracedeck.sd.core.report-latency` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

@@ -25,6 +25,7 @@ Throw a caution flag — sends `!yellow [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -41,6 +42,7 @@ Issue a penalty — sends `!black <driver> [time/laps/D]`. Black Flag supports t
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -63,6 +65,7 @@ Disqualify a driver without removing them — sends `!dq <driver> [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -83,6 +86,7 @@ Display disqualifications for the entire field — sends `!showdqs`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -99,6 +103,7 @@ Display disqualifications for a specific driver — sends `!showdqs <driver>`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -115,6 +120,7 @@ Clear all penalties for a driver — sends `!clear <driver> [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -135,6 +141,7 @@ Clear all penalties for the entire field — sends `!clearall`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -151,6 +158,7 @@ Wave a car to the next lap and the end of the pace line — sends `!waveby <driv
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -171,6 +179,7 @@ Move a driver to the end of the pace line — sends `!eol <driver> [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -191,6 +200,7 @@ Close pit entrances during green flag running — sends `!pitclose`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -207,6 +217,7 @@ Open pit entrances during green flag running — sends `!pitopen`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -223,6 +234,7 @@ Add, subtract, or set pace laps until green — sends `!pacelaps <+n|-n|n>`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -245,6 +257,7 @@ Switch to single-file restart rules — sends `!restart single`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -261,6 +274,7 @@ Switch to double-file restart rules — sends `!restart double`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -277,6 +291,7 @@ Advance to the next session (e.g., qualify to grid) — sends `!advance [message
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -293,6 +308,7 @@ Disable auto-race start for a number of minutes — sends `!gridset [minutes]` (
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -309,6 +325,7 @@ Initiate the pace car or standing start sequence — sends `!gridstart`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -325,6 +342,7 @@ Set the track usage percentage for the next session — sends `!trackstate [perc
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -341,6 +359,7 @@ Grant admin privileges to a driver — sends `!admin <driver> [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -361,6 +380,7 @@ Revoke admin privileges from a driver — sends `!nadmin <driver> [message]`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -381,6 +401,7 @@ Permanently remove a driver from the session — sends `!remove <driver> [messag
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -401,6 +422,7 @@ Re-enable chat for all drivers — sends `!chat`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -417,6 +439,7 @@ Re-enable chat for a specific driver — sends `!chat <driver>`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -433,6 +456,7 @@ Disable chat for all non-admin drivers — sends `!nchat`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -449,6 +473,7 @@ Mute a specific driver — sends `!nchat <driver>`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -465,6 +490,7 @@ Send a message to every participant, bypassing chat disables — sends `/all <me
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -481,6 +507,7 @@ Send a message visible only to administrators — sends `/rc <message>`.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

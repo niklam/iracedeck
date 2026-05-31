@@ -9,6 +9,7 @@ Adjusts the vertical horizon position in the driver's view.
 | Action ID | `com.iracedeck.sd.core.horizon-adjust` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

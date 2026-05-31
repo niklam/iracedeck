@@ -114,3 +114,7 @@ Optimized for showing live telemetry values. Small title at top, large centered 
 - **Background**: Dynamic — can change color for alert effects (e.g., flash red on incident), defaults to `{{backgroundColor}}`
 - **Placeholders**: `{{backgroundColor}}`, `{{textColor}}`, `{{titleLabel}}`, `{{value}}`, `{{valueFontSize}}`
 - Reference: `packages/iracing-plugin-stream-deck/icons/session-info.svg`
+
+## Missing-binding warning overlay (#612)
+
+Independent of the icon type, a key whose current mode requires a binding (keyboard or SimHub role) but has **neither** set draws a centered ⚠️ warning triangle over the dimmed artwork. This is applied centrally in the icon-assembly layer — `assembleIcon({ bindingMissing })`, or `applyBindingWarning(content)` / `bindingWarningSvg()` for dynamic-template actions — not in individual icon SVGs. Actions compute the flag per button context via `this.isBindingMissing(<key(s)>)` (see `.claude/rules/stream-deck-actions.md`). The glyph is cross-platform-safe (see `svg-platform-compatibility.md`) and clears as soon as either binding type is configured. It is distinct from the inactive/disconnected overlay — it signals a configuration error, not a connection state.

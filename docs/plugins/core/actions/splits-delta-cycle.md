@@ -9,6 +9,7 @@ Manages splits delta display cycling, reference car toggling, custom sector mark
 | Action ID | `com.iracedeck.sd.core.splits-delta-cycle` |
 | Type | Multi-toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

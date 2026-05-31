@@ -19,6 +19,7 @@ Ask the spotter to read the current damage status.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Ask the spotter to read the current weather conditions.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Toggle whether the spotter reports lap information.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Toggle the announcement of the leader crossing the start/finish line.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Raise the spotter volume.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -99,6 +104,7 @@ Lower the spotter volume.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -115,6 +121,7 @@ Silence the spotter entirely.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No

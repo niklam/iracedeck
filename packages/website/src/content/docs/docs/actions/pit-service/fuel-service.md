@@ -19,6 +19,7 @@ Toggle the fuel fill checkbox on or off via the iRacing SDK. The icon shows the 
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — shows the current refuel amount and an on/off indicator driven by `PitSvFlags.FuelFill`
@@ -35,6 +36,7 @@ Queue an "add fuel" chat macro. Pressing the button sends `#fuel +<amount><unit>
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** Rotation adjusts fuel (clockwise = add, counter-clockwise = reduce)
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -57,6 +59,7 @@ Queue a "reduce fuel" chat macro. Pressing the button sends `#fuel -<amount><uni
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** Rotation adjusts fuel (clockwise = reduce, counter-clockwise = add)
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -83,6 +86,7 @@ When iRacing's autofuel "enable fueling on change" setting is off and your fuel 
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -105,6 +109,7 @@ Clear the pending fuel request via the iRacing SDK. Removes the fuel line from t
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -121,6 +126,7 @@ Toggle iRacing's autofuel checkbox on or off. The icon shows a green ON / red OF
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** Yes — shows an on/off indicator driven by `dpFuelAutoFillActive`
@@ -137,6 +143,7 @@ Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts lap margin (clockwise = increase, counter-clockwise = decrease)
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -153,6 +160,7 @@ Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts lap margin (clockwise = decrease, counter-clockwise = increase)
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No

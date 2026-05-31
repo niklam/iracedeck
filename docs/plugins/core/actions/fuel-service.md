@@ -9,7 +9,10 @@ Manages fuel pit stop settings: toggle fueling, add/reduce/set fuel amounts, cle
 | Action ID | `com.iracedeck.sd.core.fuel-service` |
 | Type | Multi-toggle |
 | SDK Support | Yes (toggle, clear) / No (macros, keyboard modes) |
+| Communication Method | iRacing API (varies by mode — see note) |
 | Encoder Support | Yes |
+
+> **Communication method by mode:** Toggle Fuel Fill and Clear Fuel Checkbox use the **iRacing API**; Add Fuel, Reduce Fuel, and Set Fuel Amount use **Chat command** (`#fuel` macros); Toggle Autofuel and Lap Margin Increase/Decrease use **Key binding**.
 
 ## Behavior
 

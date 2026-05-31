@@ -9,6 +9,7 @@ Toggles the automatic fuel calculation feature.
 | Action ID | `com.iracedeck.sd.core.autofuel-toggle` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

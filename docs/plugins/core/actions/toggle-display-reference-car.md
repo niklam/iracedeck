@@ -11,6 +11,7 @@ Toggles the reference car display for split-time comparison.
 | Action ID | `com.iracedeck.sd.core.splits-delta-cycle` (toggle-ref-car mode) |
 | Type | Multi-toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Migration

@@ -9,6 +9,7 @@ Toggles the radio/communications overlay display.
 | Action ID | `com.iracedeck.sd.core.radio-display` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

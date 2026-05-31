@@ -9,6 +9,7 @@ Toggles the speed, gear, and pedals overlay display.
 | Action ID | `com.iracedeck.sd.core.speed-gear-pedals-display` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

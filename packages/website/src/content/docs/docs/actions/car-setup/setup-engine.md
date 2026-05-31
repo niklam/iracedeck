@@ -37,6 +37,7 @@ Adjust the engine power setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts engine power (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Engine Power + and Engine Power - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -54,6 +55,7 @@ Adjust the throttle shape (linear / progressive curve).
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts throttle shaping (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Throttle Shape + and Throttle Shape - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -71,6 +73,7 @@ Adjust the engine boost level.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts boost (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Boost + and Boost - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -88,6 +91,7 @@ Adjust the launch control RPM target.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts launch RPM (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Launch RPM + and Launch RPM - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No

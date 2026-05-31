@@ -19,6 +19,7 @@ Clear every pit service checkbox in a single press — tires, fuel, windshield, 
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Toggle the windshield tearoff request. Press once to queue a tearoff, press agai
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — status bar shows green when a tearoff is requested and red when it is not, and the border color tracks the same on / off state
@@ -51,6 +53,7 @@ Toggle a fast repair request. Press once to queue a fast repair, press again to 
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — status bar shows green when a fast repair is queued, red when it is not, and grey N/A when the session has no fast repairs left; the border color tracks the same on / off / n/a state

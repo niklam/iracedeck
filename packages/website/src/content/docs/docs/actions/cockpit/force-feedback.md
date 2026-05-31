@@ -19,6 +19,7 @@ Toggle iRacing's auto-compute FFB force calibration. This is a disruptive toggle
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support; dial press is also disabled to prevent accidental toggling
 - **Default binding:** `Ctrl+A`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Adjust the overall force feedback force. Shares the same global key binding as C
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts FFB force (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -52,6 +54,7 @@ Adjust the wheel LFE (low-frequency effects) loudness.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts wheel LFE loudness (clockwise = louder, counter-clockwise = quieter), regardless of the Direction setting
 - **Default binding:** No default key binding — both Wheel LFE Louder and Wheel LFE Quieter must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -69,6 +72,7 @@ Adjust the bass shaker LFE loudness.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts bass shaker LFE loudness (clockwise = louder, counter-clockwise = quieter), regardless of the Direction setting
 - **Default binding:** No default key binding — both Bass Shaker LFE Louder and Bass Shaker LFE Quieter must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -86,6 +90,7 @@ Adjust the wheel LFE intensity curve.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts wheel LFE intensity (clockwise = more intense, counter-clockwise = less intense), regardless of the Direction setting
 - **Default binding:** No default key binding — both Wheel LFE More Intense and Wheel LFE Less Intense must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -103,6 +108,7 @@ Adjust the haptic LFE intensity curve.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts haptic LFE intensity (clockwise = more intense, counter-clockwise = less intense), regardless of the Direction setting
 - **Default binding:** No default key binding — both Haptic LFE More Intense and Haptic LFE Less Intense must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No

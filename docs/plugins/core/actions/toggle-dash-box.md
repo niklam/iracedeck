@@ -9,6 +9,7 @@ Toggles the in-car dash information box display.
 | Action ID | `com.iracedeck.sd.core.toggle-dash-box` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

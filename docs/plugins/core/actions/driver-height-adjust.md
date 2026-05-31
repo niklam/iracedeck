@@ -9,6 +9,7 @@ Adjusts the virtual driver's seating height.
 | Action ID | `com.iracedeck.sd.core.driver-height-adjust` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior
