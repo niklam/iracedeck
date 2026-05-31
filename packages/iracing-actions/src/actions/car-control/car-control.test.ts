@@ -93,6 +93,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     holdBinding = mockHoldBinding;
     releaseBinding = mockReleaseBinding;
     setActiveBinding = vi.fn();
+    isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -104,6 +105,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
+  applyBindingWarning: vi.fn((content: string) => content),
   applyGraphicTransform: vi.fn((_content: string) => _content),
   computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),

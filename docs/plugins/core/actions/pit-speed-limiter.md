@@ -9,6 +9,7 @@ Toggles the pit lane speed limiter.
 | Action ID | `com.iracedeck.sd.core.pit-speed-limiter` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

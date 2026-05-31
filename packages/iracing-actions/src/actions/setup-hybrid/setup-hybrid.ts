@@ -165,7 +165,7 @@ function resolveIconKey(setting: SetupHybridAdjustSetting, direction: DirectionT
  * Generates an SVG data URI icon for the setup hybrid action's adjustment sub-modes.
  * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
-export function generateSetupHybridSvg(settings: SetupHybridSettings): string {
+export function generateSetupHybridSvg(settings: SetupHybridSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     return generateSetupViewSvg({
       viewId: settings.setting,
@@ -174,6 +174,7 @@ export function generateSetupHybridSvg(settings: SetupHybridSettings): string {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -190,7 +191,7 @@ export function generateSetupHybridSvg(settings: SetupHybridSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -408,6 +409,34 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
     await this.tapBinding(settingKey);
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings,
+   *   but only while dual-press is enabled (read-only Views need no binding).
+   * - Directional adjust modes require the single setting+direction binding.
+   * - Hold/constant modes require the single setting binding (direction ignored
+   *   by `resolveGlobalKey` for non-directional controls).
+   */
+  private computeBindingMissing(settings: SetupHybridSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_HYBRID_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_HYBRID_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(
+      this.resolveGlobalKey(settings.setting as SetupHybridAdjustSetting, settings.direction),
+    );
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupHybridSettings> | IDeckDidReceiveSettingsEvent<SetupHybridSettings>,
     settings: SetupHybridSettings,
@@ -425,6 +454,8 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
   }
 
   private renderIcon(settings: SetupHybridSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -433,10 +464,11 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupHybridSvg(settings);
+    return generateSetupHybridSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -458,6 +490,7 @@ export class SetupHybrid extends ConnectionStateAwareAction<SetupHybridSettings>
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

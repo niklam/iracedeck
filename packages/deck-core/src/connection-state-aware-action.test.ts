@@ -10,6 +10,7 @@ const {
   mockHold,
   mockRelease,
   mockIsReady,
+  mockIsConfigured,
   mockOnGlobalSettingsChange,
   mockOnSimHubReachabilityChange,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   mockHold: vi.fn().mockResolvedValue(undefined),
   mockRelease: vi.fn().mockResolvedValue(undefined),
   mockIsReady: vi.fn(() => true),
+  mockIsConfigured: vi.fn((_key: string) => true),
   mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
   mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
 }));
@@ -38,6 +40,7 @@ vi.mock("./binding-dispatcher.js", () => ({
     hold: mockHold,
     release: mockRelease,
     isReady: mockIsReady,
+    isConfigured: mockIsConfigured,
   }),
 }));
 
@@ -82,7 +85,7 @@ class TestAction extends ConnectionStateAwareAction {
     return this.getConnectionStatus();
   }
 
-  callSetActiveBinding(key: string | null): void {
+  callSetActiveBinding(key: string | string[] | null): void {
     this.setActiveBinding(key);
   }
 
@@ -96,6 +99,14 @@ class TestAction extends ConnectionStateAwareAction {
 
   async callReleaseBinding(actionId: string): Promise<void> {
     return this.releaseBinding(actionId);
+  }
+
+  callIsActiveBindingMissing(): boolean {
+    return this.isActiveBindingMissing();
+  }
+
+  callIsBindingMissing(keys: string | string[] | null | undefined): boolean {
+    return this.isBindingMissing(keys);
   }
 }
 
@@ -276,6 +287,75 @@ describe("ConnectionStateAwareAction", () => {
 
       mockGetConnectionStatus.mockReturnValue(false);
       expect(action.callGetConnectionStatus()).toBe(false);
+    });
+  });
+
+  describe("isActiveBindingMissing", () => {
+    it("returns false when no binding is active (api/chat modes)", () => {
+      action.callSetActiveBinding(null);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+      // Must not even consult the dispatcher when there is no active key.
+      mockIsConfigured.mockClear();
+      action.callIsActiveBindingMissing();
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+
+    it("returns true when the active binding is not configured", () => {
+      action.callSetActiveBinding("myKey");
+      mockIsConfigured.mockReturnValue(false);
+      expect(action.callIsActiveBindingMissing()).toBe(true);
+      expect(mockIsConfigured).toHaveBeenCalledWith("myKey");
+    });
+
+    it("returns false when the active binding is configured (keyboard or SimHub)", () => {
+      action.callSetActiveBinding("myKey");
+      mockIsConfigured.mockReturnValue(true);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+    });
+
+    it("warns for a multi-key mode when ANY key is unconfigured", () => {
+      action.callSetActiveBinding(["incKey", "decKey"]);
+      mockIsConfigured.mockImplementation((k: string) => k !== "decKey");
+      expect(action.callIsActiveBindingMissing()).toBe(true);
+    });
+
+    it("does not warn for a multi-key mode when all keys are configured", () => {
+      action.callSetActiveBinding(["incKey", "decKey"]);
+      mockIsConfigured.mockReturnValue(true);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+    });
+
+    it("ignores empty-string keys (fixed-key modes track nothing)", () => {
+      action.callSetActiveBinding("");
+      mockIsConfigured.mockClear();
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isBindingMissing (per-context, stateless)", () => {
+    it("returns false for null/empty keys (api/chat/fixed modes)", () => {
+      mockIsConfigured.mockClear();
+      expect(action.callIsBindingMissing(null)).toBe(false);
+      expect(action.callIsBindingMissing("")).toBe(false);
+      expect(action.callIsBindingMissing([])).toBe(false);
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+
+    it("does not depend on setActiveBinding (no cross-context bleed)", () => {
+      // Another context declared a missing binding...
+      action.callSetActiveBinding("otherKey");
+      mockIsConfigured.mockReturnValue(false);
+      // ...but THIS context's own configured key must read as present.
+      mockIsConfigured.mockImplementation((k: string) => k === "myKey");
+      expect(action.callIsBindingMissing("myKey")).toBe(false);
+      expect(action.callIsBindingMissing("otherKey")).toBe(true);
+    });
+
+    it("warns when any of several keys is unconfigured", () => {
+      mockIsConfigured.mockImplementation((k: string) => k !== "decKey");
+      expect(action.callIsBindingMissing(["incKey", "decKey"])).toBe(true);
+      expect(action.callIsBindingMissing(["incKey"])).toBe(false);
     });
   });
 

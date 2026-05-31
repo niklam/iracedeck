@@ -9,6 +9,7 @@ Adjusts the lap margin for automatic fuel calculation.
 | Action ID | `com.iracedeck.sd.core.autofuel-lap-margin` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

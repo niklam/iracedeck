@@ -12,5 +12,8 @@
     <!-- Large centered value (live dc* telemetry readout) -->
     <text x="72" y="{{valueY}}" text-anchor="middle" dominant-baseline="central"
           fill="{{textColor}}" font-family="Arial, sans-serif" font-size="{{valueFontSize}}" font-weight="bold">{{value}}</text>
+
+    <!-- Centered missing-binding warning overlay (issue #612), empty unless bindingMissing -->
+    {{warningContent}}
   </g>
 </svg>

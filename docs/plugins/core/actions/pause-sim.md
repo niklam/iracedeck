@@ -9,6 +9,7 @@ Pauses the simulation (single-player/replay only).
 | Action ID | `com.iracedeck.sd.core.pause-sim` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

@@ -9,6 +9,7 @@ Enters, exits, or requests a tow for the car.
 | Action ID | `com.iracedeck.sd.core.enter-exit-tow-car` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

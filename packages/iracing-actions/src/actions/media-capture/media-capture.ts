@@ -82,7 +82,7 @@ type MediaCaptureSettings = z.infer<typeof MediaCaptureSettings>;
  *
  * Generates an SVG data URI icon for the media capture action.
  */
-export function generateMediaCaptureSvg(settings: MediaCaptureSettings): string {
+export function generateMediaCaptureSvg(settings: MediaCaptureSettings, bindingMissing = false): string {
   const { mode: actionType } = settings;
 
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["start-stop-video"];
@@ -95,7 +95,7 @@ export function generateMediaCaptureSvg(settings: MediaCaptureSettings): string 
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -201,9 +201,14 @@ export class MediaCapture extends ConnectionStateAwareAction<MediaCaptureSetting
     ev: IDeckWillAppearEvent<MediaCaptureSettings> | IDeckDidReceiveSettingsEvent<MediaCaptureSettings>,
     settings: MediaCaptureSettings,
   ): Promise<void> {
-    const svgDataUri = generateMediaCaptureSvg(settings);
+    const svgDataUri = generateMediaCaptureSvg(
+      settings,
+      this.isBindingMissing(MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateMediaCaptureSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateMediaCaptureSvg(settings, this.isBindingMissing(MEDIA_CAPTURE_GLOBAL_KEYS[settings.mode])),
+    );
   }
 }

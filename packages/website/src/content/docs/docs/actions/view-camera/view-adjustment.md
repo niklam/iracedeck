@@ -19,6 +19,7 @@ Adjust the field of view.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts FOV (clockwise = wider, counter-clockwise = narrower), regardless of the Direction setting
 - **Default binding:** `]` (increase) and `[` (decrease)
 - **Telemetry-aware icon:** No
@@ -36,6 +37,7 @@ Adjust the horizon line position.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts horizon (clockwise = up, counter-clockwise = down), regardless of the Direction setting
 - **Default binding:** `Shift+]` (increase/up) and `Shift+[` (decrease/down)
 - **Telemetry-aware icon:** No
@@ -53,6 +55,7 @@ Adjust the driver eye position.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts driver height (clockwise = raise, counter-clockwise = lower), regardless of the Direction setting
 - **Default binding:** `Ctrl+]` (increase/up) and `Ctrl+[` (decrease/down)
 - **Telemetry-aware icon:** No
@@ -70,6 +73,7 @@ Re-center the VR headset view.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `;`
 - **Telemetry-aware icon:** No
@@ -86,6 +90,7 @@ Adjust the in-sim UI element size.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts UI size (clockwise = larger, counter-clockwise = smaller), regardless of the Direction setting
 - **Default binding:** `Ctrl+PageUp` (increase) and `Ctrl+PageDown` (decrease)
 - **Telemetry-aware icon:** No

@@ -128,7 +128,7 @@ type SetupAeroSettings = z.infer<typeof SetupAeroSettings>;
  * Generates an SVG data URI icon for the setup aero action's adjustment sub-modes.
  * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
-export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
+export function generateSetupAeroSvg(settings: SetupAeroSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     return generateSetupViewSvg({
       viewId: settings.setting,
@@ -137,6 +137,7 @@ export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -154,7 +155,7 @@ export function generateSetupAeroSvg(settings: SetupAeroSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -340,6 +341,31 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
     return SETUP_AERO_GLOBAL_KEYS[setting] ?? null;
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings,
+   *   but only while dual-press is enabled (read-only Views need no binding).
+   * - Directional adjust modes require the single setting+direction binding.
+   * - Non-directional constants require the single setting binding.
+   */
+  private computeBindingMissing(settings: SetupAeroSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_AERO_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_AERO_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(this.resolveGlobalKey(settings.setting as SetupAeroAdjustSetting, settings.direction));
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupAeroSettings> | IDeckDidReceiveSettingsEvent<SetupAeroSettings>,
     settings: SetupAeroSettings,
@@ -357,6 +383,8 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
   }
 
   private renderIcon(settings: SetupAeroSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -365,10 +393,11 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupAeroSvg(settings);
+    return generateSetupAeroSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -390,6 +419,7 @@ export class SetupAero extends ConnectionStateAwareAction<SetupAeroSettings> {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

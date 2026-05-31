@@ -43,6 +43,7 @@ Adjust the differential preload value.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts differential preload (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Diff Preload + and Diff Preload - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -60,6 +61,7 @@ Adjust the differential entry (on-throttle) setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts differential entry (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Diff Entry + and Diff Entry - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -77,6 +79,7 @@ Adjust the differential middle (coasting) setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts differential middle (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Diff Middle + and Diff Middle - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -94,6 +97,7 @@ Adjust the differential exit setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts differential exit (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Diff Exit + and Diff Exit - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -111,6 +115,7 @@ Adjust the front anti-roll bar stiffness.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the front ARB (clockwise = stiffer, counter-clockwise = softer), regardless of the Direction setting
 - **Default binding:** No default key binding — both Front ARB + and Front ARB - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -128,6 +133,7 @@ Adjust the rear anti-roll bar stiffness.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the rear ARB (clockwise = stiffer, counter-clockwise = softer), regardless of the Direction setting
 - **Default binding:** No default key binding — both Rear ARB + and Rear ARB - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -145,6 +151,7 @@ Adjust the left-side spring preload.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the left spring (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Left Spring + and Left Spring - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -162,6 +169,7 @@ Adjust the right-side spring preload.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the right spring (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Right Spring + and Right Spring - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -179,6 +187,7 @@ Adjust the left-front shock setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the left-front shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both LF Shock + and LF Shock - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -196,6 +205,7 @@ Adjust the right-front shock setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the right-front shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both RF Shock + and RF Shock - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -213,6 +223,7 @@ Adjust the left-rear shock setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the left-rear shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both LR Shock + and LR Shock - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -230,6 +241,7 @@ Adjust the right-rear shock setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the right-rear shock (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both RR Shock + and RR Shock - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -247,6 +259,7 @@ Adjust the power steering assist level.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts power steering (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Power Steering + and Power Steering - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No

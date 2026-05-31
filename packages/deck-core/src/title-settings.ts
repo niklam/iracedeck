@@ -36,6 +36,15 @@ export {
   type TitleOverrides,
 } from "@iracedeck/icon-composer";
 
+// Binding-missing warning overlay (issue #612)
+export {
+  applyBindingWarning,
+  BINDING_WARNING_DIM_OPACITY,
+  BINDING_WARNING_GLYPH,
+  bindingWarningSvg,
+  dimForBindingWarning,
+} from "@iracedeck/icon-composer";
+
 // ---------------------------------------------------------------------------
 // Global Title Settings Reader
 // ---------------------------------------------------------------------------

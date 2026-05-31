@@ -1,4 +1,5 @@
 import {
+  applyBindingWarning,
   applyGraphicTransform,
   assembleIcon,
   CommonSettings,
@@ -341,7 +342,11 @@ type CarControlSettings = z.infer<typeof CarControlSettings>;
  *
  * Generates an SVG data URI icon for the car control action.
  */
-export function generateCarControlSvg(settings: CarControlSettings, telemetryState?: CarControlTelemetryState): string {
+export function generateCarControlSvg(
+  settings: CarControlSettings,
+  telemetryState?: CarControlTelemetryState,
+  bindingMissing = false,
+): string {
   const { control } = settings;
 
   // Pit-speed-limiter uses the template approach (dynamic speed number)
@@ -357,7 +362,7 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
     );
     const borderSvg = generateBorderParts(border);
 
-    return renderDynamicIcon(settings, iconContent, borderSvg);
+    return renderDynamicIcon(settings, iconContent, borderSvg, bindingMissing);
   }
 
   // Push To Pass and DRS use dedicated templates with their own <desc> defaults
@@ -365,7 +370,7 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
     const template = control === "push-to-pass" ? pushToPassTemplate : drsTemplate;
     const colors = resolveIconColors(template, getGlobalColors(), settings.colorOverrides) as Record<string, string>;
     const activeValue = control === "push-to-pass" ? telemetryState?.pushToPassActive : telemetryState?.drsActive;
-    const iconContent = control === "push-to-pass" ? pushToPassIcon(activeValue) : drsIcon(activeValue);
+    const baseIconContent = control === "push-to-pass" ? pushToPassIcon(activeValue) : drsIcon(activeValue);
     const toggleState: "on" | "off" | "na" = activeValue === undefined ? "na" : activeValue ? "on" : "off";
 
     const resolvedTitle = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides);
@@ -389,7 +394,11 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
     );
     const borderSvg = generateBorderParts(border);
 
-    // Status bar is always visible, even when Show Graphics is off
+    // Status bar is always visible, even when Show Graphics is off. When a
+    // required binding is missing, dim the content and draw the centered
+    // warning over it (#612).
+    const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
+
     const svg = renderIconTemplate(template, {
       iconContent,
       titleContent,
@@ -413,7 +422,7 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+    return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
   }
 
   // Static modes use standalone SVGs from @iracedeck/icons
@@ -426,7 +435,7 @@ export function generateCarControlSvg(settings: CarControlSettings, telemetrySta
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /** Bounding box for pit-limiter dynamic content (derived from circle r=38 centered at 72,46) */
@@ -436,6 +445,7 @@ function renderDynamicIcon(
   settings: CarControlSettings,
   iconContent: string,
   border: { defs: string; rects: string },
+  bindingMissing = false,
 ): string {
   const labels = CAR_CONTROL_LABELS[settings.control] || CAR_CONTROL_LABELS["starter"];
   const defaultTitle = `${labels.line2}\n${labels.line1}`;
@@ -458,6 +468,12 @@ function renderDynamicIcon(
       computeGraphicArea(resolvedTitle),
       graphic.scale,
     );
+  }
+
+  // When a required binding is missing, dim the content and draw the
+  // centered warning over it (#612).
+  if (bindingMissing) {
+    scaledContent = applyBindingWarning(scaledContent);
   }
 
   const titleContent = resolvedTitle.showTitle
@@ -780,14 +796,22 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     const telemetry = this.sdkController.getCurrentTelemetry();
     const telemetryState = this.getTelemetryState(telemetry, settings.control);
 
-    const svgDataUri = generateCarControlSvg(settings, telemetryState);
+    const svgDataUri = generateCarControlSvg(
+      settings,
+      telemetryState,
+      this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
       const currentState = this.getTelemetryState(currentTelemetry, settings.control);
 
-      return generateCarControlSvg(settings, currentState);
+      return generateCarControlSvg(
+        settings,
+        currentState,
+        this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]),
+      );
     });
 
     // Initialize state cache
@@ -798,21 +822,24 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
   private buildStateKey(settings: CarControlSettings, telemetryState: CarControlTelemetryState): string {
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
+    // Include the binding-missing flag so a telemetry tick re-renders the key
+    // when the user sets/clears the control's binding (#612).
+    const warn = this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]) ? "warn" : "";
 
     if (settings.control === "pit-speed-limiter") {
-      return `pit-speed-limiter|${telemetryState.pitLimiterActive ?? false}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}|${borderKey}`;
+      return `pit-speed-limiter|${telemetryState.pitLimiterActive ?? false}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}|${borderKey}|${warn}`;
     }
 
     if (settings.control === "push-to-pass") {
-      return `push-to-pass|${telemetryState.pushToPassActive ?? "na"}|${borderKey}`;
+      return `push-to-pass|${telemetryState.pushToPassActive ?? "na"}|${borderKey}|${warn}`;
     }
 
     if (settings.control === "drs") {
-      return `drs|${telemetryState.drsActive ?? "na"}|${borderKey}`;
+      return `drs|${telemetryState.drsActive ?? "na"}|${borderKey}|${warn}`;
     }
 
     if (settings.control === "enter-exit-tow") {
-      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}|${borderKey}`;
+      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}|${borderKey}|${warn}`;
     }
 
     return settings.control;
@@ -844,13 +871,21 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
       const currentState = this.getTelemetryState(currentTelemetry, storedSettings.control);
-      const svgDataUri = generateCarControlSvg(storedSettings, currentState);
+      const svgDataUri = generateCarControlSvg(
+        storedSettings,
+        currentState,
+        this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[storedSettings.control]),
+      );
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const t = this.sdkController.getCurrentTelemetry();
         const s = this.getTelemetryState(t, storedSettings.control);
 
-        return generateCarControlSvg(storedSettings, s);
+        return generateCarControlSvg(
+          storedSettings,
+          s,
+          this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[storedSettings.control]),
+        );
       });
     });
   }

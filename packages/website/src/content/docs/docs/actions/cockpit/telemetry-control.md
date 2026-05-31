@@ -19,6 +19,7 @@ Toggle iRacing's telemetry log file on or off.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+L`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Mark the current moment in the telemetry log for later review.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `M`
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Start a telemetry recording session via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Stop the current telemetry recording session via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Stop and immediately restart telemetry recording via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

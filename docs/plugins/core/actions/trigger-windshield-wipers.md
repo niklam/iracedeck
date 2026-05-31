@@ -9,6 +9,7 @@ Triggers a single wipe of the windshield wipers.
 | Action ID | `com.iracedeck.sd.core.trigger-windshield-wipers` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

@@ -66,7 +66,7 @@ type LookDirectionSettings = z.infer<typeof LookDirectionSettings>;
  *
  * Generates an SVG data URI icon for the look direction action.
  */
-export function generateLookDirectionSvg(settings: LookDirectionSettings): string {
+export function generateLookDirectionSvg(settings: LookDirectionSettings, bindingMissing = false): string {
   const { direction } = settings;
 
   const iconSvg = DIRECTION_ICONS[direction] || DIRECTION_ICONS["look-left"];
@@ -79,7 +79,7 @@ export function generateLookDirectionSvg(settings: LookDirectionSettings): strin
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -157,9 +157,14 @@ export class LookDirection extends ConnectionStateAwareAction<LookDirectionSetti
     ev: IDeckWillAppearEvent<LookDirectionSettings> | IDeckDidReceiveSettingsEvent<LookDirectionSettings>,
     settings: LookDirectionSettings,
   ): Promise<void> {
-    const svgDataUri = generateLookDirectionSvg(settings);
+    const svgDataUri = generateLookDirectionSvg(
+      settings,
+      this.isBindingMissing(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateLookDirectionSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateLookDirectionSvg(settings, this.isBindingMissing(LOOK_DIRECTION_GLOBAL_KEYS[settings.direction])),
+    );
   }
 }

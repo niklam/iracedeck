@@ -1,0 +1,496 @@
+/**
+ * Per-mode sim-communication catalog (issue #612) — authoritative source.
+ *
+ * Maps every (action, mode) to how it talks to iRacing: the iRacing API, a key
+ * binding (keyboard OR SimHub, possibly resolved from a secondary setting), or
+ * a chat command. The PI binding-status line and the docs read the GENERATED
+ * `data/action-comms.json`; regenerate it with `pnpm generate:action-comms`
+ * after editing this file (a freshness test guards the two staying in sync).
+ *
+ * Classification is the code-verified audit in
+ * `docs/superpowers/specs/2026-05-31-comms-method-audit.md`.
+ *
+ * Each action entry also records `modeSetting` — the name of the action setting
+ * whose value selects the mode — so the PI knows which setting to watch. It is
+ * emitted under the reserved `_meta` key inside each action's map.
+ *
+ * Display-only / internal actions (session-info, telemetry-display, pit-crew,
+ * camera-cycle, camera-focus) are intentionally absent: they issue no iRacing
+ * command, so they get no status line and no icon warning.
+ */
+import {
+  type ActionCommMap,
+  type CommDescriptor,
+  keybind,
+  keybindBy,
+  keybindFixed,
+  keybindKeys,
+} from "@iracedeck/deck-core";
+
+const api: CommDescriptor = { method: "api" };
+const chat: CommDescriptor = { method: "chat" };
+
+/** Build a `{ mode: <descriptor> }` map for a list of same-method modes. */
+function allApi(modes: string[]): ActionCommMap {
+  return Object.fromEntries(modes.map((m) => [m, api]));
+}
+function allChat(modes: string[]): ActionCommMap {
+  return Object.fromEntries(modes.map((m) => [m, chat]));
+}
+
+/** Per-action metadata carried alongside the mode map. */
+export interface ActionCommMeta {
+  /** Name of the action setting whose value selects the mode. */
+  modeSetting: string;
+}
+
+/** An action's mode map plus its `_meta`. The PI reads both from the JSON. */
+export type ActionCommEntry = ActionCommMap & { _meta: ActionCommMeta };
+
+function entry(modeSetting: string, modes: ActionCommMap): ActionCommEntry {
+  return { _meta: { modeSetting }, ...modes };
+}
+
+/** Directional keybind mode whose key is chosen by the `direction` secondary setting. */
+function dir(increase: string, decrease: string): CommDescriptor {
+  return keybindBy("direction", { increase, decrease });
+}
+
+/**
+ * Setup `view-*` mode: nudges-and-reads via the adjustment's increase AND
+ * decrease keys (both required — warn if either is unset).
+ */
+function pair(increase: string, decrease: string): CommDescriptor {
+  return keybindKeys([increase, decrease]);
+}
+
+export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
+  "fuel-service": entry("mode", {
+    "toggle-fuel-fill": api,
+    "add-fuel": chat,
+    "reduce-fuel": chat,
+    "set-fuel-amount": chat,
+    "clear-fuel": api,
+    "toggle-autofuel": keybind("fuelServiceToggleAutofuel"),
+    "lap-margin-increase": keybind("fuelServiceLapMarginIncrease"),
+    "lap-margin-decrease": keybind("fuelServiceLapMarginDecrease"),
+  }),
+
+  "tire-service": entry("mode", {
+    "change-all-tires": chat,
+    "clear-tires": api,
+    "change-compound": api,
+    "toggle-tires": chat,
+  }),
+
+  "black-box-selector": entry("mode", {
+    direct: keybindBy("blackBox", {
+      "lap-timing": "blackBoxLapTiming",
+      standings: "blackBoxStandings",
+      relative: "blackBoxRelative",
+      fuel: "blackBoxFuel",
+      tires: "blackBoxTires",
+      "tire-info": "blackBoxTireInfo",
+      "pit-stop": "blackBoxPitStop",
+      "in-car": "blackBoxInCar",
+      mirror: "blackBoxMirror",
+      radio: "blackBoxRadio",
+      weather: "blackBoxWeather",
+    }),
+    next: keybind("blackBoxCycleNext"),
+    previous: keybind("blackBoxCyclePrevious"),
+  }),
+
+  "splits-delta-cycle": entry("mode", {
+    cycle: keybindBy("direction", { next: "splitsDeltaNext", previous: "splitsDeltaPrevious" }),
+    "toggle-ref-car": keybind("toggleUiDisplayRefCar"),
+    "custom-sector-start": keybind("splitsDeltaCustomSectorStart"),
+    "custom-sector-end": keybind("splitsDeltaCustomSectorEnd"),
+    "active-reset-set": keybind("splitsDeltaActiveResetSet"),
+    "active-reset-run": keybind("splitsDeltaActiveResetRun"),
+  }),
+
+  "look-direction": entry("direction", {
+    "look-left": keybind("lookDirectionLeft"),
+    "look-right": keybind("lookDirectionRight"),
+    "look-up": keybind("lookDirectionUp"),
+    "look-down": keybind("lookDirectionDown"),
+  }),
+
+  "car-control": entry("control", {
+    "pit-speed-limiter": keybind("carControlPitSpeedLimiter"),
+    "push-to-pass": keybind("carControlPushToPass"),
+    drs: keybind("carControlDrs"),
+    "headlight-flash": keybind("carControlHeadlightFlash"),
+    "tear-off-visor": keybind("carControlTearOffVisor"),
+    ignition: keybind("carControlIgnition"),
+    starter: keybind("carControlStarter"),
+    "enter-exit-tow": keybind("carControlEnterExitTow"),
+    "pause-sim": keybind("carControlPauseSim"),
+    // Hardcoded Escape — no user binding.
+    escape: keybindFixed(),
+  }),
+
+  "view-adjustment": entry("adjustment", {
+    fov: keybindBy("direction", { increase: "viewAdjustFovIncrease", decrease: "viewAdjustFovDecrease" }),
+    horizon: keybindBy("direction", { increase: "viewAdjustHorizonUp", decrease: "viewAdjustHorizonDown" }),
+    "driver-height": keybindBy("direction", {
+      increase: "viewAdjustDriverHeightUp",
+      decrease: "viewAdjustDriverHeightDown",
+    }),
+    "recenter-vr": keybind("viewAdjustRecenterVr"),
+    "ui-size": keybindBy("direction", { increase: "viewAdjustUiSizeIncrease", decrease: "viewAdjustUiSizeDecrease" }),
+  }),
+
+  "camera-editor-adjustments": entry("adjustment", {
+    latitude: dir("camEditLatitudeIncrease", "camEditLatitudeDecrease"),
+    longitude: dir("camEditLongitudeIncrease", "camEditLongitudeDecrease"),
+    altitude: dir("camEditAltitudeIncrease", "camEditAltitudeDecrease"),
+    yaw: dir("camEditYawIncrease", "camEditYawDecrease"),
+    pitch: dir("camEditPitchIncrease", "camEditPitchDecrease"),
+    "fov-zoom": dir("camEditFovZoomIncrease", "camEditFovZoomDecrease"),
+    "key-step": dir("camEditKeyStepIncrease", "camEditKeyStepDecrease"),
+    "vanish-x": dir("camEditVanishXIncrease", "camEditVanishXDecrease"),
+    "vanish-y": dir("camEditVanishYIncrease", "camEditVanishYDecrease"),
+    "blimp-radius": dir("camEditBlimpRadiusIncrease", "camEditBlimpRadiusDecrease"),
+    "blimp-velocity": dir("camEditBlimpVelocityIncrease", "camEditBlimpVelocityDecrease"),
+    "mic-gain": dir("camEditMicGainIncrease", "camEditMicGainDecrease"),
+    // Both directions trigger the same key — a single fixed binding.
+    "auto-set-mic-gain": keybind("camEditAutoSetMicGain"),
+    "f-number": dir("camEditFNumberIncrease", "camEditFNumberDecrease"),
+    "focus-depth": dir("camEditFocusDepthIncrease", "camEditFocusDepthDecrease"),
+  }),
+
+  "camera-editor-controls": entry("control", {
+    "open-camera-tool": keybind("camCtrlOpenCameraTool"),
+    "key-acceleration-toggle": keybind("camCtrlKeyAccelerationToggle"),
+    "key-10x-toggle": keybind("camCtrlKey10xToggle"),
+    "parabolic-mic-toggle": keybind("camCtrlParabolicMicToggle"),
+    "cycle-position-type": keybind("camCtrlCyclePositionType"),
+    "cycle-aim-type": keybind("camCtrlCycleAimType"),
+    "acquire-start": keybind("camCtrlAcquireStart"),
+    "acquire-end": keybind("camCtrlAcquireEnd"),
+    "temporary-edits-toggle": keybind("camCtrlTemporaryEditsToggle"),
+    "dampening-toggle": keybind("camCtrlDampeningToggle"),
+    "zoom-toggle": keybind("camCtrlZoomToggle"),
+    "beyond-fence-toggle": keybind("camCtrlBeyondFenceToggle"),
+    "in-cockpit-toggle": keybind("camCtrlInCockpitToggle"),
+    "mouse-navigation-toggle": keybind("camCtrlMouseNavigationToggle"),
+    "pitch-gyro-toggle": keybind("camCtrlPitchGyroToggle"),
+    "roll-gyro-toggle": keybind("camCtrlRollGyroToggle"),
+    "limit-shot-range-toggle": keybind("camCtrlLimitShotRangeToggle"),
+    "show-camera-toggle": keybind("camCtrlShowCameraToggle"),
+    "shot-selection-toggle": keybind("camCtrlShotSelectionToggle"),
+    "manual-focus-toggle": keybind("camCtrlManualFocusToggle"),
+    "insert-camera": keybind("camCtrlInsertCamera"),
+    "remove-camera": keybind("camCtrlRemoveCamera"),
+    "copy-camera": keybind("camCtrlCopyCamera"),
+    "paste-camera": keybind("camCtrlPasteCamera"),
+    "copy-group": keybind("camCtrlCopyGroup"),
+    "paste-group": keybind("camCtrlPasteGroup"),
+    "save-track-camera": keybind("camCtrlSaveTrackCamera"),
+    "load-track-camera": keybind("camCtrlLoadTrackCamera"),
+    "save-car-camera": keybind("camCtrlSaveCarCamera"),
+    "load-car-camera": keybind("camCtrlLoadCarCamera"),
+  }),
+
+  "cockpit-misc": entry("control", {
+    "toggle-wipers": keybind("cockpitMiscToggleWipers"),
+    "trigger-wipers": keybind("cockpitMiscTriggerWipers"),
+    "ffb-max-force": keybindBy("direction", {
+      increase: "cockpitMiscFfbForceIncrease",
+      decrease: "cockpitMiscFfbForceDecrease",
+    }),
+    "report-latency": keybind("cockpitMiscReportLatency"),
+    "dash-page-1": keybindBy("direction", {
+      increase: "cockpitMiscDashPage1Increase",
+      decrease: "cockpitMiscDashPage1Decrease",
+    }),
+    "dash-page-2": keybindBy("direction", {
+      increase: "cockpitMiscDashPage2Increase",
+      decrease: "cockpitMiscDashPage2Decrease",
+    }),
+    "in-lap-mode": keybind("cockpitMiscInLapMode"),
+  }),
+
+  "force-feedback": entry("mode", {
+    "auto-compute-ffb-force": keybind("forceFeedbackAutoCompute"),
+    "ffb-force": keybindBy("direction", {
+      increase: "cockpitMiscFfbForceIncrease",
+      decrease: "cockpitMiscFfbForceDecrease",
+    }),
+    "wheel-lfe": keybindBy("direction", {
+      increase: "forceFeedbackWheelLfeLouder",
+      decrease: "forceFeedbackWheelLfeQuieter",
+    }),
+    "bass-shaker-lfe": keybindBy("direction", {
+      increase: "forceFeedbackBassShakerLfeLouder",
+      decrease: "forceFeedbackBassShakerLfeQuieter",
+    }),
+    "wheel-lfe-intensity": keybindBy("direction", {
+      increase: "forceFeedbackWheelLfeIntensityIncrease",
+      decrease: "forceFeedbackWheelLfeIntensityDecrease",
+    }),
+    "haptic-lfe-intensity": keybindBy("direction", {
+      increase: "forceFeedbackHapticLfeIntensityIncrease",
+      decrease: "forceFeedbackHapticLfeIntensityDecrease",
+    }),
+  }),
+
+  chat: entry("mode", {
+    "open-chat": api,
+    reply: api,
+    cancel: api,
+    "send-message": api,
+    macro: api,
+    whisper: keybind("chatWhisper"),
+    toggle: keybind("chatToggle"),
+  }),
+
+  "audio-controls": entry("category", {
+    "push-to-talk": keybind("audioControlsPushToTalk"),
+    "voice-chat": keybindBy("action", {
+      "volume-up": "audioVoiceChatVolumeUp",
+      "volume-down": "audioVoiceChatVolumeDown",
+      mute: "audioVoiceChatMute",
+    }),
+    master: keybindBy("action", {
+      "volume-up": "audioMasterVolumeUp",
+      "volume-down": "audioMasterVolumeDown",
+    }),
+    // Plugin audio, not iRacing — no binding.
+    "race-engineer": keybindFixed(),
+    radar: keybindFixed(),
+  }),
+
+  "toggle-ui-elements": entry("element", {
+    "dash-box": keybind("toggleUiDashBox"),
+    "speed-gear-pedals": keybind("toggleUiSpeedGearPedals"),
+    "radio-display": keybind("toggleUiRadioDisplay"),
+    "fps-network-display": keybind("toggleUiFpsNetworkDisplay"),
+    "weather-radar": keybind("toggleUiWeatherRadar"),
+    "virtual-mirror": keybind("toggleUiVirtualMirror"),
+    "ui-edit-mode": keybind("toggleUiEditMode"),
+    "driving-line": keybind("toggleUiDrivingLine"),
+    "display-ref-car": keybind("toggleUiDisplayRefCar"),
+    "replay-ui": api,
+  }),
+
+  "ai-spotter-controls": entry("control", {
+    "damage-report": keybind("spotterDamageReport"),
+    "weather-report": keybind("spotterWeatherReport"),
+    "toggle-report-laps": keybind("spotterToggleReportLaps"),
+    "announce-leader": keybind("spotterAnnounceLeader"),
+    louder: keybind("spotterLouder"),
+    quieter: keybind("spotterQuieter"),
+    silence: keybind("spotterSilence"),
+  }),
+
+  // --- Setup actions (mode setting "setting"): view-* modes nudge-and-read via
+  // both the increase AND decrease keys; adjust modes pick one by `direction`. ---
+
+  "setup-aero": entry("setting", {
+    "view-front-wing": pair("setupAeroFrontWingIncrease", "setupAeroFrontWingDecrease"),
+    "view-rear-wing": pair("setupAeroRearWingIncrease", "setupAeroRearWingDecrease"),
+    "front-wing": dir("setupAeroFrontWingIncrease", "setupAeroFrontWingDecrease"),
+    "rear-wing": dir("setupAeroRearWingIncrease", "setupAeroRearWingDecrease"),
+    "qualifying-tape": dir("setupAeroQualifyingTapeIncrease", "setupAeroQualifyingTapeDecrease"),
+    "rf-brake-attached": keybind("setupAeroRfBrakeAttached"),
+  }),
+
+  "setup-brakes": entry("setting", {
+    "view-brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
+    "view-brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
+    "view-peak-brake-bias": pair("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),
+    "view-brake-misc": pair("setupBrakesBrakeMiscIncrease", "setupBrakesBrakeMiscDecrease"),
+    "view-engine-braking": pair("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
+    "view-abs-adjust": pair("setupBrakesAbsAdjustIncrease", "setupBrakesAbsAdjustDecrease"),
+    "abs-toggle": keybind("setupBrakesAbsToggle"),
+    "abs-adjust": dir("setupBrakesAbsAdjustIncrease", "setupBrakesAbsAdjustDecrease"),
+    "brake-bias": dir("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
+    "brake-bias-fine": dir("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
+    "peak-brake-bias": dir("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),
+    "brake-misc": dir("setupBrakesBrakeMiscIncrease", "setupBrakesBrakeMiscDecrease"),
+    "engine-braking": dir("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
+  }),
+
+  "setup-chassis": entry("setting", {
+    "view-diff-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
+    "view-diff-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
+    "view-diff-middle": pair("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
+    "view-diff-exit": pair("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
+    "view-anti-roll-front": pair("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
+    "view-anti-roll-rear": pair("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
+    "view-power-steering": pair("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+    "view-weight-jacker-left": pair("setupChassisWeightJackerLeftIncrease", "setupChassisWeightJackerLeftDecrease"),
+    "view-weight-jacker-right": pair("setupChassisWeightJackerRightIncrease", "setupChassisWeightJackerRightDecrease"),
+    "differential-preload": dir("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
+    "differential-entry": dir("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
+    "differential-middle": dir("setupChassisDifferentialMiddleIncrease", "setupChassisDifferentialMiddleDecrease"),
+    "differential-exit": dir("setupChassisDifferentialExitIncrease", "setupChassisDifferentialExitDecrease"),
+    "front-arb": dir("setupChassisFrontArbIncrease", "setupChassisFrontArbDecrease"),
+    "rear-arb": dir("setupChassisRearArbIncrease", "setupChassisRearArbDecrease"),
+    "left-spring": dir("setupChassisLeftSpringIncrease", "setupChassisLeftSpringDecrease"),
+    "right-spring": dir("setupChassisRightSpringIncrease", "setupChassisRightSpringDecrease"),
+    "lf-shock": dir("setupChassisLfShockIncrease", "setupChassisLfShockDecrease"),
+    "rf-shock": dir("setupChassisRfShockIncrease", "setupChassisRfShockDecrease"),
+    "lr-shock": dir("setupChassisLrShockIncrease", "setupChassisLrShockDecrease"),
+    "rr-shock": dir("setupChassisRrShockIncrease", "setupChassisRrShockDecrease"),
+    "power-steering": dir("setupChassisPowerSteeringIncrease", "setupChassisPowerSteeringDecrease"),
+  }),
+
+  "setup-engine": entry("setting", {
+    "view-engine-power": pair("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
+    "view-throttle-shape": pair("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
+    "view-launch-rpm": pair("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
+    "engine-power": dir("setupEngineEnginePowerIncrease", "setupEngineEnginePowerDecrease"),
+    "throttle-shaping": dir("setupEngineThrottleShapingIncrease", "setupEngineThrottleShapingDecrease"),
+    "boost-level": dir("setupEngineBoostLevelIncrease", "setupEngineBoostLevelDecrease"),
+    "launch-rpm": dir("setupEngineLaunchRpmIncrease", "setupEngineLaunchRpmDecrease"),
+  }),
+
+  "setup-fuel": entry("setting", {
+    "view-fuel-mixture": pair("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
+    "view-fuel-cut-position": pair("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),
+    "fuel-mixture": dir("setupFuelFuelMixtureIncrease", "setupFuelFuelMixtureDecrease"),
+    "fuel-cut-position": dir("setupFuelFuelCutPositionIncrease", "setupFuelFuelCutPositionDecrease"),
+    "disable-fuel-cut": keybind("setupFuelDisableFuelCut"),
+    "low-fuel-accept": keybind("setupFuelLowFuelAccept"),
+    "fcy-mode-toggle": keybind("setupFuelFcyModeToggle"),
+  }),
+
+  "setup-hybrid": entry("setting", {
+    "view-mguk-deploy-mode": pair("setupHybridMgukDeployModeIncrease", "setupHybridMgukDeployModeDecrease"),
+    "view-mguk-regen-gain": pair("setupHybridMgukRegenGainIncrease", "setupHybridMgukRegenGainDecrease"),
+    "view-mguk-deploy-fixed": pair("setupHybridMgukFixedDeployIncrease", "setupHybridMgukFixedDeployDecrease"),
+    "mguk-regen-gain": dir("setupHybridMgukRegenGainIncrease", "setupHybridMgukRegenGainDecrease"),
+    "mguk-deploy-mode": dir("setupHybridMgukDeployModeIncrease", "setupHybridMgukDeployModeDecrease"),
+    "mguk-fixed-deploy": dir("setupHybridMgukFixedDeployIncrease", "setupHybridMgukFixedDeployDecrease"),
+    "hys-boost": keybind("setupHybridHysBoost"),
+    "hys-regen": keybind("setupHybridHysRegen"),
+    "hys-no-boost": keybind("setupHybridHysNoBoost"),
+  }),
+
+  "setup-traction": entry("setting", {
+    "view-tc-slot-1": pair("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
+    "view-tc-slot-2": pair("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
+    "view-tc-slot-3": pair("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
+    "view-tc-slot-4": pair("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+    "tc-toggle": keybind("setupTractionTcToggle"),
+    "tc-slot-1": dir("setupTractionTcSlot1Increase", "setupTractionTcSlot1Decrease"),
+    "tc-slot-2": dir("setupTractionTcSlot2Increase", "setupTractionTcSlot2Decrease"),
+    "tc-slot-3": dir("setupTractionTcSlot3Increase", "setupTractionTcSlot3Decrease"),
+    "tc-slot-4": dir("setupTractionTcSlot4Increase", "setupTractionTcSlot4Decrease"),
+  }),
+
+  // --- API / chat actions (no binding required) ---
+
+  "media-capture": entry("mode", {
+    ...allApi([
+      "start-stop-video",
+      "video-timer",
+      "toggle-video-capture",
+      "take-screenshot",
+      "reload-all-textures",
+      "reload-car-textures",
+    ]),
+    "take-giant-screenshot": keybind("mediaCaptureGiantScreenshot"),
+  }),
+
+  "pit-quick-actions": entry("mode", allApi(["clear-all-checkboxes", "windshield-tearoff", "request-fast-repair"])),
+
+  "replay-control": entry("mode", {
+    ...allApi([
+      "play-pause",
+      "play-backward",
+      "stop",
+      "fast-forward",
+      "rewind",
+      "slow-motion",
+      "slow-motion-rewind",
+      "frame-forward",
+      "frame-backward",
+      "speed-increase",
+      "speed-decrease",
+      "set-speed",
+      "speed-display",
+      "next-session",
+      "prev-session",
+      "next-lap",
+      "prev-lap",
+      "next-incident",
+      "prev-incident",
+      "jump-to-beginning",
+      "jump-to-live",
+      "jump-to-my-car",
+      "jump-to-fastest-lap",
+      "next-car-number",
+      "prev-car-number",
+    ]),
+    "next-car": keybind("replayControlNextCar"),
+    "prev-car": keybind("replayControlPrevCar"),
+  }),
+
+  "replay-navigation": entry(
+    "navigation",
+    allApi([
+      "next-session",
+      "prev-session",
+      "next-lap",
+      "prev-lap",
+      "next-incident",
+      "prev-incident",
+      "jump-to-start",
+      "jump-to-end",
+      "set-play-position",
+      "search-session-time",
+      "erase-tape",
+    ]),
+  ),
+
+  "replay-speed": entry("direction", allApi(["increase", "decrease"])),
+
+  "replay-transport": entry(
+    "transport",
+    allApi(["play", "pause", "stop", "fast-forward", "rewind", "slow-motion", "frame-forward", "frame-backward"]),
+  ),
+
+  "telemetry-control": entry("mode", {
+    "toggle-logging": keybind("telemetryControlToggleLogging"),
+    "mark-event": keybind("telemetryControlMarkEvent"),
+    ...allApi(["start-recording", "stop-recording", "restart-recording"]),
+  }),
+
+  "race-admin": entry(
+    "mode",
+    allChat([
+      "yellow",
+      "black-flag",
+      "dq-driver",
+      "show-dqs-field",
+      "show-dqs-driver",
+      "clear-penalties",
+      "clear-all",
+      "wave-around",
+      "eol",
+      "pit-close",
+      "pit-open",
+      "pace-laps",
+      "single-file-restart",
+      "double-file-restart",
+      "advance-session",
+      "grid-set",
+      "grid-start",
+      "track-state",
+      "grant-admin",
+      "revoke-admin",
+      "remove-driver",
+      "enable-chat-all",
+      "enable-chat-driver",
+      "disable-chat-all",
+      "disable-chat-driver",
+      "message-all",
+      "rc-message",
+    ]),
+  ),
+};

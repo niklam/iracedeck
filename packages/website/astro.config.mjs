@@ -93,6 +93,7 @@ export default defineConfig({
         {
           label: "Features",
           items: [
+            { slug: "docs/features/communication-methods" },
             { slug: "docs/features/key-bindings" },
             { slug: "docs/features/flags-overlay" },
             { slug: "docs/features/focus-iracing-window" },

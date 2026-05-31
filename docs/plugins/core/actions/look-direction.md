@@ -9,6 +9,7 @@ Changes the driver's view direction.
 | Action ID | `com.iracedeck.sd.core.look-direction` |
 | Type | Multi-toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

@@ -38,6 +38,7 @@ Adjust the front wing angle. The **Direction** setting picks whether pressing th
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the front wing (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Front Wing + and Front Wing - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -55,6 +56,7 @@ Adjust the rear wing angle. The **Direction** setting picks whether pressing the
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts the rear wing (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both Rear Wing + and Rear Wing - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -72,6 +74,7 @@ Adjust the amount of qualifying tape covering the radiators. The **Direction** s
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts qualifying tape (clockwise = more tape, counter-clockwise = less tape), regardless of the Direction setting
 - **Default binding:** No default key binding — both Qualifying Tape + and Qualifying Tape - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -89,6 +92,7 @@ Toggle the right-front brake attachment.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No

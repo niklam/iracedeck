@@ -9,6 +9,7 @@ Toggles the virtual rear-view mirror display.
 | Action ID | `com.iracedeck.sd.core.toggle-virtual-mirror` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

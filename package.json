@@ -16,6 +16,7 @@
     "build:ts": "turbo run build --filter=!@iracedeck/iracing-native --filter=!@iracedeck/website",
     "build:force": "turbo run build --force",
     "build:native": "pnpm --filter @iracedeck/iracing-native build",
+    "generate:action-comms": "tsx scripts/generate-action-comms.mjs",
     "build:with-restart": "node scripts/build-with-restart.mjs",
     "build:stream-deck": "pnpm build:ts && pnpm restart:stream-deck",
     "restart:stream-deck": "streamdeck restart com.iracedeck.sd.core",

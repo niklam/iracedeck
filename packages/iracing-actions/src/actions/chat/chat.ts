@@ -125,7 +125,7 @@ export function hasTemplateVars(settings: { keyText: string; message: string }):
  * For "send-message" mode: renders a large chat bubble with message text inside.
  * For other modes: renders icon with accent color and labels below.
  */
-export function generateChatSvg(settings: ChatSettings): string {
+export function generateChatSvg(settings: ChatSettings, bindingMissing = false): string {
   const { mode, iconColor, keyText } = settings;
 
   // Special handling for send-message mode: render text inside the bubble
@@ -161,6 +161,7 @@ export function generateChatSvg(settings: ChatSettings): string {
     title,
     border,
     graphic,
+    bindingMissing,
   });
 }
 
@@ -478,12 +479,15 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
 
   private async updateIconFromTelemetry(contextId: string, settings: ChatSettings): Promise<void> {
     const resolved = this.resolveSettingsTemplates(settings);
-    const svgDataUri = generateChatSvg(resolved);
+    const bindingMissing = this.isBindingMissing(CHAT_GLOBAL_KEYS[resolved.mode]);
+    const svgDataUri = generateChatSvg(resolved, bindingMissing);
 
     if (this.lastRenderedIcon.get(contextId) !== svgDataUri) {
       this.lastRenderedIcon.set(contextId, svgDataUri);
       await this.updateKeyImage(contextId, svgDataUri);
-      this.setRegenerateCallback(contextId, () => generateChatSvg(resolved));
+      this.setRegenerateCallback(contextId, () =>
+        generateChatSvg(resolved, this.isBindingMissing(CHAT_GLOBAL_KEYS[resolved.mode])),
+      );
     }
   }
 
@@ -492,10 +496,13 @@ export class Chat extends ConnectionStateAwareAction<ChatSettings> {
     settings: ChatSettings,
   ): Promise<void> {
     const resolved = this.resolveSettingsTemplates(settings);
-    const svgDataUri = generateChatSvg(resolved);
+    const bindingMissing = this.isBindingMissing(CHAT_GLOBAL_KEYS[resolved.mode]);
+    const svgDataUri = generateChatSvg(resolved, bindingMissing);
     this.lastRenderedIcon.set(ev.action.id, svgDataUri);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateChatSvg(resolved));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateChatSvg(resolved, this.isBindingMissing(CHAT_GLOBAL_KEYS[resolved.mode])),
+    );
   }
 }

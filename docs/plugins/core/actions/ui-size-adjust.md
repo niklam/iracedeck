@@ -9,6 +9,7 @@ Adjusts the overall UI scale.
 | Action ID | `com.iracedeck.sd.core.ui-size-adjust` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

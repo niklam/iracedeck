@@ -9,6 +9,7 @@ Recenters the virtual reality headset view.
 | Action ID | `com.iracedeck.sd.core.recenter-vr-view` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

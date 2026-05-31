@@ -111,7 +111,7 @@ type AudioControlsSettings = z.infer<typeof AudioControlsSettings>;
  *
  * Generates an SVG data URI icon for the audio controls action.
  */
-export function generateAudioControlsSvg(settings: AudioControlsSettings): string {
+export function generateAudioControlsSvg(settings: AudioControlsSettings, bindingMissing = false): string {
   const { category, action: audioAction } = settings;
 
   let iconKey: string;
@@ -132,7 +132,7 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings): strin
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -303,9 +303,15 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     ev: IDeckWillAppearEvent<AudioControlsSettings> | IDeckDidReceiveSettingsEvent<AudioControlsSettings>,
     settings: AudioControlsSettings,
   ): Promise<void> {
-    const svgDataUri = generateAudioControlsSvg(settings);
+    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
+    const svgDataUri = generateAudioControlsSvg(settings, this.isBindingMissing(activeKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateAudioControlsSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateAudioControlsSvg(
+        settings,
+        this.isBindingMissing(this.resolveGlobalKey(settings.category, settings.action)),
+      ),
+    );
   }
 }

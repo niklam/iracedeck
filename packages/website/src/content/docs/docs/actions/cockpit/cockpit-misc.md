@@ -19,6 +19,7 @@ Toggle the windshield wipers on or off.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+W`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Trigger a single wiper sweep.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+W`
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Adjust the force feedback maximum force. The **Direction** setting picks whether
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts FFB max force (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -68,6 +71,7 @@ Report the current network latency in chat.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `L`
 - **Telemetry-aware icon:** No
@@ -84,6 +88,7 @@ Cycle through the pages on dashboard display 1. The **Direction** setting picks 
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation cycles dash page 1 (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
 - **Default binding:** No default key binding — both Dash Page 1 + and Dash Page 1 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -101,6 +106,7 @@ Cycle through the pages on dashboard display 2. The **Direction** setting picks 
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation cycles dash page 2 (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
 - **Default binding:** No default key binding — both Dash Page 2 + and Dash Page 2 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -118,6 +124,7 @@ Toggle in-lap mode (used for practice and qualifying to mark the return to pit).
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Alt+L`
 - **Telemetry-aware icon:** No

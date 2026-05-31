@@ -9,6 +9,7 @@ Adjusts the driver's field of view.
 | Action ID | `com.iracedeck.sd.core.fov-adjust` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

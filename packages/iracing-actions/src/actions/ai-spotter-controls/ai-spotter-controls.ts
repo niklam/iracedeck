@@ -98,7 +98,7 @@ type AiSpotterControlsSettings = z.infer<typeof AiSpotterControlsSettings>;
  *
  * Generates an SVG data URI icon for the AI spotter controls action.
  */
-export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings): string {
+export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings, bindingMissing = false): string {
   const { control } = settings;
   const iconSvg = SPOTTER_ICONS[control] || SPOTTER_ICONS["damage-report"];
   const defaultTitle = SPOTTER_TITLES[control] || SPOTTER_TITLES["damage-report"];
@@ -110,7 +110,7 @@ export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -160,9 +160,14 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     ev: IDeckWillAppearEvent<AiSpotterControlsSettings> | IDeckDidReceiveSettingsEvent<AiSpotterControlsSettings>,
     settings: AiSpotterControlsSettings,
   ): Promise<void> {
-    const svgDataUri = generateAiSpotterControlsSvg(settings);
+    const svgDataUri = generateAiSpotterControlsSvg(
+      settings,
+      this.isBindingMissing(SPOTTER_GLOBAL_KEYS[settings.control]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateAiSpotterControlsSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateAiSpotterControlsSvg(settings, this.isBindingMissing(SPOTTER_GLOBAL_KEYS[settings.control])),
+    );
   }
 }

@@ -19,6 +19,7 @@ Request new tires on all four corners. Uses iRacing's `#t` pit chat macro.
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Clear all tire change requests — removes all tires from the pit service.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Toggle tire changes per wheel. You choose which tires (LF, RF, LR, RR) the butto
 
 #### Details
 
+- **Method:** Chat command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — tire colors reflect the current iRacing pit service state
@@ -86,6 +89,7 @@ The available compounds depend on the car — most cars have DRY and WET, while 
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — shows the currently selected pit service compound

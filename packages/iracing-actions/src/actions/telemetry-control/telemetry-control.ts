@@ -75,7 +75,7 @@ type TelemetryControlSettings = z.infer<typeof TelemetryControlSettings>;
  *
  * Generates an SVG data URI icon for the telemetry control action.
  */
-export function generateTelemetryControlSvg(settings: TelemetryControlSettings): string {
+export function generateTelemetryControlSvg(settings: TelemetryControlSettings, bindingMissing = false): string {
   const { mode: actionType } = settings;
 
   const iconSvg = ACTION_ICONS[actionType] || ACTION_ICONS["toggle-logging"];
@@ -88,7 +88,7 @@ export function generateTelemetryControlSvg(settings: TelemetryControlSettings):
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -187,9 +187,14 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
     ev: IDeckWillAppearEvent<TelemetryControlSettings> | IDeckDidReceiveSettingsEvent<TelemetryControlSettings>,
     settings: TelemetryControlSettings,
   ): Promise<void> {
-    const svgDataUri = generateTelemetryControlSvg(settings);
+    const svgDataUri = generateTelemetryControlSvg(
+      settings,
+      this.isBindingMissing(TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateTelemetryControlSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateTelemetryControlSvg(settings, this.isBindingMissing(TELEMETRY_CONTROL_GLOBAL_KEYS[settings.mode])),
+    );
   }
 }

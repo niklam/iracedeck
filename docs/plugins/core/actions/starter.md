@@ -9,6 +9,7 @@ Engages the car's starter motor.
 | Action ID | `com.iracedeck.sd.core.starter` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

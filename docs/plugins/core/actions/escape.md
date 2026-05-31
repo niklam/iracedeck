@@ -9,6 +9,7 @@ Sends the ESC key to iRacing. Used to exit the car or dismiss dialogs.
 | Action ID | `com.iracedeck.sd.core.car-control` |
 | Type | Car Control sub-action |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Settings

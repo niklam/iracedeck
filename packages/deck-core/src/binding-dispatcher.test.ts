@@ -542,4 +542,42 @@ describe("BindingDispatcher", () => {
       expect(getBindingDispatcher().isReady("myKey", true)).toBe(false);
     });
   });
+
+  // --- isConfigured (issue #612) ---
+
+  describe("isConfigured", () => {
+    beforeEach(() => {
+      initializeBindingDispatcher(mockLogger);
+    });
+
+    it("returns false when no binding is set", () => {
+      mockGetGlobalSettings.mockReturnValue({});
+
+      expect(getBindingDispatcher().isConfigured("nonExistentKey")).toBe(false);
+    });
+
+    it("returns true for a keyboard binding regardless of connection", () => {
+      mockGetGlobalSettings.mockReturnValue({
+        myKey: JSON.stringify({ key: "f1", modifiers: [], code: "F1" }),
+      });
+
+      expect(getBindingDispatcher().isConfigured("myKey")).toBe(true);
+    });
+
+    it("returns true for a SimHub role even when SimHub is not reachable", () => {
+      mockIsSimHubReachable.mockReturnValue(false);
+      mockGetGlobalSettings.mockReturnValue({
+        myKey: JSON.stringify({ type: "simhub", role: "MyRole" }),
+      });
+
+      // SimHub-not-running is a reachability concern, not "not configured".
+      expect(getBindingDispatcher().isConfigured("myKey")).toBe(true);
+    });
+
+    it("returns false for an empty/corrupt binding value", () => {
+      mockGetGlobalSettings.mockReturnValue({ myKey: "" });
+
+      expect(getBindingDispatcher().isConfigured("myKey")).toBe(false);
+    });
+  });
 });

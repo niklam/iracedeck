@@ -1,4 +1,5 @@
 import {
+  applyBindingWarning,
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
@@ -300,6 +301,7 @@ export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: st
 export function generateFuelServiceSvg(
   settings: FuelServiceSettings,
   telemetryState?: FuelServiceTelemetryState,
+  bindingMissing = false,
 ): string {
   const { mode } = settings;
 
@@ -351,8 +353,11 @@ export function generateFuelServiceSvg(
         })
       : "";
 
-    // Status bar is always visible, even when graphics are off
-    const iconContent = (resolvedTitle.showGraphics ? graphicContent : "") + statusBar;
+    // Status bar is always visible, even when graphics are off. When a required
+    // binding is missing (toggle-autofuel with neither keyboard nor SimHub set),
+    // dim the content and draw the centered warning over it (#612).
+    const baseContent = (resolvedTitle.showGraphics ? graphicContent : "") + statusBar;
+    const iconContent = bindingMissing ? applyBindingWarning(baseContent) : baseContent;
 
     const border = resolveBorderSettings(
       metadataSvg,
@@ -385,7 +390,7 @@ export function generateFuelServiceSvg(
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -676,16 +681,19 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   private buildStateKey(settings: FuelServiceSettings, telemetryState: FuelServiceTelemetryState): string {
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
+    // Include the binding-missing flag so a telemetry tick re-renders the key
+    // when the user sets/clears the toggle-autofuel binding (#612).
+    const warn = this.isBindingMissing(FUEL_SERVICE_GLOBAL_KEYS[settings.mode]) ? "warn" : "";
 
     if (settings.mode === "toggle-fuel-fill") {
       return `fuel-fill|${telemetryState.fuelFillOn ?? "na"}|${telemetryState.fuelAmount ?? "none"}|${telemetryState.displayUnits ?? 0}|${borderKey}`;
     }
 
     if (settings.mode === "toggle-autofuel") {
-      return `autofuel|${telemetryState.autofuelEnabled ?? true}|${telemetryState.autofuelActive ?? "na"}|${borderKey}`;
+      return `autofuel|${telemetryState.autofuelEnabled ?? true}|${telemetryState.autofuelActive ?? "na"}|${borderKey}|${warn}`;
     }
 
-    return settings.mode;
+    return `${settings.mode}|${warn}`;
   }
 
   private async updateDisplay(
@@ -694,14 +702,22 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
     const telemetryState = this.getTelemetryState(telemetry);
-    const svgDataUri = generateFuelServiceSvg(settings, telemetryState);
+    const svgDataUri = generateFuelServiceSvg(
+      settings,
+      telemetryState,
+      this.isBindingMissing(FUEL_SERVICE_GLOBAL_KEYS[settings.mode]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
       const currentState = this.getTelemetryState(currentTelemetry);
 
-      return generateFuelServiceSvg(settings, currentState);
+      return generateFuelServiceSvg(
+        settings,
+        currentState,
+        this.isBindingMissing(FUEL_SERVICE_GLOBAL_KEYS[settings.mode]),
+      );
     });
     const stateKey = this.buildStateKey(settings, telemetryState);
     this.lastState.set(ev.action.id, stateKey);
@@ -720,13 +736,21 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
     if (lastStateKey !== stateKey) {
       this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateFuelServiceSvg(settings, telemetryState);
+      const svgDataUri = generateFuelServiceSvg(
+        settings,
+        telemetryState,
+        this.isBindingMissing(FUEL_SERVICE_GLOBAL_KEYS[settings.mode]),
+      );
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const currentTelemetry = this.sdkController.getCurrentTelemetry();
         const currentState = this.getTelemetryState(currentTelemetry);
 
-        return generateFuelServiceSvg(settings, currentState);
+        return generateFuelServiceSvg(
+          settings,
+          currentState,
+          this.isBindingMissing(FUEL_SERVICE_GLOBAL_KEYS[settings.mode]),
+        );
       });
     }
   }

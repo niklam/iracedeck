@@ -4,6 +4,7 @@
  * Pure functions for resolving settings and assembling final icons.
  * No dependencies on global settings stores — all inputs are parameters.
  */
+import { applyBindingWarning } from "./binding-warning.js";
 import { extractGraphicContent, generateBorderParts, ICON_BASE_TEMPLATE } from "./icon-base.js";
 import {
   escapeXml,
@@ -514,6 +515,9 @@ export function applyGraphicTransform(
  * @param options.title - Fully resolved title settings
  * @param options.border - Fully resolved border settings
  * @param options.graphic - Fully resolved graphic settings (optional — omit for no scaling)
+ * @param options.bindingMissing - When true, draw the centered binding-missing
+ *   warning triangle over dimmed artwork (issue #612). Used for keybind modes
+ *   that have neither a keyboard binding nor a SimHub role configured.
  * @returns SVG data URI string
  */
 export function assembleIcon(options: {
@@ -522,8 +526,9 @@ export function assembleIcon(options: {
   title: ResolvedTitleSettings;
   border: ResolvedBorderSettings;
   graphic?: ResolvedGraphicSettings;
+  bindingMissing?: boolean;
 }): string {
-  const { graphicSvg, colors, title, border, graphic } = options;
+  const { graphicSvg, colors, title, border, graphic, bindingMissing } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
@@ -548,6 +553,14 @@ export function assembleIcon(options: {
       area,
       graphic.scale,
     );
+  }
+
+  // Binding-missing overlay: dim the artwork and draw the centered warning
+  // triangle on top. Applied after scaling and regardless of showGraphics —
+  // a missing required binding is a configuration error the user must see
+  // even when artwork is hidden.
+  if (bindingMissing) {
+    graphicContent = applyBindingWarning(graphicContent);
   }
 
   const titleContent = title.showTitle

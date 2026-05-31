@@ -176,7 +176,10 @@ type CameraEditorAdjustmentsSettings = z.infer<typeof CameraEditorAdjustmentsSet
  *
  * Generates an SVG data URI icon for the camera editor adjustments action.
  */
-export function generateCameraEditorAdjustmentsSvg(settings: CameraEditorAdjustmentsSettings): string {
+export function generateCameraEditorAdjustmentsSvg(
+  settings: CameraEditorAdjustmentsSettings,
+  bindingMissing = false,
+): string {
   const { adjustment, direction } = settings;
 
   const iconKey = `${adjustment}-${direction}`;
@@ -190,7 +193,7 @@ export function generateCameraEditorAdjustmentsSvg(settings: CameraEditorAdjustm
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -268,9 +271,12 @@ export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEd
       | IDeckDidReceiveSettingsEvent<CameraEditorAdjustmentsSettings>,
     settings: CameraEditorAdjustmentsSettings,
   ): Promise<void> {
-    const svgDataUri = generateCameraEditorAdjustmentsSvg(settings);
+    const activeKey = CAMERA_EDITOR_GLOBAL_KEYS[settings.adjustment]?.[settings.direction];
+    const svgDataUri = generateCameraEditorAdjustmentsSvg(settings, this.isBindingMissing(activeKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateCameraEditorAdjustmentsSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateCameraEditorAdjustmentsSvg(settings, this.isBindingMissing(activeKey)),
+    );
   }
 }

@@ -112,7 +112,7 @@ type ViewAdjustmentSettings = z.infer<typeof ViewAdjustmentSettings>;
  *
  * Generates an SVG data URI icon for the view adjustment action.
  */
-export function generateViewAdjustmentSvg(settings: ViewAdjustmentSettings): string {
+export function generateViewAdjustmentSvg(settings: ViewAdjustmentSettings, bindingMissing = false): string {
   const { adjustment, direction } = settings;
 
   const iconKey = `${adjustment}-${direction}`;
@@ -126,7 +126,7 @@ export function generateViewAdjustmentSvg(settings: ViewAdjustmentSettings): str
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -200,9 +200,12 @@ export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSet
     ev: IDeckWillAppearEvent<ViewAdjustmentSettings> | IDeckDidReceiveSettingsEvent<ViewAdjustmentSettings>,
     settings: ViewAdjustmentSettings,
   ): Promise<void> {
-    const svgDataUri = generateViewAdjustmentSvg(settings);
+    const activeKey = VIEW_ADJUSTMENT_GLOBAL_KEYS[settings.adjustment]?.[settings.direction];
+    const svgDataUri = generateViewAdjustmentSvg(settings, this.isBindingMissing(activeKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateViewAdjustmentSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateViewAdjustmentSvg(settings, this.isBindingMissing(activeKey)),
+    );
   }
 }
