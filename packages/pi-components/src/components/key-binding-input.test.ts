@@ -52,11 +52,11 @@ describe("key-binding-input", () => {
     });
 
     it("should format key with single modifier", () => {
-      expect(formatKeyBinding({ key: "a", modifiers: ["ctrl"] })).toBe("Ctrl + A");
+      expect(formatKeyBinding({ key: "a", modifiers: ["ctrl"] })).toBe("Ctrl+A");
     });
 
     it("should format key with multiple modifiers in correct order", () => {
-      expect(formatKeyBinding({ key: "a", modifiers: ["alt", "ctrl", "shift"] })).toBe("Ctrl + Shift + Alt + A");
+      expect(formatKeyBinding({ key: "a", modifiers: ["alt", "ctrl", "shift"] })).toBe("Ctrl+Shift+Alt+A");
     });
 
     it("should use display names for special keys", () => {
@@ -67,12 +67,12 @@ describe("key-binding-input", () => {
 
     it("should format function keys correctly", () => {
       expect(formatKeyBinding({ key: "f1", modifiers: [] })).toBe("F1");
-      expect(formatKeyBinding({ key: "f12", modifiers: ["ctrl"] })).toBe("Ctrl + F12");
+      expect(formatKeyBinding({ key: "f12", modifiers: ["ctrl"] })).toBe("Ctrl+F12");
     });
 
     it("should format arrow keys correctly", () => {
       expect(formatKeyBinding({ key: "up", modifiers: [] })).toBe("Up");
-      expect(formatKeyBinding({ key: "down", modifiers: ["shift"] })).toBe("Shift + Down");
+      expect(formatKeyBinding({ key: "down", modifiers: ["shift"] })).toBe("Shift+Down");
     });
 
     it("should format numpad keys correctly", () => {
@@ -91,7 +91,7 @@ describe("key-binding-input", () => {
     });
 
     it("should use displayKey with modifiers", () => {
-      expect(formatKeyBinding({ key: "'", modifiers: ["shift"], displayKey: "Ä" })).toBe("Shift + Ä");
+      expect(formatKeyBinding({ key: "'", modifiers: ["shift"], displayKey: "Ä" })).toBe("Shift+Ä");
     });
 
     it("should fall back to key when displayKey is absent", () => {

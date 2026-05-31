@@ -94,7 +94,24 @@ describe("ird-binding-status", () => {
     mock.settings.get("mode")!("toggle-autofuel");
     mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
     expect(text()).toContain("currently set");
-    expect(text()).toContain("Ctrl + F1");
+    expect(text()).toContain("Ctrl+F1");
+  });
+
+  it("shows nothing (no 'No binding set' flash) until the binding value has loaded", () => {
+    el = mount(FUEL_COMMS);
+    mock.settings.get("mode")!("toggle-autofuel");
+    // Binding value has NOT arrived yet → render nothing, not "No binding set".
+    expect(text()).toBe("");
+    // Once it loads as empty, the missing state shows.
+    mock.global.get("fuelServiceToggleAutofuel")!("");
+    expect(text()).toContain("No binding set");
+  });
+
+  it("waits for the secondary setting before judging a dynamic-key mode", () => {
+    el = mount(VIEW_COMMS);
+    mock.settings.get("mode")!("fov");
+    // direction not loaded yet → nothing.
+    expect(text()).toBe("");
   });
 
   it("warns with a 'set it here' link when no binding is set", () => {
@@ -126,10 +143,10 @@ describe("ird-binding-status", () => {
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("toggle-autofuel");
     mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
-    expect(text()).toContain("Ctrl + F1");
+    expect(text()).toContain("Ctrl+F1");
     mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("Role X"));
     expect(text()).toContain("SimHub role: Role X");
-    expect(text()).not.toContain("Ctrl + F1");
+    expect(text()).not.toContain("Ctrl+F1");
   });
 
   it("resolves a dynamic key from the secondary setting (full resolution)", () => {
@@ -138,7 +155,7 @@ describe("ird-binding-status", () => {
     mock.settings.get("direction")!("increase");
     mock.global.get("viewFovInc")!(keyboardBinding("a"));
     expect(text()).toContain("currently set");
-    expect(text()).toContain("Ctrl + A");
+    expect(text()).toContain("Ctrl+A");
     // Switching the secondary setting re-resolves to the other key.
     mock.settings.get("direction")!("decrease");
     mock.global.get("viewFovDec")!("");
@@ -179,8 +196,8 @@ describe("ird-binding-status", () => {
     mock.settings.get("mode")!("view-fov");
     mock.global.get("incKey")!(keyboardBinding("a"));
     mock.global.get("decKey")!(keyboardBinding("b"));
-    expect(text()).toContain("Ctrl + A");
-    expect(text()).toContain("Ctrl + B");
+    expect(text()).toContain("Ctrl+A");
+    expect(text()).toContain("Ctrl+B");
     expect(text()).not.toContain("No binding set");
   });
 

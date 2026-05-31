@@ -54,7 +54,7 @@ export interface KeyBindingValue {
 
 /**
  * Format a key binding value for display.
- * Returns a human-readable string like "Ctrl + Shift + A".
+ * Returns a human-readable string like "Ctrl+Shift+A".
  */
 export function formatKeyBinding(value: KeyBindingValue | null): string {
   if (!value || !value.key) {
@@ -77,7 +77,7 @@ export function formatKeyBinding(value: KeyBindingValue | null): string {
     : KEY_DISPLAY_NAMES[value.key] || value.key.toUpperCase();
   parts.push(keyDisplay);
 
-  return parts.join(" + ");
+  return parts.join("+");
 }
 
 /**

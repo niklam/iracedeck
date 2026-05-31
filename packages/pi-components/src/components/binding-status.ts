@@ -86,9 +86,8 @@ function parseStoredBinding(
   }
 
   const kb = parseKeyBinding(value);
-  const text = formatKeyBinding(kb);
 
-  return text ? { kind: "keyboard", text } : null;
+  return kb ? { kind: "keyboard", text: formatKeyBinding(kb) } : null;
 }
 
 let styleInjected = false;
@@ -101,6 +100,10 @@ export class BindingStatus extends HTMLElement {
   private secondary = new Map<string, string>();
   /** Live binding values, by global-settings key. */
   private bindings = new Map<string, string>();
+  /** Global keys whose value has arrived at least once (distinguishes "loading" from "unset"). */
+  private loadedBindings = new Set<string>();
+  /** Secondary settings whose value has arrived at least once. */
+  private loadedSecondary = new Set<string>();
   private simHubReachable = true;
   private initialized = false;
 
@@ -179,6 +182,7 @@ export class BindingStatus extends HTMLElement {
         setting,
         (value) => {
           this.secondary.set(setting, value);
+          this.loadedSecondary.add(setting);
           this.render();
         },
         null,
@@ -190,6 +194,7 @@ export class BindingStatus extends HTMLElement {
         key,
         (value) => {
           this.bindings.set(key, value);
+          this.loadedBindings.add(key);
           this.render();
         },
         null,
@@ -252,11 +257,27 @@ export class BindingStatus extends HTMLElement {
       return;
     }
 
+    // A keyBy reference can't be resolved until its secondary setting has
+    // loaded — render nothing rather than flash "No binding set" on PI open.
+    if (!isConstantKey(ref) && !isMultiKey(ref) && !this.loadedSecondary.has(ref.keyBy.setting)) {
+      this.container.replaceChildren();
+
+      return;
+    }
+
     const keys = this.resolveKeys(ref);
 
     if (keys.length === 0) {
-      // keyBy secondary not yet resolvable — treat as not configured.
+      // Secondary value is loaded but unmapped → genuinely no binding.
       this.renderMissing();
+
+      return;
+    }
+
+    // Wait for every required key's value to arrive before judging set/unset,
+    // so PI open doesn't briefly show "No binding set" before settings load.
+    if (keys.some((k) => !this.loadedBindings.has(k))) {
+      this.container.replaceChildren();
 
       return;
     }
