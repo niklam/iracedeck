@@ -1071,19 +1071,23 @@ describe("SessionInfo", () => {
       }
 
       it("should default to class position (no positionType setting)", async () => {
+        // Live class (2) diverges from official PlayerCarClassPosition (9) so the
+        // assertion proves the live value is used, not the telemetry fallback.
         vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
-        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 2 };
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 9 };
 
         const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, { mode: "position" });
 
-        // Class is the default → class position (2), not overall (5).
+        // Class is the default → live class position (2), not overall (5) or official class (9).
         expect(decoded).toContain("P2");
         expect(decoded).not.toContain("P5");
+        expect(decoded).not.toContain("P9");
       });
 
       it("should show class position from getLivePosition when positionType is class (race, on track)", async () => {
+        // Live class (2) diverges from official PlayerCarClassPosition (9).
         vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
-        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 2 };
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 9 };
 
         const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
           mode: "position",
@@ -1092,6 +1096,7 @@ describe("SessionInfo", () => {
 
         expect(decoded).toContain("P2");
         expect(decoded).not.toContain("P5");
+        expect(decoded).not.toContain("P9");
       });
 
       it("should show frozen overall position from getLivePosition when positionType is overall (race, on track)", async () => {

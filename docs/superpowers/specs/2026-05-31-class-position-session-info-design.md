@@ -219,8 +219,9 @@ scoped totals) before any push / PR.
 
 ## Out of scope / non-goals
 
-- No calculated (hand-rolled) class position — `PlayerCarClassPosition` is
-  authoritative and the codebase's established class source.
+- No change to overtake **detection** — `diffOvertakes` still reads
+  `PlayerCarClassPosition` directly; only the position *display* / readout uses the
+  order-derived class value (see the class-derivation follow-up above).
 - No adaptive class/overall switching — "Class" is explicit per the brainstorming
   decision.
 - No new distinct prefix for class (`P` shared) — per the brainstorming decision.
