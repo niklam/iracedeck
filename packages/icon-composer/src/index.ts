@@ -8,6 +8,15 @@
 // SVG utilities
 export { dataUriToSvg, isDataUri, isRawSvg, svgToDataUri } from "./svg-utils.js";
 
+// Binding-missing warning overlay (issue #612)
+export {
+  applyBindingWarning,
+  BINDING_WARNING_DIM_OPACITY,
+  BINDING_WARNING_GLYPH,
+  bindingWarningSvg,
+  dimForBindingWarning,
+} from "./binding-warning.js";
+
 // Icon base template and border parts
 export { extractGraphicContent, generateBorderParts, ICON_BASE_TEMPLATE } from "./icon-base.js";
 

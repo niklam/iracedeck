@@ -66,6 +66,15 @@ export {
   type TitleOverrides,
 } from "./title-settings.js";
 
+// Binding-missing warning overlay (issue #612, re-exports from icon-composer)
+export {
+  applyBindingWarning,
+  BINDING_WARNING_DIM_OPACITY,
+  BINDING_WARNING_GLYPH,
+  bindingWarningSvg,
+  dimForBindingWarning,
+} from "./title-settings.js";
+
 // Icon base template (re-exports from icon-composer)
 export { generateBorderParts, ICON_BASE_TEMPLATE, extractGraphicContent } from "./icon-base.js";
 
