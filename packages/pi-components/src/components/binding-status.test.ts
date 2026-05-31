@@ -190,6 +190,21 @@ describe("ird-binding-status", () => {
     expect(text()).toContain("No binding set");
   });
 
+  it("falls back to a secondary select's default when its value is empty (untouched control)", () => {
+    el = mount(VIEW_COMMS);
+    setBinding("viewFovInc", keyboardBinding("a"));
+    // Direction select left at its default: empty value but default="increase".
+    const dirSel = document.createElement("sdpi-select");
+    dirSel.setAttribute("setting", "direction");
+    dirSel.setAttribute("default", "increase");
+    (dirSel as unknown as { value: string }).value = "";
+    document.body.appendChild(dirSel);
+    setMode("fov");
+    // Must resolve via the default → viewFovInc, not go blank / "No binding set".
+    expect(text()).toContain("Ctrl+A");
+    expect(text()).not.toContain("No binding set");
+  });
+
   it("opens the key-bindings accordion and scrolls when 'set it here' is clicked", () => {
     const details = document.createElement("details");
     details.setAttribute("data-accordion-id", "Related Key Bindings");

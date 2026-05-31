@@ -84,6 +84,25 @@ function readValue(selector: string): string | null {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+/**
+ * Read an sdpi-select's current value, falling back to its `default` attribute
+ * when the value is empty. An sdpi-select left untouched at its default reports
+ * an empty `.value` until the setting is persisted, so the codebase's
+ * conditional-visibility pattern reads `value || default`. Without this, a
+ * `keyBy` secondary like Direction (default "next") resolves to "" and the
+ * status line goes blank (issue #612).
+ */
+function readSelectValue(setting: string): string | null {
+  const el = document.querySelector(`[setting="${cssAttr(setting)}"]`) as (ValueElement & Element) | null;
+
+  if (!el) return null;
+
+  const v = el.value;
+  const value = typeof v === "string" ? v : v == null ? "" : String(v);
+
+  return value || el.getAttribute("default") || "";
+}
+
 function isConstantKey(ref: BindingKeyRef): ref is BindingKeyConstant {
   return "key" in ref;
 }
@@ -220,8 +239,9 @@ export class BindingStatus extends HTMLElement {
   private readDom(): void {
     let changed = false;
 
-    // Mode (sdpi-select) — fall back to the default-mode attribute when empty.
-    const rawMode = readValue(`[setting="${cssAttr(this.modeSetting)}"]`);
+    // Mode (sdpi-select) — fall back to the select's own default, then to the
+    // component's default-mode attribute, when empty.
+    const rawMode = readSelectValue(this.modeSetting);
     const mode = rawMode || (this.getAttribute("default-mode") ?? "");
 
     if (mode !== this.currentMode) {
@@ -229,9 +249,10 @@ export class BindingStatus extends HTMLElement {
       changed = true;
     }
 
-    // Secondary (keyBy) settings.
+    // Secondary (keyBy) settings — also fall back to the select's default so an
+    // untouched control (e.g. Direction = "next") still resolves a key.
     for (const name of this.secondaryNames) {
-      const value = readValue(`[setting="${cssAttr(name)}"]`);
+      const value = readSelectValue(name);
 
       if (value === null) continue; // control not present yet
 
