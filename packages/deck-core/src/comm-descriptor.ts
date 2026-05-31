@@ -23,6 +23,16 @@ export interface BindingKeyConstant {
   key: string;
 }
 
+/**
+ * Several constant keys, ALL required for the mode (warn if any is unset).
+ * Used by setup view-* modes, which nudge-and-read via the adjustment's
+ * increase AND decrease keys.
+ */
+export interface BindingKeyMulti {
+  scope: "global" | "action";
+  keys: string[];
+}
+
 /** A binding key resolved from a secondary setting's current value. */
 export interface BindingKeyResolved {
   scope: "global" | "action";
@@ -34,12 +44,18 @@ export interface BindingKeyResolved {
   };
 }
 
-export type BindingKeyRef = BindingKeyConstant | BindingKeyResolved;
+export type BindingKeyRef = BindingKeyConstant | BindingKeyMulti | BindingKeyResolved;
 
-/** Communication descriptor for a single mode. */
+/**
+ * Communication descriptor for a single mode.
+ *
+ * A `keybind` method with NO `binding` means a fixed key with no user-facing
+ * binding (e.g. car-control's hardcoded Escape, or audio modes that drive
+ * plugin audio) — it never warns and reads as "no binding needed".
+ */
 export interface CommDescriptor {
   method: CommMethod;
-  /** Present only when `method === "keybind"`. */
+  /** Present for configurable keybind modes; omitted for fixed/no-binding ones. */
   binding?: BindingKeyRef;
 }
 
@@ -49,27 +65,45 @@ export type ActionCommMap = Record<string, CommDescriptor>;
 /** Whole catalog, keyed by action folder name. */
 export type CommsCatalog = Record<string, ActionCommMap>;
 
-/** Type guard: a constant (non-`keyBy`) binding key reference. */
+/** Type guard: a single constant-key binding reference. */
 export function isConstantBindingKey(ref: BindingKeyRef): ref is BindingKeyConstant {
   return "key" in ref;
 }
 
+/** Type guard: a multi-key (all-required) binding reference. */
+export function isMultiBindingKey(ref: BindingKeyRef): ref is BindingKeyMulti {
+  return "keys" in ref;
+}
+
 /**
- * Resolve a binding key reference to its concrete setting key, given the
- * action's current settings (needed for `keyBy` references). Returns undefined
- * when a `keyBy` secondary value isn't present in the map.
+ * Resolve a binding key reference to ALL concrete setting keys it requires,
+ * given the action's current settings (needed for `keyBy` references). A
+ * `keyBy` reference whose secondary value isn't mapped resolves to an empty
+ * array.
+ */
+export function resolveBindingKeys(ref: BindingKeyRef | undefined, settings: Record<string, unknown>): string[] {
+  if (!ref) return [];
+
+  if (isConstantBindingKey(ref)) return [ref.key];
+
+  if (isMultiBindingKey(ref)) return ref.keys;
+
+  const secondary = settings[ref.keyBy.setting];
+  const key = typeof secondary === "string" ? ref.keyBy.map[secondary] : undefined;
+
+  return key ? [key] : [];
+}
+
+/**
+ * Resolve a binding key reference to a single concrete key (the first required
+ * key). Convenience for single-key consumers; multi-key modes should use
+ * {@link resolveBindingKeys}.
  */
 export function resolveBindingKey(
   ref: BindingKeyRef | undefined,
   settings: Record<string, unknown>,
 ): string | undefined {
-  if (!ref) return undefined;
-
-  if (isConstantBindingKey(ref)) return ref.key;
-
-  const secondary = settings[ref.keyBy.setting];
-
-  return typeof secondary === "string" ? ref.keyBy.map[secondary] : undefined;
+  return resolveBindingKeys(ref, settings)[0];
 }
 
 /**
@@ -89,4 +123,18 @@ export function keybindBy(
 /** Build a keybind descriptor with a constant key. */
 export function keybind(key: string, scope: "global" | "action" = "global"): CommDescriptor {
   return { method: "keybind", binding: { scope, key } };
+}
+
+/** Build a keybind descriptor requiring several constant keys (all required). */
+export function keybindKeys(keys: string[], scope: "global" | "action" = "global"): CommDescriptor {
+  return { method: "keybind", binding: { scope, keys } };
+}
+
+/**
+ * Build a keybind descriptor with no user-facing binding (a fixed key such as
+ * Escape, or a mode that drives plugin audio). Reads as "no binding needed"
+ * and never warns.
+ */
+export function keybindFixed(): CommDescriptor {
+  return { method: "keybind" };
 }

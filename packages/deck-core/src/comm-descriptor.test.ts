@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { isConstantBindingKey, keybind, keybindBy, resolveBindingKey } from "./comm-descriptor.js";
+import {
+  isConstantBindingKey,
+  isMultiBindingKey,
+  keybind,
+  keybindBy,
+  keybindFixed,
+  keybindKeys,
+  resolveBindingKey,
+  resolveBindingKeys,
+} from "./comm-descriptor.js";
 
 describe("comm-descriptor helpers", () => {
   it("keybind() builds a constant-key keybind descriptor", () => {
@@ -37,5 +46,36 @@ describe("comm-descriptor helpers", () => {
 
   it("resolveBindingKey returns undefined for an undefined ref (api/chat modes)", () => {
     expect(resolveBindingKey(undefined, { direction: "increase" })).toBeUndefined();
+  });
+
+  it("keybindKeys() builds a multi-key descriptor and is recognised by the guard", () => {
+    const d = keybindKeys(["incKey", "decKey"]);
+    expect(d.method).toBe("keybind");
+    expect(isMultiBindingKey(d.binding!)).toBe(true);
+    expect(isConstantBindingKey(d.binding!)).toBe(false);
+  });
+
+  it("keybindFixed() builds a keybind descriptor with no binding (fixed key)", () => {
+    const d = keybindFixed();
+    expect(d).toEqual({ method: "keybind" });
+    expect(d.binding).toBeUndefined();
+  });
+
+  it("resolveBindingKeys returns all required keys for a multi-key ref", () => {
+    expect(resolveBindingKeys({ scope: "global", keys: ["incKey", "decKey"] }, {})).toEqual(["incKey", "decKey"]);
+  });
+
+  it("resolveBindingKeys returns a single-element array for a constant ref", () => {
+    expect(resolveBindingKeys({ scope: "global", key: "k" }, {})).toEqual(["k"]);
+  });
+
+  it("resolveBindingKeys resolves keyBy to one key (or empty when unmapped)", () => {
+    const ref = { scope: "global" as const, keyBy: { setting: "direction", map: { increase: "incKey" } } };
+    expect(resolveBindingKeys(ref, { direction: "increase" })).toEqual(["incKey"]);
+    expect(resolveBindingKeys(ref, { direction: "down" })).toEqual([]);
+  });
+
+  it("resolveBindingKeys returns empty for an undefined ref (fixed/api/chat modes)", () => {
+    expect(resolveBindingKeys(undefined, {})).toEqual([]);
   });
 });

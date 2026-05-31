@@ -52,9 +52,11 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   private lastReadyStatus: boolean | null = null;
 
   /**
-   * The currently active binding setting key for readiness tracking.
+   * The currently active binding setting key(s) for readiness tracking.
+   * Most modes track a single key; some (e.g. setup view-* dual-press modes)
+   * track several, all of which must be configured/ready (issue #612).
    */
-  private activeBindingKey: string | null = null;
+  private activeBindingKeys: string[] = [];
 
   /**
    * Unsubscribe function for global settings change listener.
@@ -114,12 +116,17 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * (e.g., user switches mode or direction). Cleanup is automatic —
    * onWillDisappear unsubscribes all listeners.
    *
-   * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), or null to clear
+   * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), an
+   *   array of keys (all required), or null/empty to clear. Empty strings are
+   *   ignored, so a fixed-key mode can pass "" to track nothing.
    */
-  protected setActiveBinding(settingKey: string | null): void {
-    this.activeBindingKey = settingKey;
+  protected setActiveBinding(settingKey: string | string[] | null): void {
+    const keys = (Array.isArray(settingKey) ? settingKey : settingKey ? [settingKey] : []).filter(
+      (k): k is string => typeof k === "string" && k.length > 0,
+    );
+    this.activeBindingKeys = keys;
 
-    if (settingKey) {
+    if (keys.length > 0) {
       // Subscribe to global settings changes (once)
       if (!this.globalSettingsUnsubscribe) {
         this.globalSettingsUnsubscribe = onGlobalSettingsChange(() => {
@@ -170,8 +177,9 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
 
       let isReady: boolean;
 
-      if (this.activeBindingKey) {
-        isReady = getBindingDispatcher().isReady(this.activeBindingKey, iRacingConnected);
+      if (this.activeBindingKeys.length > 0) {
+        // All tracked keys must be ready (multi-key modes warn if any is missing).
+        isReady = this.activeBindingKeys.every((key) => getBindingDispatcher().isReady(key, iRacingConnected));
       } else {
         isReady = iRacingConnected;
       }
@@ -206,9 +214,10 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * icon overlay and readiness overlay never disagree about "configured".
    */
   protected isActiveBindingMissing(): boolean {
-    if (!this.activeBindingKey) return false;
+    if (this.activeBindingKeys.length === 0) return false;
 
-    return !getBindingDispatcher().isConfigured(this.activeBindingKey);
+    // Warn if ANY required key is unconfigured (multi-key modes need all set).
+    return this.activeBindingKeys.some((key) => !getBindingDispatcher().isConfigured(key));
   }
 
   // --- Binding dispatch delegates ---

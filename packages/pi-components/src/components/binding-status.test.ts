@@ -166,4 +166,29 @@ describe("ird-binding-status", () => {
     mock.settings.get("mode")!("does-not-exist");
     expect(text()).toBe("");
   });
+
+  it("shows 'no binding needed' for a fixed keybind (no binding ref) and never warns", () => {
+    el = mount({ escape: { method: "keybind" } });
+    mock.settings.get("mode")!("escape");
+    expect(text()).toContain("No binding needed");
+    expect(el.querySelector("a.ird-binding-status-link")).toBeNull();
+  });
+
+  it("lists all keys when a multi-key mode has them all set", () => {
+    el = mount({ "view-fov": { method: "keybind", binding: { scope: "global", keys: ["incKey", "decKey"] } } });
+    mock.settings.get("mode")!("view-fov");
+    mock.global.get("incKey")!(keyboardBinding("a"));
+    mock.global.get("decKey")!(keyboardBinding("b"));
+    expect(text()).toContain("Ctrl + A");
+    expect(text()).toContain("Ctrl + B");
+    expect(text()).not.toContain("No binding set");
+  });
+
+  it("warns when a multi-key mode has any key unset", () => {
+    el = mount({ "view-fov": { method: "keybind", binding: { scope: "global", keys: ["incKey", "decKey"] } } });
+    mock.settings.get("mode")!("view-fov");
+    mock.global.get("incKey")!(keyboardBinding("a"));
+    mock.global.get("decKey")!("");
+    expect(text()).toContain("No binding set");
+  });
 });

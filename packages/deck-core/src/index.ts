@@ -143,11 +143,16 @@ export {
 // Per-mode sim-communication descriptors (issue #612)
 export {
   isConstantBindingKey,
+  isMultiBindingKey,
   keybind,
   keybindBy,
+  keybindFixed,
+  keybindKeys,
   resolveBindingKey,
+  resolveBindingKeys,
   type ActionCommMap,
   type BindingKeyConstant,
+  type BindingKeyMulti,
   type BindingKeyRef,
   type BindingKeyResolved,
   type CommDescriptor,

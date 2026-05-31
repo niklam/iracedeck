@@ -35,11 +35,15 @@ interface BindingKeyConstant {
   scope: "global" | "action";
   key: string;
 }
+interface BindingKeyMulti {
+  scope: "global" | "action";
+  keys: string[];
+}
 interface BindingKeyResolved {
   scope: "global" | "action";
   keyBy: { setting: string; map: Record<string, string> };
 }
-type BindingKeyRef = BindingKeyConstant | BindingKeyResolved;
+type BindingKeyRef = BindingKeyConstant | BindingKeyMulti | BindingKeyResolved;
 
 interface CommDescriptor {
   method: CommMethod;
@@ -59,6 +63,10 @@ interface SDPILike {
 
 function isConstantKey(ref: BindingKeyRef): ref is BindingKeyConstant {
   return "key" in ref;
+}
+
+function isMultiKey(ref: BindingKeyRef): ref is BindingKeyMulti {
+  return "keys" in ref;
 }
 
 /** Parse a stored binding global-setting value into a display-ready shape. */
@@ -157,6 +165,8 @@ export class BindingStatus extends HTMLElement {
 
       if (isConstantKey(ref)) {
         bindingKeys.add(ref.key);
+      } else if (isMultiKey(ref)) {
+        for (const key of ref.keys) bindingKeys.add(key);
       } else {
         secondarySettings.add(ref.keyBy.setting);
 
@@ -197,17 +207,16 @@ export class BindingStatus extends HTMLElement {
     );
   }
 
-  /** Resolve the active binding key for the current mode, if any. */
-  private resolveKey(descriptor: CommDescriptor): string | undefined {
-    const ref = descriptor.binding;
+  /** Resolve ALL binding keys required by the current mode. */
+  private resolveKeys(ref: BindingKeyRef): string[] {
+    if (isConstantKey(ref)) return [ref.key];
 
-    if (!ref) return undefined;
-
-    if (isConstantKey(ref)) return ref.key;
+    if (isMultiKey(ref)) return ref.keys;
 
     const secondaryValue = this.secondary.get(ref.keyBy.setting);
+    const key = secondaryValue ? ref.keyBy.map[secondaryValue] : undefined;
 
-    return secondaryValue ? ref.keyBy.map[secondaryValue] : undefined;
+    return key ? [key] : [];
   }
 
   private render(): void {
@@ -233,24 +242,56 @@ export class BindingStatus extends HTMLElement {
       return;
     }
 
-    // keybind
-    const key = this.resolveKey(descriptor);
-    const binding = key ? parseStoredBinding(this.bindings.get(key) ?? "") : null;
+    // keybind with no binding ref → fixed key (e.g. Escape) or plugin-internal:
+    // no user setup needed, never warns.
+    const ref = descriptor.binding;
 
-    if (!binding) {
+    if (!ref) {
+      this.renderOk("No binding needed.");
+
+      return;
+    }
+
+    const keys = this.resolveKeys(ref);
+
+    if (keys.length === 0) {
+      // keyBy secondary not yet resolvable — treat as not configured.
       this.renderMissing();
 
       return;
     }
 
-    if (binding.kind === "keyboard") {
-      this.renderOk(`Key binding — currently set: ${binding.text}.`);
+    const parsed = keys.map((k) => parseStoredBinding(this.bindings.get(k) ?? ""));
+
+    // Warn if ANY required key is unset (multi-key modes need all of them).
+    if (parsed.some((p) => p === null)) {
+      this.renderMissing();
 
       return;
     }
 
-    // SimHub role — configured, but only works while SimHub runs.
-    this.renderSimHub(binding.role);
+    const set = parsed as Array<{ kind: "keyboard"; text: string } | { kind: "simhub"; role: string }>;
+
+    // Single SimHub role keeps the friendly "Bound to SimHub role" phrasing.
+    if (set.length === 1 && set[0].kind === "simhub") {
+      this.renderSimHub(set[0].role);
+
+      return;
+    }
+
+    const labels = set.map((p) => (p.kind === "keyboard" ? p.text : `SimHub: ${p.role}`));
+    const lines = [this.line("ok", "✓", `Key binding — currently set: ${labels.join(", ")}.`)];
+
+    // Any SimHub among the keys carries the "must be running" caveat.
+    if (set.some((p) => p.kind === "simhub")) {
+      lines.push(
+        this.simHubReachable
+          ? this.line("muted", "", "Requires SimHub to be running.")
+          : this.line("warn", "⚠", "SimHub isn't running — this binding won't work until it is."),
+      );
+    }
+
+    this.container.replaceChildren(...lines);
   }
 
   private renderOk(text: string): void {

@@ -21,7 +21,7 @@ const {
   mockHold: vi.fn().mockResolvedValue(undefined),
   mockRelease: vi.fn().mockResolvedValue(undefined),
   mockIsReady: vi.fn(() => true),
-  mockIsConfigured: vi.fn(() => true),
+  mockIsConfigured: vi.fn((_key: string) => true),
   mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
   mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
 }));
@@ -85,7 +85,7 @@ class TestAction extends ConnectionStateAwareAction {
     return this.getConnectionStatus();
   }
 
-  callSetActiveBinding(key: string | null): void {
+  callSetActiveBinding(key: string | string[] | null): void {
     this.setActiveBinding(key);
   }
 
@@ -307,6 +307,25 @@ describe("ConnectionStateAwareAction", () => {
       action.callSetActiveBinding("myKey");
       mockIsConfigured.mockReturnValue(true);
       expect(action.callIsActiveBindingMissing()).toBe(false);
+    });
+
+    it("warns for a multi-key mode when ANY key is unconfigured", () => {
+      action.callSetActiveBinding(["incKey", "decKey"]);
+      mockIsConfigured.mockImplementation((k: string) => k !== "decKey");
+      expect(action.callIsActiveBindingMissing()).toBe(true);
+    });
+
+    it("does not warn for a multi-key mode when all keys are configured", () => {
+      action.callSetActiveBinding(["incKey", "decKey"]);
+      mockIsConfigured.mockReturnValue(true);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+    });
+
+    it("ignores empty-string keys (fixed-key modes track nothing)", () => {
+      action.callSetActiveBinding("");
+      mockIsConfigured.mockClear();
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+      expect(mockIsConfigured).not.toHaveBeenCalled();
     });
   });
 
