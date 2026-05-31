@@ -27,11 +27,22 @@ overall race position.
 - **Sourcing — Approach B (adopt `getLivePosition()`).** In a race, on track, the
   numbers come from `@iracedeck/sim-events-iracing`'s `getLivePosition()`, which
   returns the **frozen** overall race position (#603 — handles blipped / retired /
-  teleported cars) and the **authoritative** class position
-  (`PlayerCarClassPosition`, the source the Race Engineer trusts because iRacing
-  recomputes it correctly when cars leave — #588 / #599 / #603). This deliberately
-  upgrades the existing on-track-race **overall** number to the frozen calc so the
-  button matches the Race Engineer's voice.
+  teleported cars) and a **live class position derived from that same frozen
+  order**. This deliberately upgrades the existing on-track-race **overall** number
+  to the frozen calc so the button matches the Race Engineer's voice.
+- **Class is derived, not read from iRacing's official field (follow-up).** The
+  first implementation took class position from iRacing's `PlayerCarClassPosition`,
+  but that field only refreshes at the start/finish line, so the (default) class
+  display looked frozen between crossings. There is no existing function that
+  computes a *live* class position — every existing class source is the official
+  field. So `getLivePosition().classPosition` now reuses the **existing** overall
+  order (`calculateFrozenRacePositions`) and counts same-class cars (`CarIdxClass`)
+  ranked ahead — the new `classPositionFromOrder` glue in `@iracedeck/iracing-sdk`,
+  the same counting `resolveStartingClassPosition` (#599) does for the grid. It
+  falls back to `PlayerCarClassPosition` only when `CarIdxClass` is unavailable.
+  Because the Race Engineer also reads `getLivePosition().classPosition`, its spoken
+  class position becomes live too (overtake *detection* in `diffOvertakes` is
+  unchanged — it still reads `PlayerCarClassPosition` directly).
 
 ## Architecture
 
@@ -47,7 +58,8 @@ they register the same action and compile the same shared PI template.
 ```ts
 type LivePosition = {
   position: number;      // 1-based frozen overall race position (#603)
-  classPosition: number; // 1-based PlayerCarClassPosition; 0 when unavailable
+  classPosition: number; // 1-based, derived from the frozen order via classPositionFromOrder;
+                         // falls back to PlayerCarClassPosition; 0 when unavailable
   isMultiClass: boolean;
 };
 ```
