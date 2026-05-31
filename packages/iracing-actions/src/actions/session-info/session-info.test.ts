@@ -1,8 +1,10 @@
 import { FLAG_DEFINITIONS, resolveActiveFlag, TrackWetness } from "@iracedeck/iracing-sdk";
+import { getLivePosition } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   countActiveDrivers,
+  countActiveDriversInPlayerClass,
   formatFuelAmount,
   formatSessionTime,
   generateSessionInfoSvg,
@@ -17,10 +19,22 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
   return actual;
 });
 
+// getLivePosition is the translator-singleton class-aware resolver; mock it so the
+// position-mode tests control the frozen overall + authoritative class numbers.
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getLivePosition: vi.fn(() => null),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
-      const defaults = { mode: "incidents", positionShowTotal: false, fuelFormat: "amount", blankWhenNoFlag: false };
+      const defaults = {
+        mode: "incidents",
+        positionType: "class",
+        positionShowTotal: false,
+        fuelFormat: "amount",
+        blankWhenNoFlag: false,
+      };
       const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
@@ -102,6 +116,7 @@ function defaultSettings(
   overrides: Partial<{
     mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags" | "track-wetness";
     fontSize: number;
+    positionType: "class" | "overall";
     positionShowTotal: boolean;
     fuelFormat: "amount" | "percentage";
     blankWhenNoFlag: boolean;
@@ -109,6 +124,7 @@ function defaultSettings(
 ) {
   return {
     mode: "incidents" as const,
+    positionType: "class" as const,
     positionShowTotal: false,
     fuelFormat: "amount" as const,
     blankWhenNoFlag: false,
@@ -268,6 +284,73 @@ describe("SessionInfo", () => {
 
     it("should return 0 for empty Drivers array", () => {
       expect(countActiveDrivers({ DriverInfo: { Drivers: [] } })).toBe(0);
+    });
+  });
+
+  describe("countActiveDriversInPlayerClass", () => {
+    it("should return 0 for null session info", () => {
+      expect(countActiveDriversInPlayerClass(null)).toBe(0);
+    });
+
+    it("should return 0 when DriverInfo is missing", () => {
+      expect(countActiveDriversInPlayerClass({ WeekendInfo: {} })).toBe(0);
+    });
+
+    it("should return 0 when the player's class cannot be resolved", () => {
+      // DriverCarIdx points at a car with no Drivers entry → class unknown.
+      const sessionInfo = {
+        DriverInfo: {
+          DriverCarIdx: 9,
+          Drivers: [{ CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }],
+        },
+      };
+
+      expect(countActiveDriversInPlayerClass(sessionInfo)).toBe(0);
+    });
+
+    it("should count only drivers sharing the player's class", () => {
+      const sessionInfo = {
+        DriverInfo: {
+          DriverCarIdx: 1,
+          Drivers: [
+            { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }, // player
+            { CarIdx: 2, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 3, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 }, // other class
+            { CarIdx: 4, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+      };
+
+      // Class 10 has 3 cars (the player + two others).
+      expect(countActiveDriversInPlayerClass(sessionInfo)).toBe(3);
+    });
+
+    it("should exclude pace car and spectators from the class count", () => {
+      const sessionInfo = {
+        DriverInfo: {
+          DriverCarIdx: 1,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10, CarIsPaceCar: 1, IsSpectator: 0 }, // pace car, class 10
+            { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }, // player
+            { CarIdx: 2, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 1 }, // spectator, class 10
+            { CarIdx: 3, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+          ],
+        },
+      };
+
+      // Only the player and CarIdx 3 are active class-10 cars.
+      expect(countActiveDriversInPlayerClass(sessionInfo)).toBe(2);
+    });
+
+    it("should return 1 for a lone driver in their class (single-class field)", () => {
+      const sessionInfo = {
+        DriverInfo: {
+          DriverCarIdx: 1,
+          Drivers: [{ CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 }],
+        },
+      };
+
+      expect(countActiveDriversInPlayerClass(sessionInfo)).toBe(1);
     });
   });
 
@@ -933,41 +1016,46 @@ describe("SessionInfo", () => {
       clearInterval(timer);
     });
 
-    describe("position mode with calculated positions", () => {
-      function makeRaceSessionInfo(driverCarIdx: number) {
+    describe("position mode display", () => {
+      // Multi-class field: player (CarIdx 0) is in class 10 with one class-mate;
+      // class 20 has three cars. Class-10 active = 2, overall active = 5.
+      const multiClassDrivers = [
+        { CarIdx: 0, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 1, CarClassID: 10, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 2, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 3, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 4, CarClassID: 20, CarIsPaceCar: 0, IsSpectator: 0 },
+      ];
+
+      function makeRaceSessionInfo(driverCarIdx: number, drivers?: unknown[]) {
         return {
-          SessionInfo: {
-            Sessions: [{ SessionType: "Race" }],
-          },
-          DriverInfo: {
-            DriverCarIdx: driverCarIdx,
-          },
+          SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+          DriverInfo: { DriverCarIdx: driverCarIdx, ...(drivers ? { Drivers: drivers } : {}) },
         };
       }
 
-      function makePracticeSessionInfo(driverCarIdx: number) {
+      function makePracticeSessionInfo(driverCarIdx: number, drivers?: unknown[]) {
         return {
-          SessionInfo: {
-            Sessions: [{ SessionType: "Practice" }],
-          },
-          DriverInfo: {
-            DriverCarIdx: driverCarIdx,
-          },
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }] },
+          DriverInfo: { DriverCarIdx: driverCarIdx, ...(drivers ? { Drivers: drivers } : {}) },
         };
       }
 
       /**
-       * Helper: start with null telemetry so initial state is "P-",
-       * then fire the callback with real telemetry to trigger a state change and updateKeyImage call.
+       * Helper: start with null telemetry so initial state is "P-", then fire the
+       * subscribe callback with real telemetry to trigger a state change and an
+       * updateKeyImage call. Returns the decoded SVG of the last update.
        */
-      async function triggerPositionUpdate(sessionInfo: unknown, telemetry: Record<string, unknown>): Promise<string> {
-        // onWillAppear with no telemetry → initial state "P-" via setKeyImage
+      async function triggerPositionUpdate(
+        sessionInfo: unknown,
+        telemetry: Record<string, unknown>,
+        settings: Record<string, unknown> = { mode: "position" },
+      ): Promise<string> {
         action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
         action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(sessionInfo);
 
-        await action.onWillAppear(fakeEvent("action-1", { mode: "position" }) as any);
+        await action.onWillAppear(fakeEvent("action-1", settings) as any);
 
-        // Now switch to real telemetry and fire the callback
         action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(telemetry);
 
         const subscribeCall = action["sdkController"].subscribe.mock.calls[0];
@@ -982,126 +1070,167 @@ describe("SessionInfo", () => {
         return decodeURIComponent(lastCall[1] as string);
       }
 
-      it("should use calculateRacePositions in race session (shows P1 when car has more laps)", async () => {
-        // Car 0 has more laps completed (10 vs 5) so is P1, but PlayerCarPosition=2
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 2,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should default to class position (no positionType setting)", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 2 };
 
-        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, { mode: "position" });
 
-        expect(decoded).toContain("P1");
-        expect(decoded).not.toContain("P2");
+        // Class is the default → class position (2), not overall (5).
+        expect(decoded).toContain("P2");
+        expect(decoded).not.toContain("P5");
       });
 
-      it("should use PlayerCarPosition in non-race session", async () => {
-        // Same telemetry — car 0 would be P1 by laps, but session is Practice so use PlayerCarPosition=2
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 2,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should show class position from getLivePosition when positionType is class (race, on track)", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 2 };
 
-        const decoded = await triggerPositionUpdate(makePracticeSessionInfo(0), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
 
         expect(decoded).toContain("P2");
+        expect(decoded).not.toContain("P5");
       });
 
-      it("should fall back to PlayerCarPosition when player carIdx is out of bounds in race session", async () => {
-        // carIdx=5 but only 2 entries → calculated positions[5] is undefined → falls back to PlayerCarPosition
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 3,
-          OnPitRoad: false,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should show frozen overall position from getLivePosition when positionType is overall (race, on track)", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 9, PlayerCarClassPosition: 2 };
 
-        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(5), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
 
-        // calculated[5] is undefined → falls back to PlayerCarPosition=3
-        expect(decoded).toContain("P3");
+        // Uses getLivePosition().position (5), not the raw PlayerCarPosition (9).
+        expect(decoded).toContain("P5");
+        expect(decoded).not.toContain("P9");
       });
 
-      it("should use PlayerCarPosition when player is on pit road in race session", async () => {
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 2,
-          OnPitRoad: true,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should append the class field size for class position with Show Total", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 4, classPosition: 1, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 4, PlayerCarClassPosition: 1 };
 
-        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0, multiClassDrivers), telemetry, {
+          mode: "position",
+          positionType: "class",
+          positionShowTotal: true,
+        });
 
-        // On pit road: should use PlayerCarPosition=2, not calculated P1
-        expect(decoded).toContain("P2");
+        // Class 10 has 2 active cars.
+        expect(decoded).toContain("P1/2");
       });
 
-      it("should use calculated position when player is NOT on pit road in race session", async () => {
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 2,
-          OnPitRoad: false,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should append the overall field size for overall position with Show Total", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 4, classPosition: 1, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 4, PlayerCarClassPosition: 1 };
 
-        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0, multiClassDrivers), telemetry, {
+          mode: "position",
+          positionType: "overall",
+          positionShowTotal: true,
+        });
 
-        // Not on pit road: should use calculated P1
-        expect(decoded).toContain("P1");
-        expect(decoded).not.toContain("P2");
+        // 5 active cars overall.
+        expect(decoded).toContain("P4/5");
       });
 
-      it("should fall back to PlayerCarPosition when calculated position is 0 (inactive) in race session", async () => {
-        const telemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 3,
-          OnPitRoad: false,
-          CarIdxLapCompleted: [-1, 5, 4],
-          CarIdxLapDistPct: [-1, 0.7, 0.3],
-        };
+      it("should use PlayerCarClassPosition for class position when on pit road (ignores getLivePosition)", async () => {
+        // getLivePosition would say class 9, but the pit branch reads official telemetry.
+        vi.mocked(getLivePosition).mockReturnValue({ position: 9, classPosition: 9, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: true, PlayerCarPosition: 2, PlayerCarClassPosition: 3 };
 
-        // Car 0 is inactive (lapCompleted=-1) → calculated position = 0
-        // Should fall back to PlayerCarPosition=3
-        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
 
         expect(decoded).toContain("P3");
       });
 
-      it("should fall back to PlayerCarPosition when session info is null", async () => {
-        // No session info → isRaceSession returns false → use PlayerCarPosition=3
-        const initialTelemetry = { SessionNum: 0, PlayerCarPosition: 5 };
-        const realTelemetry = {
-          SessionNum: 0,
-          PlayerCarPosition: 3,
-          CarIdxLapCompleted: [10, 5],
-          CarIdxLapDistPct: [0.9, 0.1],
-        };
+      it("should use PlayerCarPosition for overall position when on pit road", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 9, classPosition: 9, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: true, PlayerCarPosition: 2, PlayerCarClassPosition: 3 };
 
-        // Start with P5 as initial state, then change to P3
-        action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(initialTelemetry);
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        expect(decoded).toContain("P2");
+      });
+
+      it("should use PlayerCarClassPosition for class position in a non-race session", async () => {
+        // getLivePosition is on-track lap order, not standings → not used outside races.
+        vi.mocked(getLivePosition).mockReturnValue({ position: 9, classPosition: 9, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 6, PlayerCarClassPosition: 4 };
+
+        const decoded = await triggerPositionUpdate(makePracticeSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
+
+        expect(decoded).toContain("P4");
+      });
+
+      it("should use PlayerCarPosition for overall position in a non-race session", async () => {
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 2, PlayerCarClassPosition: 4 };
+
+        const decoded = await triggerPositionUpdate(makePracticeSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        expect(decoded).toContain("P2");
+      });
+
+      it("should fall back to official telemetry when getLivePosition returns null (race, on track)", async () => {
+        vi.mocked(getLivePosition).mockReturnValue(null);
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 3, PlayerCarClassPosition: 6 };
+
+        const classDecoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
+
+        expect(classDecoded).toContain("P6");
+      });
+
+      it("should fall back to PlayerCarClassPosition when getLivePosition class position is 0", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 0, isMultiClass: true });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 5, PlayerCarClassPosition: 7 };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
+
+        expect(decoded).toContain("P7");
+      });
+
+      it("should fall back to PlayerCarPosition for overall when session info is null", async () => {
+        // No session info → isRaceSession false → official PlayerCarPosition.
+        const telemetry = { SessionNum: 0, PlayerCarPosition: 3, PlayerCarClassPosition: 8 };
+
+        const decoded = await triggerPositionUpdate(null, telemetry, { mode: "position", positionType: "overall" });
+
+        expect(decoded).toContain("P3");
+      });
+
+      it("should render P-/- placeholder with Show Total and no telemetry", async () => {
+        action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
         action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(null);
 
-        await action.onWillAppear(fakeEvent("action-1", { mode: "position" }) as any);
+        await action.onWillAppear(
+          fakeEvent("action-1", { mode: "position", positionType: "class", positionShowTotal: true }) as any,
+        );
 
-        const subscribeCall = action["sdkController"].subscribe.mock.calls[0];
-        const telemetryCallback = subscribeCall[1];
-
-        await telemetryCallback(realTelemetry);
-
-        const calls = action["updateKeyImage"].mock.calls;
-        expect(calls.length).toBeGreaterThan(0);
+        const calls = action["setKeyImage"].mock.calls;
         const lastCall = calls[calls.length - 1];
         const decoded = decodeURIComponent(lastCall[1] as string);
 
-        // Falls back to PlayerCarPosition=3
-        expect(decoded).toContain("P3");
+        expect(decoded).toContain("P-/-");
       });
     });
   });

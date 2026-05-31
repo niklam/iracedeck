@@ -22,7 +22,11 @@
               "description": "Session time left, flashes when < 5 min"
             },
             { "value": "laps", "label": "Laps", "description": "Current lap number" },
-            { "value": "position", "label": "Position", "description": "Race position, optionally shows total cars" },
+            {
+              "value": "position",
+              "label": "Position",
+              "description": "Class (default) or overall race position, optionally shows total cars (scoped to class or full field)"
+            },
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
             { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" },
             {

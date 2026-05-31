@@ -16,7 +16,6 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import {
-  calculateRacePositions,
   DisplayUnits,
   type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
@@ -24,6 +23,7 @@ import {
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
+import { getLivePosition } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
@@ -51,6 +51,7 @@ const SessionInfoSettings = CommonSettings.extend({
     (val) => (val === "" || val === null || val === undefined ? undefined : val),
     z.coerce.number().min(5).max(36).optional(),
   ),
+  positionType: z.enum(["class", "overall"]).default("class"),
   positionShowTotal: z
     .union([z.boolean(), z.string()])
     .transform((val) => val === true || val === "true")
@@ -118,6 +119,36 @@ export function countActiveDrivers(sessionInfo: IRacingSessionInfo | null): numb
   if (!Array.isArray(drivers)) return 0;
 
   return drivers.filter((d) => d.CarIsPaceCar !== 1 && d.IsSpectator !== 1).length;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Counts the active drivers sharing the player's car class — the field size
+ * used when "Show Total Cars" is enabled and the action is showing class
+ * position. The player's class is resolved from `DriverInfo.Drivers` via
+ * `DriverInfo.DriverCarIdx`; the same pace-car / spectator filter as
+ * `countActiveDrivers` applies.
+ *
+ * Returns 0 when the player's class can't be resolved, so the caller drops the
+ * `/total` suffix (mirroring the overall-position path's `total > 0` guard).
+ */
+export function countActiveDriversInPlayerClass(sessionInfo: IRacingSessionInfo | null): number {
+  if (!sessionInfo) return 0;
+
+  const driverInfo = sessionInfo.DriverInfo as
+    | { Drivers?: Array<Record<string, unknown>>; DriverCarIdx?: number }
+    | undefined;
+  const drivers = driverInfo?.Drivers;
+
+  if (!Array.isArray(drivers)) return 0;
+
+  const playerCarIdx = driverInfo?.DriverCarIdx;
+  const playerClassId = drivers.find((d) => d.CarIdx === playerCarIdx)?.CarClassID;
+
+  if (playerClassId === undefined) return 0;
+
+  return drivers.filter((d) => d.CarClassID === playerClassId && d.CarIsPaceCar !== 1 && d.IsSpectator !== 1).length;
 }
 
 /**
@@ -427,28 +458,38 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     }
 
     if (settings.mode === "position") {
-      let pos: number | undefined;
+      const isClass = settings.positionType === "class";
+
+      // Class position is always iRacing's authoritative `PlayerCarClassPosition`
+      // (the source the Race Engineer trusts — iRacing recomputes it correctly when
+      // cars retire). Overall position uses the class-aware live resolver
+      // `getLivePosition()` while racing on track (its `.position` is the frozen
+      // calculated order), and official telemetry in pits / non-race where the
+      // calculated lap-order isn't the standings.
+      let overall: number | undefined;
+      let klass: number | undefined;
 
       if (this.isRaceSession(telemetry)) {
         if (telemetry.OnPitRoad) {
-          // In pits: use official position
-          pos = telemetry.PlayerCarPosition;
+          overall = telemetry.PlayerCarPosition;
+          klass = telemetry.PlayerCarClassPosition;
         } else {
-          // On track: use calculated, fall back to official
-          const positions = calculateRacePositions(telemetry);
-          const playerCarIdx = this.getPlayerCarIdx();
-          const calculated = playerCarIdx >= 0 ? positions[playerCarIdx] : undefined;
+          const live = getLivePosition();
 
-          pos = calculated && calculated > 0 ? calculated : telemetry.PlayerCarPosition;
+          overall = live && live.position > 0 ? live.position : telemetry.PlayerCarPosition;
+          klass = live && live.classPosition > 0 ? live.classPosition : telemetry.PlayerCarClassPosition;
         }
       } else {
-        pos = telemetry.PlayerCarPosition;
+        overall = telemetry.PlayerCarPosition;
+        klass = telemetry.PlayerCarClassPosition;
       }
+
+      const pos = isClass ? klass : overall;
 
       if (pos === undefined) return settings.positionShowTotal ? "P-/-" : "P-";
 
       if (settings.positionShowTotal) {
-        const totalCars = this.countActiveCars();
+        const totalCars = isClass ? this.countCarsInPlayerClass() : this.countActiveCars();
 
         return totalCars > 0 ? `P${pos}/${totalCars}` : `P${pos}`;
       }
@@ -494,6 +535,10 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     return countActiveDrivers(this.sdkController.getSessionInfo());
   }
 
+  private countCarsInPlayerClass(): number {
+    return countActiveDriversInPlayerClass(this.sdkController.getSessionInfo());
+  }
+
   private isRaceSession(telemetry: TelemetryData | null): boolean {
     const sessionInfo = this.sdkController.getSessionInfo();
 
@@ -505,16 +550,6 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
     const currentSession = sessionList?.[sessionNum as number];
 
     return (currentSession?.SessionType as string) === "Race";
-  }
-
-  private getPlayerCarIdx(): number {
-    const sessionInfo = this.sdkController.getSessionInfo();
-
-    if (!sessionInfo) return -1;
-
-    const driverInfo = (sessionInfo as Record<string, unknown>).DriverInfo as Record<string, unknown> | undefined;
-
-    return (driverInfo?.DriverCarIdx as number) ?? -1;
   }
 
   private resolveFlagColorOverride(
