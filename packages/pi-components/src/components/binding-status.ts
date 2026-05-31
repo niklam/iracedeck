@@ -56,9 +56,18 @@ type ActionCommMap = Record<string, CommDescriptor>;
 const KEY_BINDINGS_ACCORDION_ID = "Related Key Bindings";
 
 type SettingsCallback = (value: string) => void;
+type GlobalSettings = Record<string, unknown>;
+interface GlobalSettingsEvent {
+  payload: { settings: GlobalSettings };
+}
+type Disposable = { dispose?: () => void } | (() => void) | void;
+interface StreamDeckClientLike {
+  getGlobalSettings: () => Promise<GlobalSettings>;
+  didReceiveGlobalSettings: { subscribe: (cb: (ev: GlobalSettingsEvent) => void) => Disposable };
+}
 interface SDPILike {
   useSettings: (key: string, cb: SettingsCallback, def: unknown) => [() => Promise<string>, (v: string) => void];
-  useGlobalSettings: (key: string, cb: SettingsCallback, def: unknown) => [() => Promise<string>, (v: string) => void];
+  streamDeckClient: StreamDeckClientLike;
 }
 
 function isConstantKey(ref: BindingKeyRef): ref is BindingKeyConstant {
@@ -116,6 +125,11 @@ export class BindingStatus extends HTMLElement {
   private simHubPollTimer: number | null = null;
   /** Recomputed each render: does the current display depend on SimHub being up? */
   private pollSimHub = false;
+
+  /** Every global binding key referenced by this action's modes. */
+  private candidateKeys: string[] = [];
+  /** Subscription to global-settings changes (from any source). */
+  private globalSub: Disposable = undefined;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -199,35 +213,39 @@ export class BindingStatus extends HTMLElement {
       );
     }
 
-    for (const key of bindingKeys) {
-      sdpi.useGlobalSettings(
-        key,
-        (value) => {
-          this.bindings.set(key, value);
-          this.loadedBindings.add(key);
-          this.render();
-        },
-        null,
-      );
+    this.candidateKeys = [...bindingKeys];
+
+    // Read binding values + SimHub host/port from GLOBAL settings via the
+    // Stream Deck client, which reports changes from ANY source — including a
+    // sibling ird-key-binding write in this same PI (per-key useGlobalSettings
+    // subscriptions do not reliably re-fire for those). Seed with the current
+    // values, then keep in sync.
+    this.globalSub = sdpi.streamDeckClient.didReceiveGlobalSettings.subscribe((ev) => {
+      this.applyGlobalSettings(ev.payload.settings);
+    });
+
+    void sdpi.streamDeckClient.getGlobalSettings().then((settings) => this.applyGlobalSettings(settings));
+  }
+
+  /** Apply a global-settings snapshot: refresh binding values + SimHub target. */
+  private applyGlobalSettings(settings: GlobalSettings): void {
+    for (const key of this.candidateKeys) {
+      const raw = settings[key];
+      const value = typeof raw === "string" ? raw : raw == null ? "" : JSON.stringify(raw);
+      this.bindings.set(key, value);
+      this.loadedBindings.add(key); // present-or-absent now known
     }
 
-    // SimHub host/port — used to build the poll URL. Re-probe on change.
-    sdpi.useGlobalSettings(
-      "simHubHost",
-      (value) => {
-        this.simHubHost = value || "127.0.0.1";
-        this.onSimHubTargetChanged();
-      },
-      null,
-    );
-    sdpi.useGlobalSettings(
-      "simHubPort",
-      (value) => {
-        this.simHubPort = parseInt(value, 10) || 8888;
-        this.onSimHubTargetChanged();
-      },
-      null,
-    );
+    const host = typeof settings.simHubHost === "string" && settings.simHubHost ? settings.simHubHost : "127.0.0.1";
+    const port = parseInt(String(settings.simHubPort ?? ""), 10) || 8888;
+
+    if (host !== this.simHubHost || port !== this.simHubPort) {
+      this.simHubHost = host;
+      this.simHubPort = port;
+      this.onSimHubTargetChanged();
+    }
+
+    this.render();
   }
 
   private onSimHubTargetChanged(): void {
@@ -377,6 +395,11 @@ export class BindingStatus extends HTMLElement {
 
   disconnectedCallback(): void {
     this.stopSimHubPolling();
+
+    if (typeof this.globalSub === "function") this.globalSub();
+    else if (this.globalSub && typeof this.globalSub.dispose === "function") this.globalSub.dispose();
+
+    this.globalSub = undefined;
   }
 
   private line(level: "ok" | "warn" | "muted" | "danger", symbol: string, text: string): HTMLDivElement {

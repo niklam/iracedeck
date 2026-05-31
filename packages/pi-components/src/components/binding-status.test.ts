@@ -15,25 +15,49 @@ vi.mock("./simhub-probe.js", () => ({
 type SettingsCallback = (value: string) => void;
 
 interface MockSDPIState {
+  /** Action-settings subscriptions (mode + secondary keyBy settings). */
   settings: Map<string, SettingsCallback>;
-  global: Map<string, SettingsCallback>;
+  /** The live global-settings object the component reads. */
+  global: Record<string, unknown>;
+  /** Merge a partial into global settings and notify the component (any source). */
+  emitGlobal: (partial: Record<string, unknown>) => void;
 }
 
 function installMockSDPI(): MockSDPIState {
-  const state: MockSDPIState = { settings: new Map(), global: new Map() };
+  const settings = new Map<string, SettingsCallback>();
+  const global: Record<string, unknown> = {};
+  const listeners: Array<(ev: { payload: { settings: Record<string, unknown> } }) => void> = [];
+
+  const emitGlobal = (partial: Record<string, unknown>) => {
+    Object.assign(global, partial);
+
+    for (const cb of listeners) cb({ payload: { settings: global } });
+  };
+
   const useSettings = (key: string, cb: SettingsCallback) => {
-    state.settings.set(key, cb);
+    settings.set(key, cb);
 
     return [async () => "", vi.fn()] as [() => Promise<string>, (v: string) => void];
   };
-  const useGlobalSettings = (key: string, cb: SettingsCallback) => {
-    state.global.set(key, cb);
 
-    return [async () => "", vi.fn()] as [() => Promise<string>, (v: string) => void];
+  const streamDeckClient = {
+    getGlobalSettings: () => Promise.resolve(global),
+    didReceiveGlobalSettings: {
+      subscribe: (cb: (ev: { payload: { settings: Record<string, unknown> } }) => void) => {
+        listeners.push(cb);
+
+        return () => {
+          const i = listeners.indexOf(cb);
+
+          if (i >= 0) listeners.splice(i, 1);
+        };
+      },
+    },
   };
-  (window as unknown as Record<string, unknown>).SDPIComponents = { useSettings, useGlobalSettings };
 
-  return state;
+  (window as unknown as Record<string, unknown>).SDPIComponents = { useSettings, streamDeckClient };
+
+  return { settings, global, emitGlobal };
 }
 
 const keyboardBinding = (key: string) => JSON.stringify({ type: "keyboard", key, modifiers: ["ctrl"], code: key });
@@ -73,61 +97,73 @@ describe("ird-binding-status", () => {
     (window as unknown as Record<string, unknown>).SDPIComponents = undefined;
   });
 
-  function mount(comms: object, attrs: Record<string, string> = {}): HTMLElement {
+  function mount(comms: object): HTMLElement {
     const node = document.createElement("ird-binding-status");
     node.setAttribute("comms", JSON.stringify(comms));
     node.setAttribute("mode-setting", "mode");
-
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-
     document.body.appendChild(node);
 
     return node;
   }
 
+  const setMode = (m: string) => mock.settings.get("mode")!(m);
   const text = () => el.textContent ?? "";
 
   it("shows the API method", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-fuel-fill");
+    setMode("toggle-fuel-fill");
     expect(text()).toContain("iRacing API");
   });
 
   it("shows the chat method", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("add-fuel");
+    setMode("add-fuel");
     expect(text()).toContain("Chat command");
   });
 
   it("shows the keyboard binding value when configured", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: keyboardBinding("f1") });
     expect(text()).toContain("Key binding:");
     expect(text()).toContain("Ctrl+F1");
   });
 
+  it("updates the text live when the binding is changed", () => {
+    el = mount(FUEL_COMMS);
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: keyboardBinding("f1") });
+    expect(text()).toContain("Ctrl+F1");
+    // A sibling ird-key-binding rebinds it → component reflects the new value.
+    mock.emitGlobal({ fuelServiceToggleAutofuel: keyboardBinding("f2") });
+    expect(text()).toContain("Ctrl+F2");
+    expect(text()).not.toContain("Ctrl+F1");
+    // ...and clearing it shows the missing state live.
+    mock.emitGlobal({ fuelServiceToggleAutofuel: "" });
+    expect(text()).toContain("No binding set");
+  });
+
   it("shows nothing (no 'No binding set' flash) until the binding value has loaded", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    // Binding value has NOT arrived yet → render nothing, not "No binding set".
+    setMode("toggle-autofuel");
+    // Global settings have NOT arrived yet → render nothing, not "No binding set".
     expect(text()).toBe("");
-    // Once it loads as empty, the missing state shows.
-    mock.global.get("fuelServiceToggleAutofuel")!("");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: "" });
     expect(text()).toContain("No binding set");
   });
 
   it("waits for the secondary setting before judging a dynamic-key mode", () => {
     el = mount(VIEW_COMMS);
-    mock.settings.get("mode")!("fov");
+    setMode("fov");
+    mock.emitGlobal({ viewFovInc: keyboardBinding("a") });
     // direction not loaded yet → nothing.
     expect(text()).toBe("");
   });
 
   it("warns with a 'set it here' link when no binding is set", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!("");
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: "" });
     expect(text()).toContain("No binding set");
     expect(el.querySelector("a.ird-binding-status-link")).not.toBeNull();
   });
@@ -135,11 +171,10 @@ describe("ird-binding-status", () => {
   it("treats a SimHub role as configured (never the missing state); no warning when connected", async () => {
     mockFetchReachable.mockResolvedValue(true);
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: simhubBinding("My Role") });
     expect(text()).toContain("SimHub binding: My Role");
     expect(text()).not.toContain("No binding set");
-    // After the probe confirms SimHub is up, no warning line.
     await vi.waitFor(() => expect(mockFetchReachable).toHaveBeenCalled());
     expect(text()).not.toContain("SimHub not connected");
   });
@@ -147,8 +182,8 @@ describe("ird-binding-status", () => {
   it("shows a red 'SimHub not connected' line when the probe finds SimHub down", async () => {
     mockFetchReachable.mockResolvedValue(false);
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: simhubBinding("My Role") });
     await vi.waitFor(() => expect(text()).toContain("SimHub not connected"));
     expect(el.querySelector(".ird-binding-status-danger")).not.toBeNull();
   });
@@ -156,36 +191,35 @@ describe("ird-binding-status", () => {
   it("clears the not-connected warning live once SimHub becomes reachable", async () => {
     mockFetchReachable.mockResolvedValue(false);
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: simhubBinding("My Role") });
     await vi.waitFor(() => expect(text()).toContain("SimHub not connected"));
-    // SimHub comes up; the next probe (here forced via a host change) clears it.
+    // SimHub comes up; a host change forces a re-probe (stands in for the poll).
     mockFetchReachable.mockResolvedValue(true);
-    mock.global.get("simHubHost")!("127.0.0.1");
+    mock.emitGlobal({ simHubHost: "localhost" });
     await vi.waitFor(() => expect(text()).not.toContain("SimHub not connected"));
     expect(text()).toContain("SimHub binding: My Role");
   });
 
   it("updates live when switching keyboard ↔ SimHub without changing mode", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: keyboardBinding("f1") });
     expect(text()).toContain("Ctrl+F1");
-    mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("Role X"));
+    mock.emitGlobal({ fuelServiceToggleAutofuel: simhubBinding("Role X") });
     expect(text()).toContain("SimHub binding: Role X");
     expect(text()).not.toContain("Ctrl+F1");
   });
 
   it("resolves a dynamic key from the secondary setting (full resolution)", () => {
     el = mount(VIEW_COMMS);
-    mock.settings.get("mode")!("fov");
+    setMode("fov");
     mock.settings.get("direction")!("increase");
-    mock.global.get("viewFovInc")!(keyboardBinding("a"));
+    mock.emitGlobal({ viewFovInc: keyboardBinding("a") });
     expect(text()).toContain("Key binding:");
     expect(text()).toContain("Ctrl+A");
-    // Switching the secondary setting re-resolves to the other key.
+    // Switching the secondary setting re-resolves to the other (unset) key.
     mock.settings.get("direction")!("decrease");
-    mock.global.get("viewFovDec")!("");
     expect(text()).toContain("No binding set");
   });
 
@@ -197,8 +231,8 @@ describe("ird-binding-status", () => {
     document.body.appendChild(details);
 
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("toggle-autofuel");
-    mock.global.get("fuelServiceToggleAutofuel")!("");
+    setMode("toggle-autofuel");
+    mock.emitGlobal({ fuelServiceToggleAutofuel: "" });
     (el.querySelector("a.ird-binding-status-link") as HTMLAnchorElement).click();
 
     expect(details.open).toBe(true);
@@ -207,22 +241,21 @@ describe("ird-binding-status", () => {
 
   it("renders nothing for an unknown mode", () => {
     el = mount(FUEL_COMMS);
-    mock.settings.get("mode")!("does-not-exist");
+    setMode("does-not-exist");
     expect(text()).toBe("");
   });
 
   it("shows 'no binding needed' for a fixed keybind (no binding ref) and never warns", () => {
     el = mount({ escape: { method: "keybind" } });
-    mock.settings.get("mode")!("escape");
+    setMode("escape");
     expect(text()).toContain("No binding needed");
     expect(el.querySelector("a.ird-binding-status-link")).toBeNull();
   });
 
   it("lists all keys when a multi-key mode has them all set", () => {
     el = mount({ "view-fov": { method: "keybind", binding: { scope: "global", keys: ["incKey", "decKey"] } } });
-    mock.settings.get("mode")!("view-fov");
-    mock.global.get("incKey")!(keyboardBinding("a"));
-    mock.global.get("decKey")!(keyboardBinding("b"));
+    setMode("view-fov");
+    mock.emitGlobal({ incKey: keyboardBinding("a"), decKey: keyboardBinding("b") });
     expect(text()).toContain("Ctrl+A");
     expect(text()).toContain("Ctrl+B");
     expect(text()).not.toContain("No binding set");
@@ -230,9 +263,8 @@ describe("ird-binding-status", () => {
 
   it("warns when a multi-key mode has any key unset", () => {
     el = mount({ "view-fov": { method: "keybind", binding: { scope: "global", keys: ["incKey", "decKey"] } } });
-    mock.settings.get("mode")!("view-fov");
-    mock.global.get("incKey")!(keyboardBinding("a"));
-    mock.global.get("decKey")!("");
+    setMode("view-fov");
+    mock.emitGlobal({ incKey: keyboardBinding("a"), decKey: "" });
     expect(text()).toContain("No binding set");
   });
 });
