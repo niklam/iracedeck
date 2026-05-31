@@ -1,0 +1,705 @@
+{
+  "fuel-service": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "toggle-fuel-fill": {
+      "method": "api"
+    },
+    "add-fuel": {
+      "method": "chat"
+    },
+    "reduce-fuel": {
+      "method": "chat"
+    },
+    "set-fuel-amount": {
+      "method": "chat"
+    },
+    "clear-fuel": {
+      "method": "api"
+    },
+    "toggle-autofuel": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "fuelServiceToggleAutofuel"
+      }
+    },
+    "lap-margin-increase": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "fuelServiceLapMarginIncrease"
+      }
+    },
+    "lap-margin-decrease": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "fuelServiceLapMarginDecrease"
+      }
+    }
+  },
+  "tire-service": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "change-all-tires": {
+      "method": "chat"
+    },
+    "clear-tires": {
+      "method": "api"
+    },
+    "change-compound": {
+      "method": "api"
+    },
+    "toggle-tires": {
+      "method": "chat"
+    }
+  },
+  "black-box-selector": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "direct": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "blackBox",
+          "map": {
+            "lap-timing": "blackBoxLapTiming",
+            "standings": "blackBoxStandings",
+            "relative": "blackBoxRelative",
+            "fuel": "blackBoxFuel",
+            "tires": "blackBoxTires",
+            "tire-info": "blackBoxTireInfo",
+            "pit-stop": "blackBoxPitStop",
+            "in-car": "blackBoxInCar",
+            "mirror": "blackBoxMirror",
+            "radio": "blackBoxRadio",
+            "weather": "blackBoxWeather"
+          }
+        }
+      }
+    },
+    "next": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxCycleNext"
+      }
+    },
+    "previous": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "blackBoxCyclePrevious"
+      }
+    }
+  },
+  "splits-delta-cycle": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "cycle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "next": "splitsDeltaNext",
+            "previous": "splitsDeltaPrevious"
+          }
+        }
+      }
+    },
+    "toggle-ref-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDisplayRefCar"
+      }
+    },
+    "custom-sector-start": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorStart"
+      }
+    },
+    "custom-sector-end": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaCustomSectorEnd"
+      }
+    },
+    "active-reset-set": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetSet"
+      }
+    },
+    "active-reset-run": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "splitsDeltaActiveResetRun"
+      }
+    }
+  },
+  "look-direction": {
+    "_meta": {
+      "modeSetting": "direction"
+    },
+    "look-left": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "lookDirectionLeft"
+      }
+    },
+    "look-right": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "lookDirectionRight"
+      }
+    },
+    "look-up": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "lookDirectionUp"
+      }
+    },
+    "look-down": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "lookDirectionDown"
+      }
+    }
+  },
+  "car-control": {
+    "_meta": {
+      "modeSetting": "control"
+    },
+    "pit-speed-limiter": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlPitSpeedLimiter"
+      }
+    },
+    "push-to-pass": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlPushToPass"
+      }
+    },
+    "drs": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlDrs"
+      }
+    },
+    "headlight-flash": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlHeadlightFlash"
+      }
+    },
+    "tear-off-visor": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlTearOffVisor"
+      }
+    },
+    "ignition": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlIgnition"
+      }
+    },
+    "starter": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlStarter"
+      }
+    },
+    "enter-exit-tow": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlEnterExitTow"
+      }
+    },
+    "pause-sim": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlPauseSim"
+      }
+    },
+    "escape": {
+      "method": "keybind"
+    }
+  },
+  "view-adjustment": {
+    "_meta": {
+      "modeSetting": "adjustment"
+    },
+    "fov": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "viewAdjustFovIncrease",
+            "decrease": "viewAdjustFovDecrease"
+          }
+        }
+      }
+    },
+    "horizon": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "viewAdjustHorizonUp",
+            "decrease": "viewAdjustHorizonDown"
+          }
+        }
+      }
+    },
+    "driver-height": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "viewAdjustDriverHeightUp",
+            "decrease": "viewAdjustDriverHeightDown"
+          }
+        }
+      }
+    },
+    "recenter-vr": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "viewAdjustRecenterVr"
+      }
+    },
+    "ui-size": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "viewAdjustUiSizeIncrease",
+            "decrease": "viewAdjustUiSizeDecrease"
+          }
+        }
+      }
+    }
+  },
+  "camera-editor-adjustments": {
+    "_meta": {
+      "modeSetting": "adjustment"
+    },
+    "latitude": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cameraEditorLatitudeIncrease",
+            "decrease": "cameraEditorLatitudeDecrease"
+          }
+        }
+      }
+    },
+    "roll": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cameraEditorRollIncrease",
+            "decrease": "cameraEditorRollDecrease"
+          }
+        }
+      }
+    },
+    "height": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cameraEditorHeightIncrease",
+            "decrease": "cameraEditorHeightDecrease"
+          }
+        }
+      }
+    }
+  },
+  "camera-editor-controls": {
+    "_meta": {
+      "modeSetting": "control"
+    },
+    "open-camera-tool": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cameraEditorOpenCameraTool"
+      }
+    },
+    "reset-camera": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cameraEditorResetCamera"
+      }
+    },
+    "exit-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cameraEditorExitCar"
+      }
+    },
+    "reset-to-pits": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cameraEditorResetToPits"
+      }
+    },
+    "tow": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cameraEditorTow"
+      }
+    }
+  },
+  "cockpit-misc": {
+    "_meta": {
+      "modeSetting": "control"
+    },
+    "toggle-wipers": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscToggleWipers"
+      }
+    },
+    "trigger-wipers": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscTriggerWipers"
+      }
+    },
+    "ffb-max-force": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cockpitMiscFfbForceIncrease",
+            "decrease": "cockpitMiscFfbForceDecrease"
+          }
+        }
+      }
+    },
+    "report-latency": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscReportLatency"
+      }
+    },
+    "dash-page-1": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cockpitMiscDashPage1Increase",
+            "decrease": "cockpitMiscDashPage1Decrease"
+          }
+        }
+      }
+    },
+    "dash-page-2": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cockpitMiscDashPage2Increase",
+            "decrease": "cockpitMiscDashPage2Decrease"
+          }
+        }
+      }
+    },
+    "in-lap-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "cockpitMiscInLapMode"
+      }
+    }
+  },
+  "force-feedback": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "auto-compute-ffb-force": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "forceFeedbackAutoCompute"
+      }
+    },
+    "ffb-force": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "cockpitMiscFfbForceIncrease",
+            "decrease": "cockpitMiscFfbForceDecrease"
+          }
+        }
+      }
+    },
+    "wheel-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "forceFeedbackWheelLfeLouder",
+            "decrease": "forceFeedbackWheelLfeQuieter"
+          }
+        }
+      }
+    },
+    "bass-shaker-lfe": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "forceFeedbackBassShakerLfeLouder",
+            "decrease": "forceFeedbackBassShakerLfeQuieter"
+          }
+        }
+      }
+    },
+    "wheel-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "forceFeedbackWheelLfeIntensityIncrease",
+            "decrease": "forceFeedbackWheelLfeIntensityDecrease"
+          }
+        }
+      }
+    },
+    "haptic-lfe-intensity": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "direction",
+          "map": {
+            "increase": "forceFeedbackHapticLfeIntensityIncrease",
+            "decrease": "forceFeedbackHapticLfeIntensityDecrease"
+          }
+        }
+      }
+    }
+  },
+  "chat": {
+    "_meta": {
+      "modeSetting": "mode"
+    },
+    "open-chat": {
+      "method": "api"
+    },
+    "reply": {
+      "method": "api"
+    },
+    "cancel": {
+      "method": "api"
+    },
+    "send-message": {
+      "method": "api"
+    },
+    "macro": {
+      "method": "api"
+    },
+    "whisper": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "chatWhisper"
+      }
+    },
+    "toggle": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "chatToggle"
+      }
+    }
+  },
+  "audio-controls": {
+    "_meta": {
+      "modeSetting": "category"
+    },
+    "push-to-talk": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "audioControlsPushToTalk"
+      }
+    },
+    "voice-chat": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "action",
+          "map": {
+            "volume-up": "audioVoiceChatVolumeUp",
+            "volume-down": "audioVoiceChatVolumeDown",
+            "mute": "audioVoiceChatMute"
+          }
+        }
+      }
+    },
+    "master": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "action",
+          "map": {
+            "volume-up": "audioMasterVolumeUp",
+            "volume-down": "audioMasterVolumeDown"
+          }
+        }
+      }
+    },
+    "race-engineer": {
+      "method": "keybind"
+    },
+    "radar": {
+      "method": "keybind"
+    }
+  },
+  "toggle-ui-elements": {
+    "_meta": {
+      "modeSetting": "element"
+    },
+    "dash-box": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDashBox"
+      }
+    },
+    "speed-gear-pedals": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiSpeedGearPedals"
+      }
+    },
+    "radio-display": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiRadioDisplay"
+      }
+    },
+    "fps-network-display": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiFpsNetworkDisplay"
+      }
+    },
+    "weather-radar": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiWeatherRadar"
+      }
+    },
+    "virtual-mirror": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiVirtualMirror"
+      }
+    },
+    "ui-edit-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiEditMode"
+      }
+    },
+    "driving-line": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDrivingLine"
+      }
+    },
+    "display-ref-car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "toggleUiDisplayRefCar"
+      }
+    },
+    "replay-ui": {
+      "method": "api"
+    }
+  }
+}

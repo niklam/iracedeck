@@ -19,6 +19,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var fuelComms = require('./data/action-comms.json')['fuel-service']; %>
+		<ird-binding-status mode-setting="<%= fuelComms._meta.modeSetting %>" comms='<%- JSON.stringify(fuelComms) %>'></ird-binding-status>
+
 		<div id="fuel-settings" class="hidden">
 			<sdpi-item label="Amount">
 				<sdpi-textfield
