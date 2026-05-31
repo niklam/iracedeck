@@ -13,7 +13,7 @@ import { platform } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import type { BroadcastMsg, IRSDKHeader, VarHeader } from "./defines.js";
+import type { BroadcastMsg, ElevationStatus, IRSDKHeader, VarHeader } from "./defines.js";
 import { IRacingNativeMock } from "./mock-impl.js";
 
 // Re-export all types and enums from defines
@@ -292,5 +292,16 @@ export class IRacingNative {
    */
   setClipboardText(text: string): boolean {
     return addon ? addon.setClipboardText(text) : this.getMock().setClipboardText(text);
+  }
+
+  /**
+   * Compare this process's elevation/integrity with iRacing's (issue #610).
+   * Windows-only; returns a safe "no mismatch" result on other platforms and
+   * when the native addon is unavailable.
+   *
+   * @returns Elevation status, including a `mismatch` flag.
+   */
+  getElevationStatus(): ElevationStatus {
+    return addon ? addon.getElevationStatus() : this.getMock().getElevationStatus();
   }
 }

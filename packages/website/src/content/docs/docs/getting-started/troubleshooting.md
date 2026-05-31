@@ -15,6 +15,22 @@ If the Elgato Marketplace install doesn't work, try these steps:
 
 iRaceDeck actions require iRacing to be running and connected. When iRacing is not running, buttons may appear disabled or grayed out. Start iRacing and the buttons will activate automatically.
 
+## Buttons do nothing in iRacing (but the plugin looks connected)
+
+If iRaceDeck appears connected — telemetry-driven features like the Race Engineer still work — but **no button affects iRacing** (black box, camera, pit service, chat all do nothing), the most common cause is an **Administrator mismatch**:
+
+- iRacing is running **as Administrator**, and
+- the Stream Deck software (and therefore iRaceDeck) is **not**.
+
+Windows blocks a non-elevated program from sending input or commands to an elevated one, so iRaceDeck's button presses are silently dropped even though it can still read iRacing's telemetry. When iRaceDeck detects this, it shows a ⚠️ warning banner at the top of every action's settings (Property Inspector).
+
+**Fix:** run both at the same level. Either:
+
+- Run the **Stream Deck software as Administrator** (right-click → Run as administrator), or
+- Run **iRacing without Administrator**.
+
+Then restart the one you changed. The warning clears automatically once the levels match.
+
 ## Keyboard shortcuts not working
 
 If an action uses keyboard shortcuts (like black box selection), make sure:

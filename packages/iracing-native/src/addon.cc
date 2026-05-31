@@ -840,6 +840,111 @@ Napi::Value SetClipboardText(const Napi::CallbackInfo &info)
 }
 
 // ============================================================================
+// Elevation / Integrity Detection (issue #610)
+// ============================================================================
+
+struct ElevationStatus
+{
+    bool selfElevated = false;
+    bool iracingFound = false;
+    bool iracingQueryDenied = false;
+    bool iracingElevated = false;
+};
+
+/**
+ * Query whether a process token reports an elevated (Administrator) integrity.
+ * Returns true on a successful query and writes the result to outElevated.
+ */
+static bool queryTokenElevation(HANDLE process, bool &outElevated)
+{
+    HANDLE token = NULL;
+    if (!OpenProcessToken(process, TOKEN_QUERY, &token))
+    {
+        return false;
+    }
+
+    TOKEN_ELEVATION elevation = {};
+    DWORD size = sizeof(elevation);
+    BOOL ok = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size);
+    if (ok)
+    {
+        outElevated = elevation.TokenIsElevated != 0;
+    }
+
+    CloseHandle(token);
+    return ok != 0;
+}
+
+/**
+ * Compare this process's integrity/elevation with iRacing's.
+ *
+ * A functional probe can't detect the UIPI block (blocked SendInput/broadcast
+ * still report success), so we compare integrity levels. ACCESS_DENIED when
+ * opening an iRacing process we can clearly see means it runs at a higher
+ * integrity level than us.
+ */
+static ElevationStatus getElevationStatus()
+{
+    ElevationStatus status;
+
+    // Own elevation — reliable token query against the current process.
+    queryTokenElevation(GetCurrentProcess(), status.selfElevated);
+
+    // Locate iRacing via its window, then resolve the owning PID.
+    HWND hwnd = FindWindowA(NULL, "iRacing.com Simulator");
+    if (!hwnd)
+    {
+        return status; // iracingFound stays false
+    }
+    status.iracingFound = true;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0)
+    {
+        return status;
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process)
+    {
+        // ACCESS_DENIED on a process we can see means higher integrity than us.
+        if (GetLastError() == ERROR_ACCESS_DENIED)
+        {
+            status.iracingQueryDenied = true;
+        }
+        return status;
+    }
+
+    queryTokenElevation(process, status.iracingElevated);
+    CloseHandle(process);
+    return status;
+}
+
+/**
+ * N-API wrapper: return the elevation/mismatch status object.
+ *
+ * @returns object { selfElevated, iracingFound, iracingQueryDenied,
+ *                   iracingElevated, mismatch }
+ */
+Napi::Value GetElevationStatus(const Napi::CallbackInfo &info)
+{
+    Napi::Env env = info.Env();
+    ElevationStatus status = getElevationStatus();
+
+    bool mismatch = !status.selfElevated && status.iracingFound &&
+                    (status.iracingQueryDenied || status.iracingElevated);
+
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("selfElevated", Napi::Boolean::New(env, status.selfElevated));
+    result.Set("iracingFound", Napi::Boolean::New(env, status.iracingFound));
+    result.Set("iracingQueryDenied", Napi::Boolean::New(env, status.iracingQueryDenied));
+    result.Set("iracingElevated", Napi::Boolean::New(env, status.iracingElevated));
+    result.Set("mismatch", Napi::Boolean::New(env, mismatch));
+    return result;
+}
+
+// ============================================================================
 // Module Initialization
 // ============================================================================
 
@@ -874,6 +979,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports)
 
     // Clipboard
     exports.Set("setClipboardText", Napi::Function::New(env, SetClipboardText));
+
+    // Elevation / integrity detection (issue #610)
+    exports.Set("getElevationStatus", Napi::Function::New(env, GetElevationStatus));
 
     return exports;
 }

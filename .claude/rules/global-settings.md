@@ -183,3 +183,20 @@ Global key bindings use flat key names:
 - `blackBoxLapTiming`, `blackBoxFuel`, `lookDirectionLeft`, etc.
 
 Global settings use flat key names (e.g., `blackBoxLapTiming`), not nested paths.
+
+## PI Warning Banners — `_warnings` + `setWarning`/`clearWarning`
+
+Plugin code can surface a banner at the top of every Property Inspector (issue #610). Warnings are persisted in the `_warnings` global setting as a JSON array of `{ id, level, message }` records (`level` is `"info" | "warning" | "error"`). `_warnings` is a passthrough key — no `GlobalSettingsSchema` field is needed (same as `_audioDeviceList`).
+
+Manage warnings from `@iracedeck/deck-core`:
+
+```typescript
+import { setWarning, clearWarning } from "@iracedeck/deck-core";
+
+setWarning("elevation-mismatch", "warning", "…message…"); // upsert, keyed by id
+clearWarning("elevation-mismatch");                         // remove by id
+```
+
+Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent. The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears.
+
+Reference producer: the elevation-mismatch detector wired in both plugins' `plugin.ts` using `evaluateElevationWarning()` + `getElevationStatus()`.

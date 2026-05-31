@@ -39,3 +39,6 @@ export {
   parseSimpleDefault,
   type KeyBindingValue,
 } from "./key-binding-input.js";
+
+// Warnings Banner - global PI warning banner driven by the _warnings global setting
+export { WarningsBanner } from "./warnings.js";

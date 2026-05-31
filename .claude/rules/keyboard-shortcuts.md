@@ -12,6 +12,12 @@ Only use keyboard shortcuts when:
 - The feature has no SDK support (e.g., black box selection, camera controls)
 - The SDK command doesn't provide the needed functionality
 
+## Elevation / Administrator mismatch
+
+Keyboard injection and SDK broadcasts both require the plugin to run at the **same Windows integrity level as iRacing**. If iRacing runs as Administrator and the plugin does not, UIPI silently drops every outbound command (input *and* broadcast) while telemetry keeps working — there is no error to catch. The native `getElevationStatus()` probe (see `iracing-native/CLAUDE.md`) detects this; both plugins run it once per connection and post a PI warning banner via `setWarning` (issue #610). It is diagnostic only — never gate or disable actions on it. Advise users to run Stream Deck and iRacing at matching elevation.
+
+`getElevationStatus` is a native export, so the native↔TS↔mock mirror still applies (`addon.cc` → `iracing-native/src/index.ts` → `src/mock-impl.ts`), but it is **not** a keyboard function — steps 3–4 of the keyboard Cross-Package Sync (keyboard-service, `initializeKeyboard`) do not apply to it.
+
 ## Reference
 `docs/keyboard-shortcuts.md` is the authoritative source for iRacing keyboard defaults and SDK availability.
 
