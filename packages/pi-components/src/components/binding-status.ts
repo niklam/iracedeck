@@ -55,22 +55,33 @@ type ActionCommMap = Record<string, CommDescriptor>;
 /** Accordion that holds the global key bindings (see global-key-bindings.ejs). */
 const KEY_BINDINGS_ACCORDION_ID = "Related Key Bindings";
 
-type Settings = Record<string, unknown>;
-interface SettingsEvent {
-  payload: { settings: Settings };
+/**
+ * Poll interval for reading current values off the PI's DOM controls. The
+ * Stream Deck settings-subscription APIs do not reliably re-deliver changes to
+ * a read-only observer like this; the proven approach in this codebase
+ * (conditional-visibility) reads the control's `.value` with change/input
+ * events plus a polling fallback, because sdpi-select events can be unreliable.
+ */
+const DOM_POLL_INTERVAL_MS = 250;
+
+/** An element that carries a current value (sdpi-select / ird-key-binding / inputs). */
+interface ValueElement extends Element {
+  value?: unknown;
 }
-type Disposable = { dispose?: () => void } | (() => void) | void;
-interface Subscribable {
-  subscribe: (cb: (ev: SettingsEvent) => void) => Disposable;
+
+/** Escape a value for safe use inside a `[attr="…"]` selector. */
+function cssAttr(value: string): string {
+  return value.replace(/["\\]/g, "\\$&");
 }
-interface StreamDeckClientLike {
-  getSettings: () => Promise<unknown>;
-  getGlobalSettings: () => Promise<Settings>;
-  didReceiveSettings: Subscribable;
-  didReceiveGlobalSettings: Subscribable;
-}
-interface SDPILike {
-  streamDeckClient: StreamDeckClientLike;
+
+function readValue(selector: string): string | null {
+  const el = document.querySelector(selector) as ValueElement | null;
+
+  if (!el) return null;
+
+  const v = el.value;
+
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
 function isConstantKey(ref: BindingKeyRef): ref is BindingKeyConstant {
@@ -100,15 +111,6 @@ function parseStoredBinding(
   const kb = parseKeyBinding(value);
 
   return kb ? { kind: "keyboard", text: formatKeyBinding(kb) } : null;
-}
-
-/** `getSettings()` resolves to a payload wrapper; `didReceiveSettings` gives `.settings` directly. */
-function extractSettings(result: unknown): Settings {
-  if (result && typeof result === "object" && "settings" in result) {
-    return (result as { settings: Settings }).settings ?? {};
-  }
-
-  return (result as Settings) ?? {};
 }
 
 let styleInjected = false;
@@ -144,9 +146,9 @@ export class BindingStatus extends HTMLElement {
   private secondaryNames: string[] = [];
   /** Every global binding key referenced by this action's modes. */
   private candidateKeys: string[] = [];
-  /** Subscriptions to settings changes (from any source). */
-  private actionSub: Disposable = undefined;
-  private globalSub: Disposable = undefined;
+  /** DOM polling fallback + a bound change/input handler for snappy updates. */
+  private domPollTimer: number | null = null;
+  private readonly onDomChange = (): void => this.readDom();
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -175,15 +177,7 @@ export class BindingStatus extends HTMLElement {
     }
   }
 
-  private get sdpi(): SDPILike | undefined {
-    return (window as unknown as { SDPIComponents?: SDPILike }).SDPIComponents;
-  }
-
   private hookSettings(): void {
-    const sdpi = this.sdpi;
-
-    if (!sdpi) return;
-
     this.modeSetting = this.getAttribute("mode-setting") || "mode";
 
     // Collect the secondary (keyBy) setting names and the candidate binding keys.
@@ -209,60 +203,75 @@ export class BindingStatus extends HTMLElement {
     this.secondaryNames = [...secondaryNames];
     this.candidateKeys = [...bindingKeys];
 
-    // Drive EVERYTHING off the Stream Deck client event bus, which reports
-    // changes from ANY source — the Mode dropdown's own write, a sibling
-    // ird-key-binding write, the plugin, another PI. The sdpi `use*` hooks only
-    // delivered the initial value to a read-only observer like this, so the
-    // line went stale on mode/binding changes. Seed with current values, then
-    // keep in sync.
-    const client = sdpi.streamDeckClient;
+    // Read current values straight off the PI's DOM controls — the Mode
+    // <sdpi-select>, any secondary <sdpi-select>, and the <ird-key-binding>
+    // inputs in the key-bindings accordion (which hold the live binding value
+    // and update on edit). change/input events make it snappy; a polling
+    // fallback covers controls whose events are unreliable (and catches binding
+    // edits in the accordion). This is the proven pattern in this codebase.
+    document.addEventListener("input", this.onDomChange, true);
+    document.addEventListener("change", this.onDomChange, true);
+    this.domPollTimer = window.setInterval(this.onDomChange, DOM_POLL_INTERVAL_MS);
 
-    this.actionSub = client.didReceiveSettings.subscribe((ev) => this.applyActionSettings(ev.payload.settings));
-    this.globalSub = client.didReceiveGlobalSettings.subscribe((ev) => this.applyGlobalSettings(ev.payload.settings));
-
-    void client.getSettings().then((result) => this.applyActionSettings(extractSettings(result)));
-    void client.getGlobalSettings().then((settings) => this.applyGlobalSettings(settings));
+    this.readDom();
   }
 
-  /** Apply an action-settings snapshot: refresh the current mode + secondary values. */
-  private applyActionSettings(settings: Settings): void {
-    const rawMode = settings[this.modeSetting];
-    this.currentMode = typeof rawMode === "string" && rawMode ? rawMode : (this.getAttribute("default-mode") ?? "");
+  /** Read the current mode, secondary values, and binding values from the DOM. */
+  private readDom(): void {
+    let changed = false;
 
+    // Mode (sdpi-select) — fall back to the default-mode attribute when empty.
+    const rawMode = readValue(`[setting="${cssAttr(this.modeSetting)}"]`);
+    const mode = rawMode || (this.getAttribute("default-mode") ?? "");
+
+    if (mode !== this.currentMode) {
+      this.currentMode = mode;
+      changed = true;
+    }
+
+    // Secondary (keyBy) settings.
     for (const name of this.secondaryNames) {
-      const raw = settings[name];
-      this.secondary.set(name, typeof raw === "string" ? raw : "");
+      const value = readValue(`[setting="${cssAttr(name)}"]`);
+
+      if (value === null) continue; // control not present yet
+
       this.loadedSecondary.add(name);
+
+      if (this.secondary.get(name) !== value) {
+        this.secondary.set(name, value);
+        changed = true;
+      }
     }
 
-    this.render();
-  }
-
-  /** Apply a global-settings snapshot: refresh binding values + SimHub target. */
-  private applyGlobalSettings(settings: Settings): void {
+    // Binding values — read from the ird-key-binding inputs (live source).
     for (const key of this.candidateKeys) {
-      const raw = settings[key];
-      const value = typeof raw === "string" ? raw : raw == null ? "" : JSON.stringify(raw);
-      this.bindings.set(key, value);
-      this.loadedBindings.add(key); // present-or-absent now known
+      const value = readValue(`ird-key-binding[setting="${cssAttr(key)}"]`);
+
+      if (value === null) continue; // input not in this PI / not yet rendered
+
+      this.loadedBindings.add(key);
+
+      if (this.bindings.get(key) !== value) {
+        this.bindings.set(key, value);
+        changed = true;
+      }
     }
 
-    const host = typeof settings.simHubHost === "string" && settings.simHubHost ? settings.simHubHost : "127.0.0.1";
-    const port = parseInt(String(settings.simHubPort ?? ""), 10) || 8888;
+    // SimHub host/port (if those inputs exist on this PI) for the reachability probe.
+    const host = readValue(`[setting="simHubHost"]`) || "127.0.0.1";
+    const port = parseInt(readValue(`[setting="simHubPort"]`) ?? "", 10) || 8888;
 
     if (host !== this.simHubHost || port !== this.simHubPort) {
       this.simHubHost = host;
       this.simHubPort = port;
-      this.onSimHubTargetChanged();
+      this.simHubProbed = false;
+
+      if (this.simHubPollTimer !== null) void this.probeSimHub();
+
+      changed = true;
     }
 
-    this.render();
-  }
-
-  private onSimHubTargetChanged(): void {
-    this.simHubProbed = false;
-
-    if (this.simHubPollTimer !== null) void this.probeSimHub();
+    if (changed) this.render();
   }
 
   /** Resolve ALL binding keys required by the current mode. */
@@ -406,15 +415,13 @@ export class BindingStatus extends HTMLElement {
 
   disconnectedCallback(): void {
     this.stopSimHubPolling();
-    this.dispose(this.actionSub);
-    this.dispose(this.globalSub);
-    this.actionSub = undefined;
-    this.globalSub = undefined;
-  }
+    document.removeEventListener("input", this.onDomChange, true);
+    document.removeEventListener("change", this.onDomChange, true);
 
-  private dispose(sub: Disposable): void {
-    if (typeof sub === "function") sub();
-    else if (sub && typeof sub.dispose === "function") sub.dispose();
+    if (this.domPollTimer !== null) {
+      window.clearInterval(this.domPollTimer);
+      this.domPollTimer = null;
+    }
   }
 
   private line(level: "ok" | "warn" | "muted" | "danger", symbol: string, text: string): HTMLDivElement {
