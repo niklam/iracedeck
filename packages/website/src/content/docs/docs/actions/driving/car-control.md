@@ -19,6 +19,7 @@ Toggle the pit speed limiter.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `A`
 - **Telemetry-aware icon:** Yes — the icon reflects the current pit limiter state from iRacing telemetry in real time
@@ -35,6 +36,7 @@ Activate Push To Pass / Overtake for IndyCar, Super Formula, LMDh, and other car
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — Push To Pass has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** Yes — the icon reads `P2P_Status` (not the momentary button press) so it shows whether overtake power is currently active, not just whether you pressed the button
@@ -51,6 +53,7 @@ Toggle DRS on Formula cars.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — DRS has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** Yes — the icon reads `DRS_Status` to show whether DRS is currently open
@@ -67,6 +70,7 @@ Flash the headlights while the button is held. Useful for multi-class racing com
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support; press and hold the dial to flash, release to stop
 - **Default binding:** No default key binding — Headlight Flash has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Tear off a layer of visor film in open-wheel cars, clearing the view.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — Tear Off Visor has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
@@ -99,6 +104,7 @@ Toggle the ignition on or off.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `I`
 - **Telemetry-aware icon:** No
@@ -115,6 +121,7 @@ Engage the car starter. Hold the button to crank.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support; press and hold the dial to crank, release to stop
 - **Default binding:** `S`
 - **Telemetry-aware icon:** No
@@ -131,6 +138,7 @@ Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically b
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support; manual hold holds `Shift+R` while the button is pressed. When auto-hold is on for the active state, a single tap holds it for 1.5 seconds or until you press again
 - **Default binding:** `Shift+R`
 - **Telemetry-aware icon:** Yes — the icon switches between Enter Car, Exit Car, Reset to Pits, and Tow based on whether you are out of the car, in the pits, on track in a non-race session, or on track in a race
@@ -159,6 +167,7 @@ Send the `Escape` key to exit the car or dismiss dialogs. The `Escape` key is ha
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support; manual hold holds `Escape` while the button is pressed, auto-hold releases after 1.5 seconds or when you press again
 - **Default binding:** `Escape` (hardcoded — iRacing always uses `Escape` for this action, so the binding is not user-configurable)
 - **Telemetry-aware icon:** No
@@ -176,6 +185,7 @@ Pause the simulation.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+P`
 - **Telemetry-aware icon:** No

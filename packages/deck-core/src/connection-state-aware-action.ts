@@ -52,9 +52,11 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   private lastReadyStatus: boolean | null = null;
 
   /**
-   * The currently active binding setting key for readiness tracking.
+   * The currently active binding setting key(s) for readiness tracking.
+   * Most modes track a single key; some (e.g. setup view-* dual-press modes)
+   * track several, all of which must be configured/ready (issue #612).
    */
-  private activeBindingKey: string | null = null;
+  private activeBindingKeys: string[] = [];
 
   /**
    * Unsubscribe function for global settings change listener.
@@ -114,12 +116,17 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * (e.g., user switches mode or direction). Cleanup is automatic —
    * onWillDisappear unsubscribes all listeners.
    *
-   * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), or null to clear
+   * @param settingKey - The global settings key (e.g., "blackBoxLapTiming"), an
+   *   array of keys (all required), or null/empty to clear. Empty strings are
+   *   ignored, so a fixed-key mode can pass "" to track nothing.
    */
-  protected setActiveBinding(settingKey: string | null): void {
-    this.activeBindingKey = settingKey;
+  protected setActiveBinding(settingKey: string | string[] | null): void {
+    const keys = (Array.isArray(settingKey) ? settingKey : settingKey ? [settingKey] : []).filter(
+      (k): k is string => typeof k === "string" && k.length > 0,
+    );
+    this.activeBindingKeys = keys;
 
-    if (settingKey) {
+    if (keys.length > 0) {
       // Subscribe to global settings changes (once)
       if (!this.globalSettingsUnsubscribe) {
         this.globalSettingsUnsubscribe = onGlobalSettingsChange(() => {
@@ -170,8 +177,9 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
 
       let isReady: boolean;
 
-      if (this.activeBindingKey) {
-        isReady = getBindingDispatcher().isReady(this.activeBindingKey, iRacingConnected);
+      if (this.activeBindingKeys.length > 0) {
+        // All tracked keys must be ready (multi-key modes warn if any is missing).
+        isReady = this.activeBindingKeys.every((key) => getBindingDispatcher().isReady(key, iRacingConnected));
       } else {
         isReady = iRacingConnected;
       }
@@ -191,6 +199,46 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    */
   protected getConnectionStatus(): boolean {
     return this.sdkController.getConnectionStatus();
+  }
+
+  /**
+   * Whether the action's currently active binding requires a binding but has
+   * neither a keyboard binding nor a SimHub role configured (issue #612).
+   *
+   * Drives the centered binding-missing warning overlay on the key icon.
+   * Returns false when no binding is active (api/chat modes) or when a binding
+   * of either type is set — including a SimHub role whose SimHub server is not
+   * currently running (that is a reachability concern, not a missing binding).
+   *
+   * Derived from the same dispatcher source of truth as readiness, so the
+   * icon overlay and readiness overlay never disagree about "configured".
+   */
+  protected isActiveBindingMissing(): boolean {
+    return this.isBindingMissing(this.activeBindingKeys);
+  }
+
+  /**
+   * Stateless per-context variant of {@link isActiveBindingMissing}: returns
+   * true when the given binding key(s) require a binding but ANY is
+   * unconfigured (neither keyboard nor SimHub). Pass `null`/empty for
+   * api/chat/fixed modes (returns false).
+   *
+   * Use THIS — not {@link isActiveBindingMissing} — to drive a per-button icon
+   * warning. One action-class instance serves every button context, so the
+   * `activeBindingKeys` field that backs `isActiveBindingMissing` is shared and
+   * would bleed one button's missing-binding state onto all the others. This
+   * variant derives solely from its arguments + global settings (#612).
+   *
+   * @param keys - The binding setting key(s) for a specific button's mode.
+   */
+  protected isBindingMissing(keys: string | string[] | null | undefined): boolean {
+    const list = (Array.isArray(keys) ? keys : keys ? [keys] : []).filter(
+      (k): k is string => typeof k === "string" && k.length > 0,
+    );
+
+    if (list.length === 0) return false;
+
+    return list.some((key) => !getBindingDispatcher().isConfigured(key));
   }
 
   // --- Binding dispatch delegates ---

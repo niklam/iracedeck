@@ -91,6 +91,10 @@ This minimal approach is correct — it ensures cross-platform consistency.
 4. **Do not use `<style>` elements** — use inline `style` attributes or direct SVG presentation attributes instead.
 5. **Test cross-platform** when introducing any SVG feature not already in use. If in doubt, check this table.
 
+## Binding-missing warning glyph (#612)
+
+The centered ⚠️ overlay drawn on a key when a required binding is unset (`assembleIcon({ bindingMissing })` / `bindingWarningSvg()` in `@iracedeck/icon-composer`) is built **only** from `polygon`, `rect` (with `rx`), `circle`, and a `<g opacity="…">` dim wrapper — all in the safe SVG Tiny 1.2 set — so it renders identically on Mirabox's QT5 engine. It uses no filters, masks, `clipPath`, or `<style>`/class-based styling. Keep it that way: the overlay must render on the lowest common denominator since a missing binding is essential information.
+
 ## Reference Documentation
 
 - QT5 SVG rendering: https://doc.qt.io/qt-5/svgrendering.html

@@ -121,7 +121,7 @@ const GLOBAL_KEYS = {
  *
  * Generates an SVG data URI icon for the black box selector action.
  */
-export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings): string {
+export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings, bindingMissing = false): string {
   const { mode, blackBox } = settings;
 
   let iconSvg: string;
@@ -145,7 +145,7 @@ export function generateBlackBoxSelectorSvg(settings: BlackBoxSelectorSettings):
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -195,10 +195,12 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
     ev: IDeckWillAppearEvent<BlackBoxSelectorSettings> | IDeckDidReceiveSettingsEvent<BlackBoxSelectorSettings>,
     settings: BlackBoxSelectorSettings,
   ): Promise<void> {
-    const svgDataUri = generateBlackBoxSelectorSvg(settings);
+    const svgDataUri = generateBlackBoxSelectorSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings)));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateBlackBoxSelectorSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateBlackBoxSelectorSvg(settings, this.isBindingMissing(this.resolveSettingKey(settings))),
+    );
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<BlackBoxSelectorSettings>): Promise<void> {

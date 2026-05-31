@@ -488,6 +488,7 @@ export function generateReplayControlSvg(
   isPlaying?: boolean,
   replaySpeed?: number,
   replaySlowMotion?: boolean,
+  bindingMissing = false,
 ): string {
   const { mode } = settings;
 
@@ -608,7 +609,7 @@ export function generateReplayControlSvg(
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -1910,10 +1911,19 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
     const isPlaying = this.shouldShowPause(ev.action.id);
     const speed = this.replaySpeed.get(ev.action.id);
     const slowMo = this.replaySlowMotion.get(ev.action.id);
-    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo);
+    const bindingMissing = this.isBindingMissing(KEYSTROKE_MODES[settings.mode]);
+    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo, bindingMissing);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateReplayControlSvg(settings, isPlaying, speed, slowMo));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateReplayControlSvg(
+        settings,
+        isPlaying,
+        speed,
+        slowMo,
+        this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
+      ),
+    );
   }
 
   private updateAllTelemetryDisplays(): void {
@@ -1938,8 +1948,17 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
     this.lastState.set(contextId, stateKey);
 
-    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo);
+    const bindingMissing = this.isBindingMissing(KEYSTROKE_MODES[settings.mode]);
+    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo, bindingMissing);
     await this.updateKeyImage(contextId, svgDataUri);
-    this.setRegenerateCallback(contextId, () => generateReplayControlSvg(settings, isPlaying, speed, slowMo));
+    this.setRegenerateCallback(contextId, () =>
+      generateReplayControlSvg(
+        settings,
+        isPlaying,
+        speed,
+        slowMo,
+        this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
+      ),
+    );
   }
 }

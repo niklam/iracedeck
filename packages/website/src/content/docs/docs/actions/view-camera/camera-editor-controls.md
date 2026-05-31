@@ -19,6 +19,7 @@ Open the iRacing camera editor tool.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+F12`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Toggle the camera editor's key acceleration mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+P`
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Toggle the key 10x multiplier mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+P`
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Toggle the parabolic microphone mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+O`
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Step through the available position types.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+N`
 - **Telemetry-aware icon:** No
@@ -99,6 +104,7 @@ Step through the available aim types.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+M`
 - **Telemetry-aware icon:** No
@@ -115,6 +121,7 @@ Mark the start of an acquire sequence.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Q`
 - **Telemetry-aware icon:** No
@@ -131,6 +138,7 @@ Mark the end of an acquire sequence.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Q`
 - **Telemetry-aware icon:** No
@@ -147,6 +155,7 @@ Toggle temporary edits mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+L`
 - **Telemetry-aware icon:** No
@@ -163,6 +172,7 @@ Toggle the camera dampening setting.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+N`
 - **Telemetry-aware icon:** No
@@ -179,6 +189,7 @@ Toggle the zoom mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+M`
 - **Telemetry-aware icon:** No
@@ -195,6 +206,7 @@ Toggle the beyond-fence camera mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+B`
 - **Telemetry-aware icon:** No
@@ -211,6 +223,7 @@ Toggle the in-cockpit camera mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+B`
 - **Telemetry-aware icon:** No
@@ -227,6 +240,7 @@ Toggle mouse navigation mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Z`
 - **Telemetry-aware icon:** No
@@ -243,6 +257,7 @@ Toggle the pitch gyro mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+J`
 - **Telemetry-aware icon:** No
@@ -259,6 +274,7 @@ Toggle the roll gyro mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+J`
 - **Telemetry-aware icon:** No
@@ -275,6 +291,7 @@ Toggle the limit-shot-range mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+O`
 - **Telemetry-aware icon:** No
@@ -291,6 +308,7 @@ Toggle the show camera overlay.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+Q`
 - **Telemetry-aware icon:** No
@@ -307,6 +325,7 @@ Toggle shot selection mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+T`
 - **Telemetry-aware icon:** No
@@ -323,6 +342,7 @@ Toggle manual focus mode.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+F`
 - **Telemetry-aware icon:** No
@@ -339,6 +359,7 @@ Insert a new camera at the current position.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Ctrl+Insert`
 - **Telemetry-aware icon:** No
@@ -355,6 +376,7 @@ Remove the current camera.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Ctrl+Delete`
 - **Telemetry-aware icon:** No
@@ -371,6 +393,7 @@ Copy the current camera to the clipboard.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Ctrl+C`
 - **Telemetry-aware icon:** No
@@ -387,6 +410,7 @@ Paste the clipboard camera over the current one.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Ctrl+V`
 - **Telemetry-aware icon:** No
@@ -403,6 +427,7 @@ Copy the current camera group to the clipboard.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+C`
 - **Telemetry-aware icon:** No
@@ -419,6 +444,7 @@ Paste the clipboard camera group.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+V`
 - **Telemetry-aware icon:** No
@@ -435,6 +461,7 @@ Save the current camera configuration to the track.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+F11`
 - **Telemetry-aware icon:** No
@@ -451,6 +478,7 @@ Load a previously saved track camera.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Ctrl+F11`
 - **Telemetry-aware icon:** No
@@ -467,6 +495,7 @@ Save the current camera configuration to the car.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+F11`
 - **Telemetry-aware icon:** No
@@ -483,6 +512,7 @@ Load a previously saved car camera.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Alt+F11`
 - **Telemetry-aware icon:** No

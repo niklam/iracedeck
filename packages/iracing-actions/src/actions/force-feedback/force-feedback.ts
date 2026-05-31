@@ -135,7 +135,7 @@ type ForceFeedbackSettings = z.infer<typeof ForceFeedbackSettings>;
  *
  * Generates an SVG data URI icon for the force feedback action.
  */
-export function generateForceFeedbackSvg(settings: ForceFeedbackSettings): string {
+export function generateForceFeedbackSvg(settings: ForceFeedbackSettings, bindingMissing = false): string {
   const { mode, direction } = settings;
 
   const svgEntry = FORCE_FEEDBACK_SVGS[mode];
@@ -157,7 +157,7 @@ export function generateForceFeedbackSvg(settings: ForceFeedbackSettings): strin
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg as string, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg as string, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -260,9 +260,15 @@ export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSetti
     ev: IDeckWillAppearEvent<ForceFeedbackSettings> | IDeckDidReceiveSettingsEvent<ForceFeedbackSettings>,
     settings: ForceFeedbackSettings,
   ): Promise<void> {
-    const svgDataUri = generateForceFeedbackSvg(settings);
+    const activeKey = this.resolveGlobalKey(settings.mode, settings.direction);
+    const svgDataUri = generateForceFeedbackSvg(settings, this.isBindingMissing(activeKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateForceFeedbackSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateForceFeedbackSvg(
+        settings,
+        this.isBindingMissing(this.resolveGlobalKey(settings.mode, settings.direction)),
+      ),
+    );
   }
 }

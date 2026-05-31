@@ -218,6 +218,8 @@ Always include both scripts in PI HTML files:
 
 Persistence is by stable device id, not by enumeration index, so unplugging or reordering devices can't silently repoint the selection at a different device. When a saved id is no longer present in the current list, the component falls back to System Default and writes that fallback back through the bound setting.
 
+**`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally.
+
 **Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists.
 
 ### sdpi-components Library
@@ -400,3 +402,19 @@ override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
   }
 }
 ```
+
+## Per-Mode Communication Method & Binding Status (#612)
+
+Every action mode talks to iRacing through exactly one of three methods — **API** (`getCommands().*`), **key binding** (`tapBinding`/`holdBinding`), or **chat** (`getCommands().chat.sendMessage("#…")`). This is formalized in a per-`(action, mode)` catalog and surfaced in the PI (a status line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
+
+When adding or modifying an action, keep these in sync:
+
+1. **Catalog** — add/update the action's entry in `packages/iracing-actions/src/actions/comms-catalog.ts` (one `CommDescriptor` per mode: `api` / `chat`, or a keybind with a constant key, a `keyBy` a secondary setting, multiple keys, or no binding for a fixed key). Use the `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers. Run `pnpm generate:action-comms` to regenerate `data/action-comms.json`. A freshness test + a cross-check (every keybind key must exist in `key-bindings.json`) guard correctness.
+2. **PI status line** — add the shared component under the Mode `<sdpi-item>` in the action's `.ejs`:
+   ```ejs
+   <% var __comms = require('./data/action-comms.json')['<action-name>']; %>
+   <ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+   ```
+   Use `<%=` (HTML-escaped) for the `comms` attribute, never `<%-`. Display-only / internal actions (session-info, telemetry-display, pit-crew) get no line and no catalog entry.
+3. **Icon overlay** — for keybind modes, compute the missing-binding flag **per button context** with the base-class `this.isBindingMissing(<key(s) for this mode's settings>)` — NOT the shared `isActiveBindingMissing()`, which bleeds one button's state onto every button of the action. Reuse the same key expression the action passes to `setActiveBinding`. Pass `bindingMissing` into the icon generator: `assembleIcon({ …, bindingMissing })` for static icons, or `applyBindingWarning(content)` for dynamic-template icons. Compute it fresh inside regenerate-callback closures so a live binding change updates the icon.
+4. **Docs** — state the per-mode method in the action docs and on the website action page (see `action-documentation.md` and `website-action-docs.md`).

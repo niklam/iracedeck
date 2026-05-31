@@ -23,6 +23,7 @@ Send a user-defined chat message. Supports [template variables](/docs/features/t
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — when the button text or message template references live variables (e.g., `{{Speed}}`), the button re-renders whenever those variables change
@@ -53,6 +54,7 @@ Send one of iRacing's 15 built-in chat macros.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -73,6 +75,7 @@ Reply to the most recent chat message using iRacing's reply command.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -89,6 +92,7 @@ Send a private whisper to a specific driver. Whisper has no SDK command in iRaci
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — Whisper has no default iRacing hotkey, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
@@ -105,6 +109,7 @@ Show or hide the chat window. iRacing's `Text Chat Toggle` control has no SDK co
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding — `Text Chat Toggle` has no default iRacing hotkey, so you must bind a key in iRacing's *Options → Controls → Text Chat Toggle* and the matching key in the Property Inspector
 - **Telemetry-aware icon:** No — iRacing does not expose chat-window state via telemetry, so the button cannot reflect whether chat is currently visible
@@ -121,6 +126,7 @@ Open the chat input window without sending anything.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -137,6 +143,7 @@ Cancel or close the chat window.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

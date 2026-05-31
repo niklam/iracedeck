@@ -22,6 +22,13 @@
 			<ird-range-input setting="fontSize" min="5" max="36" step="1" default="14" showlabels></ird-range-input>
 		</sdpi-item>
 
+		<sdpi-item id="position-type-settings" label="Position Type" class="hidden">
+			<sdpi-select setting="positionType" default="class">
+				<option value="class">Class</option>
+				<option value="overall">Overall</option>
+			</sdpi-select>
+		</sdpi-item>
+
 		<sdpi-item id="position-settings" label="Show Total Cars" class="hidden">
 			<sdpi-checkbox setting="positionShowTotal"></sdpi-checkbox>
 		</sdpi-item>
@@ -60,10 +67,14 @@
 			}
 
 			function updateVisibility(mode) {
+				const positionTypeSettings = document.getElementById("position-type-settings");
 				const positionSettings = document.getElementById("position-settings");
 				const fuelSettings = document.getElementById("fuel-settings");
 				const flagsSettings = document.getElementById("flags-settings");
 
+				if (positionTypeSettings) {
+					positionTypeSettings.classList.toggle("hidden", mode !== "position");
+				}
 				if (positionSettings) {
 					positionSettings.classList.toggle("hidden", mode !== "position");
 				}

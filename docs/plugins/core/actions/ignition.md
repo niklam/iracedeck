@@ -9,6 +9,7 @@ Toggles the car's ignition.
 | Action ID | `com.iracedeck.sd.core.ignition` |
 | Type | Button |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

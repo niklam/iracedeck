@@ -314,6 +314,21 @@ Templates not in the map (e.g., `settings`, hidden sub-actions) will not show a 
 
 **Maintenance:** When adding a new action, add its entry to `docs-urls.json` with the correct category and action name.
 
+## Binding-status line — `ird-binding-status` (#612)
+
+Each action's PI shows a per-mode communication/binding status line directly under the Mode selector, via the shared `ird-binding-status` web component (in `@iracedeck/pi-components`). Place it immediately after the mode `<sdpi-item>`:
+
+```ejs
+<% var __comms = require('./data/action-comms.json')['<action-name>']; %>
+<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+```
+
+- `comms` — the action's entry from the generated `data/action-comms.json` (mode → `{ method, binding? }`). **Always `<%=` (HTML-escaped), never `<%-`** — the browser decodes the escaped attribute back to valid JSON on read, and `<%-` would break the attribute or allow injection.
+- `mode-setting` — the action setting whose value is the current mode (read from `_meta.modeSetting`).
+- The component reads the live mode, any `keyBy` secondary setting, and the binding values **directly from the PI DOM** (the `sdpi-select`s and the `ird-key-binding` inputs in the *Related Key Bindings* accordion) with change/input events + a polling fallback — the same approach as the conditional-visibility pattern, because the sdpi settings-subscription hooks only deliver the initial value to a read-only observer. It falls back to a control's `default` attribute when its value is empty (untouched controls report `""`).
+- For keybind modes it shows the keyboard/SimHub/none state, polls SimHub reachability for a live "SimHub not connected" line, and the "set it here" link opens + scrolls the *Related Key Bindings* accordion (located by `data-accordion-id="Related Key Bindings"`).
+- Source of the per-mode catalog: `comms-catalog.ts` → `pnpm generate:action-comms` → `data/action-comms.json` (guarded by a freshness test + a key cross-check against `key-bindings.json`). See `.claude/rules/stream-deck-actions.md` for the full per-action wiring (catalog + status line + icon overlay).
+
 ## Build Output
 
 - Templates in `packages/iracing-actions/src/actions/<name>/<name>.ejs` compile to each plugin's `com.iracedeck.sd.{name}.sdPlugin/ui/<name>.html` (output paths are flat — nesting in the source tree doesn't affect the output filename)

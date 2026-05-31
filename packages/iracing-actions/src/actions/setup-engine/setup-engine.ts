@@ -130,7 +130,7 @@ type SetupEngineSettings = z.infer<typeof SetupEngineSettings>;
  * Generates an SVG data URI icon for the setup engine action's adjustment sub-modes.
  * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
-export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
+export function generateSetupEngineSvg(settings: SetupEngineSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     return generateSetupViewSvg({
       viewId: settings.setting,
@@ -139,6 +139,7 @@ export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -156,7 +157,7 @@ export function generateSetupEngineSvg(settings: SetupEngineSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -319,6 +320,30 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
     await this.tapBinding(settingKey);
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings,
+   *   but only while dual-press is enabled (read-only Views need no binding).
+   * - Adjust modes (all directional here) require the single setting+direction binding.
+   */
+  private computeBindingMissing(settings: SetupEngineSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_ENGINE_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_ENGINE_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(SETUP_ENGINE_GLOBAL_KEYS[`${settings.setting}-${settings.direction}`]);
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupEngineSettings> | IDeckDidReceiveSettingsEvent<SetupEngineSettings>,
     settings: SetupEngineSettings,
@@ -336,6 +361,8 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
   }
 
   private renderIcon(settings: SetupEngineSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -344,10 +371,11 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupEngineSvg(settings);
+    return generateSetupEngineSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -369,6 +397,7 @@ export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings>
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

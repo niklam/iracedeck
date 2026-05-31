@@ -19,6 +19,7 @@ Hold the look-left key while the button is pressed.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Z`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Hold the look-right key while the button is pressed.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `X`
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Hold the look-up key while the button is pressed.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Hold the look-down key while the button is pressed.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No

@@ -9,6 +9,7 @@ Adjusts the iRacing master audio volume.
 | Action ID | `com.iracedeck.sd.core.adjust-master-volume` |
 | Type | +/- |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

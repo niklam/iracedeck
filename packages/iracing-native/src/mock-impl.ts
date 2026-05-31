@@ -4,7 +4,7 @@
  * Provides simulated telemetry data for development and testing on macOS/Linux.
  * Cycles through telemetry snapshots to simulate a car driving around the track.
  */
-import type { BroadcastMsg, IRSDKHeader, VarHeader } from "./defines.js";
+import type { BroadcastMsg, ElevationStatus, IRSDKHeader, VarHeader } from "./defines.js";
 import { MOCK_SESSION_INFO_YAML } from "./mock-data/session-info.js";
 import { MOCK_SNAPSHOTS } from "./mock-data/snapshots.js";
 import { buildTelemetryBuffer, getBufferSize, MOCK_VAR_HEADERS, MOCK_VAR_INDEX_MAP } from "./mock-data/telemetry.js";
@@ -125,6 +125,16 @@ export class IRacingNativeMock {
     console.debug(`[IRacingNativeMock] setClipboardText("${text}")`);
 
     return true;
+  }
+
+  getElevationStatus(): ElevationStatus {
+    return {
+      selfElevated: false,
+      iracingFound: false,
+      iracingQueryDenied: false,
+      iracingElevated: false,
+      mismatch: false,
+    };
   }
 
   private maybeRotateSnapshot(): void {

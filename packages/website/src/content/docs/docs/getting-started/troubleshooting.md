@@ -15,6 +15,22 @@ If the Elgato Marketplace install doesn't work, try these steps:
 
 iRaceDeck actions require iRacing to be running and connected. When iRacing is not running, buttons may appear disabled or grayed out. Start iRacing and the buttons will activate automatically.
 
+## Buttons do nothing in iRacing (but the plugin looks connected)
+
+If iRaceDeck appears connected — telemetry-driven features like the Race Engineer still work — but **no button affects iRacing** (black box, camera, pit service, chat all do nothing), the most common cause is an **Administrator mismatch**:
+
+- iRacing is running **as Administrator**, and
+- the Stream Deck software (and therefore iRaceDeck) is **not**.
+
+Windows blocks a non-elevated program from sending input or commands to an elevated one, so iRaceDeck's button presses are silently dropped even though it can still read iRacing's telemetry. When iRaceDeck detects this, it shows a ⚠️ warning banner at the top of every action's settings (Property Inspector).
+
+**Fix:** run both at the same level. Either:
+
+- Run the **Stream Deck software as Administrator** (right-click → Run as administrator), or
+- Run **iRacing without Administrator**.
+
+Then restart the one you changed. The warning clears automatically once the levels match.
+
 ## Keyboard shortcuts not working
 
 If an action uses keyboard shortcuts (like black box selection), make sure:
@@ -44,6 +60,20 @@ If you hit this, increase the three delays under **Common Settings → Chat** in
 - **Enter → Close delay** (default 200 ms) — the wait after pressing Enter before closing the chat window. Raise this if the chat window keeps focus after you send.
 
 All accept 0–2000 ms. The Enter keypress is also held briefly so it registers reliably. Changes take effect immediately — no restart needed.
+
+## Capturing logs for support
+
+iRaceDeck logs at the **info** level by default, which keeps the log file focused on the events that matter and avoids bloating it with internal detail. When you're troubleshooting a problem — or a maintainer asks for a log — enable verbose debug logging to capture the detail needed to diagnose it:
+
+1. Open any iRaceDeck action's Property Inspector and expand **Common Settings**.
+2. Under **Diagnostics**, turn on **Enable debug logging**. It takes effect immediately — no restart needed.
+3. Reproduce the issue, then attach the plugin's log file to your report.
+4. Turn the setting back off afterward to keep your logs clean.
+
+Where the log file lives:
+
+- **Stream Deck (Elgato)**: in the plugin's `logs` folder under `%APPDATA%\Elgato\StreamDeck\Plugins\com.iracedeck.sd.core.sdPlugin\`.
+- **Stream Dock (Mirabox)**: in the plugin's `log` folder under `%APPDATA%\HotSpot\StreamDock\plugins\com.iracedeck.sd.core.sdPlugin\`, named by date (e.g. `2026.5.31.log`).
 
 ## Need more help?
 

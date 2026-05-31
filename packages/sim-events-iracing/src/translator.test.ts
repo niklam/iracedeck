@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetSimEventsIracing,
   getLatestTelemetry,
+  getLivePosition,
   getRaceStartConditions,
   getSessionStartConditions,
   initializeSimEventsIracing,
@@ -156,6 +157,60 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ OnPitRoad: true }));
       controller.__tick(null, false);
       expect(getLatestTelemetry()).toBeNull();
+    });
+  });
+
+  describe("getLivePosition", () => {
+    // Multi-class field: car0 (cls10, player), car1 (cls20), car2 (cls10), car3 (cls20).
+    // Lap scores put the overall order at car1 > car2 > car0 > car3.
+    const multiClassSessionInfo = {
+      DriverInfo: {
+        DriverCarIdx: 0,
+        Drivers: [
+          { CarIdx: 0, CarClassID: 10 },
+          { CarIdx: 1, CarClassID: 20 },
+          { CarIdx: 2, CarClassID: 10 },
+          { CarIdx: 3, CarClassID: 20 },
+        ],
+      },
+    };
+
+    function multiClassTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
+      return telemetry({
+        CarIdxLapCompleted: [10, 10, 10, 9],
+        CarIdxLapDistPct: [0.0, 0.5, 0.2, 0.5],
+        CarIdxClass: [10, 20, 10, 20],
+        ...overrides,
+      });
+    }
+
+    it("derives class position from the live order, not the lagging official field", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(multiClassSessionInfo);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Official PlayerCarClassPosition is deliberately stale (9) to prove the
+      // derived value wins.
+      controller.__tick(multiClassTelemetry({ PlayerCarClassPosition: 9 }));
+
+      const live = getLivePosition();
+
+      // Overall: car1 P1, car2 P2, car0 P3, car3 P4 → player (car0) overall P3.
+      // Class 10 ahead of the player: only car2 → class P2.
+      expect(live).not.toBeNull();
+      expect(live?.position).toBe(3);
+      expect(live?.classPosition).toBe(2);
+      expect(live?.isMultiClass).toBe(true);
+    });
+
+    it("falls back to PlayerCarClassPosition when CarIdxClass is unavailable", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(multiClassSessionInfo);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(multiClassTelemetry({ CarIdxClass: undefined, PlayerCarClassPosition: 5 }));
+
+      expect(getLivePosition()?.classPosition).toBe(5);
     });
   });
 

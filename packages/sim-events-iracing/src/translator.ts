@@ -27,7 +27,14 @@ import type {
   SimEventName,
 } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import { CarLeftRight, type SDKController, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import {
+  CarLeftRight,
+  classPositionFromOrder,
+  type SDKController,
+  SessionState,
+  type TelemetryData,
+  TrkLoc,
+} from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
@@ -508,7 +515,13 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
 export type LivePosition = {
   /** Live overall race position (1-based) from the calculated order. */
   position: number;
-  /** Live class position (1-based) from `PlayerCarClassPosition`; 0 when unavailable. */
+  /**
+   * Live class position (1-based) derived from the same frozen overall order as
+   * {@link position} — the count of same-class cars (`CarIdxClass`) ranked ahead,
+   * +1 (see `classPositionFromOrder`). Falls back to the iRacing-authoritative
+   * `PlayerCarClassPosition` when the order-based value can't be derived (no
+   * `CarIdxClass`). `0` when unavailable. Updates continuously, not only at S/F.
+   */
   classPosition: number;
   /** Whether the session has more than one car class on track. */
   isMultiClass: boolean;
@@ -525,17 +538,23 @@ export function getLivePosition(): LivePosition | null {
 
   // Frozen positions (issue #603): finished cars that left the world stay
   // counted at their finishing rank, so the spoken overall position is correct
-  // and stable while leaders peel into the garage. Class position comes from
-  // `PlayerCarClassPosition` (iRacing-authoritative) and needs no freeze.
+  // and stable while leaders peel into the garage.
   const positions = calculateFrozenRacePositions(instance.state, telemetry);
   const position = positions[playerCarIdx] ?? 0;
 
   if (position <= 0) return null;
 
+  // Class position is derived from the SAME frozen order (count same-class cars
+  // ahead), so it updates continuously like the overall position instead of only
+  // at the start/finish line. Falls back to iRacing's official
+  // `PlayerCarClassPosition` when `CarIdxClass` isn't available to derive from.
+  const derivedClassPosition = classPositionFromOrder(positions, telemetry.CarIdxClass, playerCarIdx);
   const classPosition =
-    typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
-      ? telemetry.PlayerCarClassPosition
-      : 0;
+    derivedClassPosition > 0
+      ? derivedClassPosition
+      : typeof telemetry.PlayerCarClassPosition === "number" && telemetry.PlayerCarClassPosition > 0
+        ? telemetry.PlayerCarClassPosition
+        : 0;
 
   return { position, classPosition, isMultiClass: resolveIsMultiClass(sessionInfo) === true };
 }

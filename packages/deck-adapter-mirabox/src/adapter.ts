@@ -14,8 +14,9 @@ import type {
   IDeckWillDisappearEvent,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
-import { createConsoleLogger } from "@iracedeck/logger";
+import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 
+import { FileSink, withFileSink } from "./file-logger.js";
 import { parseConnectionParams, VSDClient, type VSDEvent } from "./vsd-client.js";
 
 /** Valid controller types for VSD/Elgato devices. */
@@ -125,9 +126,46 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   /** Track controller type per context from willAppear events */
   private readonly contextControllers = new Map<string, ControllerType>();
 
-  constructor(logger?: ILogger) {
-    const log = logger ?? createConsoleLogger("VSD");
+  /**
+   * Shared, runtime-mutable minimum log level (issue #609). `createConsoleLogger`
+   * captures its level at creation time, so to honour the "Enable debug logging"
+   * toggle without recreating every scoped logger, loggers built here read this
+   * field live via a resolver. `setLogLevel` flips it; the change takes effect on
+   * the next log call from any logger this adapter created. Default: Info.
+   */
+  private logLevel: LogLevel = LogLevel.Info;
+
+  /**
+   * When a log directory is supplied, loggers created by this adapter also tee
+   * to `<dir>/<YYYY.M.D>.log` (issue #609). The Stream Dock host discards plugin
+   * stdout, so without this the debug toggle would have nothing to capture for
+   * support.
+   */
+  private fileSink: FileSink | null = null;
+
+  constructor(logger?: ILogger, logDir?: string) {
+    this.fileSink = logDir ? new FileSink(logDir) : null;
+    const log = logger ?? this.buildLogger("VSD");
     this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
+  }
+
+  /**
+   * Build a logger for `scope`: a console logger reading the live level,
+   * additionally teed to the per-day log file when file logging is enabled.
+   */
+  private buildLogger(scope: string): ILogger {
+    const base = createConsoleLogger(scope, () => this.logLevel);
+
+    return this.fileSink ? withFileSink(base, scope, () => this.logLevel, this.fileSink) : base;
+  }
+
+  /**
+   * Set the minimum log level applied to every logger this adapter created
+   * (including its own and all action scopes). Runtime-mutable so the PI
+   * "Enable debug logging" toggle takes effect without a restart (issue #609).
+   */
+  setLogLevel(level: LogLevel): void {
+    this.logLevel = level;
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
@@ -176,7 +214,8 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   createLogger(scope: string): ILogger {
-    return createConsoleLogger(scope);
+    // Resolver (not a fixed level) so setLogLevel affects already-created loggers.
+    return this.buildLogger(scope);
   }
 
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {

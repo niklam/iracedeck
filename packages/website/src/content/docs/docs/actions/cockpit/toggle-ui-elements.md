@@ -19,6 +19,7 @@ Toggle the dashboard information box.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `D`
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Toggle the speed, gear, and pedal inputs display.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `P`
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Toggle the radio communication display.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `O`
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Toggle the FPS and network statistics display.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `F`
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Toggle the weather radar overlay.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+Alt+R`
 - **Telemetry-aware icon:** No
@@ -99,6 +104,7 @@ Toggle the virtual mirror.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+M`
 - **Telemetry-aware icon:** No
@@ -115,6 +121,7 @@ Enter or exit UI edit mode for repositioning overlays.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Alt+K`
 - **Telemetry-aware icon:** No
@@ -135,6 +142,7 @@ The driving line must first be enabled in iRacing's options (Settings → Drivin
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+L`
 - **Telemetry-aware icon:** No
@@ -155,6 +163,7 @@ Toggle the reference car display.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+C`
 - **Telemetry-aware icon:** No
@@ -171,6 +180,7 @@ Toggle the replay user interface controls. This mode uses the iRacing SDK camera
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

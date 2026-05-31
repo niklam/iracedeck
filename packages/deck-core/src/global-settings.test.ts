@@ -546,3 +546,29 @@ describe("chatEnterToCloseDelayMs (issue #589)", () => {
     expect(() => GlobalSettingsSchema.parse({ chatEnterToCloseDelayMs: 2001 })).toThrow();
   });
 });
+
+describe("debugLogging (issue #609)", () => {
+  it("defaults to false (debug logging is opt-in)", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+
+    expect(parsed.debugLogging).toBe(false);
+  });
+
+  it("coerces the string 'true' from the Property Inspector checkbox", () => {
+    const parsed = GlobalSettingsSchema.parse({ debugLogging: "true" }) as Record<string, unknown>;
+
+    expect(parsed.debugLogging).toBe(true);
+  });
+
+  it("coerces the string 'false' to false", () => {
+    const parsed = GlobalSettingsSchema.parse({ debugLogging: "false" }) as Record<string, unknown>;
+
+    expect(parsed.debugLogging).toBe(false);
+  });
+
+  it("accepts a real boolean true", () => {
+    const parsed = GlobalSettingsSchema.parse({ debugLogging: true }) as Record<string, unknown>;
+
+    expect(parsed.debugLogging).toBe(true);
+  });
+});

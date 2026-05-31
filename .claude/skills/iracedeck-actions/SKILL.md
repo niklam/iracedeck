@@ -25,10 +25,20 @@ Each action entry:
 }
 ```
 
+## Communication method (per mode) — `action-comms.json` (#612)
+
+Every action mode talks to iRacing through one of three methods, formalized per-`(action, mode)` in `packages/iracing-actions/src/actions/data/action-comms.json` (generated from `comms-catalog.ts`):
+
+- **`api`** — iRacing API / SDK command (`getCommands().*`); most reliable, no binding needed.
+- **`keybind`** — a configurable key binding (keyboard OR SimHub role); requires the binding to be set. The descriptor's `binding` carries a constant `key`, a `keyBy` a secondary setting, multiple `keys`, or is absent for a fixed key (no user binding).
+- **`chat`** — an iRacing chat/text command, e.g. a `#…` pit macro.
+
+This is the **authoritative source for a mode's communication method** when answering "how does action X mode Y talk to iRacing?" or labeling docs. An action can mix all three across its modes (e.g. Fuel Service). Display-only / internal actions (session-info, telemetry-display, pit-crew) and the PI-less camera-controls are absent from the catalog. The method surfaces in the PI (an `ird-binding-status` line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
+
 ## How to Use
 
 When asked about actions or controls:
-1. Read `docs/reference/actions.json` and search by action name, mode value, or category
+1. Read `docs/reference/actions.json` and search by action name, mode value, or category (and `data/action-comms.json` for each mode's communication method)
 2. Report: action name, ID, file, modes with labels
 3. For implementation details, check the source at `packages/iracing-actions/src/actions/{action-name}/{action-name}.ts`
 4. For PI templates, check `packages/iracing-actions/src/actions/{action-name}/{action-name}.ejs`

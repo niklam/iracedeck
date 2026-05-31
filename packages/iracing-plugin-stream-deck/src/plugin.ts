@@ -41,7 +41,10 @@ import {
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import {
+  clearWarning,
   deleteGlobalSettings,
+  ELEVATION_WARNING_ID,
+  evaluateElevationWarning,
   getController,
   getGlobalSettings,
   initAppMonitor,
@@ -56,6 +59,7 @@ import {
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  setWarning,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -158,8 +162,17 @@ initPluginConfig(pluginConfig);
 // Create the Elgato platform adapter
 const adapter = new ElgatoPlatformAdapter(streamDeck);
 
-// Enable debug logging
-streamDeck.logger.setLevel("debug");
+// Default to info-level logging in production; the user opts into verbose
+// debug logging from the PI "Enable debug logging" toggle without a rebuild
+// (issue #609). streamDeck.logger.setLevel is runtime-mutable, so re-apply on
+// every settings change. The initial call reads the schema-default cache
+// (debugLogging=false → info); the host echo re-fires the listener with the
+// persisted value once global settings load.
+const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void => {
+  streamDeck.logger.setLevel(settings.debugLogging ? "debug" : "info");
+};
+onGlobalSettingsChange(applyDebugLogging);
+applyDebugLogging(getGlobalSettings());
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
@@ -707,6 +720,42 @@ initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
 
 // Initialize app monitor for iRacing process detection
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
+
+// Detect an Administrator/integrity mismatch with iRacing and surface it as a
+// PI warning banner (issue #610). When iRacing runs elevated and the plugin
+// does not, Windows UIPI silently drops every outbound command while telemetry
+// keeps flowing — so nothing else signals the cause. The probe runs once per
+// connection (re-armed on reconnect) and is purely diagnostic: it never gates
+// or disables the plugin.
+const elevationLogger = adapter.createLogger("Elevation");
+let elevationWasConnected = false;
+let elevationChecked = false;
+
+getController().subscribe("elevation-check", (_telemetry, isConnected) => {
+  if (isConnected && !elevationWasConnected && !elevationChecked) {
+    elevationChecked = true;
+
+    const status = native.getElevationStatus();
+    const warning = evaluateElevationWarning(status);
+
+    if (warning) {
+      elevationLogger.warn(
+        "iRacing appears to run at a higher integrity level than the plugin; outbound commands will be silently dropped",
+      );
+      elevationLogger.debug(`Elevation status: ${JSON.stringify(status)}`);
+      setWarning(warning.id, warning.level, warning.message);
+    } else {
+      clearWarning(ELEVATION_WARNING_ID);
+    }
+  }
+
+  if (isConnected) {
+    elevationWasConnected = true;
+  } else {
+    elevationWasConnected = false;
+    elevationChecked = false;
+  }
+});
 
 // Connect to the Stream Deck
 adapter.connect();

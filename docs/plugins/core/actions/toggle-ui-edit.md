@@ -9,6 +9,7 @@ Toggles UI edit mode for repositioning on-screen elements.
 | Action ID | `com.iracedeck.sd.core.toggle-ui-edit` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

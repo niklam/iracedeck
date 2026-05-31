@@ -32,6 +32,7 @@ Description of what this mode does.
 
 #### Details
 
+- **Method:** `iRacing API`, `Key binding`, or `Chat command`
 - **Dial:** Describe rotation behavior, or `No rotation support`
 - **Default binding:** `` `Key` ``, or `No default key binding`, or `No keyboard binding`
 - **Telemetry-aware icon:** `Yes` (with a brief note on what updates), or `No`
@@ -48,6 +49,7 @@ Description of what this mode does.
 
 #### Details
 
+- **Method:** `iRacing API`, `Key binding`, or `Chat command`
 - **Dial:** Describe rotation behavior, or `No rotation support`
 - **Default binding:** `` `Key` ``, or `No default key binding`, or `No keyboard binding`
 - **Telemetry-aware icon:** `Yes` (with a brief note on what updates), or `No`
@@ -74,16 +76,20 @@ Description including default value.
 
 Each mode section must include a `#### Details` subheader containing a bullet list with the following items, in order:
 
-1. **Dial:** rotation behavior, or `No rotation support`
-2. **Default binding:** one of:
+1. **Method:** how the mode talks to iRacing — one of (issue #612):
+   - `iRacing API` — sends an iRacing SDK/broadcast command (`getCommands().*`). Most reliable, no binding needed.
+   - `Key binding` — triggers a configurable key binding (keyboard OR SimHub role) via `tapBinding`/`holdBinding`. Requires the binding to be set.
+   - `Chat command` — types an iRacing chat/text command, e.g. a `#…` pit macro, via `getCommands().chat.sendMessage(...)`.
+2. **Dial:** rotation behavior, or `No rotation support`
+3. **Default binding:** one of:
    - `` `Key` `` — action ships with a default keyboard binding (e.g., `` `F1` ``, `` `Ctrl+Shift+R` ``)
    - `No default key binding` — action uses a configurable keyboard shortcut but ships without a default; user must set both the iRacing binding and the action binding
-   - `No keyboard binding` — mode does not use the keyboard at all (typically SDK-only)
-3. **Telemetry-aware icon:** `Yes` (followed by a short note on what the icon reflects — e.g., "shows the currently selected pit service compound") or `No`. A mode is telemetry-aware when its icon re-renders in response to live `TelemetryData` updates; a mode that only renders a static icon on settings change is `No`.
+   - `No keyboard binding` — mode does not use the keyboard at all (typically SDK or chat). Use this for `iRacing API` and `Chat command` modes.
+4. **Telemetry-aware icon:** `Yes` (followed by a short note on what the icon reflects — e.g., "shows the currently selected pit service compound") or `No`. A mode is telemetry-aware when its icon re-renders in response to live `TelemetryData` updates; a mode that only renders a static icon on settings change is `No`.
 
 Trailing periods are omitted from each Details bullet value (the bullet list is terse metadata, not prose).
 
-The Details block is mode-specific: within a single action, different modes may use SDK for some behaviors and keyboard for others, and different modes may or may not react to telemetry. Document each mode as it actually behaves in code — `packages/iracing-actions/src/actions/<action>/<action>.ts` (look for `getCommands()` vs `tapBinding`/`holdBinding`, and whether the mode's icon-generation path subscribes to `sdkController` / reads `TelemetryData`) is the source of truth for how a mode is triggered and whether it is telemetry-aware; `packages/iracing-actions/src/actions/<action>/<action>.ejs` (the `default` attribute on `ird-key-binding`) and `packages/iracing-actions/src/actions/data/key-bindings.json` are the source of truth for default keys.
+The Details block is mode-specific: within a single action, different modes may use SDK for some behaviors, key bindings for others, and chat for others. Document each mode as it actually behaves in code. **The per-mode `Method` is sourced from the generated `packages/iracing-actions/src/actions/data/action-comms.json`** (authored in `comms-catalog.ts`): `"api"` → `iRacing API`, `"keybind"` → `Key binding`, `"chat"` → `Chat command`. The dispatch in `packages/iracing-actions/src/actions/<action>/<action>.ts` (`getCommands().*` vs `tapBinding`/`holdBinding` vs `chat.sendMessage("#…")`, and whether the icon path reads `TelemetryData`) is the underlying source of truth; `packages/iracing-actions/src/actions/<action>/<action>.ejs` (the `default` attribute on `ird-key-binding`) and `packages/iracing-actions/src/actions/data/key-bindings.json` are the source of truth for default keys.
 
 ### Settings block
 

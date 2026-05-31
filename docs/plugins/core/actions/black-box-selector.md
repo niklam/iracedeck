@@ -9,6 +9,7 @@ Cycles through or directly selects iRacing black box screens.
 | Action ID | `com.iracedeck.sd.core.black-box-selector` |
 | Type | Multi-toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | Yes |
 
 ## Behavior

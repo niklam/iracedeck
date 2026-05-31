@@ -39,3 +39,9 @@ export {
   parseSimpleDefault,
   type KeyBindingValue,
 } from "./key-binding-input.js";
+
+// Warnings Banner - global PI warning banner driven by the _warnings global setting
+export { WarningsBanner } from "./warnings.js";
+
+// Binding Status - per-mode communication / binding status line under the Mode selector
+export { BindingStatus } from "./binding-status.js";

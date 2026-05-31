@@ -218,6 +218,26 @@
     }
   })();
 
+  // Inject the global warnings banner (issue #610) at the very top of every
+  // PI body. head-common is included by every PI and loads pi-components.js,
+  // so this covers all current and future Property Inspectors with no
+  // per-template markup. The <ird-warnings> element subscribes to the
+  // `_warnings` global setting and renders itself; it collapses to nothing
+  // when there are no warnings.
+  (function() {
+    function injectWarnings() {
+      if (!document.body) return;
+      if (document.querySelector('ird-warnings')) return;
+      var el = document.createElement('ird-warnings');
+      document.body.insertBefore(el, document.body.firstChild);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', injectWarnings);
+    } else {
+      injectWarnings();
+    }
+  })();
+
   // sdpi-textfield and sdpi-textarea don't reliably apply the default attribute
   // for new action instances. Wait for settings to load, then fill empty fields.
   setTimeout(() => {

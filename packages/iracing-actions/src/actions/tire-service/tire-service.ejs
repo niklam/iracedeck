@@ -15,6 +15,9 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<% var __comms = require('./data/action-comms.json')['tire-service']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
 		<div id="toggle-settings" class="hidden">
 			<sdpi-item label="Operation">
 				<sdpi-radio setting="toggleMode" columns="1">

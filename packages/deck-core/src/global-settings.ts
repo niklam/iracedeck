@@ -67,6 +67,21 @@ export const GlobalSettingsSchema = z
      */
     disableWhenDisconnected: z.boolean().default(true),
     /**
+     * When true, the plugin writes verbose `DEBUG`-level logs; when false it
+     * logs at `INFO` (issue #609). Production default is `false` so a fresh
+     * install doesn't flood its `.log` with debug detail — debug logging is
+     * opt-in for troubleshooting, enabled from the PI "Enable debug logging"
+     * checkbox without a rebuild or reinstall. On Elgato the change takes
+     * effect at runtime (`streamDeck.logger.setLevel` is runtime-mutable); on
+     * Mirabox the adapter holds a shared mutable level its loggers read live,
+     * so a mid-session toggle takes effect on the next log call. Persists
+     * across restarts (it's a global setting). Default: false.
+     */
+    debugLogging: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    /**
      * When true, focus the iRacing window before sending keyboard inputs.
      * Ensures key presses reach iRacing even when another window is in the foreground.
      * Default: false (opt-in)

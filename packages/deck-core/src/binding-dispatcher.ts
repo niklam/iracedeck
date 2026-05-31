@@ -52,6 +52,12 @@ export interface IBindingDispatcher {
 
   /** Check if a binding at the given setting key is ready to execute. */
   isReady(settingKey: string, iRacingConnected: boolean): boolean;
+
+  /**
+   * Whether a binding (keyboard or SimHub role) is configured at the given
+   * setting key — independent of connection/reachability (issue #612).
+   */
+  isConfigured(settingKey: string): boolean;
 }
 
 /**
@@ -209,6 +215,23 @@ class BindingDispatcher implements IBindingDispatcher {
     }
 
     return iRacingConnected;
+  }
+
+  /**
+   * Whether a binding (keyboard OR SimHub role) is configured at the given
+   * setting key — independent of iRacing connection or SimHub reachability.
+   *
+   * This is the source of truth for the binding-missing icon warning (#612):
+   * a keybind mode warns only when NEITHER a keyboard binding nor a SimHub
+   * role is set. SimHub-not-running is a separate (reachability) concern and
+   * does not count as "not configured".
+   *
+   * @param settingKey - The global settings key
+   */
+  isConfigured(settingKey: string): boolean {
+    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+
+    return parseBinding(globalSettings[settingKey]) !== undefined;
   }
 
   // --- Internal helpers ---

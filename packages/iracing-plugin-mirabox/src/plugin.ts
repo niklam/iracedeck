@@ -48,7 +48,10 @@ import {
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
 import { VSDPlatformAdapter } from "@iracedeck/deck-adapter-mirabox";
 import {
+  clearWarning,
   deleteGlobalSettings,
+  ELEVATION_WARNING_ID,
+  evaluateElevationWarning,
   getController,
   getGlobalSettings,
   initAppMonitor,
@@ -63,6 +66,7 @@ import {
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  setWarning,
   updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
@@ -140,6 +144,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { LogLevel } from "@iracedeck/logger";
 import {
   getLivePosition,
   getOvertakeTelemetryGate,
@@ -163,7 +168,24 @@ const pluginConfig: PluginConfig = JSON.parse(readFileSync(join(__binDir, "confi
 initPluginConfig(pluginConfig);
 
 // Create the VSDinside platform adapter
-const adapter = new VSDPlatformAdapter();
+// Tee logs to <plugin>/log/<YYYY.M.D>.log. The Stream Dock host discards plugin
+// stdout, so file logging is what makes the debug toggle actually capture a log
+// for support on Mirabox (issue #609). __binDir is <plugin>/bin, so the log dir
+// sits next to it under the plugin root — the same convention the host's own
+// plugins use.
+const adapter = new VSDPlatformAdapter(undefined, join(__binDir, "..", "log"));
+
+// Default to info-level logging in production; the user opts into verbose
+// debug logging from the PI "Enable debug logging" toggle (issue #609). The
+// adapter holds a shared mutable level its loggers read live, so re-apply on
+// every settings change without recreating loggers. The initial call reads the
+// schema-default cache (debugLogging=false → info); the host echo re-fires the
+// listener with the persisted value once global settings load.
+const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void => {
+  adapter.setLogLevel(settings.debugLogging ? LogLevel.Debug : LogLevel.Info);
+};
+onGlobalSettingsChange(applyDebugLogging);
+applyDebugLogging(getGlobalSettings());
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
@@ -671,6 +693,42 @@ initializeBindingDispatcher(adapter.createLogger("BindingDispatcher"));
 
 // Initialize app monitor for iRacing process detection
 initAppMonitor(adapter, adapter.createLogger("AppMonitor"));
+
+// Detect an Administrator/integrity mismatch with iRacing and surface it as a
+// PI warning banner (issue #610). When iRacing runs elevated and the plugin
+// does not, Windows UIPI silently drops every outbound command while telemetry
+// keeps flowing — so nothing else signals the cause. The probe runs once per
+// connection (re-armed on reconnect) and is purely diagnostic: it never gates
+// or disables the plugin.
+const elevationLogger = adapter.createLogger("Elevation");
+let elevationWasConnected = false;
+let elevationChecked = false;
+
+getController().subscribe("elevation-check", (_telemetry, isConnected) => {
+  if (isConnected && !elevationWasConnected && !elevationChecked) {
+    elevationChecked = true;
+
+    const status = native.getElevationStatus();
+    const warning = evaluateElevationWarning(status);
+
+    if (warning) {
+      elevationLogger.warn(
+        "iRacing appears to run at a higher integrity level than the plugin; outbound commands will be silently dropped",
+      );
+      elevationLogger.debug(`Elevation status: ${JSON.stringify(status)}`);
+      setWarning(warning.id, warning.level, warning.message);
+    } else {
+      clearWarning(ELEVATION_WARNING_ID);
+    }
+  }
+
+  if (isConnected) {
+    elevationWasConnected = true;
+  } else {
+    elevationWasConnected = false;
+    elevationChecked = false;
+  }
+});
 
 // Connect to VSD Craft
 adapter.connect();

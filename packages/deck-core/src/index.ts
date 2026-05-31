@@ -66,6 +66,15 @@ export {
   type TitleOverrides,
 } from "./title-settings.js";
 
+// Binding-missing warning overlay (issue #612, re-exports from icon-composer)
+export {
+  applyBindingWarning,
+  BINDING_WARNING_DIM_OPACITY,
+  BINDING_WARNING_GLYPH,
+  bindingWarningSvg,
+  dimForBindingWarning,
+} from "./title-settings.js";
+
 // Icon base template (re-exports from icon-composer)
 export { generateBorderParts, ICON_BASE_TEMPLATE, extractGraphicContent } from "./icon-base.js";
 
@@ -130,6 +139,26 @@ export {
   resolveActiveRaceEngineerVoice,
   _resetGlobalSettings,
 } from "./global-settings.js";
+
+// Per-mode sim-communication descriptors (issue #612)
+export {
+  isConstantBindingKey,
+  isMultiBindingKey,
+  keybind,
+  keybindBy,
+  keybindFixed,
+  keybindKeys,
+  resolveBindingKey,
+  resolveBindingKeys,
+  type ActionCommMap,
+  type BindingKeyConstant,
+  type BindingKeyMulti,
+  type BindingKeyRef,
+  type BindingKeyResolved,
+  type CommDescriptor,
+  type CommMethod,
+  type CommsCatalog,
+} from "./comm-descriptor.js";
 
 // Unit conversion utilities
 export {
@@ -210,6 +239,8 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
+export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 
 // Dual-press tracker (issue #540)
 export {

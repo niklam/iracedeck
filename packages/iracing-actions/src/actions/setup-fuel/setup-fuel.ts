@@ -134,7 +134,7 @@ type SetupFuelSettings = z.infer<typeof SetupFuelSettings>;
  * Generates an SVG data URI icon for the setup fuel action's adjustment sub-modes.
  * View sub-modes use the shared `generateSetupViewSvg` render path.
  */
-export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
+export function generateSetupFuelSvg(settings: SetupFuelSettings, bindingMissing = false): string {
   if (isViewSetting(settings.setting)) {
     return generateSetupViewSvg({
       viewId: settings.setting,
@@ -143,6 +143,7 @@ export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing,
     });
   }
 
@@ -160,7 +161,7 @@ export function generateSetupFuelSvg(settings: SetupFuelSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -346,6 +347,31 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
     return SETUP_FUEL_GLOBAL_KEYS[setting] ?? null;
   }
 
+  /**
+   * Per-button missing-binding check for the icon warning overlay (#612).
+   * Computed from THIS button's settings (not the shared `activeBindingKeys`).
+   * - View sub-modes require both the adjustment's increase + decrease bindings,
+   *   but only while dual-press is enabled (read-only Views need no binding).
+   * - Directional adjust modes require the single setting+direction binding.
+   * - Non-directional constants require the single setting binding.
+   */
+  private computeBindingMissing(settings: SetupFuelSettings): boolean {
+    if (isViewSetting(settings.setting)) {
+      if (!settings.dualPressEnabled) return false;
+
+      const adjustMode = getAdjustmentModeForView(settings.setting);
+
+      if (!adjustMode) return false;
+
+      return this.isBindingMissing([
+        SETUP_FUEL_GLOBAL_KEYS[`${adjustMode}-increase`],
+        SETUP_FUEL_GLOBAL_KEYS[`${adjustMode}-decrease`],
+      ]);
+    }
+
+    return this.isBindingMissing(this.resolveGlobalKey(settings.setting as SetupFuelAdjustSetting, settings.direction));
+  }
+
   private async updateDisplay(
     ev: IDeckWillAppearEvent<SetupFuelSettings> | IDeckDidReceiveSettingsEvent<SetupFuelSettings>,
     settings: SetupFuelSettings,
@@ -363,6 +389,8 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
   }
 
   private renderIcon(settings: SetupFuelSettings): string {
+    const bindingMissing = this.computeBindingMissing(settings);
+
     if (isViewSetting(settings.setting)) {
       return generateSetupViewSvg({
         viewId: settings.setting,
@@ -371,10 +399,11 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
         colorOverrides: settings.colorOverrides,
         titleOverrides: settings.titleOverrides,
         borderOverrides: settings.borderOverrides,
+        bindingMissing,
       });
     }
 
-    return generateSetupFuelSvg(settings);
+    return generateSetupFuelSvg(settings, bindingMissing);
   }
 
   private async updateDisplayFromTelemetry(
@@ -396,6 +425,7 @@ export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
       colorOverrides: settings.colorOverrides,
       titleOverrides: settings.titleOverrides,
       borderOverrides: settings.borderOverrides,
+      bindingMissing: this.computeBindingMissing(settings),
     });
     await this.updateKeyImage(contextId, svgDataUri);
   }

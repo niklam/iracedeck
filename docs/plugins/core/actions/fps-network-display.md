@@ -9,6 +9,7 @@ Toggles the FPS and network statistics overlay.
 | Action ID | `com.iracedeck.sd.core.fps-network-display` |
 | Type | Toggle |
 | SDK Support | No |
+| Communication Method | Key binding |
 | Encoder Support | No |
 
 ## Behavior

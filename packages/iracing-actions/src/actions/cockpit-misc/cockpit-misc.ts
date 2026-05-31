@@ -122,7 +122,7 @@ type CockpitMiscSettings = z.infer<typeof CockpitMiscSettings>;
  *
  * Generates an SVG data URI icon for the cockpit misc action.
  */
-export function generateCockpitMiscSvg(settings: CockpitMiscSettings): string {
+export function generateCockpitMiscSvg(settings: CockpitMiscSettings, bindingMissing = false): string {
   const { control, direction } = settings;
 
   const svgEntry = COCKPIT_MISC_SVGS[control];
@@ -144,7 +144,7 @@ export function generateCockpitMiscSvg(settings: CockpitMiscSettings): string {
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg as string, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg as string, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -239,9 +239,15 @@ export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings>
     ev: IDeckWillAppearEvent<CockpitMiscSettings> | IDeckDidReceiveSettingsEvent<CockpitMiscSettings>,
     settings: CockpitMiscSettings,
   ): Promise<void> {
-    const svgDataUri = generateCockpitMiscSvg(settings);
+    const activeKey = this.resolveGlobalKey(settings.control, settings.direction);
+    const svgDataUri = generateCockpitMiscSvg(settings, this.isBindingMissing(activeKey));
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateCockpitMiscSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateCockpitMiscSvg(
+        settings,
+        this.isBindingMissing(this.resolveGlobalKey(settings.control, settings.direction)),
+      ),
+    );
   }
 }

@@ -151,6 +151,19 @@ describe("IRacingNativeMock", () => {
     });
   });
 
+  describe("getElevationStatus (mock)", () => {
+    it("reports no mismatch", () => {
+      const mock = new IRacingNativeMock();
+      expect(mock.getElevationStatus()).toEqual({
+        selfElevated: false,
+        iracingFound: false,
+        iracingQueryDenied: false,
+        iracingElevated: false,
+        mismatch: false,
+      });
+    });
+  });
+
   describe("snapshot rotation", () => {
     it("should rotate snapshots after the configured interval", () => {
       // Use a very short rotation interval for testing

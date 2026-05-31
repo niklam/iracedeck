@@ -40,6 +40,7 @@ Toggle traction control on or off.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
@@ -56,6 +57,7 @@ Adjust TC slot 1.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts TC slot 1 (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both TC1 + and TC1 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -73,6 +75,7 @@ Adjust TC slot 2.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts TC slot 2 (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both TC2 + and TC2 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -90,6 +93,7 @@ Adjust TC slot 3.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts TC slot 3 (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both TC3 + and TC3 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
@@ -107,6 +111,7 @@ Adjust TC slot 4.
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** Rotation adjusts TC slot 4 (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
 - **Default binding:** No default key binding — both TC4 + and TC4 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No

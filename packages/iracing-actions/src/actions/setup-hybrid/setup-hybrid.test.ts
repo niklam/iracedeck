@@ -66,6 +66,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     holdBinding = mockHoldBinding;
     releaseBinding = mockReleaseBinding;
     setActiveBinding = vi.fn();
+    isActiveBindingMissing = vi.fn(() => false);
+    isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
@@ -134,9 +136,20 @@ vi.mock("@iracedeck/deck-core", () => ({
     position: "bottom" as const,
     customPosition: 0,
   })),
+  applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      title,
+      bindingMissing,
+    }: {
+      graphicSvg: string;
+      colors: unknown;
+      title: { titleText: string };
+      bindingMissing?: boolean;
+    }) => {
+      const warn = bindingMissing ? "<warn/>" : "";
+      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}${warn}</svg>`);
 
       return `data:image/svg+xml,${encoded}`;
     },

@@ -19,6 +19,7 @@ Toggle video recording on or off via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -35,6 +36,7 @@ Show the video recording timer overlay via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -51,6 +53,7 @@ Enable or disable the video capture subsystem via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -67,6 +70,7 @@ Capture a standard screenshot via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -83,6 +87,7 @@ Capture a high-resolution giant screenshot. This mode uses a keyboard binding be
 
 #### Details
 
+- **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Shift+PrintScreen`
 - **Telemetry-aware icon:** No
@@ -99,6 +104,7 @@ Reload all in-sim textures via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
@@ -115,6 +121,7 @@ Reload only the player's car textures via the iRacing SDK.
 
 #### Details
 
+- **Method:** iRacing API
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No

@@ -200,7 +200,10 @@ type CameraEditorControlsSettings = z.infer<typeof CameraEditorControlsSettings>
  *
  * Generates an SVG data URI icon for the camera editor controls action.
  */
-export function generateCameraEditorControlsSvg(settings: CameraEditorControlsSettings): string {
+export function generateCameraEditorControlsSvg(
+  settings: CameraEditorControlsSettings,
+  bindingMissing = false,
+): string {
   const { control } = settings;
 
   const iconSvg = CONTROL_ICONS[control] || CONTROL_ICONS["open-camera-tool"];
@@ -213,7 +216,7 @@ export function generateCameraEditorControlsSvg(settings: CameraEditorControlsSe
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
 /**
@@ -271,9 +274,17 @@ export class CameraEditorControls extends ConnectionStateAwareAction<CameraEdito
     ev: IDeckWillAppearEvent<CameraEditorControlsSettings> | IDeckDidReceiveSettingsEvent<CameraEditorControlsSettings>,
     settings: CameraEditorControlsSettings,
   ): Promise<void> {
-    const svgDataUri = generateCameraEditorControlsSvg(settings);
+    const svgDataUri = generateCameraEditorControlsSvg(
+      settings,
+      this.isBindingMissing(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]),
+    );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () => generateCameraEditorControlsSvg(settings));
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateCameraEditorControlsSvg(
+        settings,
+        this.isBindingMissing(CAMERA_EDITOR_CONTROLS_GLOBAL_KEYS[settings.control]),
+      ),
+    );
   }
 }

@@ -124,6 +124,9 @@ Global settings are validated with Zod. The schema is in `deck-core/src/global-s
 ```typescript
 const GlobalSettingsSchema = z.object({
   disableWhenDisconnected: z.boolean().default(true),
+  debugLogging: z.union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(false), // opt-in verbose logging (issue #609)
   focusIRacingWindow: z.boolean().default(false),
   simHubHost: z.string().default("127.0.0.1"),
   simHubPort: z.coerce.number().min(1).max(65535).default(8888),
@@ -180,3 +183,26 @@ Global key bindings use flat key names:
 - `blackBoxLapTiming`, `blackBoxFuel`, `lookDirectionLeft`, etc.
 
 Global settings use flat key names (e.g., `blackBoxLapTiming`), not nested paths.
+
+## PI Warning Banners — `_warnings` + `setWarning`/`clearWarning`
+
+Plugin code can surface a banner at the top of every Property Inspector (issue #610). Warnings are persisted in the `_warnings` global setting as a JSON array of `{ id, level, message }` records (`level` is `"info" | "warning" | "error"`). `_warnings` is a passthrough key — no `GlobalSettingsSchema` field is needed (same as `_audioDeviceList`).
+
+Manage warnings from `@iracedeck/deck-core`:
+
+```typescript
+import { setWarning, clearWarning } from "@iracedeck/deck-core";
+
+setWarning("elevation-mismatch", "warning", "…message…"); // upsert, keyed by id
+clearWarning("elevation-mismatch");                         // remove by id
+```
+
+Records are keyed by `id` so independent producers coexist. `setWarning` skips the write when an identical record already exists; `clearWarning` is a no-op when the id is absent. The `ird-warnings` PI web component (auto-injected by `head-common.ejs`) renders the array and prepends a per-level icon — so warning **messages must not start with their own emoji**. Banners are state-driven and not dismissible: a warning persists until its condition clears.
+
+Reference producer: the elevation-mismatch detector wired in both plugins' `plugin.ts` using `evaluateElevationWarning()` + `getElevationStatus()`.
+
+## Binding-configured detection — `isConfigured` / `isBindingMissing` (#612)
+
+A binding key counts as "configured" when **either** a keyboard binding **or** a SimHub role is set — independent of iRacing connection or SimHub reachability. `BindingDispatcher.isConfigured(settingKey)` is the source of truth (it parses the global setting via `parseBinding` + `isSimHubBinding`). `ConnectionStateAwareAction.isBindingMissing(keys: string | string[] | null | undefined)` builds on it: returns true when any required key is unconfigured, false for `null`/empty (api/chat/fixed-key modes). Use `isBindingMissing(<per-context key(s)>)` to drive the per-button missing-binding icon warning — never the shared `isActiveBindingMissing()`/`activeBindingKeys`, which is one value per action-class instance and bleeds across the action's buttons.
+
+The PI `ird-binding-status` line shows the same configured/unconfigured state per mode (reading bindings from the *Related Key Bindings* `ird-key-binding` inputs). A mode bound to a SimHub role is "configured" even when SimHub isn't running — SimHub-not-running is surfaced separately as a live "SimHub not connected" caveat, not as a missing binding.
