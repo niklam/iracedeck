@@ -28,6 +28,7 @@
  * shape changes, update BOTH locations.
  */
 import { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";
+import { fetchSimHubReachable, SIMHUB_POLL_INTERVAL_MS } from "./simhub-probe.js";
 
 type CommMethod = "api" | "keybind" | "chat";
 
@@ -53,7 +54,6 @@ type ActionCommMap = Record<string, CommDescriptor>;
 
 /** Accordion that holds the global key bindings (see global-key-bindings.ejs). */
 const KEY_BINDINGS_ACCORDION_ID = "Related Key Bindings";
-const SIMHUB_REACHABLE_SETTING = "_simHubReachable";
 
 type SettingsCallback = (value: string) => void;
 interface SDPILike {
@@ -104,8 +104,18 @@ export class BindingStatus extends HTMLElement {
   private loadedBindings = new Set<string>();
   /** Secondary settings whose value has arrived at least once. */
   private loadedSecondary = new Set<string>();
-  private simHubReachable = true;
   private initialized = false;
+
+  // SimHub reachability is polled live (browser-side) while a SimHub-bound mode
+  // is shown, so the "SimHub not connected" warning clears as soon as SimHub
+  // comes up — no plugin-maintained setting needed (#612).
+  private simHubHost = "127.0.0.1";
+  private simHubPort = 8888;
+  private simHubProbed = false;
+  private simHubReachable = false;
+  private simHubPollTimer: number | null = null;
+  /** Recomputed each render: does the current display depend on SimHub being up? */
+  private pollSimHub = false;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -201,15 +211,29 @@ export class BindingStatus extends HTMLElement {
       );
     }
 
+    // SimHub host/port — used to build the poll URL. Re-probe on change.
     sdpi.useGlobalSettings(
-      SIMHUB_REACHABLE_SETTING,
+      "simHubHost",
       (value) => {
-        // Default to reachable when unknown so we don't nag before the plugin reports.
-        this.simHubReachable = value !== "false" && value !== "0";
-        this.render();
+        this.simHubHost = value || "127.0.0.1";
+        this.onSimHubTargetChanged();
       },
       null,
     );
+    sdpi.useGlobalSettings(
+      "simHubPort",
+      (value) => {
+        this.simHubPort = parseInt(value, 10) || 8888;
+        this.onSimHubTargetChanged();
+      },
+      null,
+    );
+  }
+
+  private onSimHubTargetChanged(): void {
+    this.simHubProbed = false;
+
+    if (this.simHubPollTimer !== null) void this.probeSimHub();
   }
 
   /** Resolve ALL binding keys required by the current mode. */
@@ -227,99 +251,74 @@ export class BindingStatus extends HTMLElement {
   private render(): void {
     if (!this.container) return;
 
+    this.pollSimHub = false;
+    const rows = this.buildRows();
+    this.container.replaceChildren(...(rows === "pending" ? [] : rows));
+
+    // Poll SimHub only while a SimHub-bound mode is shown.
+    if (this.pollSimHub) this.ensureSimHubPolling();
+    else this.stopSimHubPolling();
+  }
+
+  /** Build the status rows for the current state, or "pending" to show nothing yet. */
+  private buildRows(): HTMLDivElement[] | "pending" {
     const descriptor = this.comms[this.currentMode];
 
-    if (!descriptor) {
-      this.container.replaceChildren();
+    if (!descriptor) return [];
 
-      return;
-    }
+    if (descriptor.method === "api") return [this.line("ok", "✓", "iRacing API")];
 
-    if (descriptor.method === "api") {
-      this.renderOk("iRacing API — no binding needed.");
-
-      return;
-    }
-
-    if (descriptor.method === "chat") {
-      this.renderOk("Chat command — no binding needed.");
-
-      return;
-    }
+    if (descriptor.method === "chat") return [this.line("ok", "✓", "Chat command")];
 
     // keybind with no binding ref → fixed key (e.g. Escape) or plugin-internal:
     // no user setup needed, never warns.
     const ref = descriptor.binding;
 
-    if (!ref) {
-      this.renderOk("No binding needed.");
-
-      return;
-    }
+    if (!ref) return [this.line("ok", "✓", "No binding needed.")];
 
     // A keyBy reference can't be resolved until its secondary setting has
     // loaded — render nothing rather than flash "No binding set" on PI open.
     if (!isConstantKey(ref) && !isMultiKey(ref) && !this.loadedSecondary.has(ref.keyBy.setting)) {
-      this.container.replaceChildren();
-
-      return;
+      return "pending";
     }
 
     const keys = this.resolveKeys(ref);
 
-    if (keys.length === 0) {
-      // Secondary value is loaded but unmapped → genuinely no binding.
-      this.renderMissing();
+    // Secondary value is loaded but unmapped → genuinely no binding.
+    if (keys.length === 0) return [this.missingRow()];
 
-      return;
-    }
-
-    // Wait for every required key's value to arrive before judging set/unset,
-    // so PI open doesn't briefly show "No binding set" before settings load.
-    if (keys.some((k) => !this.loadedBindings.has(k))) {
-      this.container.replaceChildren();
-
-      return;
-    }
+    // Wait for every required key's value to arrive before judging set/unset.
+    if (keys.some((k) => !this.loadedBindings.has(k))) return "pending";
 
     const parsed = keys.map((k) => parseStoredBinding(this.bindings.get(k) ?? ""));
 
     // Warn if ANY required key is unset (multi-key modes need all of them).
-    if (parsed.some((p) => p === null)) {
-      this.renderMissing();
-
-      return;
-    }
+    if (parsed.some((p) => p === null)) return [this.missingRow()];
 
     const set = parsed as Array<{ kind: "keyboard"; text: string } | { kind: "simhub"; role: string }>;
 
-    // Single SimHub role keeps the friendly "Bound to SimHub role" phrasing.
+    // Single SimHub role.
     if (set.length === 1 && set[0].kind === "simhub") {
-      this.renderSimHub(set[0].role);
+      this.pollSimHub = true;
 
-      return;
+      return this.simHubRows(set[0].role);
     }
 
     const labels = set.map((p) => (p.kind === "keyboard" ? p.text : `SimHub: ${p.role}`));
-    const lines = [this.line("ok", "✓", `Key binding — currently set: ${labels.join(", ")}.`)];
+    const rows = [this.line("ok", "✓", `Key binding: ${labels.join(", ")}`)];
 
-    // Any SimHub among the keys carries the "must be running" caveat.
+    // A SimHub key among several carries the not-connected warning too.
     if (set.some((p) => p.kind === "simhub")) {
-      lines.push(
-        this.simHubReachable
-          ? this.line("muted", "", "Requires SimHub to be running.")
-          : this.line("warn", "⚠", "SimHub isn't running — this binding won't work until it is."),
-      );
+      this.pollSimHub = true;
+      const warn = this.simHubNotConnectedRow();
+
+      if (warn) rows.push(warn);
     }
 
-    this.container.replaceChildren(...lines);
+    return rows;
   }
 
-  private renderOk(text: string): void {
-    this.container!.replaceChildren(this.line("ok", "✓", text));
-  }
-
-  private renderMissing(): void {
+  private missingRow(): HTMLDivElement {
     const row = this.line("warn", "⚠", "No binding set — ");
     const link = document.createElement("a");
     link.href = "#";
@@ -330,19 +329,57 @@ export class BindingStatus extends HTMLElement {
       this.openKeyBindings();
     });
     row.querySelector(".ird-binding-status-text")!.appendChild(link);
-    row.querySelector(".ird-binding-status-text")!.appendChild(document.createTextNode("."));
-    this.container!.replaceChildren(row);
+
+    return row;
   }
 
-  private renderSimHub(role: string): void {
-    const main = this.line("ok", "✓", `Bound to SimHub role: ${role}.`);
-    const caveat = this.simHubReachable
-      ? this.line("muted", "", "Requires SimHub to be running.")
-      : this.line("warn", "⚠", "SimHub isn't running — this binding won't work until it is.");
-    this.container!.replaceChildren(main, caveat);
+  private simHubRows(role: string): HTMLDivElement[] {
+    const rows = [this.line("ok", "✓", `SimHub binding: ${role}`)];
+    const warn = this.simHubNotConnectedRow();
+
+    if (warn) rows.push(warn);
+
+    return rows;
   }
 
-  private line(level: "ok" | "warn" | "muted", symbol: string, text: string): HTMLDivElement {
+  /** Red "SimHub not connected" line, only once a probe has confirmed it's down. */
+  private simHubNotConnectedRow(): HTMLDivElement | null {
+    return this.simHubProbed && !this.simHubReachable ? this.line("danger", "✗", "SimHub not connected") : null;
+  }
+
+  // --- SimHub reachability polling ---
+
+  private ensureSimHubPolling(): void {
+    if (this.simHubPollTimer !== null) return;
+
+    void this.probeSimHub();
+    this.simHubPollTimer = window.setInterval(() => void this.probeSimHub(), SIMHUB_POLL_INTERVAL_MS);
+  }
+
+  private stopSimHubPolling(): void {
+    if (this.simHubPollTimer !== null) {
+      window.clearInterval(this.simHubPollTimer);
+      this.simHubPollTimer = null;
+    }
+  }
+
+  private async probeSimHub(): Promise<void> {
+    const reachable = await fetchSimHubReachable(this.simHubHost, this.simHubPort);
+    this.simHubProbed = true;
+
+    if (reachable !== this.simHubReachable) {
+      this.simHubReachable = reachable;
+    }
+
+    // Re-render so the not-connected line appears/clears (also on first probe).
+    this.render();
+  }
+
+  disconnectedCallback(): void {
+    this.stopSimHubPolling();
+  }
+
+  private line(level: "ok" | "warn" | "muted" | "danger", symbol: string, text: string): HTMLDivElement {
     const row = document.createElement("div");
     row.className = `ird-binding-status-line ird-binding-status-${level}`;
 
@@ -393,6 +430,7 @@ export class BindingStatus extends HTMLElement {
       ird-binding-status .ird-binding-status-icon { flex-shrink: 0; }
       ird-binding-status .ird-binding-status-ok { color: #5dd17a; }
       ird-binding-status .ird-binding-status-warn { color: #ffc04d; }
+      ird-binding-status .ird-binding-status-danger { color: #ff5c5c; }
       ird-binding-status .ird-binding-status-muted { color: #9aa4ad; }
       ird-binding-status .ird-binding-status-link { color: #4aa3ff; cursor: pointer; }
     `;

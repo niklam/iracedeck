@@ -87,12 +87,12 @@ Behavior:
   - `api` → ✅ "iRacing API — no binding needed."
   - `chat` → ✅ "Chat command — no binding needed."
   - `keybind`, keyboard binding set → ✅ "Key binding — currently set: Ctrl + X." (via `formatKeyBinding`)
-  - `keybind`, SimHub role set → ✅ "Bound to SimHub role: «role»." **plus** caveat ⚠️ "Requires SimHub to be running." The caveat renders live-red when SimHub is not reachable and muted when reachable.
+  - `keybind`, SimHub role set → ✅ "SimHub binding: «role»." **plus**, only when SimHub is not reachable, a live red ✗ "SimHub not connected." line (nothing extra when reachable).
   - `keybind`, neither keyboard nor SimHub set → ⚠️ "No binding set — **set it here**." ("set it here" is a link.)
 - Subscribes to global-settings changes so it updates live as the user sets/clears/switches a binding (including keyboard↔SimHub) without changing mode.
 - "Set it here" link: opens the global key-bindings accordion (located via its `data-accordion-id`, persisting open state through `_accordionState` exactly as the `accordion` partial already does) and `scrollIntoView`s it. The accordion-open + scroll logic lives **inside** the component so every action navigates identically. The link does not need to focus the exact field — getting the user to the open accordion is sufficient.
 
-SimHub reachability reaches the browser PI via a plugin-maintained `_simHubReachable` passthrough global setting (same pattern as `_audioDeviceList` / `_warnings`), written from the existing `onSimHubReachabilityChange` in both plugins. The component reads it for the live caveat state.
+SimHub reachability is **polled browser-side** by the component (a `fetchSimHubReachable` HTTP probe of SimHub's Control Mapper endpoint, host/port read from global settings) on an interval while a SimHub-bound mode is shown, so the warning clears as soon as SimHub comes up. No plugin-maintained `_simHubReachable` setting is required — the plugins are unaffected by this part.
 
 ## 3. Icon overlay — centered ⚠️ over dimmed art
 
@@ -140,10 +140,10 @@ Classify every mode of all ~36 actions by reading each dispatch path (`executeMo
 - **pi-components** — new `ird-binding-status` component (SimHub-aware, accordion-open + scroll-to nav); extracted shared binding helpers; build/register the component.
 - **iracing-actions** — per-mode `*_COMMS` descriptors per action, `comms-catalog.ts` barrel, generated `data/action-comms.json`, `generate-action-comms.mjs`, wire `<ird-binding-status>` into every action `.ejs` under the Mode selector; derive existing mode→key maps from descriptors.
 - **icon-composer / deck-core** — `assembleIcon` `bindingMissing` option, `bindingWarningSvg()` + `dimWrap()` helpers, `ConnectionStateAwareAction.isActiveBindingMissing()`.
-- **Both plugins (Elgato + Mirabox)** — maintain `_simHubReachable` global setting from `onSimHubReachabilityChange`; pick up the shared PI component and icon overlay; verify overlay renders on QT5.
+- **Both plugins (Elgato + Mirabox)** — pick up the shared PI component and icon overlay; verify overlay renders on QT5. (No `_simHubReachable` wiring needed — reachability is polled browser-side.)
 - **Website** (`@iracedeck/website`) — explainer page + per-action method labels.
 - **Docs** (`docs/`) — explainer page; per-mode method in action-doc template; backfill all action docs.
-- **Rules** — `action-documentation.md` (method field), `stream-deck-actions.md`, `pi-templates.md` (new partial/component + accordion navigation), `key-icon-types.md` (overlay), `global-settings.md` (binding-status / union usage, `_simHubReachable`), `svg-platform-compatibility.md` (confirm the glyph is safe).
+- **Rules** — `action-documentation.md` (method field), `stream-deck-actions.md`, `pi-templates.md` (new partial/component + accordion navigation), `key-icon-types.md` (overlay), `global-settings.md` (binding-status / union usage), `svg-platform-compatibility.md` (confirm the glyph is safe).
 - **Skills** — `iracedeck-actions` (per-mode method listing).
 - **Tests** — all of section 5.
 

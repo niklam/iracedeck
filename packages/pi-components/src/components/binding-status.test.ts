@@ -3,6 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./binding-status.js";
 
+const { mockFetchReachable } = vi.hoisted(() => ({ mockFetchReachable: vi.fn() }));
+
+vi.mock("./simhub-probe.js", () => ({
+  fetchSimHubReachable: mockFetchReachable,
+  // Large so the poll interval never fires during a test; the immediate probe
+  // on render is what we assert.
+  SIMHUB_POLL_INTERVAL_MS: 1_000_000,
+}));
+
 type SettingsCallback = (value: string) => void;
 
 interface MockSDPIState {
@@ -56,6 +65,8 @@ describe("ird-binding-status", () => {
     while (document.body.firstChild) document.body.removeChild(document.body.firstChild);
 
     mock = installMockSDPI();
+    mockFetchReachable.mockReset();
+    mockFetchReachable.mockResolvedValue(true); // SimHub connected by default
   });
 
   afterEach(() => {
@@ -76,14 +87,13 @@ describe("ird-binding-status", () => {
 
   const text = () => el.textContent ?? "";
 
-  it("shows the API method with no binding needed", () => {
+  it("shows the API method", () => {
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("toggle-fuel-fill");
     expect(text()).toContain("iRacing API");
-    expect(text()).toContain("no binding needed");
   });
 
-  it("shows the chat method with no binding needed", () => {
+  it("shows the chat method", () => {
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("add-fuel");
     expect(text()).toContain("Chat command");
@@ -93,7 +103,7 @@ describe("ird-binding-status", () => {
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("toggle-autofuel");
     mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
-    expect(text()).toContain("currently set");
+    expect(text()).toContain("Key binding:");
     expect(text()).toContain("Ctrl+F1");
   });
 
@@ -122,21 +132,38 @@ describe("ird-binding-status", () => {
     expect(el.querySelector("a.ird-binding-status-link")).not.toBeNull();
   });
 
-  it("treats a SimHub role as configured (never the missing state) with a running caveat", () => {
+  it("treats a SimHub role as configured (never the missing state); no warning when connected", async () => {
+    mockFetchReachable.mockResolvedValue(true);
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("toggle-autofuel");
     mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
-    expect(text()).toContain("SimHub role: My Role");
+    expect(text()).toContain("SimHub binding: My Role");
     expect(text()).not.toContain("No binding set");
-    expect(text()).toContain("Requires SimHub to be running");
+    // After the probe confirms SimHub is up, no warning line.
+    await vi.waitFor(() => expect(mockFetchReachable).toHaveBeenCalled());
+    expect(text()).not.toContain("SimHub not connected");
   });
 
-  it("escalates the SimHub caveat when SimHub is not reachable", () => {
+  it("shows a red 'SimHub not connected' line when the probe finds SimHub down", async () => {
+    mockFetchReachable.mockResolvedValue(false);
     el = mount(FUEL_COMMS);
     mock.settings.get("mode")!("toggle-autofuel");
     mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
-    mock.global.get("_simHubReachable")!("false");
-    expect(text()).toContain("SimHub isn't running");
+    await vi.waitFor(() => expect(text()).toContain("SimHub not connected"));
+    expect(el.querySelector(".ird-binding-status-danger")).not.toBeNull();
+  });
+
+  it("clears the not-connected warning live once SimHub becomes reachable", async () => {
+    mockFetchReachable.mockResolvedValue(false);
+    el = mount(FUEL_COMMS);
+    mock.settings.get("mode")!("toggle-autofuel");
+    mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("My Role"));
+    await vi.waitFor(() => expect(text()).toContain("SimHub not connected"));
+    // SimHub comes up; the next probe (here forced via a host change) clears it.
+    mockFetchReachable.mockResolvedValue(true);
+    mock.global.get("simHubHost")!("127.0.0.1");
+    await vi.waitFor(() => expect(text()).not.toContain("SimHub not connected"));
+    expect(text()).toContain("SimHub binding: My Role");
   });
 
   it("updates live when switching keyboard ↔ SimHub without changing mode", () => {
@@ -145,7 +172,7 @@ describe("ird-binding-status", () => {
     mock.global.get("fuelServiceToggleAutofuel")!(keyboardBinding("f1"));
     expect(text()).toContain("Ctrl+F1");
     mock.global.get("fuelServiceToggleAutofuel")!(simhubBinding("Role X"));
-    expect(text()).toContain("SimHub role: Role X");
+    expect(text()).toContain("SimHub binding: Role X");
     expect(text()).not.toContain("Ctrl+F1");
   });
 
@@ -154,7 +181,7 @@ describe("ird-binding-status", () => {
     mock.settings.get("mode")!("fov");
     mock.settings.get("direction")!("increase");
     mock.global.get("viewFovInc")!(keyboardBinding("a"));
-    expect(text()).toContain("currently set");
+    expect(text()).toContain("Key binding:");
     expect(text()).toContain("Ctrl+A");
     // Switching the secondary setting re-resolves to the other key.
     mock.settings.get("direction")!("decrease");
