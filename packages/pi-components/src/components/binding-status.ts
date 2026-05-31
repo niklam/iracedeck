@@ -55,18 +55,21 @@ type ActionCommMap = Record<string, CommDescriptor>;
 /** Accordion that holds the global key bindings (see global-key-bindings.ejs). */
 const KEY_BINDINGS_ACCORDION_ID = "Related Key Bindings";
 
-type SettingsCallback = (value: string) => void;
-type GlobalSettings = Record<string, unknown>;
-interface GlobalSettingsEvent {
-  payload: { settings: GlobalSettings };
+type Settings = Record<string, unknown>;
+interface SettingsEvent {
+  payload: { settings: Settings };
 }
 type Disposable = { dispose?: () => void } | (() => void) | void;
+interface Subscribable {
+  subscribe: (cb: (ev: SettingsEvent) => void) => Disposable;
+}
 interface StreamDeckClientLike {
-  getGlobalSettings: () => Promise<GlobalSettings>;
-  didReceiveGlobalSettings: { subscribe: (cb: (ev: GlobalSettingsEvent) => void) => Disposable };
+  getSettings: () => Promise<unknown>;
+  getGlobalSettings: () => Promise<Settings>;
+  didReceiveSettings: Subscribable;
+  didReceiveGlobalSettings: Subscribable;
 }
 interface SDPILike {
-  useSettings: (key: string, cb: SettingsCallback, def: unknown) => [() => Promise<string>, (v: string) => void];
   streamDeckClient: StreamDeckClientLike;
 }
 
@@ -99,6 +102,15 @@ function parseStoredBinding(
   return kb ? { kind: "keyboard", text: formatKeyBinding(kb) } : null;
 }
 
+/** `getSettings()` resolves to a payload wrapper; `didReceiveSettings` gives `.settings` directly. */
+function extractSettings(result: unknown): Settings {
+  if (result && typeof result === "object" && "settings" in result) {
+    return (result as { settings: Settings }).settings ?? {};
+  }
+
+  return (result as Settings) ?? {};
+}
+
 let styleInjected = false;
 
 export class BindingStatus extends HTMLElement {
@@ -126,9 +138,14 @@ export class BindingStatus extends HTMLElement {
   /** Recomputed each render: does the current display depend on SimHub being up? */
   private pollSimHub = false;
 
+  /** Name of the action setting whose value is the mode. */
+  private modeSetting = "mode";
+  /** Secondary (keyBy) action-setting names referenced by this action's modes. */
+  private secondaryNames: string[] = [];
   /** Every global binding key referenced by this action's modes. */
   private candidateKeys: string[] = [];
-  /** Subscription to global-settings changes (from any source). */
+  /** Subscriptions to settings changes (from any source). */
+  private actionSub: Disposable = undefined;
   private globalSub: Disposable = undefined;
 
   connectedCallback(): void {
@@ -167,22 +184,10 @@ export class BindingStatus extends HTMLElement {
 
     if (!sdpi) return;
 
-    // Primary mode setting.
-    const modeSetting = this.getAttribute("mode-setting");
+    this.modeSetting = this.getAttribute("mode-setting") || "mode";
 
-    if (modeSetting) {
-      sdpi.useSettings(
-        modeSetting,
-        (value) => {
-          this.currentMode = value || (this.getAttribute("default-mode") ?? "");
-          this.render();
-        },
-        null,
-      );
-    }
-
-    // Secondary (keyBy) settings and the candidate binding keys.
-    const secondarySettings = new Set<string>();
+    // Collect the secondary (keyBy) setting names and the candidate binding keys.
+    const secondaryNames = new Set<string>();
     const bindingKeys = new Set<string>();
 
     for (const descriptor of Object.values(this.comms)) {
@@ -195,40 +200,46 @@ export class BindingStatus extends HTMLElement {
       } else if (isMultiKey(ref)) {
         for (const key of ref.keys) bindingKeys.add(key);
       } else {
-        secondarySettings.add(ref.keyBy.setting);
+        secondaryNames.add(ref.keyBy.setting);
 
         for (const key of Object.values(ref.keyBy.map)) bindingKeys.add(key);
       }
     }
 
-    for (const setting of secondarySettings) {
-      sdpi.useSettings(
-        setting,
-        (value) => {
-          this.secondary.set(setting, value);
-          this.loadedSecondary.add(setting);
-          this.render();
-        },
-        null,
-      );
-    }
-
+    this.secondaryNames = [...secondaryNames];
     this.candidateKeys = [...bindingKeys];
 
-    // Read binding values + SimHub host/port from GLOBAL settings via the
-    // Stream Deck client, which reports changes from ANY source — including a
-    // sibling ird-key-binding write in this same PI (per-key useGlobalSettings
-    // subscriptions do not reliably re-fire for those). Seed with the current
-    // values, then keep in sync.
-    this.globalSub = sdpi.streamDeckClient.didReceiveGlobalSettings.subscribe((ev) => {
-      this.applyGlobalSettings(ev.payload.settings);
-    });
+    // Drive EVERYTHING off the Stream Deck client event bus, which reports
+    // changes from ANY source — the Mode dropdown's own write, a sibling
+    // ird-key-binding write, the plugin, another PI. The sdpi `use*` hooks only
+    // delivered the initial value to a read-only observer like this, so the
+    // line went stale on mode/binding changes. Seed with current values, then
+    // keep in sync.
+    const client = sdpi.streamDeckClient;
 
-    void sdpi.streamDeckClient.getGlobalSettings().then((settings) => this.applyGlobalSettings(settings));
+    this.actionSub = client.didReceiveSettings.subscribe((ev) => this.applyActionSettings(ev.payload.settings));
+    this.globalSub = client.didReceiveGlobalSettings.subscribe((ev) => this.applyGlobalSettings(ev.payload.settings));
+
+    void client.getSettings().then((result) => this.applyActionSettings(extractSettings(result)));
+    void client.getGlobalSettings().then((settings) => this.applyGlobalSettings(settings));
+  }
+
+  /** Apply an action-settings snapshot: refresh the current mode + secondary values. */
+  private applyActionSettings(settings: Settings): void {
+    const rawMode = settings[this.modeSetting];
+    this.currentMode = typeof rawMode === "string" && rawMode ? rawMode : (this.getAttribute("default-mode") ?? "");
+
+    for (const name of this.secondaryNames) {
+      const raw = settings[name];
+      this.secondary.set(name, typeof raw === "string" ? raw : "");
+      this.loadedSecondary.add(name);
+    }
+
+    this.render();
   }
 
   /** Apply a global-settings snapshot: refresh binding values + SimHub target. */
-  private applyGlobalSettings(settings: GlobalSettings): void {
+  private applyGlobalSettings(settings: Settings): void {
     for (const key of this.candidateKeys) {
       const raw = settings[key];
       const value = typeof raw === "string" ? raw : raw == null ? "" : JSON.stringify(raw);
@@ -395,11 +406,15 @@ export class BindingStatus extends HTMLElement {
 
   disconnectedCallback(): void {
     this.stopSimHubPolling();
-
-    if (typeof this.globalSub === "function") this.globalSub();
-    else if (this.globalSub && typeof this.globalSub.dispose === "function") this.globalSub.dispose();
-
+    this.dispose(this.actionSub);
+    this.dispose(this.globalSub);
+    this.actionSub = undefined;
     this.globalSub = undefined;
+  }
+
+  private dispose(sub: Disposable): void {
+    if (typeof sub === "function") sub();
+    else if (sub && typeof sub.dispose === "function") sub.dispose();
   }
 
   private line(level: "ok" | "warn" | "muted" | "danger", symbol: string, text: string): HTMLDivElement {
