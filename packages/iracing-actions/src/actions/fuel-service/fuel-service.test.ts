@@ -104,6 +104,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     releaseBinding = vi.fn().mockResolvedValue(undefined);
     setActiveBinding = vi.fn();
     isActiveBindingMissing = vi.fn(() => false);
+    isBindingMissing = vi.fn(() => false);
     async onWillAppear() {}
     async onDidReceiveSettings() {}
     async onWillDisappear() {}

@@ -104,6 +104,10 @@ class TestAction extends ConnectionStateAwareAction {
   callIsActiveBindingMissing(): boolean {
     return this.isActiveBindingMissing();
   }
+
+  callIsBindingMissing(keys: string | string[] | null | undefined): boolean {
+    return this.isBindingMissing(keys);
+  }
 }
 
 function getSetActive(action: TestAction) {
@@ -326,6 +330,32 @@ describe("ConnectionStateAwareAction", () => {
       mockIsConfigured.mockClear();
       expect(action.callIsActiveBindingMissing()).toBe(false);
       expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("isBindingMissing (per-context, stateless)", () => {
+    it("returns false for null/empty keys (api/chat/fixed modes)", () => {
+      mockIsConfigured.mockClear();
+      expect(action.callIsBindingMissing(null)).toBe(false);
+      expect(action.callIsBindingMissing("")).toBe(false);
+      expect(action.callIsBindingMissing([])).toBe(false);
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+
+    it("does not depend on setActiveBinding (no cross-context bleed)", () => {
+      // Another context declared a missing binding...
+      action.callSetActiveBinding("otherKey");
+      mockIsConfigured.mockReturnValue(false);
+      // ...but THIS context's own configured key must read as present.
+      mockIsConfigured.mockImplementation((k: string) => k === "myKey");
+      expect(action.callIsBindingMissing("myKey")).toBe(false);
+      expect(action.callIsBindingMissing("otherKey")).toBe(true);
+    });
+
+    it("warns when any of several keys is unconfigured", () => {
+      mockIsConfigured.mockImplementation((k: string) => k !== "decKey");
+      expect(action.callIsBindingMissing(["incKey", "decKey"])).toBe(true);
+      expect(action.callIsBindingMissing(["incKey"])).toBe(false);
     });
   });
 

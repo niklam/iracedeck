@@ -214,10 +214,31 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
    * icon overlay and readiness overlay never disagree about "configured".
    */
   protected isActiveBindingMissing(): boolean {
-    if (this.activeBindingKeys.length === 0) return false;
+    return this.isBindingMissing(this.activeBindingKeys);
+  }
 
-    // Warn if ANY required key is unconfigured (multi-key modes need all set).
-    return this.activeBindingKeys.some((key) => !getBindingDispatcher().isConfigured(key));
+  /**
+   * Stateless per-context variant of {@link isActiveBindingMissing}: returns
+   * true when the given binding key(s) require a binding but ANY is
+   * unconfigured (neither keyboard nor SimHub). Pass `null`/empty for
+   * api/chat/fixed modes (returns false).
+   *
+   * Use THIS — not {@link isActiveBindingMissing} — to drive a per-button icon
+   * warning. One action-class instance serves every button context, so the
+   * `activeBindingKeys` field that backs `isActiveBindingMissing` is shared and
+   * would bleed one button's missing-binding state onto all the others. This
+   * variant derives solely from its arguments + global settings (#612).
+   *
+   * @param keys - The binding setting key(s) for a specific button's mode.
+   */
+  protected isBindingMissing(keys: string | string[] | null | undefined): boolean {
+    const list = (Array.isArray(keys) ? keys : keys ? [keys] : []).filter(
+      (k): k is string => typeof k === "string" && k.length > 0,
+    );
+
+    if (list.length === 0) return false;
+
+    return list.some((key) => !getBindingDispatcher().isConfigured(key));
   }
 
   // --- Binding dispatch delegates ---
