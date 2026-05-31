@@ -10,6 +10,7 @@ const {
   mockHold,
   mockRelease,
   mockIsReady,
+  mockIsConfigured,
   mockOnGlobalSettingsChange,
   mockOnSimHubReachabilityChange,
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   mockHold: vi.fn().mockResolvedValue(undefined),
   mockRelease: vi.fn().mockResolvedValue(undefined),
   mockIsReady: vi.fn(() => true),
+  mockIsConfigured: vi.fn(() => true),
   mockOnGlobalSettingsChange: vi.fn(() => vi.fn()),
   mockOnSimHubReachabilityChange: vi.fn(() => vi.fn()),
 }));
@@ -38,6 +40,7 @@ vi.mock("./binding-dispatcher.js", () => ({
     hold: mockHold,
     release: mockRelease,
     isReady: mockIsReady,
+    isConfigured: mockIsConfigured,
   }),
 }));
 
@@ -96,6 +99,10 @@ class TestAction extends ConnectionStateAwareAction {
 
   async callReleaseBinding(actionId: string): Promise<void> {
     return this.releaseBinding(actionId);
+  }
+
+  callIsActiveBindingMissing(): boolean {
+    return this.isActiveBindingMissing();
   }
 }
 
@@ -276,6 +283,30 @@ describe("ConnectionStateAwareAction", () => {
 
       mockGetConnectionStatus.mockReturnValue(false);
       expect(action.callGetConnectionStatus()).toBe(false);
+    });
+  });
+
+  describe("isActiveBindingMissing", () => {
+    it("returns false when no binding is active (api/chat modes)", () => {
+      action.callSetActiveBinding(null);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
+      // Must not even consult the dispatcher when there is no active key.
+      mockIsConfigured.mockClear();
+      action.callIsActiveBindingMissing();
+      expect(mockIsConfigured).not.toHaveBeenCalled();
+    });
+
+    it("returns true when the active binding is not configured", () => {
+      action.callSetActiveBinding("myKey");
+      mockIsConfigured.mockReturnValue(false);
+      expect(action.callIsActiveBindingMissing()).toBe(true);
+      expect(mockIsConfigured).toHaveBeenCalledWith("myKey");
+    });
+
+    it("returns false when the active binding is configured (keyboard or SimHub)", () => {
+      action.callSetActiveBinding("myKey");
+      mockIsConfigured.mockReturnValue(true);
+      expect(action.callIsActiveBindingMissing()).toBe(false);
     });
   });
 

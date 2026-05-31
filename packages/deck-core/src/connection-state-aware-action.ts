@@ -193,6 +193,24 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
     return this.sdkController.getConnectionStatus();
   }
 
+  /**
+   * Whether the action's currently active binding requires a binding but has
+   * neither a keyboard binding nor a SimHub role configured (issue #612).
+   *
+   * Drives the centered binding-missing warning overlay on the key icon.
+   * Returns false when no binding is active (api/chat modes) or when a binding
+   * of either type is set — including a SimHub role whose SimHub server is not
+   * currently running (that is a reachability concern, not a missing binding).
+   *
+   * Derived from the same dispatcher source of truth as readiness, so the
+   * icon overlay and readiness overlay never disagree about "configured".
+   */
+  protected isActiveBindingMissing(): boolean {
+    if (!this.activeBindingKey) return false;
+
+    return !getBindingDispatcher().isConfigured(this.activeBindingKey);
+  }
+
   // --- Binding dispatch delegates ---
 
   /**

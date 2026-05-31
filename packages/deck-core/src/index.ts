@@ -140,6 +140,21 @@ export {
   _resetGlobalSettings,
 } from "./global-settings.js";
 
+// Per-mode sim-communication descriptors (issue #612)
+export {
+  isConstantBindingKey,
+  keybind,
+  keybindBy,
+  resolveBindingKey,
+  type ActionCommMap,
+  type BindingKeyConstant,
+  type BindingKeyRef,
+  type BindingKeyResolved,
+  type CommDescriptor,
+  type CommMethod,
+  type CommsCatalog,
+} from "./comm-descriptor.js";
+
 // Unit conversion utilities
 export {
   LITERS_TO_GALLONS,
