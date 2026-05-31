@@ -19,6 +19,24 @@ export interface PiWarning {
 
 const WARNINGS_KEY = "_warnings";
 
+/**
+ * Validate one parsed array entry before it reaches `setWarning`/`clearWarning`,
+ * which dereference `w.id`. Mirrors the `ird-warnings` component's parser so the
+ * persisted shape can't crash either side if `_warnings` ever holds malformed
+ * data (corrupted storage, a future producer writing junk, a stray host echo).
+ */
+function isPiWarning(value: unknown): value is PiWarning {
+  if (typeof value !== "object" || value === null) return false;
+
+  const w = value as Record<string, unknown>;
+
+  return (
+    typeof w.id === "string" &&
+    typeof w.message === "string" &&
+    (w.level === "info" || w.level === "warning" || w.level === "error")
+  );
+}
+
 function readWarnings(): PiWarning[] {
   const raw = (getGlobalSettings() as Record<string, unknown>)[WARNINGS_KEY];
 
@@ -27,7 +45,7 @@ function readWarnings(): PiWarning[] {
   try {
     const parsed: unknown = JSON.parse(raw);
 
-    return Array.isArray(parsed) ? (parsed as PiWarning[]) : [];
+    return Array.isArray(parsed) ? parsed.filter(isPiWarning) : [];
   } catch {
     return [];
   }

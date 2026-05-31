@@ -73,4 +73,24 @@ describe("pi-warnings store", () => {
     setWarning("a", "warning", "msg");
     expect(warnings()).toEqual([{ id: "a", level: "warning", message: "msg" }]);
   });
+
+  it("drops malformed array entries instead of crashing on setWarning", () => {
+    store.current._warnings = JSON.stringify([
+      null,
+      { id: "a", level: "warning", message: "m" },
+      { bad: true },
+      { id: "c", level: "bogus", message: "m" },
+    ]);
+    expect(() => setWarning("b", "info", "x")).not.toThrow();
+    expect(warnings()).toEqual([
+      { id: "a", level: "warning", message: "m" },
+      { id: "b", level: "info", message: "x" },
+    ]);
+  });
+
+  it("ignores malformed entries on clearWarning", () => {
+    store.current._warnings = JSON.stringify([null, { id: "a", level: "warning", message: "m" }]);
+    expect(() => clearWarning("a")).not.toThrow();
+    expect(warnings()).toEqual([]);
+  });
 });
