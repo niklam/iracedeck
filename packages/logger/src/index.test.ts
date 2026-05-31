@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { consoleLogger, createConsoleLogger, LogLevel, silentLogger } from "./index.js";
 
@@ -161,5 +161,44 @@ describe("silentLogger", () => {
 
   it("createScope should return silentLogger", () => {
     expect(silentLogger.createScope("test")).toBe(silentLogger);
+  });
+});
+
+describe("createConsoleLogger live level resolver (issue #609)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("re-reads a level resolver on every call", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    let level = LogLevel.Info;
+    const logger = createConsoleLogger("Live", () => level);
+
+    logger.debug("first");
+    expect(debugSpy).not.toHaveBeenCalled();
+
+    level = LogLevel.Debug;
+    logger.debug("second");
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+    expect(debugSpy).toHaveBeenLastCalledWith("[Live] second");
+
+    level = LogLevel.Info;
+    logger.debug("third");
+    expect(debugSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the resolver with child scopes", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    let level = LogLevel.Info;
+    const child = createConsoleLogger("Parent", () => level).createScope("Child");
+
+    child.debug("hidden");
+    expect(debugSpy).not.toHaveBeenCalled();
+
+    level = LogLevel.Debug;
+    child.debug("shown");
+    expect(debugSpy).toHaveBeenCalledWith("[Parent:Child] shown");
   });
 });

@@ -90,5 +90,18 @@
       chat window with focus after sending. Default 200 ms; raise it if the chat window keeps
       focus after you send. (Race Admin doesn't close the chat, so this delay doesn't affect it.)
     </div>
+    <div class="ird-section-subtitle">Diagnostics</div>
+    <sdpi-item label="Debug Logging">
+      <sdpi-checkbox
+        setting="debugLogging"
+        label="Enable debug logging"
+        global
+      ></sdpi-checkbox>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Writes verbose debug detail to the plugin log. Leave it off for normal use; enable it
+      only to capture a log when troubleshooting or reporting an issue, then turn it back off.
+      Production logs at info level by default. Takes effect immediately — no restart needed.
+    </div>
   `
 }) %>

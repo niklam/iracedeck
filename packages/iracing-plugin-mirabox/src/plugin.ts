@@ -140,6 +140,7 @@ import {
   ViewAdjustment,
 } from "@iracedeck/iracing-actions";
 import { IRacingNative } from "@iracedeck/iracing-native";
+import { LogLevel } from "@iracedeck/logger";
 import {
   getLivePosition,
   getOvertakeTelemetryGate,
@@ -163,7 +164,24 @@ const pluginConfig: PluginConfig = JSON.parse(readFileSync(join(__binDir, "confi
 initPluginConfig(pluginConfig);
 
 // Create the VSDinside platform adapter
-const adapter = new VSDPlatformAdapter();
+// Tee logs to <plugin>/log/<YYYY.M.D>.log. The Stream Dock host discards plugin
+// stdout, so file logging is what makes the debug toggle actually capture a log
+// for support on Mirabox (issue #609). __binDir is <plugin>/bin, so the log dir
+// sits next to it under the plugin root — the same convention the host's own
+// plugins use.
+const adapter = new VSDPlatformAdapter(undefined, join(__binDir, "..", "log"));
+
+// Default to info-level logging in production; the user opts into verbose
+// debug logging from the PI "Enable debug logging" toggle (issue #609). The
+// adapter holds a shared mutable level its loggers read live, so re-apply on
+// every settings change without recreating loggers. The initial call reads the
+// schema-default cache (debugLogging=false → info); the host echo re-fires the
+// listener with the persisted value once global settings load.
+const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void => {
+  adapter.setLogLevel(settings.debugLogging ? LogLevel.Debug : LogLevel.Info);
+};
+onGlobalSettingsChange(applyDebugLogging);
+applyDebugLogging(getGlobalSettings());
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
