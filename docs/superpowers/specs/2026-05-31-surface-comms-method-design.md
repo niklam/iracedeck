@@ -57,9 +57,16 @@ TS descriptors are **authoritative**; JSON is **generated**.
 - `scripts/generate-action-comms.mjs` emits `packages/iracing-actions/src/actions/data/action-comms.json` from the catalog. A Vitest freshness test asserts the committed JSON matches the catalog (mirrors the existing `generate-icon-defaults.mjs` + freshness-test convention).
 - Consumers: action TS imports the catalog directly (icon overlay); the PI EJS `require()`s `data/action-comms.json` at compile time (same mechanism as `data/key-bindings.json`); docs generation reads the same JSON.
 
-### Shared binding helpers
+### Binding helpers — use each side's existing helpers (no cross-package extraction)
 
-`parseBinding`, `isSimHubBinding`, and `formatKeyBinding` are pure and currently live in `deck-core`. Extract them (and the `KeyBindingValue` / `SimHubBindingValue` / `BindingValue` types) into a pure module importable by **both** `deck-core` and the browser-bundled `pi-components`, so the PI status component and the icon layer share one definition of "is this binding configured?" Re-export from `deck-core` for backward compatibility (no churn at call sites).
+**Correction after reading the code:** `pi-components` runs in a browser and *cannot* import from `deck-core` (Node.js). This is an established, deliberate split — `key-binding-input.ts` carries an explicit SYNC NOTE and `pi-components/src/components/key-binding-utils.ts` already holds browser-side `formatKeyBinding` / `parseKeyBinding` / `parseSimpleDefault`, with `isSimHubBinding` / `BindingValue` duplicated in `key-binding-input.ts`. Extracting a shared module would fight that split and risk breaking the PI bundle.
+
+So there is **no cross-package extraction**. Instead:
+
+- The **icon/action side** (TS, Node/bundler) uses `deck-core`'s existing `parseBinding` / `isSimHubBinding` / `formatKeyBinding`.
+- The **PI component** (browser) reuses `pi-components`' existing browser-side helpers. The new `ird-binding-status` imports `formatKeyBinding` and a binding-parse + `isSimHubBinding` from the same `pi-components` modules `ird-key-binding` already uses.
+
+"Single definition of configured" is preserved per-runtime by the established duplication+sync-note convention, not by a new shared module.
 
 ## 2. Property Inspector — `ird-binding-status` component
 
