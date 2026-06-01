@@ -176,37 +176,6 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 }
 
 /**
- * Build the lap-time scenario bound to a snapshot resolver. The resolver is
- * read by the per-clip `var` resolvers at sequence-expansion time and by the
- * conditional `if` step that gates the minute clip.
- *
- * `getRaceFinishedFired` suppresses the callout on the final lap of a race
- * (issue #569) — race-end is the only thing the engineer should say when the
- * driver crosses S/F under the checkered. Without this gate the best-lap
- * announcement would fire alongside the race result on a PB final lap and the
- * two would queue head-to-tail. Default `() => false` (race never ends)
- * preserves legacy behavior for tests that don't supply a closure.
- */
-export function buildLapTimeScenario(
-  getSnapshot: LapCompletedSnapshotResolver,
-  getRaceFinishedFired: () => boolean = () => false,
-): Scenario {
-  const sequence: Step[] = [
-    "@pit-crew.radio-open",
-    { var: "lapTime.intro" },
-    {
-      if: () => hasMinuteComponent(getSnapshot()),
-      then: [{ var: "lapTime.minute" }],
-    },
-    { var: "lapTime.second" },
-    { var: "lapTime.decimal" },
-    "@pit-crew.radio-close",
-  ];
-
-  return lapTimeScenario(getRaceFinishedFired, sequence);
-}
-
-/**
  * Shared scenario shape for the lap-time family. Holds the fixed `id`, the full
  * `when` block, and the channel/bus/base/priority/family defaults; the caller
  * supplies the resolved `sequence` and the race-finished gate. Mirrors the
@@ -241,6 +210,37 @@ function lapTimeScenario(getRaceFinishedFired: () => boolean, sequence: Step[]):
     family: "lap-time",
     sequence,
   };
+}
+
+/**
+ * Build the lap-time scenario bound to a snapshot resolver. The resolver is
+ * read by the per-clip `var` resolvers at sequence-expansion time and by the
+ * conditional `if` step that gates the minute clip.
+ *
+ * `getRaceFinishedFired` suppresses the callout on the final lap of a race
+ * (issue #569) — race-end is the only thing the engineer should say when the
+ * driver crosses S/F under the checkered. Without this gate the best-lap
+ * announcement would fire alongside the race result on a PB final lap and the
+ * two would queue head-to-tail. Default `() => false` (race never ends)
+ * preserves legacy behavior for tests that don't supply a closure.
+ */
+export function buildLapTimeScenario(
+  getSnapshot: LapCompletedSnapshotResolver,
+  getRaceFinishedFired: () => boolean = () => false,
+): Scenario {
+  const sequence: Step[] = [
+    "@pit-crew.radio-open",
+    { var: "lapTime.intro" },
+    {
+      if: () => hasMinuteComponent(getSnapshot()),
+      then: [{ var: "lapTime.minute" }],
+    },
+    { var: "lapTime.second" },
+    { var: "lapTime.decimal" },
+    "@pit-crew.radio-close",
+  ];
+
+  return lapTimeScenario(getRaceFinishedFired, sequence);
 }
 
 /**
