@@ -168,6 +168,41 @@ export function registerSessionStartVars(engine: IScenarioEngine, getSnapshot: S
 }
 
 /**
+ * Construct the session-start scenario from a prepared sequence, injecting the
+ * shared scenario shape (mirrors the `<family>Scenario(...)` helpers in the
+ * sibling pit-crew catalog files): the fixed id, the snapshot-gated `when`
+ * block, and the shared channel / bus / base / priority / family defaults.
+ */
+function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequence: Step[]): Scenario {
+  return {
+    id: "pit-crew.session-start",
+    when: {
+      event: "driver.firstOnTrack",
+      where: () => {
+        const snapshot = getSnapshot();
+
+        if (snapshot === null) return false;
+
+        // Race sessions are handled exclusively by the race-start scenario
+        // (issue #568) which fires earlier and reads the grid position. Without
+        // this gate the engineer would say both the race-start brief (~3 s
+        // after `session.changed`) and the session-start brief (on
+        // `driver.firstOnTrack` once the driver enters the car).
+        if (snapshot.sessionType === "race") return false;
+
+        return true;
+      },
+    },
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    priority: "normal",
+    family: "session-start",
+    sequence,
+  };
+}
+
+/**
  * Build the session-start scenario bound to a snapshot resolver. The resolver
  * is read in the `where:` predicate (to gate firing) and inside the
  * pit-speed `if` step (to gate the conditional clause); the per-clip `var`
@@ -199,32 +234,7 @@ export function buildSessionStartScenario(getSnapshot: SessionStartSnapshotResol
     "@pit-crew.radio-close",
   ];
 
-  return {
-    id: "pit-crew.session-start",
-    when: {
-      event: "driver.firstOnTrack",
-      where: () => {
-        const snapshot = getSnapshot();
-
-        if (snapshot === null) return false;
-
-        // Race sessions are handled exclusively by the race-start scenario
-        // (issue #568) which fires earlier and reads the grid position. Without
-        // this gate the engineer would say both the race-start brief (~3 s
-        // after `session.changed`) and the session-start brief (on
-        // `driver.firstOnTrack` once the driver enters the car).
-        if (snapshot.sessionType === "race") return false;
-
-        return true;
-      },
-    },
-    channel: AudioChannel.Voice,
-    bus: AudioBus.Voice,
-    base: "voice/{voice}",
-    priority: "normal",
-    family: "session-start",
-    sequence,
-  };
+  return sessionStartScenario(getSnapshot, sequence);
 }
 
 /**
@@ -247,3 +257,11 @@ export const SCENARIO_ID_TO_SESSION_START_ID: Record<string, SessionStartCallout
 };
 
 export const SESSION_START_SCENARIO_IDS: readonly string[] = ["pit-crew.session-start"];
+
+/**
+ * Empty — the session-start brief is composed from static `clipPath(...)` steps
+ * and `engine.defineVar` resolvers (see {@link registerSessionStartVars}), not
+ * pools. Exported anyway for parity with the family-completeness check used by
+ * the other pit-crew catalog files.
+ */
+export const SESSION_START_POOL_NAMES: readonly string[] = [];

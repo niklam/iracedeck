@@ -33,6 +33,8 @@ One file per family. Each family file:
 - Exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` for tests.
 - Uses a small constructor function (e.g. `flagScenario(id, body)`) to build scenarios with consistent `family:` / `priority:` / `bus:` defaults.
 
+> **Snapshot-driven variation (issue #558).** A family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps cannot build that scenario at module-load time. Such a family exports a `buildXxxScenario(getSnapshot)` builder (plus a `registerXxxVars(engine, getSnapshot)` that registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the lone scenario is materialized at wiring time inside `registerPitCrew()`. It still exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` (the latter `[]` when the readout is composed from `engine.defineVar` resolvers / static `clipPath` steps rather than pools), and still uses the small constructor helper for the shared `family:` / `priority:` / `bus:` defaults. Reference files: `session-start.ts` and `lap-time.ts`.
+
 ## Pools
 
 Defined once in `pools.ts` as `Record<string, readonly string[]>`. Scenarios

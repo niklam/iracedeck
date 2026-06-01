@@ -203,6 +203,17 @@ export function buildLapTimeScenario(
     "@pit-crew.radio-close",
   ];
 
+  return lapTimeScenario(getRaceFinishedFired, sequence);
+}
+
+/**
+ * Shared scenario shape for the lap-time family. Holds the fixed `id`, the full
+ * `when` block, and the channel/bus/base/priority/family defaults; the caller
+ * supplies the resolved `sequence` and the race-finished gate. Mirrors the
+ * constructor-helper convention used by the sibling pit-crew catalog files
+ * (`flag-alerts.ts`, `pit-status.ts`, `track-conditions.ts`).
+ */
+function lapTimeScenario(getRaceFinishedFired: () => boolean, sequence: Step[]): Scenario {
   return {
     id: "pit-crew.lap-time-best",
     when: {
@@ -257,8 +268,6 @@ export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best
 /**
  * Empty — the lap-time readout is composed entirely from `engine.defineVar`
  * resolvers, not pools. Exported anyway for parity with the family-completeness
- * check used by the other pit-crew catalog files. The broader convention
- * alignment (static `LAP_TIME_ALERTS` + constructor helper) is tracked in
- * issue #558.
+ * check used by the other pit-crew catalog files.
  */
 export const LAP_TIME_POOL_NAMES: readonly string[] = [];
