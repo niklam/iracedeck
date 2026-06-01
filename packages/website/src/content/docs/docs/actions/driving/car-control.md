@@ -147,7 +147,7 @@ Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically b
 
 Enter/Exit/Tow automatically picks its display state based on live telemetry. There is no setting to override this — it is shown here only to document the mapping:
 
-- **Enter Car** — Out of the car. The button mirrors iRacing's own session button: a green **Test** button (steering wheel) in test sessions, a blue **Practice** button (steering wheel) in practice, a purple **Qualify** button (lightning bolt) in qualifying, a green **Grid** button (cars lined up on the grid) before a race starts, and a green **Race** button (flag) once the race is underway. When no session information is available the neutral steering-wheel **Drive** icon is shown.
+- **Enter Car** — Out of the car. The button mirrors iRacing's own session button: a green **Test** button (steering wheel) in test sessions, a blue **Practice** button (steering wheel) in practice, a purple **Qualify** button (stopwatch with a lightning bolt) in qualifying, a green **Grid** button (cars lined up on the grid) before a race starts, and a green **Race** button (flag) once the race is underway. When no session information is available the neutral steering-wheel **Drive** icon is shown.
 - **Exit Car** — In the pits; the icon shows a car with an outward arrow on a red background
 - **Reset to Pits** — On track in a non-race session; the icon shows a reset arrow on a red background
 - **Tow** — On track in a race session; the icon shows a tow hook on a red background

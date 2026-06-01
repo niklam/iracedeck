@@ -37,7 +37,7 @@ None.
 |-------|-------------|
 | Test (out of car, test session) | Steering wheel on green background, "TEST" label |
 | Practice (out of car, practice session) | Steering wheel on blue background, "PRACTICE" label |
-| Qualify (out of car, qualifying session) | Lightning bolt on purple background, "QUALIFY" label |
+| Qualify (out of car, qualifying session) | Stopwatch with a lightning bolt on purple background, "QUALIFY" label |
 | Grid (out of car, race not started) | Cars lined up on the grid, green background, "GRID" label |
 | Race (out of car, race underway) | Flag on green background, "RACE" label |
 | Unknown (no session info) | Steering wheel on default background, "DRIVE" label |
