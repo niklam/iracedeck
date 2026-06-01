@@ -342,6 +342,7 @@ const SESSION_CONTEXT_ICONS: Record<SessionContext, string> = {
   unknown: enterCarIcon,
 };
 
+/** Default key label per session context, passed to resolveTitleSettings as the action default text. */
 const SESSION_CONTEXT_TITLES: Record<SessionContext, string> = {
   test: "TEST",
   practice: "PRACTICE",

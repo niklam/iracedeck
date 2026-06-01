@@ -762,6 +762,7 @@ describe("CarControl", () => {
   });
 
   describe("getSessionContext", () => {
+    /** Build a minimal session-info object containing a single session of the given type. */
     function sessionInfoWith(sessionType: string, sessionNum = 0) {
       return {
         SessionInfo: {
