@@ -34,10 +34,13 @@ import headlightFlashIcon from "@iracedeck/icons/car-control/headlight-flash.svg
 import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
 import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
 import resetToPitsIcon from "@iracedeck/icons/car-control/reset-to-pits.svg";
+import sessionGridIcon from "@iracedeck/icons/car-control/session-grid.svg";
+import sessionQualifyIcon from "@iracedeck/icons/car-control/session-qualify.svg";
+import sessionRaceIcon from "@iracedeck/icons/car-control/session-race.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import towIcon from "@iracedeck/icons/car-control/tow.svg";
-import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import drsTemplate from "../../../icons/car-control-drs.svg";
@@ -50,6 +53,15 @@ const WHITE = "#ffffff";
 const GRAY = "#888888";
 const RED = "#e74c3c";
 const BLUE = "#3498db";
+
+/**
+ * Semantic background colors for the context-aware Enter/Exit/Tow mode (issue #632).
+ * State-driven — never overridable by user color presets, mirroring iRacing's own UI button.
+ */
+const SESSION_BG_GREEN = "#0fa30f";
+const SESSION_BG_BLUE = "#1f5fd6";
+const SESSION_BG_PURPLE = "#9013f5";
+const IN_CAR_BG_RED = "#ff0000";
 
 type CarControlType =
   | "starter"
@@ -264,6 +276,93 @@ export function getEnterExitTowState(
   return "reset-to-pits";
 }
 
+/** @internal Exported for testing */
+export type SessionContext = "test" | "practice" | "qualify" | "grid" | "race" | "unknown";
+
+/**
+ * @internal Exported for testing
+ *
+ * Classifies the current session for the context-aware enter-car appearance (issue #632).
+ * Mirrors iRacing's own UI button: Test / Practice / Qualify / Grid (race not yet started) /
+ * Race (racing, checkered, cooldown). Returns "unknown" when telemetry or session info is
+ * unavailable so callers can fall back to the legacy neutral appearance.
+ */
+export function getSessionContext(
+  telemetry: TelemetryData | null,
+  sessionInfo: Record<string, unknown> | null,
+): SessionContext {
+  if (!telemetry) {
+    return "unknown";
+  }
+
+  const sessionNum = telemetry.SessionNum ?? 0;
+  const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
+  const sessionType = currentSession?.SessionType as string | undefined;
+
+  if (!sessionType) {
+    return "unknown";
+  }
+
+  if (sessionType.includes("Testing")) {
+    return "test";
+  }
+
+  if (sessionType.includes("Practice")) {
+    return "practice";
+  }
+
+  if (sessionType.includes("Qualify")) {
+    return "qualify";
+  }
+
+  // Race-like session (Race / Warmup / Heat): split on SessionState — gridding,
+  // warmup, and parade laps count as "grid"; racing and beyond count as "race".
+  const state = telemetry.SessionState;
+
+  if (state !== undefined && state >= SessionState.Racing) {
+    return "race";
+  }
+
+  return "grid";
+}
+
+/**
+ * Per-session-context appearance for the enter-car state (issue #632).
+ * "unknown" (no session info) keeps the legacy neutral steering-wheel look.
+ */
+const SESSION_CONTEXT_ICONS: Record<SessionContext, string> = {
+  test: enterCarIcon, // intentionally the same steering wheel as the default enter-car icon
+  practice: enterCarIcon, // intentionally the same steering wheel as the default enter-car icon
+  qualify: sessionQualifyIcon,
+  grid: sessionGridIcon,
+  race: sessionRaceIcon,
+  unknown: enterCarIcon,
+};
+
+/** Default key label per session context, passed to resolveTitleSettings as the action default text. */
+const SESSION_CONTEXT_TITLES: Record<SessionContext, string> = {
+  test: "TEST",
+  practice: "PRACTICE",
+  qualify: "QUALIFY",
+  grid: "GRID",
+  race: "RACE",
+  // Unknown context follows whatever the legacy enter-car default label is.
+  unknown: ENTER_EXIT_TOW_TITLES["enter-car"],
+};
+
+/** Background per context; undefined = keep the resolved (user/global/icon) background. */
+const SESSION_CONTEXT_BACKGROUNDS: Record<SessionContext, string | undefined> = {
+  test: SESSION_BG_GREEN,
+  practice: SESSION_BG_BLUE,
+  qualify: SESSION_BG_PURPLE,
+  grid: SESSION_BG_GREEN,
+  race: SESSION_BG_GREEN,
+  unknown: undefined,
+};
+
 /**
  * @internal Exported for testing
  *
@@ -308,6 +407,8 @@ export type CarControlTelemetryState = {
   pushToPassActive?: boolean;
   drsActive?: boolean;
   enterExitTowState?: EnterExitTowState;
+  /** Session classification for the context-aware enter-car appearance (issue #632). */
+  sessionContext?: SessionContext;
 };
 
 const CarControlSettings = CommonSettings.extend({
@@ -410,13 +511,22 @@ export function generateCarControlSvg(
     return svgToDataUri(svg);
   }
 
-  // Enter/Exit/Tow uses state-specific standalone SVGs
+  // Enter/Exit/Tow uses state-specific standalone SVGs. The enter-car state is
+  // session-context-aware (issue #632): icon/label/background mirror iRacing's
+  // own UI button. In-car states keep their icons but get a red background.
   if (control === "enter-exit-tow") {
     const towState = telemetryState?.enterExitTowState ?? "enter-car";
-    const iconSvg = ENTER_EXIT_TOW_ICONS[towState];
-    const defaultTitle = ENTER_EXIT_TOW_TITLES[towState];
+    const sessionContext = telemetryState?.sessionContext ?? "unknown";
+    const isEnterCar = towState === "enter-car";
 
-    const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+    const iconSvg = isEnterCar ? SESSION_CONTEXT_ICONS[sessionContext] : ENTER_EXIT_TOW_ICONS[towState];
+    const defaultTitle = isEnterCar ? SESSION_CONTEXT_TITLES[sessionContext] : ENTER_EXIT_TOW_TITLES[towState];
+    // State-driven background — wins over user color overrides and global presets,
+    // same principle as toggle-action border state colors.
+    const stateBackground = isEnterCar ? SESSION_CONTEXT_BACKGROUNDS[sessionContext] : IN_CAR_BG_RED;
+
+    const resolvedColors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+    const colors = stateBackground ? { ...resolvedColors, backgroundColor: stateBackground } : resolvedColors;
     const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
     const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
 
@@ -784,6 +894,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     } else if (control === "enter-exit-tow") {
       const sessionInfo = this.sdkController.getSessionInfo();
       state.enterExitTowState = getEnterExitTowState(telemetry, sessionInfo);
+      state.sessionContext = getSessionContext(telemetry, sessionInfo);
     }
 
     return state;
@@ -839,7 +950,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     }
 
     if (settings.control === "enter-exit-tow") {
-      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}|${borderKey}|${warn}`;
+      return `enter-exit-tow|${telemetryState.enterExitTowState ?? "enter-car"}|${telemetryState.sessionContext ?? "unknown"}|${borderKey}|${warn}`;
     }
 
     return settings.control;

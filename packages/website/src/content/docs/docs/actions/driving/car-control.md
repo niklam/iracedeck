@@ -141,16 +141,18 @@ Context-aware car entry, exit, pit reset, or tow. The icon updates dynamically b
 - **Method:** Key binding
 - **Dial:** No rotation support; manual hold holds `Shift+R` while the button is pressed. When auto-hold is on for the active state, a single tap holds it for 1.5 seconds or until you press again
 - **Default binding:** `Shift+R`
-- **Telemetry-aware icon:** Yes — the icon switches between Enter Car, Exit Car, Reset to Pits, and Tow based on whether you are out of the car, in the pits, on track in a non-race session, or on track in a race
+- **Telemetry-aware icon:** Yes — out of the car the icon shows the session context (Test / Practice / Qualify / Grid / Race); in the car it switches between Exit Car, Reset to Pits, and Tow on a red background
 
 #### Setting: State icons
 
-Enter/Exit/Tow automatically picks one of four display states based on live telemetry. There is no setting to override this — it is shown here only to document the mapping:
+Enter/Exit/Tow automatically picks its display state based on live telemetry. There is no setting to override this — it is shown here only to document the mapping:
 
-- **Enter Car** — Out of car (replay or spectator); the icon shows a car with an inward arrow
-- **Exit Car** — In the pits; the icon shows a car with an outward arrow
-- **Reset to Pits** — On track in a non-race session; the icon shows a car with a reset arrow
-- **Tow** — On track in a race session; the icon shows a tow hook
+- **Enter Car** — Out of the car. The button mirrors iRacing's own session button: a green **Test** button (steering wheel) in test sessions, a blue **Practice** button (steering wheel) in practice, a purple **Qualify** button (stopwatch with a lightning bolt) in qualifying, a green **Grid** button (cars lined up on the grid) before a race starts, and a green **Race** button (flag) once the race is underway. When no session information is available the neutral steering-wheel **Drive** icon is shown.
+- **Exit Car** — In the pits; the icon shows a car with an outward arrow on a red background
+- **Reset to Pits** — On track in a non-race session; the icon shows a reset arrow on a red background
+- **Tow** — On track in a race session; the icon shows a tow hook on a red background
+
+The session-state colors and the red in-car background are state-driven and intentionally not affected by color overrides or global color presets.
 
 #### Setting: Auto-hold
 

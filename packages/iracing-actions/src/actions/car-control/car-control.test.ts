@@ -6,6 +6,7 @@ import {
   generateCarControlSvg,
   getEnterExitTowState,
   getPitSpeedLimit,
+  getSessionContext,
   isDrsActive,
   isPitLimiterActive,
   isPushToPassActive,
@@ -57,10 +58,20 @@ vi.mock("@iracedeck/icons/car-control/reset-to-pits.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/tow.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">tow {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/car-control/session-qualify.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-qualify</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/session-grid.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-grid</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/session-race.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-race</svg>',
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
   EngineWarnings: { PitSpeedLimiter: 0x0010 },
+  SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -149,8 +160,17 @@ vi.mock("@iracedeck/deck-core", () => ({
     customPosition: 0,
   })),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      colors,
+      title,
+    }: {
+      graphicSvg: string;
+      colors: Record<string, string>;
+      title: { titleText: string };
+    }) => {
+      const bg = colors?.backgroundColor ? ` bg="${colors.backgroundColor}"` : "";
+      const encoded = encodeURIComponent(`<svg${bg}>${graphicSvg}${title?.titleText ?? ""}</svg>`);
 
       return `data:image/svg+xml,${encoded}`;
     },
@@ -741,6 +761,99 @@ describe("CarControl", () => {
     });
   });
 
+  describe("getSessionContext", () => {
+    /** Build a minimal session-info object containing a single session of the given type. */
+    function sessionInfoWith(sessionType: string, sessionNum = 0) {
+      return {
+        SessionInfo: {
+          Sessions: [{ SessionNum: sessionNum, SessionType: sessionType }],
+        },
+      };
+    }
+
+    it("should return unknown when telemetry and session info are null", () => {
+      expect(getSessionContext(null, null)).toBe("unknown");
+    });
+
+    it("should return unknown when telemetry is null even if session info is available", () => {
+      expect(getSessionContext(null, sessionInfoWith("Race"))).toBe("unknown");
+    });
+
+    it("should return unknown when session info has no matching session", () => {
+      expect(getSessionContext({ SessionNum: 5 } as any, sessionInfoWith("Race", 0))).toBe("unknown");
+    });
+
+    it("should return test for Offline Testing session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Offline Testing"))).toBe("test");
+    });
+
+    it("should return practice for Practice session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Practice"))).toBe("practice");
+    });
+
+    it("should return practice for Lone Practice session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Lone Practice"))).toBe("practice");
+    });
+
+    it("should return qualify for Lone Qualify session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Lone Qualify"))).toBe("qualify");
+    });
+
+    it("should return qualify for Open Qualify session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Open Qualify"))).toBe("qualify");
+    });
+
+    it("should return grid for Race session before start (GetInCar)", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 1 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return grid for Race session during warmup", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 2 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return grid for Race session during parade laps", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 3 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return race for Race session when racing", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return race for Race session after checkered", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 5 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return race for Race session during cooldown", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 6 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return grid for Race session when SessionState is missing", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should treat Warmup session type as a race-like session", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Warmup"))).toBe("race");
+    });
+
+    it("should treat Heat Racing session type as a race-like session", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Heat Racing"))).toBe("race");
+    });
+
+    it("should pick the session matching SessionNum from multiple sessions", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [
+            { SessionNum: 0, SessionType: "Practice" },
+            { SessionNum: 1, SessionType: "Lone Qualify" },
+            { SessionNum: 2, SessionType: "Race" },
+          ],
+        },
+      };
+      expect(getSessionContext({ SessionNum: 1 } as any, sessionInfo)).toBe("qualify");
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfo)).toBe("practice");
+    });
+  });
+
   describe("generateCarControlSvg escape", () => {
     it("should generate a valid data URI for escape", () => {
       const result = generateCarControlSvg({ control: "escape" });
@@ -797,6 +910,176 @@ describe("CarControl", () => {
       const results = states.map((s) => generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: s }));
       const unique = new Set(results);
       expect(unique.size).toBe(4);
+    });
+  });
+
+  describe("generateCarControlSvg session-context appearance (issue #632)", () => {
+    it("should render green background, steering wheel, and TEST label for test context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "test" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("TEST");
+    });
+
+    it("should render blue background, steering wheel, and PRACTICE label for practice context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "practice" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#1f5fd6"');
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("PRACTICE");
+    });
+
+    it("should render purple background, lightning icon, and QUALIFY label for qualify context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "qualify" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#9013f5"');
+      expect(decoded).toContain("session-qualify");
+      expect(decoded).toContain("QUALIFY");
+    });
+
+    it("should render green background, car icon, and GRID label for grid context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "grid" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("session-grid");
+      expect(decoded).toContain("GRID");
+    });
+
+    it("should render green background, flag icon, and RACE label for race context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("session-race");
+      expect(decoded).toContain("RACE");
+    });
+
+    it("should keep the legacy DRIVE appearance for unknown context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "unknown" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).not.toContain("bg=");
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should keep the legacy DRIVE appearance when sessionContext is not provided", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).not.toContain("bg=");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should render red background for exit-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("exit-car");
+      expect(decoded).toContain("EXIT");
+    });
+
+    it("should render red background for reset-to-pits state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("reset-to-pits");
+      expect(decoded).toContain("RESET");
+    });
+
+    it("should render red background for tow state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("tow");
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should ignore session context for in-car states (red background wins)", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "tow", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should produce different icons for different session contexts", () => {
+      const contexts = ["test", "practice", "qualify", "grid", "race"] as const;
+      const results = contexts.map((sessionContext) =>
+        generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car", sessionContext }),
+      );
+      const unique = new Set(results);
+      expect(unique.size).toBe(contexts.length);
+    });
+
+    it("should override user color overrides with the semantic background", async () => {
+      // Simulate a user-configured background color coming out of the color resolution chain;
+      // the state-driven background must still win (issue #632 acceptance criterion).
+      const { resolveIconColors } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
+
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).not.toContain("#123456");
+    });
+
+    it("should override user color overrides with the red in-car background", async () => {
+      const { resolveIconColors } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
+
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).not.toContain("#123456");
+    });
+  });
+
+  describe("session context state key (issue #632)", () => {
+    it("should include session context in the state key so context changes re-render", () => {
+      const action = new CarControl();
+      const settings = { control: "enter-exit-tow" } as any;
+      const gridKey = action["buildStateKey"](settings, { enterExitTowState: "enter-car", sessionContext: "grid" });
+      const raceKey = action["buildStateKey"](settings, { enterExitTowState: "enter-car", sessionContext: "race" });
+
+      expect(gridKey).not.toBe(raceKey);
+    });
+
+    it("should compute sessionContext in getTelemetryState for enter-exit-tow", () => {
+      const action = new CarControl();
+      (action as any).sdkController.getSessionInfo = vi.fn(() => ({
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      }));
+      const state = action["getTelemetryState"](
+        { IsOnTrack: false, SessionNum: 0, SessionState: 4 } as any,
+        "enter-exit-tow",
+      );
+
+      expect(state.enterExitTowState).toBe("enter-car");
+      expect(state.sessionContext).toBe("race");
     });
   });
 

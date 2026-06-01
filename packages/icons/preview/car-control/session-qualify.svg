@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#9013f5","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"QUALIFY\n"},"border":{"color":"#5a5a6a"}}</desc>
+
+
+    <rect x="23" y="2" width="10" height="8" rx="2" fill="#ffffff" stroke="none"/>
+    <circle cx="28" cy="32" r="22" fill="none" stroke="#ffffff" stroke-width="4"/>
+    <polygon points="30.3,14 17.7,34.7 25.3,34.7 22.6,50 38.4,27.5 28.5,27.5" fill="#ffffff" stroke="none"/>
+
+</svg>
