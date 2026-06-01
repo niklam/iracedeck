@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 42" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#0fa30f","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"GRID\n"},"border":{"color":"#5a5a6a"}}</desc>
+
+
+    <path d="M14,28 C8,28 2,26 2,22 L2,18 C2,14 6,12 14,11 L30,9 C34,4 40,1 48,1 L58,1 C66,1 72,4 76,9 L84,11 C90,12 94,15 94,20 L94,24 C94,27 90,28 84,28 L77,28 C77,22 72,17 66,17 C60,17 55,22 55,28 L39,28 C39,22 34,17 28,17 C22,17 17,22 17,28 Z" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="28" cy="31" r="9" fill="{{graphic1Color}}" stroke="none"/>
+    <circle cx="66" cy="31" r="9" fill="{{graphic1Color}}" stroke="none"/>
+
+
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 80" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#0fa30f","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"RACE\n"},"border":{"color":"#5a5a6a"}}</desc>
+
+
+    <rect x="2" y="0" width="6" height="80" rx="3" fill="#ffffff" stroke="none"/>
+    <path d="M12,4 C20,-1 30,-1 38,3 C46,7 54,7 62,3 L62,38 C54,42 46,42 38,38 C30,34 20,34 12,39 Z" fill="#ffffff" stroke="none"/>
+
+
+</svg>
