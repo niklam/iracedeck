@@ -58,6 +58,15 @@ vi.mock("@iracedeck/icons/car-control/reset-to-pits.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/tow.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">tow {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/car-control/session-qualify.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-qualify</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/session-grid.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-grid</svg>',
+}));
+vi.mock("@iracedeck/icons/car-control/session-race.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">session-race</svg>',
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
@@ -151,8 +160,17 @@ vi.mock("@iracedeck/deck-core", () => ({
     customPosition: 0,
   })),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      colors,
+      title,
+    }: {
+      graphicSvg: string;
+      colors: Record<string, string>;
+      title: { titleText: string };
+    }) => {
+      const bg = colors?.backgroundColor ? ` bg="${colors.backgroundColor}"` : "";
+      const encoded = encodeURIComponent(`<svg${bg}>${graphicSvg}${title?.titleText ?? ""}</svg>`);
 
       return `data:image/svg+xml,${encoded}`;
     },
@@ -891,6 +909,149 @@ describe("CarControl", () => {
       const results = states.map((s) => generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: s }));
       const unique = new Set(results);
       expect(unique.size).toBe(4);
+    });
+  });
+
+  describe("generateCarControlSvg session-context appearance (issue #632)", () => {
+    it("should render green background, steering wheel, and TEST label for test context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "test" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("TEST");
+    });
+
+    it("should render blue background, steering wheel, and PRACTICE label for practice context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "practice" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#1f5fd6"');
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("PRACTICE");
+    });
+
+    it("should render purple background, lightning icon, and QUALIFY label for qualify context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "qualify" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#9013f5"');
+      expect(decoded).toContain("session-qualify");
+      expect(decoded).toContain("QUALIFY");
+    });
+
+    it("should render green background, car icon, and GRID label for grid context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "grid" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("session-grid");
+      expect(decoded).toContain("GRID");
+    });
+
+    it("should render green background, flag icon, and RACE label for race context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).toContain("session-race");
+      expect(decoded).toContain("RACE");
+    });
+
+    it("should keep the legacy DRIVE appearance for unknown context", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "unknown" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).not.toContain("bg=");
+      expect(decoded).toContain("enter-car");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should keep the legacy DRIVE appearance when sessionContext is not provided", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).not.toContain("bg=");
+      expect(decoded).toContain("DRIVE");
+    });
+
+    it("should render red background for exit-car state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "exit-car" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("exit-car");
+      expect(decoded).toContain("EXIT");
+    });
+
+    it("should render red background for reset-to-pits state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "reset-to-pits" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("reset-to-pits");
+      expect(decoded).toContain("RESET");
+    });
+
+    it("should render red background for tow state", () => {
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("tow");
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should ignore session context for in-car states (red background wins)", () => {
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "tow", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).toContain("TOW");
+    });
+
+    it("should produce different icons for different session contexts", () => {
+      const contexts = ["test", "practice", "qualify", "grid", "race"] as const;
+      const results = contexts.map((sessionContext) =>
+        generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "enter-car", sessionContext }),
+      );
+      const unique = new Set(results);
+      expect(unique.size).toBe(contexts.length);
+    });
+  });
+
+  describe("session context state key (issue #632)", () => {
+    it("should include session context in the state key so context changes re-render", () => {
+      const action = new CarControl();
+      const settings = { control: "enter-exit-tow" } as any;
+      const gridKey = action["buildStateKey"](settings, { enterExitTowState: "enter-car", sessionContext: "grid" });
+      const raceKey = action["buildStateKey"](settings, { enterExitTowState: "enter-car", sessionContext: "race" });
+
+      expect(gridKey).not.toBe(raceKey);
+    });
+
+    it("should compute sessionContext in getTelemetryState for enter-exit-tow", () => {
+      const action = new CarControl();
+      (action as any).sdkController.getSessionInfo = vi.fn(() => ({
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      }));
+      const state = action["getTelemetryState"](
+        { IsOnTrack: false, SessionNum: 0, SessionState: 4 } as any,
+        "enter-exit-tow",
+      );
+
+      expect(state.enterExitTowState).toBe("enter-car");
+      expect(state.sessionContext).toBe("race");
     });
   });
 
