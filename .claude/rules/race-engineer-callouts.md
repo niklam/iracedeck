@@ -111,6 +111,7 @@ Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices
   - `sequence: ["@pit-crew.radio-open", "pool:<name>", "@pit-crew.radio-close"]`
   - `when: { event, where: (e) => …predicate… }`
 - Export `<FAMILY>_ALERTS` (readonly array) and `<FAMILY>_SCENARIO_IDS` / `<FAMILY>_POOL_NAMES`.
+  - **Snapshot-driven variation (issue #558):** for a family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps, export `buildXxxScenario(getSnapshot)` + `registerXxxVars(engine, getSnapshot)` (the latter registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the scenario is materialized at wiring time inside `registerPitCrew()` — while still exporting `<FAMILY>_SCENARIO_IDS` / `<FAMILY>_POOL_NAMES`. See `session-start.ts` / `lap-time.ts` for the precedent.
 
 ### 5. Family wiring
 
