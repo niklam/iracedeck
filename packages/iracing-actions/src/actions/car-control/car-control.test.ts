@@ -6,6 +6,7 @@ import {
   generateCarControlSvg,
   getEnterExitTowState,
   getPitSpeedLimit,
+  getSessionContext,
   isDrsActive,
   isPitLimiterActive,
   isPushToPassActive,
@@ -61,6 +62,7 @@ vi.mock("@iracedeck/icons/car-control/tow.svg", () => ({
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
   EngineWarnings: { PitSpeedLimiter: 0x0010 },
+  SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -738,6 +740,98 @@ describe("CarControl", () => {
       expect(
         getEnterExitTowState({ IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as any, sessionInfo),
       ).toBe("reset-to-pits");
+    });
+  });
+
+  describe("getSessionContext", () => {
+    function sessionInfoWith(sessionType: string, sessionNum = 0) {
+      return {
+        SessionInfo: {
+          Sessions: [{ SessionNum: sessionNum, SessionType: sessionType }],
+        },
+      };
+    }
+
+    it("should return unknown when telemetry and session info are null", () => {
+      expect(getSessionContext(null, null)).toBe("unknown");
+    });
+
+    it("should return unknown when telemetry is null even if session info is available", () => {
+      expect(getSessionContext(null, sessionInfoWith("Race"))).toBe("unknown");
+    });
+
+    it("should return unknown when session info has no matching session", () => {
+      expect(getSessionContext({ SessionNum: 5 } as any, sessionInfoWith("Race", 0))).toBe("unknown");
+    });
+
+    it("should return test for Offline Testing session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Offline Testing"))).toBe("test");
+    });
+
+    it("should return practice for Practice session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Practice"))).toBe("practice");
+    });
+
+    it("should return practice for Lone Practice session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Lone Practice"))).toBe("practice");
+    });
+
+    it("should return qualify for Lone Qualify session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Lone Qualify"))).toBe("qualify");
+    });
+
+    it("should return qualify for Open Qualify session", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Open Qualify"))).toBe("qualify");
+    });
+
+    it("should return grid for Race session before start (GetInCar)", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 1 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return grid for Race session during warmup", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 2 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return grid for Race session during parade laps", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 3 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should return race for Race session when racing", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return race for Race session after checkered", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 5 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return race for Race session during cooldown", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 6 } as any, sessionInfoWith("Race"))).toBe("race");
+    });
+
+    it("should return grid for Race session when SessionState is missing", () => {
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfoWith("Race"))).toBe("grid");
+    });
+
+    it("should treat Warmup session type as a race-like session", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Warmup"))).toBe("race");
+    });
+
+    it("should treat Heat Racing session type as a race-like session", () => {
+      expect(getSessionContext({ SessionNum: 0, SessionState: 4 } as any, sessionInfoWith("Heat Racing"))).toBe("race");
+    });
+
+    it("should pick the session matching SessionNum from multiple sessions", () => {
+      const sessionInfo = {
+        SessionInfo: {
+          Sessions: [
+            { SessionNum: 0, SessionType: "Practice" },
+            { SessionNum: 1, SessionType: "Lone Qualify" },
+            { SessionNum: 2, SessionType: "Race" },
+          ],
+        },
+      };
+      expect(getSessionContext({ SessionNum: 1 } as any, sessionInfo)).toBe("qualify");
+      expect(getSessionContext({ SessionNum: 0 } as any, sessionInfo)).toBe("practice");
     });
   });
 

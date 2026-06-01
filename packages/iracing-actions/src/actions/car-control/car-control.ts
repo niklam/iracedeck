@@ -37,7 +37,7 @@ import resetToPitsIcon from "@iracedeck/icons/car-control/reset-to-pits.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import towIcon from "@iracedeck/icons/car-control/tow.svg";
-import { EngineWarnings, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import drsTemplate from "../../../icons/car-control-drs.svg";
@@ -262,6 +262,59 @@ export function getEnterExitTowState(
   }
 
   return "reset-to-pits";
+}
+
+/** @internal Exported for testing */
+export type SessionContext = "test" | "practice" | "qualify" | "grid" | "race" | "unknown";
+
+/**
+ * @internal Exported for testing
+ *
+ * Classifies the current session for the context-aware enter-car appearance (issue #632).
+ * Mirrors iRacing's own UI button: Test / Practice / Qualify / Grid (race not yet started) /
+ * Race (racing, checkered, cooldown). Returns "unknown" when telemetry or session info is
+ * unavailable so callers can fall back to the legacy neutral appearance.
+ */
+export function getSessionContext(
+  telemetry: TelemetryData | null,
+  sessionInfo: Record<string, unknown> | null,
+): SessionContext {
+  if (!telemetry) {
+    return "unknown";
+  }
+
+  const sessionNum = telemetry.SessionNum ?? 0;
+  const sessions = (sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const currentSession = sessions?.find((s) => s.SessionNum === sessionNum);
+  const sessionType = currentSession?.SessionType as string | undefined;
+
+  if (!sessionType) {
+    return "unknown";
+  }
+
+  if (sessionType.includes("Testing")) {
+    return "test";
+  }
+
+  if (sessionType.includes("Practice")) {
+    return "practice";
+  }
+
+  if (sessionType.includes("Qualify")) {
+    return "qualify";
+  }
+
+  // Race-like session (Race / Warmup / Heat): split on SessionState — gridding,
+  // warmup, and parade laps count as "grid"; racing and beyond count as "race".
+  const state = telemetry.SessionState;
+
+  if (state !== undefined && state >= SessionState.Racing) {
+    return "race";
+  }
+
+  return "grid";
 }
 
 /**
