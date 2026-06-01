@@ -35,7 +35,15 @@ None.
 
 | State | Description |
 |-------|-------------|
-| Default | Car/tow icon |
+| Test (out of car, test session) | Steering wheel on green background, "TEST" label |
+| Practice (out of car, practice session) | Steering wheel on blue background, "PRACTICE" label |
+| Qualify (out of car, qualifying session) | Lightning bolt on purple background, "QUALIFY" label |
+| Grid (out of car, race not started) | Car on green background, "GRID" label |
+| Race (out of car, race underway) | Flag on green background, "RACE" label |
+| Unknown (no session info) | Steering wheel on default background, "DRIVE" label |
+| Exit Car (in pit stall) | Exit arrow on red background, "EXIT" label |
+| Reset to Pits (on track, non-race) | Reset arrow on red background, "RESET" label |
+| Tow (on track, race) | Tow hook on red background, "TOW" label |
 
 ## Notes
 
