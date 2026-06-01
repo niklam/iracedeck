@@ -12,6 +12,12 @@
 
 **Worktree:** `C:\Users\Niklas\Projects\iRaceDeck\ir-632`, branch `feature/632-context-aware-enter-exit-tow`
 
+**Deviations during execution:**
+
+- The new icons were renamed from `enter-car-{qualify,grid,race}.svg` (as written below) to `session-{qualify,grid,race}.svg`. Reason: `generate-icon-defaults.mjs` keys each action's PI color defaults off the alphabetically-first SVG in the icon directory, and `enter-car-grid.svg` would have sorted before `enter-car.svg`, flipping the car-control action's default background in the Property Inspector from `#2a2a3a` to green. The `session-` prefix sorts after `enter-car.svg`, preserving the original defaults.
+- The four semantic color constants were moved from Task 2 into Task 3 (the pre-commit ESLint hook rejects unused constants, and they have no consumer until Task 3).
+- `getSessionContext()` gained an explicit `if (!telemetry) return "unknown"` guard (code-review finding): without it, a disconnected plugin with cached race session info would have shown the green GRID look instead of the neutral DRIVE fallback.
+
 ---
 
 ## Key facts for implementers (read first)

@@ -1028,6 +1028,33 @@ describe("CarControl", () => {
       const unique = new Set(results);
       expect(unique.size).toBe(contexts.length);
     });
+
+    it("should override user color overrides with the semantic background", async () => {
+      // Simulate a user-configured background color coming out of the color resolution chain;
+      // the state-driven background must still win (issue #632 acceptance criterion).
+      const { resolveIconColors } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
+
+      const result = generateCarControlSvg(
+        { control: "enter-exit-tow" },
+        { enterExitTowState: "enter-car", sessionContext: "race" },
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('bg="#0fa30f"');
+      expect(decoded).not.toContain("#123456");
+    });
+
+    it("should override user color overrides with the red in-car background", async () => {
+      const { resolveIconColors } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveIconColors).mockReturnValueOnce({ backgroundColor: "#123456" });
+
+      const result = generateCarControlSvg({ control: "enter-exit-tow" }, { enterExitTowState: "tow" });
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('bg="#ff0000"');
+      expect(decoded).not.toContain("#123456");
+    });
   });
 
   describe("session context state key (issue #632)", () => {
