@@ -154,6 +154,31 @@ Use `hasFlag()` from `@iracedeck/iracing-sdk` to check bitfield values.
 
 Rising-edge of `(EngineWarnings & (MandRepNeeded \| OptRepNeeded))` is consumed by `sim-events-iracing/diff/damage.ts` to publish `damage.repairNeeded.raised` after a 3000 ms debounce (issue #489). Pair with `PitReadbackSnapshot.hasDamage` (built from the same mask) for damage-aware readback gating.
 
+## Car-capability detection
+
+iRacing only exposes a driver-control (`dc*`) field when the car actually has that control. So the **presence** of a `dc*` field — not its value — tells you whether the car has the feature; the value is just the current on/off state. This is the canonical way to ask "does this car have X?".
+
+| Capability | Field(s) present ⇒ has feature | Notes |
+|------------|-------------------------------|-------|
+| Pit limiter | `dcPitSpeedLimiterToggle` | A car without a pit limiter omits this field entirely. |
+| Tear-off visor | `dcTearOffVisor` | Open-cockpit / visor cars expose this. |
+| Windshield wipers | `dcToggleWindshieldWipers` / `dcTriggerWindshieldWipers` | Presence of either signals wipers. |
+
+Tear-off visor and windshield wipers are **mutually exclusive** per car — a car with a visor does not expose the wiper fields and vice-versa — so "has visor" and "has wipers" are complementary.
+
+Don't re-check these fields ad-hoc. The canonical helpers live in `packages/iracing-sdk/src/telemetry-features.ts` and are exported from `@iracedeck/iracing-sdk`:
+
+```typescript
+import { hasPitLimiter, hasVisor, hasWipers } from "@iracedeck/iracing-sdk";
+import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+
+if (!hasPitLimiter(getLatestTelemetry())) {
+  // car has no limiter — skip limiter callouts / grey out the limiter button
+}
+```
+
+Each helper takes `TelemetryData | null` and returns `false` for `null`. Add new capability checks here rather than scattering `dc*`-presence tests across consumers.
+
 ## Common Units
 
 | Unit | Meaning | Count |

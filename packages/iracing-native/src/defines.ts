@@ -734,6 +734,14 @@ export interface TelemetryData {
   dcMGUKDeployMode?: number;
   dcMGUKRegenGain?: number;
   dcMGUKDeployFixed?: number;
+  // Capability markers — iRacing exposes these only on cars that have the control, so
+  // field *presence* (not value) signals the capability. See iracing-sdk's
+  // telemetry-features.ts (hasPitLimiter/hasVisor/hasWipers). Visor and wipers are
+  // mutually exclusive per car.
+  dcPitSpeedLimiterToggle?: boolean; // "Track if pit speed limiter system is enabled"
+  dcTearOffVisor?: boolean; // "In car tear off visor film"
+  dcToggleWindshieldWipers?: boolean; // "In car turn wipers on or off"
+  dcTriggerWindshieldWipers?: boolean; // "In car momentarily turn on wipers"
 }
 
 /**
