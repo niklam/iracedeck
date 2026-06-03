@@ -130,3 +130,19 @@ export {
   getCarNumberRawFromSessionInfo,
   getAllCarNumbers,
 } from "./session-utils.js";
+
+// Telemetry snapshot formatting utilities
+export {
+  type DriverInfo,
+  type SnapshotEnvelope,
+  buildDriverDetailsTable,
+  buildDriverList,
+  buildMarkdownTable,
+  buildPlayerTelemetry,
+  buildSnapshotEnvelope,
+  generateMarkdown,
+  getSessionIdentification,
+  snapshotBaseName,
+  snapshotTimestamp,
+  trkLocToString,
+} from "./snapshot.js";
