@@ -55,6 +55,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { createInitialState, type TranslatorState } from "./state.js";
+import { resolveTrackType } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
 
@@ -918,6 +919,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   const isRaceSession = sessionType === "Race";
   const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
   const pitSpeedLimitMps = resolvePitSpeedLimit(self, sessionInfo, telemetry);
+  // Track discipline drives the pit-entry emission edge in diffPitLane (dirt
+  // ovals fire on pit-road drive-in; everything else on approach-zone entry).
+  const trackType = resolveTrackType(sessionInfo);
 
   // Diff modules — `diffLimiter` reads `state.lastInPitStall` to detect the
   // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
@@ -952,7 +956,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     emit,
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
-  diffPitLane(self.state, telemetry, emit);
+  diffPitLane(self.state, telemetry, trackType, emit);
   diffFlags(self.state, telemetry, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete

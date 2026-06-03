@@ -307,6 +307,89 @@ describe("sim-events-iracing translator", () => {
 
       expect(handler).not.toHaveBeenCalled();
     });
+
+    it("explicit road-course track type still fires pitLane.approaching on approach-zone entry", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ WeekendInfo: { TrackType: "road course" } });
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.AproachingPits }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("unknown track type falls back to approach-zone entry behaviour", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ WeekendInfo: { TrackType: "asphalt oval" } });
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.OnTrack }));
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.AproachingPits }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("dirt oval: fires pitLane.approaching when the car drives onto pit road", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ WeekendInfo: { TrackType: "dirt oval" } });
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Seed on track, off pit road. The approach zone is bypassed on dirt ovals.
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
+      // Drive onto pit road (not towed straight into the stall).
+      controller.__tick(
+        telemetry({ OnPitRoad: true, PlayerCarInPitStall: false, PlayerTrackSurface: TrkLoc.AproachingPits }),
+      );
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("dirt oval: stays silent when the car is teleported straight into the pit stall", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ WeekendInfo: { TrackType: "dirt oval" } });
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Seed on track.
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
+      // Tow-to-stall: OnPitRoad + InPitStall flip true together and the surface
+      // jumps straight to InPitStall — there was nothing to "approach".
+      controller.__tick(
+        telemetry({ OnPitRoad: true, PlayerCarInPitStall: true, PlayerTrackSurface: TrkLoc.InPitStall }),
+      );
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("dirt oval: does not re-fire on the pit-road exit transition", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ WeekendInfo: { TrackType: "dirt oval" } });
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("pitLane.approaching", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Seed on track → drive in (fires once) → drive back out (must not re-fire).
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
+      controller.__tick(
+        telemetry({ OnPitRoad: true, PlayerCarInPitStall: false, PlayerTrackSurface: TrkLoc.AproachingPits }),
+      );
+      controller.__tick(telemetry({ OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("flags", () => {

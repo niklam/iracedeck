@@ -86,6 +86,10 @@ Variables with `irsdk_*` unit values map to TypeScript enums in `packages/iracin
 
 Use `hasFlag()` from `@iracedeck/iracing-sdk` to check bitfield values.
 
+## Session-YAML enums
+
+Not every classified value is a telemetry bitfield. `WeekendInfo.TrackType` is a session-YAML **string** (e.g. `"road course"`, `"dirt oval"`) resolved to the local `TrackType` enum via `resolveTrackType` in `packages/sim-events-iracing/src/track-type.ts`; unrecognized values map to `Unknown`. This enum is local to `sim-events-iracing` (it rides in no event payload and has a single consumer), not on the event-bus.
+
 ## SessionFlags Breakdown
 
 `SessionFlags` is a combined bitfield containing track flags, driver black flags, and start lights. Use the `Flags` enum from `@iracedeck/iracing-native`.

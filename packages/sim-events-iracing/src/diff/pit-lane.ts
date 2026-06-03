@@ -2,8 +2,14 @@
  * Pit lane transitions.
  *
  * Emits:
- *   - pitLane.approaching — car enters the approach zone *not* from pit road.
- *     Once fired, suppressed until the car is fully back on track.
+ *   - pitLane.approaching — pit-entry signal, track-type aware:
+ *       • Non-dirt-oval (road course / unknown / future types): car enters the
+ *         approach zone *not* from pit road. Once fired, suppressed until the
+ *         car is fully back on track.
+ *       • Dirt oval: iRacing tows the car straight to the pit stall, bypassing
+ *         the approach zone, so instead fire on the `OnPitRoad` false→true
+ *         drive-in edge — but only when the car drove in rather than teleported
+ *         straight into the box (teleport-to-stall stays silent).
  *   - pitLane.entered / exited — onPitRoad off→on / on→off transitions.
  *   - pitStall.entered / departed — inPitStall off→on / on→off transitions.
  *     Departed only fires while still on pit road (distinguishes from teleport out).
@@ -11,9 +17,15 @@
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { TrackType } from "../track-type.js";
 import type { EmitFn } from "./types.js";
 
-export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
+export function diffPitLane(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  trackType: TrackType,
+  emit: EmitFn,
+): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const trackSurface = telemetry.PlayerTrackSurface ?? TrkLoc.NotInWorld;
@@ -36,8 +48,12 @@ export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, em
     return;
   }
 
+  // The OnPitRoad false→true edge: the same drive-in transition powers both
+  // `pitLane.entered` and (on dirt ovals) the `pitLane.approaching` pit-entry signal.
+  const enteredPitRoad = !state.lastOnPitRoad && onPitRoad;
+
   // ── Pit road on/off transitions ────────────────────────────────────────
-  if (!state.lastOnPitRoad && onPitRoad) {
+  if (enteredPitRoad) {
     emit({ event: "pitLane.entered", data: {} });
   } else if (state.lastOnPitRoad && !onPitRoad) {
     emit({ event: "pitLane.exited", data: {} });
@@ -67,7 +83,16 @@ export function diffPitLane(state: TranslatorState, telemetry: TelemetryData, em
     state.approachExitingSuppressed = false;
   }
 
-  if (isApproaching && !state.approachAlertFired && !isExitingPits) {
+  if (trackType === TrackType.DirtOval) {
+    // Dirt oval: the approach zone is bypassed by iRacing's tow-to-stall, so
+    // fire on the OnPitRoad drive-in edge instead. Suppress the teleport/tow
+    // case — a car materialized directly in the box reports `PlayerCarInPitStall`
+    // true and/or `PlayerTrackSurface` jumping straight to `InPitStall`, and has
+    // nothing to "approach". The exit edge (OnPitRoad on→off) never fires here.
+    if (enteredPitRoad && !inPitStall && trackSurface !== TrkLoc.InPitStall) {
+      emit({ event: "pitLane.approaching", data: {} });
+    }
+  } else if (isApproaching && !state.approachAlertFired && !isExitingPits) {
     state.approachAlertFired = true;
     emit({ event: "pitLane.approaching", data: {} });
   } else if (isOnTrack && state.approachAlertFired) {

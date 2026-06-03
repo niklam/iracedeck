@@ -178,9 +178,11 @@ describe("diffPitReadback — entry", () => {
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
-    // Car materialised on pit road this tick — `diffPitLane` would only
-    // emit `pitLane.entered`, not `pitLane.approaching`, because the
-    // approach zone was bypassed entirely.
+    // Car materialised on pit road this tick carrying only `pitLane.entered`
+    // (e.g. a road-course teleport that bypassed the approach zone, or a
+    // dirt-oval tow straight to the stall — both of which `diffPitLane` keeps
+    // free of `pitLane.approaching`). The readback only reacts to
+    // `pitLane.approaching`, so it must stay silent.
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
