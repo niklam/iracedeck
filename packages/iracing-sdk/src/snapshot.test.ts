@@ -202,10 +202,16 @@ describe("snapshotTimestamp", () => {
 });
 
 describe("snapshotBaseName", () => {
-  it("should prefix the timestamp with telemetry-snapshot-", () => {
-    const now = new Date(2026, 5, 2, 15, 4, 5);
+  it("should prefix the timestamp with telemetry-snapshot- and include milliseconds", () => {
+    const now = new Date(2026, 5, 2, 15, 4, 5, 0);
 
-    expect(snapshotBaseName(now)).toBe("telemetry-snapshot-20260602-150405");
+    expect(snapshotBaseName(now)).toBe("telemetry-snapshot-20260602-150405-000");
+  });
+
+  it("should zero-pad the millisecond component", () => {
+    const now = new Date(2026, 5, 2, 15, 4, 5, 7);
+
+    expect(snapshotBaseName(now)).toBe("telemetry-snapshot-20260602-150405-007");
   });
 });
 

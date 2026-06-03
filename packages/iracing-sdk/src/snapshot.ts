@@ -457,9 +457,15 @@ export function snapshotTimestamp(now: Date = new Date()): string {
 
 /**
  * Returns the base filename (without extension) for a snapshot taken at the given time.
+ *
+ * Includes milliseconds so two snapshots captured within the same second (e.g. a
+ * rapid double-press of the Stream Deck key, or two CLI runs) do not collide and
+ * silently overwrite each other.
  */
 export function snapshotBaseName(now: Date = new Date()): string {
-  return `telemetry-snapshot-${snapshotTimestamp(now)}`;
+  const ms = String(now.getMilliseconds()).padStart(3, "0");
+
+  return `telemetry-snapshot-${snapshotTimestamp(now)}-${ms}`;
 }
 
 /**

@@ -280,10 +280,9 @@ export class TelemetryControl extends ConnectionStateAwareAction<TelemetryContro
       );
 
       const dir = resolveSnapshotDir(settings.outputDir);
-      // Append milliseconds so two presses within the same second don't collide
-      // and silently overwrite each other (the shared snapshotBaseName has only
-      // 1-second resolution, which is fine for the one-shot CLI).
-      const baseName = `${snapshotBaseName(now)}-${String(now.getMilliseconds()).padStart(3, "0")}`;
+      // snapshotBaseName includes milliseconds, so two presses within the same
+      // second don't collide and silently overwrite each other.
+      const baseName = snapshotBaseName(now);
       const jsonPath = join(dir, `${baseName}.json`);
       const mdPath = join(dir, `${baseName}.md`);
 

@@ -213,11 +213,17 @@ async function main(): Promise<void> {
   // Always read session info (needed for markdown driver names)
   const sessionInfo = sdk.getSessionInfo() ?? null;
 
+  // Freeze a single timestamp so the JSON `timestamp`, the generated filename,
+  // and the Markdown header all describe the same instant (and don't drift
+  // across a second boundary between the three calls below).
+  const now = new Date();
+
   // Build output object
   const output = buildSnapshotEnvelope(
     telemetry as unknown as Record<string, unknown>,
     sessionInfo as Record<string, unknown> | null,
     options.includeSession,
+    now,
   );
 
   // Disconnect
@@ -241,13 +247,14 @@ async function main(): Promise<void> {
     const ext = options.format === "json" ? "json" : "txt";
     const baseDir = resolve(process.env.INIT_CWD || process.cwd(), options.outputDir);
     mkdirSync(baseDir, { recursive: true });
-    outputPath = join(baseDir, `${snapshotBaseName()}.${ext}`);
+    outputPath = join(baseDir, `${snapshotBaseName(now)}.${ext}`);
   }
 
   // Generate markdown
   const markdown = generateMarkdown(
     telemetry as unknown as Record<string, unknown>,
     sessionInfo as Record<string, unknown> | null,
+    now,
   );
 
   // Output
