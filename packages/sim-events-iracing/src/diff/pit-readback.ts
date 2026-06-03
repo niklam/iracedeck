@@ -184,11 +184,12 @@ export function diffPitReadback(
   const justApproached = pending.some((p) => p.event === "pitLane.approaching");
 
   if (justApproached) {
-    // `pitLane.approaching` only fires when the car enters
-    // `TrkLoc.AproachingPits` from track (`diffPitLane` keeps it
-    // suppressed when the car is exiting through the same zone), so a
-    // reset/teleport-to-pits never produces this event and stays silent.
-    // Cancel any stale scheduled exit too — re-approaching before the
+    // `pitLane.approaching` is the track-type-aware pit-entry signal from
+    // `diffPitLane`: on most tracks it fires only on approach-zone entry from
+    // track (suppressed when exiting through the same zone); on dirt ovals it
+    // fires on the pit-road drive-in edge. Either way `diffPitLane` guards out
+    // a tow/teleport straight into the pit stall, so a reset-to-stall stays
+    // silent here. Cancel any stale scheduled exit too — re-approaching before the
     // settle delay elapsed pre-empts the pending "to confirm" recap.
     // Also disarm any queued pre-start readback: a driver who entered
     // pit road during formation/grid has now had the entry callout fire
