@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **31 actions with 290 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **31 actions with 291 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -33,7 +33,7 @@ Every action mode talks to iRacing through one of three methods, formalized per-
 - **`keybind`** — a configurable key binding (keyboard OR SimHub role); requires the binding to be set. The descriptor's `binding` carries a constant `key`, a `keyBy` a secondary setting, multiple `keys`, or is absent for a fixed key (no user binding).
 - **`chat`** — an iRacing chat/text command, e.g. a `#…` pit macro.
 
-This is the **authoritative source for a mode's communication method** when answering "how does action X mode Y talk to iRacing?" or labeling docs. An action can mix all three across its modes (e.g. Fuel Service). Display-only / internal actions (session-info, telemetry-display, pit-crew) and the PI-less camera-controls are absent from the catalog. The method surfaces in the PI (an `ird-binding-status` line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
+This is the **authoritative source for a mode's communication method** when answering "how does action X mode Y talk to iRacing?" or labeling docs. An action can mix all three across its modes (e.g. Fuel Service). Display-only / internal actions (session-info, telemetry-display, pit-crew) and the PI-less camera-controls are absent from the catalog. The Telemetry Control **snapshot** mode is likewise absent (it writes telemetry to disk, issuing no iRacing command), so it shows no status line. The method surfaces in the PI (an `ird-binding-status` line under the Mode selector) and on the key icon (a centered ⚠️ when a required binding is unset).
 
 ## How to Use
 
@@ -49,13 +49,13 @@ When asked about actions or controls:
 |----------|---------|-------|-------------|
 | Display & Session | 2 | 8 | Live session data: incidents, laps, position, fuel, flags, track wetness |
 | Driving Controls | 6 | 31 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar) |
-| Cockpit & Interface | 5 | 34 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
+| Cockpit & Interface | 5 | 35 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **290** | |
+| **Total** | **31** | **291** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -85,7 +85,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 |--------|-------|-------------|
 | Cockpit Misc | 7 | toggle-wipers, trigger-wipers, ffb-max-force (+/-), report-latency, dash-page-1 (+/-), dash-page-2 (+/-), in-lap-mode |
 | Splits & Reference | 6 | cycle (+/- direction), toggle-ref-car, custom-sector-start, custom-sector-end, active-reset-set, active-reset-run |
-| Telemetry Control | 5 | toggle-logging, mark-event, start/stop/restart recording (SDK) |
+| Telemetry Control | 6 | toggle-logging, mark-event, start/stop/restart recording (SDK), snapshot (developer tool — saves current telemetry + session info to disk as timestamped JSON + Markdown; configurable Output Folder; no iRacing command) |
 | Force Feedback | 6 | auto-compute-ffb-force, ffb-force (+/-), wheel-lfe (+/-), bass-shaker-lfe (+/-), wheel-lfe-intensity (+/-), haptic-lfe-intensity (+/-) |
 | Toggle UI Elements | 10 | dash-box, speed/gear/pedals, radio, FPS/network, weather, virtual mirror, UI edit, driving-line, display-ref-car (deprecated), replay-ui (SDK) |
 

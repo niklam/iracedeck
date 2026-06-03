@@ -259,7 +259,12 @@
             { "value": "mark-event", "label": "Mark Event" },
             { "value": "start-recording", "label": "Start Recording" },
             { "value": "stop-recording", "label": "Stop Recording" },
-            { "value": "restart-recording", "label": "Restart Recording" }
+            { "value": "restart-recording", "label": "Restart Recording" },
+            {
+              "value": "snapshot",
+              "label": "Take Snapshot",
+              "description": "Developer tool: saves the current telemetry + session info to disk as timestamped JSON and Markdown files"
+            }
           ]
         },
         {

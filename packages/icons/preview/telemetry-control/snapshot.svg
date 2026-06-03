@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 62" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#3a2a3a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"TAKE\nSNAPSHOT"},"border":{"color":"#6a5a6a"}}</desc>
+
+
+    <polyline points="2,10 12,16 22,4 32,12 42,6 50,10 58,7" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="30" y1="24" x2="30" y2="42" stroke="#2ecc71" stroke-width="4" stroke-linecap="round"/>
+    <polyline points="21,34 30,43 39,34" fill="none" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="4,48 4,60 56,60 56,48" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

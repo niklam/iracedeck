@@ -1,6 +1,34 @@
+import { homedir as osHomedir } from "node:os";
+import { sep as pathSep } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateTelemetryControlSvg, TELEMETRY_CONTROL_GLOBAL_KEYS } from "./telemetry-control.js";
+import {
+  defaultSnapshotDir,
+  generateTelemetryControlSvg,
+  resolveSnapshotDir,
+  TELEMETRY_CONTROL_GLOBAL_KEYS,
+  TelemetryControl,
+} from "./telemetry-control.js";
+
+const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetry, mockGetSessionInfo } = vi.hoisted(
+  () => ({
+    mockTapBinding: vi.fn().mockResolvedValue(undefined),
+    mockMkdirSync: vi.fn(),
+    mockWriteFileSync: vi.fn(),
+    mockGetCurrentTelemetry: vi.fn(),
+    mockGetSessionInfo: vi.fn(),
+  }),
+);
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+
+  return {
+    ...actual,
+    mkdirSync: mockMkdirSync,
+    writeFileSync: mockWriteFileSync,
+  };
+});
 
 vi.mock("@iracedeck/icons/telemetry-control/toggle-logging.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -15,6 +43,9 @@ vi.mock("@iracedeck/icons/telemetry-control/stop-recording.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/telemetry-control/restart-recording.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/telemetry-control/snapshot.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
@@ -34,11 +65,23 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getCurrentTelemetry: mockGetCurrentTelemetry,
+      getSessionInfo: mockGetSessionInfo,
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     isBindingMissing = vi.fn(() => false);
+    setActiveBinding = vi.fn();
+    tapBinding = mockTapBinding;
+    holdBinding = vi.fn().mockResolvedValue(undefined);
+    releaseBinding = vi.fn().mockResolvedValue(undefined);
+    async onWillAppear() {}
+    async onDidReceiveSettings() {}
+    async onWillDisappear() {}
   },
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
@@ -120,6 +163,7 @@ const ALL_ACTIONS = [
   "start-recording",
   "stop-recording",
   "restart-recording",
+  "snapshot",
 ] as const;
 
 describe("TelemetryControl", () => {
@@ -161,7 +205,7 @@ describe("TelemetryControl", () => {
       expect(result).toContain("data:image/svg+xml");
     });
 
-    it("should generate valid data URIs for all 5 actions", () => {
+    it("should generate valid data URIs for all actions", () => {
       for (const mode of ALL_ACTIONS) {
         const result = generateTelemetryControlSvg({ mode });
 
@@ -199,6 +243,7 @@ describe("TelemetryControl", () => {
         "start-recording": { mainLabel: "RECORDING", subLabel: "START" },
         "stop-recording": { mainLabel: "RECORDING", subLabel: "STOP" },
         "restart-recording": { mainLabel: "RECORDING", subLabel: "RESTART" },
+        snapshot: { mainLabel: "TAKE", subLabel: "SNAPSHOT" },
       };
 
       for (const [mode, labels] of Object.entries(expectedLabels)) {
@@ -210,6 +255,133 @@ describe("TelemetryControl", () => {
         expect(decoded).toContain(labels.mainLabel);
         expect(decoded).toContain(labels.subLabel);
       }
+    });
+  });
+
+  describe("snapshot mode", () => {
+    const sampleTelemetry = {
+      PlayerCarIdx: 1,
+      Speed: 50,
+      CarIdxPosition: [0, 1],
+      CarIdxLapDistPct: [0, 0.5],
+      CarIdxLap: [0, 3],
+      CarIdxTrackSurface: [-1, 3],
+    };
+    const sampleSessionInfo = {
+      WeekendInfo: { TrackDisplayName: "Test Track" },
+      DriverInfo: { Drivers: [{ CarIdx: 1, CarNumber: "42", UserName: "Test Driver" }] },
+    };
+
+    function fakeEvent(actionId: string, settings: Record<string, unknown>) {
+      return { action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
+    }
+
+    // A platform-appropriate ABSOLUTE path (so resolveSnapshotDir returns it unchanged
+    // on both Windows and POSIX CI runners).
+    const absDir = process.platform === "win32" ? "C:\\snapshots" : "/tmp/snapshots";
+
+    it("defaultSnapshotDir ends with the telemetry-snapshots folder under home", () => {
+      expect(defaultSnapshotDir()).toMatch(/[\\/]iRaceDeck[\\/]telemetry-snapshots$/);
+      // Must NOT assume a "Documents" known folder (OneDrive / localization safe).
+      expect(defaultSnapshotDir()).not.toMatch(/Documents/i);
+    });
+
+    it("resolveSnapshotDir falls back to the default for blank input", () => {
+      expect(resolveSnapshotDir("")).toBe(defaultSnapshotDir());
+      expect(resolveSnapshotDir("   ")).toBe(defaultSnapshotDir());
+      expect(resolveSnapshotDir(undefined)).toBe(defaultSnapshotDir());
+    });
+
+    it("resolveSnapshotDir keeps an absolute configured directory as-is", () => {
+      const abs = process.platform === "win32" ? "C:\\snapshots" : "/tmp/snapshots";
+      expect(resolveSnapshotDir(abs)).toBe(abs);
+    });
+
+    it("resolveSnapshotDir expands %VAR% environment placeholders", () => {
+      process.env.IRD_TEST_SNAP = process.platform === "win32" ? "C:\\snap-env" : "/snap-env";
+
+      try {
+        expect(resolveSnapshotDir("%IRD_TEST_SNAP%")).toBe(process.env.IRD_TEST_SNAP);
+      } finally {
+        delete process.env.IRD_TEST_SNAP;
+      }
+    });
+
+    it("resolveSnapshotDir resolves a relative path against home, not the process cwd", () => {
+      const result = resolveSnapshotDir("snaps");
+      // Resolved to an absolute path, and NOT under the current working directory
+      // (which, in the running plugin, is the Stream Deck install folder).
+      expect(result.endsWith(`${pathSep}snaps`)).toBe(true);
+      expect(result).not.toBe("snaps");
+      expect(result.startsWith(osHomedir())).toBe(true);
+    });
+
+    it("writes json and md files when telemetry is available", async () => {
+      mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+      mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+      const action = new TelemetryControl();
+      await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+      expect(mockMkdirSync).toHaveBeenCalledWith(absDir, { recursive: true });
+      expect(mockWriteFileSync).toHaveBeenCalledTimes(2);
+
+      const [jsonCall, mdCall] = mockWriteFileSync.mock.calls;
+      expect(jsonCall[0]).toMatch(/telemetry-snapshot-\d{8}-\d{6}-\d{3}\.json$/);
+      expect(mdCall[0]).toMatch(/telemetry-snapshot-\d{8}-\d{6}-\d{3}\.md$/);
+
+      const jsonBody = JSON.parse(jsonCall[1] as string);
+      expect(jsonBody.telemetry).toEqual(sampleTelemetry);
+      expect(jsonBody.sessionInfo).toEqual(sampleSessionInfo);
+      expect(mdCall[1]).toContain("Test Driver");
+    });
+
+    it("uses the default output directory when outputDir is blank", async () => {
+      mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+      mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+      const action = new TelemetryControl();
+      await action.onKeyDown(fakeEvent("a1", { mode: "snapshot" }) as never);
+
+      expect(mockMkdirSync).toHaveBeenCalledWith(defaultSnapshotDir(), { recursive: true });
+    });
+
+    it("skips writing and warns when no telemetry is available", async () => {
+      mockGetCurrentTelemetry.mockReturnValue(null);
+
+      const action = new TelemetryControl();
+      await action.onKeyDown(fakeEvent("a1", { mode: "snapshot" }) as never);
+
+      expect(mockWriteFileSync).not.toHaveBeenCalled();
+      expect(mockMkdirSync).not.toHaveBeenCalled();
+      expect((action as never as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn).toHaveBeenCalled();
+    });
+
+    it("logs an error when the file write fails", async () => {
+      mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+      mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+      // mockImplementationOnce (not mockImplementation): vi.clearAllMocks() in
+      // beforeEach clears call history but NOT implementations, so a persistent
+      // throw would leak into later tests. Scope it to this single call.
+      mockWriteFileSync.mockImplementationOnce(() => {
+        throw new Error("disk full");
+      });
+
+      const action = new TelemetryControl();
+      await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+      const logger = (action as never as { logger: { error: ReturnType<typeof vi.fn> } }).logger;
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+    });
+
+    it("does not write files for non-snapshot modes", async () => {
+      mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+
+      const action = new TelemetryControl();
+      await action.onKeyDown(fakeEvent("a1", { mode: "toggle-logging" }) as never);
+
+      expect(mockWriteFileSync).not.toHaveBeenCalled();
+      expect(mockTapBinding).toHaveBeenCalledWith("telemetryControlToggleLogging");
     });
   });
 });

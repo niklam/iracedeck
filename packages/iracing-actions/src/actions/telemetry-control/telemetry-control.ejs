@@ -7,17 +7,63 @@
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
 		<sdpi-item label="Mode">
-			<sdpi-select setting="mode" default="toggle-logging">
+			<sdpi-select id="mode-select" setting="mode" default="toggle-logging">
 				<option value="toggle-logging">Toggle Logging</option>
 				<option value="mark-event">Mark Event</option>
 				<option value="start-recording">Start Recording</option>
 				<option value="stop-recording">Stop Recording</option>
 				<option value="restart-recording">Restart Recording</option>
+				<option value="snapshot">Take Snapshot</option>
 			</sdpi-select>
 		</sdpi-item>
 
 		<% var __comms = require('./data/action-comms.json')['telemetry-control']; %>
 		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+		<sdpi-item id="snapshot-settings" label="Output Folder" class="hidden">
+			<sdpi-textfield setting="outputDir" placeholder="%USERPROFILE%\iRaceDeck\telemetry-snapshots"></sdpi-textfield>
+		</sdpi-item>
+		<div id="snapshot-help" class="ird-supporting-text hidden">
+			Folder where snapshots are written (timestamped JSON + Markdown). Leave blank to use the default
+			(an "iRaceDeck\telemetry-snapshots" folder in your user home folder). Environment variables such as
+			%USERPROFILE% and a leading ~ are expanded; a relative path is resolved against your home folder. The
+			folder is created if it does not exist.
+		</div>
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-select");
+
+				const modeSelect = document.getElementById("mode-select");
+				if (!modeSelect) return;
+
+				updateVisibility(modeSelect.value || "toggle-logging");
+
+				modeSelect.addEventListener("change", (ev) => updateVisibility(ev.target.value));
+				modeSelect.addEventListener("input", (ev) => updateVisibility(ev.target.value));
+
+				let lastMode = modeSelect.value || "toggle-logging";
+				setInterval(() => {
+					const current = modeSelect.value;
+					if (current && current !== lastMode) {
+						lastMode = current;
+						updateVisibility(current);
+					}
+				}, 100);
+			}
+
+			function updateVisibility(mode) {
+				const isSnapshot = mode === "snapshot";
+				document.getElementById("snapshot-settings")?.classList.toggle("hidden", !isSnapshot);
+				document.getElementById("snapshot-help")?.classList.toggle("hidden", !isSnapshot);
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
 
 		<%- include('title-overrides') %>
 
