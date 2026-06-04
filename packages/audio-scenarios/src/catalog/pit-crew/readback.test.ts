@@ -263,6 +263,10 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: true },
   windshield: { queued: false, available: true },
   limiterEngaged: false,
+  // Default to a limiter-equipped car so the existing limiter pre-opener tests
+  // (which represent the common case) stay valid; the no-limiter path is
+  // covered by explicit `hasPitLimiter: false` cases (issue #639).
+  hasPitLimiter: true,
   hasDamage: false,
 };
 
@@ -348,6 +352,21 @@ describe("pit readback scenarios", () => {
 
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(true);
       expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
+    });
+
+    it("omits the limiter pre-opener on a car with no pit limiter, even when not engaged (issue #639)", () => {
+      fireReadback("entry", snap({ fuel: { queued: true }, hasPitLimiter: false, limiterEngaged: false }));
+
+      const paths = voicePaths();
+      // The regular opener still plays — only the limiter pre-opener is suppressed.
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry.mp3"))).toBe(true);
+      expect(paths.some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(false);
+    });
+
+    it("keeps the limiter pre-opener on a limiter-equipped car when not engaged (issue #639 regression guard)", () => {
+      fireReadback("entry", snap({ fuel: { queued: true }, hasPitLimiter: true, limiterEngaged: false }));
+
+      expect(voicePaths().some((p) => p.endsWith("/pit-readback/opener-entry-limiter.mp3"))).toBe(true);
     });
 
     it("entry-refire reason fires the entry scenario but skips the opener", () => {

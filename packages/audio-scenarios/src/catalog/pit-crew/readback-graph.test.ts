@@ -409,6 +409,10 @@ describe("pit-readback path-graph invariant", () => {
                           fastRepair: { queued: frQ, available: frAvail },
                           windshield: { queued: wsQ, available: wsAvail },
                           limiterEngaged: limiter,
+                          // Limiter-equipped car (issue #639): keeps the existing
+                          // pre-opener graph identical; the no-limiter suppression
+                          // path is covered directly in readback.test.ts.
+                          hasPitLimiter: true,
                           hasDamage: damage,
                         });
 

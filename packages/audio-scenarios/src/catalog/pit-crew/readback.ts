@@ -139,6 +139,7 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: false },
   windshield: { queued: false, available: false },
   limiterEngaged: false,
+  hasPitLimiter: false,
   hasDamage: false,
 };
 
@@ -253,14 +254,19 @@ function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotRes
     sequence: [
       "@pit-crew.radio-open",
       ...(isEntry
-        ? // Entry: limiter pre-opener fires unconditionally (when the
-          // limiter isn't engaged on the initial entry) — the warning
-          // matters whether or not the driver has any services queued.
+        ? // Entry: limiter pre-opener fires when the car HAS a limiter and it
+          // isn't engaged on the initial entry — the warning is meaningless on
+          // cars without a limiter (issue #639), and matters whether or not the
+          // driver has any services queued otherwise.
           // After that, empty-snapshot collapses to the fallback clip;
           // non-empty plays the regular opener + slots.
           ([
             {
-              if: (ctx) => reasonOf(ctx) === "entry" && !(getSnap() ?? EMPTY_SNAPSHOT).limiterEngaged,
+              if: (ctx) => {
+                const s = getSnap() ?? EMPTY_SNAPSHOT;
+
+                return reasonOf(ctx) === "entry" && s.hasPitLimiter && !s.limiterEngaged;
+              },
               then: [clipPath("opener-entry-limiter.mp3")],
             },
             {

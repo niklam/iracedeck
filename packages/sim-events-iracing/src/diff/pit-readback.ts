@@ -33,7 +33,14 @@
  * which is exactly the signal we want.
  */
 import type { PitReadbackSnapshot } from "@iracedeck/event-bus";
-import { EngineWarnings, PaceMode, PitSvFlags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  EngineWarnings,
+  hasPitLimiter,
+  PaceMode,
+  PitSvFlags,
+  SessionState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn, PendingEvent } from "./types.js";
@@ -133,6 +140,7 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
       available: true,
     },
     limiterEngaged: limiter,
+    hasPitLimiter: hasPitLimiter(telemetry),
     hasDamage,
   };
 }
