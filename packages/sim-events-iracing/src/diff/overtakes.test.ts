@@ -17,7 +17,7 @@
  *   - Multi-class `classPosition` / `previousClassPosition` fields
  *   - Track-length missing → emission proceeds (gap field omitted)
  */
-import { Flags, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
@@ -46,6 +46,7 @@ function tick(
     onPitRoad?: boolean;
     sessionFlags?: number;
     playerClassPosition?: number;
+    sessionState?: number;
   } = {},
 ): TelemetryData {
   const playerPct = opts.playerPct ?? 0.5;
@@ -90,13 +91,19 @@ function tick(
     if (lapDistPct[i]! >= 1) lapDistPct[i] = lapDistPct[i]! - 1;
   }
 
-  return {
+  const t = {
     OnPitRoad: opts.onPitRoad ?? false,
     SessionFlags: opts.sessionFlags ?? 0,
     CarIdxLapCompleted: lapCompleted,
     CarIdxLapDistPct: lapDistPct,
     PlayerCarClassPosition: opts.playerClassPosition ?? 0,
   } as unknown as TelemetryData;
+
+  // Only set SessionState when explicitly provided so the existing call sites
+  // (which never set it) keep `preGreen` defaulting to false (issue #647).
+  if (opts.sessionState !== undefined) t.SessionState = opts.sessionState;
+
+  return t;
 }
 
 function collect(): { events: PendingEvent[]; emit: (e: PendingEvent) => void } {
@@ -510,6 +517,166 @@ describe("diffOvertakes — suppression rules", () => {
       emit,
     );
     expect(overtakeEvents(events)).toHaveLength(0);
+  });
+});
+
+describe("diffOvertakes — pre-green gate (#647)", () => {
+  it("suppresses a would-be gain during the parade lap and rolls the baseline silently", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    // Parade lap: position improves to P4 with a clean 50 m gap behind, held
+    // well past the hold window. Without the gate this would emit a "Nice pass"
+    // before the green flag.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 4, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    expect(state.lastPosition).toBe(4); // baseline rolled forward silently
+    expect(state.pendingOvertakePos).toBe(-1);
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 4, carBehindPct: 0.4, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("suppresses a would-be loss during the parade lap and rolls the baseline silently", () => {
+    const { state } = seedAt(4);
+    const { events, emit } = collect();
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    expect(state.lastPosition).toBe(5); // baseline rolled forward silently
+    expect(state.pendingLossPos).toBe(-1);
+
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, carAheadPct: 0.55, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+    expect(overtakeEvents(events)).toHaveLength(0);
+  });
+
+  it("seeds from the green-flag order at the transition, then announces a genuine post-green gain", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Pre-green ticks: the player is shuffling around the grid. All suppressed,
+    // baseline rolled silently to the latest pre-green order.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 6, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      0,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, sessionState: SessionState.ParadeLaps }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100,
+      emit,
+    );
+    expect(state.overtakeInitialized).toBe(false); // never seeded while pre-green
+    expect(overtakeEvents(events)).toHaveLength(0);
+
+    // Green flies: first racing tick reads P5 — this seeds the baseline (no
+    // phantom emit from the pre-green shuffle) and stays silent.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 5, sessionState: SessionState.Racing }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      200,
+      emit,
+    );
+    expect(state.overtakeInitialized).toBe(true);
+    expect(state.lastPosition).toBe(5);
+    expect(overtakeEvents(events)).toHaveLength(0);
+
+    // A NEW sustained gain AFTER green (P5 → P4) is measured from the
+    // green-flag order and DOES emit.
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 4, sessionState: SessionState.Racing }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      300,
+      emit,
+    );
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 4, carBehindPct: 0.4, sessionState: SessionState.Racing }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      300 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect(fires[0]!.data).toMatchObject({ position: 4, previousPosition: 5 });
+  });
+
+  it("leaves behaviour unchanged when SessionState is omitted (back-compat default)", () => {
+    const { state } = seedAt(5);
+    const { events, emit } = collect();
+
+    // No sessionState → preGreen is false → a sustained gain still emits.
+    diffOvertakes(state, tick({ playerPosition: 4 }), PLAYER_IDX, true, null, TRACK_LENGTH_M, 100, emit);
+    diffOvertakes(
+      state,
+      tick({ playerPosition: 4, carBehindPct: 0.4 }),
+      PLAYER_IDX,
+      true,
+      null,
+      TRACK_LENGTH_M,
+      100 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
   });
 });
 

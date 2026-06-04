@@ -63,7 +63,7 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 ### Position
 
-Display your current race position — either within your own car class (the default) or overall across the whole field. Optionally shows the field size (e.g., `P3/24`) by enabling the **Show Total** setting.
+Display your current race position — either within your own car class (the default) or overall across the whole field. Optionally shows the field size (e.g., `P3/24`) by enabling the **Show Total** setting. Through the grid, formation, and parade lap — and the run down to the green — it shows your qualifying grid position, then switches to the live running order once you cross the start/finish line to begin racing.
 
 #### Details
 

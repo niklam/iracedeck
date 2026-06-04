@@ -366,6 +366,31 @@ export function getRaceStartConditions(): RaceStartConditions | null {
  * @internal Exported for testing.
  */
 function resolveStartingGridPosition(sessionInfo: Record<string, unknown>): number | undefined {
+  const slots = resolveStartingGridSlots(sessionInfo);
+
+  if (!slots) return undefined;
+
+  // Single-class (or undeterminable): the overall qualifying slot IS the grid
+  // slot. Multi-class (issue #599): report the CLASS grid slot.
+  return resolveIsMultiClass(sessionInfo) !== true ? slots.overall : slots.class;
+}
+
+/**
+ * Compute BOTH the overall and class starting-grid slots (1-indexed) from the
+ * qualifying results, in one lookup. {@link resolveStartingGridPosition} picks
+ * the effective one for the race-start callout / overtake baseline; the Session
+ * Info position display ({@link getStartingGridPosition}) needs both because
+ * the user can show either overall or class. The class slot falls back to the
+ * overall slot when the player's class can't be resolved (issue #599).
+ *
+ * Returns `undefined` when any step misses (no driver info, no qualify results,
+ * no entry for the player, or a negative `Position` sentinel).
+ *
+ * @internal Exported for testing.
+ */
+function resolveStartingGridSlots(
+  sessionInfo: Record<string, unknown>,
+): { overall: number; class: number } | undefined {
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
   const playerCarIdx = driverInfo?.DriverCarIdx;
 
@@ -384,13 +409,10 @@ function resolveStartingGridPosition(sessionInfo: Record<string, unknown>): numb
 
   if (typeof position !== "number" || position < 0) return undefined;
 
-  // Single-class (or undeterminable): the overall qualifying slot IS the grid
-  // slot. 1-indexed.
-  if (resolveIsMultiClass(sessionInfo) !== true) return position + 1;
+  const overall = position + 1; // 1-indexed
+  const klass = resolveStartingClassPosition(sessionInfo, results, playerCarIdx, position) ?? overall;
 
-  // Multi-class (issue #599): report the CLASS grid slot. Falls back to the
-  // overall slot when the player's class can't be resolved rather than guess.
-  return resolveStartingClassPosition(sessionInfo, results, playerCarIdx, position) ?? position + 1;
+  return { overall, class: klass };
 }
 
 /**
@@ -558,6 +580,30 @@ export function getLivePosition(): LivePosition | null {
         : 0;
 
   return { position, classPosition, isMultiClass: resolveIsMultiClass(sessionInfo) === true };
+}
+
+/**
+ * Player's STARTING GRID position (overall + class, both 1-based) from the
+ * qualifying results — the source the race-start callout already uses
+ * ({@link resolveStartingGridPosition}). Exposed for the Session Info position
+ * display so it can show the qualifying grid slot before the green flag (issue
+ * #647): pre-green, neither the live calculated order nor iRacing's
+ * live-standings `PlayerCarPosition` is usable (a rolling-start formation lap
+ * reads `0` for the whole field until cars cross start/finish), but
+ * `QualifyResultsInfo` is populated the moment the grid is set.
+ *
+ * Returns `null` when the translator isn't initialized, session info isn't
+ * available, or the grid slot can't be resolved (no qualify results / no entry
+ * for the player) — the caller then falls back to live-standings telemetry.
+ */
+export function getStartingGridPosition(): { overall: number; class: number } | null {
+  if (!instance) return null;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  if (!sessionInfo) return null;
+
+  return resolveStartingGridSlots(sessionInfo) ?? null;
 }
 
 /**

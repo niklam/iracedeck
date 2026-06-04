@@ -19,11 +19,12 @@ import {
   DisplayUnits,
   type FlagInfo,
   type SessionInfo as IRacingSessionInfo,
+  isPreGreen,
   resolveActiveFlag,
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
-import { getLivePosition } from "@iracedeck/sim-events-iracing";
+import { getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import sessionInfoTemplate from "../../../icons/session-info.svg";
@@ -469,8 +470,34 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       let overall: number | undefined;
       let klass: number | undefined;
 
+      // Until the player is actually racing, show the qualifying GRID slot
+      // (issue #647). This spans pre-green (`isPreGreen`) AND the green-flag run
+      // to the line: from the green until the player crosses start/finish to
+      // begin lap 1, the live calculated order churns (the field is bunched and
+      // cars cross S/F one-by-one, so the `lapCompleted >= 0` ranking is
+      // computed over an incomplete, shuffling subset) and iRacing's
+      // live-standings `PlayerCarPosition` reads 0 on a rolling start. The
+      // player has begun racing once `LapCompleted` flips from the -1 out-lap
+      // sentinel to >= 0. A missing `LapCompleted` (undefined) is treated as
+      // "already racing" so non-start callers keep the live order (back-compat).
+      const beforeRacingLap = typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 0;
+
       if (this.isRaceSession(telemetry)) {
-        if (telemetry.OnPitRoad) {
+        if (isPreGreen(telemetry) || beforeRacingLap) {
+          // Qualifying grid slot from the session/qualifying results — populated
+          // the moment the grid is set, for both standing and rolling starts.
+          // Fall back to live-standings telemetry only when it can't be resolved
+          // (e.g. no qualifying results).
+          const grid = getStartingGridPosition();
+
+          if (grid) {
+            overall = grid.overall;
+            klass = grid.class;
+          } else {
+            overall = telemetry.PlayerCarPosition;
+            klass = telemetry.PlayerCarClassPosition;
+          }
+        } else if (telemetry.OnPitRoad) {
           overall = telemetry.PlayerCarPosition;
           klass = telemetry.PlayerCarClassPosition;
         } else {

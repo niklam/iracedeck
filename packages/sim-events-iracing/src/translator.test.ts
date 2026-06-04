@@ -28,6 +28,7 @@ import {
   getLivePosition,
   getRaceStartConditions,
   getSessionStartConditions,
+  getStartingGridPosition,
   initializeSimEventsIracing,
   isSimEventsIracingInitialized,
 } from "./translator.js";
@@ -211,6 +212,74 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(multiClassTelemetry({ CarIdxClass: undefined, PlayerCarClassPosition: 5 }));
 
       expect(getLivePosition()?.classPosition).toBe(5);
+    });
+  });
+
+  describe("getStartingGridPosition (issue #647)", () => {
+    it("returns the overall grid slot (1-indexed) in a single-class field", () => {
+      const controller = createMockController();
+      // QualifyResultsInfo.Position is 0-indexed (pole = 0); no Drivers array so
+      // the class slot falls back to the overall slot.
+      controller.__setSessionInfo({
+        DriverInfo: { DriverCarIdx: 0 },
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 2, Position: 0 },
+            { CarIdx: 1, Position: 1 },
+            { CarIdx: 0, Position: 2 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getStartingGridPosition()).toEqual({ overall: 3, class: 3 });
+    });
+
+    it("returns the class grid slot in a multi-class field", () => {
+      const controller = createMockController();
+      // car0 (player, cls10), car1 (cls20), car2 (cls10), car3 (cls20).
+      // Overall grid: car1 P1, car2 P2, car0 P3, car3 P4. Player class-10 ahead: car2 → class P2.
+      controller.__setSessionInfo({
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarClassID: 10 },
+            { CarIdx: 1, CarClassID: 20 },
+            { CarIdx: 2, CarClassID: 10 },
+            { CarIdx: 3, CarClassID: 20 },
+          ],
+        },
+        QualifyResultsInfo: {
+          Results: [
+            { CarIdx: 1, Position: 0 },
+            { CarIdx: 2, Position: 1 },
+            { CarIdx: 0, Position: 2 },
+            { CarIdx: 3, Position: 3 },
+          ],
+        },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getStartingGridPosition()).toEqual({ overall: 3, class: 2 });
+    });
+
+    it("returns null when qualifying results are unavailable", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getStartingGridPosition()).toBeNull();
+    });
+
+    it("returns null when the player has no qualifying entry", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({
+        DriverInfo: { DriverCarIdx: 7 },
+        QualifyResultsInfo: { Results: [{ CarIdx: 0, Position: 0 }] },
+      });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getStartingGridPosition()).toBeNull();
     });
   });
 

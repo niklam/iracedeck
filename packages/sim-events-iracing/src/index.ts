@@ -16,6 +16,7 @@ export {
   getReadbackSnapshot,
   getSessionStartConditions,
   getSessionType,
+  getStartingGridPosition,
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
