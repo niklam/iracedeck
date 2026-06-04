@@ -118,6 +118,14 @@ In a multi-class race the grid position is your **class** grid slot, not your ov
 
 Because the callout fires off the session-change event (not your first time on track), it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions are unaffected and continue to use the standard session-start brief above.
 
+## Setup Warning
+
+Right after the qualifying or race intro, the Race Engineer adds a quick "double-check your setup" nudge when the loaded setup's **name** looks wrong for the session — *"Our setup name suggests that we're on a race setup. Please double-check."* in qualifying, or *"Our setup name suggests that we're on qualifying setup. Please double-check."* in a race. It's an easy, costly mistake to line up for the race still trimmed out on the qualifying setup (or qualify on a heavy race setup), and a name-based heads-up catches it before it matters.
+
+This is a **heuristic on the setup name only** — it never reads the setup's actual contents and never changes anything, so it only ever asks you to verify. Matching is done by two **case-insensitive regular expressions** you can edit under **Setup Warning Patterns** — one applied during qualifying (default flags a race-looking name), one during a race (default flags a qualifying-looking name). By default a word is matched when it's bounded by the start or end of the name, a space, a period, a hyphen, or an underscore, so `qualifying.sto`, `Q.spa`, `quali-fast`, and `VRS_quali_v2` all match while `race.sto` and `baseline` don't. Each pattern has a **Reset to default** button, and if you enter a pattern that isn't valid regex the Property Inspector shows a warning banner and the callout is simply skipped until you fix it.
+
+Toggle the whole feature from **Race Engineer Callouts → Setup Warning**. It fires once at session entry (a mid-session setup reload doesn't re-trigger it), and practice sessions never warn.
+
 ## Lap Time (Best Lap)
 
 A couple of seconds after you cross the start/finish line, the Race Engineer announces your lap time if you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first valid lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*

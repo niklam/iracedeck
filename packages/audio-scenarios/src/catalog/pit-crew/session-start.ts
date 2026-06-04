@@ -87,6 +87,9 @@ const WETNESS_CLIP_SUFFIX: Readonly<Partial<Record<TrackWetness, string>>> = {
 
 const SESSION_START_BASE = "session-start";
 
+/** Group holding the setup-mismatch warning clips (issue #625). */
+const SETUP_WARNING_GROUP = "setup-warning";
+
 /** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
 function clipPath(filename: string): string {
   return `${SESSION_START_BASE}/${filename}`;
@@ -208,8 +211,17 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
  * pit-speed `if` step (to gate the conditional clause); the per-clip `var`
  * resolvers registered by {@link registerSessionStartVars} read it again at
  * sequence-expansion time.
+ *
+ * `getSetupWarningMismatch` (issue #625) appends a "double-check your setup"
+ * nudge before the radio close when, in a **qualifying** session, the loaded
+ * setup name looks like a race setup. It is read live at fire time so a
+ * mid-session opt-in toggle or pattern edit takes effect immediately. Practice
+ * sessions never warn (only qualifying and — via race-start — race do).
  */
-export function buildSessionStartScenario(getSnapshot: SessionStartSnapshotResolver): Scenario {
+export function buildSessionStartScenario(
+  getSnapshot: SessionStartSnapshotResolver,
+  getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
+): Scenario {
   const sequence: Step[] = [
     { pause: SESSION_START_DELAY_MS },
     "@pit-crew.radio-open",
@@ -231,6 +243,10 @@ export function buildSessionStartScenario(getSnapshot: SessionStartSnapshotResol
     { var: "sessionStart.degreesUnit" },
     clipPath("wetness-intro.mp3"),
     { var: "sessionStart.wetness" },
+    {
+      if: () => getSnapshot()?.sessionType === "qualifying" && getSetupWarningMismatch("qualifying"),
+      then: [`${SETUP_WARNING_GROUP}/qualifying-01.mp3`],
+    },
     "@pit-crew.radio-close",
   ];
 

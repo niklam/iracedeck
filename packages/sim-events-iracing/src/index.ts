@@ -8,6 +8,7 @@
  */
 export {
   _resetSimEventsIracing,
+  getDriverSetupName,
   getLatestTelemetry,
   getLivePosition,
   getOvertakeTelemetryGate,

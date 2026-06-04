@@ -466,6 +466,21 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
   "pit-crew.pit-box-pit-now": "count-in",
 };
 
+/**
+ * Resolver the plugins pass to {@link registerPitCrew}: given the current
+ * session kind, returns whether the loaded setup name looks wrong for it (opt-in
+ * on AND the session-kind pattern matches). Read live at fire time inside the
+ * session-start / race-start `if` clauses (issue #625).
+ *
+ * Unlike the other callout families, the setup warning is a conditional clause
+ * appended to the existing session-start / race-start intros — not its own
+ * scenario — so it has no `SCENARIO_ID_TO_*` map and no `*_CALLOUT_SETTING_KEYS`
+ * map here: the opt-in is read inside this resolver (the plugins compose it from
+ * `evaluateSetupWarning`, whose canonical key is `SETUP_WARNING_ENABLED_KEY` in
+ * `@iracedeck/deck-core`), not via `wrapCalloutScenario`.
+ */
+export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
+
 export function registerPitCrew(
   bus: IEventBus,
   getFlagCalloutEnabled: (id: FlagCalloutId) => boolean = () => true,
@@ -639,6 +654,15 @@ export function registerPitCrew(
   // Default `() => true` preserves legacy behavior for tests that don't supply
   // a closure.
   getPitBoxCalloutEnabled: (id: PitBoxCalloutId) => boolean = () => true,
+  // Setup-mismatch warning resolver (issue #625). Plugins wire this to read
+  // the live opt-in + the session-kind regex pattern from global settings and
+  // test it against the live setup name. Consumed inside the session-start and
+  // race-start scenarios' `if` clauses (not via `wrapCalloutScenario`, since the
+  // warning is a clause inside those intros, not its own scenario). Placed
+  // before the master gate so the master stays the last per-callout opt-in.
+  // Default `() => false` — tests that don't supply a closure never append the
+  // warning clause.
+  getSetupWarningMismatch: SetupWarningResolver = () => false,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -815,7 +839,7 @@ export function registerPitCrew(
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSessionStartScenario(getSessionStartSnapshot),
+        buildSessionStartScenario(getSessionStartSnapshot, getSetupWarningMismatch),
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
@@ -911,7 +935,7 @@ export function registerPitCrew(
   engine.defineScenario(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStartScenario(getRaceStartSnapshot, logger),
+        buildRaceStartScenario(getRaceStartSnapshot, logger, getSetupWarningMismatch),
         SCENARIO_ID_TO_RACE_START_ID,
         getRaceStartCalloutEnabled,
         "race-start callout",
