@@ -63,6 +63,18 @@ describe("buildSnapshot", () => {
     });
   });
 
+  it("flags hasPitLimiter when the dcPitSpeedLimiterToggle field is present (issue #639)", () => {
+    expect(buildSnapshot(tick({ dcPitSpeedLimiterToggle: false }))).toMatchObject({
+      hasPitLimiter: true,
+    });
+  });
+
+  it("does not flag hasPitLimiter when the dcPitSpeedLimiterToggle field is absent (issue #639)", () => {
+    expect(buildSnapshot(tick({}))).toMatchObject({
+      hasPitLimiter: false,
+    });
+  });
+
   it("flags hasDamage when MandRepNeeded is set", () => {
     expect(buildSnapshot(tick({ EngineWarnings: EngineWarnings.MandRepNeeded }))).toMatchObject({
       hasDamage: true,

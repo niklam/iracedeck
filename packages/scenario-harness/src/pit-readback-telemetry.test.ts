@@ -11,6 +11,7 @@ const EMPTY_SNAPSHOT: PitReadbackSnapshot = {
   fastRepair: { queued: false, available: false },
   windshield: { queued: false, available: false },
   limiterEngaged: false,
+  hasPitLimiter: false,
   hasDamage: false,
 };
 
@@ -41,6 +42,7 @@ describe("snapshotToTelemetryPatch", () => {
       fastRepair: { queued: true, available: true },
       windshield: { queued: true, available: true },
       limiterEngaged: true,
+      hasPitLimiter: true,
       hasDamage: false,
     };
 

@@ -14,7 +14,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { Scenario } from "../../dsl.js";
 
@@ -31,6 +31,9 @@ export const LIMITER_ON_TRACK: Scenario = {
       // Use the event's own telemetry snapshot to avoid drift near pit-entry.
       const telemetry = ev.telemetry as TelemetryData | null;
 
+      // Suppress on cars without a pit limiter (issue #639).
+      if (!hasPitLimiter(telemetry)) return false;
+
       return telemetry?.OnPitRoad !== true;
     },
   },
@@ -43,7 +46,11 @@ export const LIMITER_ON_TRACK: Scenario = {
 
 export const LIMITER_MISSING: Scenario = {
   id: "pit-crew.limiter-missing",
-  when: { event: "limiter.missing" },
+  when: {
+    event: "limiter.missing",
+    // Cars without a pit limiter can't be "missing" one (issue #639).
+    where: (e) => hasPitLimiter(e.telemetry as TelemetryData | null),
+  },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -53,7 +60,11 @@ export const LIMITER_MISSING: Scenario = {
 
 export const LIMITER_DROPPED: Scenario = {
   id: "pit-crew.limiter-dropped",
-  when: { event: "limiter.dropped" },
+  when: {
+    event: "limiter.dropped",
+    // Cars without a pit limiter can't drop one (issue #639).
+    where: (e) => hasPitLimiter(e.telemetry as TelemetryData | null),
+  },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
@@ -63,7 +74,11 @@ export const LIMITER_DROPPED: Scenario = {
 
 export const LIMITER_SPEEDING: Scenario = {
   id: "pit-crew.limiter-speeding",
-  when: { event: "limiter.speeding" },
+  when: {
+    event: "limiter.speeding",
+    // A pit-limiter speeding warning is meaningless without a limiter (issue #639).
+    where: (e) => hasPitLimiter(e.telemetry as TelemetryData | null),
+  },
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",

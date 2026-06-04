@@ -125,6 +125,16 @@ export type PitReadbackSnapshot = {
   windshield: { queued: boolean; available: boolean };
   limiterEngaged: boolean;
   /**
+   * Whether the player's car HAS a pit limiter at all — derived from the
+   * presence of the `dcPitSpeedLimiterToggle` driver-control field via
+   * `hasPitLimiter` (issue #637). Distinct from `limiterEngaged` (limiter
+   * currently on). Used by the readback to gate the "don't forget your
+   * limiter" pre-opener so cars without a limiter never hear limiter chatter
+   * (issue #639). Sim-agnostic boolean so future translators can map their
+   * own capability model onto the same readback shape.
+   */
+  hasPitLimiter: boolean;
+  /**
    * Whether the player's car currently has damage that requires repair —
    * `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Used by the readback
    * to gate the fast-repair slot: the engineer stays silent about repairs
