@@ -147,6 +147,36 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
+     * On/off for the spoken Spotter proximity calls (Pit Crew action,
+     * Spotter mode). Toggled by pressing the Spotter button — independent
+     * from Race Engineer and Radar so a driver can run side-awareness voice
+     * calls without the engineer or the directional ticks. Opt-in
+     * (default false), mirroring `pitCrewRadarEnabled` — fresh installs stay
+     * quiet until the user opts in (issue #651).
+     */
+    pitCrewSpotterEnabled: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false),
+    /**
+     * Spotter per-callout opt-ins (issue #651). "Cars" gates every transition
+     * call (car/two cars/one car/three wide/clear/combined); "StillThere"
+     * gates the ~4 s repeating reminder while a car is alongside. Same
+     * forward-compat semantics as the other callout families — default `true`
+     * so a fresh install (with the master gate enabled) hears them, opt-out
+     * takes effect at event-arrival time without cutting in-flight playback.
+     * Canonical id↔key mapping in `SPOTTER_CALLOUT_SETTING_KEYS` (in
+     * `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledSpotterCars: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledSpotterStillThere: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Startup defaults for `pitCrewRaceEngineerEnabled` /
      * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the
      * first global-settings arrival, the plugin copies these values into

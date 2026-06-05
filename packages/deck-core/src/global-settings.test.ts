@@ -313,6 +313,25 @@ describe("flag-callout opt-in defaults (issue #467)", () => {
   });
 });
 
+describe("spotter callout defaults (issue #651)", () => {
+  it("pitCrewSpotterEnabled defaults to false (opt-in, mirrors radar)", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.pitCrewSpotterEnabled).toBe(false);
+  });
+
+  const SPOTTER_CALLOUT_KEYS = ["calloutEnabledSpotterCars", "calloutEnabledSpotterStillThere"] as const;
+
+  it.each(SPOTTER_CALLOUT_KEYS)("%s defaults to true", (key) => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed[key]).toBe(true);
+  });
+
+  it.each(SPOTTER_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+    expect(parsed[key]).toBe(false);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();
