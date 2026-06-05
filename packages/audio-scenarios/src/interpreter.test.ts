@@ -3,6 +3,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "./dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 
@@ -417,10 +418,10 @@ describe("cooldown", () => {
   });
 });
 
-// ─── Priority / preempt / deferred replay ───────────────────────────────────
+// ─── Scheduling: weights / interrupt / queueable / focus (issue #652) ────────
 
-describe("priority", () => {
-  it("drops a same-priority fire while the bus is busy", () => {
+describe("scheduling (weights)", () => {
+  it("drops an equal-weight non-queueable fire while the bus is busy", () => {
     engine.defineScenario({
       id: "test.a",
       channel: AudioChannel.Voice,
@@ -435,14 +436,14 @@ describe("priority", () => {
     });
 
     engine.fire("test.a"); // starts playing
-    engine.fire("test.b"); // dropped
+    engine.fire("test.b"); // dropped — equal weight, not queueable
 
     flushVoiceAndSfx(audio);
 
     expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 
-  it("urgent+preempt cancels a running non-urgent scenario", () => {
+  it("a higher-weight fire with interrupt cuts the running lower-weight scenario", () => {
     engine.defineScenario({
       id: "test.normal",
       channel: AudioChannel.Voice,
@@ -450,17 +451,16 @@ describe("priority", () => {
       sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
     engine.defineScenario({
-      id: "test.urgent",
+      id: "test.critical",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "urgent",
-      preempt: true,
+      weight: WEIGHT.CRITICAL,
+      interrupt: true,
       sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     engine.fire("test.normal"); // first clip starts
-    // Now urgent preempts before the first clip ends.
-    engine.fire("test.urgent");
+    engine.fire("test.critical"); // interrupt cuts before the first clip ends
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -468,12 +468,38 @@ describe("priority", () => {
     expect(audio._stopped).toContain(AudioChannel.Voice);
   });
 
-  it("preempts a same-family playing scenario regardless of priority", () => {
+  it("a higher-weight fire WITHOUT interrupt waits for the current line, then plays", () => {
+    engine.defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.normal",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.chatter"); // first clip starts
+    engine.fire("test.normal"); // higher weight, no interrupt — waits for the bus
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    // The chatter line finishes in full (a, b), THEN the normal fire plays.
+    // Nothing is cut, and the chatter is not replayed.
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3", "pit-crew/reminder/fuel.mp3"]);
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+  });
+
+  it("preempts a same-family playing scenario regardless of weight", () => {
     engine.defineScenario({
       id: "test.tire.fronts",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "normal",
       family: "tire-service",
       sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
@@ -481,13 +507,12 @@ describe("priority", () => {
       id: "test.tire.rears",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "normal",
       family: "tire-service",
       sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     engine.fire("test.tire.fronts"); // first clip starts
-    engine.fire("test.tire.rears"); // same family — preempts even at equal priority
+    engine.fire("test.tire.rears"); // same family — replaces even at equal weight
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -495,45 +520,11 @@ describe("priority", () => {
     expect(audio._stopped).toContain(AudioChannel.Voice);
   });
 
-  it("preempts a low-priority playing scenario when a normal-priority fire arrives, then replays it", () => {
-    engine.defineScenario({
-      id: "test.low.readback",
-      channel: AudioChannel.Voice,
-      bus: AudioBus.Voice,
-      priority: "low",
-      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
-    });
-    engine.defineScenario({
-      id: "test.normal.flag",
-      channel: AudioChannel.Voice,
-      bus: AudioBus.Voice,
-      priority: "normal",
-      sequence: ["pit-crew/reminder/fuel.mp3"],
-    });
-
-    engine.fire("test.low.readback"); // first clip starts
-    engine.fire("test.normal.flag"); // normal preempts low
-    flushVoiceAndSfx(audio);
-
-    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
-    // First low clip plays, then normal preempts (Voice channel stopped),
-    // then normal plays its clip, then the deferred low replays from the
-    // top once the bus goes idle.
-    expect(paths).toEqual([
-      "pit-crew/greeting/a.mp3",
-      "pit-crew/reminder/fuel.mp3",
-      "pit-crew/greeting/a.mp3",
-      "pit-crew/greeting/b.mp3",
-    ]);
-    expect(audio._stopped).toContain(AudioChannel.Voice);
-  });
-
-  it("does NOT preempt a different-family playing scenario", () => {
+  it("does NOT preempt a different-family equal-weight playing scenario", () => {
     engine.defineScenario({
       id: "test.tire.fronts",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "normal",
       family: "tire-service",
       sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
     });
@@ -541,42 +532,179 @@ describe("priority", () => {
       id: "test.fuel.on",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "normal",
       family: "pit-service.fuel", // different family
       sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
     engine.fire("test.tire.fronts");
-    engine.fire("test.fuel.on"); // dropped — different family, equal priority
+    engine.fire("test.fuel.on"); // dropped — different family, equal weight, not queueable
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
   });
 
-  it("defers a low-priority fire while busy and replays it when the bus goes idle", () => {
+  it("defers a lower-weight queueable fire while busy and replays it when the bus goes idle", () => {
     engine.defineScenario({
-      id: "test.high",
+      id: "test.safety",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "high",
+      weight: WEIGHT.SAFETY,
       sequence: ["pit-crew/greeting/a.mp3"],
     });
     engine.defineScenario({
-      id: "test.low",
+      id: "test.chatter",
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "low",
+      weight: WEIGHT.CHATTER,
+      queueable: true,
       sequence: ["pit-crew/reminder/fuel.mp3"],
     });
 
-    engine.fire("test.high"); // starts
-    engine.fire("test.low"); // deferred
+    engine.fire("test.safety"); // starts
+    engine.fire("test.chatter"); // deferred (lower weight, queueable)
 
     flushVoiceAndSfx(audio);
 
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
+  });
+
+  // ── #646: a "transient" count-in must drop when busy, never defer; the
+  //    higher-weight readback (interrupt) cancels a running count-in. ──
+
+  it("drops a transient fire when the bus is busy (never defers) — issue #646", () => {
+    engine.defineScenario({
+      id: "test.readback",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.countin",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.TRANSIENT,
+      queueable: false,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.readback"); // entry readback playing
+    engine.fire("test.countin"); // count-in mark — must DROP, not cut, not defer
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
+    expect(audio._stopped).not.toContain(AudioChannel.Voice);
+  });
+
+  it("a higher-weight interrupt readback cancels a running transient count-in — issue #646", () => {
+    engine.defineScenario({
+      id: "test.countin",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.TRANSIENT,
+      queueable: false,
+      sequence: ["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.readback",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      interrupt: true,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.countin"); // count-in playing
+    engine.fire("test.readback"); // outranks + interrupt — cuts the count-in
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    // count-in's first clip, then the readback cuts in; the count-in is NOT
+    // replayed (not queueable).
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
+    expect(audio._stopped).toContain(AudioChannel.Voice);
+  });
+
+  // ── Exclusive-focus weight floor ──
+
+  it("blocks a non-owner fire below the focus floor", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+    engine.defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL, // below the SAFETY floor
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    engine.fire("test.chatter");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice)).toEqual([]);
+  });
+
+  it("lets a fire AT the focus floor break through (a SAFETY floor admits SAFETY flags)", () => {
+    // The floor is the minimum admitted weight: a floor set to the SAFETY band
+    // must let SAFETY-band flag callouts through, not block them (issue #651).
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+    engine.defineScenario({
+      id: "test.flag",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY, // exactly at the floor
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    engine.fire("test.flag");
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/reminder/fuel.mp3"]);
+  });
+
+  it("lets the focus owner's own fires bypass the floor", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+    engine.defineScenario({
+      id: "test.spotter-call",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER, // well below the floor, but owner bypasses
+      focusOwner: "spotter",
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    engine.fire("test.spotter-call");
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("replays a queueable fire that was deferred below the floor once focus is released", () => {
+    engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+    engine.defineScenario({
+      id: "test.chatter",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL, // below floor
+      queueable: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    engine.fire("test.chatter"); // blocked by the floor, but queued
+    flushVoiceAndSfx(audio);
+    expect(audio._played.filter((p) => p.channel === AudioChannel.Voice)).toEqual([]);
+
+    engine.releaseFocus(AudioBus.Voice, "spotter"); // drains the pending fire
+    flushVoiceAndSfx(audio);
+
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3"]);
   });
 
   it("tracks active fires per bus — one bus's cancellation doesn't touch another", () => {
@@ -609,7 +737,7 @@ describe("priority", () => {
     expect(voicePaths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/greeting/b.mp3"]);
   });
 
-  it("preserves the event context when a deferred low fire is replayed", () => {
+  it("preserves the event context when a deferred queueable fire is replayed", () => {
     const seenOnReplay: unknown[] = [];
 
     engine.defineScenario({
@@ -617,7 +745,7 @@ describe("priority", () => {
       when: { event: "pitLane.approaching" },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "high",
+      weight: WEIGHT.SAFETY,
       sequence: ["pit-crew/greeting/a.mp3"],
     });
     engine.defineScenario({
@@ -625,7 +753,8 @@ describe("priority", () => {
       when: { event: "pitLane.entered" },
       channel: AudioChannel.Voice,
       bus: AudioBus.Voice,
-      priority: "low",
+      weight: WEIGHT.CHATTER,
+      queueable: true,
       sequence: [
         {
           if: (ctx) => {
@@ -649,12 +778,55 @@ describe("priority", () => {
 
     flushVoiceAndSfx(audio);
 
-    // The deferred low fire must replay with the original event data (should=true),
+    // The deferred fire must replay with the original event data (should=true),
     // taking the `then` branch — not collapse to the `else` branch that `null` data
     // would produce.
     const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
     expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
     expect(seenOnReplay.at(-1)).toEqual({ should: true });
+  });
+
+  it("replays a deferred queueable fire WITHOUT re-running its where: (no double side effect)", () => {
+    // Guards the #574/#555 regression: the position/race-status readouts claim
+    // a shared cooldown as the LAST gate in their where:, which only succeeds
+    // once. Re-running where: on the deferred replay would fail that claim and
+    // silently drop the callout. The engine must replay without re-checking.
+    let whereCalls = 0;
+
+    engine.defineScenario({
+      id: "test.blocker",
+      when: { event: "pitLane.approaching" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.SAFETY,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+    engine.defineScenario({
+      id: "test.claim",
+      when: {
+        event: "pitLane.entered",
+        where: () => {
+          whereCalls++;
+
+          return whereCalls === 1; // claim-style: only the first call commits
+        },
+      },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.CHATTER,
+      queueable: true,
+      sequence: ["pit-crew/reminder/fuel.mp3"],
+    });
+
+    bus.publishEvent("pitLane.approaching", {}); // blocker plays
+    bus.publishEvent("pitLane.entered", {}); // where: #1 → true → deferred (queued)
+
+    flushVoiceAndSfx(audio);
+
+    // The deferred fire replays on idle and speaks; where: ran exactly once.
+    const paths = audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+    expect(paths).toEqual(["pit-crew/greeting/a.mp3", "pit-crew/reminder/fuel.mp3"]);
+    expect(whereCalls).toBe(1);
   });
 });
 

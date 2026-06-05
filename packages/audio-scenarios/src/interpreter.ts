@@ -6,14 +6,19 @@
  * variable / include / conditional resolution), then walks the expanded op
  * list one step at a time driving `@iracedeck/audio-service`.
  *
- * Priority and cooldown rules (design doc §8):
- *   - Only one voice scenario plays at a time on a given bus.
- *   - `urgent` + `preempt:true` cancels the running scenario before playing.
- *   - `low` fires are deferred while the bus is busy: the most recent
- *     dropped `low` fire is retried when the bus goes idle. This preserves
- *     the former 1500 ms service-reminder deferred-replay behavior without
- *     special-casing.
- *   - All other fires are dropped when the bus is busy.
+ * Scheduling rules (weight model, issue #652):
+ *   - Only one scenario plays at a time on a given bus.
+ *   - Higher `weight` wins a busy bus. A winner with `interrupt: true` cuts
+ *     the in-flight lower-weight fire immediately; without it, it waits for
+ *     the current line to finish (becomes the pending next fire).
+ *   - A fire that can't take the bus (equal/lower weight, or below an
+ *     exclusive-focus floor) is deferred for idle-replay when
+ *     `queueable: true` (re-checking `where:` so a stale fire drops), else
+ *     dropped. This preserves the former `low`-priority deferred-replay
+ *     behaviour without special-casing.
+ *   - Same-`family` fires replace each other wholesale regardless of weight.
+ *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
+ *     only fires above it (or the owner's own) play.
  *
  * Channel routing for clip steps:
  *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
@@ -26,8 +31,8 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { ResolvedStep, Scenario, ScenarioContext, ScenarioPriority } from "./dsl.js";
-import { applyBase, resolveStep } from "./dsl.js";
+import type { ResolvedStep, Scenario, ScenarioContext } from "./dsl.js";
+import { applyBase, DEFAULT_WEIGHT, resolveStep } from "./dsl.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`, which also needs `manifestVoices`.
 import { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
@@ -43,6 +48,17 @@ export interface IScenarioEngine {
   setEnabled(scenarioId: string, enabled: boolean): void;
   fire(scenarioId: string): void;
   stopAll(): void;
+  /**
+   * Raise an exclusive-focus weight floor on a bus (issue #652). While held,
+   * only fires whose `weight` is at or above `floorWeight` — or whose
+   * `focusOwner` matches `ownerId` — can play; everything else defers (when
+   * `queueable`) or drops. Used by owners like the spotter engine to hold the
+   * Voice bus while a car is alongside (set the floor to the band you want to
+   * admit, e.g. `WEIGHT.SAFETY` to let safety flags through).
+   */
+  acquireFocus(bus: AudioBus, ownerId: string, floorWeight: number): void;
+  /** Release a focus floor previously acquired by `ownerId` (no-op if another owner holds it). */
+  releaseFocus(bus: AudioBus, ownerId: string): void;
 }
 
 type PoolState = { clips: string[]; lastIndex: number };
@@ -62,29 +78,39 @@ type CompiledScenario = {
 };
 
 /**
- * A deferred `low`-priority fire. Retains the triggering event so the replay
- * has the same `ctx.data` / `ctx.telemetry` the original fire would have
- * used — critical for scenarios like service-reminder that decode pit-flags
- * from the event's telemetry snapshot.
+ * A fire waiting for the bus to idle — either a higher-weight fire that won
+ * the bus but is letting the current line finish (no `interrupt`), or a
+ * lower/equal-weight `queueable` fire deferred behind what's playing. The
+ * highest-weight pending fire wins the single slot; ties go to the newest.
+ * Retains the triggering event so the replay resolves vars against the same
+ * payload the original fire would have used — critical for scenarios like
+ * service-reminder that decode pit-flags from the event's telemetry snapshot.
  */
-type DeferredFire = {
+type PendingFire = {
   id: string;
   event: SimEventOf<SimEventName> | null;
+  weight: number;
 };
 
 /**
  * Per-bus execution state. Each audio bus can independently be playing a
- * scenario or holding a deferred `low` fire for replay on idle.
+ * scenario, holding a pending fire for replay on idle, and/or holding an
+ * exclusive-focus floor.
  */
 type BusState = {
   playingId: string | null;
-  deferredLowFire: DeferredFire | null;
+  /** Single highest-weight fire waiting to play when the bus next idles. */
+  pending: PendingFire | null;
   activeFire: ActiveFire | null;
+  /** Exclusive-focus floor (issue #652); non-owner fires need weight above `floor`. */
+  focus: { ownerId: string; floor: number } | null;
 };
 
 type ActiveFire = {
   id: string;
   bus: AudioBus;
+  /** Scheduling weight of this fire — compared against arriving fires. */
+  weight: number;
   ops: ExecOp[];
   index: number;
   cancelled: boolean;
@@ -96,10 +122,10 @@ type ActiveFire = {
    */
   usedChannels: ReadonlySet<AudioChannel>;
   /**
-   * Triggering event retained so a `low`-priority fire that gets
-   * preempted by a higher-priority scenario can be deferred and replayed
-   * with the same `ctx.data` / `ctx.telemetry` it would have seen
-   * originally. Mirrors the existing `DeferredFire.event` shape.
+   * Triggering event retained so a queueable fire that gets preempted (cut by
+   * an `interrupt`, or deferred behind a busier bus) can be replayed with the
+   * same `ctx.data` / `ctx.telemetry` it would have seen originally. Mirrors
+   * the `PendingFire.event` shape.
    */
   event: SimEventOf<SimEventName> | null;
 };
@@ -112,13 +138,6 @@ type ExecOp =
   | { kind: "play"; channel: AudioChannel; path: string }
   | { kind: "ambient"; action: "start" | "stop" | "seek" }
   | { kind: "pause"; ms: number };
-
-const PRIORITY_ORDER: Record<ScenarioPriority, number> = {
-  low: 0,
-  normal: 1,
-  high: 2,
-  urgent: 3,
-};
 
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;
@@ -280,9 +299,17 @@ class ScenarioEngine implements IScenarioEngine {
 
       // Cancel in-flight execution on any bus + clear deferred replays referring to this id.
       for (const state of this.busState.values()) {
-        if (state.activeFire?.id === scenarioId) this.cancelActiveFire(state);
+        const wasActive = state.activeFire?.id === scenarioId;
 
-        if (state.deferredLowFire?.id === scenarioId) state.deferredLowFire = null;
+        if (wasActive) this.cancelActiveFire(state);
+
+        if (state.pending?.id === scenarioId) {
+          state.pending = null;
+        } else if (wasActive && state.playingId === null) {
+          // Disabling the in-flight scenario idled the bus — play whatever was
+          // waiting behind it rather than stranding it (issue #652 review).
+          this.drainPending(state);
+        }
       }
     }
   }
@@ -315,8 +342,29 @@ class ScenarioEngine implements IScenarioEngine {
   stopAll(): void {
     for (const state of this.busState.values()) {
       this.cancelActiveFire(state);
-      state.deferredLowFire = null;
+      state.pending = null;
+      // Release any held focus floor too, so it can't outlive the reset and
+      // block every later callout on re-enable (issue #652 review).
+      state.focus = null;
     }
+  }
+
+  acquireFocus(bus: AudioBus, ownerId: string, floorWeight: number): void {
+    const state = this.getBusState(bus);
+    state.focus = { ownerId, floor: floorWeight };
+    this.logger.debug(`Focus acquired on bus ${bus} by "${ownerId}" (floor ${floorWeight})`);
+  }
+
+  releaseFocus(bus: AudioBus, ownerId: string): void {
+    const state = this.getBusState(bus);
+
+    if (state.focus?.ownerId !== ownerId) return;
+
+    state.focus = null;
+    this.logger.debug(`Focus released on bus ${bus} by "${ownerId}"`);
+
+    // A fire deferred while below the floor may now be playable.
+    if (state.playingId === null) this.drainPending(state);
   }
 
   // ── Event wiring ──
@@ -401,68 +449,50 @@ class ScenarioEngine implements IScenarioEngine {
 
     const bus = entry.raw.bus;
     const state = this.getBusState(bus);
-    const priority: ScenarioPriority = entry.raw.priority ?? "normal";
+    const weight = entry.raw.weight ?? DEFAULT_WEIGHT;
+
+    // Exclusive-focus floor (issue #652): while an owner holds the bus, a
+    // non-owner fire BELOW the floor is blocked. The owner's own fires
+    // (matching `focusOwner`) always pass; fires AT OR ABOVE the floor break
+    // through and schedule normally below — so a floor set to the SAFETY band
+    // admits the safety-flag callouts while holding back routine chatter.
+    const focus = state.focus;
+
+    if (focus !== null && entry.raw.focusOwner !== focus.ownerId && weight < focus.floor) {
+      this.queueOrDrop(entry, event, weight, state, `below focus floor (${focus.ownerId})`);
+
+      return;
+    }
 
     if (state.playingId !== null) {
       const running = this.scenarios.get(state.playingId);
-      const runningPriority: ScenarioPriority = running?.raw.priority ?? "normal";
+      const runningWeight = state.activeFire?.weight ?? DEFAULT_WEIGHT;
 
       // Same-family preemption: a new event in a family invalidates the
       // in-flight callout for that family (e.g. tire-set switch mid-playback).
+      // A wholesale replacement regardless of weight — the new fire is fresher
+      // info about the same subject, so the old one is not stashed for replay.
       const sameFamily =
         entry.raw.family !== undefined && running !== undefined && entry.raw.family === running.raw.family;
 
-      // `low`-priority scenarios are background commentary by design
-      // (pit-readback, service-reminder) — anything higher than `low`
-      // preempts them. The preempted low fire is captured into
-      // `deferredLowFire` so it replays once the bus goes idle, mirroring
-      // the existing busy-bus deferral path.
-      //
-      // Same-family preemption is a wholesale replacement (the new entry
-      // invalidates the old one), so we exclude it from the low-fire
-      // stash even when the new entry happens to have higher priority —
-      // otherwise the older snapshot would replay after the newer
-      // family member completes, contradicting the family semantic.
-      const preemptsLow = !sameFamily && runningPriority === "low" && priority !== "low";
-
-      const canPreempt =
-        sameFamily ||
-        preemptsLow ||
-        (priority === "urgent" &&
-          entry.raw.preempt === true &&
-          PRIORITY_ORDER[priority] > PRIORITY_ORDER[runningPriority]);
-
-      if (canPreempt) {
-        if (preemptsLow && state.activeFire) {
-          // Stash the preempted low fire so it replays after the
-          // higher-priority scenario completes. Same shape as the
-          // busy-bus deferral — id + original event. If a newer low
-          // fire is already queued (arrived while this one was
-          // running) keep it; the established "most-recent low wins"
-          // semantic should not be silently flipped by preemption
-          // dropping the newer queued fire in favour of the older
-          // running one.
-          if (state.deferredLowFire === null) {
-            state.deferredLowFire = { id: state.activeFire.id, event: state.activeFire.event };
-            this.logger.debug(`Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; deferred for replay`);
-          } else {
-            this.logger.debug(
-              `Scenario "${state.activeFire.id}" preempted by "${entry.raw.id}"; ` +
-                `dropped (newer low "${state.deferredLowFire.id}" already queued)`,
-            );
-          }
-        }
-
+      if (sameFamily) {
         this.cancelActiveFire(state);
+        // fall through to play the newer family member
+      } else if (weight > runningWeight && entry.raw.interrupt === true) {
+        // Higher weight + interrupt: cut the in-flight fire immediately. If
+        // that fire is queueable, stash it so it replays once we're done.
+        this.stashRunningIfQueueable(state, running);
+        this.cancelActiveFire(state);
+        // fall through to play now
+      } else if (weight > runningWeight) {
+        // Higher weight, no interrupt: win the bus but let the current line
+        // finish — wait as the pending next fire.
+        this.setPending(entry.raw.id, event, weight, state, "waiting for bus (higher weight, no interrupt)");
+
+        return;
       } else {
-        if (priority === "low") {
-          // Retain the full event so the deferred replay has the same
-          // `ctx.data` / `ctx.telemetry` the original fire would have seen.
-          state.deferredLowFire = { id: entry.raw.id, event };
-          this.logger.debug(`Scenario "${entry.raw.id}" deferred (bus busy)`);
-        } else {
-          this.logger.debug(`Scenario "${entry.raw.id}" dropped (bus busy)`);
-        }
+        // Equal or lower weight: can't take the bus now.
+        this.queueOrDrop(entry, event, weight, state, "bus busy");
 
         return;
       }
@@ -470,6 +500,49 @@ class ScenarioEngine implements IScenarioEngine {
 
     entry.lastFireAt = now;
     this.executeFire(entry, event);
+  }
+
+  /** Defer a fire for idle-replay when `queueable`, otherwise drop it. */
+  private queueOrDrop(
+    entry: CompiledScenario,
+    event: SimEventOf<SimEventName> | null,
+    weight: number,
+    state: BusState,
+    reason: string,
+  ): void {
+    if (entry.raw.queueable === true) {
+      this.setPending(entry.raw.id, event, weight, state, `deferred (${reason})`);
+    } else {
+      this.logger.debug(`Scenario "${entry.raw.id}" dropped (${reason})`);
+    }
+  }
+
+  /**
+   * Record the highest-weight fire waiting for the bus to idle. Ties go to the
+   * newest fire (matching the former "most-recent low wins" semantic).
+   */
+  private setPending(
+    id: string,
+    event: SimEventOf<SimEventName> | null,
+    weight: number,
+    state: BusState,
+    reason: string,
+  ): void {
+    if (state.pending === null || weight >= state.pending.weight) {
+      state.pending = { id, event, weight };
+      this.logger.debug(`Scenario "${id}" pending — ${reason}`);
+    } else {
+      this.logger.debug(`Scenario "${id}" dropped — lower weight than queued "${state.pending.id}"`);
+    }
+  }
+
+  /** When an interrupt cut a queueable fire, keep it for idle-replay. */
+  private stashRunningIfQueueable(state: BusState, running: CompiledScenario | undefined): void {
+    const active = state.activeFire;
+
+    if (!active || !running || running.raw.queueable !== true) return;
+
+    this.setPending(active.id, active.event, active.weight, state, "stashed (preempted)");
   }
 
   private executeFire(entry: CompiledScenario, event: SimEventOf<SimEventName> | null): void {
@@ -511,6 +584,7 @@ class ScenarioEngine implements IScenarioEngine {
     state.activeFire = {
       id: entry.raw.id,
       bus,
+      weight: entry.raw.weight ?? DEFAULT_WEIGHT,
       ops,
       index: 0,
       cancelled: false,
@@ -593,17 +667,31 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (state.activeFire?.id === scenarioId) state.activeFire = null;
 
-    const deferred = state.deferredLowFire;
-    state.deferredLowFire = null;
+    this.drainPending(state);
+  }
 
-    if (deferred) {
-      const entry = this.scenarios.get(deferred.id);
+  /**
+   * Play the pending fire (if any) now that the bus is idle. The fire replays
+   * unconditionally — its `where:` is NOT re-evaluated. Some `where:`
+   * predicates commit a side effect as their last gate (e.g. the position
+   * readout claims a shared cooldown via `tryClaimPositionAnnouncement()`,
+   * issues #574/#555); re-running them on replay would fail the already-made
+   * claim and silently drop the callout. Freshness is preserved instead by the
+   * var resolvers, which read live state at `executeFire` time rather than from
+   * the frozen event payload.
+   */
+  private drainPending(state: BusState): void {
+    const pending = state.pending;
+    state.pending = null;
 
-      if (entry?.enabled) {
-        this.logger.debug(`Replaying deferred scenario "${deferred.id}"`);
-        this.attemptFire(entry, deferred.event);
-      }
-    }
+    if (!pending) return;
+
+    const entry = this.scenarios.get(pending.id);
+
+    if (!entry?.enabled) return;
+
+    this.logger.debug(`Replaying pending scenario "${pending.id}"`);
+    this.attemptFire(entry, pending.event);
   }
 
   /**
@@ -634,7 +722,7 @@ class ScenarioEngine implements IScenarioEngine {
     let state = this.busState.get(bus);
 
     if (!state) {
-      state = { playingId: null, deferredLowFire: null, activeFire: null };
+      state = { playingId: null, pending: null, activeFire: null, focus: null };
       this.busState.set(bus, state);
     }
 

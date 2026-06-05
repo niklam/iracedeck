@@ -31,9 +31,9 @@ src/catalog/pit-crew/
 One file per family. Each family file:
 - Exports `<FAMILY>_ALERTS: readonly Scenario[]`.
 - Exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` for tests.
-- Uses a small constructor function (e.g. `flagScenario(id, body)`) to build scenarios with consistent `family:` / `priority:` / `bus:` defaults.
+- Uses a small constructor function (e.g. `flagScenario(id, body)`) to build scenarios with consistent `family:` / `weight:` / `bus:` defaults.
 
-> **Snapshot-driven variation (issue #558).** A family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps cannot build that scenario at module-load time. Such a family exports a `buildXxxScenario(getSnapshot)` builder (plus a `registerXxxVars(engine, getSnapshot)` that registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the lone scenario is materialized at wiring time inside `registerPitCrew()`. It still exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` (the latter `[]` when the readout is composed from `engine.defineVar` resolvers / static `clipPath` steps rather than pools), and still uses the small constructor helper for the shared `family:` / `priority:` / `bus:` defaults. Reference files: `session-start.ts` and `lap-time.ts`.
+> **Snapshot-driven variation (issue #558).** A family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps cannot build that scenario at module-load time. Such a family exports a `buildXxxScenario(getSnapshot)` builder (plus a `registerXxxVars(engine, getSnapshot)` that registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the lone scenario is materialized at wiring time inside `registerPitCrew()`. It still exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` (the latter `[]` when the readout is composed from `engine.defineVar` resolvers / static `clipPath` steps rather than pools), and still uses the small constructor helper for the shared `family:` / `weight:` / `bus:` defaults. Reference files: `session-start.ts` and `lap-time.ts`.
 
 ## Pools
 
@@ -54,9 +54,12 @@ in a step object.
 A `Scenario` (see `src/dsl.ts`) binds:
 - `id` — `pit-crew.<family>-<subject>`.
 - `when: { event, where? }` — bus event filter. The `where:` predicate runs at event arrival; return `false` to skip.
-- `family:` — shared identifier for same-family preemption. Two fires with the same family supersede the earlier one.
-- `priority:` — `low` / `normal` / `urgent`. Cross-family preemption: `urgent` cancels in-flight `normal` (meatball-cancels-yellow); `normal` cancels in-flight `low` (pit-status cancels in-flight readback).
-- `preempt: true` — combined with `urgent` for safety-critical lines that should cut anything in flight.
+- `family:` — shared identifier for same-family preemption. A newer same-family fire replaces the in-flight family-mate wholesale, **regardless of weight** (it is NOT stashed for replay).
+- `weight?:` — higher weight wins a busy bus. Named bands are exported from `dsl.ts` as `WEIGHT`: `TRANSIENT = 5`, `CHATTER = 10`, `NORMAL = 50` (the default when `weight` is omitted), `SAFETY = 70`, `CRITICAL = 100`. Any integer is allowed — scheduling importance is a tunable number, not a fixed enum.
+- `interrupt?:` (default `false`) — when a fire wins a busy bus over an in-flight LOWER-weight fire, `true` cuts that line mid-sentence immediately; `false` waits for the current line to finish, then plays. Equal/lower-weight fires never cut.
+- `queueable?:` (default `false`) — when a fire can't take the bus right now (equal/lower weight, or below a focus floor), `true` defers it for replay when the bus next idles; `false` drops it. The single per-bus pending slot holds the **highest-weight waiting fire** (ties → newest). The deferred fire replays **unconditionally** — its `where:` is NOT re-evaluated, because some `where:` predicates commit a side effect as their last gate (e.g. the position readout claims a shared cooldown); freshness comes from the var resolvers reading live state at speak time, not from re-gating.
+- `focusOwner?:` — marks a scenario as belonging to an exclusive-focus owner (see the focus floor below).
+- **Exclusive focus.** `IScenarioEngine.acquireFocus(bus, ownerId, floorWeight)` / `releaseFocus(bus, ownerId)` raise a per-bus weight floor. While a floor is held, only fires with `weight` at or above the floor — or the owner's own fires (`focusOwner === ownerId`) — play; everything else defers (if `queueable`) or drops. Set the floor to the band you want to admit (e.g. `WEIGHT.SAFETY` to let safety flags through while holding back routine chatter). Releasing the floor drains any deferred fire.
 - `sequence:` — ordered steps. The full sequence is `[@pit-crew.radio-open, …body…, @pit-crew.radio-close]` for everything that should sound like radio chatter; the radio frame is itself an include scenario.
 
 ## Live gating

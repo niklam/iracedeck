@@ -40,9 +40,9 @@
  * `getReadbackSnapshot` is consulted at fire time inside every conditional
  * predicate of the pit-readback scenarios (issue #481). Plugins wire it
  * to `getReadbackSnapshot()` from `@iracedeck/sim-events-iracing` so a
- * deferred-replay readback (busy-bus low-priority hold or urgent-flag
- * preempt) speaks the *current* queued-services state, not the one
- * frozen into the original event payload.
+ * deferred-replay readback (deferred behind a busier bus, or stashed when
+ * an `interrupt` line cuts it) speaks the *current* queued-services state,
+ * not the one frozen into the original event payload.
  */
 import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -789,10 +789,10 @@ export function registerPitCrew(
 
   // Qualifying lap-invalidation callout (issue #567). MUST be registered
   // BEFORE the incident scenarios below — both gate on `incident.occurred`,
-  // share the Voice bus, and run as `priority: "normal"` in different families.
-  // The scenario engine dispatches subscribers in registration order, and a
-  // second normal-priority scenario hitting a busy bus is silently dropped
-  // (see `attemptFire` in interpreter.ts). The shape we want:
+  // share the Voice bus, and run at the default `WEIGHT.NORMAL` band in
+  // different families. The scenario engine dispatches subscribers in
+  // registration order, and a second equal-weight scenario hitting a busy bus
+  // is silently dropped (see `attemptFire` in interpreter.ts). The shape we want:
   //
   //   Qualifying + valid flying lap → qualifying scenario grabs the bus,
   //                                     incident scenario drops (no double-up).
@@ -867,10 +867,11 @@ export function registerPitCrew(
   );
 
   // Position-change callout (issue #566). Ordering with the lap-time scenario
-  // above is enforced by the position scenario's `priority: "low"`, NOT by
-  // registration order — the engine drops (not queues) cross-family
-  // normal-priority scenarios when the bus is busy, but defers and replays
-  // `low`-priority fires once the bus goes idle (see `position.ts` header).
+  // above is enforced by the position scenario's `weight: WEIGHT.CHATTER` +
+  // `queueable: true`, NOT by registration order — the engine drops (not queues)
+  // cross-family equal-weight (`WEIGHT.NORMAL`) scenarios when the bus is busy,
+  // but defers and replays the lower-weight queueable position fire once the bus
+  // goes idle (see `position.ts` header).
   // The change-DETECTION (improved/worsened/first-fix) reads the frozen
   // `lap.completed` snapshot; in race the spoken NUMBER reads LIVE telemetry
   // at speak-time via `getLivePosition` (issue #574) and shares the position
@@ -946,8 +947,8 @@ export function registerPitCrew(
 
   // Overtake callouts (issue #574). Each direction is TWO scenarios: a
   // reaction (immediate, `family: "overtake"`) and a position readout
-  // (`low`-priority, `family: "position-readout"`) that defers behind the
-  // reaction and speaks "We're currently P[n]" from LIVE telemetry at
+  // (`weight: WEIGHT.CHATTER` + `queueable: true`, `family: "position-readout"`)
+  // that defers behind the reaction and speaks "We're currently P[n]" from LIVE telemetry at
   // speak-time. Both share the same per-direction opt-in via
   // `SCENARIO_ID_TO_OVERTAKE_ID`, and all are suppressed once the race is over
   // (`getRaceFinishedFired`). The driver-name resolver (loss reaction) is

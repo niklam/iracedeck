@@ -1,13 +1,14 @@
 /**
  * Pit approach scenario — fires when the driver enters the pit approach zone.
  *
- * Wrapped in the shared radio frame. Uses `priority: "high"` so a
- * low-priority service reminder is deferred until this callout finishes
+ * Wrapped in the shared radio frame. Uses `weight: WEIGHT.SAFETY` so a
+ * lower-weight service reminder is deferred until this callout finishes
  * (preserves the "finish approach before reminder" behavior without the
  * legacy 1500 ms fixed delay).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario } from "../../dsl.js";
 
 export const PIT_APPROACH: Scenario = {
@@ -16,6 +17,6 @@ export const PIT_APPROACH: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "high",
+  weight: WEIGHT.SAFETY,
   sequence: ["@pit-crew.radio-open", "pool:pit-approach", "@pit-crew.radio-close"],
 };

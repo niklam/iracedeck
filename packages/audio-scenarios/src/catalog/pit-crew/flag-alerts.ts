@@ -16,7 +16,7 @@
  * (yellow → green at restart no longer plays both back-to-back; whichever
  * flag fires last wins). Meatball is intentionally excluded from the
  * family — we want it to preempt anything in flight (handled by
- * `priority: "urgent"` + `preempt: true`), but we do NOT want a routine
+ * `weight: WEIGHT.CRITICAL` + `interrupt: true`), but we do NOT want a routine
  * yellow to cancel a still-playing meatball.
  *
  * **Yellow scope.** `flag.yellow.raised` carries `data.scope` (`"local"` or
@@ -37,6 +37,7 @@ import type { SimEventOf } from "@iracedeck/event-bus";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
+import { WEIGHT } from "../../dsl.js";
 import { POOLS } from "./pools.js";
 
 function flagSequence(steps: Step[]): Step[] {
@@ -49,7 +50,7 @@ function flagScenario(id: string, body: Step[]): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
+    weight: WEIGHT.SAFETY,
     family: "flag",
     sequence: flagSequence(body),
   };
@@ -148,8 +149,8 @@ const DEBRIS: Scenario = {
 };
 
 // Meatball is the one flag the driver may genuinely miss — failing to
-// pit on a meatball is a black-flag penalty. Mark it `urgent` with
-// `preempt: true` so it cancels in-flight engineer chatter mid-message.
+// pit on a meatball is a black-flag penalty. Give it `weight: WEIGHT.CRITICAL`
+// with `interrupt: true` so it cuts in-flight engineer chatter mid-message.
 // Intentionally NOT in `family: "flag"`: a routine yellow must not cancel
 // a still-playing meatball.
 const MEATBALL: Scenario = {
@@ -158,8 +159,8 @@ const MEATBALL: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",
-  priority: "urgent",
-  preempt: true,
+  weight: WEIGHT.CRITICAL,
+  interrupt: true,
   sequence: flagSequence(["pool:flag-meatball"]),
 };
 

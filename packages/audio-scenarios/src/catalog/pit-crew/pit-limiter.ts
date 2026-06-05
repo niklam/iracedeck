@@ -9,8 +9,8 @@
  *   - `limiter.dropped`: limiter disengaged while still between pit cones.
  *   - `limiter.speeding`: above the pit speed limit.
  *
- * All four are `priority: "normal"` — informational callouts that defer to
- * in-flight pit-lane "high" messages.
+ * All four use the default weight (`WEIGHT.NORMAL`) — informational callouts
+ * that yield to higher-weight in-flight pit-lane messages.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -40,7 +40,6 @@ export const LIMITER_ON_TRACK: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "normal",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-on-track", "@pit-crew.radio-close"],
 };
 
@@ -54,7 +53,6 @@ export const LIMITER_MISSING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "normal",
   sequence: ["@pit-crew.radio-open", "pool:pit-no-limiter", "@pit-crew.radio-close"],
 };
 
@@ -68,7 +66,6 @@ export const LIMITER_DROPPED: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "normal",
   sequence: ["@pit-crew.radio-open", "pool:pit-limiter-dropped", "@pit-crew.radio-close"],
 };
 
@@ -82,7 +79,6 @@ export const LIMITER_SPEEDING: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "normal",
   sequence: ["@pit-crew.radio-open", "pool:pit-speeding", "@pit-crew.radio-close"],
 };
 

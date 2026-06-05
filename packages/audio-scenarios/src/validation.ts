@@ -27,6 +27,13 @@ export function validateScenario(
   const clipSet = new Set(manifest.clips);
   const voices = manifestVoices(manifest);
 
+  // Scheduling metadata (issue #652): `weight` must be a finite number when
+  // present so a typo (e.g. an undefined `WEIGHT.x`) surfaces at load rather
+  // than silently coercing to NaN in the scheduler's comparisons.
+  if (s.weight !== undefined && !Number.isFinite(s.weight)) {
+    errors.push(`weight must be a finite number (got ${String(s.weight)})`);
+  }
+
   walk(resolved, s.base, new Set([s.id]));
 
   return errors;

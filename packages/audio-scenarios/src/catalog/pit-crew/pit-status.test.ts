@@ -187,11 +187,12 @@ describe("PIT_STATUS_ALERTS structure", () => {
     expect(new Set(PIT_STATUS_SCENARIO_IDS).size).toBe(PIT_STATUS_SCENARIO_IDS.length);
   });
 
-  it("every scenario shares family 'pit-status' and priority 'normal'", () => {
+  it("every scenario shares family 'pit-status' and uses the default weight", () => {
     for (const s of PIT_STATUS_ALERTS) {
       expect(s.family).toBe("pit-status");
-      expect(s.priority).toBe("normal");
-      expect(s.preempt).not.toBe(true);
+      // default weight band (WEIGHT.NORMAL) — left unset
+      expect(s.weight).toBeUndefined();
+      expect(s.interrupt).not.toBe(true);
     }
   });
 

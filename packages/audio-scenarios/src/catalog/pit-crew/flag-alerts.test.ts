@@ -3,6 +3,7 @@ import { AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { FLAG_ALERTS, FLAG_POOL_NAMES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
@@ -226,21 +227,21 @@ describe("FLAG_ALERTS structure", () => {
     expect(new Set(FLAG_SCENARIO_IDS).size).toBe(FLAG_SCENARIO_IDS.length);
   });
 
-  it("non-meatball scenarios share family 'flag' and use priority 'normal'", () => {
+  it("non-meatball scenarios share family 'flag' and sit in the SAFETY weight band", () => {
     for (const s of FLAG_ALERTS) {
       if (s.id === "pit-crew.flag-meatball") continue;
 
       expect(s.family).toBe("flag");
-      expect(s.priority).toBe("normal");
-      expect(s.preempt).not.toBe(true);
+      expect(s.weight).toBe(WEIGHT.SAFETY);
+      expect(s.interrupt).not.toBe(true);
     }
   });
 
-  it("meatball is urgent + preempt + outside the flag family", () => {
+  it("meatball is CRITICAL weight + interrupt + outside the flag family", () => {
     const meatball = findScenario("pit-crew.flag-meatball");
 
-    expect(meatball.priority).toBe("urgent");
-    expect(meatball.preempt).toBe(true);
+    expect(meatball.weight).toBe(WEIGHT.CRITICAL);
+    expect(meatball.interrupt).toBe(true);
     expect(meatball.family).toBeUndefined();
   });
 

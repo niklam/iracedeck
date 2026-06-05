@@ -174,7 +174,8 @@ export function registerSessionStartVars(engine: IScenarioEngine, getSnapshot: S
  * Construct the session-start scenario from a prepared sequence, injecting the
  * shared scenario shape (mirrors the `<family>Scenario(...)` helpers in the
  * sibling pit-crew catalog files): the fixed id, the snapshot-gated `when`
- * block, and the shared channel / bus / base / priority / family defaults.
+ * block, and the shared channel / bus / base / family defaults (weight is
+ * omitted, so it defaults to `WEIGHT.NORMAL`).
  */
 function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequence: Step[]): Scenario {
   return {
@@ -199,7 +200,6 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "session-start",
     sequence,
   };

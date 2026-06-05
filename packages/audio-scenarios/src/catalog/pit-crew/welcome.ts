@@ -31,7 +31,6 @@ export const WELCOME: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "normal",
   sequence: [
     "@pit-crew.radio-open",
     {

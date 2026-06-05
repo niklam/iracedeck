@@ -15,8 +15,8 @@
  * **Family preemption.** All twelve share `family: "track-conditions"` so a
  * rapid double-step (worsening → ModeratelyWet → VeryWet) supersedes the
  * in-flight callout cleanly — same mechanism the flag and pit-status families
- * use. Cross-family priority stays `normal` so meatball / urgent flags still
- * preempt these.
+ * use. Cross-family weight stays at the default (`WEIGHT.NORMAL`) so a meatball
+ * flag (`WEIGHT.CRITICAL`) still wins the bus over these.
  *
  * Pool-driven clips (mirrors `flag-alerts.ts` / `pit-status.ts`) so a future
  * variant pack is a one-line append in `pools.ts` instead of a scenario rewrite.
@@ -34,7 +34,6 @@ function trackConditionsScenario(direction: Direction, target: TrackWetness, slu
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "track-conditions",
     sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
     when: {

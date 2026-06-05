@@ -717,8 +717,8 @@ describe("pit readback scenarios", () => {
     });
   });
 
-  // Issue #481 regression: a low-priority readback that gets stashed in
-  // `deferredLowFire` (busy-bus or higher-priority preempt) must speak the
+  // Issue #481 regression: a queueable readback that gets stashed as the bus's
+  // `pending` fire (busy-bus deferral or interrupt-preempt) must speak the
   // CURRENT queued-services state when it eventually replays — not the
   // state captured at the moment the original event was emitted. The bug
   // before #481 was that the snapshot rode on the event payload, so the
@@ -734,8 +734,9 @@ describe("pit readback scenarios", () => {
       bus.publishEvent("pitService.toggled", { service: "fuel", on: true });
 
       // 3. Publish the readback while the bus is still busy with the
-      //    fuel-toggle. The interpreter stashes it in `deferredLowFire` —
-      //    no clips play yet for the readback.
+      //    fuel-toggle. The readback (CHATTER) loses the bus to the toggle
+      //    (NORMAL) and is stashed as the bus's `pending` fire — no clips
+      //    play yet for the readback.
       bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
 
       // 4. Sim state changes between event emit and deferred replay: the
@@ -760,28 +761,28 @@ describe("pit readback scenarios", () => {
       expect(readbackPaths).not.toContain("tires-all.mp3");
     });
 
-    it("uses the latest snapshot when a higher-priority preempt stashes the readback", () => {
+    it("uses the latest snapshot when an interrupt preempt stashes the readback", () => {
       // 1. Set the snapshot the original event would have captured.
       currentSnapshot = snap({ fuel: { queued: true }, tires: { lf: true, rf: true, lr: true, rr: true } });
 
-      // 2. Fire the low-priority readback. It starts playing immediately
+      // 2. Fire the readback. It starts playing immediately
       //    (radio-open → opener → …).
       bus.publishEvent("pitService.readbackRequested", { reason: "entry" });
 
-      // 3. Mid-playback, fire a normal-priority toggle confirmation
-      //    belonging to a different family. The interpreter preempts
-      //    the running readback and stashes its event in
-      //    `deferredLowFire` for replay once the toggle completes.
-      bus.publishEvent("pitService.toggled", { service: "fuel", on: false });
+      // 3. Mid-playback, raise a meatball — a CRITICAL + interrupt callout
+      //    that cuts the in-flight readback. Because the readback is
+      //    `queueable`, the interpreter stashes it as the bus's `pending`
+      //    fire for replay once the meatball completes (issue #652).
+      bus.publishEvent("flag.meatball.raised", {});
 
-      // 4. While the toggle confirmation plays, the user changes the
-      //    queue (e.g. cancels two tires). The replay must reflect this.
+      // 4. While the meatball plays, the user changes the queue (e.g.
+      //    cancels two tires). The replay must reflect this.
       currentSnapshot = snap({
         fuel: { queued: true },
         tires: { lf: true, rf: true, lr: false, rr: false },
       });
 
-      // 5. Drain — toggle finishes, deferred readback replays.
+      // 5. Drain — meatball finishes, the stashed readback replays.
       flush(audio);
 
       const readbackPaths = voicePaths()

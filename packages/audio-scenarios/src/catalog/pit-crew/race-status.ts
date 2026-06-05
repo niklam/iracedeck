@@ -43,15 +43,16 @@
  *   - **Position in announceable range** — guards against junk telemetry; the
  *     pole-callout pattern from #566 stays consistent here too.
  *
- * `priority: "low"` because lap-time-best (`priority: "normal"`) may fire on
- * the same `lap.completed` and grab the Voice bus first. `low` defers and
- * replays once the bus goes idle — see `position.ts` header for the full
- * rationale on the deferred-low mechanism. Different family from lap-time so
- * neither preempts the other.
+ * `weight: WEIGHT.CHATTER` + `queueable: true` because lap-time-best (default
+ * `WEIGHT.NORMAL`) may fire on the same `lap.completed` and grab the Voice bus
+ * first. A `queueable` scenario defers and replays once the bus goes idle — see
+ * `position.ts` header for the full rationale on the deferred-low mechanism.
+ * Different family from lap-time so neither preempts the other.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
@@ -179,11 +180,12 @@ export function buildRaceStatusScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    // Defer when lap-time-best (`normal`) is already mid-fire on the same
-    // lap.completed — the engine drops cross-family normal-priority scenarios
-    // on a busy bus but defers and replays `low`. Different family (`race-status`
-    // vs `lap-time`) so neither preempts the other.
-    priority: "low",
+    // Defer when lap-time-best (default `WEIGHT.NORMAL`) is already mid-fire on
+    // the same lap.completed — the engine drops cross-family default-weight
+    // scenarios on a busy bus but defers and replays a `queueable` one. Different
+    // family (`race-status` vs `lap-time`) so neither preempts the other.
+    weight: WEIGHT.CHATTER,
+    queueable: true,
     family: "race-status",
     sequence,
   };

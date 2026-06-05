@@ -6,14 +6,15 @@
  * (#555) on laps that produce both, via the engine's **deferred-low**
  * mechanism — NOT via registration order.
  *
- * Why `priority: "low"`: when two cross-family normal-priority scenarios
- * fire on the same event, the scenario engine (`interpreter.ts`
- * `attemptFire`) starts the first one and **silently drops** the second
- * (`bus busy`, no preemption rule matches). `low` is the only path that
- * gets *deferred* and replayed once the bus goes idle (see `finishFire` →
- * `deferredLowFire`). Lap-time stays `normal`; position is `low` so it
- * queues behind. The deferred replay carries the original event payload,
- * so the snapshot resolver still reads the correct lap's position.
+ * Why `weight: WEIGHT.CHATTER` + `queueable: true`: when two cross-family
+ * default-weight scenarios fire on the same event, the scenario engine
+ * (`interpreter.ts` `attemptFire`) starts the first one and **silently drops**
+ * the second (`bus busy`, no preemption rule matches). A `queueable` scenario
+ * is *deferred* and replayed once the bus goes idle (see `finishFire` →
+ * `drainPending`). Lap-time stays default `WEIGHT.NORMAL`; position is
+ * `WEIGHT.CHATTER` + `queueable: true` so it queues behind. The deferred replay
+ * carries the original event payload, so the snapshot resolver still reads the
+ * correct lap's position.
  *
  * Both scenarios share the `lap.completed` trigger but sit on different
  * families (`lap-time` vs `position`), so neither preempts the other.
@@ -83,6 +84,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position-range.js";
@@ -317,8 +319,9 @@ export function registerPositionVars(
  * `where:` short-circuits on the final lap of a race (issue #569). Without
  * the race-finished gate, a position change on the final lap would queue
  * "We're currently P[n]" behind race-end and play after the result speech
- * — same `priority: "low"` as race-end with no shared family, so the engine
- * defers but does not drop it. Default `() => false` (race never ends)
+ * — same `weight: WEIGHT.CHATTER` + `queueable: true` as race-end with no
+ * shared family, so the engine defers but does not drop it. Default
+ * `() => false` (race never ends)
  * preserves legacy behavior for tests / qualifying.
  */
 export function buildPositionScenario(
@@ -401,13 +404,15 @@ export function buildPositionScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    // `low` so the engine *defers* this scenario when the bus is busy
-    // (typically because the lap-time-best callout fires on the same
-    // `lap.completed` event and grabs the Voice bus first). `normal` would
-    // hit the dropped-on-busy-bus path in `interpreter.ts` `attemptFire` and
-    // the user would never hear the position update on a PB lap. See the
-    // file header for the full rationale.
-    priority: "low",
+    // `weight: WEIGHT.CHATTER` + `queueable: true` so the engine *defers* this
+    // scenario when the bus is busy (typically because the lap-time-best callout
+    // fires on the same `lap.completed` event and grabs the Voice bus first).
+    // Without `queueable`, a default-weight scenario would hit the
+    // dropped-on-busy-bus path in `interpreter.ts` `attemptFire` and the user
+    // would never hear the position update on a PB lap. See the file header for
+    // the full rationale.
+    weight: WEIGHT.CHATTER,
+    queueable: true,
     family: "position",
     sequence,
   };

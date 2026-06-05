@@ -8,9 +8,9 @@
  * additions land as one-line appends in `pools.ts` without touching the
  * scenario.
  *
- * `priority: "normal"` — pit-lane / urgent-flag callouts still preempt
- * a damage heads-up, which matches the use case (a meatball flag carries
- * the same signal more authoritatively).
+ * Default weight (`WEIGHT.NORMAL`) — higher-weight callouts (a meatball flag
+ * at `WEIGHT.CRITICAL`) still win the bus over a damage heads-up, which matches
+ * the use case (the flag carries the same signal more authoritatively).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 
@@ -22,7 +22,6 @@ const DAMAGE_REPAIR_NEEDED: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",
-  priority: "normal",
   family: "damage",
   sequence: ["@pit-crew.radio-open", "pool:damage-repair-needed", "@pit-crew.radio-close"],
 };

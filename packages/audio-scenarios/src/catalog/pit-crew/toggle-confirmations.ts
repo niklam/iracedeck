@@ -22,8 +22,8 @@
  *   - `FAST_REPAIR_TOGGLE_SCENARIOS` — fast-repair on/off via
  *     `pitService.toggled`
  *
- * All registered scenarios use `priority: "normal"` so pit-lane callouts
- * still take precedence.
+ * All registered scenarios use the default weight (`WEIGHT.NORMAL`) so
+ * higher-weight pit-lane callouts still take precedence.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
@@ -52,7 +52,6 @@ function fuelScenario(on: boolean): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "pit-service.fuel",
     sequence: toggleSequence([`pool:pit-action-fuel-${on ? "on" : "off"}`]),
   };
@@ -145,7 +144,6 @@ function tireSetOnScenario(set: TireSet): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "tire-service",
     sequence: toggleSequence([
       `pit-actions/tires-on-${set.name}.mp3`,
@@ -162,7 +160,6 @@ const TIRE_OFF_SCENARIO: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",
-  priority: "normal",
   family: "tire-service",
   sequence: toggleSequence(["pool:pit-action-tires-off"]),
 };
@@ -201,7 +198,6 @@ function compoundScenario(to: 0 | 1): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "tire-service",
     sequence: toggleSequence([
       `pit-actions/tires-compound-${name}.mp3`,
@@ -227,7 +223,6 @@ function windshieldScenario(on: boolean): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "pit-service.windshield",
     sequence: toggleSequence([`pit-actions/windshield-${on ? "on" : "off"}.mp3`]),
   };
@@ -251,7 +246,6 @@ function fastRepairScenario(on: boolean): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "pit-service.fast-repair",
     sequence: toggleSequence([`pit-actions/fast-repair-${on ? "on" : "off"}.mp3`]),
   };

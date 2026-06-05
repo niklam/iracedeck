@@ -6,8 +6,8 @@
  * are sim-agnostic: any translator that publishes the canonical event names
  * (see `@iracedeck/event-bus/event-catalog`) can drive the same catalog.
  */
-export type { ResolvedStep, Scenario, ScenarioContext, ScenarioPriority, Step } from "./dsl.js";
-export { applyBase, parseStepShorthand, resolveStep } from "./dsl.js";
+export type { ResolvedStep, Scenario, ScenarioContext, Step } from "./dsl.js";
+export { applyBase, DEFAULT_WEIGHT, parseStepShorthand, resolveStep, WEIGHT } from "./dsl.js";
 export type { AudioAssetsManifest, IScenarioEngine } from "./interpreter.js";
 export {
   _resetAudioScenarios,
