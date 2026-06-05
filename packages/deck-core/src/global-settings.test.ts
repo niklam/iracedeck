@@ -441,6 +441,34 @@ describe("flagFlashDurationSeconds (issue #490)", () => {
   });
 });
 
+describe("setup-warning patterns (issue #625)", () => {
+  const QUALI_DEFAULT = "(^|[ ._-])(race|r)([ ._-]|$)";
+  const RACE_DEFAULT = "(^|[ ._-])(qualifying|quali|qual|q)([ ._-]|$)";
+
+  it("defaults to the canonical patterns when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.setupWarningQualifyingPattern).toBe(QUALI_DEFAULT);
+    expect(parsed.setupWarningRacePattern).toBe(RACE_DEFAULT);
+  });
+
+  it("preserves a non-empty custom pattern", () => {
+    const parsed = GlobalSettingsSchema.parse({ setupWarningRacePattern: "custom" }) as Record<string, unknown>;
+    expect(parsed.setupWarningRacePattern).toBe("custom");
+  });
+
+  it("falls back to the default on an empty string", () => {
+    const parsed = GlobalSettingsSchema.parse({ setupWarningRacePattern: "" }) as Record<string, unknown>;
+    expect(parsed.setupWarningRacePattern).toBe(RACE_DEFAULT);
+  });
+
+  it("falls back to the default on a non-string (e.g. corrupted null) without throwing", () => {
+    // A bad persisted value must not break the whole GlobalSettingsSchema.parse().
+    expect(() => GlobalSettingsSchema.parse({ setupWarningRacePattern: null })).not.toThrow();
+    const parsed = GlobalSettingsSchema.parse({ setupWarningRacePattern: null }) as Record<string, unknown>;
+    expect(parsed.setupWarningRacePattern).toBe(RACE_DEFAULT);
+  });
+});
+
 describe("dualPressThresholdMs (issue #540)", () => {
   it("defaults to 500 when not specified", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;

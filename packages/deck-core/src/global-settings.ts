@@ -12,6 +12,10 @@
 import type { ILogger } from "@iracedeck/logger";
 import { z } from "zod";
 
+import {
+  DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
+  DEFAULT_SETUP_WARNING_RACE_PATTERN,
+} from "./setup-warning-constants.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 /**
@@ -576,6 +580,38 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * Setup-name mismatch warning opt-in (issue #625). When on, the Race
+     * Engineer appends a "double-check your setup" nudge after the session-start
+     * (qualifying) and race-start intros when the loaded setup name looks wrong
+     * for the session type. Default true — the family's natural baseline.
+     */
+    calloutEnabledSetupWarning: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * Case-insensitive regex applied during **qualifying** sessions to flag a
+     * race-looking setup name (issue #625). Empty (or any non-string, e.g. a
+     * corrupted `null`) falls back to the default rather than throwing, so a bad
+     * persisted value can't break the whole settings parse; an invalid regex
+     * skips the warning and banners the PI. Canonical default:
+     * `DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN` in `setup-warning-constants.ts`.
+     */
+    setupWarningQualifyingPattern: z.preprocess(
+      (val) => (typeof val === "string" && val !== "" ? val : undefined),
+      z.string().default(DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN),
+    ),
+    /**
+     * Case-insensitive regex applied during **race** sessions to flag a
+     * qualifying-looking setup name (issue #625). Same fallback/guard rules as
+     * the qualifying pattern. Canonical default:
+     * `DEFAULT_SETUP_WARNING_RACE_PATTERN` in `setup-warning-constants.ts`.
+     */
+    setupWarningRacePattern: z.preprocess(
+      (val) => (typeof val === "string" && val !== "" ? val : undefined),
+      z.string().default(DEFAULT_SETUP_WARNING_RACE_PATTERN),
+    ),
     /**
      * Duration in seconds the flag overlay flashes after a new flag
      * transition (issue #490). The flash auto-stops after this duration even

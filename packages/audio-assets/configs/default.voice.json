@@ -4724,6 +4724,18 @@
         ]
       }
     ],
+    "setup-warning": [
+      {
+        "name": "qualifying-01",
+        "text": "Our setup name suggests that we're on a race setup. Please double-check.",
+        "seed": 7
+      },
+      {
+        "name": "race-01",
+        "text": "Our setup name suggests that we're on a qualifying setup. Please double-check.",
+        "seed": 7
+      }
+    ],
     "race-start-greeting": [
       { "name": "adam", "text": "Time to race, Adam." },
       { "name": "al", "text": "Time to race, Al." },

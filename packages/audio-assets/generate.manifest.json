@@ -8448,6 +8448,22 @@
       "textPreview": "Nice pass! <break time=\"0.3s\"/> Third in class — podium positions now.",
       "generatedAt": "2026-05-25T17:17:48.660Z",
       "requestId": "OnnOzpjc4H9VWKUblugE"
+    },
+    "voice/default/setup-warning/qualifying-01.mp3": {
+      "hash": "b81f26ba6a6d52fb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Our setup name suggests that we're on a race setup. Please double-check.",
+      "generatedAt": "2026-06-04T18:20:00.779Z",
+      "requestId": "e2LeTDW1ZGXu1t9v0PH6"
+    },
+    "voice/default/setup-warning/race-01.mp3": {
+      "hash": "c35e59486813a035",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Our setup name suggests that we're on a qualifying setup. Please double-check.",
+      "generatedAt": "2026-06-04T19:13:05.123Z",
+      "requestId": "xLTeiz9E4qOJig8pwtNg"
     }
   }
 }

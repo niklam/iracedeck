@@ -488,6 +488,28 @@
 
   });
 
+  // Setup-warning pattern Reset buttons (issue #625). Each button names its
+  // target setting via data-target; the handler restores that field's own
+  // template `default` attribute — so the default lives only in the template,
+  // never duplicated here — and persists it via the component's .save().
+  document.addEventListener('click', function(ev) {
+    var btn = ev.target.closest('.ird-setup-warning-reset');
+    if (!btn) return;
+
+    var setting = btn.getAttribute('data-target');
+    if (!setting) return;
+
+    var el = document.querySelector('[setting="' + setting + '"]');
+    if (!el) return;
+
+    el.value = el.getAttribute('default') || '';
+    if (typeof el.save === 'function') {
+      el.save();
+    } else {
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
   // Note: titleOverrides.titleText uses sdpi-textarea with setting attribute.
   // Persistence is handled automatically by sdpi-components.
 

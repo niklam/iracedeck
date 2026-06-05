@@ -161,6 +161,8 @@ const manifest: AudioAssetsManifest = {
     ...SESSION_START_CLIPS.map((c) => `voice/${VOICE}/session-start/${c}.mp3`),
     ...[...SESSION_START_SPEED_VALUES].map((n) => `voice/${VOICE}/session-start-speed-numbers/${n}.mp3`),
     ...Array.from({ length: 151 }, (_, i) => `voice/${VOICE}/session-start-temp-numbers/${i}.mp3`),
+    `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
+    `voice/${VOICE}/setup-warning/race-01.mp3`,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -188,6 +190,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let currentSnapshot: SessionStartSnapshot | null;
 let sessionStartEnabled: boolean;
+let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
 function fire(snapshot: SessionStartSnapshot | null): void {
   currentSnapshot = snapshot;
@@ -207,6 +210,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   currentSnapshot = null;
   sessionStartEnabled = true;
+  setupWarningMismatch = () => false;
   bus = createMockBus();
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -224,6 +228,23 @@ beforeEach(() => {
     undefined,
     () => sessionStartEnabled,
     () => currentSnapshot,
+    undefined, // getLapTimeCalloutEnabled
+    undefined, // getLapCompletedSnapshot
+    undefined, // getPositionCalloutEnabled
+    undefined, // getQualifyingInvalidationCalloutEnabled
+    undefined, // getQualifyingInvalidationSnapshot
+    undefined, // getRaceStatusCalloutEnabled
+    undefined, // getRaceFinishedFired
+    undefined, // getRaceEndCalloutEnabled
+    undefined, // getRaceFinishedSnapshot
+    undefined, // getRaceStartCalloutEnabled
+    undefined, // getRaceStartSnapshot
+    undefined, // getOvertakeCalloutEnabled
+    undefined, // getOvertakeDriverName
+    undefined, // getLivePosition
+    undefined, // getOvertakeGate
+    undefined, // getPitBoxCalloutEnabled
+    (kind) => setupWarningMismatch(kind), // getSetupWarningMismatch (issue #625)
   );
 });
 
@@ -352,6 +373,33 @@ describe("session-start scenario", () => {
       fire(snap({ wetness }));
 
       expect(hasClip(`/session-start/wetness-${suffix}.mp3`)).toBe(true);
+    });
+  });
+
+  describe("setup-warning clause (issue #625)", () => {
+    it("appends the qualifying warning when the resolver reports a mismatch", () => {
+      setupWarningMismatch = (kind) => kind === "qualifying";
+      fire(snap({ sessionType: "qualifying" }));
+
+      expect(hasClip("/setup-warning/qualifying-01.mp3")).toBe(true);
+      // The rest of the readout still plays — the clause is appended, not a replacement.
+      expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    });
+
+    it("is silent when the resolver reports no mismatch", () => {
+      setupWarningMismatch = () => false;
+      fire(snap({ sessionType: "qualifying" }));
+
+      expect(hasClip("/setup-warning/qualifying-01.mp3")).toBe(false);
+    });
+
+    it("never warns in practice, even on a mismatch", () => {
+      setupWarningMismatch = () => true;
+      fire(snap({ sessionType: "practice" }));
+
+      expect(hasClip("/setup-warning/qualifying-01.mp3")).toBe(false);
+      // Practice readout otherwise plays in full.
+      expect(hasClip("/session-start/session-practice.mp3")).toBe(true);
     });
   });
 });

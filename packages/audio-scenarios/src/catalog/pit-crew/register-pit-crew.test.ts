@@ -349,6 +349,7 @@ beforeEach(() => {
     undefined, // getLivePosition (issue #574)
     undefined, // getOvertakeGate (issue #574)
     () => pitBoxEnabled, // getPitBoxCalloutEnabled (issue #600)
+    undefined, // getSetupWarningMismatch (issue #625)
     () => voiceMasterEnabled,
   );
 });
