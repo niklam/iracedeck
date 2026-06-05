@@ -19,22 +19,24 @@
  * the cache. It subscribes to `race.finished` and composes a snapshot from
  * the event payload + the Property Inspector driver-name pick, then exposes
  * the resolver passed in here. Reading at fire time keeps deferred replays
- * coherent — the race-end scenario sits at `priority: "low"` so the bus may
- * be busy with a same-tick lap-time-best callout, and the engine defers the
- * race-end fire until the bus is idle.
+ * coherent — the race-end scenario sits at `weight: WEIGHT.CHATTER` +
+ * `queueable: true` so the bus may be busy with a same-tick lap-time-best
+ * callout, and the engine defers the race-end fire until the bus is idle.
  *
  * `where:` is `getSnapshot() !== null` — when the snapshot resolver can't
  * compose a valid payload (e.g. driver name unresolvable, position missing),
  * the scenario stays silent rather than producing a partial readout.
  *
  * Family `race-end` so a future per-class or per-result extension can preempt
- * within the family. `priority: "low"` rather than `urgent`: the race is over
- * by the time it fires, so cutting an in-flight clip to deliver the result
- * would feel jarring; defer-and-replay matches the moment.
+ * within the family. `weight: WEIGHT.CHATTER` + `queueable: true` rather than a
+ * high weight: the race is over by the time it fires, so cutting an in-flight
+ * clip to deliver the result would feel jarring; defer-and-replay matches the
+ * moment.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { POSITION_NUMBER_MAX, POSITION_NUMBER_MIN, positionNumberIsSpeakable } from "./position.js";
@@ -204,7 +206,8 @@ export function buildRaceEndScenario(getSnapshot: RaceFinishedSnapshotResolver):
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "low",
+    weight: WEIGHT.CHATTER,
+    queueable: true,
     family: "race-end",
     sequence,
   };

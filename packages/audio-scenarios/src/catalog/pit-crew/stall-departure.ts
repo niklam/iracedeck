@@ -4,6 +4,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario } from "../../dsl.js";
 
 export const STALL_DEPARTURE: Scenario = {
@@ -12,6 +13,6 @@ export const STALL_DEPARTURE: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "high",
+  weight: WEIGHT.SAFETY,
   sequence: ["@pit-crew.radio-open", "pool:stall-departure", "@pit-crew.radio-close"],
 };

@@ -308,7 +308,6 @@ export function buildRaceStartScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "race-start",
     // Defer where: + var resolution so telemetry has settled by the time we
     // read TrackWetness / TrackTempCrew / AirTemp / PlayerCarPosition. See

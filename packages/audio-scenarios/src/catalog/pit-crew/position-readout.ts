@@ -21,9 +21,10 @@
  *      immediately followed by a lap-completion readout doesn't double up. The
  *      cooldown is claimed atomically in the scenario's `where:` via
  *      {@link tryClaimPositionAnnouncement} as the LAST gate (after every other
- *      condition passes). All position readouts are `priority: "low"`, which
- *      the engine defers-and-replays rather than drops, so a claim at decision
- *      time always results in an actual announcement — no phantom cooldowns.
+ *      condition passes). All position readouts are `weight: WEIGHT.CHATTER` +
+ *      `queueable: true`, which the engine defers-and-replays rather than drops,
+ *      so a claim at decision time always results in an actual announcement — no
+ *      phantom cooldowns.
  *
  * The two overtake readout scenarios live here (the reaction lines stay in
  * overtake.ts); the race position-change and race-status scenarios import the
@@ -32,6 +33,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, Step } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
@@ -265,9 +267,10 @@ function readoutSequence(): Step[] {
 /**
  * Build the position readout that follows a GAINED-overtake reaction (issue
  * #574). Fires on `overtake.completed` but reads LIVE position at speak-time.
- * `priority: "low"` + `family: "position-readout"` so it defers behind the
- * reaction (normal, `family: "overtake"`) and plays once the bus is idle — the
- * "two announcements" the user asked for. Skips podium gains (P1/P2/P3): their
+ * `weight: WEIGHT.CHATTER` + `queueable: true` + `family: "position-readout"` so
+ * it defers behind the reaction (default `WEIGHT.NORMAL`, `family: "overtake"`)
+ * and plays once the bus is idle — the "two announcements" the user asked for.
+ * Skips podium gains (P1/P2/P3): their
  * dedicated reaction lines already state the position (issue #603).
  *
  * The position ALWAYS fires on a (gate-allowed) overtake — it does not check
@@ -316,7 +319,8 @@ export function buildOvertakeGainedPositionScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "low",
+    weight: WEIGHT.CHATTER,
+    queueable: true,
     family: "position-readout",
     sequence: readoutSequence(),
   };
@@ -349,7 +353,8 @@ export function buildOvertakeLostPositionScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "low",
+    weight: WEIGHT.CHATTER,
+    queueable: true,
     family: "position-readout",
     sequence: readoutSequence(),
   };

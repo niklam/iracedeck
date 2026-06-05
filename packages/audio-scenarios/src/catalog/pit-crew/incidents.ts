@@ -15,9 +15,10 @@
  * the in-flight callout cleanly — same mechanism the flag and pit-status
  * callouts use.
  *
- * **Cross-family priority.** `priority: "normal"` means urgent flags
- * (meatball) still preempt these; an in-flight low-priority pit readback
- * is replaced by a fresh incident.
+ * **Cross-family weight.** Default weight (`WEIGHT.NORMAL`) means
+ * higher-weight flags (meatball at `WEIGHT.CRITICAL`) still win the bus over
+ * these; an in-flight lower-weight pit readback is replaced by a fresh
+ * incident.
  *
  * **Penalty wording.** Collision lines mention the deterministic penalty
  * point count inline ("…cost us four penalty points"). iRacing's
@@ -37,7 +38,6 @@ function incidentScenario(id: string, type: IncidentType, body: Step[]): Scenari
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "incident",
     sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
     when: {

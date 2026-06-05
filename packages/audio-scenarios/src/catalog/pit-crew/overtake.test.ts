@@ -1,9 +1,9 @@
 /**
  * Race Engineer overtake callouts — scenario-engine integration tests (issue
  * #574, split design). Each overtake produces a reaction (immediate) plus a
- * separate `low`-priority position readout that defers behind the reaction and
- * speaks "We're currently P[n]" from LIVE telemetry, gated by a shared
- * cooldown and suppressed after the race ends.
+ * separate `WEIGHT.CHATTER` + `queueable: true` position readout that defers
+ * behind the reaction and speaks "We're currently P[n]" from LIVE telemetry,
+ * gated by a shared cooldown and suppressed after the race ends.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";

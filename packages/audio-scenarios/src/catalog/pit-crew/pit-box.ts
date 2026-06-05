@@ -11,10 +11,17 @@
  * and a beep around each number would be noise. Each scenario plays a single
  * clip from its pool.
  *
+ * **Lowest band — idle-only, never queued (issue #646).** The count-in sits in
+ * the lowest weight band (`weight: WEIGHT.TRANSIENT`) with `queueable: false`, so
+ * it plays ONLY when the bus is idle and is DROPPED whenever any other audio is
+ * in flight. It never preempts a higher-weight line and never defers/replays — a
+ * dropped count-in is simply gone. This keeps the pit-entry service readback from
+ * being chopped by the countdown: the readback outranks the count-in and cancels
+ * it, while a count-in that fires during the readback is dropped outright.
+ *
  * **Family preemption.** All six share `family: "pit-box"` so a faster approach
- * that crosses two marks in quick succession supersedes the in-flight clip
- * cleanly — the same mechanism the flag / track-conditions families use. Cross-
- * family priority stays `normal` so urgent flags (meatball) still preempt these.
+ * that crosses two marks in quick succession still supersedes the in-flight
+ * count-in cleanly — the same mechanism the flag / track-conditions families use.
  *
  * Pool-driven clips (mirrors `flag-alerts.ts` / `track-conditions.ts`) so a
  * future variant pack is a one-line append in `pools.ts`.
@@ -22,6 +29,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { PitBoxMark, SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario } from "../../dsl.js";
 
 function pitBoxScenario(mark: PitBoxMark): Scenario {
@@ -30,7 +38,8 @@ function pitBoxScenario(mark: PitBoxMark): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
+    weight: WEIGHT.TRANSIENT,
+    queueable: false,
     family: "pit-box",
     sequence: [`pool:pit-box-${mark}`],
     when: {

@@ -177,8 +177,9 @@ export function registerLapTimeVars(engine: IScenarioEngine, getSnapshot: LapCom
 
 /**
  * Shared scenario shape for the lap-time family. Holds the fixed `id`, the full
- * `when` block, and the channel/bus/base/priority/family defaults; the caller
- * supplies the resolved `sequence` and the race-finished gate. Mirrors the
+ * `when` block, and the channel/bus/base/family defaults (weight is left at the
+ * default `WEIGHT.NORMAL`); the caller supplies the resolved `sequence` and the
+ * race-finished gate. Mirrors the
  * constructor-helper convention used by the sibling pit-crew catalog files
  * (`flag-alerts.ts`, `pit-status.ts`, `track-conditions.ts`).
  */
@@ -206,7 +207,6 @@ function lapTimeScenario(getRaceFinishedFired: () => boolean, sequence: Step[]):
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "lap-time",
     sequence,
   };

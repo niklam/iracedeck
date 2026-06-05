@@ -16,10 +16,11 @@
  *        "Come on, <name>." part is a per-name full clip from the
  *        `position-overtake-come-on` group; #591)
  *
- *   2. **Position readout** (position-readout.ts) — a separate `low`-priority
- *      scenario that defers behind the reaction and then says "We're currently
- *      P[n]" reading the position from live telemetry at speak-time. Shares a
- *      cooldown with every other position readout so we don't double-announce.
+ *   2. **Position readout** (position-readout.ts) — a separate `WEIGHT.CHATTER`
+ *      + `queueable: true` scenario that defers behind the reaction and then says
+ *      "We're currently P[n]" reading the position from live telemetry at
+ *      speak-time. Shares a cooldown with every other position readout so we
+ *      don't double-announce.
  *
  * Both reaction scenarios share `family: "overtake"` (a fresh swap preempts an
  * in-flight family-mate) and are suppressed once the race is over
@@ -205,7 +206,6 @@ export function buildOvertakeGainedScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "overtake",
     sequence,
   };
@@ -248,7 +248,6 @@ export function buildOvertakeLostScenario(
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "overtake",
     sequence,
   };

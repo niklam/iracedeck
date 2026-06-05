@@ -5,9 +5,9 @@
  * tire compound / generic tires). The step tree is conditional on the
  * current-tick telemetry carried by the event envelope.
  *
- * Priority / deferral:
- *   - `priority: "low"` so the interpreter defers this fire if any
- *     higher-priority scenario (approach, exit, stall departure) is still
+ * Weight / deferral:
+ *   - `weight: WEIGHT.CHATTER` + `queueable: true` so the interpreter defers
+ *     this fire if another scenario (approach, exit, stall departure) is still
  *     playing. The deferred fire is replayed automatically when the bus
  *     goes idle. This replaces the legacy 1500 ms fixed delay with a
  *     smarter wait-until-done semantic.
@@ -19,6 +19,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { PitSvFlags } from "@iracedeck/iracing-sdk";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, ScenarioContext } from "../../dsl.js";
 
 /** True when any tire-change flag is set in PitSvFlags. */
@@ -50,7 +51,8 @@ export const SERVICE_REMINDER: Scenario = {
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "pit-crew",
-  priority: "low",
+  weight: WEIGHT.CHATTER,
+  queueable: true,
   sequence: [
     "@pit-crew.radio-open",
     {

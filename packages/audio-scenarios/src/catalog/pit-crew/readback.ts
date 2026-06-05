@@ -15,10 +15,9 @@
  * The snapshot is resolved at fire time via the `getSnapshot` closure
  * (issue #481) — NOT pulled from the event payload. The event carries
  * only the trigger `reason`. Reading at fire time keeps the recap fresh
- * when the scenario engine deferred the fire (busy-bus low-priority hold
- * or urgent-flag preempt that stashed the readback for replay) — the
- * snapshot frozen at emit time would be stale by the time the engineer
- * actually speaks.
+ * when the scenario engine deferred the fire (deferred behind a busier bus,
+ * or stashed when an `interrupt` line cut the readback) — the snapshot frozen
+ * at emit time would be stale by the time the engineer actually speaks.
  *
  * Slot order:
  *   1. Opener           — exit: "To confirm:".
@@ -52,6 +51,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { PitReadbackSnapshot, SimEventOf } from "@iracedeck/event-bus";
 
+import { WEIGHT } from "../../dsl.js";
 import type { Scenario, ScenarioContext, Step } from "../../dsl.js";
 
 type ReadbackEventData = SimEventOf<"pitService.readbackRequested">["data"];
@@ -246,10 +246,16 @@ function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotRes
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    // Defers to higher-priority scenarios (pit-approach, pit-exit chatter,
-    // limiter callouts). The deferred-low-fire mechanism replays this once
-    // the bus goes idle — same as the unregistered service-reminder.
-    priority: "low",
+    // `weight: WEIGHT.CHATTER` keeps the readback deferring behind ordinary
+    // callouts: it still loses the bus to flags / normal callouts (pit-approach,
+    // pit-exit chatter, limiter callouts) and replays once the bus goes idle via
+    // `queueable: true` — same as the unregistered service-reminder. But
+    // `interrupt: true` lets it cancel a running pit-box count-in (the only
+    // lower-weight band, `WEIGHT.TRANSIENT`) so the service confirmation is never
+    // chopped by the countdown (issue #646).
+    weight: WEIGHT.CHATTER,
+    queueable: true,
+    interrupt: true,
     family: "pit-readback",
     sequence: [
       "@pit-crew.radio-open",

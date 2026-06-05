@@ -36,7 +36,7 @@
  *
  * **Bus-race with incident scenarios.** Both this scenario and the existing
  * `pit-crew.incident-*` scenarios subscribe to `incident.occurred` on the
- * Voice bus at `priority: "normal"`. The engine drops whichever loses the
+ * Voice bus at the default weight (`WEIGHT.NORMAL`). The engine drops whichever loses the
  * bus-grab race. Two defenses are in place: (1) the incident scenarios
  * suppress themselves via a `getSessionType().includes("Qualify")` gate (the
  * correct production semantic — the lap-status news supersedes generic
@@ -196,7 +196,6 @@ export function buildQualifyingInvalidationScenario(getSnapshot: QualifyingInval
     },
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
-    priority: "normal",
     family: "qualifying-invalidation",
     sequence,
   };

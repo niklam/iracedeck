@@ -10,9 +10,9 @@
  * positioning correction (`TooFarLeft → TooFarRight`) supersedes the
  * in-flight callout cleanly — same mechanism the flag callouts use.
  *
- * **Cross-family priority.** `priority: "normal"` means a meatball flag
- * (`urgent`) still preempts these, and the `low` → `normal` rule from
- * #476 lets a positioning callout cleanly trump an in-flight pit-readback.
+ * **Cross-family weight.** Default weight (`WEIGHT.NORMAL`) means a meatball
+ * flag (`WEIGHT.CRITICAL`) still wins the bus over these, and a positioning
+ * callout cleanly outweighs an in-flight lower-weight pit-readback (#476).
  *
  * Pool-driven clips (mirrors `flag-alerts.ts` / `damage-alerts.ts`) so a
  * future variant pack (#470) is a one-line append in `pools.ts` instead
@@ -30,7 +30,6 @@ function pitStatusScenario(id: string, target: PitSvStatus, body: Step[]): Scena
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    priority: "normal",
     family: "pit-status",
     sequence: ["@pit-crew.radio-open", ...body, "@pit-crew.radio-close"],
     when: {

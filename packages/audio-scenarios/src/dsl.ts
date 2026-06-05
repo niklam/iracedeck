@@ -2,7 +2,7 @@
  * Scenario DSL — types for the audio scenario catalog.
  *
  * A scenario is data: a triggering event, a sequence of `Step`s, and
- * metadata (priority, cooldown, preempt, channel/bus routing). The
+ * metadata (weight, cooldown, interrupt/queueable, channel/bus routing). The
  * interpreter resolves steps against registered pools and variables, then
  * drives `@iracedeck/audio-service` to produce the audio.
  *
@@ -11,8 +11,38 @@
 import type { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 
-/** A scenario's priority affects scheduling when another scenario is playing. */
-export type ScenarioPriority = "low" | "normal" | "high" | "urgent";
+/**
+ * Named scheduling-weight bands (issue #652). A scenario's `weight` decides
+ * which fire wins a busy bus — higher always wins. Bands are conventions for
+ * readability; any integer is valid, and the gaps leave room for custom tuning.
+ */
+export const WEIGHT = {
+  /**
+   * Terse, time-sensitive callouts that must never defer or preempt — they
+   * play only when the bus is idle and drop otherwise (e.g. the pit-box
+   * count-in, issue #646). Pair with `queueable: false`.
+   */
+  TRANSIENT: 5,
+  /**
+   * Background commentary that yields to anything more important (position
+   * readouts, race-status, pit readback, service-reminder). Pair with
+   * `queueable: true` to keep the defer-and-replay behaviour.
+   */
+  CHATTER: 10,
+  /** Default band for ordinary callouts (applied when `weight` is omitted). */
+  NORMAL: 50,
+  /**
+   * Safety / time-critical information that should win the bus over routine
+   * chatter (flag calls, pit-lane phase announcements) and sit above an
+   * exclusive-focus floor.
+   */
+  SAFETY: 70,
+  /** Must-hear lines that cut anything below them (meatball, fuel-critical). Pair with `interrupt: true`. */
+  CRITICAL: 100,
+} as const;
+
+/** Scheduling weight applied when a scenario omits `weight`. */
+export const DEFAULT_WEIGHT: number = WEIGHT.NORMAL;
 
 /**
  * Runtime context passed to conditional `if` steps and `where` predicates.
@@ -63,17 +93,44 @@ export type Scenario = {
   };
   channel: AudioChannel;
   bus: AudioBus;
-  priority?: ScenarioPriority;
+  /**
+   * Scheduling weight — higher weight wins a busy bus. Defaults to
+   * `WEIGHT.NORMAL`. See the `WEIGHT` bands for the conventional values; any
+   * integer is allowed.
+   */
+  weight?: number;
+  /**
+   * When this fire wins a busy bus over an in-flight LOWER-weight fire, cut
+   * that fire mid-sentence immediately (`true`) instead of waiting for its
+   * current line to finish before playing (`false`, the default). Equal- or
+   * lower-weight fires never cut what's playing — they defer or drop.
+   */
+  interrupt?: boolean;
+  /**
+   * When this fire cannot take the bus right now (a higher- or equal-weight
+   * fire is playing, or it is below an exclusive-focus floor), defer it and
+   * replay when the bus next idles (`true`) instead of dropping it outright
+   * (`false`, the default). The deferred fire replays unconditionally — its
+   * `where:` is NOT re-evaluated (a `where:` that commits a side effect, like
+   * the position-readout cooldown claim, would fail on a second call);
+   * freshness comes from var resolvers reading live state at speak time.
+   */
+  queueable?: boolean;
   /** Minimum ms between successive fires of this scenario id. */
   cooldown?: number;
-  /** If true and priority is "urgent", cancels the currently-playing scenario on the same bus. */
-  preempt?: boolean;
+  /**
+   * Marks this scenario as belonging to an exclusive-focus owner (see
+   * `IScenarioEngine.acquireFocus`). While a focus floor is held on this
+   * scenario's bus, the owner's own fires bypass the floor; every other fire
+   * needs `weight` at or above the floor to play.
+   */
+  focusOwner?: string;
   /**
    * Family identifier — scenarios sharing a `family` preempt each other on
-   * the same bus regardless of priority. Use this for groups where a new
+   * the same bus regardless of weight. Use this for groups where a new
    * event invalidates a prior callout (e.g. all tire-set scenarios share
    * `family: "tire"` so a new selection cancels the in-flight one).
-   * Scenarios without a family use the priority-based preempt rules only.
+   * Scenarios without a family use the weight-based scheduling rules only.
    */
   family?: string;
   /**
@@ -99,10 +156,10 @@ export type Scenario = {
    *     pending, the pending timer is canceled and replaced with a fresh
    *     one — the most recent event wins.
    *
-   * The bus is NOT locked during the delay window, so higher-priority
-   * scenarios can still fire and claim the channel; if the bus is busy when
-   * the delayed fire attempts, the standard priority/family rules apply
-   * (defer, drop, or preempt).
+   * The bus is NOT locked during the delay window, so other scenarios can
+   * still fire and claim the channel; if the bus is busy when the delayed fire
+   * attempts, the standard weight/family scheduling rules apply (wait, defer,
+   * drop, or cut).
    */
   triggerDelay?: number;
   /** Optional path prefix applied to clip/pool members; leading `/` on a path escapes it. */
