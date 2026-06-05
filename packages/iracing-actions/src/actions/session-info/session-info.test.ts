@@ -1,5 +1,5 @@
-import { FLAG_DEFINITIONS, resolveActiveFlag, TrackWetness } from "@iracedeck/iracing-sdk";
-import { getLivePosition } from "@iracedeck/sim-events-iracing";
+import { FLAG_DEFINITIONS, resolveActiveFlag, SessionState, TrackWetness } from "@iracedeck/iracing-sdk";
+import { getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,8 +21,10 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 
 // getLivePosition is the translator-singleton class-aware resolver; mock it so the
 // position-mode tests control the frozen overall + authoritative class numbers.
+// getStartingGridPosition is the qualifying-grid resolver used pre-green (issue #647).
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLivePosition: vi.fn(() => null),
+  getStartingGridPosition: vi.fn(() => null),
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -1110,6 +1112,149 @@ describe("SessionInfo", () => {
 
         // Uses getLivePosition().position (5), not the raw PlayerCarPosition (9).
         expect(decoded).toContain("P5");
+        expect(decoded).not.toContain("P9");
+      });
+
+      // Pre-green tests use three DISTINCT values per axis so each assertion
+      // pins exactly one source: live (getLivePosition, 5/2), grid
+      // (getStartingGridPosition, 7/4), and official live-standings telemetry
+      // (PlayerCarPosition 9). On a real rolling start the official field reads
+      // 0 the whole formation lap (issue #647) — the grid resolver is the only
+      // usable source pre-green.
+      it("should show the qualifying grid slot from the grid resolver for class position before the green flag", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue({ overall: 7, class: 4 });
+        const telemetry = {
+          SessionNum: 0,
+          OnPitRoad: false,
+          SessionState: SessionState.ParadeLaps,
+          PlayerCarPosition: 9,
+          PlayerCarClassPosition: 9,
+        };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "class",
+        });
+
+        // Grid class slot (4) — not live class (2), not official (9).
+        expect(decoded).toContain("P4");
+        expect(decoded).not.toContain("P2");
+        expect(decoded).not.toContain("P9");
+      });
+
+      it("should show the qualifying grid slot from the grid resolver for overall position before the green flag", async () => {
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue({ overall: 7, class: 4 });
+        const telemetry = {
+          SessionNum: 0,
+          OnPitRoad: false,
+          SessionState: SessionState.ParadeLaps,
+          PlayerCarPosition: 9,
+          PlayerCarClassPosition: 9,
+        };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        // Grid overall slot (7) — not live overall (5), not official (9).
+        expect(decoded).toContain("P7");
+        expect(decoded).not.toContain("P5");
+        expect(decoded).not.toContain("P9");
+      });
+
+      it("should fall back to official telemetry pre-green when the grid slot can't be resolved", async () => {
+        // No qualifying results → getStartingGridPosition returns null → use the
+        // live-standings PlayerCarPosition rather than a churning live order.
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue(null);
+        const telemetry = {
+          SessionNum: 0,
+          OnPitRoad: false,
+          SessionState: SessionState.ParadeLaps,
+          PlayerCarPosition: 9,
+          PlayerCarClassPosition: 9,
+        };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        // Grid unavailable → official telemetry (9), NOT the live order (5).
+        expect(decoded).toContain("P9");
+        expect(decoded).not.toContain("P5");
+      });
+
+      it("should hold the grid slot after green until the player crosses S/F (LapCompleted < 0)", async () => {
+        // Green is out (SessionState.Racing) but the player is still on the run
+        // to the line (LapCompleted = -1, the out-lap sentinel). The live order
+        // churns through the bunched start, so keep showing the grid slot until
+        // the player crosses S/F (issue #647).
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue({ overall: 7, class: 4 });
+        const telemetry = {
+          SessionNum: 0,
+          OnPitRoad: false,
+          SessionState: SessionState.Racing,
+          LapCompleted: -1,
+          PlayerCarPosition: 9,
+          PlayerCarClassPosition: 9,
+        };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        // Still on the formation/out lap → grid slot (7), NOT the churning live
+        // order (5) or the live-standings official (9).
+        expect(decoded).toContain("P7");
+        expect(decoded).not.toContain("P5");
+        expect(decoded).not.toContain("P9");
+      });
+
+      it("should resume the live calculated order once the player has started racing (LapCompleted >= 0)", async () => {
+        // Distinguishing: grid (7) differs from live (5), so a gate that kept
+        // showing the grid past the first S/F crossing would show P7 and fail here.
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue({ overall: 7, class: 4 });
+        const telemetry = {
+          SessionNum: 0,
+          OnPitRoad: false,
+          SessionState: SessionState.Racing,
+          LapCompleted: 1,
+          PlayerCarPosition: 9,
+          PlayerCarClassPosition: 9,
+        };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        // Racing under way → live order (5), NOT the grid slot (7) or official (9).
+        expect(decoded).toContain("P5");
+        expect(decoded).not.toContain("P7");
+        expect(decoded).not.toContain("P9");
+      });
+
+      it("should use the live calculated order when SessionState is omitted (back-compat)", async () => {
+        // Undefined SessionState must not be treated as pre-green: the existing
+        // race-on-track behavior (getLivePosition) is preserved — grid (7) is NOT used.
+        vi.mocked(getLivePosition).mockReturnValue({ position: 5, classPosition: 2, isMultiClass: true });
+        vi.mocked(getStartingGridPosition).mockReturnValue({ overall: 7, class: 4 });
+        const telemetry = { SessionNum: 0, OnPitRoad: false, PlayerCarPosition: 9, PlayerCarClassPosition: 9 };
+
+        const decoded = await triggerPositionUpdate(makeRaceSessionInfo(0), telemetry, {
+          mode: "position",
+          positionType: "overall",
+        });
+
+        expect(decoded).toContain("P5");
+        expect(decoded).not.toContain("P7");
         expect(decoded).not.toContain("P9");
       });
 

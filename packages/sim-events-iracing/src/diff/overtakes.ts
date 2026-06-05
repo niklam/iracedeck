@@ -15,6 +15,14 @@
  *      reset on entry to those modes so a later race seeds cleanly.
  *   2. **Not on pit road.** Pit entry/exit fires phantom position swings
  *      against cars completing laps at racing speed — gate everything.
+ *   2b. **Not pre-green (issue #647).** Grid / warmup / parade-lap shuffling
+ *      isn't a caution, so it leaked phantom "Nice pass" / "we lost a
+ *      position" callouts before the green flag. Suppress during the
+ *      pre-racing states (`isPreGreen` — Invalid / GetInCar / Warmup /
+ *      ParadeLaps), rolling the baseline silently like the caution branch so
+ *      the first racing tick measures from the settled green-flag order. NOT
+ *      `!== Racing`: Checkered / CoolDown stay live (late-race passes still
+ *      fire) and a missing `SessionState` defaults to allowed for back-compat.
  *   3. **Not under caution.** Yellow / caution flags freeze the baseline
  *      silently so the recovery wave doesn't surface a chain of swaps as
  *      the field shuffles into formation.
@@ -74,7 +82,7 @@
  * grid value is a class slot, so it falls back to the live seed there. Without
  * a grid position it seeds to the live position.
  */
-import { calculateRacePositions, Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { calculateRacePositions, Flags, hasFlag, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -140,6 +148,15 @@ export function diffOvertakes(
     hasFlag(sessionFlags, Flags.Yellow) ||
     hasFlag(sessionFlags, Flags.YellowWaving);
 
+  // Pre-green gate (issue #647): the grid / warmup / parade-lap phases shuffle
+  // the field before the green flag, which isn't a caution, so it leaked
+  // phantom position callouts. `isPreGreen` is the explicit pre-racing set (NOT
+  // `!== Racing`): a missing `SessionState` is `false` (unchanged behaviour for
+  // callers that don't supply it) and Checkered / CoolDown stay live. Shared
+  // with the Session Info position display so suppression and the displayed
+  // grid position agree on when racing has started.
+  const preGreen = isPreGreen(telemetry);
+
   // Detection uses the FROZEN positions (issue #603). The retirement classifier
   // also reads frozen positions — `state.lastFrozenPositions` from the previous
   // tick — so it fires on the tick the player crosses a frozen car's anchor
@@ -173,12 +190,17 @@ export function diffOvertakes(
   const currentPos = useClass ? rawClassPos : overallPos;
   const lastEffective = useClass ? state.lastClassPosition : state.lastPosition;
 
-  if (underCaution) {
+  if (underCaution || preGreen) {
+    // Suppress + silently roll every baseline while the field is shuffling and
+    // not racing — under caution (the caution recovery wave) OR pre-green (the
+    // grid / warmup / parade-lap formation, issue #647). Leaving
+    // `overtakeInitialized` untouched here means the first racing tick after
+    // green seeds cleanly from the settled green-flag order and emits nothing.
     state.lastPosition = overallPos;
     state.lastClassPosition = rawClassPos;
     // Roll the called-position baseline silently too, so a position the field
-    // shuffles into during the caution doesn't surface as a phantom gain/loss
-    // when green flies (issue #597).
+    // shuffles into during the caution / pre-green doesn't surface as a phantom
+    // gain/loss when green flies (issue #597 / #647).
     state.lastCalledPosition = currentPos;
     state.pendingOvertakePos = -1;
     state.pendingLossPos = -1;

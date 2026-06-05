@@ -6,7 +6,7 @@
  * car has the feature. These pure helpers wrap that field-presence check so consumers
  * (actions, audio-scenarios, tests) can ask "does this car have X?" consistently.
  */
-import type { TelemetryData } from "@iracedeck/iracing-native";
+import { SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 
 /**
  * Check whether the current car has a pit speed limiter.
@@ -52,4 +52,39 @@ export function hasVisor(t: TelemetryData | null): boolean {
  */
 export function hasWipers(t: TelemetryData | null): boolean {
   return t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined;
+}
+
+/**
+ * Whether the session is in a PRE-GREEN phase — the grid / warmup / formation
+ * (parade) lap before the green flag, plus `Invalid` (telemetry settling /
+ * unknown). During these phases neither iRacing's live-standings position
+ * fields (`PlayerCarPosition` / `CarIdxPosition`) nor the lap-distance-derived
+ * running order are meaningful: on a rolling-start formation lap the whole
+ * field reads `0` until cars cross the start/finish line. Callers use this to
+ * suppress position-change callouts and to show the qualifying grid slot
+ * instead of a churning/zero live position (issue #647).
+ *
+ * Defined as the EXPLICIT set of pre-racing states, NOT `!== Racing`:
+ *   - a missing `SessionState` yields `false` (back-compat — callers/tests that
+ *     don't supply it keep their prior behavior), and
+ *   - the post-racing states (`Checkered` / `CoolDown`) are not pre-green, so
+ *     legitimate late-race passes are never suppressed.
+ *
+ * NOTE: this is distinct from the translator's fresh-connect race-start gate,
+ * which deliberately treats `Invalid` as "telemetry still settling, keep
+ * waiting" rather than pre-green (issue #604) — that gate is a separate 3-state
+ * predicate and intentionally does not use this helper.
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ * @returns true during Invalid / GetInCar / Warmup / ParadeLaps; false otherwise
+ */
+export function isPreGreen(t: TelemetryData | null | undefined): boolean {
+  const state = t?.SessionState;
+
+  return (
+    state === SessionState.Invalid ||
+    state === SessionState.GetInCar ||
+    state === SessionState.Warmup ||
+    state === SessionState.ParadeLaps
+  );
 }
