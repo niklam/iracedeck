@@ -10,6 +10,7 @@
 			<sdpi-select id="mode-select" setting="mode" default="race-engineer">
 				<option value="race-engineer">Race Engineer Toggle</option>
 				<option value="radar">Radar</option>
+				<option value="spotter">Spotter</option>
 				<!-- Radar Volume moved to the Audio Controls action (issue #590). The option
 				     is removed from this dropdown for new buttons but kept (via JS) when a
 				     button already uses it, so existing setups keep working. -->
@@ -255,6 +256,19 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Spotter callouts (issue #651). Two subjects — the per-lap "cars
+			// around you" announcement and the "still there" reminder repeated
+			// while alongside — independently toggleable. Same 2-column
+			// auto-balancing grid as the families above.
+			var spotterCallouts = [
+				{ setting: "calloutEnabledSpotterCars",       label: "Announce cars around you" },
+				{ setting: "calloutEnabledSpotterStillThere", label: "Repeat reminder while alongside" },
+			];
+			var spotterRowCount = Math.ceil(spotterCallouts.length / 2);
+			var spotterCheckboxes = spotterCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
 			// Pit-box count-in (issue #600). Single subject — one toggle for the
 			// whole five → pit-now distance countdown to the pit box.
 			var pitBoxCallouts = [
@@ -354,6 +368,11 @@
 				'<sdpi-item label="Overtakes">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + overtakeRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						overtakeCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Spotter">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + spotterRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						spotterCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Pit Box">' +

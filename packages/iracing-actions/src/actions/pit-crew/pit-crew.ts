@@ -1,7 +1,9 @@
 import {
+  isSpotterEnabled,
   playBackgroundTest,
   playRadarTest,
   setRadarEnabled,
+  setSpotterEnabled,
   stopRaceEngineerScenarios,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
@@ -87,7 +89,7 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  */
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  mode: z.enum(["race-engineer", "radar", "radar-volume"]).default("race-engineer"),
+  mode: z.enum(["race-engineer", "radar", "spotter", "radar-volume"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
 });
 
@@ -322,6 +324,11 @@ function modePresentation(
         defaultTitle: "RADAR",
         stateIndicator: isRadarEnabled() ? "on" : "off",
       };
+    case "spotter":
+      return {
+        defaultTitle: "SPOTTER",
+        stateIndicator: isSpotterEnabled() ? "on" : "off",
+      };
     case "radar-volume":
       return {
         defaultTitle: `${direction === "up" ? "VOL +" : "VOL −"}\n${radarVolume}%`,
@@ -404,6 +411,7 @@ function pickArtwork(mode: Mode, direction: "up" | "down", color: string): strin
     case "race-engineer":
       return mechanicPathContent(color);
     case "radar":
+    case "spotter":
       return radarPathContent(color);
     case "radar-volume":
       return radarPathContent(color) + (direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
@@ -592,6 +600,9 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       case "radar":
         this.toggleRadar();
         break;
+      case "spotter":
+        this.toggleSpotter();
+        break;
       case "radar-volume": {
         const next = stepRadarVolume(settings.direction);
         this.logger.info(`Radar volume ${settings.direction} → ${next}`);
@@ -750,6 +761,16 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // a tick fire after the user already released the key.
     setRadarEnabled(next);
     updateGlobalSettings({ pitCrewRadarEnabled: next });
+  }
+
+  private toggleSpotter(): void {
+    const next = !isSpotterEnabled();
+    this.logger.info(`Spotter ${next ? "enabled" : "disabled"}`);
+    // Flip the engine synchronously so the spotter state machine starts/stops
+    // immediately. Relying on the global-settings round-trip echo would let a
+    // callout fire after the user already released the key. Mirrors toggleRadar.
+    setSpotterEnabled(next);
+    updateGlobalSettings({ pitCrewSpotterEnabled: next });
   }
 
   private async rerenderAll(): Promise<void> {
