@@ -409,16 +409,30 @@ describe("focus gate", () => {
     setSpotterEnabled(true);
   });
 
-  it("acquires focus once on the first non-clear transition and not again while held", () => {
+  it("re-asserts the focus floor on every non-clear transition", () => {
     const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
 
     bus.publishRadar("left");
-    expect(acquireSpy).toHaveBeenCalledTimes(1);
     expect(acquireSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER, expect.any(Number));
 
+    // Re-assert (not cache-and-skip): the interpreter's stopAll() can clear the
+    // bus focus without notifying the engine, so acquireFocus must fire on each
+    // non-clear transition to keep the floor alive while a car is alongside.
     bus.publishRadar("two-left", "left");
     bus.publishRadar("both", "two-left");
-    expect(acquireSpy).toHaveBeenCalledTimes(1);
+    expect(acquireSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("restores the focus floor after an external stopAll cleared it", () => {
+    bus.publishRadar("left");
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+
+    // Race Engineer master toggled off mid-alongside wipes every bus's focus
+    // via stopAll(); the spotter is an independent toggle and stays on.
+    getScenarioEngine().stopAll();
+
+    bus.publishRadar("two-left", "left");
+    expect(acquireSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER, expect.any(Number));
   });
 
   it("releases focus on the transition to clear", () => {
@@ -508,6 +522,26 @@ describe("sustained still-there loop", () => {
     const afterArrival = voicePaths().length;
 
     master = false;
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    expect(voicePaths().length).toBe(afterArrival);
+  });
+
+  it("stops the loop when the driver enters pit road mid-loop", () => {
+    bus.publishRadar("left");
+    const afterArrival = voicePaths().length;
+
+    // No fresh radar.changed (relative position unchanged) but the driver
+    // peeled into the pits — the tick must re-check telemetry and suppress.
+    sim.getLatestTelemetry.mockReturnValue({ OnPitRoad: true });
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    expect(voicePaths().length).toBe(afterArrival);
+  });
+
+  it("stops the loop when the session becomes Lone Qualify mid-loop", () => {
+    bus.publishRadar("left");
+    const afterArrival = voicePaths().length;
+
+    sim.getSessionType.mockReturnValue("Lone Qualify");
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
   });

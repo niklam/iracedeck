@@ -12,6 +12,7 @@ import {
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
+  applySpotterEnabled,
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
@@ -376,6 +377,19 @@ describe("applyRadarEnabled", () => {
     hoisted.setGlobalSettings({ pitCrewRadarEnabled: true });
     applyRadarEnabled();
     expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("applySpotterEnabled", () => {
+  it("pushes the current global pitCrewSpotterEnabled into the engine (so a persisted ON survives restart)", () => {
+    hoisted.setGlobalSettings({ pitCrewSpotterEnabled: false });
+    applySpotterEnabled();
+    expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(false);
+
+    vi.clearAllMocks();
+    hoisted.setGlobalSettings({ pitCrewSpotterEnabled: true });
+    applySpotterEnabled();
+    expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(true);
   });
 });
 
@@ -1198,7 +1212,10 @@ describe("PitCrew action", () => {
     });
 
     it("flips the spotter off when already on", async () => {
-      hoisted.setSpotterEnabledState(true);
+      // Persist ON via the global — onWillAppear's applySpotterEnabled() syncs
+      // the engine flag from the global, so the persisted state is the source
+      // of truth (an engine-flag-only setup would be overwritten on mount).
+      hoisted.updateGlobalSettings({ pitCrewSpotterEnabled: true });
       const action = new PitCrew();
       await action.onWillAppear(buildAppearEvent({ mode: "spotter" }) as never);
       vi.clearAllMocks();

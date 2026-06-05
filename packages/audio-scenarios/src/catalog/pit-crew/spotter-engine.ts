@@ -78,21 +78,25 @@ const STILL_THERE_POOL: readonly string[] = [`${BASE}still-there.mp3`, `${BASE}h
 
 // ─── Module state ────────────────────────────────────────────────────────────
 
+type PoolPick = { readonly clips: readonly string[]; lastIndex: number };
+
 let enabled = false;
 let state: RadarState = "clear";
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
-let focusHeld = false;
 let registeredBus: IEventBus | null = null;
 let pendingSpotterClip = "";
-let clearPoolLastIndex = -1;
-let stillTherePoolLastIndex = -1;
+const clearPick: PoolPick = { clips: CLEAR_POOL, lastIndex: -1 };
+const stillTherePick: PoolPick = { clips: STILL_THERE_POOL, lastIndex: -1 };
 
-let deps: SpotterDeps = {
+/** Permissive defaults until a plugin wires real accessors via registerSpotterEngine. */
+const DEFAULT_DEPS: SpotterDeps = {
   getMasterEnabled: () => true,
   getCarsEnabled: () => true,
   getStillThereEnabled: () => true,
   getTrackDirection: () => TrackDirection.Neutral,
 };
+
+let deps: SpotterDeps = DEFAULT_DEPS;
 
 // ─── Per-side car counts ─────────────────────────────────────────────────────
 
@@ -153,26 +157,16 @@ function combinedClip(clearedSide: Side, remainingSide: Side, remainingCount: nu
   return `${BASE}clear-${termCleared}-${word}-${termRemaining}.mp3`;
 }
 
-// ─── Engine-owned no-repeat pool picks (mirror interpreter pickFromPool) ──────
+// ─── Engine-owned no-repeat pool pick (mirrors the interpreter's pickFromPool) ─
 
-function pickClearPool(): string {
-  let idx = Math.floor(Math.random() * CLEAR_POOL.length);
+function pickNoRepeat(pool: PoolPick): string {
+  let idx = Math.floor(Math.random() * pool.clips.length);
 
-  if (idx === clearPoolLastIndex && CLEAR_POOL.length > 1) idx = (idx + 1) % CLEAR_POOL.length;
+  if (idx === pool.lastIndex && pool.clips.length > 1) idx = (idx + 1) % pool.clips.length;
 
-  clearPoolLastIndex = idx;
+  pool.lastIndex = idx;
 
-  return CLEAR_POOL[idx];
-}
-
-function pickStillTherePool(): string {
-  let idx = Math.floor(Math.random() * STILL_THERE_POOL.length);
-
-  if (idx === stillTherePoolLastIndex && STILL_THERE_POOL.length > 1) idx = (idx + 1) % STILL_THERE_POOL.length;
-
-  stillTherePoolLastIndex = idx;
-
-  return STILL_THERE_POOL[idx];
+  return pool.clips[idx];
 }
 
 // ─── Firing + focus + loop ───────────────────────────────────────────────────
@@ -182,18 +176,19 @@ function fireClip(path: string): void {
   getScenarioEngine().fire(SPOTTER_CALL_SCENARIO_ID);
 }
 
-function acquireFocusIfNeeded(): void {
-  if (focusHeld) return;
-
+// Re-assert the focus floor on every non-clear transition rather than caching a
+// local "held" flag: the interpreter's stopAll() (Race Engineer master toggled
+// off, issue #587) clears the bus focus WITHOUT notifying this engine, so a
+// cached flag would desync and the floor would never be restored while a car is
+// still alongside. acquireFocus is idempotent and releaseFocus is a no-op when
+// another owner holds the bus, so re-asserting/releasing unconditionally is safe
+// and keeps the engine and the interpreter in sync.
+function acquireFocus(): void {
   getScenarioEngine().acquireFocus(AudioBus.Voice, SPOTTER_FOCUS_OWNER, WEIGHT.SAFETY);
-  focusHeld = true;
 }
 
 function releaseFocus(): void {
-  if (!focusHeld) return;
-
   getScenarioEngine().releaseFocus(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
-  focusHeld = false;
 }
 
 function resetLoopTimer(): void {
@@ -209,8 +204,12 @@ function startLoop(): void {
 }
 
 function tick(): void {
-  // Master can drop mid-loop (PI toggle, defense-in-depth) — bail loudly.
-  if (!enabled || !deps.getMasterEnabled()) {
+  // Master can drop mid-loop, or the driver can enter the pits / a lone-qualify
+  // session without a fresh radar.changed to suppress us — re-check all three
+  // live and tear down loudly, mirroring handleRadarChanged's guards. Otherwise
+  // the reminder would keep speaking on pit road when the relative position
+  // hasn't changed (so no event drives forceClear).
+  if (!enabled || !deps.getMasterEnabled() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
     forceClear();
 
     return;
@@ -218,7 +217,7 @@ function tick(): void {
 
   // The "still there" opt-in is read live: when off, keep the loop scheduled
   // but fire nothing, so re-enabling mid-session resumes the reminder.
-  if (deps.getStillThereEnabled()) fireClip(pickStillTherePool());
+  if (deps.getStillThereEnabled()) fireClip(pickNoRepeat(stillTherePick));
 
   loopTimer = setTimeout(tick, SPOTTER_STILL_THERE_INTERVAL_MS);
 }
@@ -238,14 +237,14 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
   const carsEnabled = deps.getCarsEnabled();
 
   if (newState === "clear") {
-    if (carsEnabled) fireClip(pickClearPool());
+    if (carsEnabled) fireClip(pickNoRepeat(clearPick));
 
     releaseFocus();
 
     return;
   }
 
-  acquireFocusIfNeeded();
+  acquireFocus();
 
   if (newState === "both") {
     if (carsEnabled) fireClip(THREE_WIDE);
@@ -270,8 +269,8 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
       // 0 → 1 car / 0 → 2 two-cars.
       fireClip(levelClip(occupied, n, dir));
     } else if (n > old[occupied]) {
-      // 1 → 2 two-cars escalation.
-      fireClip(levelClip(occupied, 2, dir));
+      // 1 → 2 two-cars escalation (n is 2 here; pass it rather than a literal).
+      fireClip(levelClip(occupied, n, dir));
     } else {
       // 2 → 1 de-escalation: "One car <side>."
       fireClip(levelClip(occupied, 1, dir, true));
@@ -374,15 +373,9 @@ export function _resetSpotterEngine(): void {
   resetLoopTimer();
   enabled = false;
   state = "clear";
-  focusHeld = false;
   registeredBus = null;
   pendingSpotterClip = "";
-  clearPoolLastIndex = -1;
-  stillTherePoolLastIndex = -1;
-  deps = {
-    getMasterEnabled: () => true,
-    getCarsEnabled: () => true,
-    getStillThereEnabled: () => true,
-    getTrackDirection: () => TrackDirection.Neutral,
-  };
+  clearPick.lastIndex = -1;
+  stillTherePick.lastIndex = -1;
+  deps = DEFAULT_DEPS;
 }

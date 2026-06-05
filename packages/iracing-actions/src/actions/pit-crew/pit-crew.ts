@@ -271,6 +271,20 @@ export function applyRadarEnabled(): void {
   setRadarEnabled(isRadarEnabled());
 }
 
+/**
+ * @internal Exported for testing.
+ *
+ * Push the global `pitCrewSpotterEnabled` into the spotter engine. Called on
+ * every action mount and on every global-settings change so the engine's
+ * `enabled` flag matches the persisted gate — mirrors {@link applyRadarEnabled}.
+ * Without this the spotter engine boots disabled (its flag is otherwise only
+ * flipped by a button press), so a persisted-ON spotter is silently dead after
+ * a restart and the key paints OFF while the global setting says ON.
+ */
+export function applySpotterEnabled(): void {
+  setSpotterEnabled((getGlobalSettings() as Record<string, unknown>).pitCrewSpotterEnabled === true);
+}
+
 // ─── Icon generation ──────────────────────────────────────────────────────────
 
 /** Artwork bounds of the mechanic SVG (source viewBox 0 0 71.457 71.457). */
@@ -471,6 +485,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       onGlobalSettingsChange(() => {
         applyRadarVolume();
         applyRadarEnabled();
+        applySpotterEnabled();
         applyRaceEngineerAudio();
         void this.rerender(contextId);
       }),
@@ -480,6 +495,7 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // the first mount sets the initial values; later mounts re-assert them.
     applyRadarVolume();
     applyRadarEnabled();
+    applySpotterEnabled();
     applyRaceEngineerAudio();
 
     // Telemetry-connect radio check (issue #554). The base class already
