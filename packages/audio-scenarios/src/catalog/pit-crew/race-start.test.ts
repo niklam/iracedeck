@@ -165,6 +165,8 @@ const manifest: AudioAssetsManifest = {
     // Position numbers — reused from the existing position-number group
     // (issue #566). 1..64 covers the entire speakable range.
     ...Array.from({ length: POSITION_MAX }, (_, i) => `voice/${VOICE}/position-number/${i + 1}.mp3`),
+    `voice/${VOICE}/setup-warning/qualifying-01.mp3`,
+    `voice/${VOICE}/setup-warning/race-01.mp3`,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -187,6 +189,7 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let currentSnapshot: RaceStartSnapshot | null;
 let raceStartEnabled: boolean;
+let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
 function fire(snapshot: RaceStartSnapshot | null): void {
   currentSnapshot = snapshot;
@@ -206,6 +209,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   currentSnapshot = null;
   raceStartEnabled = true;
+  setupWarningMismatch = () => false;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
@@ -235,6 +239,12 @@ beforeEach(() => {
     undefined, // getRaceFinishedSnapshot
     () => raceStartEnabled,
     () => currentSnapshot,
+    undefined, // getOvertakeCalloutEnabled
+    undefined, // getOvertakeDriverName
+    undefined, // getLivePosition
+    undefined, // getOvertakeGate
+    undefined, // getPitBoxCalloutEnabled
+    (kind) => setupWarningMismatch(kind), // getSetupWarningMismatch (issue #625)
   );
 });
 
@@ -439,6 +449,25 @@ describe("race-start scenario", () => {
 
       expect(hasClip("/session-start-temp-numbers/150.mp3")).toBe(true);
       expect(hasClip("/session-start-temp-numbers/0.mp3")).toBe(true);
+    });
+  });
+
+  describe("setup-warning clause (issue #625)", () => {
+    it("appends the race warning when the resolver reports a mismatch", () => {
+      setupWarningMismatch = (kind) => kind === "race";
+      fire(snap());
+
+      expect(hasClip("/setup-warning/race-01.mp3")).toBe(true);
+      // The rest of the readout still plays — the clause is appended, not a replacement.
+      expect(hasClip("/race-start-greeting/niklas.mp3")).toBe(true);
+      expect(hasClip("/session-start/wetness-mostly-dry.mp3")).toBe(true);
+    });
+
+    it("is silent when the resolver reports no mismatch", () => {
+      setupWarningMismatch = () => false;
+      fire(snap());
+
+      expect(hasClip("/setup-warning/race-01.mp3")).toBe(false);
     });
   });
 });

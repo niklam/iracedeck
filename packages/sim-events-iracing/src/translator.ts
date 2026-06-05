@@ -176,6 +176,21 @@ export function getSessionType(): string {
   return resolveSessionType(sessionInfo, instance.latestTelemetry);
 }
 
+/**
+ * Returns the loaded car setup's name (`DriverInfo.DriverSetupName`) or
+ * `undefined` when session info is unavailable or the field is missing. Used by
+ * the setup-mismatch warning (issue #625) to heuristically flag a setup whose
+ * name looks wrong for the session type. Read from the SDK's session YAML so
+ * consumers don't take a direct dependency on `@iracedeck/iracing-sdk`.
+ */
+export function getDriverSetupName(): string | undefined {
+  if (!instance || !instance.latestTelemetry) return undefined;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  return resolveDriverSetupName(sessionInfo);
+}
+
 export function isSimEventsIracingInitialized(): boolean {
   return instance !== null;
 }
@@ -1132,6 +1147,19 @@ function resolvePlayerCarIdx(sessionInfo: Record<string, unknown> | null): numbe
   const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
+}
+
+/**
+ * Reads `DriverInfo.DriverSetupName` from session YAML, returning `undefined`
+ * when missing or not a non-empty string (issue #625).
+ */
+function resolveDriverSetupName(sessionInfo: Record<string, unknown> | null): string | undefined {
+  if (!sessionInfo) return undefined;
+
+  const driverInfo = sessionInfo.DriverInfo as Record<string, unknown> | undefined;
+  const name = driverInfo?.DriverSetupName;
+
+  return typeof name === "string" && name !== "" ? name : undefined;
 }
 
 /**

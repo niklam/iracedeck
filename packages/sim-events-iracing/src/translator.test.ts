@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetSimEventsIracing,
+  getDriverSetupName,
   getLatestTelemetry,
   getLivePosition,
   getRaceStartConditions,
@@ -280,6 +281,41 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
       expect(getStartingGridPosition()).toBeNull();
+    });
+  });
+
+  describe("getDriverSetupName", () => {
+    it("returns undefined before any telemetry tick", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "qualifying.sto" } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getDriverSetupName()).toBeUndefined();
+    });
+
+    it("returns the setup name from session YAML once connected", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "qualifying.sto" } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry());
+
+      expect(getDriverSetupName()).toBe("qualifying.sto");
+    });
+
+    it("returns undefined when the field is missing, empty, or session info is null", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      controller.__tick(telemetry());
+
+      controller.__setSessionInfo(null);
+      expect(getDriverSetupName()).toBeUndefined();
+
+      controller.__setSessionInfo({ DriverInfo: {} });
+      expect(getDriverSetupName()).toBeUndefined();
+
+      controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "" } });
+      expect(getDriverSetupName()).toBeUndefined();
     });
   });
 

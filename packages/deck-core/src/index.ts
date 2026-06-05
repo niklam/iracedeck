@@ -240,6 +240,23 @@ export {
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
 export { setWarning, clearWarning, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+
+// Setup-name mismatch warning (issue #625)
+export {
+  compileSetupWarningPattern,
+  DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
+  DEFAULT_SETUP_WARNING_RACE_PATTERN,
+  evaluateSetupWarning,
+  resolveSetupWarningPattern,
+  SETUP_WARNING_ENABLED_KEY,
+  SETUP_WARNING_QUALIFYING_PATTERN_KEY,
+  SETUP_WARNING_QUALIFYING_PATTERN_WARNING_ID,
+  SETUP_WARNING_RACE_PATTERN_KEY,
+  SETUP_WARNING_RACE_PATTERN_WARNING_ID,
+  setupNameMatchesPattern,
+  validateSetupWarningPatterns,
+  type SetupWarningKind,
+} from "./setup-warning.js";
 export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
 
 // Dual-press tracker (issue #540)

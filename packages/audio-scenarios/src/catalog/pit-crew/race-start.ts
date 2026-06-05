@@ -112,6 +112,8 @@ const RACE_START_GREETING_GROUP = "race-start-greeting";
 const SESSION_START_GROUP = "session-start";
 const SESSION_START_TEMP_NUMBERS_GROUP = "session-start-temp-numbers";
 const POSITION_NUMBER_GROUP = "position-number";
+/** Group holding the setup-mismatch warning clips (issue #625). */
+const SETUP_WARNING_GROUP = "setup-warning";
 
 /** Build a `clip` step path relative to the scenario's `voice/{voice}` base. */
 function clipPath(filename: string): string {
@@ -221,8 +223,17 @@ export function registerRaceStartVars(engine: IScenarioEngine, getSnapshot: Race
  * clause's conditional `if` step (to pick pole vs composed); the per-clip
  * `var` resolvers registered by {@link registerRaceStartVars} read it again
  * at sequence-expansion time.
+ *
+ * `getSetupWarningMismatch` (issue #625) appends a "double-check your setup"
+ * nudge before the radio close when the loaded setup name looks like a
+ * qualifying setup. Read live at fire time; race-start only ever fires in a
+ * race session, so no session-type re-check is needed here.
  */
-export function buildRaceStartScenario(getSnapshot: RaceStartSnapshotResolver, logger?: ILogger): Scenario {
+export function buildRaceStartScenario(
+  getSnapshot: RaceStartSnapshotResolver,
+  logger?: ILogger,
+  getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
+): Scenario {
   const isPole = (): boolean => getSnapshot()?.playerCarPosition === 1;
   const isComposedPosition = (): boolean => {
     const s = getSnapshot();
@@ -259,6 +270,10 @@ export function buildRaceStartScenario(getSnapshot: RaceStartSnapshotResolver, l
     { var: "raceStart.degreesUnit" },
     `${SESSION_START_GROUP}/wetness-intro.mp3`,
     { var: "raceStart.wetness" },
+    {
+      if: () => getSetupWarningMismatch("race"),
+      then: [`${SETUP_WARNING_GROUP}/race-01.mp3`],
+    },
     "@pit-crew.radio-close",
   ];
 

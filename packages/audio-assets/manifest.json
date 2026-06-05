@@ -796,6 +796,8 @@
     "voice/default/session-start/wetness-mostly-dry.mp3",
     "voice/default/session-start/wetness-very-lightly-wet.mp3",
     "voice/default/session-start/wetness-very-wet.mp3",
+    "voice/default/setup-warning/qualifying-01.mp3",
+    "voice/default/setup-warning/race-01.mp3",
     "voice/default/toggle/going-silent-01.mp3",
     "voice/default/toggle/radio-check-01.mp3",
     "voice/default/toggle/resuming-01.mp3",

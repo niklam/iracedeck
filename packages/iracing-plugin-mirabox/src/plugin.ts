@@ -52,6 +52,7 @@ import {
   deleteGlobalSettings,
   ELEVATION_WARNING_ID,
   evaluateElevationWarning,
+  evaluateSetupWarning,
   getController,
   getGlobalSettings,
   initAppMonitor,
@@ -68,6 +69,7 @@ import {
   resolveActiveRaceEngineerVoice,
   setWarning,
   updateGlobalSettings,
+  validateSetupWarningPatterns,
 } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import {
@@ -146,6 +148,7 @@ import {
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { LogLevel } from "@iracedeck/logger";
 import {
+  getDriverSetupName,
   getLivePosition,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
@@ -186,6 +189,18 @@ const applyDebugLogging = (settings: ReturnType<typeof getGlobalSettings>): void
 };
 onGlobalSettingsChange(applyDebugLogging);
 applyDebugLogging(getGlobalSettings());
+
+// Banner a broken setup-warning regex pattern (issue #625). Validating on every
+// settings change gives immediate PI feedback when a user types an invalid
+// pattern; the live match closure independently skips the warning, so the
+// callout never crashes. The initial call reads the schema-default cache (both
+// patterns default → valid → no banner); the host echo re-fires the listener
+// with persisted values once global settings load.
+const applySetupWarningValidation = (): void => {
+  validateSetupWarningPatterns(getGlobalSettings() as Record<string, unknown>);
+};
+onGlobalSettingsChange(applySetupWarningValidation);
+applySetupWarningValidation();
 
 // Initialize the SDK singleton
 initializeSDK(adapter.createLogger("iRacingSDK"));
@@ -461,6 +476,11 @@ registerPitCrew(
   // Pit-box count-in opt-in (issue #600). Single subject (`count-in`) gating
   // all six distance-mark scenarios; live-read like the other callout families.
   (id: PitBoxCalloutId) => (getGlobalSettings() as Record<string, unknown>)[PIT_BOX_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Setup-mismatch warning resolver (issue #625). Live-read at fire time: the
+  // opt-in plus the session-kind regex pattern from global settings, tested
+  // against the loaded setup name. Consumed by the session-start / race-start
+  // intros' `if` clauses.
+  (kind) => evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
