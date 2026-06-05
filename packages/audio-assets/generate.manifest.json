@@ -8464,6 +8464,206 @@
       "textPreview": "Our setup name suggests that we're on a qualifying setup. Please double-check.",
       "generatedAt": "2026-06-04T19:13:05.123Z",
       "requestId": "xLTeiz9E4qOJig8pwtNg"
+    },
+    "voice/default/spotter/car-left.mp3": {
+      "hash": "3852d1a68e1554fa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car left.",
+      "generatedAt": "2026-06-05T19:22:11.393Z",
+      "requestId": "YzighlUezrWYeAMBURy3"
+    },
+    "voice/default/spotter/car-right.mp3": {
+      "hash": "d9098690f5092aca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car right.",
+      "generatedAt": "2026-06-05T19:22:11.551Z",
+      "requestId": "JwokeqQYON8Is0wOSVyG"
+    },
+    "voice/default/spotter/two-cars-left.mp3": {
+      "hash": "4d6016a48e11ad8d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two cars left.",
+      "generatedAt": "2026-06-05T19:22:11.766Z",
+      "requestId": "oHdJSHUyiKkBhkyxvGiZ"
+    },
+    "voice/default/spotter/two-cars-right.mp3": {
+      "hash": "66e1b3ce1b149e1f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two cars right.",
+      "generatedAt": "2026-06-05T19:22:11.911Z",
+      "requestId": "fNsu9AyESDKlUSdrJcq6"
+    },
+    "voice/default/spotter/one-car-left.mp3": {
+      "hash": "9703963a20fa1c73",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One car left.",
+      "generatedAt": "2026-06-05T19:22:12.070Z",
+      "requestId": "LC7RL2kdB6XiHhg0fjNc"
+    },
+    "voice/default/spotter/one-car-right.mp3": {
+      "hash": "08e0b4b78573cb4e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One car right.",
+      "generatedAt": "2026-06-05T19:22:12.220Z",
+      "requestId": "ctoQe7yc47pcDxZRkYLA"
+    },
+    "voice/default/spotter/car-inside.mp3": {
+      "hash": "af5204fbe2cccfdb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car inside.",
+      "generatedAt": "2026-06-05T19:22:12.373Z",
+      "requestId": "7PJ9mct8YsCePP89nTkB"
+    },
+    "voice/default/spotter/car-outside.mp3": {
+      "hash": "1d69a6226ad6ceaa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Car outside.",
+      "generatedAt": "2026-06-05T19:22:12.520Z",
+      "requestId": "KG9MtgiBuziPmPxfmfYt"
+    },
+    "voice/default/spotter/two-cars-inside.mp3": {
+      "hash": "8565586460b82fd7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two cars inside.",
+      "generatedAt": "2026-06-05T19:22:12.681Z",
+      "requestId": "s35hSYV27vEzBmYYG6tI"
+    },
+    "voice/default/spotter/two-cars-outside.mp3": {
+      "hash": "0273f31440deabe5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Two cars outside.",
+      "generatedAt": "2026-06-05T19:22:12.838Z",
+      "requestId": "PkP6iWSMmwN3wmoNkD85"
+    },
+    "voice/default/spotter/one-car-inside.mp3": {
+      "hash": "6acae377159bb8a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One car inside.",
+      "generatedAt": "2026-06-05T19:22:12.991Z",
+      "requestId": "zdRgyyxRBAxKs7lpFHHU"
+    },
+    "voice/default/spotter/one-car-outside.mp3": {
+      "hash": "68d0095b54bf7ab8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One car outside.",
+      "generatedAt": "2026-06-05T19:22:13.152Z",
+      "requestId": "Z5kANBPsyyDpgB2cI5CJ"
+    },
+    "voice/default/spotter/three-wide.mp3": {
+      "hash": "63c12936a1ceb809",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Three wide.",
+      "generatedAt": "2026-06-05T19:22:13.304Z",
+      "requestId": "okQlLjhKv0J5byWkZ10I"
+    },
+    "voice/default/spotter/clear-right-car-left.mp3": {
+      "hash": "ee4aeec77620c0b9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear right. Car left.",
+      "generatedAt": "2026-06-05T19:22:13.468Z",
+      "requestId": "BM7U6wTXTo9LTN5Uly7y"
+    },
+    "voice/default/spotter/clear-left-car-right.mp3": {
+      "hash": "0efe951a45b64a11",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear left. Car right.",
+      "generatedAt": "2026-06-05T19:22:13.628Z",
+      "requestId": "8rqGcuYBTNX5dJsoJVHO"
+    },
+    "voice/default/spotter/clear-right-two-cars-left.mp3": {
+      "hash": "174ebc01df2a13a3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear right. Two cars left.",
+      "generatedAt": "2026-06-05T19:22:13.786Z",
+      "requestId": "YWKcHcFbyFWqzHo1jV3t"
+    },
+    "voice/default/spotter/clear-left-two-cars-right.mp3": {
+      "hash": "2a288cdbb869e20e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear left. Two cars right.",
+      "generatedAt": "2026-06-05T19:22:13.942Z",
+      "requestId": "2XgJA2Gj59RxPiSvdQPx"
+    },
+    "voice/default/spotter/clear-outside-car-inside.mp3": {
+      "hash": "98d9c4bd650c02dc",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear outside. Car inside.",
+      "generatedAt": "2026-06-05T19:22:14.119Z",
+      "requestId": "b0yio0yxrHWF4ukBGKkw"
+    },
+    "voice/default/spotter/clear-inside-car-outside.mp3": {
+      "hash": "9ee1adf371b7e457",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear inside. Car outside.",
+      "generatedAt": "2026-06-05T19:22:14.273Z",
+      "requestId": "9xNaVxp9LUgLYL4xdtAn"
+    },
+    "voice/default/spotter/clear-outside-two-cars-inside.mp3": {
+      "hash": "b3f5b526ea5c208f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear outside. Two cars inside.",
+      "generatedAt": "2026-06-05T19:22:14.499Z",
+      "requestId": "A14SzONcwzCnUCRqA39F"
+    },
+    "voice/default/spotter/clear-inside-two-cars-outside.mp3": {
+      "hash": "36448cf00452a0ad",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear inside. Two cars outside.",
+      "generatedAt": "2026-06-05T19:22:14.733Z",
+      "requestId": "MWN5b0IdGZpgTr2QY3Rn"
+    },
+    "voice/default/spotter/clear.mp3": {
+      "hash": "a0fae5e3658963a9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear.",
+      "generatedAt": "2026-06-05T19:22:14.879Z",
+      "requestId": "pWsdhCbcEys6wSiGiaEO"
+    },
+    "voice/default/spotter/clear-clear.mp3": {
+      "hash": "5bb3580de045f43f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Clear! Clear!",
+      "generatedAt": "2026-06-05T19:22:15.026Z",
+      "requestId": "DbryMkaDpRCvQk7hAjQI"
+    },
+    "voice/default/spotter/still-there.mp3": {
+      "hash": "942c5d4b34e31d47",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still there.",
+      "generatedAt": "2026-06-05T19:22:15.169Z",
+      "requestId": "zve60m5fZXyFL1Bd3POl"
+    },
+    "voice/default/spotter/hold-your-line.mp3": {
+      "hash": "95ff55a5192e3c4c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Hold your line.",
+      "generatedAt": "2026-06-05T19:22:15.311Z",
+      "requestId": "2WVdirCqj0eSaXCEyEYd"
     }
   }
 }

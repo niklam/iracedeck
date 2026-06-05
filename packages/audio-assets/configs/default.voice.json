@@ -4899,6 +4899,108 @@
         "text": ". Don't give up positions like that.",
         "seed": 1
       }
+    ],
+    "spotter": [
+      {
+        "name": "car-left",
+        "text": "Car left."
+      },
+      {
+        "name": "car-right",
+        "text": "Car right."
+      },
+      {
+        "name": "two-cars-left",
+        "text": "Two cars left."
+      },
+      {
+        "name": "two-cars-right",
+        "text": "Two cars right."
+      },
+      {
+        "name": "one-car-left",
+        "text": "One car left."
+      },
+      {
+        "name": "one-car-right",
+        "text": "One car right."
+      },
+      {
+        "name": "car-inside",
+        "text": "Car inside."
+      },
+      {
+        "name": "car-outside",
+        "text": "Car outside."
+      },
+      {
+        "name": "two-cars-inside",
+        "text": "Two cars inside."
+      },
+      {
+        "name": "two-cars-outside",
+        "text": "Two cars outside."
+      },
+      {
+        "name": "one-car-inside",
+        "text": "One car inside."
+      },
+      {
+        "name": "one-car-outside",
+        "text": "One car outside."
+      },
+      {
+        "name": "three-wide",
+        "text": "Three wide."
+      },
+      {
+        "name": "clear-right-car-left",
+        "text": "Clear right. Car left."
+      },
+      {
+        "name": "clear-left-car-right",
+        "text": "Clear left. Car right."
+      },
+      {
+        "name": "clear-right-two-cars-left",
+        "text": "Clear right. Two cars left."
+      },
+      {
+        "name": "clear-left-two-cars-right",
+        "text": "Clear left. Two cars right."
+      },
+      {
+        "name": "clear-outside-car-inside",
+        "text": "Clear outside. Car inside."
+      },
+      {
+        "name": "clear-inside-car-outside",
+        "text": "Clear inside. Car outside."
+      },
+      {
+        "name": "clear-outside-two-cars-inside",
+        "text": "Clear outside. Two cars inside."
+      },
+      {
+        "name": "clear-inside-two-cars-outside",
+        "text": "Clear inside. Two cars outside."
+      },
+      {
+        "name": "clear",
+        "text": "Clear."
+      },
+      {
+        "name": "clear-clear",
+        "text": "Clear! Clear!"
+      },
+      {
+        "name": "still-there",
+        "text": "Still there."
+      },
+      {
+        "name": "hold-your-line",
+        "text": "Hold your line."
+      }
     ]
   }
 }
