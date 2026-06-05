@@ -35,6 +35,8 @@ import {
   registerPitCrew,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
+  SPOTTER_CALLOUT_SETTING_KEYS,
+  type SpotterCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -147,6 +149,7 @@ import {
   getRaceStartConditions,
   getReadbackSnapshot,
   getSessionStartConditions,
+  getTrackDirection,
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
@@ -498,6 +501,13 @@ registerPitCrew(
   // every `radar.changed` arrival and every scheduled tick so the
   // engine can't audibly fire when the global toggle is off.
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
+  // Spotter master gate (issue #651)
+  () => (getGlobalSettings() as Record<string, unknown>).pitCrewSpotterEnabled === true,
+  // Spotter per-callout opt-ins (issue #651)
+  (id: SpotterCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Spotter road/oval terminology (issue #651)
+  () => getTrackDirection(),
 );
 
 // Publish audio device list and apply saved device selection.
