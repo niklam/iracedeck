@@ -109,8 +109,11 @@ export type Scenario = {
   /**
    * When this fire cannot take the bus right now (a higher- or equal-weight
    * fire is playing, or it is below an exclusive-focus floor), defer it and
-   * replay when the bus next idles (`true`) — re-checking `where:` so a stale
-   * fire drops — instead of dropping it outright (`false`, the default).
+   * replay when the bus next idles (`true`) instead of dropping it outright
+   * (`false`, the default). The deferred fire replays unconditionally — its
+   * `where:` is NOT re-evaluated (a `where:` that commits a side effect, like
+   * the position-readout cooldown claim, would fail on a second call);
+   * freshness comes from var resolvers reading live state at speak time.
    */
   queueable?: boolean;
   /** Minimum ms between successive fires of this scenario id. */

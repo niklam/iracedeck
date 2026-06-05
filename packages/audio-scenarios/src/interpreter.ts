@@ -13,12 +13,13 @@
  *     the current line to finish (becomes the pending next fire).
  *   - A fire that can't take the bus (equal/lower weight, or below an
  *     exclusive-focus floor) is deferred for idle-replay when
- *     `queueable: true` (re-checking `where:` so a stale fire drops), else
- *     dropped. This preserves the former `low`-priority deferred-replay
- *     behaviour without special-casing.
+ *     `queueable: true`, else dropped. The deferred fire replays
+ *     unconditionally — `where:` is NOT re-run (a side-effecting predicate
+ *     would mis-fire); freshness comes from var resolvers at speak time. This
+ *     preserves the former `low`-priority deferred-replay behaviour.
  *   - Same-`family` fires replace each other wholesale regardless of weight.
  *   - `acquireFocus`/`releaseFocus` raise a per-bus weight floor: while held,
- *     only fires above it (or the owner's own) play.
+ *     only fires at or above it (or the owner's own) play.
  *
  * Channel routing for clip steps:
  *   - Paths matching the manifest's walkie-talkie ticks go on the SFX channel.
