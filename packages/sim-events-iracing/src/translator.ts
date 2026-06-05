@@ -55,7 +55,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { createInitialState, type TranslatorState } from "./state.js";
-import { resolveTrackType } from "./track-type.js";
+import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
 
@@ -174,6 +174,20 @@ export function getSessionType(): string {
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
 
   return resolveSessionType(sessionInfo, instance.latestTelemetry);
+}
+
+/**
+ * Returns the current track's rotation direction ({@link TrackDirection}) read
+ * from the SDK's session YAML (`WeekendInfo.TrackDirection`). Drives the
+ * spotter's road (left/right) vs oval (inside/outside) terminology (issue #651).
+ * Resolves to `Neutral` when the translator isn't initialized or session info is
+ * unavailable. Read from the same session-YAML source as {@link getSessionType}
+ * so consumers don't take a direct dependency on `@iracedeck/iracing-sdk`.
+ */
+export function getTrackDirection(): TrackDirection {
+  const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
+
+  return resolveTrackDirection(sessionInfo);
 }
 
 /**

@@ -45,3 +45,36 @@ export function resolveTrackType(sessionInfo: Record<string, unknown> | null): T
       return TrackType.Unknown;
   }
 }
+
+/** Track rotation direction. Unknown/neutral tracks (road courses) map to `Neutral`. */
+export enum TrackDirection {
+  Neutral = "neutral",
+  Left = "left",
+  Right = "right",
+}
+
+/**
+ * Resolve `WeekendInfo.TrackDirection` to a {@link TrackDirection}. Drives the
+ * spotter's road (left/right) vs oval (inside/outside) terminology (issue #651):
+ * a left-going oval makes the left side "inside"; a right-going oval reverses it;
+ * neutral/unknown stays left/right.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveTrackDirection(sessionInfo: Record<string, unknown> | null): TrackDirection {
+  if (!sessionInfo) return TrackDirection.Neutral;
+
+  const weekendInfo = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
+  const raw = weekendInfo?.TrackDirection;
+
+  if (typeof raw !== "string") return TrackDirection.Neutral;
+
+  switch (raw.trim().toLowerCase()) {
+    case "left":
+      return TrackDirection.Left;
+    case "right":
+      return TrackDirection.Right;
+    default:
+      return TrackDirection.Neutral;
+  }
+}
