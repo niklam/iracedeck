@@ -46,6 +46,7 @@
  */
 import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
+import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
@@ -118,6 +119,7 @@ import {
   SCENARIO_ID_TO_SESSION_START_ID,
   type SessionStartCalloutId,
 } from "./session-start.js";
+import { registerSpotterEngine } from "./spotter-engine.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -149,6 +151,12 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
+export {
+  isSpotterEnabled,
+  registerSpotterEngine,
+  setSpotterEnabled,
+  SPOTTER_STILL_THERE_INTERVAL_MS,
+} from "./spotter-engine.js";
 export {
   buildPitReadbackScenarios,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
@@ -466,6 +474,15 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
   "pit-crew.pit-box-pit-now": "count-in",
 };
 
+/** Stable id for each spotter PI opt-in (issue #651). */
+export type SpotterCalloutId = "cars" | "still-there";
+
+/** Canonical map from {@link SpotterCalloutId} to its global-settings key. */
+export const SPOTTER_CALLOUT_SETTING_KEYS: Record<SpotterCalloutId, string> = {
+  cars: "calloutEnabledSpotterCars",
+  "still-there": "calloutEnabledSpotterStillThere",
+};
+
 /**
  * Resolver the plugins pass to {@link registerPitCrew}: given the current
  * session kind, returns whether the loaded setup name looks wrong for it (opt-in
@@ -679,8 +696,26 @@ export function registerPitCrew(
   // isn't expressed as a scenario. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getRadarMasterEnabled: () => boolean = () => true,
+  // Spotter master gate (issue #651). Plugins wire this to
+  // `pitCrewSpotterEnabled === true`. Read live by the spotter engine on every
+  // `radar.changed` arrival and every still-there tick. Default `() => true`.
+  getSpotterMasterEnabled: () => boolean = () => true,
+  // Spotter per-callout opt-ins (issue #651): "cars" gates every transition
+  // call; "still-there" gates the repeating reminder. Read live. Default `() => true`.
+  getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
+  // Spotter road/oval terminology (issue #651). Plugins wire this to
+  // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
+  getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
+
+  registerSpotterEngine(bus, {
+    getMasterEnabled: getSpotterMasterEnabled,
+    getCarsEnabled: () => getSpotterCalloutEnabled("cars"),
+    getStillThereEnabled: () => getSpotterCalloutEnabled("still-there"),
+    getTrackDirection: getSpotterTrackDirection,
+    logger,
+  });
 
   const engine = getScenarioEngine();
 

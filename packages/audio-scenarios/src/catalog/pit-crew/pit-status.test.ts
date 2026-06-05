@@ -25,6 +25,7 @@ import { PIT_STATUS_ALERTS, PIT_STATUS_POOL_NAMES, PIT_STATUS_SCENARIO_IDS } fro
 import { POOLS } from "./pools.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -306,6 +307,7 @@ describe("PIT_STATUS_ALERTS per-callout opt-out (via registerPitCrew)", () => {
   afterEach(() => {
     _resetAudioScenarios();
     _resetRadarEngine();
+    _resetSpotterEngine();
     vi.clearAllMocks();
   });
 

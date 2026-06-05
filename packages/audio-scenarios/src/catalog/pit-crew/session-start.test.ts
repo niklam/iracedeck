@@ -17,6 +17,7 @@ import { _resetAudioScenarios, initializeAudioScenarios } from "../../interprete
 import { registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { SESSION_START_DELAY_MS, SESSION_START_SPEED_VALUES } from "./session-start.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -251,6 +252,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

@@ -26,11 +26,14 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { type DamageCalloutId, type FlagCalloutId, type IncidentCalloutId, registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getLatestTelemetry: () => null,
+  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 
 const mockLogger = {
@@ -351,12 +354,17 @@ beforeEach(() => {
     () => pitBoxEnabled, // getPitBoxCalloutEnabled (issue #600)
     undefined, // getSetupWarningMismatch (issue #625)
     () => voiceMasterEnabled,
+    undefined, // getRadarMasterEnabled
+    undefined, // getSpotterMasterEnabled (issue #651)
+    undefined, // getSpotterCalloutEnabled (issue #651)
+    undefined, // getSpotterTrackDirection (issue #651)
   );
 });
 
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   vi.clearAllMocks();
 });
 

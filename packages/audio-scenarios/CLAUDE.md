@@ -23,7 +23,8 @@ src/catalog/pit-crew/
 ├── track-conditions.ts       # Family: track-conditions (issue #526)
 ├── session-start.ts          # Family: session-start (issue #542) — dynamic clip composition
 ├── lap-time.ts               # Family: lap-time (issue #555) — dynamic clip composition
-├── radar-engine.ts           # Imperative tick-loop engine — NOT a scenario; consumes radar.changed
+├── radar-engine.ts           # Imperative tick-loop engine — NOT a scenario; plays directly on AudioChannel.Radar; consumes radar.changed
+├── spotter-engine.ts         # Imperative state-machine engine (issue #651) — NOT a scenario file, but SCHEDULES THROUGH THE INTERPRETER; consumes radar.changed
 ├── …
 └── *.test.ts
 ```
@@ -74,6 +75,17 @@ All gates are **read live** on every event arrival. A toggle mid-session takes
 effect on the next event without re-registering scenarios; an in-flight clip
 is never cut by a gate flipping. The gate functions are passed into
 `registerPitCrew()` as closures over `getGlobalSettings()`.
+
+## Imperative engines (radar-engine, spotter-engine)
+
+Two files in `src/catalog/pit-crew/` are **imperative engines**, not scenario families: they own a module-level state machine driven by `radar.changed` rather than exporting a `*_ALERTS` scenario array. They differ in how they reach the speaker:
+
+- **`radar-engine.ts`** plays clips **directly** on `AudioChannel.Radar` via `@iracedeck/audio-service` — it never touches the interpreter.
+- **`spotter-engine.ts`** (issue #651) **schedules through the interpreter**. Instead of playing directly, each transition computes a clip path into a module variable and fires a single var-driven scenario: `getScenarioEngine().fire("pit-crew.spotter-call")`, where the scenario's lone step is `{ var: "spotterClip" }` (registered via `getScenarioEngine().defineVar("spotterClip", () => pendingSpotterClip)`). **All clip selection is var-driven — no new pools.** Because nothing is enumerated in a pool, the scenario has no dependency on the audio manifest at load time (build/test stay green before the clips are generated). The two engine-owned no-repeat arrays (clear pool, still-there pool) live as module consts inside the engine, *not* in `pools.ts`, for the same reason.
+
+The spotter engine also owns an **exclusive-focus floor**. While any car is alongside it holds `getScenarioEngine().acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY)` and releases it (`releaseFocus(AudioBus.Voice, "spotter")`) the instant the state returns to clear (or on force-clear: master off / pit road / Lone Qualify). The floor admits only fires at `WEIGHT.SAFETY` or above — so safety flag callouts still break through while routine chatter is held back — plus the spotter's own fires (matched by `focusOwner: "spotter"` on the `pit-crew.spotter-call` scenario, so a spotter call plays even while its own floor is held). The floor is tied to master + state, never to the per-callout opt-ins. See the #652 weighted-scheduling entry in `.claude/rules/race-engineer-callout-examples.md` for the focus model.
+
+Both engines reuse the existing `radar.changed` bus event (no new event, no translator diff). Road vs oval terminology in the spotter is resolved per fire from `resolveTrackDirection` / `getTrackDirection` (`@iracedeck/sim-events-iracing`): road courses speak left/right, ovals inside/outside.
 
 ## Adding a new family
 

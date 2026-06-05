@@ -21,6 +21,7 @@ import {
   resetQualifyingInvalidationLatch,
 } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -214,6 +215,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

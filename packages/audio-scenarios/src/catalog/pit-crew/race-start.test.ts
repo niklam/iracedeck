@@ -17,6 +17,7 @@ import { _resetAudioScenarios, initializeAudioScenarios } from "../../interprete
 import { registerPitCrew } from "./index.js";
 import { isRaceSession, POSITION_MAX, positionIsSpeakable, RACE_START_DELAY_MS } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn<() => string>(() => "Race");
 
@@ -251,6 +252,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

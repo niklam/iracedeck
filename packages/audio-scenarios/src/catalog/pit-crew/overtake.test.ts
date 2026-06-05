@@ -21,6 +21,7 @@ import {
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -255,6 +256,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });
