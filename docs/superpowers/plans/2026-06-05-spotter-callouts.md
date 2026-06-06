@@ -71,7 +71,7 @@
 
 `handleTransition(old, new, dir)` (called only when master on, not pit-road, not Lone Qualify, and `new !== old`):
 
-```
+```text
 resetLoopTimer()
 
 if new == "clear":
