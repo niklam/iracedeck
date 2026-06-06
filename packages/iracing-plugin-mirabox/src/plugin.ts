@@ -487,12 +487,9 @@ registerPitCrew(
   // against the loaded setup name. Consumed by the session-start / race-start
   // intros' `if` clauses.
   (kind) => evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
-  // Race Engineer master gate (issue #515).
-  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
-  // Radar master gate (issue #515).
-  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
   // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
   // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
+  // Placed before the master gates so the masters stay the last args.
   (id: SpotterCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
   // Spotter road/oval terminology (issue #651)
@@ -501,6 +498,10 @@ registerPitCrew(
   () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
   // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
   () => getNearestCarGapMeters(),
+  // Race Engineer master gate (issue #515).
+  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
+  // Radar master gate (issue #515).
+  () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
 );
 
 // Publish audio device list and apply saved device selection.

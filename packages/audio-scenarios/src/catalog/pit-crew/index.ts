@@ -685,6 +685,23 @@ export function registerPitCrew(
   // Default `() => false` — tests that don't supply a closure never append the
   // warning clause.
   getSetupWarningMismatch: SetupWarningResolver = () => false,
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
+  // below. "cars" gates every transition call; "still-there" gates the repeating
+  // reminder. Read live. Default `() => true`. Placed before the master gates so
+  // the masters stay the last params (the registerPitCrew convention).
+  getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
+  // Spotter road/oval terminology (issue #651). Plugins wire this to
+  // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
+  getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
+  // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
+  // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
+  // tick so a slider change takes effect on the next reminder. Default 3 s.
+  getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
+  // Spotter nearest-car gap in meters (issue #651) for the → clear confirmation
+  // buffer. Plugins wire this to `getNearestCarGapMeters()` from
+  // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
+  getSpotterNearestCarGapMeters: () => number | null = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -701,22 +718,6 @@ export function registerPitCrew(
   // isn't expressed as a scenario. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getRadarMasterEnabled: () => boolean = () => true,
-  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
-  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
-  // above. "cars" gates every transition call; "still-there" gates the repeating
-  // reminder. Read live. Default `() => true`.
-  getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
-  // Spotter road/oval terminology (issue #651). Plugins wire this to
-  // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
-  getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
-  // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
-  // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
-  // tick so a slider change takes effect on the next reminder. Default 3 s.
-  getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
-  // Spotter nearest-car gap in meters (issue #651) for the → clear confirmation
-  // buffer. Plugins wire this to `getNearestCarGapMeters()` from
-  // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
-  getSpotterNearestCarGapMeters: () => number | null = () => null,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
 

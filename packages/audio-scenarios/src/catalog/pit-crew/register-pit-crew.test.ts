@@ -353,12 +353,12 @@ beforeEach(() => {
     undefined, // getOvertakeGate (issue #574)
     () => pitBoxEnabled, // getPitBoxCalloutEnabled (issue #600)
     undefined, // getSetupWarningMismatch (issue #625)
-    () => voiceMasterEnabled,
-    undefined, // getRadarMasterEnabled
     undefined, // getSpotterCalloutEnabled (issue #651)
     undefined, // getSpotterTrackDirection (issue #651)
     undefined, // getSpotterStillThereIntervalMs (issue #651)
     undefined, // getSpotterNearestCarGapMeters (issue #651)
+    () => voiceMasterEnabled,
+    undefined, // getRadarMasterEnabled
   );
 });
 

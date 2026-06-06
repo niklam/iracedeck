@@ -495,6 +495,17 @@ registerPitCrew(
   // intros' `if` clauses, so a mid-session toggle or pattern edit takes effect
   // on the next intro without re-registering scenarios.
   (kind) => evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
+  // Placed before the master gates so the masters stay the last args.
+  (id: SpotterCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Spotter road/oval terminology (issue #651)
+  () => getTrackDirection(),
+  // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
+  () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
+  // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
+  () => getNearestCarGapMeters(),
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.
@@ -504,16 +515,6 @@ registerPitCrew(
   // every `radar.changed` arrival and every scheduled tick so the
   // engine can't audibly fire when the global toggle is off.
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
-  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
-  // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
-  (id: SpotterCalloutId) =>
-    (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Spotter road/oval terminology (issue #651)
-  () => getTrackDirection(),
-  // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
-  () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
-  // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
-  () => getNearestCarGapMeters(),
 );
 
 // Publish audio device list and apply saved device selection.

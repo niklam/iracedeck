@@ -481,8 +481,6 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
  * `initializeAudioScenarios`, so `getScenarioEngine()` is available.
  */
 export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): void {
-  deps = nextDeps;
-
   if (registeredBus !== null) {
     if (registeredBus !== bus) {
       throw new Error(
@@ -490,9 +488,14 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
       );
     }
 
+    // Same-bus re-registration just refreshes the live accessors — only mutate
+    // state after the guard so a rejected (different-bus) call leaves it intact.
+    deps = nextDeps;
+
     return;
   }
 
+  deps = nextDeps;
   const engine = getScenarioEngine();
   engine.defineVar("spotterClip", () => pendingSpotterClip);
   engine.defineScenario(SPOTTER_CALL_SCENARIO);
