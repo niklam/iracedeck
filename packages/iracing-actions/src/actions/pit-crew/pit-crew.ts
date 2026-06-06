@@ -1,9 +1,7 @@
 import {
-  isSpotterEnabled,
   playBackgroundTest,
   playRadarTest,
   setRadarEnabled,
-  setSpotterEnabled,
   stopRaceEngineerScenarios,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
@@ -89,7 +87,7 @@ export const PIT_CREW_UUID = "com.iracedeck.sd.core.pit-crew";
  */
 /** @internal Exported for testing. */
 export const Settings = CommonSettings.extend({
-  mode: z.enum(["race-engineer", "radar", "spotter", "radar-volume"]).default("race-engineer"),
+  mode: z.enum(["race-engineer", "radar", "radar-volume"]).default("race-engineer"),
   direction: z.enum(["up", "down"]).default("up"),
 });
 
@@ -271,20 +269,6 @@ export function applyRadarEnabled(): void {
   setRadarEnabled(isRadarEnabled());
 }
 
-/**
- * @internal Exported for testing.
- *
- * Push the global `pitCrewSpotterEnabled` into the spotter engine. Called on
- * every action mount and on every global-settings change so the engine's
- * `enabled` flag matches the persisted gate — mirrors {@link applyRadarEnabled}.
- * Without this the spotter engine boots disabled (its flag is otherwise only
- * flipped by a button press), so a persisted-ON spotter is silently dead after
- * a restart and the key paints OFF while the global setting says ON.
- */
-export function applySpotterEnabled(): void {
-  setSpotterEnabled((getGlobalSettings() as Record<string, unknown>).pitCrewSpotterEnabled === true);
-}
-
 // ─── Icon generation ──────────────────────────────────────────────────────────
 
 /** Artwork bounds of the mechanic SVG (source viewBox 0 0 71.457 71.457). */
@@ -337,11 +321,6 @@ function modePresentation(
       return {
         defaultTitle: "RADAR",
         stateIndicator: isRadarEnabled() ? "on" : "off",
-      };
-    case "spotter":
-      return {
-        defaultTitle: "SPOTTER",
-        stateIndicator: isSpotterEnabled() ? "on" : "off",
       };
     case "radar-volume":
       return {
@@ -425,7 +404,6 @@ function pickArtwork(mode: Mode, direction: "up" | "down", color: string): strin
     case "race-engineer":
       return mechanicPathContent(color);
     case "radar":
-    case "spotter":
       return radarPathContent(color);
     case "radar-volume":
       return radarPathContent(color) + (direction === "up" ? arrowUpPath(color) : arrowDownPath(color));
@@ -485,7 +463,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
       onGlobalSettingsChange(() => {
         applyRadarVolume();
         applyRadarEnabled();
-        applySpotterEnabled();
         applyRaceEngineerAudio();
         void this.rerender(contextId);
       }),
@@ -495,7 +472,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // the first mount sets the initial values; later mounts re-assert them.
     applyRadarVolume();
     applyRadarEnabled();
-    applySpotterEnabled();
     applyRaceEngineerAudio();
 
     // Telemetry-connect radio check (issue #554). The base class already
@@ -615,9 +591,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
         break;
       case "radar":
         this.toggleRadar();
-        break;
-      case "spotter":
-        this.toggleSpotter();
         break;
       case "radar-volume": {
         const next = stepRadarVolume(settings.direction);
@@ -777,16 +750,6 @@ export class PitCrew extends ConnectionStateAwareAction<PitCrewSettings> {
     // a tick fire after the user already released the key.
     setRadarEnabled(next);
     updateGlobalSettings({ pitCrewRadarEnabled: next });
-  }
-
-  private toggleSpotter(): void {
-    const next = !isSpotterEnabled();
-    this.logger.info(`Spotter ${next ? "enabled" : "disabled"}`);
-    // Flip the engine synchronously so the spotter state machine starts/stops
-    // immediately. Relying on the global-settings round-trip echo would let a
-    // callout fire after the user already released the key. Mirrors toggleRadar.
-    setSpotterEnabled(next);
-    updateGlobalSettings({ pitCrewSpotterEnabled: next });
   }
 
   private async rerenderAll(): Promise<void> {

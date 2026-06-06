@@ -1,6 +1,6 @@
 # Pit Crew
 
-Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), **Spotter** (toggles the spoken side-awareness calls), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, and the full set of flag transitions described below.
+Multi-mode action covering the iRaceDeck pit-side audio framework. Modes available today: **Race Engineer Toggle** (gates the voice scenario engine), **Radar** (toggles the directional proximity tick loop), and **Radar Volume** (steps the radar volume up or down, deprecated and hidden from the PI). The Race Engineer voice catalog covers pit-service confirmations, pit-lane callouts, the full set of flag transitions described below, and the spotter side-awareness callout family (a Race Engineer voice family, not a separate mode — see [Spotter calls](#spotter-calls)).
 
 ## Properties
 
@@ -13,7 +13,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 
 ## Default state
 
-`raceEngineerEnabled`, `radarEnabled`, and `pitCrewSpotterEnabled` all ship **off** (issues #378 / #651). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle, Radar, or Spotter key press. The status bar on each toggle's icon paints red on first launch, flipping green only after the first press.
+`raceEngineerEnabled` and `radarEnabled` both ship **off** (issue #378). A fresh install — and any user who has never pressed a toggle — stays quiet until they explicitly enable the feature with a Race Engineer Toggle or Radar key press. The status bar on each toggle's icon paints red on first launch, flipping green only after the first press. The spotter side-awareness calls are part of the Race Engineer voice (gated by `raceEngineerEnabled` plus their own opt-ins — see [Spotter calls](#spotter-calls)), not a separate toggle.
 
 ## Behavior
 
@@ -24,7 +24,6 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 
 When iRacing telemetry first starts flowing into the plugin (false → true SDK connection transition), the Race Engineer announces "<name>, radio check. Standing by." so the driver has audible confirmation that the plugin is talking to iRacing. Gated on both the Race Engineer master gate AND a dedicated per-callout opt-in (**Race Engineer Callouts → Telemetry Connect**) so the user can keep the master ack but suppress the connect line, or vice versa. Module-level dedup across every visible Pit Crew instance ensures the line fires at most once per real connect; reconnecting (iRacing close + relaunch, transient SDK drop) replays it.
 - **Radar mode**: Flips the plugin-global `radarEnabled` and stops/starts the directional proximity tick loop synchronously. Off by default — pressing the key once starts the loop. Used by Radar alongside the per-instance Radar Test button.
-- **Spotter mode**: Flips the plugin-global `pitCrewSpotterEnabled` gate (issue #651) and synchronously force-clears the spotter state machine (releases its focus floor, stops the "still there" loop), so no call lands after the user has muted it. Off by default. Independent of Radar — Spotter is a spoken Voice-bus call, Radar is a non-vocal Alerts-bus tick; both read the same proximity signal.
 - **Radar Volume mode**: Steps the plugin-global `radarVolume` by ±5, clamped to 0–100. Takes effect immediately on `AudioBus.Alerts`. Direction is configured per button (Up or Down). Stepping to 0 mutes the radar without toggling the feature off. Deprecated (#590) — hidden from the PI Mode dropdown but kept functional for existing buttons.
 
 ### Race Engineer voice coverage
@@ -60,7 +59,7 @@ The engineer also runs a **pit-box count-in** as you drive down pit road toward 
 
 ### Spotter calls
 
-When the Spotter mode toggle is on (`pitCrewSpotterEnabled`), the Race Engineer voices spoken side-awareness as cars come and go alongside you. The calls are driven off the same `radar.changed` event that feeds the Radar tick (no new bus event), so the two coexist on the same proximity signal but are otherwise fully independent — Spotter speaks on `AudioBus.Voice`, Radar ticks on `AudioBus.Alerts`, and each has its own toggle.
+The spotter is a **Race Engineer voice callout family** — like flags, position, or lap time — not a separate Stream Deck mode or button. The Race Engineer voices spoken side-awareness as cars come and go alongside you, gated by the Race Engineer master (`raceEngineerEnabled`) plus the two per-callout opt-ins below. The calls are driven off the same `radar.changed` event that feeds the Radar tick (no new bus event), so the two coexist on the same proximity signal but are otherwise fully independent — the spotter speaks on `AudioBus.Voice`, Radar ticks on `AudioBus.Alerts`.
 
 Each side transition is a single pre-recorded clip — one clip per transition, never sequenced — covering arrival, escalation, de-escalation, swap, three-wide, and clear:
 
@@ -74,7 +73,7 @@ Each side transition is a single pre-recorded clip — one clip per transition, 
 
 Road vs oval terminology is automatic. On a road course (no track rotation) the calls use **left/right**; on an oval the engineer uses **inside/outside**, mapped from `WeekendInfo.TrackDirection` (a left-going oval makes the physical left "inside"; a right-going oval reverses it). This is resolved per fire via `resolveTrackDirection`, so the same clip catalog covers both with no user configuration.
 
-While any car is alongside, the spotter acquires an **exclusive focus floor** on the Voice bus at safety weight, holding back routine chatter (lap times, position updates, pit recaps) so the channel stays clear — but safety-critical flag callouts at or above the floor still break through. The floor releases the moment everything clears, draining any deferred chatter. The whole feature force-clears (focus released, loop stopped, no clip) when the master toggle is off, when the car is on pit road, or in a Lone Qualify session.
+While any car is alongside, the spotter acquires an **exclusive focus floor** on the Voice bus at safety weight, holding back routine chatter (lap times, position updates, pit recaps) so the channel stays clear — but safety-critical flag callouts at or above the floor still break through. The floor releases the moment everything clears, draining any deferred chatter. The whole feature force-clears (focus released, loop stopped, no clip) when the Race Engineer master (`raceEngineerEnabled`) is off, when both opt-ins are off, when the car is on pit road, or in a Lone Qualify session.
 
 Two opt-ins live under **Race Engineer Callouts → Spotter**, both enabled by default:
 
@@ -93,7 +92,6 @@ Both are read live on every event/tick, so flipping either mid-session takes eff
 ### Mode Options
 - **Race Engineer Toggle** - Toggles the engineer voice on/off
 - **Radar** - Toggles the directional proximity ticks on/off
-- **Spotter** - Toggles the spoken side-awareness calls on/off
 - **Radar Volume** - Steps the global Radar volume up or down (deprecated, hidden from the dropdown)
 
 ### Direction Options
@@ -117,14 +115,12 @@ None. Pit Crew drives its own audio framework; it does not emit keyboard events.
 
 ## Icon States
 
-Radar and Spotter modes paint a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
+The Radar mode paints a status bar on the lower third of the key (green when the feature is on, red when off). Radar Volume modes paint no status bar — the current volume shows as a percentage in the title.
 
 | Mode / State | Icon |
 |--------------|------|
 | Radar — on | Radar-sweep glyph, status bar green |
 | Radar — off | Radar-sweep glyph, status bar red |
-| Spotter — on | Spotter glyph, status bar green |
-| Spotter — off | Spotter glyph, status bar red |
 | Radar Volume Up | Radar glyph + up arrow, title shows `VOL +` and current % |
 | Radar Volume Down | Radar glyph + down arrow, title shows `VOL −` and current % |
 

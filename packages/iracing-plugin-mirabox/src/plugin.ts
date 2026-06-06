@@ -488,9 +488,8 @@ registerPitCrew(
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
-  // Spotter master gate (issue #651)
-  () => (getGlobalSettings() as Record<string, unknown>).pitCrewSpotterEnabled === true,
-  // Spotter per-callout opt-ins (issue #651)
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
   (id: SpotterCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
   // Spotter road/oval terminology (issue #651)

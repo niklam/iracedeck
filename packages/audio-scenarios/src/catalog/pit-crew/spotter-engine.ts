@@ -31,7 +31,11 @@ export const SPOTTER_CALL_SCENARIO_ID = "pit-crew.spotter-call";
 
 /** Plugin-supplied accessors the engine consults live on every event/tick. */
 export type SpotterDeps = {
-  /** Plugin-wide master gate (`pitCrewSpotterEnabled`). */
+  /**
+   * Race Engineer master gate (`pitCrewRaceEngineerEnabled`). The spotter is a
+   * Race Engineer callout family, not a standalone toggle — it rides the same
+   * master as the flag / position / lap-time callouts.
+   */
   getMasterEnabled: () => boolean;
   /** "Cars" opt-in (`calloutEnabledSpotterCars`) — every transition call. */
   getCarsEnabled: () => boolean;
@@ -80,7 +84,6 @@ const STILL_THERE_POOL: readonly string[] = [`${BASE}still-there.mp3`, `${BASE}h
 
 type PoolPick = { readonly clips: readonly string[]; lastIndex: number };
 
-let enabled = false;
 let state: RadarState = "clear";
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let registeredBus: IEventBus | null = null;
@@ -209,7 +212,7 @@ function tick(): void {
   // live and tear down loudly, mirroring handleRadarChanged's guards. Otherwise
   // the reminder would keep speaking on pit road when the relative position
   // hasn't changed (so no event drives forceClear).
-  if (!enabled || !deps.getMasterEnabled() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
+  if (!deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
     forceClear();
 
     return;
@@ -286,29 +289,28 @@ function isOnPitRoad(): boolean {
   return telemetry?.OnPitRoad === true;
 }
 
+/**
+ * The spotter is active only when at least one of its callout opt-ins is on.
+ * With neither enabled it would never speak, so the engine stays fully clear
+ * (no focus floor, no loop) rather than silently holding back other chatter.
+ */
+function spotterActive(): boolean {
+  return deps.getCarsEnabled() || deps.getStillThereEnabled();
+}
+
 function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
-  if (!enabled) return;
-
-  // Master gate (defense-in-depth alongside `enabled`): read live so the
-  // engine respects `pitCrewSpotterEnabled` even if the plugin-level
-  // listener that calls `setSpotterEnabled` ever fails to run.
-  if (!deps.getMasterEnabled()) {
+  // The spotter is a Race Engineer callout family: gated by the Race Engineer
+  // master plus its own opt-ins, read live on every event. When neither call
+  // type is enabled there's nothing to protect, so stay clear (no focus floor).
+  if (!deps.getMasterEnabled() || !spotterActive()) {
     forceClear();
 
     return;
   }
 
-  // Lone qualifying has no other cars on track; `radar.changed` is NOT
-  // pre-suppressed for it (diffRadar emits raw CarLeftRight transitions), so
-  // this guard is required, not just defensive.
-  if (getSessionType() === "Lone Qualify") {
-    forceClear();
-
-    return;
-  }
-
-  // Likewise pit road: `radar.changed` keeps firing in the pits, so suppress.
-  if (isOnPitRoad()) {
+  // Lone qualifying / pit road: `radar.changed` is NOT pre-suppressed (diffRadar
+  // emits raw CarLeftRight transitions), so these guards are required.
+  if (getSessionType() === "Lone Qualify" || isOnPitRoad()) {
     forceClear();
 
     return;
@@ -353,25 +355,9 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
   bus.subscribe("radar.changed", handleRadarChanged);
 }
 
-/**
- * Master gate flip from the mode button. `false` forces clear (stop the loop,
- * release focus, reset internal state to `"clear"`) without playing a clip.
- * `true` is passive — the next `radar.changed` event drives playback.
- */
-export function setSpotterEnabled(next: boolean): void {
-  enabled = next;
-
-  if (!enabled) forceClear();
-}
-
-export function isSpotterEnabled(): boolean {
-  return enabled;
-}
-
 /** @internal Exported for test isolation only. */
 export function _resetSpotterEngine(): void {
   resetLoopTimer();
-  enabled = false;
   state = "clear";
   registeredBus = null;
   pendingSpotterClip = "";

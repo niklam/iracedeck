@@ -314,11 +314,6 @@ describe("flag-callout opt-in defaults (issue #467)", () => {
 });
 
 describe("spotter callout defaults (issue #651)", () => {
-  it("pitCrewSpotterEnabled defaults to false (opt-in, mirrors radar)", () => {
-    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
-    expect(parsed.pitCrewSpotterEnabled).toBe(false);
-  });
-
   const SPOTTER_CALLOUT_KEYS = ["calloutEnabledSpotterCars", "calloutEnabledSpotterStillThere"] as const;
 
   it.each(SPOTTER_CALLOUT_KEYS)("%s defaults to true", (key) => {

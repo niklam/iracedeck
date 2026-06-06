@@ -355,7 +355,6 @@ beforeEach(() => {
     undefined, // getSetupWarningMismatch (issue #625)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
-    undefined, // getSpotterMasterEnabled (issue #651)
     undefined, // getSpotterCalloutEnabled (issue #651)
     undefined, // getSpotterTrackDirection (issue #651)
   );

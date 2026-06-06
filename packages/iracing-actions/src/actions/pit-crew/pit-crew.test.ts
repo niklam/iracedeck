@@ -12,7 +12,6 @@ import {
   applyRaceEngineerAudio,
   applyRadarEnabled,
   applyRadarVolume,
-  applySpotterEnabled,
   generatePitCrewSvg,
   PIT_CREW_UUID,
   PitCrew,
@@ -34,11 +33,6 @@ const hoisted = vi.hoisted(() => {
   const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, onChannelComplete }));
 
   const setRadarEnabled = vi.fn();
-  let spotterEnabled = false;
-  const setSpotterEnabled = vi.fn((next: boolean) => {
-    spotterEnabled = next;
-  });
-  const isSpotterEnabled = vi.fn(() => spotterEnabled);
   const playRadarTest = vi.fn();
   const playBackgroundTest = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
@@ -82,11 +76,6 @@ const hoisted = vi.hoisted(() => {
     onChannelComplete,
     getAudio,
     setRadarEnabled,
-    setSpotterEnabled,
-    isSpotterEnabled,
-    setSpotterEnabledState: (val: boolean) => {
-      spotterEnabled = val;
-    },
     playRadarTest,
     playBackgroundTest,
     isBackgroundTestInFlight,
@@ -132,11 +121,9 @@ vi.mock("../../icons/status-bar.js", () => ({
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
-  isSpotterEnabled: hoisted.isSpotterEnabled,
   playBackgroundTest: hoisted.playBackgroundTest,
   playRadarTest: hoisted.playRadarTest,
   setRadarEnabled: hoisted.setRadarEnabled,
-  setSpotterEnabled: hoisted.setSpotterEnabled,
   stopRaceEngineerScenarios: hoisted.stopRaceEngineerScenarios,
 }));
 
@@ -245,7 +232,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 type TestInputs = {
-  mode?: "race-engineer" | "radar" | "radar-volume" | "spotter";
+  mode?: "race-engineer" | "radar" | "radar-volume";
   direction?: "up" | "down";
   /** `_testRadarVolume` arrives from the PI as `String(Date.now())` — tests
    *  accept both to exercise the coercion path. */
@@ -273,11 +260,6 @@ beforeEach(() => {
   // missing-clip path poisons every test that mounts the action.
   hoisted.playOnChannel.mockReturnValue(true);
   hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 100 });
-  // Reset the engine-owned spotter state (mirrors radar's engine flag). The
-  // spotter on/off state lives in the audio-scenarios engine, not in global
-  // settings — `isSpotterEnabled`/`setSpotterEnabled` are mocked to a shared
-  // module-scope flag, so reset it between tests for isolation.
-  hoisted.setSpotterEnabledState(false);
   hoisted.globalSettingsListeners.clear();
   hoisted.resetSdk();
   // Reset module-scope in-flight flags so a test that triggers the
@@ -377,19 +359,6 @@ describe("applyRadarEnabled", () => {
     hoisted.setGlobalSettings({ pitCrewRadarEnabled: true });
     applyRadarEnabled();
     expect(hoisted.setRadarEnabled).toHaveBeenCalledWith(true);
-  });
-});
-
-describe("applySpotterEnabled", () => {
-  it("pushes the current global pitCrewSpotterEnabled into the engine (so a persisted ON survives restart)", () => {
-    hoisted.setGlobalSettings({ pitCrewSpotterEnabled: false });
-    applySpotterEnabled();
-    expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(false);
-
-    vi.clearAllMocks();
-    hoisted.setGlobalSettings({ pitCrewSpotterEnabled: true });
-    applySpotterEnabled();
-    expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(true);
   });
 });
 
@@ -1198,48 +1167,6 @@ describe("PitCrew action", () => {
     });
   });
 
-  describe("onKeyDown — spotter mode", () => {
-    it("flips the spotter on synchronously via setSpotterEnabled and updates the global", async () => {
-      hoisted.setSpotterEnabledState(false);
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "spotter" }) as never);
-      vi.clearAllMocks();
-
-      await action.onKeyDown(buildAppearEvent({ mode: "spotter" }) as never);
-
-      expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(true);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewSpotterEnabled: true });
-    });
-
-    it("flips the spotter off when already on", async () => {
-      // Persist ON via the global — onWillAppear's applySpotterEnabled() syncs
-      // the engine flag from the global, so the persisted state is the source
-      // of truth (an engine-flag-only setup would be overwritten on mount).
-      hoisted.updateGlobalSettings({ pitCrewSpotterEnabled: true });
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "spotter" }) as never);
-      vi.clearAllMocks();
-
-      await action.onKeyDown(buildAppearEvent({ mode: "spotter" }) as never);
-
-      expect(hoisted.setSpotterEnabled).toHaveBeenCalledWith(false);
-      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ pitCrewSpotterEnabled: false });
-    });
-
-    it("does not touch radar or race-engineer state when toggling the spotter (independent gates)", async () => {
-      const action = new PitCrew();
-      await action.onWillAppear(buildAppearEvent({ mode: "spotter" }) as never);
-      vi.clearAllMocks();
-
-      await action.onKeyDown(buildAppearEvent({ mode: "spotter" }) as never);
-
-      const updates = hoisted.updateGlobalSettings.mock.calls.flatMap(([partial]) => Object.keys(partial));
-      expect(updates).not.toContain("pitCrewRadarEnabled");
-      expect(updates).not.toContain("pitCrewRaceEngineerEnabled");
-      expect(hoisted.setRadarEnabled).not.toHaveBeenCalled();
-    });
-  });
-
   describe("onKeyDown — radar-volume mode", () => {
     it("steps radarVolume up by 5 on direction=up", async () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 70 });
@@ -1389,23 +1316,6 @@ describe("generatePitCrewSvg", () => {
   it("paints the status bar OFF for radar mode when pitCrewRadarEnabled is false", () => {
     hoisted.setGlobalSettings({ pitCrewRadarEnabled: false });
     const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "radar" })));
-    expect(result).toContain("status-bar-off");
-  });
-
-  it("renders the SPOTTER title for spotter mode", () => {
-    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "spotter" })));
-    expect(result).toContain("SPOTTER");
-  });
-
-  it("paints the status bar ON for spotter mode when the spotter is enabled", () => {
-    hoisted.setSpotterEnabledState(true);
-    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "spotter" })));
-    expect(result).toContain("status-bar-on");
-  });
-
-  it("paints the status bar OFF for spotter mode when the spotter is disabled", () => {
-    hoisted.setSpotterEnabledState(false);
-    const result = decodeURIComponent(generatePitCrewSvg(Settings.parse({ mode: "spotter" })));
     expect(result).toContain("status-bar-off");
   });
 

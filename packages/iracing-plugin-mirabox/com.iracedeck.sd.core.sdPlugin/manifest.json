@@ -317,7 +317,7 @@
       "Name": "Pit Crew",
       "UUID": "com.iracedeck.sd.core.pit-crew",
       "Icon": "imgs/actions/pit-crew/icon",
-      "Tooltip": "Race Engineer, Radar, and Spotter controls",
+      "Tooltip": "Race Engineer voice and Radar controls",
       "PropertyInspectorPath": "ui/pit-crew.html",
       "Controllers": [
         "Keypad"

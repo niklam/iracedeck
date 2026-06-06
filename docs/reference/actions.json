@@ -149,11 +149,6 @@
           "modes": [
             { "mode": "radar", "label": "Radar", "description": "Toggles the directional proximity tick loop on/off" },
             {
-              "mode": "spotter",
-              "label": "Spotter",
-              "description": "Toggles the spoken side-awareness calls on/off (car left / three wide / clear, road/oval terminology); driven off radar.changed, holds an exclusive Voice-bus focus floor while a car is alongside (issue #651)"
-            },
-            {
               "mode": "radar-volume",
               "direction": "up",
               "label": "Radar Volume Up",

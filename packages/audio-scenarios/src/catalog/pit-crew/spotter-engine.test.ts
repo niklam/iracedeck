@@ -8,9 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import {
   _resetSpotterEngine,
-  isSpotterEnabled,
   registerSpotterEngine,
-  setSpotterEnabled,
   SPOTTER_CALL_SCENARIO_ID,
   SPOTTER_FOCUS_OWNER,
   SPOTTER_STILL_THERE_INTERVAL_MS,
@@ -213,7 +211,6 @@ describe("registerSpotterEngine", () => {
 describe("road arrivals (TrackDirection.Neutral)", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("clear → left plays car-left", () => {
@@ -247,7 +244,6 @@ describe("road arrivals (TrackDirection.Neutral)", () => {
 describe("escalation and de-escalation", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("left → two-left escalates to two-cars-left", () => {
@@ -280,7 +276,6 @@ describe("escalation and de-escalation", () => {
 describe("combined clips (de-escalation / swap)", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("both → left plays clear-right-car-left", () => {
@@ -325,7 +320,6 @@ describe("combined clips (de-escalation / swap)", () => {
 describe("final clear", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("non-clear → clear plays a clip from the clear pool and releases focus", () => {
@@ -361,7 +355,6 @@ describe("oval mapping (inside / outside)", () => {
   it("left-going oval: clear → left is car-inside, clear → right is car-outside", () => {
     trackDirection = TrackDirection.Left;
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("left");
     expect(lastVoicePath()).toBe(`${BASE}car-inside.mp3`);
@@ -374,7 +367,6 @@ describe("oval mapping (inside / outside)", () => {
   it("left-going oval: both → left plays clear-outside-car-inside", () => {
     trackDirection = TrackDirection.Left;
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("both");
     bus.publishRadar("left", "both");
@@ -384,7 +376,6 @@ describe("oval mapping (inside / outside)", () => {
   it("right-going oval: clear → left is car-outside", () => {
     trackDirection = TrackDirection.Right;
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("left");
     expect(lastVoicePath()).toBe(`${BASE}car-outside.mp3`);
@@ -393,7 +384,6 @@ describe("oval mapping (inside / outside)", () => {
   it("right-going oval: both → left plays clear-inside-car-outside", () => {
     trackDirection = TrackDirection.Right;
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("both");
     bus.publishRadar("left", "both");
@@ -406,7 +396,6 @@ describe("oval mapping (inside / outside)", () => {
 describe("focus gate", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("re-asserts the focus floor on every non-clear transition", () => {
@@ -458,7 +447,6 @@ describe("focus gate", () => {
 describe("sustained still-there loop", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
   });
 
   it("fires a still-there clip on each interval while a car is alongside", () => {
@@ -517,7 +505,6 @@ describe("sustained still-there loop", () => {
     _resetAudioScenarios();
     initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
 
@@ -555,7 +542,6 @@ describe("opt-in gating (live)", () => {
     deps = makeDeps({ getCarsEnabled: () => cars });
     const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("left");
     // No transition clip…
@@ -577,7 +563,6 @@ describe("opt-in gating (live)", () => {
     let stillThere = true;
     deps = makeDeps({ getStillThereEnabled: () => stillThere });
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
@@ -601,7 +586,6 @@ describe("master + suppression (forceClear)", () => {
     deps = makeDeps({ getMasterEnabled: () => master });
     const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
 
@@ -617,7 +601,6 @@ describe("master + suppression (forceClear)", () => {
 
   it("pit road forces clear and fires nothing", () => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
 
@@ -629,7 +612,6 @@ describe("master + suppression (forceClear)", () => {
 
   it("Lone Qualify forces clear and fires nothing", () => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     sim.getSessionType.mockReturnValue("Lone Qualify");
     bus.publishRadar("left");
@@ -637,27 +619,20 @@ describe("master + suppression (forceClear)", () => {
     expect(voicePaths()).toEqual([]);
   });
 
-  it("setSpotterEnabled(false) releases focus, stops the loop, and reports disabled", () => {
-    const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
+  it("is inactive when both opt-ins are off: no clip, no focus floor, no loop", () => {
+    // With neither "cars" nor "still-there" enabled the spotter would never
+    // speak, so it must not hold the focus floor (which would silently suppress
+    // other Race Engineer chatter while a car is alongside).
+    const acquireSpy = vi.spyOn(getScenarioEngine(), "acquireFocus");
+    deps = makeDeps({ getCarsEnabled: () => false, getStillThereEnabled: () => false });
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
-    bus.publishRadar("left");
-    const afterArrival = voicePaths().length;
 
-    setSpotterEnabled(false);
-    expect(isSpotterEnabled()).toBe(false);
-    expect(releaseSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
+    bus.publishRadar("left");
+    expect(voicePaths()).toEqual([]);
+    expect(acquireSpy).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
-    expect(voicePaths().length).toBe(afterArrival);
-  });
-
-  it("does nothing when the engine is not enabled", () => {
-    registerSpotterEngine(bus, deps);
-    bus.publishRadar("left");
-
     expect(voicePaths()).toEqual([]);
-    expect(isSpotterEnabled()).toBe(false);
   });
 });
 
@@ -666,7 +641,6 @@ describe("master + suppression (forceClear)", () => {
 describe("scenario identity", () => {
   it("fires the spotter-call scenario as the focus owner so it bypasses its own floor", () => {
     registerSpotterEngine(bus, deps);
-    setSpotterEnabled(true);
 
     // The engine holds the SAFETY floor while a car is alongside, yet its own
     // spotter-call fires (the owner bypasses its own floor) — proving the
@@ -707,7 +681,6 @@ describe("voice substitution", () => {
     const freshAudio = createFakeAudio();
     initializeAudioScenarios(freshBus, freshAudio, manifest, mockLogger as never, () => "elena");
     registerSpotterEngine(freshBus, deps);
-    setSpotterEnabled(true);
 
     freshBus.publishRadar("left");
 

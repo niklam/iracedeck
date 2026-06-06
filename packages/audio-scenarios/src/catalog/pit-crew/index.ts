@@ -151,12 +151,7 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
-export {
-  isSpotterEnabled,
-  registerSpotterEngine,
-  setSpotterEnabled,
-  SPOTTER_STILL_THERE_INTERVAL_MS,
-} from "./spotter-engine.js";
+export { registerSpotterEngine, SPOTTER_STILL_THERE_INTERVAL_MS } from "./spotter-engine.js";
 export {
   buildPitReadbackScenarios,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
@@ -696,12 +691,10 @@ export function registerPitCrew(
   // isn't expressed as a scenario. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getRadarMasterEnabled: () => boolean = () => true,
-  // Spotter master gate (issue #651). Plugins wire this to
-  // `pitCrewSpotterEnabled === true`. Read live by the spotter engine on every
-  // `radar.changed` arrival and every still-there tick. Default `() => true`.
-  getSpotterMasterEnabled: () => boolean = () => true,
-  // Spotter per-callout opt-ins (issue #651): "cars" gates every transition
-  // call; "still-there" gates the repeating reminder. Read live. Default `() => true`.
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
+  // above. "cars" gates every transition call; "still-there" gates the repeating
+  // reminder. Read live. Default `() => true`.
   getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
   // Spotter road/oval terminology (issue #651). Plugins wire this to
   // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
@@ -710,7 +703,7 @@ export function registerPitCrew(
   registerRadarEngine(bus, getRadarMasterEnabled);
 
   registerSpotterEngine(bus, {
-    getMasterEnabled: getSpotterMasterEnabled,
+    getMasterEnabled: getRaceEngineerMasterEnabled,
     getCarsEnabled: () => getSpotterCalloutEnabled("cars"),
     getStillThereEnabled: () => getSpotterCalloutEnabled("still-there"),
     getTrackDirection: getSpotterTrackDirection,
