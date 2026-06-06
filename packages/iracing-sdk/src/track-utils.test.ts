@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findNearestCarOnTrack, nearestCarGapMeters, parseTrackLengthMeters } from "./track-utils.js";
+import { findNearestCarOnTrack, nearestCarGapMeters } from "./track-utils.js";
 import type { TelemetryData } from "./types.js";
 import { TrkLoc } from "./types.js";
 
@@ -242,30 +242,6 @@ describe("findNearestCarOnTrack", () => {
 
     expect(findNearestCarOnTrack(telemetry, 10, "ahead")).toBe(3);
     expect(findNearestCarOnTrack(telemetry, 10, "behind")).toBe(3);
-  });
-});
-
-describe("parseTrackLengthMeters", () => {
-  it("parses kilometers (the iRacing default unit)", () => {
-    expect(parseTrackLengthMeters("7.004 km")).toBe(7004);
-    expect(parseTrackLengthMeters("5.81 km")).toBeCloseTo(5810);
-  });
-
-  it("treats a unitless or bare-meter value sensibly", () => {
-    expect(parseTrackLengthMeters("3.7")).toBeCloseTo(3700); // unitless → km
-    expect(parseTrackLengthMeters("1200 m")).toBe(1200);
-  });
-
-  it("parses miles", () => {
-    expect(parseTrackLengthMeters("1.5 mi")).toBeCloseTo(2414.016);
-  });
-
-  it("returns null for missing or unparseable values", () => {
-    expect(parseTrackLengthMeters(undefined)).toBeNull();
-    expect(parseTrackLengthMeters(null)).toBeNull();
-    expect(parseTrackLengthMeters("")).toBeNull();
-    expect(parseTrackLengthMeters("road course")).toBeNull();
-    expect(parseTrackLengthMeters(7.004)).toBeNull(); // not a string
   });
 });
 

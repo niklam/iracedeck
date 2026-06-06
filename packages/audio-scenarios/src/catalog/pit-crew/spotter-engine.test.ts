@@ -764,4 +764,27 @@ describe("clear confirmation buffer", () => {
     bus.publishRadar("clear", "left");
     expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
   });
+
+  it("does not speak 'still there' while a clear is pending (short cadence)", () => {
+    nearestGap = 2;
+    deps = makeDeps({ getStillThereIntervalMs: () => 400 });
+    _resetSpotterEngine();
+    _resetAudioScenarios();
+    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    bus.publishRadar("clear", "left"); // enter pending clear; loop interval is 400 ms
+    const afterArrival = voicePaths().length;
+
+    // The 400 ms still-there tick lands during the pending window but must stay
+    // silent (no "still there" immediately before the buffered "clear").
+    vi.advanceTimersByTime(400);
+    expect(voicePaths().length).toBe(afterArrival);
+
+    // Gap grows → the next poll confirms a clear clip (not a still-there).
+    nearestGap = 2 + SPOTTER_CLEAR_BUFFER_METERS;
+    vi.advanceTimersByTime(SPOTTER_CLEAR_POLL_MS);
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
+  });
 });

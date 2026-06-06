@@ -172,7 +172,11 @@ export const GlobalSettingsSchema = z
      * configurable 1–10 s, default 3. Read live by the spotter engine on each
      * tick, so a change takes effect on the next reminder without a restart.
      */
-    spotterStillThereSeconds: z.coerce.number().min(1).max(10).default(3),
+    // `.catch(3)` so an out-of-range / malformed persisted value (e.g. a
+    // hand-edited settings file) falls back to the default instead of throwing
+    // and aborting the entire GlobalSettingsSchema.parse — which would stall
+    // every setting, not just this one.
+    spotterStillThereSeconds: z.coerce.number().min(1).max(10).default(3).catch(3),
     /**
      * Startup defaults for `pitCrewRaceEngineerEnabled` /
      * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the

@@ -31,7 +31,6 @@ import {
   CarLeftRight,
   classPositionFromOrder,
   nearestCarGapMeters,
-  parseTrackLengthMeters,
   type SDKController,
   SessionState,
   type TelemetryData,
@@ -208,8 +207,10 @@ export function getNearestCarGapMeters(): number | null {
 
   if (playerCarIdx < 0) return null;
 
-  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
-  const trackLengthMeters = parseTrackLengthMeters(weekendInfo?.TrackLength);
+  // Reuse the cached track-length parser (#574) — it memoizes per (TrackID,
+  // SessionNum) on TranslatorState, so the per-poll clear-buffer path doesn't
+  // re-parse the YAML string each tick.
+  const trackLengthMeters = resolveTrackLengthMeters(instance.state, sessionInfo, telemetry);
 
   if (trackLengthMeters === null) return null;
 

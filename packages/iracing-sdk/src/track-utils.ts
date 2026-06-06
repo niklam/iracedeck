@@ -76,31 +76,6 @@ export function findNearestCarOnTrack(
 }
 
 /**
- * Parse `WeekendInfo.TrackLength` (iRacing reports it as a string like
- * `"7.004 km"`) to meters. Returns null when the value is missing or
- * unparseable. Recognises `km` (default), `mi`, and bare `m`.
- */
-export function parseTrackLengthMeters(raw: unknown): number | null {
-  if (typeof raw !== "string") return null;
-
-  const match = /([\d.]+)\s*(km|mi|m)?/i.exec(raw.trim());
-
-  if (!match) return null;
-
-  const value = Number(match[1]);
-
-  if (!Number.isFinite(value) || value <= 0) return null;
-
-  const unit = (match[2] ?? "km").toLowerCase();
-
-  if (unit === "mi") return value * 1609.344;
-
-  if (unit === "m") return value;
-
-  return value * 1000;
-}
-
-/**
  * Smallest circular on-track gap (meters) from the reference car to any other
  * in-world car, using `CarIdxLapDistPct` (0.0–1.0) × `trackLengthMeters`.
  * Returns null when the data needed is unavailable. Used by the spotter's

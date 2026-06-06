@@ -260,21 +260,27 @@ function startLoop(): void {
   loopTimer = setTimeout(tick, loopIntervalMs());
 }
 
+/** Live suppression: master off, both opt-ins off, on pit road, or Lone Qualify. */
+function suppressed(): boolean {
+  return !deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad();
+}
+
 function tick(): void {
   // Master can drop mid-loop, or the driver can enter the pits / a lone-qualify
-  // session without a fresh radar.changed to suppress us — re-check all three
-  // live and tear down loudly, mirroring handleRadarChanged's guards. Otherwise
-  // the reminder would keep speaking on pit road when the relative position
-  // hasn't changed (so no event drives forceClear).
-  if (!deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
+  // session without a fresh radar.changed — re-check live and tear down loudly,
+  // else the reminder keeps speaking on pit road when the relative position
+  // hasn't changed (no event would drive forceClear).
+  if (suppressed()) {
     forceClear();
 
     return;
   }
 
-  // The "still there" opt-in is read live: when off, keep the loop scheduled
-  // but fire nothing, so re-enabling mid-session resumes the reminder.
-  if (deps.getStillThereEnabled()) fireClip(pickNoRepeat(stillTherePick));
+  // The "still there" opt-in is read live: when off, keep the loop scheduled but
+  // fire nothing, so re-enabling mid-session resumes the reminder. Also hold the
+  // reminder while a → clear is being confirmed (pendingClear), so a short
+  // cadence can't speak "still there" moments before the buffered "clear".
+  if (pendingClear === null && deps.getStillThereEnabled()) fireClip(pickNoRepeat(stillTherePick));
 
   loopTimer = setTimeout(tick, loopIntervalMs());
 }
@@ -312,9 +318,8 @@ function confirmClear(): void {
 function clearPollTick(): void {
   if (pendingClear === null) return;
 
-  // Re-check suppression live — the driver can pit / a session can flip while we
-  // wait, mirroring handleRadarChanged's guards.
-  if (!deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
+  // Re-check suppression live — the driver can pit / a session can flip while we wait.
+  if (suppressed()) {
     forceClear();
 
     return;
@@ -424,18 +429,11 @@ function spotterActive(): boolean {
 }
 
 function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
-  // The spotter is a Race Engineer callout family: gated by the Race Engineer
-  // master plus its own opt-ins, read live on every event. When neither call
-  // type is enabled there's nothing to protect, so stay clear (no focus floor).
-  if (!deps.getMasterEnabled() || !spotterActive()) {
-    forceClear();
-
-    return;
-  }
-
-  // Lone qualifying / pit road: `radar.changed` is NOT pre-suppressed (diffRadar
-  // emits raw CarLeftRight transitions), so these guards are required.
-  if (getSessionType() === "Lone Qualify" || isOnPitRoad()) {
+  // Gated live by the Race Engineer master + the spotter opt-ins (the spotter is
+  // a Race Engineer callout family) and suppressed on pit road / Lone Qualify —
+  // `radar.changed` is NOT pre-suppressed for those (diffRadar emits raw
+  // CarLeftRight transitions), so the guard is required here, not just defensive.
+  if (suppressed()) {
     forceClear();
 
     return;
