@@ -52,9 +52,11 @@ import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/
 import { diffPitStatus } from "./diff/pit-status.js";
 import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
+import { diffStartLights } from "./diff/start-lights.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
+import { resolveStandingStart } from "./start-lights.js";
 import { createInitialState, type TranslatorState } from "./state.js";
 import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
@@ -189,6 +191,20 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * Whether the current race is a standing start (`WeekendInfo.WeekendOptions.
+ * StandingStart === 1`), read from the SDK's session YAML. Resolves to `false`
+ * when the translator isn't initialized or session info is unavailable. Lets the
+ * audio layer suppress the rolling-only "one pace lap to go" / "green's coming"
+ * formation callouts during a standing-start grid (issue #480), where there is
+ * no pace lap. Read from the same session-YAML source as {@link getSessionType}.
+ */
+export function getStandingStart(): boolean {
+  const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
+
+  return resolveStandingStart(sessionInfo);
 }
 
 /**
@@ -1060,6 +1076,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, emit);
   diffFlags(self.state, telemetry, emit);
+  // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
+  // diffFlags (after the replay guard) and reads the already-resolved
+  // `sessionInfo` for the standing-start / AI-race gates.
+  diffStartLights(self.state, telemetry, sessionInfo, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479). Independent of

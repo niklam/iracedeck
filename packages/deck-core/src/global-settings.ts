@@ -305,6 +305,66 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
+     * Missing-session-flag callout opt-ins (issue #480). Driver-black
+     * (disqualify/furled/dq-scoring-invalid), race-progression
+     * (crossed/one-lap-to-green/green-held/ten-to-go/five-to-go), and
+     * caution-waving (yellow-waving/caution-waving) variants. Plus two
+     * grouped start-light opt-ins: `calloutEnabledStartLights` (the 3
+     * gantry lines) and `calloutEnabledStartCountdown` (the 5 numeric
+     * countdown clips). Same forward-compat semantics as the flag callouts
+     * above — default `true` so existing users receive them automatically.
+     * Canonical id↔key mappings in `FLAG_CALLOUT_SETTING_KEYS` and
+     * `START_LIGHT_CALLOUT_SETTING_KEYS`.
+     */
+    calloutEnabledFlagDisqualify: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagFurled: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagDqScoringInvalid: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagCrossed: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagOneLapToGreen: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagGreenHeld: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagTenToGo: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagFiveToGo: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagYellowWaving: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledFlagCautionWaving: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledStartLights: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledStartCountdown: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same
      * forward-compat semantics as the flag callouts above. Canonical

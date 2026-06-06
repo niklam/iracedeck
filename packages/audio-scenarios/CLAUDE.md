@@ -15,7 +15,8 @@ src/catalog/pit-crew/
 ├── index.ts                  # Family wiring: id types, setting-key maps, scenario-id maps, registerPitCrew()
 ├── pools.ts                  # Every pool name → ordered list of clip paths
 ├── radio-frame.ts            # Shared @pit-crew.radio-open / @pit-crew.radio-close include scenarios
-├── flag-alerts.ts            # Family: flag (issue #467)
+├── flag-alerts.ts            # Family: flag (issues #467 / #480) — colour flags + driver-black + race-progression + caution-waving
+├── start-lights.ts           # Family: start-light (issue #480) — standing-start gantry lines + numeric pre-start countdown
 ├── damage-alerts.ts          # Family: damage (issue #489)
 ├── pit-status.ts             # Family: pit-status (issue #479)
 ├── readback.ts               # Family: pit-readback (issues #476 / #481) — compositional scenarios
@@ -33,6 +34,10 @@ One file per family. Each family file:
 - Exports `<FAMILY>_ALERTS: readonly Scenario[]`.
 - Exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` for tests.
 - Uses a small constructor function (e.g. `flagScenario(id, body)`) to build scenarios with consistent `family:` / `weight:` / `bus:` defaults.
+
+> **`start-light` family (issue #480).** `start-lights.ts` exports `START_LIGHT_ALERTS` (8 scenarios), `START_LIGHT_SCENARIO_IDS`, and `START_LIGHT_POOL_NAMES`. Three gantry scenarios fire off `startLight.start-ready.raised` / `startLight.start-set.raised` / `startLight.start-go.raised` (`start-ready` is standing-start-only; `start-set` / `start-go` are `WEIGHT.CRITICAL` + `interrupt:true`). Five countdown scenarios all subscribe to the **single** `startLight.countdown.raised { seconds }` event and filter `where: e.data.seconds === N` for N ∈ {60,30,15,10,5} — the "many scenarios → one event, one opt-in" shape (mirrors pit-box's `pitBox.countdown { mark }`), all `WEIGHT.SAFETY` + `queueable:false`. The family carries **two grouped opt-ins** (`StartLightCalloutId = "lights" | "countdown"`, `START_LIGHT_CALLOUT_SETTING_KEYS = { lights: "calloutEnabledStartLights", countdown: "calloutEnabledStartCountdown" }`): the 3 gantry scenarios map to `lights`, the 5 countdown scenarios to `countdown` via `SCENARIO_ID_TO_START_LIGHT_ID`. `registerPitCrew` takes a `getStartLightCalloutEnabled` closure (default `() => true`) placed before the master-gate param, and wraps the scenarios with `wrapWithMaster(wrapCalloutScenario(...))`.
+
+> **Expanded `flag` family (issue #480).** The `flag` family (`flag-alerts.ts`) gained 10 scenarios on top of the #467 colour flags: driver-black (`disqualify`, split out of `black` with its own "Disqualified. Pull off." line; `furled`; `dq-scoring-invalid`), race-progression (`crossed`, `one-lap-to-green`, `green-held`, `ten-to-go`, `five-to-go`), and caution-waving (`yellow-waving`, `caution-waving` — separate, more-urgent lines from the static yellow scenarios, which are unchanged). All ride the existing `flag.*.raised` events with one new per-subject `calloutEnabledFlag*` opt-in each, so they slot into the existing flag closure with no new `registerPitCrew` param.
 
 > **Snapshot-driven variation (issue #558).** A family whose lone scenario reads a runtime resolver in its `where:` predicate or conditional `if` steps cannot build that scenario at module-load time. Such a family exports a `buildXxxScenario(getSnapshot)` builder (plus a `registerXxxVars(engine, getSnapshot)` that registers its `engine.defineVar` clip resolvers) **instead of** a static `<FAMILY>_ALERTS` array — the lone scenario is materialized at wiring time inside `registerPitCrew()`. It still exports `<FAMILY>_SCENARIO_IDS: readonly string[]` and `<FAMILY>_POOL_NAMES: readonly string[]` (the latter `[]` when the readout is composed from `engine.defineVar` resolvers / static `clipPath` steps rather than pools), and still uses the small constructor helper for the shared `family:` / `weight:` / `bus:` defaults. Reference files: `session-start.ts` and `lap-time.ts`.
 

@@ -120,6 +120,7 @@ import {
   type SessionStartCalloutId,
 } from "./session-start.js";
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
+import { START_LIGHT_ALERTS } from "./start-lights.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -275,7 +276,18 @@ export type FlagCalloutId =
   | "black"
   | "checkered"
   | "debris"
-  | "meatball";
+  | "meatball"
+  // Issue #480 — missing-session-flag callouts.
+  | "disqualify"
+  | "furled"
+  | "dq-scoring-invalid"
+  | "crossed"
+  | "one-lap-to-green"
+  | "green-held"
+  | "ten-to-go"
+  | "five-to-go"
+  | "yellow-waving"
+  | "caution-waving";
 
 /**
  * Canonical mapping from `FlagCalloutId` to its plugin-global setting
@@ -294,6 +306,16 @@ export const FLAG_CALLOUT_SETTING_KEYS: Record<FlagCalloutId, string> = {
   checkered: "calloutEnabledFlagCheckered",
   debris: "calloutEnabledFlagDebris",
   meatball: "calloutEnabledFlagMeatball",
+  disqualify: "calloutEnabledFlagDisqualify",
+  furled: "calloutEnabledFlagFurled",
+  "dq-scoring-invalid": "calloutEnabledFlagDqScoringInvalid",
+  crossed: "calloutEnabledFlagCrossed",
+  "one-lap-to-green": "calloutEnabledFlagOneLapToGreen",
+  "green-held": "calloutEnabledFlagGreenHeld",
+  "ten-to-go": "calloutEnabledFlagTenToGo",
+  "five-to-go": "calloutEnabledFlagFiveToGo",
+  "yellow-waving": "calloutEnabledFlagYellowWaving",
+  "caution-waving": "calloutEnabledFlagCautionWaving",
 };
 
 const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
@@ -308,6 +330,46 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-checkered": "checkered",
   "pit-crew.flag-debris": "debris",
   "pit-crew.flag-meatball": "meatball",
+  "pit-crew.flag-disqualify": "disqualify",
+  "pit-crew.flag-furled": "furled",
+  "pit-crew.flag-dq-scoring-invalid": "dq-scoring-invalid",
+  "pit-crew.flag-crossed": "crossed",
+  "pit-crew.flag-one-lap-to-green": "one-lap-to-green",
+  "pit-crew.flag-green-held": "green-held",
+  "pit-crew.flag-ten-to-go": "ten-to-go",
+  "pit-crew.flag-five-to-go": "five-to-go",
+  "pit-crew.flag-yellow-waving": "yellow-waving",
+  "pit-crew.flag-caution-waving": "caution-waving",
+};
+
+/**
+ * Stable identifier for each user-toggleable start-light callout (issue #480).
+ * Two grouped subjects (mirrors the pit-box "many scenarios → one subject"
+ * precedent): `lights` covers the three gantry lines (ready / set / go) and
+ * `countdown` covers the five numeric pre-start marks. The user gets two
+ * checkboxes for the whole family rather than eight.
+ */
+export type StartLightCalloutId = "lights" | "countdown";
+
+/**
+ * Canonical mapping from `StartLightCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key strings.
+ */
+export const START_LIGHT_CALLOUT_SETTING_KEYS: Record<StartLightCalloutId, string> = {
+  lights: "calloutEnabledStartLights",
+  countdown: "calloutEnabledStartCountdown",
+};
+
+const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
+  "pit-crew.start-light-ready": "lights",
+  "pit-crew.start-light-set": "lights",
+  "pit-crew.start-light-go": "lights",
+  "pit-crew.start-light-countdown-60": "countdown",
+  "pit-crew.start-light-countdown-30": "countdown",
+  "pit-crew.start-light-countdown-15": "countdown",
+  "pit-crew.start-light-countdown-10": "countdown",
+  "pit-crew.start-light-countdown-5": "countdown",
 };
 
 /**
@@ -702,6 +764,15 @@ export function registerPitCrew(
   // buffer. Plugins wire this to `getNearestCarGapMeters()` from
   // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
   getSpotterNearestCarGapMeters: () => number | null = () => null,
+  // User opt-in for the start-light callouts (issue #480). Two grouped
+  // subjects — `lights` (the three gantry lines) and `countdown` (the five
+  // numeric marks) — mirroring the pit-box "many scenarios → one subject"
+  // shape. Same gate-at-event-arrival shape as the other callout families:
+  // read live so a toggle off mid-session takes effect on the next event
+  // without cutting an in-flight clip. Placed before the master gate so the
+  // master stays the last per-callout opt-in. Default `() => true` preserves
+  // legacy behavior for tests that don't supply a closure.
+  getStartLightCalloutEnabled: (id: StartLightCalloutId) => boolean = () => true,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -784,6 +855,26 @@ export function registerPitCrew(
   for (const s of FLAG_ALERTS) {
     engine.defineScenario(
       wrapWithMaster(wrapCalloutScenario(s, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
+    );
+  }
+
+  // Start-light family (issue #480). The `start-light-*` pools are already
+  // registered en masse above via `Object.entries(POOLS)` (same as the flag
+  // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
+  // exists for the catalog tests to register pools in isolation. Two grouped
+  // opt-ins (`lights`, `countdown`) gate the eight scenarios via
+  // `SCENARIO_ID_TO_START_LIGHT_ID`.
+  for (const s of START_LIGHT_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          s,
+          SCENARIO_ID_TO_START_LIGHT_ID,
+          getStartLightCalloutEnabled,
+          "start-light callout",
+          logger,
+        ),
+      ),
     );
   }
 

@@ -123,7 +123,7 @@ export { calculateRacePositions, classPositionFromOrder } from "./position-utils
 export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFlags } from "./flag-utils.js";
 
 // Telemetry feature detection (car-capability + session-phase helpers)
-export { hasPitLimiter, hasVisor, hasWipers, isPreGreen } from "./telemetry-features.js";
+export { hasPitLimiter, hasVisor, hasWipers, isLiveOnTrack, isPreGreen } from "./telemetry-features.js";
 
 // Session info utilities
 export {

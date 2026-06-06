@@ -11,10 +11,17 @@ import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockSessionType = vi.fn(() => "Race");
+const mockStandingStart = vi.fn(() => false);
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getStandingStart: () => mockStandingStart(),
 }));
+
+// Default telemetry attached to published events: driver live in the car. The
+// race-formation flags gate on `isLiveOnTrack` (issue #480 follow-up), so events
+// need in-car telemetry to fire; out-of-car tests pass an override.
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -27,7 +34,7 @@ const mockLogger = {
 };
 
 function createMockBus(): IEventBus & {
-  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry?: unknown) => void;
 } {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
@@ -56,11 +63,11 @@ function createMockBus(): IEventBus & {
 
       for (const handler of Array.from(set)) handler(event);
     },
-    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry: unknown = IN_CAR) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -140,6 +147,17 @@ const FLAG_CLIP_NAMES = [
   "debris-02",
   "debris-03",
   "meatball-01",
+  // Issue #480 — missing-session-flag callouts.
+  "disqualify-01",
+  "furled-01",
+  "dq-scoring-invalid-01",
+  "crossed-01",
+  "one-lap-to-green-01",
+  "green-held-01",
+  "ten-to-go-01",
+  "five-to-go-01",
+  "yellow-waving-01",
+  "caution-waving-01",
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -168,6 +186,7 @@ let activeVoice: string;
 beforeEach(() => {
   activeVoice = "luca";
   mockSessionType.mockReturnValue("Race");
+  mockStandingStart.mockReturnValue(false);
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
@@ -203,8 +222,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 11 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(11);
+  it("defines 21 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(21);
   });
 
   it("exposes a stable list of ids", () => {
@@ -220,6 +239,16 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-checkered",
       "pit-crew.flag-debris",
       "pit-crew.flag-meatball",
+      "pit-crew.flag-disqualify",
+      "pit-crew.flag-furled",
+      "pit-crew.flag-dq-scoring-invalid",
+      "pit-crew.flag-crossed",
+      "pit-crew.flag-one-lap-to-green",
+      "pit-crew.flag-green-held",
+      "pit-crew.flag-ten-to-go",
+      "pit-crew.flag-five-to-go",
+      "pit-crew.flag-yellow-waving",
+      "pit-crew.flag-caution-waving",
     ]);
   });
 
@@ -243,6 +272,16 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.weight).toBe(WEIGHT.CRITICAL);
     expect(meatball.interrupt).toBe(true);
     expect(meatball.family).toBeUndefined();
+  });
+
+  it("furled is queueable (defers behind a busy bus) — and it's the only flag that is", () => {
+    expect(findScenario("pit-crew.flag-furled").queueable).toBe(true);
+
+    for (const s of FLAG_ALERTS) {
+      if (s.id === "pit-crew.flag-furled") continue;
+
+      expect(s.queueable).not.toBe(true);
+    }
   });
 
   it("every scenario uses the per-voice base path", () => {
@@ -289,6 +328,66 @@ describe("FLAG_ALERTS triggers", () => {
       event: "flag.meatball.raised" as const,
       data: {},
       expected: "voice/luca/flags/meatball-01.mp3",
+    },
+    {
+      label: "disqualify",
+      event: "flag.disqualify.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/disqualify-01.mp3",
+    },
+    {
+      label: "furled",
+      event: "flag.furled.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/furled-01.mp3",
+    },
+    {
+      label: "dq-scoring-invalid",
+      event: "flag.dq-scoring-invalid.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/dq-scoring-invalid-01.mp3",
+    },
+    {
+      label: "crossed",
+      event: "flag.crossed.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/crossed-01.mp3",
+    },
+    {
+      label: "one-lap-to-green",
+      event: "flag.one-lap-to-green.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/one-lap-to-green-01.mp3",
+    },
+    {
+      label: "green-held",
+      event: "flag.green-held.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/green-held-01.mp3",
+    },
+    {
+      label: "ten-to-go",
+      event: "flag.ten-to-go.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/ten-to-go-01.mp3",
+    },
+    {
+      label: "five-to-go",
+      event: "flag.five-to-go.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/five-to-go-01.mp3",
+    },
+    {
+      label: "yellow-waving",
+      event: "flag.yellow-waving.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/yellow-waving-01.mp3",
+    },
+    {
+      label: "caution-waving",
+      event: "flag.caution-waving.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/caution-waving-01.mp3",
     },
   ])("$label fires the matching clip", ({ event, data, expected }) => {
     bus.publishEvent(event, data as never);
@@ -494,6 +593,16 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-checkered-practice",
       "flag-checkered-qualifying",
       "flag-checkered-race",
+      "flag-disqualify",
+      "flag-furled",
+      "flag-dq-scoring-invalid",
+      "flag-crossed",
+      "flag-one-lap-to-green",
+      "flag-green-held",
+      "flag-ten-to-go",
+      "flag-five-to-go",
+      "flag-yellow-waving",
+      "flag-caution-waving",
     ]);
   });
 
@@ -502,5 +611,68 @@ describe("FLAG_POOL_NAMES", () => {
       expect(POOLS[name]).toBeDefined();
       expect(POOLS[name].length).toBeGreaterThan(0);
     }
+  });
+});
+
+// Issue #480 follow-up: iRacing raises the race-grid bits (e.g. OneLapToGreen)
+// while forming the race grid at the END of a qualifying session, so the
+// race-formation / progression callouts fired "One pace lap to go" at the
+// qualifying checkered. They must gate on the race session.
+describe("FLAG_ALERTS race-only gating", () => {
+  const RACE_ONLY = [
+    { event: "flag.crossed.raised", clip: "voice/luca/flags/crossed-01.mp3" },
+    { event: "flag.one-lap-to-green.raised", clip: "voice/luca/flags/one-lap-to-green-01.mp3" },
+    { event: "flag.green-held.raised", clip: "voice/luca/flags/green-held-01.mp3" },
+    { event: "flag.ten-to-go.raised", clip: "voice/luca/flags/ten-to-go-01.mp3" },
+    { event: "flag.five-to-go.raised", clip: "voice/luca/flags/five-to-go-01.mp3" },
+  ] as const;
+
+  it.each(RACE_ONLY)("$event is suppressed in qualifying", ({ event }) => {
+    mockSessionType.mockReturnValue("Qualify");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(RACE_ONLY)("$event fires in a race", ({ event, clip }) => {
+    mockSessionType.mockReturnValue("Race");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip]);
+  });
+
+  it.each(RACE_ONLY)("$event is suppressed in practice", ({ event }) => {
+    mockSessionType.mockReturnValue("Practice");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(RACE_ONLY)("$event is suppressed when out of the car (replay / grid spectating)", ({ event }) => {
+    bus.publishEvent(event, {} as never, { IsOnTrack: false, IsReplayPlaying: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("one-lap-to-green is suppressed during a standing-start pre-green grid", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 2 = Warmup → isPreGreen true.
+    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 2 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("one-lap-to-green still fires at a standing-start race RESTART (Racing state)", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 4 = Racing → not pre-green, so a rolling restart still calls it.
+    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 4 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/one-lap-to-green-01.mp3"]);
   });
 });

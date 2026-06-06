@@ -58,6 +58,43 @@ export type TranslatorState = {
   flagStateInitialized: boolean;
   activeFlags: Set<string>;
   lastYellowScope: "local" | "full" | null;
+  /**
+   * Tracks whether ANY yellow-ish bit (`Yellow | YellowWaving | Caution |
+   * CautionWaving`) was set last tick (issue #480). Drives the
+   * `flag.yellow.cleared` emission so it fires exactly once when the field
+   * goes fully green — and crucially does NOT mis-fire when a static yellow
+   * escalates to its waving variant (which removes the `"yellow"` static key
+   * from `activeFlags` but does not actually clear the caution).
+   */
+  lastAnyYellow: boolean;
+
+  // ── Start lights (issue #480) ───────────────────────────────────────────
+  /**
+   * Whether the start-light diff has seeded its baselines on the first tick
+   * (mirrors `flagStateInitialized`). Seeds `lastStartLightBits` without
+   * firing so connecting mid-grid doesn't synthesize start-light callouts.
+   */
+  startLightInitialized: boolean;
+  /**
+   * Previous-tick value of the three gantry bits (`StartReady | StartSet |
+   * StartGo`) masked out of `SessionFlags`. Drives the rising-edge gantry
+   * emissions.
+   */
+  lastStartLightBits: number;
+  /**
+   * Highest eligible countdown threshold for the current standing pre-start
+   * window — seeded from `SessionTimeRemain` on the first in-window tick.
+   * `null` when not in a window. Only thresholds `<= ceiling` are eligible to
+   * fire, so a window that starts mid-countdown (e.g. AI-compressed to ~4 s)
+   * never speaks a number it already missed.
+   */
+  startCountdownCeiling: number | null;
+  /**
+   * Countdown thresholds already fired (or marked fired) during the current
+   * standing pre-start window. Cleared on window exit so a re-grid counts
+   * down again.
+   */
+  startCountdownFired: Set<number>;
 
   // ── Toggles (pit service, car control) ──────────────────────────────────
   toggleStateInitialized: boolean;
@@ -384,6 +421,12 @@ export function createInitialState(): TranslatorState {
     flagStateInitialized: false,
     activeFlags: new Set(),
     lastYellowScope: null,
+    lastAnyYellow: false,
+
+    startLightInitialized: false,
+    lastStartLightBits: 0,
+    startCountdownCeiling: null,
+    startCountdownFired: new Set(),
 
     toggleStateInitialized: false,
     lastPitSvFlags: 0,

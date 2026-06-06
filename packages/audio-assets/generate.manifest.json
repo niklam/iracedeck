@@ -8656,6 +8656,150 @@
       "textPreview": "Hold your line.",
       "generatedAt": "2026-06-06T09:22:22.750Z",
       "requestId": "C1Ll7MZcZ77MmBVrj7Vh"
+    },
+    "voice/default/flags/crossed-01.mp3": {
+      "hash": "26391c0ea51076c8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Crossed flags.",
+      "generatedAt": "2026-06-06T15:00:04.375Z",
+      "requestId": "LInRGNPJFT0073G91uVN"
+    },
+    "voice/default/flags/one-lap-to-green-01.mp3": {
+      "hash": "479420d40fe91d17",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "One pace lap to go.",
+      "generatedAt": "2026-06-06T15:00:04.563Z",
+      "requestId": "ysbML7m6lkUcYsrGVKdt"
+    },
+    "voice/default/flags/green-held-01.mp3": {
+      "hash": "ac90f7002f4c48e3",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Green's coming. <break time=\"0.3s\" /> Get ready.",
+      "generatedAt": "2026-06-06T15:00:04.753Z",
+      "requestId": "xYZgJHzmUYNQos7s5j0e"
+    },
+    "voice/default/flags/ten-to-go-01.mp3": {
+      "hash": "20a30d45c2b0bf80",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ten to go!",
+      "generatedAt": "2026-06-06T15:00:04.910Z",
+      "requestId": "saLwGp08RW5sgX77waws"
+    },
+    "voice/default/flags/five-to-go-01.mp3": {
+      "hash": "4c54f359803d7649",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Five to go.",
+      "generatedAt": "2026-06-06T15:00:05.079Z",
+      "requestId": "SfjJ1ns1HFUmujpyMSZw"
+    },
+    "voice/default/flags/disqualify-01.mp3": {
+      "hash": "245c98f44de4727e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Disqualified. <break time=\"0.3s\" /> Pull off.",
+      "generatedAt": "2026-06-06T15:00:05.277Z",
+      "requestId": "Lc5rTctQEANhMpzpxeGS"
+    },
+    "voice/default/flags/furled-01.mp3": {
+      "hash": "1189f7c170c68e5c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We got the furled black flag. <break time=\"0.3s\" /> We're going to need to give…",
+      "generatedAt": "2026-06-06T16:37:24.981Z",
+      "requestId": "zCJnmREqiFXyzpcMvCO2"
+    },
+    "voice/default/flags/dq-scoring-invalid-01.mp3": {
+      "hash": "f0cc16f9f5cd5453",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "D-Q. <break time=\"0.3s\" /> Scoring's off.",
+      "generatedAt": "2026-06-06T15:00:05.652Z",
+      "requestId": "6sHMzssPqknEN9c8fC1D"
+    },
+    "voice/default/flags/yellow-waving-01.mp3": {
+      "hash": "1c29c55af582a39a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Local yellow waving. <break time=\"0.3s\" /> Slow, hazard ahead!",
+      "generatedAt": "2026-06-06T15:00:05.917Z",
+      "requestId": "Dm07ndR8ElZf8CaOE9f7"
+    },
+    "voice/default/flags/caution-waving-01.mp3": {
+      "hash": "6cfc4711cf7f384c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Caution coming out!",
+      "generatedAt": "2026-06-06T15:00:06.106Z",
+      "requestId": "7CO2HhvdwX2M1cdmwQ1u"
+    },
+    "voice/default/start-lights/start-ready-01.mp3": {
+      "hash": "87918ae0d04dc23d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We're ready. Focus.",
+      "generatedAt": "2026-06-06T16:23:52.240Z",
+      "requestId": "GPIjA25khqE6pTcF6beK"
+    },
+    "voice/default/start-lights/start-set-01.mp3": {
+      "hash": "82433268e2734240",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Lights are on.",
+      "generatedAt": "2026-06-06T16:18:12.656Z",
+      "requestId": "vGTSO7359dG7Zq02bu49"
+    },
+    "voice/default/start-lights/start-go-01.mp3": {
+      "hash": "7c704cdd1efe6a2f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Go, go, go!",
+      "generatedAt": "2026-06-06T16:09:29.702Z",
+      "requestId": "8hwbF5N20vC03WHxZqGg"
+    },
+    "voice/default/start-lights/countdown-60-01.mp3": {
+      "hash": "0d2b4d6b003ccf33",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Sixty seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:33.774Z",
+      "requestId": "q0ThsWSQnZdy3mvBiojy"
+    },
+    "voice/default/start-lights/countdown-30-01.mp3": {
+      "hash": "a19827fef2be0025",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Thirty seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:33.968Z",
+      "requestId": "zgnJTXG8aHMBiww8GwUm"
+    },
+    "voice/default/start-lights/countdown-15-01.mp3": {
+      "hash": "5e7d4e215ba85218",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Fifteen seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.135Z",
+      "requestId": "cj3JmiAsaxoHT57vCmSy"
+    },
+    "voice/default/start-lights/countdown-10-01.mp3": {
+      "hash": "fa6b98d544ca6439",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ten seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.308Z",
+      "requestId": "DpSDEXDIopuIgpQxTbTK"
+    },
+    "voice/default/start-lights/countdown-5-01.mp3": {
+      "hash": "67a3e27c698b54e8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Five seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.482Z",
+      "requestId": "u2KQcVQ5yv4Vv337kUnG"
     }
   }
 }

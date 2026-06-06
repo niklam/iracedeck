@@ -81,6 +81,35 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "flag-checkered-qualifying": ["voice/{voice}/flags/checkered-qualifying-01.mp3"],
   "flag-checkered-race": ["voice/{voice}/flags/checkered-race-01.mp3"],
 
+  // Missing-session-flag callout pools (issue #480). Driver-black splits
+  // (disqualify / furled / dq-scoring-invalid), race-progression flags
+  // (crossed / one-lap-to-green / green-held / ten-to-go / five-to-go), and
+  // the caution-waving variants (yellow-waving / caution-waving). All
+  // single-clip today; auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
+  "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
+  "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
+  "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
+  "flag-crossed": ["voice/{voice}/flags/crossed-01.mp3"],
+  "flag-one-lap-to-green": ["voice/{voice}/flags/one-lap-to-green-01.mp3"],
+  "flag-green-held": ["voice/{voice}/flags/green-held-01.mp3"],
+  "flag-ten-to-go": ["voice/{voice}/flags/ten-to-go-01.mp3"],
+  "flag-five-to-go": ["voice/{voice}/flags/five-to-go-01.mp3"],
+  "flag-yellow-waving": ["voice/{voice}/flags/yellow-waving-01.mp3"],
+  "flag-caution-waving": ["voice/{voice}/flags/caution-waving-01.mp3"],
+
+  // Start-light family pools (issue #480). Three gantry lines plus the five
+  // numeric countdown marks. Auto-picked for the start-light catalog by the
+  // `start-light-` prefix (see `start-lights.ts` `START_LIGHT_POOL_NAMES`).
+  // Single-clip today; voice-scoped via `{voice}`.
+  "start-light-ready": ["voice/{voice}/start-lights/start-ready-01.mp3"],
+  "start-light-set": ["voice/{voice}/start-lights/start-set-01.mp3"],
+  "start-light-go": ["voice/{voice}/start-lights/start-go-01.mp3"],
+  "start-light-countdown-60": ["voice/{voice}/start-lights/countdown-60-01.mp3"],
+  "start-light-countdown-30": ["voice/{voice}/start-lights/countdown-30-01.mp3"],
+  "start-light-countdown-15": ["voice/{voice}/start-lights/countdown-15-01.mp3"],
+  "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
+  "start-light-countdown-5": ["voice/{voice}/start-lights/countdown-5-01.mp3"],
+
   // Damage callout pool (issue #489). Single pool today; multi-clip rotation
   // works the same way as the flag pools above.
   "damage-repair-needed": [

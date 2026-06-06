@@ -12,7 +12,12 @@
  * the array drives display order in the UI.
  */
 import type { QualifyingInvalidationSnapshot } from "@iracedeck/audio-scenarios/pit-crew";
-import { type RaceStartSnapshot, type SimEventName, TrackWetness } from "@iracedeck/event-bus";
+import {
+  type RaceStartSnapshot,
+  type SimEventName,
+  type StartCountdownSeconds,
+  TrackWetness,
+} from "@iracedeck/event-bus";
 import { PitSvStatus } from "@iracedeck/iracing-sdk";
 
 export type ScenarioShortcut = {
@@ -59,6 +64,21 @@ function tireSet(name: string, label: string, tires: readonly string[]): Scenari
 
 function flag(label: string, event: SimEventName, data: Record<string, unknown> = {}): ScenarioShortcut {
   return { id: `flag-${label.toLowerCase().replace(/\s+/g, "-")}`, category: "Flags", label, event, data };
+}
+
+function startLight(id: string, label: string, event: SimEventName, description?: string): ScenarioShortcut {
+  return { id: `start-${id}`, category: "Start", label, description, event, data: {} };
+}
+
+function startCountdown(seconds: StartCountdownSeconds): ScenarioShortcut {
+  return {
+    id: `start-countdown-${seconds}`,
+    category: "Start",
+    label: `Countdown ${seconds}`,
+    description: `Start countdown number — ${seconds} seconds to go`,
+    event: "startLight.countdown.raised",
+    data: { seconds },
+  };
 }
 
 function radar(label: string, from: string, to: string): ScenarioShortcut {
@@ -277,6 +297,30 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Red", "flag.red.raised"),
   flag("Debris", "flag.debris.raised"),
   flag("Meatball", "flag.meatball.raised"),
+  flag("Crossed", "flag.crossed.raised"),
+  flag("One Lap to Green", "flag.one-lap-to-green.raised"),
+  flag("Green Held", "flag.green-held.raised"),
+  flag("Ten to Go", "flag.ten-to-go.raised"),
+  flag("Five to Go", "flag.five-to-go.raised"),
+  flag("Disqualify", "flag.disqualify.raised"),
+  flag("Furled", "flag.furled.raised"),
+  flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
+  flag("Yellow Waving", "flag.yellow-waving.raised"),
+  flag("Caution Waving", "flag.caution-waving.raised"),
+
+  // ── Start (issue #480) ──
+  // Start-gantry gantry lines + the per-number start countdown. The gantry
+  // lines carry no payload; the countdown fires `startLight.countdown.raised`
+  // once per number with the chosen `seconds` (60/30/15/10/5). Fire two
+  // countdown buttons in quick succession to confirm same-family preempt.
+  startLight("start-ready", "Ready", "startLight.start-ready.raised", "Standing-start gantry: Ready"),
+  startLight("start-set", "Set", "startLight.start-set.raised", "Start gantry: Set"),
+  startLight("start-go", "Go", "startLight.start-go.raised", "Start gantry: Go"),
+  startCountdown(60),
+  startCountdown(30),
+  startCountdown(15),
+  startCountdown(10),
+  startCountdown(5),
 
   // ── Damage ──
   // Bypasses the rising-edge + 3000 ms debounce in

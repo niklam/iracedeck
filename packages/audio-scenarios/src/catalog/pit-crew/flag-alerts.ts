@@ -33,12 +33,35 @@
  * the right pool at fire time.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf } from "@iracedeck/event-bus";
-import { getSessionType } from "@iracedeck/sim-events-iracing";
+import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { POOLS } from "./pools.js";
+import { isRaceSession } from "./race-start.js";
+
+// Race-progression / formation flags (one-lap-to-green, green-held, ten-to-go,
+// five-to-go, crossed) are race-only concepts. iRacing raises the grid bits
+// (e.g. OneLapToGreen) while forming the race grid at the END of a qualifying
+// session, so without this gate "one pace lap to go" fired at the qualifying
+// checkered (issue #480 follow-up). Live-read at fire time, mirroring the
+// session branching the green/white/checkered scenarios already use.
+const raceOnly = () => isRaceSession(getSessionType());
+
+// These callouts only make sense to a driver IN the car and live, so also gate
+// on `isLiveOnTrack` — silent while out of the car at the grid / in a replay
+// (issue #480 follow-up). Read from the event's telemetry at fire time.
+const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
+  raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null);
+
+// Rolling-only formation cues. A standing start has no pace lap, yet iRacing
+// sets `OneLapToGreen` throughout the standing grid — so suppress these during a
+// standing-start pre-green phase (the start-light family owns that lead-in).
+// Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
+const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
+  liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
 
 function flagSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
@@ -164,6 +187,72 @@ const MEATBALL: Scenario = {
   sequence: flagSequence(["pool:flag-meatball"]),
 };
 
+// Driver-black splits (issue #480). `Disqualify` is split out of the generic
+// `black` callout — "Disqualified. Pull off." carries different urgency than a
+// routine black flag. `Furled` and `DqScoringInvalid` are new bits the engineer
+// previously ignored. All share `family: "flag"` + `WEIGHT.SAFETY` like the
+// other flags.
+const DISQUALIFY: Scenario = {
+  ...flagScenario("disqualify", ["pool:flag-disqualify"]),
+  when: { event: "flag.disqualify.raised" },
+};
+
+// `queueable: true` so a furled-black-flag call deferred behind another
+// safety-level line (another flag / spotter focus) replays when the bus next
+// idles instead of being dropped — it carries a give-the-time-back instruction
+// the driver needs to hear, and the furled state is sustained so a slightly
+// late call is still correct.
+const FURLED: Scenario = {
+  ...flagScenario("furled", ["pool:flag-furled"]),
+  queueable: true,
+  when: { event: "flag.furled.raised" },
+};
+
+const DQ_SCORING_INVALID: Scenario = {
+  ...flagScenario("dq-scoring-invalid", ["pool:flag-dq-scoring-invalid"]),
+  when: { event: "flag.dq-scoring-invalid.raised" },
+};
+
+// Race-progression flags (issue #480) — crossed, one-lap-to-green, green-held,
+// ten-to-go, five-to-go.
+const CROSSED: Scenario = {
+  ...flagScenario("crossed", ["pool:flag-crossed"]),
+  when: { event: "flag.crossed.raised", where: liveRaceCar },
+};
+
+const ONE_LAP_TO_GREEN: Scenario = {
+  ...flagScenario("one-lap-to-green", ["pool:flag-one-lap-to-green"]),
+  when: { event: "flag.one-lap-to-green.raised", where: rollingFormationOnly },
+};
+
+const GREEN_HELD: Scenario = {
+  ...flagScenario("green-held", ["pool:flag-green-held"]),
+  when: { event: "flag.green-held.raised", where: rollingFormationOnly },
+};
+
+const TEN_TO_GO: Scenario = {
+  ...flagScenario("ten-to-go", ["pool:flag-ten-to-go"]),
+  when: { event: "flag.ten-to-go.raised", where: liveRaceCar },
+};
+
+const FIVE_TO_GO: Scenario = {
+  ...flagScenario("five-to-go", ["pool:flag-five-to-go"]),
+  when: { event: "flag.five-to-go.raised", where: liveRaceCar },
+};
+
+// Caution-waving variants (issue #480) — separate, more-urgent callouts than the
+// base static yellows. The translator's reworked yellow detection guarantees a
+// base yellow and its waving variant never double-fire.
+const YELLOW_WAVING: Scenario = {
+  ...flagScenario("yellow-waving", ["pool:flag-yellow-waving"]),
+  when: { event: "flag.yellow-waving.raised" },
+};
+
+const CAUTION_WAVING: Scenario = {
+  ...flagScenario("caution-waving", ["pool:flag-caution-waving"]),
+  when: { event: "flag.caution-waving.raised" },
+};
+
 export const FLAG_ALERTS: readonly Scenario[] = [
   YELLOW_LOCAL,
   YELLOW_FULL,
@@ -176,6 +265,16 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   CHECKERED,
   DEBRIS,
   MEATBALL,
+  DISQUALIFY,
+  FURLED,
+  DQ_SCORING_INVALID,
+  CROSSED,
+  ONE_LAP_TO_GREEN,
+  GREEN_HELD,
+  TEN_TO_GO,
+  FIVE_TO_GO,
+  YELLOW_WAVING,
+  CAUTION_WAVING,
 ];
 
 export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_ALERTS.map((s) => s.id);

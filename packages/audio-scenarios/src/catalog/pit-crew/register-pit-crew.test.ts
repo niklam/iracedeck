@@ -32,9 +32,14 @@ const mockSessionType = vi.fn(() => "Race");
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getStandingStart: () => false,
   getLatestTelemetry: () => null,
   TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
+
+// Race-formation + start-light scenarios gate on `isLiveOnTrack` (issue #480
+// follow-up), so published events carry in-car telemetry by default.
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -47,7 +52,7 @@ const mockLogger = {
 };
 
 function createMockBus(): IEventBus & {
-  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry?: unknown) => void;
 } {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
@@ -76,11 +81,11 @@ function createMockBus(): IEventBus & {
 
       for (const handler of Array.from(set)) handler(event);
     },
-    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry: unknown = IN_CAR) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -160,6 +165,17 @@ const FLAG_CLIP_NAMES = [
   "debris-02",
   "debris-03",
   "meatball-01",
+  // Issue #480 — missing-session-flag callouts.
+  "disqualify-01",
+  "furled-01",
+  "dq-scoring-invalid-01",
+  "crossed-01",
+  "one-lap-to-green-01",
+  "green-held-01",
+  "ten-to-go-01",
+  "five-to-go-01",
+  "yellow-waving-01",
+  "caution-waving-01",
 ] as const;
 
 // Acknowledgment pool clips referenced from `pools.ts` — must be present
@@ -247,6 +263,19 @@ const PIT_BOX_CLIP_PATHS = [
   `voice/${VOICE}/pit-box/pit-now-01.mp3`,
 ] as const;
 
+// Start-light clips referenced from `start-lights.ts` (issue #480). Three
+// gantry lines plus the five countdown marks.
+const START_LIGHT_CLIP_PATHS = [
+  `voice/${VOICE}/start-lights/start-ready-01.mp3`,
+  `voice/${VOICE}/start-lights/start-set-01.mp3`,
+  `voice/${VOICE}/start-lights/start-go-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-60-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-30-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-15-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-10-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-5-01.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -258,6 +287,7 @@ const manifest: AudioAssetsManifest = {
     ...DAMAGE_CLIP_PATHS,
     ...INCIDENT_CLIP_PATHS,
     ...PIT_BOX_CLIP_PATHS,
+    ...START_LIGHT_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -285,6 +315,17 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   "checkered",
   "debris",
   "meatball",
+  // Issue #480 additions.
+  "disqualify",
+  "furled",
+  "dq-scoring-invalid",
+  "crossed",
+  "one-lap-to-green",
+  "green-held",
+  "ten-to-go",
+  "five-to-go",
+  "yellow-waving",
+  "caution-waving",
 ];
 
 function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
@@ -357,6 +398,7 @@ beforeEach(() => {
     undefined, // getSpotterTrackDirection (issue #651)
     undefined, // getSpotterStillThereIntervalMs (issue #651)
     undefined, // getSpotterNearestCarGapMeters (issue #651)
+    () => true, // getStartLightCalloutEnabled (issue #480)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
   );
@@ -444,6 +486,69 @@ const FLAG_FIRES: ReadonlyArray<{
     event: "flag.meatball.raised",
     data: {} as SimEventMap["flag.meatball.raised"]["data"],
     expectedClipFragment: "meatball-",
+  },
+  // Issue #480 additions — fire with the default in-car / Race / non-standing
+  // setup (beforeEach), so the race-formation gates pass and each maps to its
+  // own per-callout opt-in via SCENARIO_ID_TO_FLAG_ID.
+  {
+    id: "disqualify",
+    event: "flag.disqualify.raised",
+    data: {} as SimEventMap["flag.disqualify.raised"]["data"],
+    expectedClipFragment: "disqualify-",
+  },
+  {
+    id: "furled",
+    event: "flag.furled.raised",
+    data: {} as SimEventMap["flag.furled.raised"]["data"],
+    expectedClipFragment: "furled-",
+  },
+  {
+    id: "dq-scoring-invalid",
+    event: "flag.dq-scoring-invalid.raised",
+    data: {} as SimEventMap["flag.dq-scoring-invalid.raised"]["data"],
+    expectedClipFragment: "dq-scoring-invalid-",
+  },
+  {
+    id: "crossed",
+    event: "flag.crossed.raised",
+    data: {} as SimEventMap["flag.crossed.raised"]["data"],
+    expectedClipFragment: "crossed-",
+  },
+  {
+    id: "one-lap-to-green",
+    event: "flag.one-lap-to-green.raised",
+    data: {} as SimEventMap["flag.one-lap-to-green.raised"]["data"],
+    expectedClipFragment: "one-lap-to-green-",
+  },
+  {
+    id: "green-held",
+    event: "flag.green-held.raised",
+    data: {} as SimEventMap["flag.green-held.raised"]["data"],
+    expectedClipFragment: "green-held-",
+  },
+  {
+    id: "ten-to-go",
+    event: "flag.ten-to-go.raised",
+    data: {} as SimEventMap["flag.ten-to-go.raised"]["data"],
+    expectedClipFragment: "ten-to-go-",
+  },
+  {
+    id: "five-to-go",
+    event: "flag.five-to-go.raised",
+    data: {} as SimEventMap["flag.five-to-go.raised"]["data"],
+    expectedClipFragment: "five-to-go-",
+  },
+  {
+    id: "yellow-waving",
+    event: "flag.yellow-waving.raised",
+    data: {} as SimEventMap["flag.yellow-waving.raised"]["data"],
+    expectedClipFragment: "yellow-waving-",
+  },
+  {
+    id: "caution-waving",
+    event: "flag.caution-waving.raised",
+    data: {} as SimEventMap["flag.caution-waving.raised"]["data"],
+    expectedClipFragment: "caution-waving-",
   },
 ];
 
@@ -850,6 +955,31 @@ describe("pit-box count-in live gating (issue #600)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("pitBox.countdown", { mark: "pit-now" } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #480: the start-light family is registered by `registerPitCrew` and
+// wrapped by the master gate. These tests confirm the wiring is in place —
+// per-callout / preemption behavior is covered in `start-lights.test.ts`.
+describe("start-light family registration (issue #480)", () => {
+  it.each([
+    { event: "startLight.start-ready.raised", data: {}, fragment: "/start-lights/start-ready-" },
+    { event: "startLight.start-set.raised", data: {}, fragment: "/start-lights/start-set-" },
+    { event: "startLight.start-go.raised", data: {}, fragment: "/start-lights/start-go-" },
+    { event: "startLight.countdown.raised", data: { seconds: 30 }, fragment: "/start-lights/countdown-30-" },
+  ])("$event fires its registered clip", ({ event, data, fragment }) => {
+    bus.publishEvent(event as SimEventName, data as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes(fragment))).toBe(true);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("startLight.start-go.raised", {} as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
