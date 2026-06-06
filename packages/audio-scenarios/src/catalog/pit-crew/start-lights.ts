@@ -23,7 +23,8 @@
  * rather than replayed stale a beat later.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
+import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
+import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
@@ -35,12 +36,15 @@ function startLightSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
 }
 
-// Start lights are a race-only concept. The diff already gates on standing-start
-// + the Warmup/StartReady window, but iRacing can raise the grid bits while
-// forming the race grid at the END of a qualifying session — so gate on the
-// race session too (live-read), consistent with the race-progression flags.
-// Safe for the critical `start-go`: at a real race start the session is "Race".
-const raceOnly = () => isRaceSession(getSessionType());
+// Start lights are a race-only concept spoken to a driver in the car. The diff
+// already gates on standing-start + the Warmup/StartReady window, but iRacing
+// can raise the grid bits while forming the race grid at the END of a qualifying
+// session — so gate on the race session too. Also gate on `isLiveOnTrack` so the
+// gantry/countdown stays silent while the user is out of the car at the grid or
+// in a replay (issue #480 follow-up). Live-read at fire time. Safe for the
+// critical `start-go`: at a real race start the driver is in the car, in "Race".
+const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
+  isRaceSession(getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
 const START_READY: Scenario = {
   id: "pit-crew.start-light-ready",
@@ -50,7 +54,7 @@ const START_READY: Scenario = {
   weight: WEIGHT.SAFETY,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-ready"]),
-  when: { event: "startLight.start-ready.raised", where: raceOnly },
+  when: { event: "startLight.start-ready.raised", where: liveRaceCar },
 };
 
 const START_SET: Scenario = {
@@ -62,7 +66,7 @@ const START_SET: Scenario = {
   interrupt: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-set"]),
-  when: { event: "startLight.start-set.raised", where: raceOnly },
+  when: { event: "startLight.start-set.raised", where: liveRaceCar },
 };
 
 const START_GO: Scenario = {
@@ -74,7 +78,7 @@ const START_GO: Scenario = {
   interrupt: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-go"]),
-  when: { event: "startLight.start-go.raised", where: raceOnly },
+  when: { event: "startLight.start-go.raised", where: liveRaceCar },
 };
 
 /**
@@ -98,7 +102,7 @@ function countdownScenario(seconds: StartCountdownSeconds): Scenario {
     sequence: startLightSequence([`pool:start-light-countdown-${seconds}`]),
     when: {
       event: "startLight.countdown.raised",
-      where: (e) => raceOnly() && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
+      where: (e) => liveRaceCar(e) && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
   };
 }

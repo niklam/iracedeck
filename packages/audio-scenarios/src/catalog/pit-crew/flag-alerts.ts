@@ -33,8 +33,9 @@
  * the right pool at fire time.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf } from "@iracedeck/event-bus";
-import { getSessionType } from "@iracedeck/sim-events-iracing";
+import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
@@ -48,6 +49,19 @@ import { isRaceSession } from "./race-start.js";
 // checkered (issue #480 follow-up). Live-read at fire time, mirroring the
 // session branching the green/white/checkered scenarios already use.
 const raceOnly = () => isRaceSession(getSessionType());
+
+// These callouts only make sense to a driver IN the car and live, so also gate
+// on `isLiveOnTrack` — silent while out of the car at the grid / in a replay
+// (issue #480 follow-up). Read from the event's telemetry at fire time.
+const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
+  raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null);
+
+// Rolling-only formation cues. A standing start has no pace lap, yet iRacing
+// sets `OneLapToGreen` throughout the standing grid — so suppress these during a
+// standing-start pre-green phase (the start-light family owns that lead-in).
+// Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
+const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
+  liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
 
 function flagSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
@@ -197,27 +211,27 @@ const DQ_SCORING_INVALID: Scenario = {
 // ten-to-go, five-to-go.
 const CROSSED: Scenario = {
   ...flagScenario("crossed", ["pool:flag-crossed"]),
-  when: { event: "flag.crossed.raised", where: raceOnly },
+  when: { event: "flag.crossed.raised", where: liveRaceCar },
 };
 
 const ONE_LAP_TO_GREEN: Scenario = {
   ...flagScenario("one-lap-to-green", ["pool:flag-one-lap-to-green"]),
-  when: { event: "flag.one-lap-to-green.raised", where: raceOnly },
+  when: { event: "flag.one-lap-to-green.raised", where: rollingFormationOnly },
 };
 
 const GREEN_HELD: Scenario = {
   ...flagScenario("green-held", ["pool:flag-green-held"]),
-  when: { event: "flag.green-held.raised", where: raceOnly },
+  when: { event: "flag.green-held.raised", where: rollingFormationOnly },
 };
 
 const TEN_TO_GO: Scenario = {
   ...flagScenario("ten-to-go", ["pool:flag-ten-to-go"]),
-  when: { event: "flag.ten-to-go.raised", where: raceOnly },
+  when: { event: "flag.ten-to-go.raised", where: liveRaceCar },
 };
 
 const FIVE_TO_GO: Scenario = {
   ...flagScenario("five-to-go", ["pool:flag-five-to-go"]),
-  when: { event: "flag.five-to-go.raised", where: raceOnly },
+  when: { event: "flag.five-to-go.raised", where: liveRaceCar },
 };
 
 // Caution-waving variants (issue #480) — separate, more-urgent callouts than the

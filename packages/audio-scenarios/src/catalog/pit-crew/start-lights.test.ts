@@ -44,8 +44,13 @@ const mockLogger = {
   withLevel: vi.fn(),
 };
 
+// Default telemetry attached to published events: driver live in the car. The
+// start-light scenarios gate on `isLiveOnTrack` (issue #480 follow-up), so events
+// need in-car telemetry to fire; the out-of-car test passes an override.
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
+
 function createMockBus(): IEventBus & {
-  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry?: unknown) => void;
 } {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
@@ -74,11 +79,11 @@ function createMockBus(): IEventBus & {
 
       for (const handler of Array.from(set)) handler(event);
     },
-    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry: unknown = IN_CAR) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -476,5 +481,18 @@ describe("START_LIGHT_ALERTS race-only gating", () => {
     bus.publishEvent("startLight.countdown.raised", { seconds: 30 });
     flush(audio);
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-30-"))).toBe(true);
+  });
+
+  it("suppresses every start-light callout when out of the car (replay / grid spectating)", () => {
+    mockSessionType.mockReturnValue("Race");
+    const outOfCar = { IsOnTrack: false, IsReplayPlaying: false };
+
+    bus.publishEvent("startLight.start-ready.raised", {}, outOfCar);
+    bus.publishEvent("startLight.start-set.raised", {}, outOfCar);
+    bus.publishEvent("startLight.start-go.raised", {}, outOfCar);
+    bus.publishEvent("startLight.countdown.raised", { seconds: 30 }, outOfCar);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
   });
 });

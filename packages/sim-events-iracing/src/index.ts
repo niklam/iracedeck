@@ -18,6 +18,7 @@ export {
   getReadbackSnapshot,
   getSessionStartConditions,
   getSessionType,
+  getStandingStart,
   getStartingGridPosition,
   getTrackDirection,
   initializeSimEventsIracing,

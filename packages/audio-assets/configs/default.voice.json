@@ -218,7 +218,7 @@
       },
       {
         "name": "furled-01",
-        "text": "Black flag furled.",
+        "text": "We got the furled black flag. We're going to need to give that time gained back.",
         "seed": 3
       },
       {
@@ -240,12 +240,12 @@
     "start-lights": [
       {
         "name": "start-ready-01",
-        "text": "Get ready. <break time=\"0.3s\" /> Lights coming up.",
-        "seed": 3
+        "text": "We're ready. Focus.",
+        "seed": 10
       },
       {
         "name": "start-set-01",
-        "text": "Lights are red. <break time=\"0.3s\" /> Focus.",
+        "text": "Lights are on.",
         "seed": 3
       },
       {
@@ -255,27 +255,27 @@
       },
       {
         "name": "countdown-60-01",
-        "text": "Sixty seconds.",
+        "text": "Sixty seconds to the lights.",
         "seed": 3
       },
       {
         "name": "countdown-30-01",
-        "text": "Thirty seconds.",
+        "text": "Thirty seconds to the lights.",
         "seed": 3
       },
       {
         "name": "countdown-15-01",
-        "text": "Fifteen seconds.",
+        "text": "Fifteen seconds to the lights.",
         "seed": 3
       },
       {
         "name": "countdown-10-01",
-        "text": "Ten seconds.",
+        "text": "Ten seconds to the lights.",
         "seed": 3
       },
       {
         "name": "countdown-5-01",
-        "text": "Five.",
+        "text": "Five seconds to the lights.",
         "seed": 3
       }
     ],

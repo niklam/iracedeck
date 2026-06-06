@@ -69,7 +69,7 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Ten to go** — "Ten to go!" (ten laps remaining).
 - **Five to go** — "Five to go." (five laps remaining).
 
-The four race-formation / progression callouts above (Crossed, One pace lap to go, Green held, Ten/Five to go) fire **in race sessions only** — iRacing raises the grid flags while forming the race grid at the end of a qualifying session, so gating them to the race keeps "One pace lap to go" from firing at the qualifying checkered.
+The four race-formation / progression callouts above (Crossed, One pace lap to go, Green held, Ten/Five to go) fire **in race sessions only, and only while you are in the car** — iRacing raises the grid flags while forming the race grid at the end of a qualifying session, so gating them to the race (and to being on track, not watching a replay or spectating the grid) keeps "One pace lap to go" from firing at the qualifying checkered. "One pace lap to go" / "Green held" are also suppressed during a **standing-start** grid — a standing start has no pace lap, so the Start Lights family below owns that lead-in instead; they still fire at a rolling restart later in the race.
 
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.

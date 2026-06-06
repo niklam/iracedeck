@@ -88,3 +88,20 @@ export function isPreGreen(t: TelemetryData | null | undefined): boolean {
     state === SessionState.ParadeLaps
   );
 }
+
+/**
+ * Whether the driver is genuinely live in their own car on track — i.e. driving,
+ * not watching a replay, spectating, or sitting in the session menu / on the
+ * grid out of the car (where iRacing reports `IsReplayPlaying: true` and/or
+ * `IsOnTrack: false`). Mirrors the translator's `driver.firstOnTrack` gate.
+ *
+ * Race-engineer callouts that only make sense to a driver in the car (start
+ * lights, the race-formation flags) gate on this so they stay silent while the
+ * user is out of the car at the grid / in a replay.
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ * @returns true only when `IsOnTrack` is true and `IsReplayPlaying` is not true
+ */
+export function isLiveOnTrack(t: TelemetryData | null | undefined): boolean {
+  return t?.IsOnTrack === true && t?.IsReplayPlaying !== true;
+}

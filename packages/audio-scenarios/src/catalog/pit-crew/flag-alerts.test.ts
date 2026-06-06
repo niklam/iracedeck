@@ -11,10 +11,17 @@ import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockSessionType = vi.fn(() => "Race");
+const mockStandingStart = vi.fn(() => false);
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getStandingStart: () => mockStandingStart(),
 }));
+
+// Default telemetry attached to published events: driver live in the car. The
+// race-formation flags gate on `isLiveOnTrack` (issue #480 follow-up), so events
+// need in-car telemetry to fire; out-of-car tests pass an override.
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -27,7 +34,7 @@ const mockLogger = {
 };
 
 function createMockBus(): IEventBus & {
-  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry?: unknown) => void;
 } {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
@@ -56,11 +63,11 @@ function createMockBus(): IEventBus & {
 
       for (const handler of Array.from(set)) handler(event);
     },
-    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry: unknown = IN_CAR) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
@@ -179,6 +186,7 @@ let activeVoice: string;
 beforeEach(() => {
   activeVoice = "luca";
   mockSessionType.mockReturnValue("Race");
+  mockStandingStart.mockReturnValue(false);
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
@@ -631,5 +639,30 @@ describe("FLAG_ALERTS race-only gating", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(RACE_ONLY)("$event is suppressed when out of the car (replay / grid spectating)", ({ event }) => {
+    bus.publishEvent(event, {} as never, { IsOnTrack: false, IsReplayPlaying: false });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("one-lap-to-green is suppressed during a standing-start pre-green grid", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 2 = Warmup → isPreGreen true.
+    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 2 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("one-lap-to-green still fires at a standing-start race RESTART (Racing state)", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 4 = Racing → not pre-green, so a rolling restart still calls it.
+    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 4 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/one-lap-to-green-01.mp3"]);
   });
 });

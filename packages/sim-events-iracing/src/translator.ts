@@ -56,6 +56,7 @@ import { diffStartLights } from "./diff/start-lights.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
+import { resolveStandingStart } from "./start-lights.js";
 import { createInitialState, type TranslatorState } from "./state.js";
 import { resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
 
@@ -190,6 +191,20 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * Whether the current race is a standing start (`WeekendInfo.WeekendOptions.
+ * StandingStart === 1`), read from the SDK's session YAML. Resolves to `false`
+ * when the translator isn't initialized or session info is unavailable. Lets the
+ * audio layer suppress the rolling-only "one pace lap to go" / "green's coming"
+ * formation callouts during a standing-start grid (issue #480), where there is
+ * no pace lap. Read from the same session-YAML source as {@link getSessionType}.
+ */
+export function getStandingStart(): boolean {
+  const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
+
+  return resolveStandingStart(sessionInfo);
 }
 
 /**

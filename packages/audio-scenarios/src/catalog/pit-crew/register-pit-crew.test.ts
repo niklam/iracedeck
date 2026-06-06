@@ -32,9 +32,14 @@ const mockSessionType = vi.fn(() => "Race");
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
+  getStandingStart: () => false,
   getLatestTelemetry: () => null,
   TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
+
+// Race-formation + start-light scenarios gate on `isLiveOnTrack` (issue #480
+// follow-up), so published events carry in-car telemetry by default.
+const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -47,7 +52,7 @@ const mockLogger = {
 };
 
 function createMockBus(): IEventBus & {
-  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) => void;
+  publishEvent: <T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry?: unknown) => void;
 } {
   const handlers = new Map<SimEventName, Set<(e: SimEventOf<SimEventName>) => void>>();
 
@@ -76,11 +81,11 @@ function createMockBus(): IEventBus & {
 
       for (const handler of Array.from(set)) handler(event);
     },
-    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"]) {
+    publishEvent<T extends SimEventName>(name: T, data: SimEventMap[T]["data"], telemetry: unknown = IN_CAR) {
       this.publish({
         event: name,
         timestamp: Date.now(),
-        telemetry: null as unknown,
+        telemetry,
         data: data as never,
       } as SimEventOf<SimEventName>);
     },
