@@ -274,6 +274,16 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
+  it("furled is queueable (defers behind a busy bus) — and it's the only flag that is", () => {
+    expect(findScenario("pit-crew.flag-furled").queueable).toBe(true);
+
+    for (const s of FLAG_ALERTS) {
+      if (s.id === "pit-crew.flag-furled") continue;
+
+      expect(s.queueable).not.toBe(true);
+    }
+  });
+
   it("every scenario uses the per-voice base path", () => {
     for (const s of FLAG_ALERTS) {
       expect(s.base).toBe("voice/{voice}");

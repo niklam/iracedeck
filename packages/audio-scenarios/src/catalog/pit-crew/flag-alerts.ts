@@ -197,8 +197,14 @@ const DISQUALIFY: Scenario = {
   when: { event: "flag.disqualify.raised" },
 };
 
+// `queueable: true` so a furled-black-flag call deferred behind another
+// safety-level line (another flag / spotter focus) replays when the bus next
+// idles instead of being dropped — it carries a give-the-time-back instruction
+// the driver needs to hear, and the furled state is sustained so a slightly
+// late call is still correct.
 const FURLED: Scenario = {
   ...flagScenario("furled", ["pool:flag-furled"]),
+  queueable: true,
   when: { event: "flag.furled.raised" },
 };
 

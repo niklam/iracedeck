@@ -8706,12 +8706,12 @@
       "requestId": "Lc5rTctQEANhMpzpxeGS"
     },
     "voice/default/flags/furled-01.mp3": {
-      "hash": "c10c84978e8af71a",
+      "hash": "1189f7c170c68e5c",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "We got the furled black flag. We're going to need to give that time gained back.",
-      "generatedAt": "2026-06-06T16:16:08.299Z",
-      "requestId": "vFiLV2bhOUSqqGZhVG5H"
+      "textPreview": "We got the furled black flag. <break time=\"0.3s\" /> We're going to need to give…",
+      "generatedAt": "2026-06-06T16:37:24.981Z",
+      "requestId": "zCJnmREqiFXyzpcMvCO2"
     },
     "voice/default/flags/dq-scoring-invalid-01.mp3": {
       "hash": "f0cc16f9f5cd5453",
@@ -8762,44 +8762,44 @@
       "requestId": "8hwbF5N20vC03WHxZqGg"
     },
     "voice/default/start-lights/countdown-60-01.mp3": {
-      "hash": "1c381e342434c7cb",
+      "hash": "0d2b4d6b003ccf33",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Sixty seconds to lights.",
-      "generatedAt": "2026-06-06T16:07:50.801Z",
-      "requestId": "7yPZ4nfbYR7ZkMZXOIxq"
+      "textPreview": "Sixty seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:33.774Z",
+      "requestId": "q0ThsWSQnZdy3mvBiojy"
     },
     "voice/default/start-lights/countdown-30-01.mp3": {
-      "hash": "a26cba8a3b2f9d45",
+      "hash": "a19827fef2be0025",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Thirty seconds to lights.",
-      "generatedAt": "2026-06-06T16:07:51.020Z",
-      "requestId": "BBisuaXflVmFVrW0WzL3"
+      "textPreview": "Thirty seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:33.968Z",
+      "requestId": "zgnJTXG8aHMBiww8GwUm"
     },
     "voice/default/start-lights/countdown-15-01.mp3": {
-      "hash": "6454b4016e1a9e0f",
+      "hash": "5e7d4e215ba85218",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Fifteen seconds to lights.",
-      "generatedAt": "2026-06-06T16:07:51.177Z",
-      "requestId": "L1l4e8hRaHmpo7gfCOha"
+      "textPreview": "Fifteen seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.135Z",
+      "requestId": "cj3JmiAsaxoHT57vCmSy"
     },
     "voice/default/start-lights/countdown-10-01.mp3": {
-      "hash": "054fc70a1084f6f8",
+      "hash": "fa6b98d544ca6439",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Ten seconds to lights.",
-      "generatedAt": "2026-06-06T16:07:51.343Z",
-      "requestId": "tIHNEelVJuo6TmDujMxQ"
+      "textPreview": "Ten seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.308Z",
+      "requestId": "DpSDEXDIopuIgpQxTbTK"
     },
     "voice/default/start-lights/countdown-5-01.mp3": {
-      "hash": "ee734b2079037175",
+      "hash": "67a3e27c698b54e8",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Five seconds to lights.",
-      "generatedAt": "2026-06-06T16:07:51.500Z",
-      "requestId": "g5xWpqld2vm1clCezuuZ"
+      "textPreview": "Five seconds to the lights.",
+      "generatedAt": "2026-06-06T16:26:34.482Z",
+      "requestId": "u2KQcVQ5yv4Vv337kUnG"
     }
   }
 }

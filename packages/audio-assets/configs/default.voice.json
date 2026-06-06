@@ -218,8 +218,8 @@
       },
       {
         "name": "furled-01",
-        "text": "We got the furled black flag. We're going to need to give that time gained back.",
-        "seed": 3
+        "text": "We got the furled black flag. <break time=\"0.3s\" /> We're going to need to give that time back.",
+        "seed": 5
       },
       {
         "name": "dq-scoring-invalid-01",
