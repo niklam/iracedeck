@@ -11,7 +11,7 @@ import {
   registerSpotterEngine,
   SPOTTER_CALL_SCENARIO_ID,
   SPOTTER_FOCUS_OWNER,
-  SPOTTER_STILL_THERE_INTERVAL_MS,
+  SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
 } from "./spotter-engine.js";
 
@@ -147,6 +147,7 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getMasterEnabled: () => true,
     getCarsEnabled: () => true,
     getStillThereEnabled: () => true,
+    getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
     getTrackDirection: () => trackDirection,
     logger: mockLogger as never,
     ...overrides,
@@ -322,30 +323,14 @@ describe("final clear", () => {
     registerSpotterEngine(bus, deps);
   });
 
-  it("non-clear → clear plays a clip from the clear pool and releases focus", () => {
+  it("non-clear → clear plays the clear clip and releases focus", () => {
     const releaseSpy = vi.spyOn(getScenarioEngine(), "releaseFocus");
     bus.publishRadar("left");
 
     bus.publishRadar("clear", "left");
 
-    expect(lastVoicePath()).toMatch(/spotter\/clear(-clear)?\.mp3$/);
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
     expect(releaseSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
-  });
-
-  it("the clear pool does not repeat the same clip twice in a row", () => {
-    // Force Math.random to a constant so a naive picker would repeat; the
-    // engine's no-repeat must advance the index on the second pick.
-    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
-    bus.publishRadar("left");
-    bus.publishRadar("clear", "left");
-    const first = lastVoicePath();
-
-    bus.publishRadar("right");
-    bus.publishRadar("clear", "right");
-    const second = lastVoicePath();
-
-    expect(first).not.toBe(second);
-    randomSpy.mockRestore();
   });
 });
 
@@ -453,11 +438,11 @@ describe("sustained still-there loop", () => {
     bus.publishRadar("left");
     const afterArrival = voicePaths().length;
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     expect(voicePaths().length).toBe(afterArrival + 1);
     expect(lastVoicePath()).toMatch(/spotter\/(still-there|hold-your-line)\.mp3$/);
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     expect(voicePaths().length).toBe(afterArrival + 2);
   });
 
@@ -465,9 +450,9 @@ describe("sustained still-there loop", () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     bus.publishRadar("left");
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     const first = lastVoicePath();
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     const second = lastVoicePath();
 
     expect(first).not.toBe(second);
@@ -478,14 +463,14 @@ describe("sustained still-there loop", () => {
     bus.publishRadar("left");
     // Advance almost to the interval, then transition — the pending tick must
     // be cancelled and rescheduled, so no still-there fires at the old time.
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS - 100);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS - 100);
     bus.publishRadar("two-left", "left");
     const afterTransition = voicePaths().length;
 
     vi.advanceTimersByTime(100);
     expect(voicePaths().length).toBe(afterTransition);
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS - 100);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS - 100);
     expect(voicePaths().length).toBe(afterTransition + 1);
   });
 
@@ -494,7 +479,7 @@ describe("sustained still-there loop", () => {
     bus.publishRadar("clear", "left");
     const afterClear = voicePaths().length;
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterClear);
   });
 
@@ -509,7 +494,7 @@ describe("sustained still-there loop", () => {
     const afterArrival = voicePaths().length;
 
     master = false;
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
   });
 
@@ -520,7 +505,7 @@ describe("sustained still-there loop", () => {
     // No fresh radar.changed (relative position unchanged) but the driver
     // peeled into the pits — the tick must re-check telemetry and suppress.
     sim.getLatestTelemetry.mockReturnValue({ OnPitRoad: true });
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
   });
 
@@ -529,8 +514,36 @@ describe("sustained still-there loop", () => {
     const afterArrival = voicePaths().length;
 
     sim.getSessionType.mockReturnValue("Lone Qualify");
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
+  });
+
+  it("fires at the configured interval and applies a live cadence change (#651)", () => {
+    let intervalMs = 6000;
+    deps = makeDeps({ getStillThereIntervalMs: () => intervalMs });
+    _resetSpotterEngine();
+    _resetAudioScenarios();
+    initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => "luca");
+    registerSpotterEngine(bus, deps);
+
+    bus.publishRadar("left");
+    const base = voicePaths().length;
+
+    // The default cadence would have fired by now; the configured 6 s has not.
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
+    expect(voicePaths().length).toBe(base);
+
+    // Fires at the configured 6 s.
+    vi.advanceTimersByTime(6000 - SPOTTER_STILL_THERE_DEFAULT_MS);
+    expect(voicePaths().length).toBe(base + 1);
+
+    // Shorten to 2 s live; the new cadence applies from the next reschedule (the
+    // tick already pending fires at the old 6 s, then reschedules at 2 s).
+    intervalMs = 2000;
+    vi.advanceTimersByTime(6000);
+    expect(voicePaths().length).toBe(base + 2);
+    vi.advanceTimersByTime(2000);
+    expect(voicePaths().length).toBe(base + 3);
   });
 });
 
@@ -550,7 +563,7 @@ describe("opt-in gating (live)", () => {
     expect(acquireSpy).toHaveBeenCalledTimes(1);
 
     // …and the still-there loop still runs (still-there opt-in is on).
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     expect(voicePaths().length).toBe(1);
 
     // Flipping cars on mid-session takes effect on the next transition.
@@ -568,12 +581,12 @@ describe("opt-in gating (live)", () => {
     const afterArrival = voicePaths().length;
 
     stillThere = false;
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
 
     // Re-enabling mid-session resumes the loop (it stayed scheduled, silent).
     stillThere = true;
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS);
     expect(voicePaths().length).toBe(afterArrival + 1);
   });
 });
@@ -595,7 +608,7 @@ describe("master + suppression (forceClear)", () => {
     expect(voicePaths().length).toBe(afterArrival);
     expect(releaseSpy).toHaveBeenCalledWith(AudioBus.Voice, SPOTTER_FOCUS_OWNER);
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths().length).toBe(afterArrival);
   });
 
@@ -631,7 +644,7 @@ describe("master + suppression (forceClear)", () => {
     expect(voicePaths()).toEqual([]);
     expect(acquireSpy).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(SPOTTER_STILL_THERE_INTERVAL_MS * 3);
+    vi.advanceTimersByTime(SPOTTER_STILL_THERE_DEFAULT_MS * 3);
     expect(voicePaths()).toEqual([]);
   });
 });

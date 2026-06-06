@@ -357,6 +357,7 @@ beforeEach(() => {
     undefined, // getRadarMasterEnabled
     undefined, // getSpotterCalloutEnabled (issue #651)
     undefined, // getSpotterTrackDirection (issue #651)
+    undefined, // getSpotterStillThereIntervalMs (issue #651)
   );
 });
 

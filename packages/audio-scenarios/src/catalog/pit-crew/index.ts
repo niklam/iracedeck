@@ -119,7 +119,7 @@ import {
   SCENARIO_ID_TO_SESSION_START_ID,
   type SessionStartCalloutId,
 } from "./session-start.js";
-import { registerSpotterEngine } from "./spotter-engine.js";
+import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -151,7 +151,14 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
-export { registerSpotterEngine, SPOTTER_STILL_THERE_INTERVAL_MS } from "./spotter-engine.js";
+export {
+  registerSpotterEngine,
+  resolveStillThereIntervalMs,
+  SPOTTER_STILL_THERE_DEFAULT_MS,
+  SPOTTER_STILL_THERE_DEFAULT_SECONDS,
+  SPOTTER_STILL_THERE_MAX_SECONDS,
+  SPOTTER_STILL_THERE_MIN_SECONDS,
+} from "./spotter-engine.js";
 export {
   buildPitReadbackScenarios,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
@@ -478,6 +485,9 @@ export const SPOTTER_CALLOUT_SETTING_KEYS: Record<SpotterCalloutId, string> = {
   "still-there": "calloutEnabledSpotterStillThere",
 };
 
+/** Global-settings key for the user-configurable "still there" cadence (seconds, issue #651). */
+export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
+
 /**
  * Resolver the plugins pass to {@link registerPitCrew}: given the current
  * session kind, returns whether the loaded setup name looks wrong for it (opt-in
@@ -699,6 +709,10 @@ export function registerPitCrew(
   // Spotter road/oval terminology (issue #651). Plugins wire this to
   // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
   getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
+  // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
+  // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
+  // tick so a slider change takes effect on the next reminder. Default 3 s.
+  getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
 
@@ -706,6 +720,7 @@ export function registerPitCrew(
     getMasterEnabled: getRaceEngineerMasterEnabled,
     getCarsEnabled: () => getSpotterCalloutEnabled("cars"),
     getStillThereEnabled: () => getSpotterCalloutEnabled("still-there"),
+    getStillThereIntervalMs: getSpotterStillThereIntervalMs,
     getTrackDirection: getSpotterTrackDirection,
     logger,
   });

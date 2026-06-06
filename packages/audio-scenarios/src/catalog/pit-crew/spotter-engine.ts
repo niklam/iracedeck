@@ -26,8 +26,27 @@ import { WEIGHT } from "../../dsl.js";
 import { getScenarioEngine } from "../../interpreter.js";
 
 export const SPOTTER_FOCUS_OWNER = "spotter";
-export const SPOTTER_STILL_THERE_INTERVAL_MS = 4000;
 export const SPOTTER_CALL_SCENARIO_ID = "pit-crew.spotter-call";
+
+/** "Still there" reminder cadence bounds (issue #651), user-configurable in the PI. */
+export const SPOTTER_STILL_THERE_MIN_SECONDS = 1;
+export const SPOTTER_STILL_THERE_MAX_SECONDS = 10;
+export const SPOTTER_STILL_THERE_DEFAULT_SECONDS = 3;
+export const SPOTTER_STILL_THERE_DEFAULT_MS = SPOTTER_STILL_THERE_DEFAULT_SECONDS * 1000;
+
+/**
+ * Coerce a raw global-settings value (seconds) to a clamped loop interval in
+ * milliseconds. Plugins wire `getStillThereIntervalMs` to this against the live
+ * `spotterStillThereSeconds` setting; a missing / NaN / out-of-range value falls
+ * back to the default cadence.
+ */
+export function resolveStillThereIntervalMs(rawSeconds: unknown): number {
+  const s = Number(rawSeconds);
+
+  if (!Number.isFinite(s)) return SPOTTER_STILL_THERE_DEFAULT_MS;
+
+  return Math.min(Math.max(s, SPOTTER_STILL_THERE_MIN_SECONDS), SPOTTER_STILL_THERE_MAX_SECONDS) * 1000;
+}
 
 /** Plugin-supplied accessors the engine consults live on every event/tick. */
 export type SpotterDeps = {
@@ -39,8 +58,10 @@ export type SpotterDeps = {
   getMasterEnabled: () => boolean;
   /** "Cars" opt-in (`calloutEnabledSpotterCars`) — every transition call. */
   getCarsEnabled: () => boolean;
-  /** "Still there" opt-in (`calloutEnabledSpotterStillThere`) — the ~4 s loop. */
+  /** "Still there" opt-in (`calloutEnabledSpotterStillThere`) — the repeating loop. */
   getStillThereEnabled: () => boolean;
+  /** Loop cadence in ms (`spotterStillThereSeconds` × 1000), read live each tick. */
+  getStillThereIntervalMs: () => number;
   /** Road (left/right) vs oval (inside/outside) terminology. */
   getTrackDirection: () => TrackDirection;
   logger?: ILogger;
@@ -75,7 +96,7 @@ type SpokenTerm = "left" | "right" | "inside" | "outside";
 const THREE_WIDE = `${BASE}three-wide.mp3`;
 
 /** Clear-pool variants ("Clear." / "Clear! Clear!") with engine-owned no-repeat. */
-const CLEAR_POOL: readonly string[] = [`${BASE}clear.mp3`, `${BASE}clear-clear.mp3`];
+const CLEAR_POOL: readonly string[] = [`${BASE}clear.mp3`];
 
 /** Still-there-pool variants ("Still there." / "Hold your line.") with no-repeat. */
 const STILL_THERE_POOL: readonly string[] = [`${BASE}still-there.mp3`, `${BASE}hold-your-line.mp3`];
@@ -96,6 +117,7 @@ const DEFAULT_DEPS: SpotterDeps = {
   getMasterEnabled: () => true,
   getCarsEnabled: () => true,
   getStillThereEnabled: () => true,
+  getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
   getTrackDirection: () => TrackDirection.Neutral,
 };
 
@@ -201,9 +223,16 @@ function resetLoopTimer(): void {
   }
 }
 
+/** Live loop cadence in ms; falls back to the default for a degenerate value. */
+function loopIntervalMs(): number {
+  const ms = deps.getStillThereIntervalMs();
+
+  return Number.isFinite(ms) && ms > 0 ? ms : SPOTTER_STILL_THERE_DEFAULT_MS;
+}
+
 function startLoop(): void {
   resetLoopTimer();
-  loopTimer = setTimeout(tick, SPOTTER_STILL_THERE_INTERVAL_MS);
+  loopTimer = setTimeout(tick, loopIntervalMs());
 }
 
 function tick(): void {
@@ -222,7 +251,7 @@ function tick(): void {
   // but fire nothing, so re-enabling mid-session resumes the reminder.
   if (deps.getStillThereEnabled()) fireClip(pickNoRepeat(stillTherePick));
 
-  loopTimer = setTimeout(tick, SPOTTER_STILL_THERE_INTERVAL_MS);
+  loopTimer = setTimeout(tick, loopIntervalMs());
 }
 
 /** Master off / pit road / Lone Qualify: tear everything down, no clip. */

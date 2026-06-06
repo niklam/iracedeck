@@ -40,9 +40,11 @@ import {
   type RaceStartCalloutId,
   type RaceStatusCalloutId,
   registerPitCrew,
+  resolveStillThereIntervalMs,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
   SPOTTER_CALLOUT_SETTING_KEYS,
+  SPOTTER_STILL_THERE_SECONDS_KEY,
   type SpotterCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
@@ -494,6 +496,8 @@ registerPitCrew(
     (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
   // Spotter road/oval terminology (issue #651)
   () => getTrackDirection(),
+  // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
+  () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
 );
 
 // Publish audio device list and apply saved device selection.

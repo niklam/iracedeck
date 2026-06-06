@@ -325,6 +325,16 @@ describe("spotter callout defaults (issue #651)", () => {
     const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
     expect(parsed[key]).toBe(false);
   });
+
+  it("spotterStillThereSeconds defaults to 3", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.spotterStillThereSeconds).toBe(3);
+  });
+
+  it("spotterStillThereSeconds coerces a numeric string within 1–10", () => {
+    const parsed = GlobalSettingsSchema.parse({ spotterStillThereSeconds: "7" }) as Record<string, unknown>;
+    expect(parsed.spotterStillThereSeconds).toBe(7);
+  });
 });
 
 describe("resolveActiveRaceEngineerVoice", () => {

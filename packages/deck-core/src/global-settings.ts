@@ -151,7 +151,8 @@ export const GlobalSettingsSchema = z
      * calls are a Race Engineer callout family — there is no standalone master;
      * they ride `pitCrewRaceEngineerEnabled` like flags/position/lap-time.
      * "Cars" gates every transition call (car/two cars/one car/three wide/clear/
-     * combined); "StillThere" gates the ~4 s repeating reminder while alongside.
+     * combined); "StillThere" gates the repeating reminder while alongside (its
+     * cadence is set by `spotterStillThereSeconds`).
      * Default `true` so users discover the calls (with Race Engineer enabled)
      * and turn off what they don't want; opt-out takes effect at event-arrival
      * time without cutting in-flight playback. Canonical id↔key mapping in
@@ -165,6 +166,13 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    /**
+     * "Still there" reminder cadence in seconds (issue #651). While a car is
+     * alongside the spotter repeats its reminder every N seconds; user-
+     * configurable 1–10 s, default 3. Read live by the spotter engine on each
+     * tick, so a change takes effect on the next reminder without a restart.
+     */
+    spotterStillThereSeconds: z.coerce.number().min(1).max(10).default(3),
     /**
      * Startup defaults for `pitCrewRaceEngineerEnabled` /
      * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the

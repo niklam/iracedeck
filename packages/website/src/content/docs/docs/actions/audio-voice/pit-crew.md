@@ -201,7 +201,8 @@ The spotter reads the **same proximity signal as the Radar mode** but is otherwi
 Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property Inspector, both on by default:
 
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Turning this off silences the spoken calls while leaving the focus gate and the "still there" reminder logic intact.
-- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the ~4-second "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
+- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
+- **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often that reminder repeats. Read live, so a change takes effect on the next reminder without a restart.
 
 ## Race Engineer Callouts (per-subject opt-in/out)
 
@@ -275,7 +276,8 @@ Under **Pit Box**, one callout is toggleable, enabled by default:
 Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
 
 - **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Disabling silences the spoken calls while leaving the focus gate and "still there" reminder logic intact.
-- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the ~4-second "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
+- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
+- **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
 
 ## Notes
 

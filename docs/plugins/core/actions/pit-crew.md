@@ -69,7 +69,7 @@ Each side transition is a single pre-recorded clip — one clip per transition, 
 - **De-escalation** — two cars dropping to one announces "One car left." / "One car right." (symmetric with the escalation wording).
 - **Combined swap / clear-one-side** — when one side clears while the other still has cars, a single combined clip carries both cues: "Clear right. Car left.", "Clear left. Two cars right.", etc.
 - **Clear** — once all cars are gone, a clip from the clear pool plays ("Clear." / "Clear! Clear!").
-- **Still there** — for as long as a car stays alongside, a ~4-second repeating reminder plays ("Still there." / "Hold your line.").
+- **Still there** — for as long as a car stays alongside, a repeating reminder plays ("Still there." / "Hold your line."), at a user-configurable cadence (`spotterStillThereSeconds`, 1–10 s, default 3).
 
 Road vs oval terminology is automatic. On a road course (no track rotation) the calls use **left/right**; on an oval the engineer uses **inside/outside**, mapped from `WeekendInfo.TrackDirection` (a left-going oval makes the physical left "inside"; a right-going oval reverses it). This is resolved per fire via `resolveTrackDirection`, so the same clip catalog covers both with no user configuration.
 
@@ -78,9 +78,10 @@ While any car is alongside, the spotter acquires an **exclusive focus floor** on
 Two opt-ins live under **Race Engineer Callouts → Spotter**, both enabled by default:
 
 - **`calloutEnabledSpotterCars`** — every transition call (car / two cars / one car / three wide / clear / combined). Disabling silences the spoken calls while leaving the focus gate and loop logic operating.
-- **`calloutEnabledSpotterStillThere`** — the ~4-second "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
+- **`calloutEnabledSpotterStillThere`** — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
+- **`spotterStillThereSeconds`** (1–10, default 3) — the "still there" reminder cadence in seconds, set by the "Reminder interval (s)" slider in the PI.
 
-Both are read live on every event/tick, so flipping either mid-session takes effect on the next call without cutting one already playing.
+Both opt-ins (and the interval) are read live on every event/tick, so changing them mid-session takes effect on the next call without cutting one already playing.
 
 ## Settings
 

@@ -8434,12 +8434,12 @@
       "requestId": "xhF2oORqb791HpV5t1Ux"
     },
     "voice/default/position-overtake/nice-pass-p3-01.mp3": {
-      "hash": "9834e4e26264399e",
+      "hash": "522eab9d659f07ad",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2\"/> we're th…",
-      "generatedAt": "2026-05-25T17:23:40.407Z",
-      "requestId": "Km9Y7eAYU5tQ9HjjTJxx"
+      "textPreview": "Nice pass! <break time=\"0.3s\"/> That's the podium, <break time=\"0.2s\"/> we're t…",
+      "generatedAt": "2026-06-06T09:18:20.376Z",
+      "requestId": "c2vx5PELe1VCf1NX4tU3"
     },
     "voice/default/position-overtake/nice-pass-p3-class-01.mp3": {
       "hash": "c4a6c2580d91ac1e",
@@ -8474,12 +8474,12 @@
       "requestId": "YzighlUezrWYeAMBURy3"
     },
     "voice/default/spotter/car-right.mp3": {
-      "hash": "d9098690f5092aca",
+      "hash": "106fa03cbb960e8f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Car right.",
-      "generatedAt": "2026-06-05T19:22:11.551Z",
-      "requestId": "JwokeqQYON8Is0wOSVyG"
+      "generatedAt": "2026-06-06T09:20:38.848Z",
+      "requestId": "277LNEe8sPdBD1V4quFU"
     },
     "voice/default/spotter/two-cars-left.mp3": {
       "hash": "4d6016a48e11ad8d",
@@ -8490,12 +8490,12 @@
       "requestId": "oHdJSHUyiKkBhkyxvGiZ"
     },
     "voice/default/spotter/two-cars-right.mp3": {
-      "hash": "66e1b3ce1b149e1f",
+      "hash": "11ad03f370f53d27",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Two cars right.",
-      "generatedAt": "2026-06-05T19:22:11.911Z",
-      "requestId": "fNsu9AyESDKlUSdrJcq6"
+      "generatedAt": "2026-06-06T09:24:37.077Z",
+      "requestId": "iKx339L1r7kESB6hmoY7"
     },
     "voice/default/spotter/one-car-left.mp3": {
       "hash": "9703963a20fa1c73",
@@ -8506,12 +8506,12 @@
       "requestId": "LC7RL2kdB6XiHhg0fjNc"
     },
     "voice/default/spotter/one-car-right.mp3": {
-      "hash": "08e0b4b78573cb4e",
+      "hash": "11ec78bc5fac3756",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "One car right.",
-      "generatedAt": "2026-06-05T19:22:12.220Z",
-      "requestId": "ctoQe7yc47pcDxZRkYLA"
+      "generatedAt": "2026-06-06T09:23:01.609Z",
+      "requestId": "URQxVGr7dKSBEj1tqztf"
     },
     "voice/default/spotter/car-inside.mp3": {
       "hash": "af5204fbe2cccfdb",
@@ -8641,14 +8641,6 @@
       "generatedAt": "2026-06-05T19:22:14.879Z",
       "requestId": "pWsdhCbcEys6wSiGiaEO"
     },
-    "voice/default/spotter/clear-clear.mp3": {
-      "hash": "5bb3580de045f43f",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Clear! Clear!",
-      "generatedAt": "2026-06-05T19:22:15.026Z",
-      "requestId": "DbryMkaDpRCvQk7hAjQI"
-    },
     "voice/default/spotter/still-there.mp3": {
       "hash": "942c5d4b34e31d47",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
@@ -8658,12 +8650,12 @@
       "requestId": "zve60m5fZXyFL1Bd3POl"
     },
     "voice/default/spotter/hold-your-line.mp3": {
-      "hash": "95ff55a5192e3c4c",
+      "hash": "cea20b5e8d748f0f",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Hold your line.",
-      "generatedAt": "2026-06-05T19:22:15.311Z",
-      "requestId": "2WVdirCqj0eSaXCEyEYd"
+      "generatedAt": "2026-06-06T09:22:22.750Z",
+      "requestId": "C1Ll7MZcZ77MmBVrj7Vh"
     }
   }
 }

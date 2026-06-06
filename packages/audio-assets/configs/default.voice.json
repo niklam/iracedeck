@@ -4907,7 +4907,9 @@
       },
       {
         "name": "car-right",
-        "text": "Car right."
+        "text": "Car right.",
+        "previous_text": "There's a ",
+        "seed": 9
       },
       {
         "name": "two-cars-left",
@@ -4915,7 +4917,9 @@
       },
       {
         "name": "two-cars-right",
-        "text": "Two cars right."
+        "text": "Two cars right.",
+        "previous_text": "There are ",
+        "seed": 6
       },
       {
         "name": "one-car-left",
@@ -4923,7 +4927,8 @@
       },
       {
         "name": "one-car-right",
-        "text": "One car right."
+        "text": "One car right.",
+        "previous_text": "There's "
       },
       {
         "name": "car-inside",
@@ -4990,16 +4995,13 @@
         "text": "Clear."
       },
       {
-        "name": "clear-clear",
-        "text": "Clear! Clear!"
-      },
-      {
         "name": "still-there",
         "text": "Still there."
       },
       {
         "name": "hold-your-line",
-        "text": "Hold your line."
+        "text": "Hold your line.",
+        "seed": 2
       }
     ]
   }
