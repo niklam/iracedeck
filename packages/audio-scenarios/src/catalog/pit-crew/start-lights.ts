@@ -24,14 +24,23 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
+import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { POOLS } from "./pools.js";
+import { isRaceSession } from "./race-start.js";
 
 function startLightSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
 }
+
+// Start lights are a race-only concept. The diff already gates on standing-start
+// + the Warmup/StartReady window, but iRacing can raise the grid bits while
+// forming the race grid at the END of a qualifying session — so gate on the
+// race session too (live-read), consistent with the race-progression flags.
+// Safe for the critical `start-go`: at a real race start the session is "Race".
+const raceOnly = () => isRaceSession(getSessionType());
 
 const START_READY: Scenario = {
   id: "pit-crew.start-light-ready",
@@ -41,7 +50,7 @@ const START_READY: Scenario = {
   weight: WEIGHT.SAFETY,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-ready"]),
-  when: { event: "startLight.start-ready.raised" },
+  when: { event: "startLight.start-ready.raised", where: raceOnly },
 };
 
 const START_SET: Scenario = {
@@ -53,7 +62,7 @@ const START_SET: Scenario = {
   interrupt: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-set"]),
-  when: { event: "startLight.start-set.raised" },
+  when: { event: "startLight.start-set.raised", where: raceOnly },
 };
 
 const START_GO: Scenario = {
@@ -65,7 +74,7 @@ const START_GO: Scenario = {
   interrupt: true,
   family: "start-light",
   sequence: startLightSequence(["pool:start-light-go"]),
-  when: { event: "startLight.start-go.raised" },
+  when: { event: "startLight.start-go.raised", where: raceOnly },
 };
 
 /**
@@ -89,7 +98,7 @@ function countdownScenario(seconds: StartCountdownSeconds): Scenario {
     sequence: startLightSequence([`pool:start-light-countdown-${seconds}`]),
     when: {
       event: "startLight.countdown.raised",
-      where: (e) => (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
+      where: (e) => raceOnly() && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
   };
 }

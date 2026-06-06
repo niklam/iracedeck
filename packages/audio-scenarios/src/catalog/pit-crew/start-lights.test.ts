@@ -26,8 +26,10 @@ import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 import { START_LIGHT_ALERTS, START_LIGHT_POOL_NAMES, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
 
+const mockSessionType = vi.fn(() => "Race");
+
 vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => "Race",
+  getSessionType: () => mockSessionType(),
   getLatestTelemetry: () => null,
   TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
@@ -169,6 +171,7 @@ let activeVoice: string;
 
 beforeEach(() => {
   activeVoice = "luca";
+  mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
@@ -444,5 +447,34 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
     bus.publishEvent("startLight.countdown.raised", { seconds: 15 });
     flush(audio);
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-15-"))).toBe(true);
+  });
+});
+
+// Issue #480 follow-up: start lights are race-only. iRacing can raise the grid
+// bits while forming the race grid at the END of a qualifying session, so the
+// scenarios gate on the race session (mirrors the race-progression flags).
+describe("START_LIGHT_ALERTS race-only gating", () => {
+  it("suppresses every start-light callout in qualifying", () => {
+    mockSessionType.mockReturnValue("Qualify");
+
+    bus.publishEvent("startLight.start-ready.raised", {});
+    bus.publishEvent("startLight.start-set.raised", {});
+    bus.publishEvent("startLight.start-go.raised", {});
+    bus.publishEvent("startLight.countdown.raised", { seconds: 30 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("fires the gantry + countdown in a race", () => {
+    mockSessionType.mockReturnValue("Race");
+
+    bus.publishEvent("startLight.start-go.raised", {});
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/start-go-"))).toBe(true);
+
+    bus.publishEvent("startLight.countdown.raised", { seconds: 30 });
+    flush(audio);
+    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-30-"))).toBe(true);
   });
 });

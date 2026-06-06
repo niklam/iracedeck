@@ -68,6 +68,9 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Green held** — "Green's coming — get ready." (the green is being held a moment longer).
 - **Ten to go** — "Ten to go!" (ten laps remaining).
 - **Five to go** — "Five to go." (five laps remaining).
+
+The four race-formation / progression callouts above (Crossed, One pace lap to go, Green held, Ten/Five to go) fire **in race sessions only** — iRacing raises the grid flags while forming the race grid at the end of a qualifying session, so gating them to the race keeps "One pace lap to go" from firing at the qualifying checkered.
+
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
 - **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty).

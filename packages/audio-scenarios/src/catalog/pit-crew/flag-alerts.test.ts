@@ -595,3 +595,41 @@ describe("FLAG_POOL_NAMES", () => {
     }
   });
 });
+
+// Issue #480 follow-up: iRacing raises the race-grid bits (e.g. OneLapToGreen)
+// while forming the race grid at the END of a qualifying session, so the
+// race-formation / progression callouts fired "One pace lap to go" at the
+// qualifying checkered. They must gate on the race session.
+describe("FLAG_ALERTS race-only gating", () => {
+  const RACE_ONLY = [
+    { event: "flag.crossed.raised", clip: "voice/luca/flags/crossed-01.mp3" },
+    { event: "flag.one-lap-to-green.raised", clip: "voice/luca/flags/one-lap-to-green-01.mp3" },
+    { event: "flag.green-held.raised", clip: "voice/luca/flags/green-held-01.mp3" },
+    { event: "flag.ten-to-go.raised", clip: "voice/luca/flags/ten-to-go-01.mp3" },
+    { event: "flag.five-to-go.raised", clip: "voice/luca/flags/five-to-go-01.mp3" },
+  ] as const;
+
+  it.each(RACE_ONLY)("$event is suppressed in qualifying", ({ event }) => {
+    mockSessionType.mockReturnValue("Qualify");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it.each(RACE_ONLY)("$event fires in a race", ({ event, clip }) => {
+    mockSessionType.mockReturnValue("Race");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([clip]);
+  });
+
+  it.each(RACE_ONLY)("$event is suppressed in practice", ({ event }) => {
+    mockSessionType.mockReturnValue("Practice");
+    bus.publishEvent(event, {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});

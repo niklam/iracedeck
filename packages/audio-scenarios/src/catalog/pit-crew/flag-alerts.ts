@@ -39,6 +39,15 @@ import { getSessionType } from "@iracedeck/sim-events-iracing";
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { POOLS } from "./pools.js";
+import { isRaceSession } from "./race-start.js";
+
+// Race-progression / formation flags (one-lap-to-green, green-held, ten-to-go,
+// five-to-go, crossed) are race-only concepts. iRacing raises the grid bits
+// (e.g. OneLapToGreen) while forming the race grid at the END of a qualifying
+// session, so without this gate "one pace lap to go" fired at the qualifying
+// checkered (issue #480 follow-up). Live-read at fire time, mirroring the
+// session branching the green/white/checkered scenarios already use.
+const raceOnly = () => isRaceSession(getSessionType());
 
 function flagSequence(steps: Step[]): Step[] {
   return ["@pit-crew.radio-open", ...steps, "@pit-crew.radio-close"];
@@ -188,27 +197,27 @@ const DQ_SCORING_INVALID: Scenario = {
 // ten-to-go, five-to-go.
 const CROSSED: Scenario = {
   ...flagScenario("crossed", ["pool:flag-crossed"]),
-  when: { event: "flag.crossed.raised" },
+  when: { event: "flag.crossed.raised", where: raceOnly },
 };
 
 const ONE_LAP_TO_GREEN: Scenario = {
   ...flagScenario("one-lap-to-green", ["pool:flag-one-lap-to-green"]),
-  when: { event: "flag.one-lap-to-green.raised" },
+  when: { event: "flag.one-lap-to-green.raised", where: raceOnly },
 };
 
 const GREEN_HELD: Scenario = {
   ...flagScenario("green-held", ["pool:flag-green-held"]),
-  when: { event: "flag.green-held.raised" },
+  when: { event: "flag.green-held.raised", where: raceOnly },
 };
 
 const TEN_TO_GO: Scenario = {
   ...flagScenario("ten-to-go", ["pool:flag-ten-to-go"]),
-  when: { event: "flag.ten-to-go.raised" },
+  when: { event: "flag.ten-to-go.raised", where: raceOnly },
 };
 
 const FIVE_TO_GO: Scenario = {
   ...flagScenario("five-to-go", ["pool:flag-five-to-go"]),
-  when: { event: "flag.five-to-go.raised" },
+  when: { event: "flag.five-to-go.raised", where: raceOnly },
 };
 
 // Caution-waving variants (issue #480) — separate, more-urgent callouts than the
