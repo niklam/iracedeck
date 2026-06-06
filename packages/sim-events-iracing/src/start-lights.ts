@@ -34,8 +34,10 @@ export function resolveStandingStart(sessionInfo: Record<string, unknown> | null
 }
 
 /**
- * Whether any driver in the session is an AI (`DriverInfo.Drivers[i].CarIsAI
- * === 1`). Missing / malformed YAML → `false`.
+ * Whether any racing opponent is an AI (`DriverInfo.Drivers[i].CarIsAI === 1`).
+ * The pace car is excluded — iRacing's AI pace car carries `CarIsAI === 1`, and
+ * counting it would misclassify an all-human field as an AI race and wrongly
+ * suppress the numeric countdown. Missing / malformed YAML → `false`.
  *
  * @internal Exported for testing.
  */
@@ -47,5 +49,5 @@ export function resolveIsAiRace(sessionInfo: Record<string, unknown> | null): bo
 
   if (!Array.isArray(drivers)) return false;
 
-  return drivers.some((driver) => driver?.CarIsAI === 1);
+  return drivers.some((driver) => driver?.CarIsAI === 1 && driver?.CarIsPaceCar !== 1);
 }

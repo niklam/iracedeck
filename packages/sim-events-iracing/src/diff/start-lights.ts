@@ -47,7 +47,6 @@ export function diffStartLights(
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
   const timeRemain = typeof telemetry.SessionTimeRemain === "number" ? telemetry.SessionTimeRemain : 0;
   const standing = resolveStandingStart(sessionInfo);
-  const isAiRace = resolveIsAiRace(sessionInfo);
 
   const startBits = sessionFlags & START_LIGHT_MASK;
 
@@ -109,8 +108,12 @@ export function diffStartLights(
 
   // AI guard — suppress all numbers in an AI race (the window-gate already
   // handles short procedures; this makes "never 5 s+ in an AI race" explicit).
-  if (isAiRace) return;
+  // Resolved lazily here (only when a number is about to fire) rather than every
+  // tick, so the per-tick DriverInfo scan stays out of the hot path.
+  if (resolveIsAiRace(sessionInfo)) return;
 
-  const smallest = Math.min(...candidates) as (typeof COUNTDOWN_THRESHOLDS)[number];
+  // COUNTDOWN_THRESHOLDS is descending and `filter` preserves order, so the
+  // smallest crossed threshold is the last candidate.
+  const smallest = candidates[candidates.length - 1];
   emit({ event: "startLight.countdown.raised", data: { seconds: smallest } });
 }

@@ -71,14 +71,16 @@ function resolveActiveFlags(sessionFlags: number): {
 
   // `anyYellow` is the true "is the field under any caution" signal, used for
   // the `flag.yellow.cleared` edge — independent of the static `"yellow"` key
-  // (which leaves `activeFlags` on a static→waving escalation).
-  const anyYellow =
-    hasFlag(sessionFlags, Flags.Yellow) || yellowWaving || hasFlag(sessionFlags, Flags.Caution) || cautionWaving;
+  // (which leaves `activeFlags` on a static→waving escalation). Derived from
+  // the four locals (localStatic || yellowWaving === Yellow || yellowWaving).
+  const anyYellow = localStatic || yellowWaving || fullStatic || cautionWaving;
 
   if (hasFlag(sessionFlags, Flags.Blue)) flags.add("blue");
 
-  // Disqualify is its own callout (issue #480) — split out of `black`.
-  if (hasFlag(sessionFlags, Flags.Black)) flags.add("black");
+  // Disqualify carries its own dedicated line; don't ALSO fire the generic
+  // `black` callout when both bits are set (the pre-#480 code merged them into
+  // one). Disqualify-only and Black-only each still fire their own callout.
+  if (hasFlag(sessionFlags, Flags.Black) && !hasFlag(sessionFlags, Flags.Disqualify)) flags.add("black");
 
   if (hasFlag(sessionFlags, Flags.Disqualify)) flags.add("disqualify");
 
@@ -136,10 +138,11 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, emit
           emit({ event: "flag.yellow.raised", data: { scope: yellowScope ?? "local" } });
           break;
         case "green":
-          // Suppress green at a race start — `StartGo` means the start-light
-          // family owns the "go" (issue #480). Restarts have no `StartGo`, so
-          // green still fires there.
-          if (!hasFlag(sessionFlags, Flags.StartGo)) {
+          // Suppress green at a race start — the start-light family owns the
+          // "go" (issue #480). Guard on StartGo OR StartSet so a green that
+          // leads StartGo by a tick (still in the red-lights phase) is also
+          // suppressed. Restarts have neither bit set, so green still fires.
+          if (!hasFlag(sessionFlags, Flags.StartGo) && !hasFlag(sessionFlags, Flags.StartSet)) {
             emit({ event: "flag.green.raised", data: {} });
           }
 

@@ -45,6 +45,16 @@ describe("resolveIsAiRace", () => {
     expect(resolveIsAiRace({ DriverInfo: { Drivers: [{ CarIsAI: 0 }, { CarIsAI: 0 }] } })).toBe(false);
   });
 
+  it("ignores the AI pace car (human field with an AI pace car is not an AI race)", () => {
+    expect(
+      resolveIsAiRace({
+        DriverInfo: {
+          Drivers: [{ CarIsAI: 0 }, { CarIsAI: 1, CarIsPaceCar: 1 }],
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("returns false for null session info", () => {
     expect(resolveIsAiRace(null)).toBe(false);
   });

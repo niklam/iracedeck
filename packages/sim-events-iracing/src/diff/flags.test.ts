@@ -159,6 +159,16 @@ describe("diffFlags — disqualify split (issue #480)", () => {
 
     expect(events).toEqual([{ event: "flag.black.raised", data: {} }]);
   });
+
+  it("emits only flag.disqualify.raised (not black) when Black AND Disqualify are both set", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Black | Flags.Disqualify), emit);
+
+    expect(events).toEqual([{ event: "flag.disqualify.raised", data: {} }]);
+  });
 });
 
 describe("diffFlags — green suppression at race start (issue #480)", () => {
@@ -168,6 +178,16 @@ describe("diffFlags — green suppression at race start (issue #480)", () => {
 
     const { events, emit } = collect();
     diffFlags(state, tick(Flags.Green | Flags.StartGo), emit);
+
+    expect(events.some((e) => e.event === "flag.green.raised")).toBe(false);
+  });
+
+  it("suppresses flag.green.raised when StartSet is set (green leading StartGo by a tick)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Green | Flags.StartSet), emit);
 
     expect(events.some((e) => e.event === "flag.green.raised")).toBe(false);
   });

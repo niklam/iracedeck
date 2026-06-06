@@ -81,9 +81,32 @@
 				{ setting: "calloutEnabledFlagCheckered",     label: "Checkered" },
 				{ setting: "calloutEnabledFlagDebris",        label: "Debris" },
 				{ setting: "calloutEnabledFlagMeatball",      label: "Meatball" },
+				{ setting: "calloutEnabledFlagYellowWaving",  label: "Yellow waving" },
+				{ setting: "calloutEnabledFlagCautionWaving", label: "Caution waving" },
+				{ setting: "calloutEnabledFlagCrossed",       label: "Crossed flags" },
+				{ setting: "calloutEnabledFlagOneLapToGreen", label: "One lap to green" },
+				{ setting: "calloutEnabledFlagGreenHeld",     label: "Green held" },
+				{ setting: "calloutEnabledFlagTenToGo",       label: "Ten to go" },
+				{ setting: "calloutEnabledFlagFiveToGo",      label: "Five to go" },
+				{ setting: "calloutEnabledFlagDisqualify",    label: "Disqualified" },
+				{ setting: "calloutEnabledFlagFurled",        label: "Black flag furled" },
+				{ setting: "calloutEnabledFlagDqScoringInvalid", label: "DQ (scoring)" },
 			];
 			var flagCalloutRowCount = Math.ceil(flagCallouts.length / 2);
 			var flagCalloutCheckboxes = flagCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
+			// Start-light callouts (issue #480). Two grouped opt-ins: "Lights & go"
+			// covers the standing-start gantry lines (ready / red / go); "Countdown"
+			// covers the numeric pre-start countdown (60/30/15/10/5). Same
+			// 2-column auto-balancing grid as the families above.
+			var startLightCallouts = [
+				{ setting: "calloutEnabledStartLights",    label: "Lights & go" },
+				{ setting: "calloutEnabledStartCountdown", label: "Countdown" },
+			];
+			var startLightRowCount = Math.ceil(startLightCallouts.length / 2);
+			var startLightCheckboxes = startLightCallouts.map(function (c) {
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
@@ -302,6 +325,11 @@
 				'<sdpi-item label="Flags">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + flagCalloutRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						flagCalloutCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Start Lights">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + startLightRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						startLightCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Pit Service">' +
