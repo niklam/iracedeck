@@ -315,6 +315,17 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   "checkered",
   "debris",
   "meatball",
+  // Issue #480 additions.
+  "disqualify",
+  "furled",
+  "dq-scoring-invalid",
+  "crossed",
+  "one-lap-to-green",
+  "green-held",
+  "ten-to-go",
+  "five-to-go",
+  "yellow-waving",
+  "caution-waving",
 ];
 
 function makeEnabledMap(initial: boolean): Map<FlagCalloutId, boolean> {
@@ -475,6 +486,69 @@ const FLAG_FIRES: ReadonlyArray<{
     event: "flag.meatball.raised",
     data: {} as SimEventMap["flag.meatball.raised"]["data"],
     expectedClipFragment: "meatball-",
+  },
+  // Issue #480 additions — fire with the default in-car / Race / non-standing
+  // setup (beforeEach), so the race-formation gates pass and each maps to its
+  // own per-callout opt-in via SCENARIO_ID_TO_FLAG_ID.
+  {
+    id: "disqualify",
+    event: "flag.disqualify.raised",
+    data: {} as SimEventMap["flag.disqualify.raised"]["data"],
+    expectedClipFragment: "disqualify-",
+  },
+  {
+    id: "furled",
+    event: "flag.furled.raised",
+    data: {} as SimEventMap["flag.furled.raised"]["data"],
+    expectedClipFragment: "furled-",
+  },
+  {
+    id: "dq-scoring-invalid",
+    event: "flag.dq-scoring-invalid.raised",
+    data: {} as SimEventMap["flag.dq-scoring-invalid.raised"]["data"],
+    expectedClipFragment: "dq-scoring-invalid-",
+  },
+  {
+    id: "crossed",
+    event: "flag.crossed.raised",
+    data: {} as SimEventMap["flag.crossed.raised"]["data"],
+    expectedClipFragment: "crossed-",
+  },
+  {
+    id: "one-lap-to-green",
+    event: "flag.one-lap-to-green.raised",
+    data: {} as SimEventMap["flag.one-lap-to-green.raised"]["data"],
+    expectedClipFragment: "one-lap-to-green-",
+  },
+  {
+    id: "green-held",
+    event: "flag.green-held.raised",
+    data: {} as SimEventMap["flag.green-held.raised"]["data"],
+    expectedClipFragment: "green-held-",
+  },
+  {
+    id: "ten-to-go",
+    event: "flag.ten-to-go.raised",
+    data: {} as SimEventMap["flag.ten-to-go.raised"]["data"],
+    expectedClipFragment: "ten-to-go-",
+  },
+  {
+    id: "five-to-go",
+    event: "flag.five-to-go.raised",
+    data: {} as SimEventMap["flag.five-to-go.raised"]["data"],
+    expectedClipFragment: "five-to-go-",
+  },
+  {
+    id: "yellow-waving",
+    event: "flag.yellow-waving.raised",
+    data: {} as SimEventMap["flag.yellow-waving.raised"]["data"],
+    expectedClipFragment: "yellow-waving-",
+  },
+  {
+    id: "caution-waving",
+    event: "flag.caution-waving.raised",
+    data: {} as SimEventMap["flag.caution-waving.raised"]["data"],
+    expectedClipFragment: "caution-waving-",
   },
 ];
 
