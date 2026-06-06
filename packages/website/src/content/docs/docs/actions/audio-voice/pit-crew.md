@@ -196,6 +196,8 @@ The wording adapts to the track. On a **road course** (no track rotation) the ca
 
 While a car is alongside, the spotter holds an exclusive focus on the engineer's Voice bus, so routine chatter (lap times, position updates, pit recaps) is held back to keep the channel clear — but safety-critical flag callouts still break through. The moment the car clears, the floor releases and any held chatter resumes.
 
+"Clear" is buffered so it doesn't stutter when a car sits right on the detection boundary. Instead of calling clear the instant the proximity signal blinks off, the spotter waits until the car has actually pulled away — the gap to the nearest car (computed from each car's lap-distance and the track length) has to grow by about half a metre before "Clear" plays. If a car somehow separates purely sideways so that gap never grows, a short timeout clears anyway.
+
 The spotter reads the **same proximity signal as the Radar mode** but is otherwise independent: Radar is the non-vocal proximity tick on the Alerts bus, the spotter is a spoken voice call on the Voice bus. Run either, both, or neither — with both enabled you'll hear a tick *and* a spoken call when a car pulls alongside.
 
 Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property Inspector, both on by default:

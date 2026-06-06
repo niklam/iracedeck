@@ -30,6 +30,8 @@ import { TrackWetness } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
   classPositionFromOrder,
+  nearestCarGapMeters,
+  parseTrackLengthMeters,
   type SDKController,
   SessionState,
   type TelemetryData,
@@ -188,6 +190,30 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * Distance (meters) to the nearest car on track, or `null` when unavailable.
+ * Computed from `CarIdxLapDistPct` × `WeekendInfo.TrackLength`. Drives the
+ * spotter's "clear" confirmation buffer (issue #651) — it holds the "clear" call
+ * until this gap has grown, so a car flickering at the lateral detection
+ * boundary doesn't stutter "clear".
+ */
+export function getNearestCarGapMeters(): number | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const telemetry = instance.latestTelemetry;
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+  const playerCarIdx = resolvePlayerCarIdx(sessionInfo);
+
+  if (playerCarIdx < 0) return null;
+
+  const weekendInfo = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
+  const trackLengthMeters = parseTrackLengthMeters(weekendInfo?.TrackLength);
+
+  if (trackLengthMeters === null) return null;
+
+  return nearestCarGapMeters(telemetry, playerCarIdx, trackLengthMeters);
 }
 
 /**

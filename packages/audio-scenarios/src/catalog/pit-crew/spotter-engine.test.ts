@@ -10,6 +10,9 @@ import {
   _resetSpotterEngine,
   registerSpotterEngine,
   SPOTTER_CALL_SCENARIO_ID,
+  SPOTTER_CLEAR_BUFFER_METERS,
+  SPOTTER_CLEAR_FALLBACK_MS,
+  SPOTTER_CLEAR_POLL_MS,
   SPOTTER_FOCUS_OWNER,
   SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
@@ -140,6 +143,8 @@ let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let deps: SpotterDeps;
 let trackDirection: TrackDirection;
+/** Nearest-car gap (m) the makeDeps closure returns; null disables the clear buffer. */
+let nearestGap: number | null = null;
 
 /** Build deps with permissive defaults; individual tests override fields. */
 function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
@@ -149,6 +154,7 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getStillThereEnabled: () => true,
     getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
     getTrackDirection: () => trackDirection,
+    getNearestCarGapMeters: () => nearestGap,
     logger: mockLogger as never,
     ...overrides,
   };
@@ -169,6 +175,7 @@ beforeEach(() => {
   bus = createMockBus();
   audio = createFakeAudio();
   trackDirection = TrackDirection.Neutral;
+  nearestGap = null;
   // Real engine + fake audio so the var → resolved-clip path is asserted
   // end-to-end. `getActiveVoice` returns "luca" so `{voice}` substitution is
   // exercised on the played path.
@@ -701,5 +708,60 @@ describe("voice substitution", () => {
     expect(played).toEqual(["voice/elena/spotter/car-left.mp3"]);
     bus = freshBus;
     audio = freshAudio;
+  });
+});
+
+// ─── Clear confirmation buffer (#651) ────────────────────────────────────────
+
+describe("clear confirmation buffer", () => {
+  beforeEach(() => {
+    registerSpotterEngine(bus, deps);
+  });
+
+  it("holds 'clear' until the nearest-car gap grows by the buffer distance", () => {
+    nearestGap = 2;
+    bus.publishRadar("left");
+    const afterArrival = voicePaths().length;
+
+    // CarLeftRight flickers clear, but the car hasn't pulled away — no clear yet.
+    bus.publishRadar("clear", "left");
+    vi.advanceTimersByTime(SPOTTER_CLEAR_POLL_MS * 3);
+    expect(voicePaths().length).toBe(afterArrival);
+
+    // The car pulls past the buffer distance → the next poll confirms clear.
+    nearestGap = 2 + SPOTTER_CLEAR_BUFFER_METERS;
+    vi.advanceTimersByTime(SPOTTER_CLEAR_POLL_MS);
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
+  });
+
+  it("a car flickering back during the buffer cancels the pending clear (no stutter)", () => {
+    nearestGap = 2;
+    bus.publishRadar("left");
+    const afterArrival = voicePaths().length;
+
+    bus.publishRadar("clear", "left"); // enter the pending clear
+    bus.publishRadar("left", "clear"); // flicker back to the same side
+    vi.advanceTimersByTime(SPOTTER_CLEAR_POLL_MS * 5);
+
+    expect(voicePaths().length).toBe(afterArrival);
+    expect(voicePaths()).not.toContain(`${BASE}clear.mp3`);
+  });
+
+  it("falls back to clear after the fallback window if the gap never grows", () => {
+    nearestGap = 5;
+    bus.publishRadar("right");
+
+    bus.publishRadar("clear", "right");
+    // Gap stays flat (e.g. a sideways move at a matched longitudinal position).
+    vi.advanceTimersByTime(SPOTTER_CLEAR_FALLBACK_MS + SPOTTER_CLEAR_POLL_MS);
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
+  });
+
+  it("skips the buffer (immediate clear) when no distance data is available", () => {
+    nearestGap = null;
+    bus.publishRadar("left");
+
+    bus.publishRadar("clear", "left");
+    expect(lastVoicePath()).toBe(`${BASE}clear.mp3`);
   });
 });

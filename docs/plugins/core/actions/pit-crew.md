@@ -68,7 +68,7 @@ Each side transition is a single pre-recorded clip — one clip per transition, 
 - **Escalation** — a one-car side picking up a second car plays "Two cars left." / "Two cars right.".
 - **De-escalation** — two cars dropping to one announces "One car left." / "One car right." (symmetric with the escalation wording).
 - **Combined swap / clear-one-side** — when one side clears while the other still has cars, a single combined clip carries both cues: "Clear right. Car left.", "Clear left. Two cars right.", etc.
-- **Clear** — once all cars are gone, a clip from the clear pool plays ("Clear." / "Clear! Clear!").
+- **Clear** — once all cars are gone, "Clear." plays — but only after a short confirmation buffer: the engine holds the call until the gap to the nearest car (from `CarIdxLapDistPct` × `WeekendInfo.TrackLength`) has grown by ~0.5 m, so a car flickering at the lateral detection boundary doesn't stutter "Cle…car right…clear". A ~1.5 s fallback still clears if a car separates purely sideways (so the lap-distance gap never grows).
 - **Still there** — for as long as a car stays alongside, a repeating reminder plays ("Still there." / "Hold your line."), at a user-configurable cadence (`spotterStillThereSeconds`, 1–10 s, default 3).
 
 Road vs oval terminology is automatic. On a road course (no track rotation) the calls use **left/right**; on an oval the engineer uses **inside/outside**, mapped from `WeekendInfo.TrackDirection` (a left-going oval makes the physical left "inside"; a right-going oval reverses it). This is resolved per fire via `resolveTrackDirection`, so the same clip catalog covers both with no user configuration.

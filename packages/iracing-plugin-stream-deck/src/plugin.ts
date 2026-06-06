@@ -146,6 +146,7 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import {
   getDriverSetupName,
   getLivePosition,
+  getNearestCarGapMeters,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
@@ -511,6 +512,8 @@ registerPitCrew(
   () => getTrackDirection(),
   // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
   () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
+  // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
+  () => getNearestCarGapMeters(),
 );
 
 // Publish audio device list and apply saved device selection.

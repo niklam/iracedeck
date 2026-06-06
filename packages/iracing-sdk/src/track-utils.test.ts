@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { findNearestCarOnTrack } from "./track-utils.js";
+import { findNearestCarOnTrack, nearestCarGapMeters, parseTrackLengthMeters } from "./track-utils.js";
+import type { TelemetryData } from "./types.js";
 import { TrkLoc } from "./types.js";
 
 function makeTelemetry(
@@ -241,5 +242,74 @@ describe("findNearestCarOnTrack", () => {
 
     expect(findNearestCarOnTrack(telemetry, 10, "ahead")).toBe(3);
     expect(findNearestCarOnTrack(telemetry, 10, "behind")).toBe(3);
+  });
+});
+
+describe("parseTrackLengthMeters", () => {
+  it("parses kilometers (the iRacing default unit)", () => {
+    expect(parseTrackLengthMeters("7.004 km")).toBe(7004);
+    expect(parseTrackLengthMeters("5.81 km")).toBeCloseTo(5810);
+  });
+
+  it("treats a unitless or bare-meter value sensibly", () => {
+    expect(parseTrackLengthMeters("3.7")).toBeCloseTo(3700); // unitless → km
+    expect(parseTrackLengthMeters("1200 m")).toBe(1200);
+  });
+
+  it("parses miles", () => {
+    expect(parseTrackLengthMeters("1.5 mi")).toBeCloseTo(2414.016);
+  });
+
+  it("returns null for missing or unparseable values", () => {
+    expect(parseTrackLengthMeters(undefined)).toBeNull();
+    expect(parseTrackLengthMeters(null)).toBeNull();
+    expect(parseTrackLengthMeters("")).toBeNull();
+    expect(parseTrackLengthMeters("road course")).toBeNull();
+    expect(parseTrackLengthMeters(7.004)).toBeNull(); // not a string
+  });
+});
+
+describe("nearestCarGapMeters", () => {
+  it("returns the smallest longitudinal gap to another in-world car", () => {
+    // ref at 0.100; car 1 at 0.105 (0.005 ≈ 5 m on a 1000 m track), car 2 at 0.300.
+    const telemetry = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.1 },
+      { idx: 1, laps: 1, dist: 0.105 },
+      { idx: 2, laps: 1, dist: 0.3 },
+    ]) as unknown as TelemetryData;
+
+    expect(nearestCarGapMeters(telemetry, 0, 1000)).toBeCloseTo(5);
+  });
+
+  it("measures the shortest way around the start/finish wrap", () => {
+    const telemetry = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.99 },
+      { idx: 1, laps: 1, dist: 0.01 },
+    ]) as unknown as TelemetryData;
+
+    expect(nearestCarGapMeters(telemetry, 0, 1000)).toBeCloseTo(20); // 0.02 × 1000
+  });
+
+  it("ignores cars not in the world", () => {
+    const telemetry = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.1 },
+      { idx: 1, laps: 1, dist: 0.101, trackSurface: TrkLoc.NotInWorld },
+      { idx: 2, laps: 1, dist: 0.3 },
+    ]) as unknown as TelemetryData;
+
+    // idx 1 (1 m away) is skipped, so the nearest is idx 2 at 0.2 → 200 m.
+    expect(nearestCarGapMeters(telemetry, 0, 1000)).toBeCloseTo(200);
+  });
+
+  it("returns null when there are no other cars, no telemetry, or no track length", () => {
+    const solo = makeTelemetry(0, [{ idx: 0, laps: 1, dist: 0.1 }]) as unknown as TelemetryData;
+    expect(nearestCarGapMeters(solo, 0, 1000)).toBeNull();
+    expect(nearestCarGapMeters(null, 0, 1000)).toBeNull();
+
+    const pair = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.1 },
+      { idx: 1, laps: 1, dist: 0.2 },
+    ]) as unknown as TelemetryData;
+    expect(nearestCarGapMeters(pair, 0, 0)).toBeNull();
   });
 });

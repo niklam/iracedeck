@@ -713,6 +713,10 @@ export function registerPitCrew(
   // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
   // tick so a slider change takes effect on the next reminder. Default 3 s.
   getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
+  // Spotter nearest-car gap in meters (issue #651) for the → clear confirmation
+  // buffer. Plugins wire this to `getNearestCarGapMeters()` from
+  // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
+  getSpotterNearestCarGapMeters: () => number | null = () => null,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
 
@@ -722,6 +726,7 @@ export function registerPitCrew(
     getStillThereEnabled: () => getSpotterCalloutEnabled("still-there"),
     getStillThereIntervalMs: getSpotterStillThereIntervalMs,
     getTrackDirection: getSpotterTrackDirection,
+    getNearestCarGapMeters: getSpotterNearestCarGapMeters,
     logger,
   });
 

@@ -11,6 +11,7 @@ export {
   getDriverSetupName,
   getLatestTelemetry,
   getLivePosition,
+  getNearestCarGapMeters,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,

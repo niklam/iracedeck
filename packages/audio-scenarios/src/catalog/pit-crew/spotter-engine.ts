@@ -48,6 +48,20 @@ export function resolveStillThereIntervalMs(rawSeconds: unknown): number {
   return Math.min(Math.max(s, SPOTTER_STILL_THERE_MIN_SECONDS), SPOTTER_STILL_THERE_MAX_SECONDS) * 1000;
 }
 
+/**
+ * → clear confirmation buffer (issue #651). `CarLeftRight` flickers at the
+ * lateral detection boundary, so announcing "clear" the instant it goes clear
+ * stutters ("Cle…car right…clear"). Instead, on a → clear transition the engine
+ * holds the call and polls the gap to the nearest car; "clear" only fires once
+ * that gap has grown by {@link SPOTTER_CLEAR_BUFFER_METERS}, confirming the car
+ * genuinely separated. {@link SPOTTER_CLEAR_FALLBACK_MS} is a safety net for the
+ * rare case where a car steps sideways at a matched longitudinal position, so
+ * the lap-distance gap never grows.
+ */
+export const SPOTTER_CLEAR_BUFFER_METERS = 0.5;
+export const SPOTTER_CLEAR_POLL_MS = 200;
+export const SPOTTER_CLEAR_FALLBACK_MS = 1500;
+
 /** Plugin-supplied accessors the engine consults live on every event/tick. */
 export type SpotterDeps = {
   /**
@@ -64,6 +78,13 @@ export type SpotterDeps = {
   getStillThereIntervalMs: () => number;
   /** Road (left/right) vs oval (inside/outside) terminology. */
   getTrackDirection: () => TrackDirection;
+  /**
+   * Distance (m) to the nearest car on track, or `null` when unavailable. Drives
+   * the → clear confirmation buffer: "clear" is held until this grows by
+   * {@link SPOTTER_CLEAR_BUFFER_METERS}. Default `() => null` disables the buffer
+   * (immediate clear), so tests and unwired callers keep the prior behavior.
+   */
+  getNearestCarGapMeters: () => number | null;
   logger?: ILogger;
 };
 
@@ -107,6 +128,9 @@ type PoolPick = { readonly clips: readonly string[]; lastIndex: number };
 
 let state: RadarState = "clear";
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
+let clearPollTimer: ReturnType<typeof setTimeout> | null = null;
+/** In-flight → clear confirmation: the gap baseline + elapsed poll time. */
+let pendingClear: { baselineGap: number; elapsedMs: number } | null = null;
 let registeredBus: IEventBus | null = null;
 let pendingSpotterClip = "";
 const clearPick: PoolPick = { clips: CLEAR_POOL, lastIndex: -1 };
@@ -119,6 +143,7 @@ const DEFAULT_DEPS: SpotterDeps = {
   getStillThereEnabled: () => true,
   getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
   getTrackDirection: () => TrackDirection.Neutral,
+  getNearestCarGapMeters: () => null,
 };
 
 let deps: SpotterDeps = DEFAULT_DEPS;
@@ -256,9 +281,80 @@ function tick(): void {
 
 /** Master off / pit road / Lone Qualify: tear everything down, no clip. */
 function forceClear(): void {
+  abandonPendingClear();
   resetLoopTimer();
   releaseFocus();
   state = "clear";
+}
+
+// ─── → clear confirmation buffer ──────────────────────────────────────────────
+
+function stopClearPoll(): void {
+  if (clearPollTimer !== null) {
+    clearTimeout(clearPollTimer);
+    clearPollTimer = null;
+  }
+}
+
+/** Abandon an in-flight → clear confirmation (a car is back, or we're tearing down). */
+function abandonPendingClear(): void {
+  pendingClear = null;
+  stopClearPoll();
+}
+
+/** Confirm the buffered clear: announce it, release focus, settle to "clear". */
+function confirmClear(): void {
+  abandonPendingClear();
+  handleTransition(state, "clear", deps.getTrackDirection());
+  state = "clear";
+}
+
+function clearPollTick(): void {
+  if (pendingClear === null) return;
+
+  // Re-check suppression live — the driver can pit / a session can flip while we
+  // wait, mirroring handleRadarChanged's guards.
+  if (!deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad()) {
+    forceClear();
+
+    return;
+  }
+
+  pendingClear.elapsedMs += SPOTTER_CLEAR_POLL_MS;
+
+  const gap = deps.getNearestCarGapMeters();
+  const grewEnough = gap !== null && gap >= pendingClear.baselineGap + SPOTTER_CLEAR_BUFFER_METERS;
+
+  // Confirm when the nearest car has pulled SPOTTER_CLEAR_BUFFER_METERS clear, the
+  // distance data drops out, or the fallback elapses (sideways separation that
+  // never grows the lap-distance gap).
+  if (grewEnough || gap === null || pendingClear.elapsedMs >= SPOTTER_CLEAR_FALLBACK_MS) {
+    confirmClear();
+
+    return;
+  }
+
+  clearPollTimer = setTimeout(clearPollTick, SPOTTER_CLEAR_POLL_MS);
+}
+
+/**
+ * Enter the → clear confirmation buffer: keep the alongside state + loop + focus,
+ * and poll the nearest-car gap until it grows by {@link SPOTTER_CLEAR_BUFFER_METERS}.
+ * With no distance data the buffer is skipped — "clear" fires now.
+ */
+function beginPendingClear(): void {
+  const baseline = deps.getNearestCarGapMeters();
+
+  if (baseline === null) {
+    handleTransition(state, "clear", deps.getTrackDirection());
+    state = "clear";
+
+    return;
+  }
+
+  abandonPendingClear();
+  pendingClear = { baselineGap: baseline, elapsedMs: 0 };
+  clearPollTimer = setTimeout(clearPollTick, SPOTTER_CLEAR_POLL_MS);
 }
 
 // ─── State machine ───────────────────────────────────────────────────────────
@@ -347,7 +443,30 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
 
   const to = ev.data.to;
 
+  if (pendingClear !== null) {
+    // We're confirming a buffered clear. `radar.changed` only fires on change, so
+    // any event here means CarLeftRight left "clear" — the car is back / the
+    // proximity changed. Abandon the pending clear (the still-there loop kept
+    // running throughout, so a flicker back to the same side says nothing).
+    abandonPendingClear();
+
+    if (to === state) return;
+
+    handleTransition(state, to, deps.getTrackDirection());
+    state = to;
+
+    return;
+  }
+
   if (to === state) return;
+
+  if (to === "clear") {
+    // Don't announce "clear" the instant CarLeftRight flickers clear — buffer it
+    // until the car has actually pulled away (anti-stutter, issue #651).
+    beginPendingClear();
+
+    return;
+  }
 
   handleTransition(state, to, deps.getTrackDirection());
   state = to;
@@ -387,6 +506,7 @@ export function registerSpotterEngine(bus: IEventBus, nextDeps: SpotterDeps): vo
 /** @internal Exported for test isolation only. */
 export function _resetSpotterEngine(): void {
   resetLoopTimer();
+  abandonPendingClear();
   state = "clear";
   registeredBus = null;
   pendingSpotterClip = "";
