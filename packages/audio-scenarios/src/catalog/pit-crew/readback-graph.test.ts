@@ -28,6 +28,7 @@ import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
 import { registerPitCrew } from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
 vi.mock("@iracedeck/sim-events-iracing", () => ({
@@ -256,6 +257,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   vi.clearAllMocks();
   vi.useRealTimers();
 });

@@ -74,3 +74,46 @@ export function findNearestCarOnTrack(
 
   return bestIdx;
 }
+
+/**
+ * Smallest circular on-track gap (meters) from the reference car to any other
+ * in-world car, using `CarIdxLapDistPct` (0.0–1.0) × `trackLengthMeters`.
+ * Returns null when the data needed is unavailable. Used by the spotter's
+ * "clear" confirmation buffer (issue #651) to confirm a car has actually pulled
+ * away before announcing clear.
+ */
+export function nearestCarGapMeters(
+  telemetry: TelemetryData | null,
+  referenceCarIdx: number,
+  trackLengthMeters: number,
+): number | null {
+  if (!telemetry?.CarIdxLapDistPct || referenceCarIdx < 0 || !(trackLengthMeters > 0)) return null;
+
+  const lapDistPct = telemetry.CarIdxLapDistPct as number[];
+  const trackSurface = telemetry.CarIdxTrackSurface as number[] | undefined;
+  const me = lapDistPct[referenceCarIdx];
+
+  if (me === undefined || me < 0) return null;
+
+  let best = Infinity;
+
+  for (let idx = 0; idx < lapDistPct.length; idx++) {
+    if (idx === referenceCarIdx) continue;
+
+    const pct = lapDistPct[idx];
+
+    if (pct === undefined || pct < 0) continue;
+
+    if (trackSurface?.[idx] === TrkLoc.NotInWorld) continue;
+
+    let frac = Math.abs(pct - me);
+
+    if (frac > 0.5) frac = 1 - frac; // shortest way around the loop
+
+    if (frac < best) best = frac;
+  }
+
+  if (!Number.isFinite(best)) return null;
+
+  return best * trackLengthMeters;
+}

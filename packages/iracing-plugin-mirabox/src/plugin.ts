@@ -40,8 +40,12 @@ import {
   type RaceStartCalloutId,
   type RaceStatusCalloutId,
   registerPitCrew,
+  resolveStillThereIntervalMs,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
+  SPOTTER_CALLOUT_SETTING_KEYS,
+  SPOTTER_STILL_THERE_SECONDS_KEY,
+  type SpotterCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -150,11 +154,13 @@ import { LogLevel } from "@iracedeck/logger";
 import {
   getDriverSetupName,
   getLivePosition,
+  getNearestCarGapMeters,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
   getReadbackSnapshot,
   getSessionStartConditions,
+  getTrackDirection,
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
@@ -481,6 +487,17 @@ registerPitCrew(
   // against the loaded setup name. Consumed by the session-start / race-start
   // intros' `if` clauses.
   (kind) => evaluateSetupWarning(kind, getGlobalSettings() as Record<string, unknown>, getDriverSetupName()),
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family — no standalone master; it rides pitCrewRaceEngineerEnabled.
+  // Placed before the master gates so the masters stay the last args.
+  (id: SpotterCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[SPOTTER_CALLOUT_SETTING_KEYS[id]] !== false,
+  // Spotter road/oval terminology (issue #651)
+  () => getTrackDirection(),
+  // Spotter "still there" reminder cadence (issue #651) — 1–10 s, default 3.
+  () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
+  // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
+  () => getNearestCarGapMeters(),
   // Race Engineer master gate (issue #515).
   () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
   // Radar master gate (issue #515).

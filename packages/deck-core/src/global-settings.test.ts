@@ -313,6 +313,30 @@ describe("flag-callout opt-in defaults (issue #467)", () => {
   });
 });
 
+describe("spotter callout defaults (issue #651)", () => {
+  const SPOTTER_CALLOUT_KEYS = ["calloutEnabledSpotterCars", "calloutEnabledSpotterStillThere"] as const;
+
+  it.each(SPOTTER_CALLOUT_KEYS)("%s defaults to true", (key) => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed[key]).toBe(true);
+  });
+
+  it.each(SPOTTER_CALLOUT_KEYS)('%s coerces the literal string "false" to boolean false', (key) => {
+    const parsed = GlobalSettingsSchema.parse({ [key]: "false" }) as Record<string, unknown>;
+    expect(parsed[key]).toBe(false);
+  });
+
+  it("spotterStillThereSeconds defaults to 3", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.spotterStillThereSeconds).toBe(3);
+  });
+
+  it("spotterStillThereSeconds coerces a numeric string within 1–10", () => {
+    const parsed = GlobalSettingsSchema.parse({ spotterStillThereSeconds: "7" }) as Record<string, unknown>;
+    expect(parsed.spotterStillThereSeconds).toBe(7);
+  });
+});
+
 describe("resolveActiveRaceEngineerVoice", () => {
   beforeEach(() => {
     _resetGlobalSettings();

@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off) and **Radar** (directional proximity ticks when a car pulls alongside).
+Pit Crew bundles iRaceDeck's pit-side audio into one Stream Deck action. It exposes **Race Engineer Toggle** (the default — flips the engineer voice on/off) and **Radar** (directional proximity ticks when a car pulls alongside). The Race Engineer voice also speaks **Spotter** side-awareness calls ("car left", "three wide", "clear") — these are a voice callout family, not a separate mode (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) below).
 
 Radar volume (Up/Down stepping) now lives in the [Audio Controls](/docs/actions/audio-voice/audio-controls/) action under the **Radar** mode, alongside the new **Race Engineer** volume buttons. Existing Pit Crew buttons configured for Radar Volume keep working, but new buttons set up volume control from Audio Controls.
 
@@ -188,6 +188,24 @@ The box location comes straight from iRacing (`DriverInfo.DriverPitTrkPct`), so 
 
 The count-in fires whenever you're on pit road approaching your box, so it isn't tied to having requested pit service — a drive-through will count down too.
 
+## Spotter (side-awareness calls)
+
+The Race Engineer voices spoken side-awareness as cars come and go alongside you — "Car left.", "Two cars right.", "Three wide.", a de-escalation "One car left.", combined swaps like "Clear right. Car left.", and a final "Clear." — plus a short repeating "Still there." reminder for as long as a car stays beside you. This is a **Race Engineer voice callout family** (like flags, position, or lap time), not a separate Stream Deck mode or button: it's gated by the Race Engineer master (the **Race Engineer Toggle** button) plus two Property Inspector opt-ins, both on by default. With the engineer off, the spotter is silent.
+
+The wording adapts to the track. On a **road course** (no track rotation) the calls use left/right. On an **oval** the engineer uses inside/outside, derived from `WeekendInfo.TrackDirection` — a left-going oval makes your left "inside", a right-going oval reverses it. You don't configure this; it follows the loaded track automatically.
+
+While a car is alongside, the spotter holds an exclusive focus on the engineer's Voice bus, so routine chatter (lap times, position updates, pit recaps) is held back to keep the channel clear — but safety-critical flag callouts still break through. The moment the car clears, the floor releases and any held chatter resumes.
+
+"Clear" is buffered so it doesn't stutter when a car sits right on the detection boundary. Instead of calling clear the instant the proximity signal blinks off, the spotter waits until the car has actually pulled away — the gap to the nearest car (computed from each car's lap-distance and the track length) has to grow by about half a metre before "Clear" plays. If a car somehow separates purely sideways so that gap never grows, a short timeout clears anyway.
+
+The spotter reads the **same proximity signal as the Radar mode** but is otherwise independent: Radar is the non-vocal proximity tick on the Alerts bus, the spotter is a spoken voice call on the Voice bus. Run either, both, or neither — with both enabled you'll hear a tick *and* a spoken call when a car pulls alongside.
+
+Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property Inspector, both on by default:
+
+- **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Turning this off silences the spoken calls while leaving the focus gate and the "still there" reminder logic intact.
+- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." / "Hold your line." loop that repeats for as long as a car stays beside you.
+- **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often that reminder repeats. Read live, so a change takes effect on the next reminder without a restart.
+
 ## Race Engineer Callouts (per-subject opt-in/out)
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
@@ -257,6 +275,12 @@ Under **Pit Box**, one callout is toggleable, enabled by default:
 
 - **Count-in to pit box** — the *"five… four… three… two… one… pit now"* distance countdown to your pit box as you drive down pit road. Disabling this silences the whole count-in.
 
+Under **Spotter**, two callouts are toggleable, both enabled by default (see [Spotter (side-awareness calls)](#spotter-side-awareness-calls) above for the full behavior):
+
+- **Announce cars around you** (`calloutEnabledSpotterCars`) — every transition call (car / two cars / one car / three wide / clear / combined). Disabling silences the spoken calls while leaving the focus gate and "still there" reminder logic intact.
+- **Repeat reminder while alongside** (`calloutEnabledSpotterStillThere`) — the "Still there." reminder loop. Disabling stops the loop without affecting the transition calls.
+- **Reminder interval (s)** (`spotterStillThereSeconds`, 1–10, default 3) — how often the "still there" reminder repeats while a car is alongside. Read live.
+
 ## Notes
 
-- "AI Spotter Controls" is a separate action that wraps iRacing's own built-in AI Spotter voice. It uses iRacing SDK commands and a different audio source. Pit Crew's Radar is an iRaceDeck-owned non-vocal proximity tick and does not overlap with iRacing's spotter voice.
+- "AI Spotter Controls" is a separate action that wraps iRacing's own built-in AI Spotter voice. It uses iRacing SDK commands and a different audio source. Pit Crew's Radar (non-vocal proximity tick) and the Race Engineer's spotter side-awareness calls (iRaceDeck's own voice family) are both iRaceDeck-owned and do not overlap with — or control — iRacing's built-in spotter voice.

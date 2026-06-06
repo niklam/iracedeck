@@ -21,6 +21,7 @@ import {
   tryClaimPositionAnnouncement,
 } from "./position-readout.js";
 import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => "Race",
@@ -255,6 +256,7 @@ beforeEach(() => {
 afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
+  _resetSpotterEngine();
   _resetPositionReadoutCooldown();
   vi.clearAllMocks();
 });
@@ -455,17 +457,18 @@ describe("overtake position readout (live, deferred)", () => {
     expect(played).not.toContain(`voice/${VOICE}/position-number/12.mp3`);
   });
 
-  it("fires the position readout on EVERY overtake (no overtake-to-overtake suppression)", () => {
+  it("defers the position readout to a recent announcement (never doubles the position, #651)", () => {
     fireGained({});
     expect(voicePaths()).toContain(`voice/${VOICE}/position-number/5.mp3`);
 
     audio._played.length = 0;
-    // A second overtake within the position-cooldown window still announces the
-    // position — but the "We're currently" intro drops to a bare "P[n]" inside
-    // the 30 s intro window for a ≤1-position move (#603).
+    // A second overtake within the shared position cooldown no longer re-announces
+    // the position — it would otherwise be spoken twice (e.g. a lap-completed
+    // readout followed by an overtake, possibly delayed by the spotter focus
+    // floor). The reaction catchphrase is a separate scenario and still plays.
     fireLost({});
     const played = voicePaths();
-    expect(played).toContain(`voice/${VOICE}/position-number/5.mp3`);
+    expect(played).not.toContain(`voice/${VOICE}/position-number/5.mp3`);
     expect(played).not.toContain(`voice/${VOICE}/position-intro-worse/currently-01.mp3`);
   });
 

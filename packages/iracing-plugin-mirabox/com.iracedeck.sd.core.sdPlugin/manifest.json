@@ -317,7 +317,7 @@
       "Name": "Pit Crew",
       "UUID": "com.iracedeck.sd.core.pit-crew",
       "Icon": "imgs/actions/pit-crew/icon",
-      "Tooltip": "Pit crew with directional radar proximity alerts (voice engineer scenarios land in follow-up PRs)",
+      "Tooltip": "Race Engineer voice and Radar controls",
       "PropertyInspectorPath": "ui/pit-crew.html",
       "Controllers": [
         "Keypad"

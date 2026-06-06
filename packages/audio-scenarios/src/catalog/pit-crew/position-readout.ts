@@ -101,9 +101,13 @@ export function canAnnouncePosition(now: number = Date.now()): boolean {
 /**
  * Atomic check-and-set for the shared position cooldown: returns `true` and
  * starts a fresh window iff the previous announcement is older than
- * {@link POSITION_READOUT_COOLDOWN_MS}. Used by the lap-completed and
- * race-status readouts (which DEFER to a recent announcement). The overtake
- * readout instead always fires and only {@link markPositionAnnounced}s.
+ * {@link POSITION_READOUT_COOLDOWN_MS}. Claimed by EVERY position readout — the
+ * two overtake readouts, the lap-completed readout, and the race-status readout
+ * — as the LAST gate. Whichever fires first claims the window; the rest return
+ * `false` and defer, so the position is never spoken twice (issue #651), even
+ * when the spotter focus floor delays a readout's actual playback by seconds.
+ * The position NUMBER is read live at speak-time, so the single surviving
+ * readout still states the current position.
  */
 export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean {
   if (!canAnnouncePosition(now)) return false;
@@ -111,16 +115,6 @@ export function tryClaimPositionAnnouncement(now: number = Date.now()): boolean 
   lastPositionAnnouncedAt = now;
 
   return true;
-}
-
-/**
- * Start a fresh position-cooldown window without checking it. The overtake
- * position readout ALWAYS fires (a pass is always worth stating the position
- * for, issue #574), so it marks the cooldown to defer the lap-completed /
- * race-status readouts rather than claiming it.
- */
-export function markPositionAnnounced(now: number = Date.now()): void {
-  lastPositionAnnouncedAt = now;
 }
 
 /**
@@ -273,11 +267,13 @@ function readoutSequence(): Step[] {
  * Skips podium gains (P1/P2/P3): their
  * dedicated reaction lines already state the position (issue #603).
  *
- * The position ALWAYS fires on a (gate-allowed) overtake — it does not check
- * the position cooldown, only {@link markPositionAnnounced}s it so the
- * lap-completed / race-status readouts defer behind it. Suppressed after the
- * race ends and whenever {@link overtakeContextAllows} fails (cars alongside,
- * off-track, crawling, pit road, recent incident).
+ * Claims the shared position cooldown via {@link tryClaimPositionAnnouncement}
+ * as the last gate, so a position already announced by any trigger (another
+ * overtake, a lap-completed, or a race-status readout — possibly delayed by the
+ * spotter focus floor) suppresses this readout instead of doubling it up (issue
+ * #651). The reaction catchphrase is a separate scenario and still plays.
+ * Suppressed after the race ends and whenever {@link overtakeContextAllows}
+ * fails (cars alongside, off-track, crawling, pit road, recent incident).
  */
 export function buildOvertakeGainedPositionScenario(
   getLivePosition: LivePositionResolver,
@@ -310,10 +306,12 @@ export function buildOvertakeGainedPositionScenario(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        // Always fires; just mark the cooldown so lap/race-status defer.
-        markPositionAnnounced();
-
-        return true;
+        // Claim the shared cooldown as the LAST gate: if a position was just
+        // announced (another overtake, a lap-completed, or a race-status readout,
+        // possibly deferred by the spotter focus floor), defer to it so the
+        // position is never spoken twice (issue #651). The reaction catchphrase
+        // is a separate scenario and still plays.
+        return tryClaimPositionAnnouncement();
       },
     },
     channel: AudioChannel.Voice,
@@ -345,9 +343,9 @@ export function buildOvertakeLostPositionScenario(
 
         if (!liveCurrentlyAnnounceable(getLivePosition())) return false;
 
-        markPositionAnnounced();
-
-        return true;
+        // Same shared-cooldown claim as the gained readout — never double up the
+        // position (issue #651). The loss reaction catchphrase still plays.
+        return tryClaimPositionAnnouncement();
       },
     },
     channel: AudioChannel.Voice,

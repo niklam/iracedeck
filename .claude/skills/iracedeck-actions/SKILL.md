@@ -77,7 +77,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Black Box Selector | 3 | direct (with 11 Black Box options), next, previous |
 | Look Direction | 4 | look-left, look-right, look-up, look-down (all hold pattern) |
 | Car Control | 10 | pit-speed-limiter (telemetry-aware), push-to-pass (telemetry-aware), drs (telemetry-aware), headlight-flash (hold), tear-off-visor, ignition, starter (hold), enter-exit-tow (hold, telemetry-aware, session-context icon/color/label when out of car: Test/Practice/Qualify/Grid/Race, red background in-car, per-state auto-hold options for exit/reset/tow), escape (hardcoded ESC, auto-hold option), pause-sim |
-| Pit Crew | 2 | race-engineer (Race Engineer Toggle — flips the engineer voice gate on/off), radar (toggles the directional proximity tick loop). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working. |
+| Pit Crew | 2 | race-engineer (Race Engineer Toggle — flips the engineer voice gate on/off), radar (toggles the directional proximity tick loop). The radar-volume mode moved to the Audio Controls action (#590) — hidden from the Pit Crew Mode dropdown but kept functional so existing buttons keep working. The Spotter is NOT a mode — it's a Race Engineer voice callout family (spoken side-awareness — "car left", "three wide", "clear"), gated by the Race Engineer master (`pitCrewRaceEngineerEnabled`) plus two PI opt-ins `calloutEnabledSpotterCars` + `calloutEnabledSpotterStillThere` (both default on); issue #651. |
 
 ### Cockpit & Interface
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTrackType, TrackType } from "./track-type.js";
+import { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
 
 describe("resolveTrackType", () => {
   it("maps 'road course' to RoadCourse", () => {
@@ -32,5 +32,42 @@ describe("resolveTrackType", () => {
 
   it("returns Unknown when TrackType is not a string", () => {
     expect(resolveTrackType({ WeekendInfo: { TrackType: 3 } })).toBe(TrackType.Unknown);
+  });
+});
+
+describe("resolveTrackDirection", () => {
+  it("maps 'left' to Left", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "left" } })).toBe(TrackDirection.Left);
+  });
+
+  it("maps 'right' to Right", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "right" } })).toBe(TrackDirection.Right);
+  });
+
+  it("maps 'neutral' to Neutral", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "neutral" } })).toBe(TrackDirection.Neutral);
+  });
+
+  it("is case-insensitive and trims whitespace", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: " Left " } })).toBe(TrackDirection.Left);
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "RIGHT" } })).toBe(TrackDirection.Right);
+  });
+
+  it("maps unrecognized directions to Neutral", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "sideways" } })).toBe(TrackDirection.Neutral);
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: "" } })).toBe(TrackDirection.Neutral);
+  });
+
+  it("returns Neutral for null session info", () => {
+    expect(resolveTrackDirection(null)).toBe(TrackDirection.Neutral);
+  });
+
+  it("returns Neutral when WeekendInfo or TrackDirection is missing", () => {
+    expect(resolveTrackDirection({})).toBe(TrackDirection.Neutral);
+    expect(resolveTrackDirection({ WeekendInfo: {} })).toBe(TrackDirection.Neutral);
+  });
+
+  it("returns Neutral when TrackDirection is not a string", () => {
+    expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: 1 } })).toBe(TrackDirection.Neutral);
   });
 });

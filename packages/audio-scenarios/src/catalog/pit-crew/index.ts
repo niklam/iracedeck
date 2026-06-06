@@ -46,6 +46,7 @@
  */
 import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
+import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
@@ -118,6 +119,7 @@ import {
   SCENARIO_ID_TO_SESSION_START_ID,
   type SessionStartCalloutId,
 } from "./session-start.js";
+import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
 import {
   FAST_REPAIR_TOGGLE_SCENARIOS,
   FUEL_TOGGLE_SCENARIOS,
@@ -149,6 +151,14 @@ export {
   type RadarVisualState,
   subscribeRadarVisualState,
 } from "./radar-engine.js";
+export {
+  registerSpotterEngine,
+  resolveStillThereIntervalMs,
+  SPOTTER_STILL_THERE_DEFAULT_MS,
+  SPOTTER_STILL_THERE_DEFAULT_SECONDS,
+  SPOTTER_STILL_THERE_MAX_SECONDS,
+  SPOTTER_STILL_THERE_MIN_SECONDS,
+} from "./spotter-engine.js";
 export {
   buildPitReadbackScenarios,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
@@ -466,6 +476,18 @@ const SCENARIO_ID_TO_PIT_BOX_ID: Record<string, PitBoxCalloutId> = {
   "pit-crew.pit-box-pit-now": "count-in",
 };
 
+/** Stable id for each spotter PI opt-in (issue #651). */
+export type SpotterCalloutId = "cars" | "still-there";
+
+/** Canonical map from {@link SpotterCalloutId} to its global-settings key. */
+export const SPOTTER_CALLOUT_SETTING_KEYS: Record<SpotterCalloutId, string> = {
+  cars: "calloutEnabledSpotterCars",
+  "still-there": "calloutEnabledSpotterStillThere",
+};
+
+/** Global-settings key for the user-configurable "still there" cadence (seconds, issue #651). */
+export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
+
 /**
  * Resolver the plugins pass to {@link registerPitCrew}: given the current
  * session kind, returns whether the loaded setup name looks wrong for it (opt-in
@@ -663,6 +685,23 @@ export function registerPitCrew(
   // Default `() => false` — tests that don't supply a closure never append the
   // warning clause.
   getSetupWarningMismatch: SetupWarningResolver = () => false,
+  // Spotter per-callout opt-ins (issue #651). The spotter is a Race Engineer
+  // callout family (no standalone master) — it rides `getRaceEngineerMasterEnabled`
+  // below. "cars" gates every transition call; "still-there" gates the repeating
+  // reminder. Read live. Default `() => true`. Placed before the master gates so
+  // the masters stay the last params (the registerPitCrew convention).
+  getSpotterCalloutEnabled: (id: SpotterCalloutId) => boolean = () => true,
+  // Spotter road/oval terminology (issue #651). Plugins wire this to
+  // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
+  getSpotterTrackDirection: () => TrackDirection = () => TrackDirection.Neutral,
+  // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
+  // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
+  // tick so a slider change takes effect on the next reminder. Default 3 s.
+  getSpotterStillThereIntervalMs: () => number = () => SPOTTER_STILL_THERE_DEFAULT_MS,
+  // Spotter nearest-car gap in meters (issue #651) for the → clear confirmation
+  // buffer. Plugins wire this to `getNearestCarGapMeters()` from
+  // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
+  getSpotterNearestCarGapMeters: () => number | null = () => null,
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -681,6 +720,16 @@ export function registerPitCrew(
   getRadarMasterEnabled: () => boolean = () => true,
 ): void {
   registerRadarEngine(bus, getRadarMasterEnabled);
+
+  registerSpotterEngine(bus, {
+    getMasterEnabled: getRaceEngineerMasterEnabled,
+    getCarsEnabled: () => getSpotterCalloutEnabled("cars"),
+    getStillThereEnabled: () => getSpotterCalloutEnabled("still-there"),
+    getStillThereIntervalMs: getSpotterStillThereIntervalMs,
+    getTrackDirection: getSpotterTrackDirection,
+    getNearestCarGapMeters: getSpotterNearestCarGapMeters,
+    logger,
+  });
 
   const engine = getScenarioEngine();
 

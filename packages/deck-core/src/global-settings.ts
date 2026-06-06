@@ -147,6 +147,37 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(false),
     /**
+     * Spotter per-callout opt-ins (issue #651). The spoken Spotter proximity
+     * calls are a Race Engineer callout family — there is no standalone master;
+     * they ride `pitCrewRaceEngineerEnabled` like flags/position/lap-time.
+     * "Cars" gates every transition call (car/two cars/one car/three wide/clear/
+     * combined); "StillThere" gates the repeating reminder while alongside (its
+     * cadence is set by `spotterStillThereSeconds`).
+     * Default `true` so users discover the calls (with Race Engineer enabled)
+     * and turn off what they don't want; opt-out takes effect at event-arrival
+     * time without cutting in-flight playback. Canonical id↔key mapping in
+     * `SPOTTER_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     */
+    calloutEnabledSpotterCars: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    calloutEnabledSpotterStillThere: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
+    /**
+     * "Still there" reminder cadence in seconds (issue #651). While a car is
+     * alongside the spotter repeats its reminder every N seconds; user-
+     * configurable 1–10 s, default 3. Read live by the spotter engine on each
+     * tick, so a change takes effect on the next reminder without a restart.
+     */
+    // `.catch(3)` so an out-of-range / malformed persisted value (e.g. a
+    // hand-edited settings file) falls back to the default instead of throwing
+    // and aborting the entire GlobalSettingsSchema.parse — which would stall
+    // every setting, not just this one.
+    spotterStillThereSeconds: z.coerce.number().min(1).max(10).default(3).catch(3),
+    /**
      * Startup defaults for `pitCrewRaceEngineerEnabled` /
      * `pitCrewRadarEnabled` (issue #482). On every plugin start, after the
      * first global-settings arrival, the plugin copies these values into

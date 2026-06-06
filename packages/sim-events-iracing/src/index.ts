@@ -11,6 +11,7 @@ export {
   getDriverSetupName,
   getLatestTelemetry,
   getLivePosition,
+  getNearestCarGapMeters,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
@@ -18,6 +19,7 @@ export {
   getSessionStartConditions,
   getSessionType,
   getStartingGridPosition,
+  getTrackDirection,
   initializeSimEventsIracing,
   isPitActionsAllowed,
   isRaceFinished,
@@ -29,4 +31,4 @@ export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { resolveRadarState } from "./diff/radar.js";
-export { resolveTrackType, TrackType } from "./track-type.js";
+export { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
