@@ -24,5 +24,6 @@ export type {
   SimEventName,
   SimEventOf,
   RadarState,
+  StartCountdownSeconds,
 } from "./event-catalog.js";
 export { TrackWetness } from "./event-catalog.js";

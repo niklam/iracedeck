@@ -185,6 +185,98 @@
         "name": "yellow-cleared-01",
         "text": "Yellow cleared.",
         "seed": 5
+      },
+      {
+        "name": "crossed-01",
+        "text": "Crossed flags.",
+        "seed": 3
+      },
+      {
+        "name": "one-lap-to-green-01",
+        "text": "One pace lap to go.",
+        "seed": 3
+      },
+      {
+        "name": "green-held-01",
+        "text": "Green's coming. <break time=\"0.3s\" /> Get ready.",
+        "seed": 3
+      },
+      {
+        "name": "ten-to-go-01",
+        "text": "Ten to go!",
+        "seed": 3
+      },
+      {
+        "name": "five-to-go-01",
+        "text": "Five to go.",
+        "seed": 3
+      },
+      {
+        "name": "disqualify-01",
+        "text": "Disqualified. <break time=\"0.3s\" /> Pull off.",
+        "seed": 3
+      },
+      {
+        "name": "furled-01",
+        "text": "Black flag furled.",
+        "seed": 3
+      },
+      {
+        "name": "dq-scoring-invalid-01",
+        "text": "D-Q. <break time=\"0.3s\" /> Scoring's off.",
+        "seed": 3
+      },
+      {
+        "name": "yellow-waving-01",
+        "text": "Local yellow waving. <break time=\"0.3s\" /> Slow, hazard ahead!",
+        "seed": 3
+      },
+      {
+        "name": "caution-waving-01",
+        "text": "Caution coming out!",
+        "seed": 3
+      }
+    ],
+    "start-lights": [
+      {
+        "name": "start-ready-01",
+        "text": "Get ready. <break time=\"0.3s\" /> Lights coming up.",
+        "seed": 3
+      },
+      {
+        "name": "start-set-01",
+        "text": "Lights are red. <break time=\"0.3s\" /> Focus.",
+        "seed": 3
+      },
+      {
+        "name": "start-go-01",
+        "text": "Go, go, go!",
+        "seed": 3
+      },
+      {
+        "name": "countdown-60-01",
+        "text": "Sixty seconds.",
+        "seed": 3
+      },
+      {
+        "name": "countdown-30-01",
+        "text": "Thirty seconds.",
+        "seed": 3
+      },
+      {
+        "name": "countdown-15-01",
+        "text": "Fifteen seconds.",
+        "seed": 3
+      },
+      {
+        "name": "countdown-10-01",
+        "text": "Ten seconds.",
+        "seed": 3
+      },
+      {
+        "name": "countdown-5-01",
+        "text": "Five.",
+        "seed": 3
       }
     ],
     "pit-limiter": [

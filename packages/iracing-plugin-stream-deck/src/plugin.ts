@@ -39,6 +39,8 @@ import {
   SPOTTER_CALLOUT_SETTING_KEYS,
   SPOTTER_STILL_THERE_SECONDS_KEY,
   type SpotterCalloutId,
+  START_LIGHT_CALLOUT_SETTING_KEYS,
+  type StartLightCalloutId,
   TRACK_CONDITIONS_CALLOUT_SETTING_KEYS,
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
@@ -506,6 +508,13 @@ registerPitCrew(
   () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
   // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
   () => getNearestCarGapMeters(),
+  // Start-light callout opt-ins (issue #480). Two grouped subjects —
+  // `lights` (the three gantry lines) and `countdown` (the five numeric
+  // marks). Same live-read pattern as the other callout families so toggling
+  // off mid-session takes effect on the next event. Placed before the master
+  // gates so the masters stay the last args.
+  (id: StartLightCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[START_LIGHT_CALLOUT_SETTING_KEYS[id]] !== false,
   // Race Engineer master gate (issue #515). Read live so a fresh install
   // (or a deck with no Pit Crew button mounted) suppresses every voice
   // scenario at dispatch time, independent of audio bus volumes.

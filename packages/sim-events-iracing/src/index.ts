@@ -31,4 +31,5 @@ export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { resolveRadarState } from "./diff/radar.js";
+export { resolveIsAiRace, resolveStandingStart } from "./start-lights.js";
 export { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";

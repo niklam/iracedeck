@@ -140,6 +140,17 @@ const FLAG_CLIP_NAMES = [
   "debris-02",
   "debris-03",
   "meatball-01",
+  // Issue #480 — missing-session-flag callouts.
+  "disqualify-01",
+  "furled-01",
+  "dq-scoring-invalid-01",
+  "crossed-01",
+  "one-lap-to-green-01",
+  "green-held-01",
+  "ten-to-go-01",
+  "five-to-go-01",
+  "yellow-waving-01",
+  "caution-waving-01",
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -203,8 +214,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 11 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(11);
+  it("defines 21 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(21);
   });
 
   it("exposes a stable list of ids", () => {
@@ -220,6 +231,16 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-checkered",
       "pit-crew.flag-debris",
       "pit-crew.flag-meatball",
+      "pit-crew.flag-disqualify",
+      "pit-crew.flag-furled",
+      "pit-crew.flag-dq-scoring-invalid",
+      "pit-crew.flag-crossed",
+      "pit-crew.flag-one-lap-to-green",
+      "pit-crew.flag-green-held",
+      "pit-crew.flag-ten-to-go",
+      "pit-crew.flag-five-to-go",
+      "pit-crew.flag-yellow-waving",
+      "pit-crew.flag-caution-waving",
     ]);
   });
 
@@ -289,6 +310,66 @@ describe("FLAG_ALERTS triggers", () => {
       event: "flag.meatball.raised" as const,
       data: {},
       expected: "voice/luca/flags/meatball-01.mp3",
+    },
+    {
+      label: "disqualify",
+      event: "flag.disqualify.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/disqualify-01.mp3",
+    },
+    {
+      label: "furled",
+      event: "flag.furled.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/furled-01.mp3",
+    },
+    {
+      label: "dq-scoring-invalid",
+      event: "flag.dq-scoring-invalid.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/dq-scoring-invalid-01.mp3",
+    },
+    {
+      label: "crossed",
+      event: "flag.crossed.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/crossed-01.mp3",
+    },
+    {
+      label: "one-lap-to-green",
+      event: "flag.one-lap-to-green.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/one-lap-to-green-01.mp3",
+    },
+    {
+      label: "green-held",
+      event: "flag.green-held.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/green-held-01.mp3",
+    },
+    {
+      label: "ten-to-go",
+      event: "flag.ten-to-go.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/ten-to-go-01.mp3",
+    },
+    {
+      label: "five-to-go",
+      event: "flag.five-to-go.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/five-to-go-01.mp3",
+    },
+    {
+      label: "yellow-waving",
+      event: "flag.yellow-waving.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/yellow-waving-01.mp3",
+    },
+    {
+      label: "caution-waving",
+      event: "flag.caution-waving.raised" as const,
+      data: {},
+      expected: "voice/luca/flags/caution-waving-01.mp3",
     },
   ])("$label fires the matching clip", ({ event, data, expected }) => {
     bus.publishEvent(event, data as never);
@@ -494,6 +575,16 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-checkered-practice",
       "flag-checkered-qualifying",
       "flag-checkered-race",
+      "flag-disqualify",
+      "flag-furled",
+      "flag-dq-scoring-invalid",
+      "flag-crossed",
+      "flag-one-lap-to-green",
+      "flag-green-held",
+      "flag-ten-to-go",
+      "flag-five-to-go",
+      "flag-yellow-waving",
+      "flag-caution-waving",
     ]);
   });
 

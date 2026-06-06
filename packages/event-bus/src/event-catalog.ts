@@ -61,6 +61,15 @@ export type PitBoxMark = "five" | "four" | "three" | "two" | "one" | "pit-now";
 export type FlagScope = "local" | "full";
 
 /**
+ * Pre-start countdown thresholds (issue #480). One value per spoken number as
+ * the standing-start `SessionTimeRemain` crosses each mark in the trustworthy
+ * pre-start window. Sim-agnostic literal union (mirrors {@link PitBoxMark}) so
+ * any future translator can emit the same `startLight.countdown.raised` shape;
+ * the audio scenario maps each value to its own clip.
+ */
+export type StartCountdownSeconds = 60 | 30 | 15 | 10 | 5;
+
+/**
  * Canonical incident-report type (issue #530). Maps the report byte of
  * iRacing's `irsdk_IncidentFlags` onto a sim-agnostic discriminator so future
  * translators (AC, ACC, …) can emit the same `incident.occurred` shape.
@@ -327,6 +336,30 @@ export type SimEventMap = {
    * shape as the other driver-targeted flags.
    */
   "flag.meatball.raised": SimEvent<"flag.meatball.raised", EmptySimEventPayload>;
+  // ── Missing session flags (issue #480) — race-progression, driver-black, caution ─
+  "flag.crossed.raised": SimEvent<"flag.crossed.raised", EmptySimEventPayload>;
+  "flag.one-lap-to-green.raised": SimEvent<"flag.one-lap-to-green.raised", EmptySimEventPayload>;
+  "flag.green-held.raised": SimEvent<"flag.green-held.raised", EmptySimEventPayload>;
+  "flag.ten-to-go.raised": SimEvent<"flag.ten-to-go.raised", EmptySimEventPayload>;
+  "flag.five-to-go.raised": SimEvent<"flag.five-to-go.raised", EmptySimEventPayload>;
+  "flag.disqualify.raised": SimEvent<"flag.disqualify.raised", EmptySimEventPayload>;
+  "flag.furled.raised": SimEvent<"flag.furled.raised", EmptySimEventPayload>;
+  "flag.dq-scoring-invalid.raised": SimEvent<"flag.dq-scoring-invalid.raised", EmptySimEventPayload>;
+  "flag.yellow-waving.raised": SimEvent<"flag.yellow-waving.raised", EmptySimEventPayload>;
+  "flag.caution-waving.raised": SimEvent<"flag.caution-waving.raised", EmptySimEventPayload>;
+
+  /**
+   * Start-light family (issue #480). The race-start gantry lights and the
+   * numeric pre-start countdown. The three gantry states fire on the rising
+   * edge of iRacing's `StartReady` / `StartSet` / `StartGo` bits; the countdown
+   * fires once per crossed threshold during the trustworthy standing-start
+   * window (one event per number, see {@link StartCountdownSeconds}). All carry
+   * `family: "start-light"` so the audio scenarios preempt cleanly.
+   */
+  "startLight.start-ready.raised": SimEvent<"startLight.start-ready.raised", EmptySimEventPayload>;
+  "startLight.start-set.raised": SimEvent<"startLight.start-set.raised", EmptySimEventPayload>;
+  "startLight.start-go.raised": SimEvent<"startLight.start-go.raised", EmptySimEventPayload>;
+  "startLight.countdown.raised": SimEvent<"startLight.countdown.raised", { seconds: StartCountdownSeconds }>;
 
   "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
   /**

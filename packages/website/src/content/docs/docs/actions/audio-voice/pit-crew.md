@@ -57,17 +57,40 @@ The Pit Crew accordion in the Property Inspector exposes these plugin-global set
 When the engineer is enabled, the Pit Crew catalog calls out every flag transition the iRacing translator publishes:
 
 - **Yellow** — scope-aware: full-course yellow ("pace car deployed") and local sector yellow ("mind the slow cars") play different lines.
-- **Yellow cleared** — engineer announces when the yellow drops.
-- **Green** — race-restart / race-on callout.
+- **Yellow waving (local)** — a separate, more urgent line ("Local yellow waving — slow, hazard ahead!") for a waving local yellow, distinct from the static local yellow above.
+- **Caution waving** — a separate, more urgent line ("Caution coming out!") for a waving full-course caution, distinct from the static full-course yellow above.
+- **Yellow cleared** — engineer announces when the yellow drops. It fires only when every yellow-ish flag (static and waving, local and full) has cleared — escalating a static yellow to its waving variant never triggers a false "all clear".
+- **Green** — race-restart / race-on callout. Suppressed at the race start itself (the Start Lights family below owns the start); it still fires on restarts (caution → green).
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — final-lap alert.
+- **Crossed** — "Crossed flags." (leaders and tail-enders sharing the track at the halfway point).
+- **One pace lap to go** — "One pace lap to go." (the rolling-start lead-in).
+- **Green held** — "Green's coming — get ready." (the green is being held a moment longer).
+- **Ten to go** — "Ten to go!" (ten laps remaining).
+- **Five to go** — "Five to go." (five laps remaining).
 - **Red / Black / Debris** — single dedicated callout each.
+- **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
+- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty).
+- **DQ scoring invalid** — "DQ — scoring's off." (disqualification because scoring is invalid).
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
 - **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
 
 Pit-service confirmations (fuel on/off, every tire-set selection, dry/wet compound switch, windshield-tearoff on/off, fast-repair on/off) continue to fire on the relevant Tire Service / Pit Service action presses.
 
 The engineer also calls out every iRacing-reported pit-service status transition during the stop itself — "crew working", "all done", positioning corrections ("too far left, line it up", etc.), and "crew can't fix that this stop" — so you can keep your eyes on the windscreen and react by ear.
+
+## Start Lights
+
+On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. As the lights come up the engineer says *"Get ready — lights coming up."*, then *"Lights are red. Focus."* when the lights go solid red, and *"Go, go, go!"* the instant they drop and the race is live. The red-lights and go calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment.
+
+When iRacing supplies a real pre-start countdown, the engineer also speaks the numeric marks — *"Sixty seconds."*, *"Thirty."*, *"Fifteen."*, *"Ten."*, *"Five."* — as the clock crosses each threshold. The countdown is **standing-start only** and is automatically suppressed for AI races and short pre-start procedures, where the window is too compressed for the numbers to be useful (you'll still get the gantry lines). It announces only the marks that genuinely fall inside the live countdown window, so a short procedure that starts below sixty seconds simply skips the higher numbers rather than blurting a stale burst.
+
+On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go** ("One pace lap to go.") and **Green held** ("Green's coming — get ready.") in the flag coverage above, followed by the green flag.
+
+Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Property Inspector, both on by default:
+
+- **Start lights** — the three gantry lines (get ready / lights are red / go).
+- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five).
 
 ## Pit Service Readback
 
@@ -210,13 +233,22 @@ Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property In
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
-Under **Flags**, all 11 flag callouts are toggleable, all enabled by default:
+Under **Flags**, all 21 flag callouts are toggleable, all enabled by default:
 
-- **Yellow (local)**, **Yellow (full course)**, **Yellow cleared**
+- **Yellow (local)**, **Yellow (full course)**, **Yellow waving (local)**, **Caution waving**, **Yellow cleared**
 - **Green**, **Blue**, **White**, **Red**, **Black**
+- **Disqualify**, **Furled**, **DQ scoring invalid**
+- **Crossed**, **One pace lap to go**, **Green held**, **Ten to go**, **Five to go**
 - **Checkered**, **Debris**, **Meatball**
 
 Disabling a flag also disables its preemption — a disabled callout can't interrupt one already playing. When **Meatball** is disabled, no meatball callout fires; the flag itself is still active in iRacing and you'll still see the on-screen indicator.
+
+Under **Start Lights**, two callouts are toggleable independently, both enabled by default (see [Start Lights](#start-lights) above for the full behavior):
+
+- **Start lights** — the three standing-start gantry lines (get ready / lights are red / go). Disabling silences the gantry calls without affecting the numeric countdown.
+- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
+
+Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
 
 Under **Pit Service**, three callouts are toggleable independently:
 

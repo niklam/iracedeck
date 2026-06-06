@@ -54,6 +54,26 @@ export const EVENT_TEMPLATES = [
   { name: "flag.red.raised", description: "Red flag (session stopped)", data: {} },
   { name: "flag.debris.raised", description: "Debris on track", data: {} },
   { name: "flag.meatball.raised", description: "Meatball flag (orange-and-black, come to pits)", data: {} },
+  { name: "flag.crossed.raised", description: "Crossed flags (halfway / leaders lapping)", data: {} },
+  { name: "flag.one-lap-to-green.raised", description: "One lap to green", data: {} },
+  { name: "flag.green-held.raised", description: "Green held (pace car in this lap)", data: {} },
+  { name: "flag.ten-to-go.raised", description: "Ten laps to go", data: {} },
+  { name: "flag.five-to-go.raised", description: "Five laps to go", data: {} },
+  { name: "flag.disqualify.raised", description: "Disqualified", data: {} },
+  { name: "flag.furled.raised", description: "Furled black flag (warning)", data: {} },
+  { name: "flag.dq-scoring-invalid.raised", description: "Disqualified — scoring invalid", data: {} },
+  { name: "flag.yellow-waving.raised", description: "Yellow flag waving (slow down now)", data: {} },
+  { name: "flag.caution-waving.raised", description: "Full-course caution waving", data: {} },
+
+  // ── Start lights ──
+  { name: "startLight.start-ready.raised", description: "Start gantry: Ready (standing start)", data: {} },
+  { name: "startLight.start-set.raised", description: "Start gantry: Set", data: {} },
+  { name: "startLight.start-go.raised", description: "Start gantry: Go", data: {} },
+  {
+    name: "startLight.countdown.raised",
+    description: "Start countdown number (one event per number — 60/30/15/10/5 s)",
+    data: { seconds: 30 },
+  },
 
   // ── Service / car control toggles ──
   {
