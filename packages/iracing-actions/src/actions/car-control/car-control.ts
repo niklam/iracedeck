@@ -1,9 +1,7 @@
 import {
   applyBindingWarning,
-  applyGraphicTransform,
   assembleIcon,
   CommonSettings,
-  computeGraphicArea,
   ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
@@ -40,19 +38,17 @@ import sessionRaceIcon from "@iracedeck/icons/car-control/session-race.svg";
 import starterIcon from "@iracedeck/icons/car-control/starter.svg";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import towIcon from "@iracedeck/icons/car-control/tow.svg";
-import { EngineWarnings, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, hasFlag, hasPitLimiter, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import drsTemplate from "../../../icons/car-control-drs.svg";
+import pitLimiterTemplate from "../../../icons/car-control-pit-limiter.svg";
 import pushToPassTemplate from "../../../icons/car-control-push-to-pass.svg";
-import carControlTemplate from "../../../icons/car-control.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
-const RED = "#e74c3c";
-const BLUE = "#3498db";
 
 /**
  * Semantic background colors for the context-aware Enter/Exit/Tow mode (issue #632).
@@ -74,22 +70,6 @@ type CarControlType =
   | "drs"
   | "tear-off-visor"
   | "escape";
-
-/**
- * Label configuration for each car control (line1 bold, line2 subdued)
- */
-const CAR_CONTROL_LABELS: Record<CarControlType, { line1: string; line2: string }> = {
-  starter: { line1: "START", line2: "ENGINE" },
-  ignition: { line1: "IGNITION", line2: "ON/OFF" },
-  "pit-speed-limiter": { line1: "PIT", line2: "LIMITER" },
-  "enter-exit-tow": { line1: "ENTER/EXIT", line2: "TOW" },
-  "pause-sim": { line1: "PAUSE", line2: "SIM" },
-  "headlight-flash": { line1: "HEADLIGHT", line2: "FLASH" },
-  "push-to-pass": { line1: "PUSH TO", line2: "PASS" },
-  drs: { line1: "DRS", line2: "TOGGLE" },
-  "tear-off-visor": { line1: "TEAR OFF", line2: "VISOR" },
-  escape: { line1: "ESCAPE", line2: "" },
-};
 
 /** @internal Exported for testing */
 export type EnterExitTowState = "enter-car" | "exit-car" | "reset-to-pits" | "tow";
@@ -167,26 +147,29 @@ export function getPitSpeedLimit(): number {
 /**
  * @internal Exported for testing
  *
- * Pit limiter icon content when ACTIVE (limiter engaged) — speed limit sign with blue highlight.
- */
-export function pitLimiterActiveIcon(speed: number): string {
-  return `
-    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${BLUE}" stroke-width="8"/>
-    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
-}
-
-/**
- * @internal Exported for testing
+ * Pit limiter speed-number graphic — the pit-speed-limit number inside a circle, drawn the
+ * same way in every state (issue #638). The on/off/not-available state is conveyed by the
+ * status bar (green ON / red OFF / grey N/A) and the border colour, mirroring the other
+ * tri-state buttons (Fast Repair, Windshield Tear-off, Auto-Fuel); the circle keeps the
+ * button recognizable and keeps showing the track's pit-speed limit, which stays meaningful
+ * even on cars without a limiter.
  *
- * Pit limiter icon content when INACTIVE (limiter off) — speed limit sign with red border.
+ * The title ("PIT LIMITER") is hidden by default, so the circle grows to fill the space
+ * above the status bar. When the user turns the title on, pass `compact` to shrink the
+ * circle and drop it below the top title.
  */
-export function pitLimiterInactiveIcon(speed: number): string {
+export function pitLimiterSpeedGraphic(speed: number, compact = false): string {
+  // Two presets, each editable as a unit: the compact circle leaves room for the title at the
+  // top; the large circle (title hidden, the default) fills the space above the status bar.
+  // `textY` sits the number a few px below the circle centre so it reads optically centred.
+  const { cy, r, fontSize, textY } = compact
+    ? { cy: 66, r: 24, fontSize: 22, textY: 74 }
+    : { cy: 53, r: 33, fontSize: 30, textY: 64 };
+
   return `
-    <circle cx="72" cy="46" r="30" fill="${WHITE}" stroke="${RED}" stroke-width="8"/>
-    <circle cx="72" cy="46" r="30" fill="none" stroke="${GRAY}" stroke-width="2"/>
-    <text x="72" y="56" text-anchor="middle" dominant-baseline="central"
-          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">${speed}</text>`;
+    <circle cx="72" cy="${cy}" r="${r}" fill="${WHITE}" stroke="${GRAY}" stroke-width="6"/>
+    <text x="72" y="${textY}" text-anchor="middle" dominant-baseline="central"
+          fill="#2a3a2a" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${speed}</text>`;
 }
 
 /**
@@ -377,6 +360,35 @@ export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
 /**
  * @internal Exported for testing
  *
+ * Whether the current car has a pit speed limiter (issue #638). Wraps the shared
+ * capability helper `hasPitLimiter` so the tri-state pit-limiter button can render a
+ * greyed-out N/A state on cars without a limiter. Null telemetry ⇒ treated as available
+ * so the button keeps its normal on/off look until a car snapshot is known (no premature
+ * grey-out before connection).
+ */
+export function isPitLimiterAvailable(telemetry: TelemetryData | null): boolean {
+  if (!telemetry) return true;
+
+  return hasPitLimiter(telemetry);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Resolves the pit-limiter tri-state (issue #638): not-available wins over the on/off flag,
+ * so a car with no limiter always reads "na". Shared by the icon renderer and the state key
+ * so the dedupe key always matches the rendered state (no churn when the on/off flag — which
+ * has no meaning on a no-limiter car — toggles while the car stays N/A).
+ */
+export function pitLimiterToggleState(available: boolean, active: boolean): "on" | "off" | "na" {
+  if (!available) return "na";
+
+  return active ? "on" : "off";
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Check if Push To Pass is active from telemetry.
  */
 export function isPushToPassActive(telemetry: TelemetryData | null): boolean {
@@ -403,6 +415,8 @@ export function isDrsActive(telemetry: TelemetryData | null): boolean {
  */
 export type CarControlTelemetryState = {
   pitLimiterActive?: boolean;
+  /** Whether the current car has a pit limiter (issue #638). false ⇒ greyed N/A state. */
+  pitLimiterAvailable?: boolean;
   pitSpeedLimit?: number;
   pushToPassActive?: boolean;
   drsActive?: boolean;
@@ -450,20 +464,67 @@ export function generateCarControlSvg(
 ): string {
   const { control } = settings;
 
-  // Pit-speed-limiter uses the template approach (dynamic speed number)
+  // Pit-speed-limiter is tri-state (issue #638): on / off / not-available. It mirrors the
+  // other tri-state buttons (Fast Repair, Windshield Tear-off) — title at the top, a colored
+  // status bar (green ON / red OFF / grey N/A) at the bottom, and the border colour driven by
+  // state — but keeps its distinctive speed-number circle as the central graphic. The
+  // not-available state is reached on cars without a pit limiter (`hasPitLimiter` false).
   if (control === "pit-speed-limiter") {
     const speed = telemetryState?.pitSpeedLimit ?? DEFAULT_PIT_SPEED;
+    // Availability defaults true (undefined ⇒ keep the on/off look until a car snapshot says otherwise).
+    const isAvailable = telemetryState?.pitLimiterAvailable ?? true;
     const isActive = telemetryState?.pitLimiterActive ?? false;
-    const iconContent = isActive ? pitLimiterActiveIcon(speed) : pitLimiterInactiveIcon(speed);
+    const toggleState = pitLimiterToggleState(isAvailable, isActive);
+
+    const statusBar = toggleState === "na" ? statusBarNA() : toggleState === "on" ? statusBarOn() : statusBarOff();
+
+    const colors = resolveIconColors(pitLimiterTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+      string,
+      string
+    >;
+    const resolvedTitle = resolveTitleSettings(
+      pitLimiterTemplate,
+      getGlobalTitleSettings(),
+      settings.titleOverrides,
+      "PIT LIMITER",
+    );
+
+    const titleContent = resolvedTitle.showTitle
+      ? generateTitleText({
+          text: resolvedTitle.titleText,
+          fontSize: resolvedTitle.fontSize,
+          bold: resolvedTitle.bold,
+          position: resolvedTitle.position,
+          customPosition: resolvedTitle.customPosition,
+          fill: colors.textColor ?? WHITE,
+        })
+      : "";
+
+    // The speed-number circle is the graphic (hidden when Show Graphics is off); the status
+    // bar always shows so the on/off/na state stays legible, mirroring DRS / Push-to-Pass.
+    // When the title is visible the circle shrinks to leave room for it at the top; with the
+    // title hidden (the default) it grows to fill the space above the status bar.
+    const speedGraphic = resolvedTitle.showGraphics ? pitLimiterSpeedGraphic(speed, resolvedTitle.showTitle) : "";
+    const baseIconContent = `${speedGraphic}${statusBar}`;
+    const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
+
     const border = resolveBorderSettings(
-      carControlTemplate,
+      pitLimiterTemplate,
       getGlobalBorderSettings(),
       settings.borderOverrides,
-      borderColorForState(isActive ? "on" : "off"),
+      borderColorForState(toggleState),
     );
     const borderSvg = generateBorderParts(border);
 
-    return renderDynamicIcon(settings, iconContent, borderSvg, bindingMissing);
+    const svg = renderIconTemplate(pitLimiterTemplate, {
+      iconContent,
+      titleContent,
+      borderDefs: borderSvg.defs,
+      borderContent: borderSvg.rects,
+      ...colors,
+    });
+
+    return svgToDataUri(svg);
   }
 
   // Push To Pass and DRS use dedicated templates with their own <desc> defaults
@@ -546,66 +607,6 @@ export function generateCarControlSvg(
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
-}
-
-/** Bounding box for pit-limiter dynamic content (derived from circle r=38 centered at 72,46) */
-const DYNAMIC_ICON_BOUNDS = { x: 34, y: 8, width: 76, height: 76 };
-
-function renderDynamicIcon(
-  settings: CarControlSettings,
-  iconContent: string,
-  border: { defs: string; rects: string },
-  bindingMissing = false,
-): string {
-  const labels = CAR_CONTROL_LABELS[settings.control] || CAR_CONTROL_LABELS["starter"];
-  const defaultTitle = `${labels.line2}\n${labels.line1}`;
-
-  const colors = resolveIconColors(carControlTemplate, getGlobalColors(), settings.colorOverrides);
-  const resolvedTitle = resolveTitleSettings(
-    carControlTemplate,
-    getGlobalTitleSettings(),
-    settings.titleOverrides,
-    defaultTitle,
-  );
-
-  let scaledContent = resolvedTitle.showGraphics ? iconContent : "";
-
-  if (scaledContent) {
-    const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
-    scaledContent = applyGraphicTransform(
-      scaledContent,
-      DYNAMIC_ICON_BOUNDS,
-      computeGraphicArea(resolvedTitle),
-      graphic.scale,
-    );
-  }
-
-  // When a required binding is missing, dim the content and draw the
-  // centered warning over it (#612).
-  if (bindingMissing) {
-    scaledContent = applyBindingWarning(scaledContent);
-  }
-
-  const titleContent = resolvedTitle.showTitle
-    ? generateTitleText({
-        text: resolvedTitle.titleText,
-        fontSize: resolvedTitle.fontSize,
-        bold: resolvedTitle.bold,
-        position: resolvedTitle.position,
-        customPosition: resolvedTitle.customPosition,
-        fill: colors.textColor ?? "#ffffff",
-      })
-    : "";
-
-  const svg = renderIconTemplate(carControlTemplate, {
-    iconContent: scaledContent,
-    titleContent,
-    borderDefs: border.defs,
-    borderContent: border.rects,
-    ...colors,
-  });
-
-  return svgToDataUri(svg);
 }
 
 /**
@@ -886,6 +887,7 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
 
     if (control === "pit-speed-limiter") {
       state.pitLimiterActive = isPitLimiterActive(telemetry);
+      state.pitLimiterAvailable = isPitLimiterAvailable(telemetry);
       state.pitSpeedLimit = getPitSpeedLimit();
     } else if (control === "push-to-pass") {
       if (telemetry) state.pushToPassActive = isPushToPassActive(telemetry);
@@ -938,7 +940,15 @@ export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
     const warn = this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]) ? "warn" : "";
 
     if (settings.control === "pit-speed-limiter") {
-      return `pit-speed-limiter|${telemetryState.pitLimiterActive ?? false}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}|${borderKey}|${warn}`;
+      // Key on the resolved tri-state (issue #638) so the key matches the rendered icon —
+      // switching between a limiter car and a non-limiter car re-renders (N/A ⇄ on/off),
+      // without churning when the (irrelevant) on/off flag toggles on a no-limiter car.
+      const toggleState = pitLimiterToggleState(
+        telemetryState.pitLimiterAvailable ?? true,
+        telemetryState.pitLimiterActive ?? false,
+      );
+
+      return `pit-speed-limiter|${toggleState}|${telemetryState.pitSpeedLimit ?? DEFAULT_PIT_SPEED}|${borderKey}|${warn}`;
     }
 
     if (settings.control === "push-to-pass") {

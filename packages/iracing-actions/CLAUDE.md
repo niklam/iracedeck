@@ -24,7 +24,7 @@ src/
     settings/                            # Plugin-global PI template
       settings.ejs
 icons/                                   # Dynamic SVG templates (telemetry-driven)
-  car-control.svg
+  car-control-pit-limiter.svg
   session-info.svg
   telemetry-display.svg
   tire-service.svg

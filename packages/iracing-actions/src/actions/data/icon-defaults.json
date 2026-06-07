@@ -204,6 +204,11 @@
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
   },
+  "car-control-pit-limiter": {
+    "backgroundColor": "#2a3a2a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff"
+  },
   "car-control-push-to-pass": {
     "backgroundColor": "#2a3a2a",
     "textColor": "#ffffff",

@@ -9,10 +9,11 @@ import {
   getSessionContext,
   isDrsActive,
   isPitLimiterActive,
+  isPitLimiterAvailable,
   isPushToPassActive,
   parsePitSpeedLimit,
-  pitLimiterActiveIcon,
-  pitLimiterInactiveIcon,
+  pitLimiterSpeedGraphic,
+  pitLimiterToggleState,
 } from "./car-control.js";
 
 const {
@@ -70,6 +71,7 @@ vi.mock("@iracedeck/icons/car-control/session-race.svg", () => ({
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
+  hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
   EngineWarnings: { PitSpeedLimiter: 0x0010 },
   SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));
@@ -117,8 +119,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     return b.key;
   }),
   applyBindingWarning: vi.fn((content: string) => content),
-  applyGraphicTransform: vi.fn((_content: string) => _content),
-  computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -351,6 +351,33 @@ describe("CarControl", () => {
     });
   });
 
+  describe("isPitLimiterAvailable (issue #638)", () => {
+    it("should default to available when telemetry is null (no premature grey-out)", () => {
+      expect(isPitLimiterAvailable(null)).toBe(true);
+    });
+
+    it("should return false when the car has no pit limiter (dcPitSpeedLimiterToggle absent)", () => {
+      expect(isPitLimiterAvailable({} as any)).toBe(false);
+    });
+
+    it("should return true when the car has a pit limiter (dcPitSpeedLimiterToggle present)", () => {
+      expect(isPitLimiterAvailable({ dcPitSpeedLimiterToggle: false } as any)).toBe(true);
+      expect(isPitLimiterAvailable({ dcPitSpeedLimiterToggle: true } as any)).toBe(true);
+    });
+  });
+
+  describe("pitLimiterToggleState (issue #638)", () => {
+    it("should return na when unavailable, regardless of the active flag", () => {
+      expect(pitLimiterToggleState(false, false)).toBe("na");
+      expect(pitLimiterToggleState(false, true)).toBe("na");
+    });
+
+    it("should return on/off by the active flag when available", () => {
+      expect(pitLimiterToggleState(true, true)).toBe("on");
+      expect(pitLimiterToggleState(true, false)).toBe("off");
+    });
+  });
+
   describe("isDrsActive", () => {
     it("should return false when telemetry is null", () => {
       expect(isDrsActive(null)).toBe(false);
@@ -435,73 +462,158 @@ describe("CarControl", () => {
     });
   });
 
-  describe("pit limiter icon functions", () => {
-    it("should produce distinct active and inactive icons", () => {
-      expect(pitLimiterActiveIcon(80)).not.toBe(pitLimiterInactiveIcon(80));
+  describe("pit limiter speed graphic (issue #638)", () => {
+    it("should contain the speed number in both sizes", () => {
+      expect(pitLimiterSpeedGraphic(80)).toContain("80");
+      expect(pitLimiterSpeedGraphic(60)).toContain("60");
+      expect(pitLimiterSpeedGraphic(100)).toContain("100");
+      expect(pitLimiterSpeedGraphic(80, true)).toContain("80");
     });
 
-    it("active icon should contain blue color", () => {
-      expect(pitLimiterActiveIcon(80)).toContain("#3498db");
+    it("should be the circle artwork, not the generic N/A bar", () => {
+      const graphic = pitLimiterSpeedGraphic(80);
+
+      expect(graphic).toContain("<circle");
+      // The status bar (not this graphic) carries the N/A text.
+      expect(graphic).not.toContain("N/A");
     });
 
-    it("inactive icon should contain red border color", () => {
-      expect(pitLimiterInactiveIcon(80)).toContain("#e74c3c");
+    it("should be state-neutral — state lives in the status bar, so no on/off blue or red", () => {
+      const graphic = pitLimiterSpeedGraphic(80);
+
+      expect(graphic).not.toContain("#3498db");
+      expect(graphic).not.toContain("#e74c3c");
     });
 
-    it("both icons should contain the speed number", () => {
-      expect(pitLimiterActiveIcon(80)).toContain("80");
-      expect(pitLimiterInactiveIcon(80)).toContain("80");
-    });
+    it("should grow when the title is hidden and shrink when it is shown", () => {
+      const large = pitLimiterSpeedGraphic(80, false); // title hidden (default)
+      const compact = pitLimiterSpeedGraphic(80, true); // title shown
 
-    it("should use the provided speed value", () => {
-      expect(pitLimiterActiveIcon(60)).toContain("60");
-      expect(pitLimiterInactiveIcon(100)).toContain("100");
+      // Larger radius and font when there is no title competing for space.
+      expect(large).toContain('r="33"');
+      expect(compact).toContain('r="24"');
+      expect(large).not.toBe(compact);
     });
   });
 
   describe("generateCarControlSvg telemetry variants", () => {
-    it("should use active icon when pitLimiterActive is true", () => {
-      const result = generateCarControlSvg(
-        { control: "pit-speed-limiter" },
-        { pitLimiterActive: true, pitSpeedLimit: 80 },
+    it("should render the green ON status bar when the limiter is active", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg(
+          { control: "pit-speed-limiter" },
+          { pitLimiterAvailable: true, pitLimiterActive: true, pitSpeedLimit: 80 },
+        ),
       );
-      const decoded = decodeURIComponent(result);
 
-      expect(decoded).toContain("#3498db");
+      expect(decoded).toContain(">ON<");
+      expect(decoded).toContain("#2ecc71");
+      // The speed circle is kept alongside the status bar.
+      expect(decoded).toContain("80");
+      expect(decoded).toContain("<circle");
     });
 
-    it("should use inactive icon when pitLimiterActive is false", () => {
-      const result = generateCarControlSvg(
-        { control: "pit-speed-limiter" },
-        { pitLimiterActive: false, pitSpeedLimit: 80 },
+    it("should render the red OFF status bar when the limiter is inactive", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg(
+          { control: "pit-speed-limiter" },
+          { pitLimiterAvailable: true, pitLimiterActive: false, pitSpeedLimit: 80 },
+        ),
       );
-      const decoded = decodeURIComponent(result);
 
+      expect(decoded).toContain(">OFF<");
       expect(decoded).toContain("#e74c3c");
     });
 
-    it("should use default (inactive) icon when pitLimiterActive is undefined", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" });
-      const decoded = decodeURIComponent(result);
+    it("should default to the OFF status bar when no telemetry state is provided", () => {
+      const decoded = decodeURIComponent(generateCarControlSvg({ control: "pit-speed-limiter" }));
 
-      expect(decoded).toContain("#e74c3c");
+      expect(decoded).toContain(">OFF<");
     });
 
-    it("should include speed limit in the icon", () => {
-      const result = generateCarControlSvg(
-        { control: "pit-speed-limiter" },
-        { pitLimiterActive: false, pitSpeedLimit: 60 },
+    it("should use the larger circle when the title is hidden (default)", async () => {
+      const { resolveTitleSettings } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: true,
+        titleText: "",
+        bold: true,
+        fontSize: 18,
+        position: "top",
+        customPosition: 0,
+      });
+
+      const decoded = decodeURIComponent(
+        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 80 }),
       );
-      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain('r="33"');
+    });
+
+    it("should use the compact circle when the title is shown", async () => {
+      const { resolveTitleSettings } = await import("@iracedeck/deck-core");
+      vi.mocked(resolveTitleSettings).mockReturnValueOnce({
+        showTitle: true,
+        showGraphics: true,
+        titleText: "PIT LIMITER",
+        bold: true,
+        fontSize: 18,
+        position: "top",
+        customPosition: 0,
+      });
+
+      const decoded = decodeURIComponent(
+        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 80 }),
+      );
+
+      expect(decoded).toContain('r="24"');
+    });
+
+    it("should include the speed limit in the icon", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: false, pitSpeedLimit: 60 }),
+      );
 
       expect(decoded).toContain("60");
     });
 
-    it("should use default speed when pitSpeedLimit is undefined", () => {
-      const result = generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: true });
-      const decoded = decodeURIComponent(result);
+    it("should use the default speed when pitSpeedLimit is undefined", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg({ control: "pit-speed-limiter" }, { pitLimiterActive: true }),
+      );
 
       expect(decoded).toContain("80");
+    });
+
+    it("should render the grey N/A status bar (not on/off) when the limiter is unavailable (issue #638)", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg(
+          { control: "pit-speed-limiter" },
+          { pitLimiterAvailable: false, pitLimiterActive: false, pitSpeedLimit: 80 },
+        ),
+      );
+
+      // Grey N/A status bar — not the on/off bars.
+      expect(decoded).toContain(">N/A<");
+      expect(decoded).not.toContain(">ON<");
+      expect(decoded).not.toContain(">OFF<");
+      expect(decoded).not.toContain("#2ecc71");
+      expect(decoded).not.toContain("#e74c3c");
+      // The speed circle is retained — the N/A state keeps the graphic, unlike the other
+      // tri-state buttons whose N/A is a bare bar.
+      expect(decoded).toContain("80");
+      expect(decoded).toContain("<circle");
+    });
+
+    it("should show the unavailable state even when reported active (availability wins)", () => {
+      const decoded = decodeURIComponent(
+        generateCarControlSvg(
+          { control: "pit-speed-limiter" },
+          { pitLimiterAvailable: false, pitLimiterActive: true, pitSpeedLimit: 80 },
+        ),
+      );
+
+      expect(decoded).toContain(">N/A<");
+      expect(decoded).not.toContain(">ON<");
     });
 
     it("should not affect other controls when pitLimiterActive is passed", () => {
@@ -1080,6 +1192,70 @@ describe("CarControl", () => {
 
       expect(state.enterExitTowState).toBe("enter-car");
       expect(state.sessionContext).toBe("race");
+    });
+  });
+
+  describe("pit limiter availability state (issue #638)", () => {
+    it("should include availability in the state key so a car swap re-renders", () => {
+      const action = new CarControl();
+      const settings = { control: "pit-speed-limiter" } as any;
+      const availableKey = action["buildStateKey"](settings, {
+        pitLimiterAvailable: true,
+        pitLimiterActive: false,
+        pitSpeedLimit: 80,
+      });
+      const unavailableKey = action["buildStateKey"](settings, {
+        pitLimiterAvailable: false,
+        pitLimiterActive: false,
+        pitSpeedLimit: 80,
+      });
+
+      expect(availableKey).not.toBe(unavailableKey);
+    });
+
+    it("should produce the same state key for a no-limiter car regardless of the (irrelevant) active flag", () => {
+      const action = new CarControl();
+      const settings = { control: "pit-speed-limiter" } as any;
+      const keyActiveFalse = action["buildStateKey"](settings, {
+        pitLimiterAvailable: false,
+        pitLimiterActive: false,
+        pitSpeedLimit: 80,
+      });
+      const keyActiveTrue = action["buildStateKey"](settings, {
+        pitLimiterAvailable: false,
+        pitLimiterActive: true,
+        pitSpeedLimit: 80,
+      });
+
+      // Both render the identical N/A icon, so the dedupe key must match (no needless re-render).
+      expect(keyActiveFalse).toBe(keyActiveTrue);
+    });
+
+    it("should compute pitLimiterAvailable=false for a car without a limiter", () => {
+      const action = new CarControl();
+      const state = action["getTelemetryState"]({ EngineWarnings: 0 } as any, "pit-speed-limiter");
+
+      expect(state.pitLimiterAvailable).toBe(false);
+    });
+
+    it("should compute pitLimiterAvailable=true for a car with a limiter", () => {
+      const action = new CarControl();
+      const state = action["getTelemetryState"](
+        { EngineWarnings: 0, dcPitSpeedLimiterToggle: false } as any,
+        "pit-speed-limiter",
+      );
+
+      expect(state.pitLimiterAvailable).toBe(true);
+    });
+
+    it("should still attempt the binding when pressed on a no-limiter car (consistent with sibling tri-state buttons)", async () => {
+      const action = new CarControl();
+      (action as any).sdkController.getCurrentTelemetry = vi.fn(() => ({ EngineWarnings: 0 }));
+      await action.onKeyDown(fakeEvent("action-1", { control: "pit-speed-limiter" }) as any);
+
+      // The N/A state is informational only on the icon; the press is not blocked —
+      // it dispatches the configured binding just like DRS / Push To Pass N/A states.
+      expect(mockTapBinding).toHaveBeenCalledWith("carControlPitSpeedLimiter");
     });
   });
 
