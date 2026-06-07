@@ -1057,12 +1057,20 @@
         "text": "Felix"
       },
       {
+        "name": "fox",
+        "text": "Fox"
+      },
+      {
         "name": "fredrich",
         "text": "Fredrich"
       },
       {
         "name": "glen",
         "text": "Glen"
+      },
+      {
+        "name": "guido",
+        "text": "Guido"
       },
       {
         "name": "hector",
@@ -1151,6 +1159,10 @@
       {
         "name": "miguel",
         "text": "Miguel"
+      },
+      {
+        "name": "mike",
+        "text": "Mike"
       },
       {
         "name": "miquel",
@@ -1429,12 +1441,20 @@
         "text": "Ok, Felix,"
       },
       {
+        "name": "fox",
+        "text": "Ok, Fox,"
+      },
+      {
         "name": "fredrich",
         "text": "Ok, Fredrich,"
       },
       {
         "name": "glen",
         "text": "Ok, Glen,"
+      },
+      {
+        "name": "guido",
+        "text": "Ok, Guido,"
       },
       {
         "name": "hector",
@@ -1523,6 +1543,10 @@
       {
         "name": "miguel",
         "text": "Ok, Miguel,"
+      },
+      {
+        "name": "mike",
+        "text": "Ok, Mike,"
       },
       {
         "name": "miquel",
@@ -4807,8 +4831,10 @@
       { "name": "dominic", "text": "Dominic," },
       { "name": "driver", "text": "Driver," },
       { "name": "felix", "text": "Felix," },
+      { "name": "fox", "text": "Fox," },
       { "name": "fredrich", "text": "Fredrich," },
       { "name": "glen", "text": "Glen," },
+      { "name": "guido", "text": "Guido," },
       { "name": "hector", "text": "Hector," },
       { "name": "hesham", "text": "Hesham," },
       { "name": "ivan", "text": "Ivan," },
@@ -4831,6 +4857,7 @@
       { "name": "matt", "text": "Matt," },
       { "name": "matthew", "text": "Matthew," },
       { "name": "miguel", "text": "Miguel," },
+      { "name": "mike", "text": "Mike," },
       { "name": "miquel", "text": "Miquel," },
       { "name": "nick", "text": "Nick," },
       { "name": "niklas", "text": "Niklas," },
@@ -4914,8 +4941,10 @@
       { "name": "dominic", "text": "Time to race, Dominic." },
       { "name": "driver", "text": "Time to race, Driver." },
       { "name": "felix", "text": "Time to race, Felix." },
+      { "name": "fox", "text": "Time to race, Fox." },
       { "name": "fredrich", "text": "Time to race, Fredrich." },
       { "name": "glen", "text": "Time to race, Glen." },
+      { "name": "guido", "text": "Time to race, Guido." },
       { "name": "hector", "text": "Time to race, Hector." },
       { "name": "hesham", "text": "Time to race, Hesham." },
       { "name": "ivan", "text": "Time to race, Ivan." },
@@ -4938,6 +4967,7 @@
       { "name": "matt", "text": "Time to race, Matt." },
       { "name": "matthew", "text": "Time to race, Matthew." },
       { "name": "miguel", "text": "Time to race, Miguel." },
+      { "name": "mike", "text": "Time to race, Mike." },
       { "name": "miquel", "text": "Time to race, Miquel." },
       { "name": "nick", "text": "Time to race, Nick." },
       { "name": "niklas", "text": "Time to race, Niklas." },
@@ -4972,8 +5002,10 @@
       { "name": "dominic", "text": "Come on, Dominic." },
       { "name": "driver", "text": "Come on, Driver." },
       { "name": "felix", "text": "Come on, Felix." },
+      { "name": "fox", "text": "Come on, Fox." },
       { "name": "fredrich", "text": "Come on, Fredrich." },
       { "name": "glen", "text": "Come on, Glen." },
+      { "name": "guido", "text": "Come on, Guido." },
       { "name": "hector", "text": "Come on, Hector." },
       { "name": "hesham", "text": "Come on, Hesham." },
       { "name": "ivan", "text": "Come on, Ivan." },
@@ -4996,6 +5028,7 @@
       { "name": "matt", "text": "Come on, Matt." },
       { "name": "matthew", "text": "Come on, Matthew." },
       { "name": "miguel", "text": "Come on, Miguel." },
+      { "name": "mike", "text": "Come on, Mike." },
       { "name": "miquel", "text": "Come on, Miquel." },
       { "name": "nick", "text": "Come on, Nick." },
       { "name": "niklas", "text": "Come on, Niklas." },
