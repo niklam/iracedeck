@@ -22,7 +22,12 @@ Toggle the pit speed limiter.
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `A`
-- **Telemetry-aware icon:** Yes — the icon reflects the current pit limiter state from iRacing telemetry in real time
+- **Telemetry-aware icon:** Yes — the icon is tri-state and reflects the current pit limiter state from iRacing telemetry in real time. Every state keeps the pit-speed-limit number (a track value, so it stays meaningful even on cars with no limiter) and shows the state on a status bar at the bottom, matching the other tri-state buttons (Fast Repair, Windshield Tear-off, Auto-Fuel):
+  - **On** — green `ON` bar and green border
+  - **Off** — red `OFF` bar and red border
+  - **Not available** — on cars without a pit limiter, a grey `N/A` bar and grey border, so you can tell at a glance the car has no limiter while still seeing the pit-speed limit. The button stays usable — pressing it still sends the configured binding.
+
+The `PIT LIMITER` title is hidden by default so the speed number can be shown larger; enable it from the Title Overrides section if you want the label (the number then shrinks to make room).
 
 #### Settings
 
