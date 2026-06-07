@@ -282,7 +282,7 @@ export type FlagCalloutId =
   | "furled"
   | "dq-scoring-invalid"
   | "crossed"
-  | "one-lap-to-green"
+  | "one-pace-lap-to-go"
   | "green-held"
   | "ten-to-go"
   | "five-to-go"
@@ -310,7 +310,7 @@ export const FLAG_CALLOUT_SETTING_KEYS: Record<FlagCalloutId, string> = {
   furled: "calloutEnabledFlagFurled",
   "dq-scoring-invalid": "calloutEnabledFlagDqScoringInvalid",
   crossed: "calloutEnabledFlagCrossed",
-  "one-lap-to-green": "calloutEnabledFlagOneLapToGreen",
+  "one-pace-lap-to-go": "calloutEnabledFlagOnePaceLapToGo",
   "green-held": "calloutEnabledFlagGreenHeld",
   "ten-to-go": "calloutEnabledFlagTenToGo",
   "five-to-go": "calloutEnabledFlagFiveToGo",
@@ -334,7 +334,7 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-furled": "furled",
   "pit-crew.flag-dq-scoring-invalid": "dq-scoring-invalid",
   "pit-crew.flag-crossed": "crossed",
-  "pit-crew.flag-one-lap-to-green": "one-lap-to-green",
+  "pit-crew.flag-one-pace-lap-to-go": "one-pace-lap-to-go",
   "pit-crew.flag-green-held": "green-held",
   "pit-crew.flag-ten-to-go": "ten-to-go",
   "pit-crew.flag-five-to-go": "five-to-go",

@@ -98,7 +98,6 @@ describe("diffFlags — new rising-edge bits (issue #480)", () => {
     ["furled", Flags.Furled, "flag.furled.raised"],
     ["dq-scoring-invalid", Flags.DqScoringInvalid, "flag.dq-scoring-invalid.raised"],
     ["crossed", Flags.Crossed, "flag.crossed.raised"],
-    ["one-lap-to-green", Flags.OneLapToGreen, "flag.one-lap-to-green.raised"],
     ["green-held", Flags.GreenHeld, "flag.green-held.raised"],
     ["ten-to-go", Flags.TenToGo, "flag.ten-to-go.raised"],
     ["five-to-go", Flags.FiveToGo, "flag.five-to-go.raised"],

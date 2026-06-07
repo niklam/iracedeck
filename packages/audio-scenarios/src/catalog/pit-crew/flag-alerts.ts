@@ -6,10 +6,10 @@
  *
  * **Pool-driven clips.** Every flag scenario draws from a pool defined in
  * `pools.ts` (e.g. `pool:flag-yellow-local`, `pool:flag-blue`) — even the
- * single-clip flags. The interpreter rotates multi-element pools and
- * resolves single-element pools deterministically, so behavior is
- * unchanged today, but adding a variant later is a one-line append in
- * `pools.ts` instead of a scenario rewrite.
+ * single-clip flags. The interpreter picks from multi-element pools at
+ * random (no immediate repeat) and resolves single-element pools
+ * deterministically, so behavior is unchanged today, but adding a variant
+ * later is a one-line append in `pools.ts` instead of a scenario rewrite.
  *
  * **Family preemption.** All non-meatball flag scenarios share
  * `family: "flag"` so a newer flag callout supersedes the in-flight one
@@ -34,7 +34,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isLiveOnTrack, isPostRace, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
@@ -42,24 +42,32 @@ import { WEIGHT } from "../../dsl.js";
 import { POOLS } from "./pools.js";
 import { isRaceSession } from "./race-start.js";
 
-// Race-progression / formation flags (one-lap-to-green, green-held, ten-to-go,
+// Race-progression / formation flags (one-pace-lap-to-go, green-held, ten-to-go,
 // five-to-go, crossed) are race-only concepts. iRacing raises the grid bits
-// (e.g. OneLapToGreen) while forming the race grid at the END of a qualifying
-// session, so without this gate "one pace lap to go" fired at the qualifying
-// checkered (issue #480 follow-up). Live-read at fire time, mirroring the
-// session branching the green/white/checkered scenarios already use.
+// while forming the race grid at the END of a qualifying session, so without
+// this gate they fired at the qualifying checkered (issue #480 follow-up).
+// Live-read at fire time, mirroring the session branching the
+// green/white/checkered scenarios already use.
 const raceOnly = () => isRaceSession(getSessionType());
 
 // These callouts only make sense to a driver IN the car and live, so also gate
 // on `isLiveOnTrack` — silent while out of the car at the grid / in a replay
-// (issue #480 follow-up). Read from the event's telemetry at fire time.
+// (issue #480 follow-up). And gate OFF after the race finishes (`isPostRace` —
+// Checkered / CoolDown): iRacing re-asserts the grid bits during cool-down /
+// next-session grid formation, which would otherwise re-fire the bit-driven
+// progression callouts (crossed / green-held / ten- / five-to-go) after the
+// checkered — the #657 post-race misfire. (`one-pace-lap-to-go` is additionally
+// ParadeLaps-gated in its own diff, so it can't reach post-race regardless.)
+// Read from the event's telemetry at fire time.
 const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
-  raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null);
+  raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null) && !isPostRace(e.telemetry as TelemetryData | null);
 
-// Rolling-only formation cues. A standing start has no pace lap, yet iRacing
-// sets `OneLapToGreen` throughout the standing grid — so suppress these during a
+// Rolling-only formation cue (green-held). A standing start has no pace lap, yet
+// iRacing sets the grid bits throughout the standing grid — so suppress during a
 // standing-start pre-green phase (the start-light family owns that lead-in).
 // Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
+// (The sibling "one pace lap to go" cue is gated rolling-only in its diff
+// instead — `diff/pace-laps.ts`, issue #657 — so it uses `liveRaceCar` here.)
 const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
   liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
 
@@ -213,16 +221,20 @@ const DQ_SCORING_INVALID: Scenario = {
   when: { event: "flag.dq-scoring-invalid.raised" },
 };
 
-// Race-progression flags (issue #480) — crossed, one-lap-to-green, green-held,
+// Race-progression flags (issue #480) — crossed, one-pace-lap-to-go, green-held,
 // ten-to-go, five-to-go.
 const CROSSED: Scenario = {
   ...flagScenario("crossed", ["pool:flag-crossed"]),
   when: { event: "flag.crossed.raised", where: liveRaceCar },
 };
 
-const ONE_LAP_TO_GREEN: Scenario = {
-  ...flagScenario("one-lap-to-green", ["pool:flag-one-lap-to-green"]),
-  when: { event: "flag.one-lap-to-green.raised", where: rollingFormationOnly },
+// "One pace lap to go" on a rolling start (issue #657). The translator's
+// `diff/pace-laps.ts` already owns the rolling-only / ParadeLaps / final-lap
+// gating, so the scenario only needs the shared live-race-car gate (race
+// session + in the car + not post-race).
+const ONE_PACE_LAP_TO_GO: Scenario = {
+  ...flagScenario("one-pace-lap-to-go", ["pool:flag-one-pace-lap-to-go"]),
+  when: { event: "flag.one-pace-lap-to-go.raised", where: liveRaceCar },
 };
 
 const GREEN_HELD: Scenario = {
@@ -269,7 +281,7 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   FURLED,
   DQ_SCORING_INVALID,
   CROSSED,
-  ONE_LAP_TO_GREEN,
+  ONE_PACE_LAP_TO_GO,
   GREEN_HELD,
   TEN_TO_GO,
   FIVE_TO_GO,

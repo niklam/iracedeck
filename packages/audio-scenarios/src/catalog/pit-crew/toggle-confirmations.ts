@@ -6,8 +6,8 @@
  * The pit-action ack pool (got it / roger that / copy that) preserves the
  * walkie-talkie feel where the engineer confirms the request before echoing
  * the state change. It's a separate pool from the generic `acknowledgment`
- * one so the two rotations advance independently — see `pools.ts` for the
- * rationale.
+ * one so the two pools' no-repeat trackers stay independent — see `pools.ts`
+ * for the rationale.
  *
  * Registered scenarios:
  *   - `FUEL_TOGGLE_SCENARIOS` — fuel on/off via `pitService.toggled`

@@ -192,14 +192,54 @@
         "seed": 3
       },
       {
-        "name": "one-lap-to-green-01",
-        "text": "One pace lap to go.",
+        "name": "one-pace-lap-to-go-01",
+        "text": "Still a lap to go before racing. <break time=\"0.3s\" /> Keep your spacing tidy and work some heat into the tyres.",
         "seed": 3
       },
       {
+        "name": "one-pace-lap-to-go-02",
+        "text": "Not green yet. <break time=\"0.3s\" /> Another lap behind the pace car first. Stay in line and keep them warm.",
+        "seed": 6
+      },
+      {
+        "name": "one-pace-lap-to-go-03",
+        "text": "We've got a bit more to go before the green. Hold your position and build some temperature in the tyres.",
+        "seed": 5
+      },
+      {
+        "name": "one-pace-lap-to-go-04",
+        "text": "Still forming up before we race. Keep weaving, mind your spacing, and warm those tyres up.",
+        "seed": 6
+      },
+      {
+        "name": "one-pace-lap-to-go-05",
+        "text": "Almost there — a little more behind the pace car before the green. Stay patient and keep the heat in.",
+        "seed": 7
+      },
+      {
         "name": "green-held-01",
-        "text": "Green's coming. <break time=\"0.3s\" /> Get ready.",
-        "seed": 3
+        "text": "This is it. Pace car's coming in. Green any second now, so get ready to launch.",
+        "seed": 8
+      },
+      {
+        "name": "green-held-02",
+        "text": "Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line.",
+        "seed": 4
+      },
+      {
+        "name": "green-held-03",
+        "text": "Here we go, green's coming. Watch the car ahead and get a good run into turn one.",
+        "seed": 5
+      },
+      {
+        "name": "green-held-04",
+        "text": "Pace car's gone. Stand by... it's racing the moment that gap opens up.",
+        "seed": 6
+      },
+      {
+        "name": "green-held-05",
+        "text": "Last few seconds behind the pace car. Get set — clean launch, smart into turn one.",
+        "seed": 7
       },
       {
         "name": "ten-to-go-01",

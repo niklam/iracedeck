@@ -1,14 +1,16 @@
 /**
  * Pool definitions for the pit-crew scenario catalog.
  *
- * Each pool name maps to an ordered list of clip paths relative to the
+ * Each pool name maps to a list of clip paths relative to the
  * `@iracedeck/audio-assets` package root. Pools are registered with the
  * scenario engine at catalog load time; scenarios then reference them as
  * `"pool:<name>"` and `{ pool: "<name>" }`.
  *
- * Rotation is shared — two scenarios that draw from the same pool share
- * its "last index" tracker, so back-to-back picks across scenarios are
- * avoided.
+ * Selection is RANDOM — every pick is a uniform-random clip from the pool
+ * (`Math.random`), never a fixed order. The only constraint is no immediate
+ * repeat: the same clip is never played twice in a row. That "last index"
+ * tracker is shared per-pool, so the no-repeat guard holds even across two
+ * scenarios that draw from the same pool.
  */
 
 export const POOLS: Readonly<Record<string, readonly string[]>> = {
@@ -26,8 +28,8 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // Pit-action acknowledgments — short "got it" style intros that play before
   // a pit-action callout ("...we'll change the front tires at the next pitstop").
   // Kept as a separate pool from `acknowledgment` (rather than reusing it) so the
-  // two rotations advance independently — the user hears variety on a toggle
-  // burst even if a `acknowledgment` clip just played for an unrelated cue.
+  // two pools' no-repeat trackers stay independent — the user hears variety on a
+  // toggle burst even if an `acknowledgment` clip just played for an unrelated cue.
   // The clip set is also a deliberate subset (no "okay" / "we got that") tuned
   // for the pit-service confirmation register.
   "pit-action-acknowledgment": [
@@ -45,8 +47,8 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // Flag callout pools. Every flag scenario draws from a pool — even the
   // single-clip flags — so adding a variant later becomes a one-line
   // append here instead of restructuring the scenario. Multi-element
-  // pools rotate (no-repeat shared per-pool); single-element pools are
-  // deterministic. All voice-scoped via `{voice}`.
+  // pools pick at random (no immediate repeat, shared per-pool);
+  // single-element pools are deterministic. All voice-scoped via `{voice}`.
   "flag-yellow-local": ["voice/{voice}/flags/yellow-local-01.mp3"],
   "flag-yellow-full": ["voice/{voice}/flags/yellow-full-01.mp3"],
   "flag-yellow-cleared": ["voice/{voice}/flags/yellow-cleared-01.mp3"],
@@ -83,15 +85,27 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
 
   // Missing-session-flag callout pools (issue #480). Driver-black splits
   // (disqualify / furled / dq-scoring-invalid), race-progression flags
-  // (crossed / one-lap-to-green / green-held / ten-to-go / five-to-go), and
+  // (crossed / one-pace-lap-to-go / green-held / ten-to-go / five-to-go), and
   // the caution-waving variants (yellow-waving / caution-waving). All
   // single-clip today; auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
   "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
   "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
   "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
   "flag-crossed": ["voice/{voice}/flags/crossed-01.mp3"],
-  "flag-one-lap-to-green": ["voice/{voice}/flags/one-lap-to-green-01.mp3"],
-  "flag-green-held": ["voice/{voice}/flags/green-held-01.mp3"],
+  "flag-one-pace-lap-to-go": [
+    "voice/{voice}/flags/one-pace-lap-to-go-01.mp3",
+    "voice/{voice}/flags/one-pace-lap-to-go-02.mp3",
+    "voice/{voice}/flags/one-pace-lap-to-go-03.mp3",
+    "voice/{voice}/flags/one-pace-lap-to-go-04.mp3",
+    "voice/{voice}/flags/one-pace-lap-to-go-05.mp3",
+  ],
+  "flag-green-held": [
+    "voice/{voice}/flags/green-held-01.mp3",
+    "voice/{voice}/flags/green-held-02.mp3",
+    "voice/{voice}/flags/green-held-03.mp3",
+    "voice/{voice}/flags/green-held-04.mp3",
+    "voice/{voice}/flags/green-held-05.mp3",
+  ],
   "flag-ten-to-go": ["voice/{voice}/flags/ten-to-go-01.mp3"],
   "flag-five-to-go": ["voice/{voice}/flags/five-to-go-01.mp3"],
   "flag-yellow-waving": ["voice/{voice}/flags/yellow-waving-01.mp3"],
@@ -110,8 +124,8 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
   "start-light-countdown-5": ["voice/{voice}/start-lights/countdown-5-01.mp3"],
 
-  // Damage callout pool (issue #489). Single pool today; multi-clip rotation
-  // works the same way as the flag pools above.
+  // Damage callout pool (issue #489). Single pool today; multi-clip random
+  // selection works the same way as the flag pools above.
   "damage-repair-needed": [
     "voice/{voice}/damage/repair-needed-01.mp3",
     "voice/{voice}/damage/repair-needed-02.mp3",
