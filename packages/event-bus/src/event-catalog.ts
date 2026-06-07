@@ -338,7 +338,11 @@ export type SimEventMap = {
   "flag.meatball.raised": SimEvent<"flag.meatball.raised", EmptySimEventPayload>;
   // ── Missing session flags (issue #480) — race-progression, driver-black, caution ─
   "flag.crossed.raised": SimEvent<"flag.crossed.raised", EmptySimEventPayload>;
-  "flag.one-lap-to-green.raised": SimEvent<"flag.one-lap-to-green.raised", EmptySimEventPayload>;
+  // `one-pace-lap-to-go` is the rolling-start "one pace lap to go" cue. It is
+  // NOT driven by iRacing's `OneLapToGreen` bit (that bit is "formation in
+  // progress", set for the whole parade and re-set in cool-down — issue #657);
+  // the translator emits it from a start/finish-crossing heuristic instead.
+  "flag.one-pace-lap-to-go.raised": SimEvent<"flag.one-pace-lap-to-go.raised", EmptySimEventPayload>;
   "flag.green-held.raised": SimEvent<"flag.green-held.raised", EmptySimEventPayload>;
   "flag.ten-to-go.raised": SimEvent<"flag.ten-to-go.raised", EmptySimEventPayload>;
   "flag.five-to-go.raised": SimEvent<"flag.five-to-go.raised", EmptySimEventPayload>;

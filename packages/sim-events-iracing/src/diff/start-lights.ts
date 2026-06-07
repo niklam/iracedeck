@@ -7,8 +7,8 @@
  *   1. **Gantry rising edges.** `StartReady` / `StartSet` / `StartGo` each fire
  *      once on their off→on edge (vs `state.lastStartLightBits`). `start-ready`
  *      is standing-only — in a rolling start `StartReady` is held through the
- *      whole parade, so the lead-in there comes from `one-lap-to-green` /
- *      `green-held` instead.
+ *      whole parade, so the lead-in there comes from `one-pace-lap-to-go`
+ *      (`diff/pace-laps.ts`, issue #657) / `green-held` instead.
  *
  *   2. **Numeric countdown.** A `SessionTimeRemain` countdown that only runs in
  *      the trustworthy standing pre-start window — `standing ∧

@@ -35,7 +35,6 @@ type FlagKey =
   | "furled"
   | "dq-scoring-invalid"
   | "crossed"
-  | "one-lap-to-green"
   | "green-held"
   | "ten-to-go"
   | "five-to-go"
@@ -99,10 +98,11 @@ function resolveActiveFlags(sessionFlags: number): {
   // Meatball ("come in to pits, you have damage") — `Flags.Repair` in the SDK enum.
   if (hasFlag(sessionFlags, Flags.Repair)) flags.add("meatball");
 
-  // Race-progression flags (issue #480).
+  // Race-progression flags (issue #480). NOTE: the rolling-start "one pace lap
+  // to go" cue is NOT here — iRacing's `OneLapToGreen` bit is "formation in
+  // progress" (set for the whole parade, re-set in cool-down), so it's driven
+  // by a start/finish-crossing heuristic in `diff/pace-laps.ts` (issue #657).
   if (hasFlag(sessionFlags, Flags.Crossed)) flags.add("crossed");
-
-  if (hasFlag(sessionFlags, Flags.OneLapToGreen)) flags.add("one-lap-to-green");
 
   if (hasFlag(sessionFlags, Flags.GreenHeld)) flags.add("green-held");
 
@@ -179,9 +179,6 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, emit
           break;
         case "crossed":
           emit({ event: "flag.crossed.raised", data: {} });
-          break;
-        case "one-lap-to-green":
-          emit({ event: "flag.one-lap-to-green.raised", data: {} });
           break;
         case "green-held":
           emit({ event: "flag.green-held.raised", data: {} });

@@ -55,7 +55,7 @@ export const EVENT_TEMPLATES = [
   { name: "flag.debris.raised", description: "Debris on track", data: {} },
   { name: "flag.meatball.raised", description: "Meatball flag (orange-and-black, come to pits)", data: {} },
   { name: "flag.crossed.raised", description: "Crossed flags (halfway / leaders lapping)", data: {} },
-  { name: "flag.one-lap-to-green.raised", description: "One lap to green", data: {} },
+  { name: "flag.one-pace-lap-to-go.raised", description: "One pace lap to go", data: {} },
   { name: "flag.green-held.raised", description: "Green held (pace car in this lap)", data: {} },
   { name: "flag.ten-to-go.raised", description: "Ten laps to go", data: {} },
   { name: "flag.five-to-go.raised", description: "Five laps to go", data: {} },

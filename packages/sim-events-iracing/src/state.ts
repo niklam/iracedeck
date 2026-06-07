@@ -78,6 +78,36 @@ export type TranslatorState = {
    */
   lastAnyYellow: boolean;
 
+  // ── Rolling-start pace laps (issue #657) ────────────────────────────────
+  /**
+   * Whether the pace-lap diff has seeded its baseline on the first tick. Seeds
+   * `lastTickInParadeLaps` without arming so connecting mid-parade never
+   * synthesizes a "one pace lap to go" (same caveat as the gantry bits).
+   */
+  paceLapInitialized: boolean;
+  /** Previous-tick `SessionState === ParadeLaps`, for entry-edge detection. */
+  lastTickInParadeLaps: boolean;
+  /**
+   * Whether the diff is armed for the current rolling formation — set on a
+   * genuine `*→ParadeLaps` entry transition, cleared on any non-ParadeLaps tick.
+   * Only an armed diff accumulates distance and can fire.
+   */
+  paceLapArmed: boolean;
+  /**
+   * Forward lap-distance accrued since entering ParadeLaps (laps, can exceed 1).
+   * The grid-release S/F crossing sits at ~0 accrued; the first-pace-lap
+   * completion crossing sits at ~1 — the `>= 0.5` fire guard separates them.
+   */
+  paceLapAccrued: number;
+  /** Previous-tick `LapDistPct`, for the per-tick forward-distance delta. */
+  paceLapLastDistPct: number;
+  /**
+   * Once-per-formation latch for `flag.one-pace-lap-to-go.raised`. Set when the
+   * cue fires; cleared (with the rest of the pace-lap state) on any
+   * non-ParadeLaps tick, so the next session's formation re-arms cleanly.
+   */
+  onePaceLapToGoFired: boolean;
+
   // ── Start lights (issue #480) ───────────────────────────────────────────
   /**
    * Whether the start-light diff has seeded its baselines on the first tick
@@ -433,6 +463,13 @@ export function createInitialState(): TranslatorState {
     activeFlags: new Set(),
     lastYellowScope: null,
     lastAnyYellow: false,
+
+    paceLapInitialized: false,
+    lastTickInParadeLaps: false,
+    paceLapArmed: false,
+    paceLapAccrued: 0,
+    paceLapLastDistPct: 0,
+    onePaceLapToGoFired: false,
 
     startLightInitialized: false,
     lastStartLightBits: 0,

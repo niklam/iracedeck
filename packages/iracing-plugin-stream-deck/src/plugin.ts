@@ -626,6 +626,16 @@ onGlobalSettingsChange((settings) => {
       "radarEnabledOnStartup",
     ]);
 
+    // Issue #657 rename cleanup: the per-callout opt-in
+    // `calloutEnabledFlagOneLapToGreen` was renamed to
+    // `calloutEnabledFlagOnePaceLapToGo`. Drop the orphaned old key so the new
+    // key takes its schema default (on) for everyone — the same "reset to
+    // schema default on rename" convention as the #515 keys above. The cue was
+    // also re-triggered and re-recorded (effectively new behaviour), so it
+    // should default on per the Race Engineer "new functionality defaults on"
+    // principle rather than inherit a disable of the old, broken cue.
+    deleteGlobalSettings(["calloutEnabledFlagOneLapToGreen"]);
+
     updateGlobalSettings({
       pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup,
       pitCrewRadarEnabled: settings.pitCrewRadarEnabledOnStartup,

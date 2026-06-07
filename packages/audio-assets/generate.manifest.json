@@ -8665,21 +8665,21 @@
       "generatedAt": "2026-06-06T15:00:04.375Z",
       "requestId": "LInRGNPJFT0073G91uVN"
     },
-    "voice/default/flags/one-lap-to-green-01.mp3": {
-      "hash": "479420d40fe91d17",
+    "voice/default/flags/one-pace-lap-to-go-01.mp3": {
+      "hash": "2eb967e9bbfd12e0",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "One pace lap to go.",
-      "generatedAt": "2026-06-06T15:00:04.563Z",
-      "requestId": "ysbML7m6lkUcYsrGVKdt"
+      "textPreview": "Still a lap to go before racing. <break time=\"0.3s\" /> Keep your spacing tidy a…",
+      "generatedAt": "2026-06-07T11:56:48.694Z",
+      "requestId": "mPEuvOwsstBdE9AcpSFF"
     },
     "voice/default/flags/green-held-01.mp3": {
-      "hash": "ac90f7002f4c48e3",
+      "hash": "4d869443fb194111",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Green's coming. <break time=\"0.3s\" /> Get ready.",
-      "generatedAt": "2026-06-06T15:00:04.753Z",
-      "requestId": "xYZgJHzmUYNQos7s5j0e"
+      "textPreview": "This is it. Pace car's coming in. Green any second now, so get ready to launch.",
+      "generatedAt": "2026-06-07T11:56:05.420Z",
+      "requestId": "t1Qg2Jt1x2CuEx2fzmGt"
     },
     "voice/default/flags/ten-to-go-01.mp3": {
       "hash": "20a30d45c2b0bf80",
@@ -8800,6 +8800,70 @@
       "textPreview": "Five seconds to the lights.",
       "generatedAt": "2026-06-06T16:26:34.482Z",
       "requestId": "u2KQcVQ5yv4Vv337kUnG"
+    },
+    "voice/default/flags/one-pace-lap-to-go-02.mp3": {
+      "hash": "b5aa73b478c55a8c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Not green yet. <break time=\"0.3s\" /> Another lap behind the pace car first. Sta…",
+      "generatedAt": "2026-06-07T11:57:34.587Z",
+      "requestId": "eTeGR7PbAen9lYEjmUda"
+    },
+    "voice/default/flags/one-pace-lap-to-go-03.mp3": {
+      "hash": "fc90fdbd81b7ae28",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "We've got a bit more to go before the green. Hold your position and build some …",
+      "generatedAt": "2026-06-07T11:51:12.961Z",
+      "requestId": "ylS6xgetcHEpD3H03KLL"
+    },
+    "voice/default/flags/one-pace-lap-to-go-04.mp3": {
+      "hash": "fe0f7e02ed529382",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Still forming up before we race. Keep weaving, mind your spacing, and warm thos…",
+      "generatedAt": "2026-06-07T11:51:13.273Z",
+      "requestId": "k2V6E7RIoO2o4g8JBfB6"
+    },
+    "voice/default/flags/one-pace-lap-to-go-05.mp3": {
+      "hash": "8c61ccc468676dc2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Almost there — a little more behind the pace car before the green. Stay patient…",
+      "generatedAt": "2026-06-07T11:51:13.592Z",
+      "requestId": "JptxibaDpPu8wzMZlHQL"
+    },
+    "voice/default/flags/green-held-02.mp3": {
+      "hash": "ed70c11cc3abba5b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's peeling off. Eyes up, pick your gear, and launch clean off the line.",
+      "generatedAt": "2026-06-07T11:51:14.245Z",
+      "requestId": "qO5XRYNL7cZ4N2s0v40W"
+    },
+    "voice/default/flags/green-held-03.mp3": {
+      "hash": "5335eee3112a96fd",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Here we go, green's coming. Watch the car ahead and get a good run into turn on…",
+      "generatedAt": "2026-06-07T11:52:59.901Z",
+      "requestId": "EVLUvOJdS9pg3awbJwVt"
+    },
+    "voice/default/flags/green-held-04.mp3": {
+      "hash": "3553516e46776e2a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's gone. Stand by... it's racing the moment that gap opens up.",
+      "generatedAt": "2026-06-07T11:51:14.924Z",
+      "requestId": "5J6tjFPkSgER1C6rCXX8"
+    },
+    "voice/default/flags/green-held-05.mp3": {
+      "hash": "bdd2f065bfa8a07c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Last few seconds behind the pace car. Get set — clean launch, smart into turn o…",
+      "generatedAt": "2026-06-07T11:51:15.223Z",
+      "requestId": "a2ECwLHhHFmV4accEsjw"
     }
   }
 }

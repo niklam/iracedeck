@@ -64,12 +64,14 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
 - **White** — final-lap alert.
 - **Crossed** — "Crossed flags." (leaders and tail-enders sharing the track at the halfway point).
-- **One pace lap to go** — "One pace lap to go." (the rolling-start lead-in).
-- **Green held** — "Green's coming — get ready." (the green is being held a moment longer).
+- **One pace lap to go** — a heads-up that one pace lap remains on a rolling start, given as you complete the first pace lap and begin the last (the engineer assumes at most two pace laps). The engineer rotates through several recorded variants.
+- **Green held** — the green is being held a moment longer: a "green any second, get ready" heads-up as the field bunches up (several recorded variants).
 - **Ten to go** — "Ten to go!" (ten laps remaining).
 - **Five to go** — "Five to go." (five laps remaining).
 
-The four race-formation / progression callouts above (Crossed, One pace lap to go, Green held, Ten/Five to go) fire **in race sessions only, and only while you are in the car** — iRacing raises the grid flags while forming the race grid at the end of a qualifying session, so gating them to the race (and to being on track, not watching a replay or spectating the grid) keeps "One pace lap to go" from firing at the qualifying checkered. "One pace lap to go" / "Green held" are also suppressed during a **standing-start** grid — a standing start has no pace lap, so the Start Lights family below owns that lead-in instead; they still fire at a rolling restart later in the race.
+The four race-formation / progression callouts above (Crossed, One pace lap to go, Green held, Ten/Five to go) fire **in race sessions only, and only while you are in the car** — iRacing raises the grid flags while forming the race grid at the end of a qualifying session, so gating them to the race (and to being on track, not watching a replay or spectating the grid) keeps them from firing at the qualifying checkered. They are also silenced **after the race finishes** (the checkered / cool-down phases), so a late "pace lap" or progression flag can't blurt out once the race is over.
+
+"One pace lap to go" is specific to a **rolling start**: it fires **once, at the moment one pace lap remains** — the engineer assumes a rolling start runs at most two pace laps, so the callout lands as you complete the first pace lap and begin the last one. It stays **silent on standing starts** (a standing start has no pace lap — the Start Lights family below owns that lead-in) and on single-pace-lap formations (there's no earlier lap to anchor against, so nothing fires before the green). **"Green held"** remains the green lead-in itself — the engineer's heads-up (several recorded variants) that the field is bunching up and the green is seconds away.
 
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
@@ -88,7 +90,7 @@ On a **standing start** the Race Engineer walks you through the gantry sequence 
 
 When iRacing supplies a real pre-start countdown, the engineer also speaks the numeric marks — *"Sixty seconds."*, *"Thirty."*, *"Fifteen."*, *"Ten."*, *"Five."* — as the clock crosses each threshold. The countdown is **standing-start only** and is automatically suppressed for AI races and short pre-start procedures, where the window is too compressed for the numbers to be useful (you'll still get the gantry lines). It announces only the marks that genuinely fall inside the live countdown window, so a short procedure that starts below sixty seconds simply skips the higher numbers rather than blurting a stale burst.
 
-On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go** ("One pace lap to go.") and **Green held** ("Green's coming — get ready.") in the flag coverage above, followed by the green flag.
+On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as you begin the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
 
 Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Property Inspector, both on by default:
 

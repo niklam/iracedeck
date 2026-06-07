@@ -307,7 +307,7 @@ export const GlobalSettingsSchema = z
     /**
      * Missing-session-flag callout opt-ins (issue #480). Driver-black
      * (disqualify/furled/dq-scoring-invalid), race-progression
-     * (crossed/one-lap-to-green/green-held/ten-to-go/five-to-go), and
+     * (crossed/one-pace-lap-to-go/green-held/ten-to-go/five-to-go), and
      * caution-waving (yellow-waving/caution-waving) variants. Plus two
      * grouped start-light opt-ins: `calloutEnabledStartLights` (the 3
      * gantry lines) and `calloutEnabledStartCountdown` (the 5 numeric
@@ -332,7 +332,7 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
-    calloutEnabledFlagOneLapToGreen: z
+    calloutEnabledFlagOnePaceLapToGo: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),

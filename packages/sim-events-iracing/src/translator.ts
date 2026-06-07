@@ -46,6 +46,7 @@ import { diffLaps } from "./diff/laps.js";
 import { diffLifecycle } from "./diff/lifecycle.js";
 import { diffLimiter } from "./diff/limiter.js";
 import { diffOvertakes } from "./diff/overtakes.js";
+import { diffPaceLaps } from "./diff/pace-laps.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
@@ -1080,6 +1081,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // diffFlags (after the replay guard) and reads the already-resolved
   // `sessionInfo` for the standing-start / AI-race gates.
   diffStartLights(self.state, telemetry, sessionInfo, emit);
+  // Rolling-start "one pace lap to go" (issue #657) — a start/finish-crossing
+  // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the
+  // standing-start guard, beside the other formation diffs.
+  diffPaceLaps(self.state, telemetry, sessionInfo, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479). Independent of

@@ -152,8 +152,16 @@ const FLAG_CLIP_NAMES = [
   "furled-01",
   "dq-scoring-invalid-01",
   "crossed-01",
-  "one-lap-to-green-01",
+  "one-pace-lap-to-go-01",
+  "one-pace-lap-to-go-02",
+  "one-pace-lap-to-go-03",
+  "one-pace-lap-to-go-04",
+  "one-pace-lap-to-go-05",
   "green-held-01",
+  "green-held-02",
+  "green-held-03",
+  "green-held-04",
+  "green-held-05",
   "ten-to-go-01",
   "five-to-go-01",
   "yellow-waving-01",
@@ -243,7 +251,7 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-furled",
       "pit-crew.flag-dq-scoring-invalid",
       "pit-crew.flag-crossed",
-      "pit-crew.flag-one-lap-to-green",
+      "pit-crew.flag-one-pace-lap-to-go",
       "pit-crew.flag-green-held",
       "pit-crew.flag-ten-to-go",
       "pit-crew.flag-five-to-go",
@@ -354,18 +362,6 @@ describe("FLAG_ALERTS triggers", () => {
       expected: "voice/luca/flags/crossed-01.mp3",
     },
     {
-      label: "one-lap-to-green",
-      event: "flag.one-lap-to-green.raised" as const,
-      data: {},
-      expected: "voice/luca/flags/one-lap-to-green-01.mp3",
-    },
-    {
-      label: "green-held",
-      event: "flag.green-held.raised" as const,
-      data: {},
-      expected: "voice/luca/flags/green-held-01.mp3",
-    },
-    {
       label: "ten-to-go",
       event: "flag.ten-to-go.raised" as const,
       data: {},
@@ -449,6 +445,26 @@ describe("FLAG_ALERTS triggers", () => {
     const played = voiceClipsPlayed();
     expect(played).toHaveLength(1);
     expect(played[0]).toMatch(/voice\/luca\/flags\/debris-0[123]\.mp3$/);
+  });
+
+  it("one-pace-lap-to-go draws from the flag-one-pace-lap-to-go pool (one of the five variants)", () => {
+    mockSessionType.mockReturnValue("Race");
+    bus.publishEvent("flag.one-pace-lap-to-go.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).toHaveLength(1);
+    expect(played[0]).toMatch(/voice\/luca\/flags\/one-pace-lap-to-go-0[1-5]\.mp3$/);
+  });
+
+  it("green-held draws from the flag-green-held pool (one of the five variants)", () => {
+    mockSessionType.mockReturnValue("Race");
+    bus.publishEvent("flag.green-held.raised", {});
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).toHaveLength(1);
+    expect(played[0]).toMatch(/voice\/luca\/flags\/green-held-0[1-5]\.mp3$/);
   });
 
   it("substitutes the active voice — switching voice changes resolved path", () => {
@@ -597,7 +613,7 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-furled",
       "flag-dq-scoring-invalid",
       "flag-crossed",
-      "flag-one-lap-to-green",
+      "flag-one-pace-lap-to-go",
       "flag-green-held",
       "flag-ten-to-go",
       "flag-five-to-go",
@@ -619,12 +635,17 @@ describe("FLAG_POOL_NAMES", () => {
 // race-formation / progression callouts fired "One pace lap to go" at the
 // qualifying checkered. They must gate on the race session.
 describe("FLAG_ALERTS race-only gating", () => {
+  // Clip identity per event is asserted elsewhere (the deterministic `expected`
+  // table for the single-clip flags; the membership tests for the random
+  // one-pace-lap-to-go / green-held pools). Here we only care that the event
+  // fires in a race and is suppressed otherwise, so the positive case just
+  // checks a single clip played.
   const RACE_ONLY = [
-    { event: "flag.crossed.raised", clip: "voice/luca/flags/crossed-01.mp3" },
-    { event: "flag.one-lap-to-green.raised", clip: "voice/luca/flags/one-lap-to-green-01.mp3" },
-    { event: "flag.green-held.raised", clip: "voice/luca/flags/green-held-01.mp3" },
-    { event: "flag.ten-to-go.raised", clip: "voice/luca/flags/ten-to-go-01.mp3" },
-    { event: "flag.five-to-go.raised", clip: "voice/luca/flags/five-to-go-01.mp3" },
+    { event: "flag.crossed.raised" },
+    { event: "flag.one-pace-lap-to-go.raised" },
+    { event: "flag.green-held.raised" },
+    { event: "flag.ten-to-go.raised" },
+    { event: "flag.five-to-go.raised" },
   ] as const;
 
   it.each(RACE_ONLY)("$event is suppressed in qualifying", ({ event }) => {
@@ -635,12 +656,12 @@ describe("FLAG_ALERTS race-only gating", () => {
     expect(voiceClipsPlayed()).toEqual([]);
   });
 
-  it.each(RACE_ONLY)("$event fires in a race", ({ event, clip }) => {
+  it.each(RACE_ONLY)("$event fires in a race", ({ event }) => {
     mockSessionType.mockReturnValue("Race");
     bus.publishEvent(event, {} as never);
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual([clip]);
+    expect(voiceClipsPlayed()).toHaveLength(1);
   });
 
   it.each(RACE_ONLY)("$event is suppressed in practice", ({ event }) => {
@@ -658,21 +679,46 @@ describe("FLAG_ALERTS race-only gating", () => {
     expect(voiceClipsPlayed()).toEqual([]);
   });
 
-  it("one-lap-to-green is suppressed during a standing-start pre-green grid", () => {
-    mockStandingStart.mockReturnValue(true);
-    // SessionState 2 = Warmup → isPreGreen true.
-    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 2 });
+  // Issue #657: race-progression callouts must go silent after the race finishes
+  // — iRacing re-asserts the grid bits in cool-down / next-session grid formation.
+  it.each(RACE_ONLY)("$event is suppressed after the race finishes (Checkered)", ({ event }) => {
+    mockSessionType.mockReturnValue("Race");
+    // SessionState 5 = Checkered → isPostRace true.
+    bus.publishEvent(event, {} as never, { IsOnTrack: true, SessionState: 5 });
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);
   });
 
-  it("one-lap-to-green still fires at a standing-start race RESTART (Racing state)", () => {
-    mockStandingStart.mockReturnValue(true);
-    // SessionState 4 = Racing → not pre-green, so a rolling restart still calls it.
-    bus.publishEvent("flag.one-lap-to-green.raised", {}, { IsOnTrack: true, SessionState: 4 });
+  it.each(RACE_ONLY)("$event is suppressed during cool-down (CoolDown)", ({ event }) => {
+    mockSessionType.mockReturnValue("Race");
+    // SessionState 6 = CoolDown → isPostRace true.
+    bus.publishEvent(event, {} as never, { IsOnTrack: true, SessionState: 6 });
     flush(audio);
 
-    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/one-lap-to-green-01.mp3"]);
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  // green-held keeps the scenario-level rolling-only gate (`rollingFormationOnly`):
+  // a standing start has no pace lap, so its lead-in is owned by the start-light
+  // family. ("One pace lap to go" gates rolling-only in its diff instead — #657.)
+  it("green-held is suppressed during a standing-start pre-green grid", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 2 = Warmup → isPreGreen true.
+    bus.publishEvent("flag.green-held.raised", {}, { IsOnTrack: true, SessionState: 2 });
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("green-held still fires at a standing-start race RESTART (Racing state)", () => {
+    mockStandingStart.mockReturnValue(true);
+    // SessionState 4 = Racing → not pre-green, so a rolling restart still calls it.
+    bus.publishEvent("flag.green-held.raised", {}, { IsOnTrack: true, SessionState: 4 });
+    flush(audio);
+
+    const played = voiceClipsPlayed();
+    expect(played).toHaveLength(1);
+    expect(played[0]).toMatch(/voice\/luca\/flags\/green-held-0[1-5]\.mp3$/);
   });
 });

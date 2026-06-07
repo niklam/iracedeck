@@ -298,7 +298,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Debris", "flag.debris.raised"),
   flag("Meatball", "flag.meatball.raised"),
   flag("Crossed", "flag.crossed.raised"),
-  flag("One Lap to Green", "flag.one-lap-to-green.raised"),
+  flag("One Pace Lap to Go", "flag.one-pace-lap-to-go.raised"),
   flag("Green Held", "flag.green-held.raised"),
   flag("Ten to Go", "flag.ten-to-go.raised"),
   flag("Five to Go", "flag.five-to-go.raised"),

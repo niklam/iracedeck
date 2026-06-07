@@ -105,3 +105,25 @@ export function isPreGreen(t: TelemetryData | null | undefined): boolean {
 export function isLiveOnTrack(t: TelemetryData | null | undefined): boolean {
   return t?.IsOnTrack === true && t?.IsReplayPlaying !== true;
 }
+
+/**
+ * Whether the session is in a POST-RACE phase — the checkered flag is out or the
+ * field is in cool-down. The mirror image of {@link isPreGreen}: both are
+ * defined as EXPLICIT state sets (not a `=== Racing` negation) so a missing
+ * `SessionState` yields `false` (back-compat for callers/tests that don't supply
+ * it), and only the genuinely-finished states match.
+ *
+ * Race-progression / formation callouts (the rolling-start "one pace lap to go",
+ * "green's coming", crossed flags, ten/five-to-go) gate on `!isPostRace` so they
+ * stay silent once the race is over — iRacing re-asserts some of the grid bits
+ * (e.g. `OneLapToGreen`) during cool-down / next-session grid formation, which
+ * otherwise re-fired "one pace lap to go" after the checkered (issue #657).
+ *
+ * @param t - The latest telemetry snapshot, or null when unavailable
+ * @returns true during Checkered / CoolDown; false otherwise
+ */
+export function isPostRace(t: TelemetryData | null | undefined): boolean {
+  const state = t?.SessionState;
+
+  return state === SessionState.Checkered || state === SessionState.CoolDown;
+}
