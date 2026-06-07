@@ -20,16 +20,37 @@ import type { TranslatorState } from "../state.js";
 import { TrackType } from "../track-type.js";
 import type { EmitFn } from "./types.js";
 
+/**
+ * Re-entry cooldown for the `pitLane.approaching` pit-entry callout (issue
+ * #650). After the callout fires, a fresh approach within this window is
+ * suppressed so an accidental drive-out / drive-back-in (easy on dirt ovals)
+ * doesn't re-announce. Gates BOTH emission paths (dirt-oval drive-in edge and
+ * road-course approach-zone entry), so the guard is track-type-agnostic.
+ */
+export const PIT_APPROACH_COOLDOWN_MS = 10_000;
+
 export function diffPitLane(
   state: TranslatorState,
   telemetry: TelemetryData,
   trackType: TrackType,
+  now: number,
   emit: EmitFn,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const trackSurface = telemetry.PlayerTrackSurface ?? TrkLoc.NotInWorld;
   const isApproaching = trackSurface === TrkLoc.AproachingPits && !onPitRoad;
+
+  // `pitLane.approaching` cooldown (issue #650). Both emission branches route
+  // through here: the emit is skipped while the cooldown is in effect, and each
+  // real fire re-arms the window. Suppresses a re-fire when the same physical
+  // approach bounces the trigger (drive out of pit road and straight back in).
+  const fireApproach = (): void => {
+    if (now < state.pitApproachCooldownUntil) return;
+
+    state.pitApproachCooldownUntil = now + PIT_APPROACH_COOLDOWN_MS;
+    emit({ event: "pitLane.approaching", data: {} });
+  };
 
   // First tick — seed from the current snapshot and bail. A translator that
   // boots while the car is already on pit road, in the stall, or in the
@@ -90,11 +111,14 @@ export function diffPitLane(
     // true and/or `PlayerTrackSurface` jumping straight to `InPitStall`, and has
     // nothing to "approach". The exit edge (OnPitRoad on→off) never fires here.
     if (enteredPitRoad && !inPitStall && trackSurface !== TrkLoc.InPitStall) {
-      emit({ event: "pitLane.approaching", data: {} });
+      fireApproach();
     }
   } else if (isApproaching && !state.approachAlertFired && !isExitingPits) {
+    // Keep `approachAlertFired` set even when the cooldown suppresses the emit,
+    // so the rearm-until-back-on-track bookkeeping is unaffected — the cooldown
+    // gates the audio only, not the approach-fired state machine.
     state.approachAlertFired = true;
-    emit({ event: "pitLane.approaching", data: {} });
+    fireApproach();
   } else if (isOnTrack && state.approachAlertFired) {
     // Rearm only when the car is fully back on track.
     state.approachAlertFired = false;
