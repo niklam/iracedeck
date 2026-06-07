@@ -27,6 +27,16 @@ export type TranslatorState = {
   approachExitingSuppressed: boolean;
   approachAlertFired: boolean;
   /**
+   * Re-entry cooldown deadline (ms timestamp) for the `pitLane.approaching`
+   * callout (issue #650). The pit-lane diff suppresses the callout while
+   * `now < pitApproachCooldownUntil` and re-arms the window
+   * (`now + PIT_APPROACH_COOLDOWN_MS`) on each real fire, so an accidental
+   * drive-out / drive-back-in within the window doesn't re-announce. Gates both
+   * the dirt-oval drive-in edge and the road-course approach-zone entry. `0`
+   * before the first fire (cooldown inactive).
+   */
+  pitApproachCooldownUntil: number;
+  /**
    * Pit-box count-in marks already spoken (or seeded as already-passed) during
    * the current pit-road visit (issue #600). The diff fires each
    * {@link PitBoxMark} at most once per visit; the set is cleared whenever the
@@ -415,6 +425,7 @@ export function createInitialState(): TranslatorState {
     lastInPitStall: false,
     approachExitingSuppressed: false,
     approachAlertFired: false,
+    pitApproachCooldownUntil: 0,
     pitBoxMarksSpoken: new Set(),
     pitBoxEntrySeeded: false,
 
