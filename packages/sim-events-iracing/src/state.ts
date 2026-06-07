@@ -108,6 +108,12 @@ export type TranslatorState = {
    */
   onePaceLapToGoFired: boolean;
 
+  // ── Rolling-start field-rolling detection (issue #660) ──────────────────
+  /** Whether the rolling-start diff has seeded its baseline on the first tick (seeds without firing). */
+  rollingStartInitialized: boolean;
+  /** Previous tick's `SessionState === ParadeLaps`, for ParadeLaps entry-edge detection. */
+  lastInParadeLaps: boolean;
+
   // ── Start lights (issue #480) ───────────────────────────────────────────
   /**
    * Whether the start-light diff has seeded its baselines on the first tick
@@ -470,6 +476,9 @@ export function createInitialState(): TranslatorState {
     paceLapAccrued: 0,
     paceLapLastDistPct: 0,
     onePaceLapToGoFired: false,
+
+    rollingStartInitialized: false,
+    lastInParadeLaps: false,
 
     startLightInitialized: false,
     lastStartLightBits: 0,

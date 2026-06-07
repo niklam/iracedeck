@@ -75,6 +75,13 @@ export const EVENT_TEMPLATES = [
     data: { seconds: 30 },
   },
 
+  // ── Rolling start ──
+  {
+    name: "rollingStart.pace-car-moving.raised",
+    description: "Rolling start: pace car begins moving the field into the formation lap",
+    data: {},
+  },
+
   // ── Service / car control toggles ──
   {
     name: "tireService.changed",

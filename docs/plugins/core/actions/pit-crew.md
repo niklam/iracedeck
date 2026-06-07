@@ -57,6 +57,10 @@ The engineer also reads a **pit-service readback** as you enter pit road — a c
 
 The engineer also runs a **pit-box count-in** as you drive down pit road toward your box, counting the remaining distance down — "five" at 120 m, "four" at 100 m, "three" at 80 m, "two" at 60 m, "one" at 40 m, and "pit now" at 20 m — so you know when to stop without overshooting the stall. The box position comes from `DriverInfo.DriverPitTrkPct`, so it works on the first stop of a session; each mark fires once per pit-road visit and the count resets when you leave pit road. Toggle it in **Race Engineer Callouts → Pit Box**.
 
+### Rolling start
+
+On a **rolling start** the engineer calls out once the moment the pace car starts moving and the field begins to roll into the formation lap — "Pace car's rolling. Time to go, get moving and follow the car ahead." and four more variants (picked at random) — prompting you to get going and form up behind the car ahead. It fires only on rolling starts (standing starts get the light-gantry sequence and numeric countdown instead) and is distinct from the **One pace lap to go** flag call, which fires near the END of the formation lap as the field bunches up for the green. Toggle it in **Race Engineer Callouts → Rolling Start** ("Pace car moving"), on by default.
+
 ### Spotter calls
 
 The spotter is a **Race Engineer voice callout family** — like flags, position, or lap time — not a separate Stream Deck mode or button. The Race Engineer voices spoken side-awareness as cars come and go alongside you, gated by the Race Engineer master (`raceEngineerEnabled`) plus the two per-callout opt-ins below. The calls are driven off the same `radar.changed` event that feeds the Radar tick (no new bus event), so the two coexist on the same proximity signal but are otherwise fully independent — the spotter speaks on `AudioBus.Voice`, Radar ticks on `AudioBus.Alerts`.

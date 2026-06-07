@@ -365,6 +365,9 @@ export type SimEventMap = {
   "startLight.start-go.raised": SimEvent<"startLight.start-go.raised", EmptySimEventPayload>;
   "startLight.countdown.raised": SimEvent<"startLight.countdown.raised", { seconds: StartCountdownSeconds }>;
 
+  // Rolling-start: pace car begins moving the field into the formation/parade lap (issue #660).
+  "rollingStart.pace-car-moving.raised": SimEvent<"rollingStart.pace-car-moving.raised", EmptySimEventPayload>;
+
   "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
   /**
    * Tire compound selection changed in pit service. `from`/`to` are

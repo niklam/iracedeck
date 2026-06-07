@@ -81,6 +81,10 @@ function startCountdown(seconds: StartCountdownSeconds): ScenarioShortcut {
   };
 }
 
+function rollingStart(id: string, label: string, event: SimEventName, description?: string): ScenarioShortcut {
+  return { id: `rolling-start-${id}`, category: "Rolling Start", label, description, event, data: {} };
+}
+
 function radar(label: string, from: string, to: string): ScenarioShortcut {
   return {
     id: `radar-${to.replace(/\s+/g, "-")}`,
@@ -321,6 +325,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   startCountdown(15),
   startCountdown(10),
   startCountdown(5),
+
+  // ── Rolling Start (issue #660) ──
+  // Payload-less: the pace car begins moving the field onto the formation lap.
+  rollingStart(
+    "pace-car-moving",
+    "Pace car moving",
+    "rollingStart.pace-car-moving.raised",
+    "Rolling start: pace car begins moving the field into the formation lap",
+  ),
 
   // ── Damage ──
   // Bypasses the rising-edge + 3000 ms debounce in

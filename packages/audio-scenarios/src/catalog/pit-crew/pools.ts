@@ -125,6 +125,16 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
   "start-light-countdown-5": ["voice/{voice}/start-lights/countdown-5-01.mp3"],
 
+  // Rolling-start family pool (issue #660). Five random-pick variants for the
+  // "pace car is moving" call at the start of a rolling-start formation lap.
+  "rolling-start-pace-car": [
+    "voice/{voice}/rolling-start/pace-car-moving-01.mp3",
+    "voice/{voice}/rolling-start/pace-car-moving-02.mp3",
+    "voice/{voice}/rolling-start/pace-car-moving-03.mp3",
+    "voice/{voice}/rolling-start/pace-car-moving-04.mp3",
+    "voice/{voice}/rolling-start/pace-car-moving-05.mp3",
+  ],
+
   // Damage callout pool (issue #489). Single pool today; multi-clip random
   // selection works the same way as the flag pools above.
   "damage-repair-needed": [

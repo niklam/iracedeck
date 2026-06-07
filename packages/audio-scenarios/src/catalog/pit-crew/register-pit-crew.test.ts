@@ -24,7 +24,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { type DamageCalloutId, type FlagCalloutId, type IncidentCalloutId, registerPitCrew } from "./index.js";
+import {
+  type DamageCalloutId,
+  type FlagCalloutId,
+  type IncidentCalloutId,
+  registerPitCrew,
+  type RollingStartCalloutId,
+} from "./index.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
@@ -284,6 +290,16 @@ const START_LIGHT_CLIP_PATHS = [
   `voice/${VOICE}/start-lights/countdown-5-01.mp3`,
 ] as const;
 
+// Rolling-start clips referenced from `rolling-start.ts` (issue #660). Five
+// random-pick variants of the "pace car is moving" line.
+const ROLLING_START_CLIP_PATHS = [
+  `voice/${VOICE}/rolling-start/pace-car-moving-01.mp3`,
+  `voice/${VOICE}/rolling-start/pace-car-moving-02.mp3`,
+  `voice/${VOICE}/rolling-start/pace-car-moving-03.mp3`,
+  `voice/${VOICE}/rolling-start/pace-car-moving-04.mp3`,
+  `voice/${VOICE}/rolling-start/pace-car-moving-05.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -296,6 +312,7 @@ const manifest: AudioAssetsManifest = {
     ...INCIDENT_CLIP_PATHS,
     ...PIT_BOX_CLIP_PATHS,
     ...START_LIGHT_CLIP_PATHS,
+    ...ROLLING_START_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -358,6 +375,7 @@ let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitBoxEnabled: boolean;
+let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
 
 beforeEach(() => {
@@ -366,6 +384,7 @@ beforeEach(() => {
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   incidentEnabled = makeIncidentEnabledMap(true);
   pitBoxEnabled = true;
+  rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
   bus = createMockBus();
@@ -406,6 +425,7 @@ beforeEach(() => {
     undefined, // getSpotterTrackDirection (issue #651)
     undefined, // getSpotterStillThereIntervalMs (issue #651)
     undefined, // getSpotterNearestCarGapMeters (issue #651)
+    (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled (issue #660)
     () => true, // getStartLightCalloutEnabled (issue #480)
     () => voiceMasterEnabled,
     undefined, // getRadarMasterEnabled
@@ -988,6 +1008,34 @@ describe("start-light family registration (issue #480)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("startLight.start-go.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #660: the rolling-start family is registered by `registerPitCrew` and
+// wrapped by the master gate + the per-callout opt-in. These tests confirm the
+// wiring — per-callout / structural behavior is covered in `rolling-start.test.ts`.
+describe("rolling-start family registration (issue #660)", () => {
+  it("fires its registered clip when the opt-in is on", () => {
+    bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes("/rolling-start/pace-car-moving-"))).toBe(true);
+  });
+
+  it("is suppressed when the opt-in is off", () => {
+    rollingStartEnabled.set("pace-car", false);
+    bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

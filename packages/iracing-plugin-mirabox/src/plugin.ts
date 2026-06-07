@@ -41,6 +41,8 @@ import {
   type RaceStatusCalloutId,
   registerPitCrew,
   resolveStillThereIntervalMs,
+  ROLLING_START_CALLOUT_SETTING_KEYS,
+  type RollingStartCalloutId,
   SESSION_START_CALLOUT_SETTING_KEYS,
   type SessionStartCalloutId,
   SPOTTER_CALLOUT_SETTING_KEYS,
@@ -500,6 +502,11 @@ registerPitCrew(
   () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
   // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
   () => getNearestCarGapMeters(),
+  // Rolling-start pace-car callout opt-in (issue #660). Live-read like the
+  // other callout families so toggling off mid-session takes effect on the
+  // next event. Placed before the start-light opt-in so the masters stay last.
+  (id: RollingStartCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[ROLLING_START_CALLOUT_SETTING_KEYS[id]] !== false,
   // Start-light callout opt-ins (issue #480). Two grouped subjects —
   // `lights` (the three gantry lines) and `countdown` (the five numeric
   // marks). Same live-read pattern as the other callout families so toggling
