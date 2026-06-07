@@ -138,6 +138,7 @@ describe("diffPitLane — approach cooldown (dirt oval)", () => {
     diffPitLane(state, droveIn, TrackType.DirtOval, 1000 + PIT_APPROACH_COOLDOWN_MS, emit); // at deadline — fires
 
     expect(approachEvents(events)).toHaveLength(2);
+    expect(state.pitApproachCooldownUntil).toBe(1000 + PIT_APPROACH_COOLDOWN_MS + PIT_APPROACH_COOLDOWN_MS);
   });
 
   it("stays silent (and never arms the cooldown) on a teleport straight into the stall", () => {
