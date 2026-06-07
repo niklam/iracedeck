@@ -86,8 +86,9 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // Missing-session-flag callout pools (issue #480). Driver-black splits
   // (disqualify / furled / dq-scoring-invalid), race-progression flags
   // (crossed / one-pace-lap-to-go / green-held / ten-to-go / five-to-go), and
-  // the caution-waving variants (yellow-waving / caution-waving). All
-  // single-clip today; auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
+  // the caution-waving variants (yellow-waving / caution-waving). Mostly
+  // single-clip; `one-pace-lap-to-go` and `green-held` have five variants each
+  // (#657). Auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
   "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
   "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
   "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
