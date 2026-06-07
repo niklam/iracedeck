@@ -8864,6 +8864,126 @@
       "textPreview": "Last few seconds behind the pace car. Get set — clean launch, smart into turn o…",
       "generatedAt": "2026-06-07T11:51:15.223Z",
       "requestId": "a2ECwLHhHFmV4accEsjw"
+    },
+    "voice/default/names/fox.mp3": {
+      "hash": "9e5a105367b00b14",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Fox",
+      "generatedAt": "2026-06-07T14:15:35.207Z",
+      "requestId": "qJRnBfZ2z2k7rR78mQdZ"
+    },
+    "voice/default/names/guido.mp3": {
+      "hash": "58621189bfe618e9",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Guido",
+      "generatedAt": "2026-06-07T14:15:35.372Z",
+      "requestId": "fN5Q5RhIeORoQHkMhcUt"
+    },
+    "voice/default/names/mike.mp3": {
+      "hash": "e7cfdccc0b437abf",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Mike",
+      "generatedAt": "2026-06-07T14:15:35.530Z",
+      "requestId": "MC3q3ggmnUZyQVKqSG1F"
+    },
+    "voice/default/session-start-greeting/fox.mp3": {
+      "hash": "141fdc9b80e2197a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Fox,",
+      "generatedAt": "2026-06-07T14:15:36.303Z",
+      "requestId": "CUbZx2BfOC5aVI6QEmv0"
+    },
+    "voice/default/session-start-greeting/guido.mp3": {
+      "hash": "0b7b9c36cdcb1969",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Guido,",
+      "generatedAt": "2026-06-07T14:15:36.472Z",
+      "requestId": "W8I3ZzJJk84Ko6OeVuKi"
+    },
+    "voice/default/session-start-greeting/mike.mp3": {
+      "hash": "2efc3f02e09a7b37",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Mike,",
+      "generatedAt": "2026-06-07T14:15:36.617Z",
+      "requestId": "v7DfP5YTvrzHujDepzcs"
+    },
+    "voice/default/race-start-greeting/fox.mp3": {
+      "hash": "70ed8778e0639174",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Fox.",
+      "generatedAt": "2026-06-07T14:15:37.432Z",
+      "requestId": "QiR3GGwy24caZaUZOdrh"
+    },
+    "voice/default/race-start-greeting/guido.mp3": {
+      "hash": "4f72d534741420d0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Guido.",
+      "generatedAt": "2026-06-07T14:15:37.623Z",
+      "requestId": "AxKrwh8Dv5XFyEFJMIgh"
+    },
+    "voice/default/race-start-greeting/mike.mp3": {
+      "hash": "6deba47a26670373",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Mike.",
+      "generatedAt": "2026-06-07T14:15:37.797Z",
+      "requestId": "RHWI537jknVIunJvwESs"
+    },
+    "voice/default/race-end-greeting/fox.mp3": {
+      "hash": "eaf39a8cc372870f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Fox,",
+      "generatedAt": "2026-06-07T14:15:38.632Z",
+      "requestId": "ZhzBhOvOJCfqFFk7TWqz"
+    },
+    "voice/default/race-end-greeting/guido.mp3": {
+      "hash": "d4f9d589c354961d",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Guido,",
+      "generatedAt": "2026-06-07T14:15:38.792Z",
+      "requestId": "Rxd0TD9wFm5kD1wJndjA"
+    },
+    "voice/default/race-end-greeting/mike.mp3": {
+      "hash": "b6b93baf3003722c",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Mike,",
+      "generatedAt": "2026-06-07T14:15:38.936Z",
+      "requestId": "MGK85qmUTiY7FCIpTbya"
+    },
+    "voice/default/position-overtake-come-on/fox.mp3": {
+      "hash": "05b289ed4980f90b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Fox.",
+      "generatedAt": "2026-06-07T14:15:39.719Z",
+      "requestId": "TqKBY2Gki6ZQ5608mX2c"
+    },
+    "voice/default/position-overtake-come-on/guido.mp3": {
+      "hash": "86a05f26365ad6eb",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Guido.",
+      "generatedAt": "2026-06-07T14:15:39.902Z",
+      "requestId": "Ykhy9c21768OM3P5fWHD"
+    },
+    "voice/default/position-overtake-come-on/mike.mp3": {
+      "hash": "6f8fc770f4dcbc2f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Mike.",
+      "generatedAt": "2026-06-07T14:15:40.045Z",
+      "requestId": "O5CQsRyRqfk3TrBlXBCm"
     }
   }
 }
