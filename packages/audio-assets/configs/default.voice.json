@@ -319,6 +319,33 @@
         "seed": 3
       }
     ],
+    "rolling-start": [
+      {
+        "name": "pace-car-moving-01",
+        "text": "Pace car's rolling. Time to go, get moving and follow the car ahead.",
+        "seed": 11
+      },
+      {
+        "name": "pace-car-moving-02",
+        "text": "Here we go, pace car's away. Get going and keep it tight in formation.",
+        "seed": 12
+      },
+      {
+        "name": "pace-car-moving-03",
+        "text": "Pace car's moving. <break time=\"0.2s\" /> Off you go. Stay in line and mind your spacing.",
+        "seed": 18
+      },
+      {
+        "name": "pace-car-moving-04",
+        "text": "And we're rolling. Pace car's underway, so get moving and settle into formation.",
+        "seed": 14
+      },
+      {
+        "name": "pace-car-moving-05",
+        "text": "Pace car's on the move. Get going, keep your position, and start working some heat into the tyres.",
+        "seed": 15
+      }
+    ],
     "pit-limiter": [
       {
         "name": "pit-entry-001",

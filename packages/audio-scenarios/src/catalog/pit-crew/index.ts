@@ -113,6 +113,7 @@ import {
 import { registerRadarEngine } from "./radar-engine.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 import { buildPitReadbackScenarios, type PitReadbackCalloutId, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
+import { ROLLING_START_ALERTS } from "./rolling-start.js";
 import {
   buildSessionStartScenario,
   registerSessionStartVars,
@@ -370,6 +371,27 @@ const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
   "pit-crew.start-light-countdown-15": "countdown",
   "pit-crew.start-light-countdown-10": "countdown",
   "pit-crew.start-light-countdown-5": "countdown",
+};
+
+/**
+ * Stable identifier for the rolling-start callout family (issue #660). Single
+ * subject (`pace-car`) — one toggle covers the "pace car is moving" line spoken
+ * once at the start of a rolling-start formation lap. Future rolling-start
+ * sub-callouts can append cleanly under the same family namespace.
+ */
+export type RollingStartCalloutId = "pace-car";
+
+/**
+ * Canonical mapping from `RollingStartCalloutId` to its plugin-global setting
+ * key in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key strings.
+ */
+export const ROLLING_START_CALLOUT_SETTING_KEYS: Record<RollingStartCalloutId, string> = {
+  "pace-car": "calloutEnabledRollingStartPaceCar",
+};
+
+const SCENARIO_ID_TO_ROLLING_START_ID: Record<string, RollingStartCalloutId> = {
+  "pit-crew.rolling-start-pace-car": "pace-car",
 };
 
 /**
@@ -764,6 +786,14 @@ export function registerPitCrew(
   // buffer. Plugins wire this to `getNearestCarGapMeters()` from
   // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
   getSpotterNearestCarGapMeters: () => number | null = () => null,
+  // User opt-in for the rolling-start callout (issue #660). Single subject
+  // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event-
+  // arrival shape as the other callout families: read live so a toggle off
+  // mid-session takes effect on the next event without cutting an in-flight
+  // clip. Placed before the master gate so the master stays the last
+  // per-callout opt-in. Default `() => true` preserves legacy behavior for
+  // tests that don't supply a closure.
+  getRollingStartCalloutEnabled: (id: RollingStartCalloutId) => boolean = () => true,
   // User opt-in for the start-light callouts (issue #480). Two grouped
   // subjects — `lights` (the three gantry lines) and `countdown` (the five
   // numeric marks) — mirroring the pit-box "many scenarios → one subject"
@@ -872,6 +902,25 @@ export function registerPitCrew(
           SCENARIO_ID_TO_START_LIGHT_ID,
           getStartLightCalloutEnabled,
           "start-light callout",
+          logger,
+        ),
+      ),
+    );
+  }
+
+  // Rolling-start family (issue #660). The `rolling-start-*` pool is already
+  // registered en masse above via `Object.entries(POOLS)`, so no explicit pool
+  // loop is needed here — `ROLLING_START_POOL_NAMES` exists for the catalog
+  // tests to register pools in isolation. Single subject (`pace-car`) gates the
+  // scenario via `SCENARIO_ID_TO_ROLLING_START_ID`.
+  for (const s of ROLLING_START_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          s,
+          SCENARIO_ID_TO_ROLLING_START_ID,
+          getRollingStartCalloutEnabled,
+          "rolling-start callout",
           logger,
         ),
       ),

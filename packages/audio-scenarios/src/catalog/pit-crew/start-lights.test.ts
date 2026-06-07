@@ -404,6 +404,7 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
       undefined, // getSpotterTrackDirection
       undefined, // getSpotterStillThereIntervalMs
       undefined, // getSpotterNearestCarGapMeters
+      undefined, // getRollingStartCalloutEnabled
       (id) => startLightEnabled.get(id) ?? true, // getStartLightCalloutEnabled
       undefined, // getRaceEngineerMasterEnabled
       undefined, // getRadarMasterEnabled

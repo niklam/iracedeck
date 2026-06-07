@@ -97,6 +97,14 @@ Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Proper
 - **Start lights** — the three gantry lines (get ready / lights are red / go).
 - **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five).
 
+## Rolling Start
+
+On a **rolling start** the Race Engineer calls out once the moment the pace car starts moving and the field begins to roll into the formation lap — *"Pace car's rolling. Time to go, get moving and follow the car ahead."* and four more variants (picked at random) — so you know to get going and form up behind the car ahead. It fires only on rolling starts (a standing start gets the light gantry and numeric countdown above instead) and is distinct from the **One pace lap to go** call, which fires near the *end* of the formation lap as the field bunches up for the green.
+
+One opt-in lives under **Race Engineer Callouts → Rolling Start** in the Property Inspector, on by default:
+
+- **Pace car moving** — the start-of-formation call when the pace car begins rolling the field away.
+
 ## Pit Service Readback
 
 Per-toggle confirmations alone fall short when several services are queued back-to-back — only the most recent one is heard in full and you lose the holistic picture of what's queued. The pit-service readback fixes that with a coherent recap at two key moments:

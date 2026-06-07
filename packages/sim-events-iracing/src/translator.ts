@@ -53,6 +53,7 @@ import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/
 import { diffPitStatus } from "./diff/pit-status.js";
 import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
+import { diffRollingStart } from "./diff/rolling-start.js";
 import { diffStartLights } from "./diff/start-lights.js";
 import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness } from "./diff/track-wetness.js";
@@ -1085,6 +1086,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // heuristic, NOT iRacing's `OneLapToGreen` edge. Reads `sessionInfo` for the
   // standing-start guard, beside the other formation diffs.
   diffPaceLaps(self.state, telemetry, sessionInfo, emit);
+  // Rolling-start "pace car is moving" (issue #660) — fires at the ParadeLaps
+  // ENTRY edge (field released into the formation lap), unlike diffPaceLaps
+  // which fires later after a start/finish crossing completes the first pace lap.
+  diffRollingStart(self.state, telemetry, sessionInfo, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479). Independent of

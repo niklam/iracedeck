@@ -8865,6 +8865,46 @@
       "generatedAt": "2026-06-07T11:51:15.223Z",
       "requestId": "a2ECwLHhHFmV4accEsjw"
     },
+    "voice/default/rolling-start/pace-car-moving-01.mp3": {
+      "hash": "39ce03769dabc829",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's rolling. Time to go, get moving and follow the car ahead.",
+      "generatedAt": "2026-06-07T14:36:03.698Z",
+      "requestId": "XGZ21GZxKSXHyy43W361"
+    },
+    "voice/default/rolling-start/pace-car-moving-02.mp3": {
+      "hash": "36ea22132f8f3627",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Here we go, pace car's away. Get going and keep it tight in formation.",
+      "generatedAt": "2026-06-07T14:36:03.989Z",
+      "requestId": "A2yeiNT7weDQbc5UOszf"
+    },
+    "voice/default/rolling-start/pace-car-moving-03.mp3": {
+      "hash": "317a89dddb2077c6",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's moving. <break time=\"0.2s\" /> Off you go. Stay in line and mind your…",
+      "generatedAt": "2026-06-07T14:42:21.534Z",
+      "requestId": "0AYxMxEYV7d2472p1hMg"
+    },
+    "voice/default/rolling-start/pace-car-moving-04.mp3": {
+      "hash": "d8bca488d7ccd477",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "And we're rolling. Pace car's underway, so get moving and settle into formation.",
+      "generatedAt": "2026-06-07T14:36:04.603Z",
+      "requestId": "m42jnV6wOv19dpQ8MbPY"
+    },
+    "voice/default/rolling-start/pace-car-moving-05.mp3": {
+      "hash": "d847d161c251049b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pace car's on the move. Get going, keep your position, and start working some h…",
+      "generatedAt": "2026-06-07T14:36:04.922Z",
+      "requestId": "1TaDEsTkMG396Zt0WpJq"
+    },
     "voice/default/names/fox.mp3": {
       "hash": "9e5a105367b00b14",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",

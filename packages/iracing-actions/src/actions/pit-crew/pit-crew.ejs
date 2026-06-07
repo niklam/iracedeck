@@ -110,6 +110,19 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Rolling-start callout (issue #660). Single subject — the engineer
+			// calls out once when the pace car starts moving and the field begins
+			// to roll into the formation lap. Distinct from "one pace lap to go",
+			// which fires near the END of the formation lap. Same 2-column
+			// auto-balancing grid as the families above.
+			var rollingStartCallouts = [
+				{ setting: "calloutEnabledRollingStartPaceCar", label: "Pace car moving" },
+			];
+			var rollingStartRowCount = Math.ceil(rollingStartCallouts.length / 2);
+			var rollingStartCheckboxes = rollingStartCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
 			// Pit-service callouts (readback entry/exit from issue #476, plus
 			// the family-wide pit-service-requests toggle from issue #468).
 			// Same source-of-truth 2-column grid as flag callouts — adding a
@@ -330,6 +343,11 @@
 				'<sdpi-item label="Start Lights">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + startLightRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						startLightCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Rolling Start">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + rollingStartRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						rollingStartCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Pit Service">' +

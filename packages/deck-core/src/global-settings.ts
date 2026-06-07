@@ -364,6 +364,11 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Rolling-start pace-car callout opt-in (issue #660).
+    calloutEnabledRollingStartPaceCar: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same
