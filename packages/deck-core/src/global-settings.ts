@@ -369,6 +369,13 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Pit-window open/closed callout opt-in (issue #655). One subject covers
+    // both directions (pits opened / closed). Canonical id↔key mapping in
+    // `PIT_WINDOW_CALLOUT_SETTING_KEYS`.
+    calloutEnabledPitOpenClosed: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     /**
      * Damage callout opt-in (issue #489). Fires after the rising-edge
      * debounce on `EngineWarnings & (MandRepNeeded | OptRepNeeded)`. Same

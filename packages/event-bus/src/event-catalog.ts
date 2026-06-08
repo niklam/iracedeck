@@ -655,6 +655,16 @@ export type SimEventMap = {
 
   // ── Value-change events (§6.2) — emit new state when derived value changes
   "radar.changed": SimEvent<"radar.changed", { from: RadarState; to: RadarState }>;
+  /**
+   * Pit road opened or closed for the player (issue #655). Emitted on a real
+   * `PitsOpen` boolean transition: `to === true` → pit road is now open,
+   * `to === false` → pit road is now closed. The translator gates emission to
+   * race sessions (the field-bunching caution phase is the meaningful case) and
+   * suppresses it while watching a replay (`isReplayOnlySession`, #604). Two
+   * audio scenarios branch on `to` rather than two separate events — the same
+   * value-change shape as {@link radar.changed} / `pitService.statusChanged`.
+   */
+  "pitsOpen.changed": SimEvent<"pitsOpen.changed", { from: boolean; to: boolean }>;
   "fuel.lapsRemaining.crossed": SimEvent<"fuel.lapsRemaining.crossed", { threshold: number; laps: number }>;
   /**
    * Track-wetness state changed (issue #526). Emitted on every step change in

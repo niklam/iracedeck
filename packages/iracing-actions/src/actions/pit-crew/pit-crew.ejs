@@ -123,6 +123,18 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
+			// Pit-window callout (issue #655). Single subject — one toggle covers
+			// both "pits are open" and "pits are closed". Distinct from the
+			// pit-service-status family; this is the strategic open/closed cue
+			// during a caution. Same 2-column auto-balancing grid as above.
+			var pitWindowCallouts = [
+				{ setting: "calloutEnabledPitOpenClosed", label: "Pit open/closed" },
+			];
+			var pitWindowRowCount = Math.ceil(pitWindowCallouts.length / 2);
+			var pitWindowCheckboxes = pitWindowCallouts.map(function (c) {
+				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
+			}).join('');
+
 			// Pit-service callouts (readback entry/exit from issue #476, plus
 			// the family-wide pit-service-requests toggle from issue #468).
 			// Same source-of-truth 2-column grid as flag callouts — adding a
@@ -348,6 +360,11 @@
 				'<sdpi-item label="Rolling Start">' +
 					'<div style="display:grid;grid-template-rows:repeat(' + rollingStartRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
 						rollingStartCheckboxes +
+					'</div>' +
+				'</sdpi-item>' +
+				'<sdpi-item label="Pit Window">' +
+					'<div style="display:grid;grid-template-rows:repeat(' + pitWindowRowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
+						pitWindowCheckboxes +
 					'</div>' +
 				'</sdpi-item>' +
 				'<sdpi-item label="Pit Service">' +

@@ -18,9 +18,11 @@ import {
   PIT_BOX_CALLOUT_SETTING_KEYS,
   PIT_READBACK_CALLOUT_SETTING_KEYS,
   PIT_STATUS_CALLOUT_SETTING_KEYS,
+  PIT_WINDOW_CALLOUT_SETTING_KEYS,
   type PitBoxCalloutId,
   type PitReadbackCalloutId,
   type PitStatusCalloutId,
+  type PitWindowCalloutId,
   POSITION_CALLOUT_SETTING_KEYS,
   type PositionCalloutId,
   QUALIFYING_INVALIDATION_CALLOUT_SETTING_KEYS,
@@ -510,6 +512,12 @@ registerPitCrew(
   () => resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
   // Spotter nearest-car gap for the → clear confirmation buffer (issue #651).
   () => getNearestCarGapMeters(),
+  // Pit-window open/closed callout opt-in (issue #655). Single subject covering
+  // both directions. Live-read like the other callout families so toggling off
+  // mid-session takes effect on the next event. Placed before the rolling-start
+  // opt-in so the masters stay last.
+  (id: PitWindowCalloutId) =>
+    (getGlobalSettings() as Record<string, unknown>)[PIT_WINDOW_CALLOUT_SETTING_KEYS[id]] !== false,
   // Rolling-start pace-car callout opt-in (issue #660). Live-read like the
   // other callout families so toggling off mid-session takes effect on the
   // next event. Placed before the start-light opt-in so the masters stay last.

@@ -151,8 +151,8 @@ Live-read (don't capture the value) — a mid-session toggle takes effect on the
 
 ### 9. Update test fixtures
 
-- `packages/deck-core/src/simhub-service.test.ts` constructs an exhaustive `getGlobalSettings()` mock for every callout key. Add the new keys there or the type-check fails at build.
-- `packages/audio-scenarios/src/catalog/pit-crew/register-pit-crew.test.ts` calls `registerPitCrew(...)` positionally. When you insert a new closure parameter, the existing master-gate argument shifts — add `undefined` (or a stub) at the new position to keep the master in the right slot.
+- `packages/deck-core/src/simhub-service.test.ts` constructs an exhaustive `getGlobalSettings()` mock for every callout key — in **two** object literals (the main settings mock AND a second `.passthrough()`/round-trip literal further down). Add the new key to **both** or the type-check fails at build (`grep` the existing nearest key to find every literal).
+- **Every** `*.test.ts` that calls `registerPitCrew(...)` positionally shifts when you insert a new closure parameter — not just `register-pit-crew.test.ts`. At minimum `register-pit-crew.test.ts`, `rolling-start.test.ts`, and `start-lights.test.ts` pass the rolling-start / start-light / master tail positionally; `grep -rl "registerPitCrew(" packages/audio-scenarios/src` and add `undefined` (or a stub) at the new position in each so the masters stay in the right slot. (Tests that stop before your new param — e.g. `scenario-harness/src/main.ts` ends at the race-start arg — are unaffected.)
 
 ### 10. Scenario-harness shortcut
 
