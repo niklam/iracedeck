@@ -1078,9 +1078,12 @@ describe("pit-window family registration (issue #655)", () => {
     expect(voiceClipsPlayed().some((p) => p.includes(fragment))).toBe(true);
   });
 
-  it("is suppressed when the opt-in is off", () => {
+  it.each([
+    { from: false, to: true },
+    { from: true, to: false },
+  ])("is suppressed when the opt-in is off (from=$from to=$to)", ({ from, to }) => {
     pitWindowEnabled.set("pit-open-closed", false);
-    bus.publishEvent("pitsOpen.changed", { from: false, to: true } as never);
+    bus.publishEvent("pitsOpen.changed", { from, to } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

@@ -44,31 +44,31 @@ import type { Scenario } from "../../dsl.js";
  */
 const PIT_WINDOW_WEIGHT = 65;
 
-const PIT_WINDOW_OPENED: Scenario = {
-  id: "pit-crew.pit-window-opened",
-  channel: AudioChannel.Voice,
-  bus: AudioBus.Voice,
-  base: "voice/{voice}",
-  weight: PIT_WINDOW_WEIGHT,
-  interrupt: false,
-  queueable: true,
-  family: "pit-window",
-  sequence: ["@pit-crew.radio-open", "pool:pit-window-opened", "@pit-crew.radio-close"],
-  when: { event: "pitsOpen.changed", where: (e) => (e as SimEventOf<"pitsOpen.changed">).data.to === true },
-};
+/**
+ * Build one directional pit-window scenario. Keeps the shared
+ * `family`/`weight`/`bus`/`channel`/`base`/scheduling defaults in a single place
+ * (the catalog's "small constructor" convention, mirroring `track-conditions.ts`
+ * / `flag-alerts.ts`) so a future re-tune is one edit. Both the scenario id and
+ * the pool name derive from `direction`; `to` is the `PitsOpen` value this
+ * direction fires on.
+ */
+function pitWindowScenario(direction: "opened" | "closed", to: boolean): Scenario {
+  return {
+    id: `pit-crew.pit-window-${direction}`,
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    weight: PIT_WINDOW_WEIGHT,
+    interrupt: false,
+    queueable: true,
+    family: "pit-window",
+    sequence: ["@pit-crew.radio-open", `pool:pit-window-${direction}`, "@pit-crew.radio-close"],
+    when: { event: "pitsOpen.changed", where: (e) => (e as SimEventOf<"pitsOpen.changed">).data.to === to },
+  };
+}
 
-const PIT_WINDOW_CLOSED: Scenario = {
-  id: "pit-crew.pit-window-closed",
-  channel: AudioChannel.Voice,
-  bus: AudioBus.Voice,
-  base: "voice/{voice}",
-  weight: PIT_WINDOW_WEIGHT,
-  interrupt: false,
-  queueable: true,
-  family: "pit-window",
-  sequence: ["@pit-crew.radio-open", "pool:pit-window-closed", "@pit-crew.radio-close"],
-  when: { event: "pitsOpen.changed", where: (e) => (e as SimEventOf<"pitsOpen.changed">).data.to === false },
-};
+const PIT_WINDOW_OPENED = pitWindowScenario("opened", true);
+const PIT_WINDOW_CLOSED = pitWindowScenario("closed", false);
 
 export const PIT_WINDOW_ALERTS: readonly Scenario[] = [PIT_WINDOW_OPENED, PIT_WINDOW_CLOSED];
 
