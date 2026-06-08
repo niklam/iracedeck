@@ -320,6 +320,7 @@ describe("ROLLING_START_ALERTS opt-in gating (issue #660)", () => {
       undefined, // getSpotterTrackDirection
       undefined, // getSpotterStillThereIntervalMs
       undefined, // getSpotterNearestCarGapMeters
+      undefined, // getPitWindowCalloutEnabled (issue #655)
       (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled
       undefined, // getStartLightCalloutEnabled
       undefined, // getRaceEngineerMasterEnabled

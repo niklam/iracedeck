@@ -71,6 +71,7 @@ import {
 } from "./overtake.js";
 import { PIT_BOX_ALERTS } from "./pit-box.js";
 import { PIT_STATUS_ALERTS } from "./pit-status.js";
+import { PIT_WINDOW_ALERTS } from "./pit-window.js";
 import { POOLS } from "./pools.js";
 import {
   buildOvertakeGainedPositionScenario,
@@ -392,6 +393,28 @@ export const ROLLING_START_CALLOUT_SETTING_KEYS: Record<RollingStartCalloutId, s
 
 const SCENARIO_ID_TO_ROLLING_START_ID: Record<string, RollingStartCalloutId> = {
   "pit-crew.rolling-start-pace-car": "pace-car",
+};
+
+/**
+ * Stable identifier for the pit-window callout family (issue #655). Single
+ * subject (`pit-open-closed`) — both directions (pits opened / closed) share one
+ * opt-in, the same "one opt-in over multiple scenarios" shape track-conditions
+ * uses. Future pit-window sub-callouts can append cleanly under this family.
+ */
+export type PitWindowCalloutId = "pit-open-closed";
+
+/**
+ * Canonical mapping from `PitWindowCalloutId` to its plugin-global setting key
+ * in `GlobalSettingsSchema`. Plugin entry points use this to read the live
+ * opt-in without duplicating the key string.
+ */
+export const PIT_WINDOW_CALLOUT_SETTING_KEYS: Record<PitWindowCalloutId, string> = {
+  "pit-open-closed": "calloutEnabledPitOpenClosed",
+};
+
+const SCENARIO_ID_TO_PIT_WINDOW_ID: Record<string, PitWindowCalloutId> = {
+  "pit-crew.pit-window-opened": "pit-open-closed",
+  "pit-crew.pit-window-closed": "pit-open-closed",
 };
 
 /**
@@ -786,6 +809,14 @@ export function registerPitCrew(
   // buffer. Plugins wire this to `getNearestCarGapMeters()` from
   // `@iracedeck/sim-events-iracing`. Default `() => null` disables the buffer.
   getSpotterNearestCarGapMeters: () => number | null = () => null,
+  // User opt-in for the pit-window open/closed callout (issue #655). Single
+  // subject (`pit-open-closed`) gating both directional scenarios. Same
+  // gate-at-event-arrival shape as the other callout families: read live so a
+  // toggle off mid-session takes effect on the next event without cutting an
+  // in-flight clip. Placed before the master gate so the master stays the last
+  // per-callout opt-in. Default `() => true` preserves legacy behavior for tests
+  // that don't supply a closure.
+  getPitWindowCalloutEnabled: (id: PitWindowCalloutId) => boolean = () => true,
   // User opt-in for the rolling-start callout (issue #660). Single subject
   // (`pace-car`) gating the "pace car is moving" line. Same gate-at-event-
   // arrival shape as the other callout families: read live so a toggle off
@@ -904,6 +935,19 @@ export function registerPitCrew(
           "start-light callout",
           logger,
         ),
+      ),
+    );
+  }
+
+  // Pit-window family (issue #655). The `pit-window-*` pools are already
+  // registered en masse above via `Object.entries(POOLS)`, so no explicit pool
+  // loop is needed here — `PIT_WINDOW_POOL_NAMES` exists for the catalog tests
+  // to register pools in isolation. Single subject (`pit-open-closed`) gates
+  // both directional scenarios via `SCENARIO_ID_TO_PIT_WINDOW_ID`.
+  for (const s of PIT_WINDOW_ALERTS) {
+    engine.defineScenario(
+      wrapWithMaster(
+        wrapCalloutScenario(s, SCENARIO_ID_TO_PIT_WINDOW_ID, getPitWindowCalloutEnabled, "pit-window callout", logger),
       ),
     );
   }

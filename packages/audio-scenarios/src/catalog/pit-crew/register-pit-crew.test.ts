@@ -28,6 +28,7 @@ import {
   type DamageCalloutId,
   type FlagCalloutId,
   type IncidentCalloutId,
+  type PitWindowCalloutId,
   registerPitCrew,
   type RollingStartCalloutId,
 } from "./index.js";
@@ -300,6 +301,21 @@ const ROLLING_START_CLIP_PATHS = [
   `voice/${VOICE}/rolling-start/pace-car-moving-05.mp3`,
 ] as const;
 
+// Pit-window clips referenced from `pit-window.ts` (issue #655). Five opened +
+// five closed variants.
+const PIT_WINDOW_CLIP_PATHS = [
+  `voice/${VOICE}/pit-window/opened-01.mp3`,
+  `voice/${VOICE}/pit-window/opened-02.mp3`,
+  `voice/${VOICE}/pit-window/opened-03.mp3`,
+  `voice/${VOICE}/pit-window/opened-04.mp3`,
+  `voice/${VOICE}/pit-window/opened-05.mp3`,
+  `voice/${VOICE}/pit-window/closed-01.mp3`,
+  `voice/${VOICE}/pit-window/closed-02.mp3`,
+  `voice/${VOICE}/pit-window/closed-03.mp3`,
+  `voice/${VOICE}/pit-window/closed-04.mp3`,
+  `voice/${VOICE}/pit-window/closed-05.mp3`,
+] as const;
+
 const manifest: AudioAssetsManifest = {
   clips: [
     "sfx/IRD-tick-open.mp3",
@@ -313,6 +329,7 @@ const manifest: AudioAssetsManifest = {
     ...PIT_BOX_CLIP_PATHS,
     ...START_LIGHT_CLIP_PATHS,
     ...ROLLING_START_CLIP_PATHS,
+    ...PIT_WINDOW_CLIP_PATHS,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -375,6 +392,7 @@ let pitServiceRequestsEnabled: boolean;
 let damageEnabled: Map<DamageCalloutId, boolean>;
 let incidentEnabled: Map<IncidentCalloutId, boolean>;
 let pitBoxEnabled: boolean;
+let pitWindowEnabled: Map<PitWindowCalloutId, boolean>;
 let rollingStartEnabled: Map<RollingStartCalloutId, boolean>;
 let voiceMasterEnabled: boolean;
 
@@ -384,6 +402,7 @@ beforeEach(() => {
   damageEnabled = new Map<DamageCalloutId, boolean>([["repair-needed", true]]);
   incidentEnabled = makeIncidentEnabledMap(true);
   pitBoxEnabled = true;
+  pitWindowEnabled = new Map<PitWindowCalloutId, boolean>([["pit-open-closed", true]]);
   rollingStartEnabled = new Map<RollingStartCalloutId, boolean>([["pace-car", true]]);
   voiceMasterEnabled = true;
   mockSessionType.mockReturnValue("Race");
@@ -425,6 +444,7 @@ beforeEach(() => {
     undefined, // getSpotterTrackDirection (issue #651)
     undefined, // getSpotterStillThereIntervalMs (issue #651)
     undefined, // getSpotterNearestCarGapMeters (issue #651)
+    (id) => pitWindowEnabled.get(id) ?? true, // getPitWindowCalloutEnabled (issue #655)
     (id) => rollingStartEnabled.get(id) ?? true, // getRollingStartCalloutEnabled (issue #660)
     () => true, // getStartLightCalloutEnabled (issue #480)
     () => voiceMasterEnabled,
@@ -1036,6 +1056,46 @@ describe("rolling-start family registration (issue #660)", () => {
   it("is suppressed when the master gate is off", () => {
     voiceMasterEnabled = false;
     bus.publishEvent("rollingStart.pace-car-moving.raised", {} as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+});
+
+// Issue #655: the pit-window family is registered by `registerPitCrew` and
+// wrapped by the master gate + the single per-callout opt-in (both directions
+// share `pit-open-closed`). These tests confirm the wiring; the directional
+// `where:` branch + diff gating are covered in `pit-window.test.ts` /
+// `pits-open.test.ts`.
+describe("pit-window family registration (issue #655)", () => {
+  it.each([
+    { to: true, fragment: "/pit-window/opened-" },
+    { to: false, fragment: "/pit-window/closed-" },
+  ])("fires the $fragment clip on to=$to when the opt-in is on", ({ to, fragment }) => {
+    bus.publishEvent("pitsOpen.changed", { from: !to, to } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed().some((p) => p.includes(fragment))).toBe(true);
+  });
+
+  it("is suppressed when the opt-in is off", () => {
+    pitWindowEnabled.set("pit-open-closed", false);
+    bus.publishEvent("pitsOpen.changed", { from: false, to: true } as never);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("logs a debug line on suppression", () => {
+    pitWindowEnabled.set("pit-open-closed", false);
+    bus.publishEvent("pitsOpen.changed", { from: false, to: true } as never);
+
+    expect(mockLogger.debug).toHaveBeenCalledWith("pit-window callout suppressed: pit-open-closed");
+  });
+
+  it("is suppressed when the master gate is off", () => {
+    voiceMasterEnabled = false;
+    bus.publishEvent("pitsOpen.changed", { from: true, to: false } as never);
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([]);

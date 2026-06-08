@@ -135,6 +135,25 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
     "voice/{voice}/rolling-start/pace-car-moving-05.mp3",
   ],
 
+  // Pit-window callout pools (issue #655). Pit road opened / closed for the
+  // player. Two multi-element pools (five variants each) so the engineer doesn't
+  // repeat himself across a caution's open→closed→open flurry; random pick with
+  // the shared no-immediate-repeat guard. Voice-scoped via `{voice}`.
+  "pit-window-opened": [
+    "voice/{voice}/pit-window/opened-01.mp3",
+    "voice/{voice}/pit-window/opened-02.mp3",
+    "voice/{voice}/pit-window/opened-03.mp3",
+    "voice/{voice}/pit-window/opened-04.mp3",
+    "voice/{voice}/pit-window/opened-05.mp3",
+  ],
+  "pit-window-closed": [
+    "voice/{voice}/pit-window/closed-01.mp3",
+    "voice/{voice}/pit-window/closed-02.mp3",
+    "voice/{voice}/pit-window/closed-03.mp3",
+    "voice/{voice}/pit-window/closed-04.mp3",
+    "voice/{voice}/pit-window/closed-05.mp3",
+  ],
+
   // Damage callout pool (issue #489). Single pool today; multi-clip random
   // selection works the same way as the flag pools above.
   "damage-repair-needed": [
