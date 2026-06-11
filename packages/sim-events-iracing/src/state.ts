@@ -114,6 +114,16 @@ export type TranslatorState = {
   /** Previous tick's `SessionState === ParadeLaps`, for ParadeLaps entry-edge detection. */
   lastInParadeLaps: boolean;
 
+  // ── Pit window open/closed (issue #655) ─────────────────────────────────
+  /**
+   * Whether the pit-window diff has seeded its baseline on the first tick.
+   * Seeds `lastPitsOpen` without firing so connecting mid-session (when
+   * `PitsOpen` is already at some value) never blurts a phantom open/closed.
+   */
+  pitsOpenInitialized: boolean;
+  /** Previous-tick `PitsOpen`, for boolean transition detection. */
+  lastPitsOpen: boolean;
+
   // ── Start lights (issue #480) ───────────────────────────────────────────
   /**
    * Whether the start-light diff has seeded its baselines on the first tick
@@ -479,6 +489,9 @@ export function createInitialState(): TranslatorState {
 
     rollingStartInitialized: false,
     lastInParadeLaps: false,
+
+    pitsOpenInitialized: false,
+    lastPitsOpen: false,
 
     startLightInitialized: false,
     lastStartLightBits: 0,

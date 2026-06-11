@@ -331,6 +331,58 @@
         "seed": 15
       }
     ],
+    "pit-window": [
+      {
+        "name": "opened-01",
+        "text": "Pits are open.",
+        "seed": 1
+      },
+      {
+        "name": "opened-02",
+        "text": "Pit lane's open now.",
+        "seed": 1
+      },
+      {
+        "name": "opened-03",
+        "text": "Heads up. <break time=\"0.3s\" /> Pits are open.",
+        "seed": 4
+      },
+      {
+        "name": "opened-04",
+        "text": "Just so you know, pit lane's open.",
+        "seed": 1
+      },
+      {
+        "name": "opened-05",
+        "text": "Pits are open if you need them.",
+        "seed": 1
+      },
+      {
+        "name": "closed-01",
+        "text": "Pits are closed.",
+        "seed": 1
+      },
+      {
+        "name": "closed-02",
+        "text": "Pit lane's closed now.",
+        "seed": 1
+      },
+      {
+        "name": "closed-03",
+        "text": "Heads up. <break time=\"0.3s\" /> Pits are closed.",
+        "seed": 4
+      },
+      {
+        "name": "closed-04",
+        "text": "Just so you know, pit lane's closed.",
+        "seed": 15
+      },
+      {
+        "name": "closed-05",
+        "text": "Pits are closed for now.",
+        "seed": 1
+      }
+    ],
     "pit-limiter": [
       {
         "name": "pit-entry-001",

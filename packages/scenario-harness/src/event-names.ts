@@ -196,6 +196,11 @@ export const EVENT_TEMPLATES = [
     description: "Track-wetness state stepped (irsdk_TrackWetness 1..7)",
     data: { from: 1, to: 2 },
   },
+  {
+    name: "pitsOpen.changed",
+    description: "Pit road opened / closed for the player (issue #655) — to=true opened, to=false closed",
+    data: { from: false, to: true },
+  },
 ] as const satisfies readonly EventTemplate[];
 
 export const ALL_EVENT_NAMES: readonly SimEventName[] = EVENT_TEMPLATES.map((t) => t.name);

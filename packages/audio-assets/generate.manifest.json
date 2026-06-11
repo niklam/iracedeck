@@ -9000,6 +9000,86 @@
       "textPreview": "Come on, Mike.",
       "generatedAt": "2026-06-07T14:15:40.045Z",
       "requestId": "O5CQsRyRqfk3TrBlXBCm"
+    },
+    "voice/default/pit-window/opened-01.mp3": {
+      "hash": "0f70e17c57a2b819",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pits are open.",
+      "generatedAt": "2026-06-07T17:01:45.953Z",
+      "requestId": "Kvet3xygmJHDnj73lsx9"
+    },
+    "voice/default/pit-window/opened-02.mp3": {
+      "hash": "2c8ac2ebdc658c57",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pit lane's open now.",
+      "generatedAt": "2026-06-07T17:01:46.139Z",
+      "requestId": "AJGq0K0h7PAt9FrxDRTc"
+    },
+    "voice/default/pit-window/opened-03.mp3": {
+      "hash": "f1a6c030c607c3d0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heads up. <break time=\"0.3s\" /> Pits are open.",
+      "generatedAt": "2026-06-08T16:32:52.437Z",
+      "requestId": "6ZVkzPKELBz62QnsJhel"
+    },
+    "voice/default/pit-window/opened-04.mp3": {
+      "hash": "f9bb290272acb84e",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Just so you know, pit lane's open.",
+      "generatedAt": "2026-06-07T17:01:46.586Z",
+      "requestId": "Dv6eRHzVzFKb0stg6ESv"
+    },
+    "voice/default/pit-window/opened-05.mp3": {
+      "hash": "abf9aba406f3ab6a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pits are open if you need them.",
+      "generatedAt": "2026-06-07T17:01:46.820Z",
+      "requestId": "SpIsHFNSxSHDLYFS0aRQ"
+    },
+    "voice/default/pit-window/closed-01.mp3": {
+      "hash": "1323bcce54ec2aa5",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pits are closed.",
+      "generatedAt": "2026-06-08T16:25:10.016Z",
+      "requestId": "CAaxh7ysPmWob82amODy"
+    },
+    "voice/default/pit-window/closed-02.mp3": {
+      "hash": "7dbd4b0b03c11062",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pit lane's closed now.",
+      "generatedAt": "2026-06-08T16:25:10.188Z",
+      "requestId": "M1NQ5W1t30iCcz09FnYg"
+    },
+    "voice/default/pit-window/closed-03.mp3": {
+      "hash": "0ce6c39fc7664976",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Heads up. <break time=\"0.3s\" /> Pits are closed.",
+      "generatedAt": "2026-06-08T16:34:20.967Z",
+      "requestId": "FCxFXTuMdxWxIxpeIom7"
+    },
+    "voice/default/pit-window/closed-04.mp3": {
+      "hash": "8903c3e42b0a07db",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Just so you know, pit lane's closed.",
+      "generatedAt": "2026-06-08T16:35:30.451Z",
+      "requestId": "lS96KQJSJbBRZElHWGoV"
+    },
+    "voice/default/pit-window/closed-05.mp3": {
+      "hash": "516dd8b3549b5186",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Pits are closed for now.",
+      "generatedAt": "2026-06-08T16:25:10.771Z",
+      "requestId": "CiRJMVePmtoLbTeTdO8I"
     }
   }
 }

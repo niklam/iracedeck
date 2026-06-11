@@ -51,6 +51,7 @@ import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
 import { diffPitStatus } from "./diff/pit-status.js";
+import { diffPitsOpen } from "./diff/pits-open.js";
 import { calculateFrozenRacePositions, updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
@@ -1090,6 +1091,13 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // ENTRY edge (field released into the formation lap), unlike diffPaceLaps
   // which fires later after a start/finish crossing completes the first pace lap.
   diffRollingStart(self.state, telemetry, sessionInfo, emit);
+  // Pit window open/closed (issue #655) — emits `pitsOpen.changed` on a real
+  // `PitsOpen` boolean transition. Race-only + replay-only gated here: the diff
+  // runs after the main replay guard, but a paused / frame-scrubbed replay can
+  // read `IsReplayPlaying === false` while `SimMode === "replay"`, so the
+  // explicit `replayOnlySession` gate (computed above for the session.changed
+  // paths) still matters. `isRaceSession` keeps it out of practice / qualifying.
+  diffPitsOpen(self.state, telemetry, isRaceSession, replayOnlySession, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479). Independent of

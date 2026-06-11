@@ -332,6 +332,28 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     "Rolling start: pace car begins moving the field into the formation lap",
   ),
 
+  // ── Pit Window (issue #655) ──
+  // `pitsOpen.changed` directly — bypasses the race-only / replay-only diff
+  // gating so you hear the open / closed line without driving `PitsOpen` through
+  // `/api/telemetry`. Same-family preempt: fire both in quick succession to
+  // confirm the second cancels the first.
+  {
+    id: "pit-window-opened",
+    category: "Pit Window",
+    label: "Pits opened",
+    description: 'Pit road just opened for the player — engineer says "Pits are open."',
+    event: "pitsOpen.changed",
+    data: { from: false, to: true },
+  },
+  {
+    id: "pit-window-closed",
+    category: "Pit Window",
+    label: "Pits closed",
+    description: 'Pit road just closed for the player — engineer says "Pits are closed."',
+    event: "pitsOpen.changed",
+    data: { from: true, to: false },
+  },
+
   // ── Damage ──
   // Bypasses the rising-edge + 3000 ms debounce in
   // `sim-events-iracing/diff/damage.ts` — fires the bus event directly
