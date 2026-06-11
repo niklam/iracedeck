@@ -66,12 +66,11 @@ export const EVENT_TEMPLATES = [
   { name: "flag.caution-waving.raised", description: "Full-course caution waving", data: {} },
 
   // ── Start lights ──
-  { name: "startLight.start-ready.raised", description: "Start gantry: Ready (standing start)", data: {} },
   { name: "startLight.start-set.raised", description: "Start gantry: Set", data: {} },
   { name: "startLight.start-go.raised", description: "Start gantry: Go", data: {} },
   {
     name: "startLight.countdown.raised",
-    description: "Start countdown number (one event per number — 60/30/15/10/5 s)",
+    description: "Start countdown number (one event per number — 60/30/10 s)",
     data: { seconds: 30 },
   },
 

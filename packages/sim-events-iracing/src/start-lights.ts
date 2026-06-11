@@ -8,12 +8,11 @@
  *   - {@link resolveStandingStart} — whether the race is a standing start
  *     (the gantry red→green procedure with a real `SessionTimeRemain`
  *     countdown). Rolling starts hold `StartReady` through the parade with no
- *     `SessionTimeRemain`, so the countdown and the standing-only `start-ready`
- *     callout are gated on this.
- *   - {@link resolveIsAiRace} — whether any opponent is an AI driver. AI races
- *     compress the pre-start procedure, so the numeric countdown is suppressed
- *     entirely as a belt-and-suspenders guard (the window-gate already handles
- *     short procedures; this makes "never 5 s+ in an AI race" explicit).
+ *     `SessionTimeRemain`, so the numeric countdown window is gated on this.
+ *   - {@link resolveIsAiRace} — whether any opponent is an AI driver. (Formerly
+ *     suppressed the numeric countdown in AI races; that guard was removed in
+ *     #666 — the ceiling-seed already keeps a compressed window from speaking an
+ *     unreachable mark — but the helper stays a public export.)
  *
  * Both are defensive against missing / malformed YAML and return `false`.
  */

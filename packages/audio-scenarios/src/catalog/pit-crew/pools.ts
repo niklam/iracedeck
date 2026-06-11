@@ -112,18 +112,16 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "flag-yellow-waving": ["voice/{voice}/flags/yellow-waving-01.mp3"],
   "flag-caution-waving": ["voice/{voice}/flags/caution-waving-01.mp3"],
 
-  // Start-light family pools (issue #480). Three gantry lines plus the five
-  // numeric countdown marks. Auto-picked for the start-light catalog by the
-  // `start-light-` prefix (see `start-lights.ts` `START_LIGHT_POOL_NAMES`).
-  // Single-clip today; voice-scoped via `{voice}`.
-  "start-light-ready": ["voice/{voice}/start-lights/start-ready-01.mp3"],
+  // Start-light family pools (issue #480). Two gantry lines plus the three
+  // numeric countdown marks (start-ready + the 15/5 marks dropped in #666).
+  // Auto-picked for the start-light catalog by the `start-light-` prefix (see
+  // `start-lights.ts` `START_LIGHT_POOL_NAMES`). Single-clip today; voice-scoped
+  // via `{voice}`.
   "start-light-set": ["voice/{voice}/start-lights/start-set-01.mp3"],
   "start-light-go": ["voice/{voice}/start-lights/start-go-01.mp3"],
   "start-light-countdown-60": ["voice/{voice}/start-lights/countdown-60-01.mp3"],
   "start-light-countdown-30": ["voice/{voice}/start-lights/countdown-30-01.mp3"],
-  "start-light-countdown-15": ["voice/{voice}/start-lights/countdown-15-01.mp3"],
   "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
-  "start-light-countdown-5": ["voice/{voice}/start-lights/countdown-5-01.mp3"],
 
   // Rolling-start family pool (issue #660). Five random-pick variants for the
   // "pace car is moving" call at the start of a rolling-start formation lap.

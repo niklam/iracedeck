@@ -278,17 +278,14 @@ const PIT_BOX_CLIP_PATHS = [
   `voice/${VOICE}/pit-box/pit-now-01.mp3`,
 ] as const;
 
-// Start-light clips referenced from `start-lights.ts` (issue #480). Three
-// gantry lines plus the five countdown marks.
+// Start-light clips referenced from `start-lights.ts` (issue #480). Two gantry
+// lines plus the three countdown marks (start-ready + the 15/5 marks dropped in #666).
 const START_LIGHT_CLIP_PATHS = [
-  `voice/${VOICE}/start-lights/start-ready-01.mp3`,
   `voice/${VOICE}/start-lights/start-set-01.mp3`,
   `voice/${VOICE}/start-lights/start-go-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-60-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-30-01.mp3`,
-  `voice/${VOICE}/start-lights/countdown-15-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-10-01.mp3`,
-  `voice/${VOICE}/start-lights/countdown-5-01.mp3`,
 ] as const;
 
 // Rolling-start clips referenced from `rolling-start.ts` (issue #660). Five
@@ -1014,7 +1011,6 @@ describe("pit-box count-in live gating (issue #600)", () => {
 // per-callout / preemption behavior is covered in `start-lights.test.ts`.
 describe("start-light family registration (issue #480)", () => {
   it.each([
-    { event: "startLight.start-ready.raised", data: {}, fragment: "/start-lights/start-ready-" },
     { event: "startLight.start-set.raised", data: {}, fragment: "/start-lights/start-set-" },
     { event: "startLight.start-go.raised", data: {}, fragment: "/start-lights/start-go-" },
     { event: "startLight.countdown.raised", data: { seconds: 30 }, fragment: "/start-lights/countdown-30-" },
