@@ -8722,20 +8722,20 @@
       "requestId": "6sHMzssPqknEN9c8fC1D"
     },
     "voice/default/flags/yellow-waving-01.mp3": {
-      "hash": "1c29c55af582a39a",
+      "hash": "830786381797925e",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Local yellow waving. <break time=\"0.3s\" /> Slow, hazard ahead!",
-      "generatedAt": "2026-06-06T15:00:05.917Z",
-      "requestId": "Dm07ndR8ElZf8CaOE9f7"
+      "textPreview": "Yellow flag",
+      "generatedAt": "2026-06-11T18:51:47.917Z",
+      "requestId": "imrzng6qHd4guGf0wsjH"
     },
     "voice/default/flags/caution-waving-01.mp3": {
-      "hash": "6cfc4711cf7f384c",
+      "hash": "1dc2ca33067efcfb",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Caution coming out!",
-      "generatedAt": "2026-06-06T15:00:06.106Z",
-      "requestId": "7CO2HhvdwX2M1cdmwQ1u"
+      "textPreview": "Caution is out. <break time=\"0.3s\" /> Slow down and close up safely.",
+      "generatedAt": "2026-06-11T18:51:48.179Z",
+      "requestId": "HTiwz9bEg2n65UioZmDo"
     },
     "voice/default/start-lights/start-set-01.mp3": {
       "hash": "7bcd86f3ff486e16",

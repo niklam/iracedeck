@@ -22,6 +22,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
   getDriverSetupName,
@@ -528,7 +529,7 @@ describe("sim-events-iracing translator", () => {
       expect(ev.data.scope).toBe("full");
     });
 
-    it("emits flag.yellow.cleared when yellow disappears", () => {
+    it("emits flag.yellow.cleared after the all-clear has held for the hold window (issue #671)", () => {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
@@ -538,6 +539,15 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
       controller.__tick(telemetry({ SessionFlags: 0 }));
+
+      // The drop tick itself stays silent — cleared is only announced after
+      // the all-clear has been sustained for the hold window (issue #671).
+      expect(handler).not.toHaveBeenCalled();
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + YELLOW_CLEARED_HOLD_MS);
+      controller.__tick(telemetry({ SessionFlags: 0 }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
     });
@@ -979,10 +989,24 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ SessionFlags: 0 }));
       controller.__tick(telemetry({ SessionFlags: 0 }));
 
+      // A sustained all-clear with NO prior yellow never fires (issue #671:
+      // the hold window must not turn "never yellow" into a phantom clear).
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + YELLOW_CLEARED_HOLD_MS);
+      controller.__tick(telemetry({ SessionFlags: 0 }));
+      vi.useRealTimers();
+
       expect(handler).not.toHaveBeenCalled();
 
       controller.__tick(telemetry({ SessionFlags: Flags.Yellow }));
       controller.__tick(telemetry({ SessionFlags: 0 }));
+
+      expect(handler).not.toHaveBeenCalled();
+
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + YELLOW_CLEARED_HOLD_MS);
+      controller.__tick(telemetry({ SessionFlags: 0 }));
+      vi.useRealTimers();
 
       expect(handler).toHaveBeenCalledTimes(1);
     });

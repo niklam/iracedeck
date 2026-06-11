@@ -77,6 +77,16 @@ export type TranslatorState = {
    * from `activeFlags` but does not actually clear the caution).
    */
   lastAnyYellow: boolean;
+  /**
+   * Timestamp (ms) of the most recent all-yellow-bits drop edge, while a
+   * `flag.yellow.cleared` emission is pending its sustain window (issue
+   * #671). iRacing's yellow bits mirror the flag SHOWN to the player —
+   * `YellowWaving` drops the moment the player passes out of the affected
+   * zone and re-raises next lap — so the cleared edge is only announced once
+   * the all-clear has held for `YELLOW_CLEARED_HOLD_MS`. Any yellow-ish
+   * re-raise cancels the pending clear. `null` when no clear is pending.
+   */
+  yellowClearPendingSince: number | null;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -479,6 +489,7 @@ export function createInitialState(): TranslatorState {
     activeFlags: new Set(),
     lastYellowScope: null,
     lastAnyYellow: false,
+    yellowClearPendingSince: null,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
