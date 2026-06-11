@@ -346,9 +346,9 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
 /**
  * Stable identifier for each user-toggleable start-light callout (issue #480).
  * Two grouped subjects (mirrors the pit-box "many scenarios → one subject"
- * precedent): `lights` covers the three gantry lines (ready / set / go) and
- * `countdown` covers the five numeric pre-start marks. The user gets two
- * checkboxes for the whole family rather than eight.
+ * precedent): `lights` covers the two gantry lines (set / go) and `countdown`
+ * covers the three numeric pre-start marks. The user gets two checkboxes for
+ * the whole family rather than five.
  */
 export type StartLightCalloutId = "lights" | "countdown";
 
@@ -363,14 +363,11 @@ export const START_LIGHT_CALLOUT_SETTING_KEYS: Record<StartLightCalloutId, strin
 };
 
 const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
-  "pit-crew.start-light-ready": "lights",
   "pit-crew.start-light-set": "lights",
   "pit-crew.start-light-go": "lights",
   "pit-crew.start-light-countdown-60": "countdown",
   "pit-crew.start-light-countdown-30": "countdown",
-  "pit-crew.start-light-countdown-15": "countdown",
   "pit-crew.start-light-countdown-10": "countdown",
-  "pit-crew.start-light-countdown-5": "countdown",
 };
 
 /**
@@ -892,7 +889,7 @@ export function registerPitCrew(
   // registered en masse above via `Object.entries(POOLS)` (same as the flag
   // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
   // exists for the catalog tests to register pools in isolation. Two grouped
-  // opt-ins (`lights`, `countdown`) gate the eight scenarios via
+  // opt-ins (`lights`, `countdown`) gate the five scenarios via
   // `SCENARIO_ID_TO_START_LIGHT_ID`.
   for (const s of START_LIGHT_ALERTS) {
     engine.defineScenario(

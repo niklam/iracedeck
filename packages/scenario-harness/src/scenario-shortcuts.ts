@@ -313,18 +313,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Caution Waving", "flag.caution-waving.raised"),
 
   // ── Start (issue #480) ──
-  // Start-gantry gantry lines + the per-number start countdown. The gantry
-  // lines carry no payload; the countdown fires `startLight.countdown.raised`
-  // once per number with the chosen `seconds` (60/30/15/10/5). Fire two
+  // Start-gantry lines + the per-number start countdown. The gantry lines carry
+  // no payload; the countdown fires `startLight.countdown.raised` once per number
+  // with the chosen `seconds` (60/30/10 — 15 and 5 dropped in #666). Fire two
   // countdown buttons in quick succession to confirm same-family preempt.
-  startLight("start-ready", "Ready", "startLight.start-ready.raised", "Standing-start gantry: Ready"),
   startLight("start-set", "Set", "startLight.start-set.raised", "Start gantry: Set"),
   startLight("start-go", "Go", "startLight.start-go.raised", "Start gantry: Go"),
   startCountdown(60),
   startCountdown(30),
-  startCountdown(15),
   startCountdown(10),
-  startCountdown(5),
 
   // ── Rolling Start (issue #660) ──
   // Payload-less: the pace car begins moving the field onto the formation lap.

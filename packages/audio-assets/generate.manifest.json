@@ -8737,69 +8737,45 @@
       "generatedAt": "2026-06-06T15:00:06.106Z",
       "requestId": "7CO2HhvdwX2M1cdmwQ1u"
     },
-    "voice/default/start-lights/start-ready-01.mp3": {
-      "hash": "87918ae0d04dc23d",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "We're ready. Focus.",
-      "generatedAt": "2026-06-06T16:23:52.240Z",
-      "requestId": "GPIjA25khqE6pTcF6beK"
-    },
     "voice/default/start-lights/start-set-01.mp3": {
-      "hash": "82433268e2734240",
+      "hash": "7bcd86f3ff486e16",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Lights are on.",
-      "generatedAt": "2026-06-06T16:18:12.656Z",
-      "requestId": "vGTSO7359dG7Zq02bu49"
+      "textPreview": "Lights. Get ready to go.",
+      "generatedAt": "2026-06-11T16:01:52.855Z",
+      "requestId": "RrOnsv6aC576p54jbynp"
     },
     "voice/default/start-lights/start-go-01.mp3": {
-      "hash": "7c704cdd1efe6a2f",
+      "hash": "9a67d0eaa4e0f0d7",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Go, go, go!",
-      "generatedAt": "2026-06-06T16:09:29.702Z",
-      "requestId": "8hwbF5N20vC03WHxZqGg"
+      "generatedAt": "2026-06-11T16:01:53.022Z",
+      "requestId": "by7DuF3s4OmCbnow8SBX"
     },
     "voice/default/start-lights/countdown-60-01.mp3": {
-      "hash": "0d2b4d6b003ccf33",
+      "hash": "bfb0e41023af3f16",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Sixty seconds to the lights.",
-      "generatedAt": "2026-06-06T16:26:33.774Z",
-      "requestId": "q0ThsWSQnZdy3mvBiojy"
+      "textPreview": "Race starts in sixty seconds. Final checks now.",
+      "generatedAt": "2026-06-11T16:01:53.276Z",
+      "requestId": "5S5tA8pUmecUXEvzv4Mk"
     },
     "voice/default/start-lights/countdown-30-01.mp3": {
-      "hash": "a19827fef2be0025",
+      "hash": "a6dfc92d174b8608",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Thirty seconds to the lights.",
-      "generatedAt": "2026-06-06T16:26:33.968Z",
-      "requestId": "zgnJTXG8aHMBiww8GwUm"
-    },
-    "voice/default/start-lights/countdown-15-01.mp3": {
-      "hash": "5e7d4e215ba85218",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Fifteen seconds to the lights.",
-      "generatedAt": "2026-06-06T16:26:34.135Z",
-      "requestId": "cj3JmiAsaxoHT57vCmSy"
+      "textPreview": "Thirty seconds to race start. Settle in and focus.",
+      "generatedAt": "2026-06-11T16:01:53.523Z",
+      "requestId": "IwCq30alIap9AWx8hqMR"
     },
     "voice/default/start-lights/countdown-10-01.mp3": {
-      "hash": "fa6b98d544ca6439",
+      "hash": "5a359b06d5a6a854",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Ten seconds to the lights.",
-      "generatedAt": "2026-06-06T16:26:34.308Z",
-      "requestId": "DpSDEXDIopuIgpQxTbTK"
-    },
-    "voice/default/start-lights/countdown-5-01.mp3": {
-      "hash": "67a3e27c698b54e8",
-      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
-      "model": "eleven_flash_v2_5",
-      "textPreview": "Five seconds to the lights.",
-      "generatedAt": "2026-06-06T16:26:34.482Z",
-      "requestId": "u2KQcVQ5yv4Vv337kUnG"
+      "textPreview": "Ten seconds to race start. Focus up, it's go time.",
+      "generatedAt": "2026-06-11T16:01:53.786Z",
+      "requestId": "hmI7FnKXmfrSSDbkQ8jn"
     },
     "voice/default/flags/one-pace-lap-to-go-02.mp3": {
       "hash": "b5aa73b478c55a8c",
