@@ -41,13 +41,13 @@ Templates also support calculated values with the `{{= expression }}` syntax. Th
 
 ### Result formatting
 
-Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals — `{{= round(10 / 2, 1) }}` renders `5.0`. Boolean results render `Yes`/`No`.
+Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals when it is the outermost part of the expression (or the chosen branch of a ternary) — `{{= round(10 / 2, 1) }}` renders `5.0`. When its result feeds another operator (like `+` concatenation), the decimals hint is dropped and the final value uses the default formatting instead. Boolean results render `Yes`/`No`.
 
 ### Expressions use raw values
 
 Expressions compute on the raw, full-precision values — not the display-formatted strings that plain `{{variable}}` placeholders show. This has two consequences:
 
-- `{{= telemetry.Speed }}` can show more precision than `{{telemetry.Speed}}`: the plain placeholder rounds floating-point values to 2 decimals for display, while inside an expression the input keeps its full precision and only the end result gets default formatting. Use `round()` when you want controlled output.
+- Intermediate math is exact: `{{= round(telemetry.Speed * 3.6, 0) }}` multiplies the full-precision speed by 3.6 before rounding — not the 2-decimal value that `{{telemetry.Speed}}` displays. Only the final result gets display formatting, so a bare `{{= telemetry.Speed }}` renders the same as `{{telemetry.Speed}}`.
 - Boolean-ish telemetry flags are `0`/`1` (or true/false) inside expressions, not `"Yes"`/`"No"`. Compare against the number: `{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}`.
 
 ### Errors
@@ -78,10 +78,10 @@ Show `PIT` while on pit road, otherwise nothing:
 {{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}
 ```
 
-Fuel level with a unit suffix:
+Fuel level in whole liters with a unit suffix (renders e.g. `42 L`):
 
 ```text
-{{= round(telemetry.FuelLevel, 1) + ' L' }}
+{{= round(telemetry.FuelLevel) + ' L' }}
 ```
 
 ## Driver Info
