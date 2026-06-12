@@ -890,6 +890,7 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
     mockLatestTelemetry.mockReturnValue(FURLED_UP);
     bus.publishEvent("flag.furled.raised", {});
     flush(audio);
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the warning drops
     bus.publishEvent("flag.furled.cleared", {});
     flush(audio);
     bus.publishEvent("flag.furled.cleared", {});
@@ -899,6 +900,21 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
       "voice/luca/flags/furled-01.mp3",
       "voice/luca/flags/furled-cleared-01.mp3",
     ]);
+  });
+
+  it("a clear arriving while the bit is up again plays nothing but keeps the marker for the real drop", () => {
+    _setFurledRaisedSpoken(true); // raised line was spoken
+    mockLatestTelemetry.mockReturnValue(FURLED_UP); // …but the warning is back up
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the genuine drop
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/furled-cleared-01.mp3"]);
   });
 
   it("a fresh raised fire invalidates a stale spoken marker from a previous episode", () => {
@@ -932,5 +948,35 @@ describe("furled speak-time validity + cleared pairing (issue #669)", () => {
     flush(audio); // filler finishes → pending raised replays → expands to silence
 
     expect(voiceClipsPlayed().filter((p) => p.includes("furled"))).toEqual([]);
+  });
+
+  it("a queued clear is dropped at speak time when the warning is back up, and the kept marker pairs the eventual real drop", () => {
+    engine.defineScenario({
+      id: "test.filler2",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["pool:flag-yellow-cleared"],
+    });
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio); // raised plays → marker set
+
+    engine.fire("test.filler2"); // occupies the Voice bus; deliberately not flushed
+    bus.publishEvent("flag.furled.cleared", {}); // bit dropped → diff cleared; equal weight → queued
+    // The bit is back up by the time the bus idles (the re-raise is debounced
+    // upstream, so no fresh raised fire has displaced the queued clear yet).
+    flush(audio); // filler finishes → queued clear replays → expands to silence
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([]);
+
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the genuine withdrawal
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([
+      "voice/luca/flags/furled-cleared-01.mp3",
+    ]);
   });
 });

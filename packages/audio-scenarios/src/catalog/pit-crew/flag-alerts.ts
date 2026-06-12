@@ -237,14 +237,17 @@ export function _setFurledRaisedSpoken(value: boolean): void {
   furledRaisedSpoken = value;
 }
 
-// Live "is the furled bit still up" read for the speak-time gate. Missing
-// telemetry (scenario harness, disconnect) counts as up — don't punish
-// missing data (the #574 precedent); with iRacing connected the translator's
-// latest tick is always available, which is the only case the gate exists for.
-function furledStillUp(): boolean {
+// Live `Furled`-bit read for the speak-time gates. `fallbackWhenUnknown`
+// decides the missing-telemetry answer (scenario harness, disconnect): each
+// gate passes the value that keeps it from suppressing on missing data (the
+// #574 precedent) — the raised gate treats unknown as still-up (`true`), the
+// cleared gate treats unknown as not-re-raised (`false`). With iRacing
+// connected the translator's latest tick is always available, which is the
+// only case the gates exist for.
+function furledBitUp(fallbackWhenUnknown: boolean): boolean {
   const telemetry = getLatestTelemetry() as TelemetryData | null;
 
-  if (telemetry === null) return true;
+  if (telemetry === null) return fallbackWhenUnknown;
 
   return hasFlag(telemetry.SessionFlags ?? 0, Flags.Furled);
 }
@@ -273,7 +276,7 @@ const FURLED: Scenario = {
   sequence: [
     {
       if: () => {
-        if (!furledStillUp()) return false;
+        if (!furledBitUp(true)) return false;
 
         furledRaisedSpoken = true;
 
@@ -287,24 +290,38 @@ const FURLED: Scenario = {
 // Fires when an announced furled warning is withdrawn (issue #669) — the
 // translator gates `flag.furled.cleared` on the raised EVENT having fired, and
 // the `where:` below narrows that to the raised LINE having actually been
-// spoken (consuming the marker): a raised fire that was queued behind a longer
-// call and then dropped at speak time (flag already down) must not be followed
-// by a stray "Black flag cleared.". `queueable: true` like YELLOW_CLEARED: the
-// all-clear is a sustained state, so a fire deferred behind an equal-weight
-// line replays when the bus next idles instead of being dropped.
+// spoken: a raised fire that was queued behind a longer call and then dropped
+// at speak time (flag already down) must not be followed by a stray "Black
+// flag cleared.". `queueable: true` like YELLOW_CLEARED: the all-clear is a
+// sustained state, so a fire deferred behind an equal-weight line replays when
+// the bus next idles instead of being dropped.
 const FURLED_CLEARED: Scenario = {
   ...flagScenario("furled-cleared", ["pool:flag-furled-cleared"]),
   queueable: true,
   when: {
     event: "flag.furled.cleared",
-    where: () => {
-      if (!furledRaisedSpoken) return false;
-
-      furledRaisedSpoken = false;
-
-      return true;
-    },
+    // Passive read — consumption happens at speak time below, so the marker
+    // pairs with the line actually reaching the speaker on both sides.
+    where: () => furledRaisedSpoken,
   },
+  // Speak-time validity gate, the mirror of FURLED's: a queued clear is stale
+  // when the warning is already BACK UP by the time the bus idles (the
+  // re-raise is debounced upstream, so a fresh raised fire may not have
+  // displaced this one from the pending slot yet), or when a fresh raised
+  // fire reset the spoken marker while this clear sat in the queue. Only a
+  // clear that actually plays consumes the marker.
+  sequence: [
+    {
+      if: () => {
+        if (furledBitUp(false) || !furledRaisedSpoken) return false;
+
+        furledRaisedSpoken = false;
+
+        return true;
+      },
+      then: flagSequence(["pool:flag-furled-cleared"]),
+    },
+  ],
 };
 
 const DQ_SCORING_INVALID: Scenario = {
