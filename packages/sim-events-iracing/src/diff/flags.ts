@@ -2,8 +2,12 @@
  * Flag transitions.
  *
  * Publishes flag.*.raised when a flag appears in SessionFlags that wasn't
- * active last tick, and flag.yellow.cleared once all yellow-ish bits have
- * stayed clear for the sustain window (issue #671).
+ * active last tick, flag.yellow.cleared once all yellow-ish bits have
+ * stayed clear for the sustain window (issue #671), and the furled pair
+ * (issue #669): flag.furled.raised is debounced behind
+ * {@link FURLED_DEBOUNCE_MS} (running briefly off track flashes the bit),
+ * and flag.furled.cleared fires on the falling edge only when the raised
+ * callout was actually announced.
  *
  * Yellow handling (issue #480 rework): a *static* yellow (`Yellow` without
  * `YellowWaving`) / *static* caution (`Caution` without `CautionWaving`)
@@ -40,6 +44,14 @@ import type { EmitFn } from "./types.js";
  * CrewChief's `timeBetweenYellowAndClearFlagMessages`.
  */
 export const YELLOW_CLEARED_HOLD_MS = 3000;
+
+/**
+ * How long (ms) the `Furled` bit must stay set before `flag.furled.raised`
+ * is announced (issue #669). Running briefly off track flashes the bit for
+ * ~0.5 s without a genuine furled-black-flag warning, so the rising edge only
+ * arms this window; the bit clearing meanwhile drops the announcement.
+ */
+export const FURLED_DEBOUNCE_MS = 1000;
 
 type FlagKey =
   | "green"
@@ -147,6 +159,8 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
     state.lastYellowScope = yellowScope;
     state.lastAnyYellow = anyYellow;
     state.yellowClearPendingSince = null;
+    state.furledPendingAt = 0;
+    state.furledAnnounced = false;
 
     return;
   }
@@ -177,9 +191,8 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
         case "disqualify":
           emit({ event: "flag.disqualify.raised", data: {} });
           break;
-        case "furled":
-          emit({ event: "flag.furled.raised", data: {} });
-          break;
+        // NOTE: no "furled" case — the furled rising edge is owned by the
+        // debounce block below (issue #669).
         case "dq-scoring-invalid":
           emit({ event: "flag.dq-scoring-invalid.raised", data: {} });
           break;
@@ -220,12 +233,11 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
     }
   }
 
-  // Cleared transitions (yellow only — the event catalog only includes
-  // yellow.cleared today). The drop edge (ALL yellow-ish bits clear after at
-  // least one was set — NOT a static→waving escalation) only ARMS the hold
-  // window; the event fires once the all-clear has been sustained for
-  // YELLOW_CLEARED_HOLD_MS, and any yellow-ish re-raise meanwhile cancels
-  // the pending clear (issue #671 — validated clear).
+  // Yellow cleared transition (issue #671 — validated clear). The drop edge
+  // (ALL yellow-ish bits clear after at least one was set — NOT a
+  // static→waving escalation) only ARMS the hold window; the event fires
+  // once the all-clear has been sustained for YELLOW_CLEARED_HOLD_MS, and
+  // any yellow-ish re-raise meanwhile cancels the pending clear.
   if (anyYellow) {
     state.yellowClearPendingSince = null;
   } else if (state.lastAnyYellow) {
@@ -233,6 +245,31 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
   } else if (state.yellowClearPendingSince !== null && now - state.yellowClearPendingSince >= YELLOW_CLEARED_HOLD_MS) {
     emit({ event: "flag.yellow.cleared", data: {} });
     state.yellowClearPendingSince = null;
+  }
+
+  // Furled debounce + paired cleared (issue #669). The rising edge only ARMS
+  // the debounce window — running briefly off track flashes the bit for
+  // ~0.5 s without a genuine warning. The raised callout fires once the bit
+  // has stayed set for FURLED_DEBOUNCE_MS; the cleared callout fires on the
+  // falling edge only when the raised callout was actually announced, so a
+  // transient flicker fires neither. Connect-while-furled seeds silently
+  // (no rising edge), matching every other flag. NOTE: `state.activeFlags`
+  // still holds the PREVIOUS tick's set here — the baseline advances below.
+  const furledNow = current.has("furled");
+
+  if (!furledNow) {
+    state.furledPendingAt = 0;
+
+    if (state.furledAnnounced) {
+      emit({ event: "flag.furled.cleared", data: {} });
+      state.furledAnnounced = false;
+    }
+  } else if (!state.activeFlags.has("furled")) {
+    state.furledPendingAt = now;
+  } else if (state.furledPendingAt !== 0 && now - state.furledPendingAt >= FURLED_DEBOUNCE_MS) {
+    emit({ event: "flag.furled.raised", data: {} });
+    state.furledAnnounced = true;
+    state.furledPendingAt = 0;
   }
 
   state.activeFlags = current as Set<string>;

@@ -87,6 +87,23 @@ export type TranslatorState = {
    * re-raise cancels the pending clear. `null` when no clear is pending.
    */
   yellowClearPendingSince: number | null;
+  /**
+   * Timestamp (ms) when the `Furled` bit's rising edge was observed, while a
+   * `flag.furled.raised` emission is pending its debounce window (issue
+   * #669). Running briefly off track flashes the bit for ~0.5 s without a
+   * genuine furled-black-flag warning, so the raised callout only fires once
+   * the bit has stayed set for `FURLED_DEBOUNCE_MS`; the bit clearing
+   * meanwhile drops the pending announcement. `0` when no announce is
+   * pending.
+   */
+  furledPendingAt: number;
+  /**
+   * True once `flag.furled.raised` has actually been emitted for the current
+   * furled episode (issue #669). Gates the paired `flag.furled.cleared` on
+   * the falling edge — a transient flicker that never announced fires
+   * neither event.
+   */
+  furledAnnounced: boolean;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -491,6 +508,8 @@ export function createInitialState(): TranslatorState {
     lastYellowScope: null,
     lastAnyYellow: false,
     yellowClearPendingSince: null,
+    furledPendingAt: 0,
+    furledAnnounced: false,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,
