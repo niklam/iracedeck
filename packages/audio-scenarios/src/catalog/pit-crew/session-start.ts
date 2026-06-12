@@ -15,13 +15,8 @@
  *     translator emits a synthetic `session.changed { from: -1, to: N }` —
  *     connecting mid-practice or mid-qualifying triggers the brief.
  *
- * The delay is implemented as `triggerDelay` (NOT a leading `{ pause }` step):
- * iRacing's `session.changed` lands on a tick where `TrackWetness` (and a few
- * other fields) can briefly read `Unknown`. A leading `{ pause }` step does NOT
- * let telemetry settle because vars are resolved at expansion time,
- * synchronously when `where:` returns true — by the time the pause's audio-gap
- * plays, the var paths are already frozen. `triggerDelay` defers the entire fire
- * decision so `where:` and var resolvers see fresh, settled telemetry.
+ * The delay is implemented as `triggerDelay` after {@link SESSION_START_DELAY_MS}
+ * (see its doc for why this is a `triggerDelay`, not a leading pause).
  *
  * Script (fires ~{@link SESSION_START_DELAY_MS} ms after `session.changed`):
  *   [radio open]
@@ -212,15 +207,16 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
 
         if (snapshot === null) return false;
 
-        // Race sessions are handled exclusively by the race-start scenario
-        // (issue #568), which also fires on `session.changed`. Without this
-        // gate the engineer would double-greet on a race session.
+        // Race sessions are spoken exclusively by the race-start scenario
+        // (issue #568), whose `where:` requires `isRaceSession(getSessionType())`.
+        // Rejecting `sessionType === "race"` here prevents a double-greeting
+        // when both scenarios ride the same `session.changed` event.
         //
-        // We read `snapshot.sessionType` (not `getSessionType()` from
-        // `@iracedeck/sim-events-iracing`) because the snapshot resolver is the
-        // injected seam: the scenario-harness drives it directly with no
-        // translator initialized, where `getSessionType()` would return `""`
-        // and misclassify every session as non-race.
+        // We read `snapshot.sessionType` (not `isRaceSession(getSessionType())`)
+        // because the snapshot is the injected seam: the var resolvers and the
+        // scenario-harness session-start composer both drive it directly via the
+        // snapshot resolver, so the gate and the spoken session-type line are
+        // always drawn from the same source and can't disagree.
         if (snapshot.sessionType === "race") return false;
 
         return true;

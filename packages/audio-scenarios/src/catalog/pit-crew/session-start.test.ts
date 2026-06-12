@@ -302,16 +302,12 @@ describe("session-start scenario", () => {
     expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
   });
 
-  // Regression: the delay is implemented as `triggerDelay` rather than a
-  // leading `{ pause }` step so the where: predicate and var resolvers see
-  // telemetry that has had time to settle. iRacing's `session.changed` lands
-  // on a tick where `TrackWetness` (and a few other fields) can briefly read
-  // `Unknown` for a beat right at the transition. A leading pause inside the
-  // sequence wouldn't help because vars are resolved at expansion time
-  // (synchronously when the immediate where: returns true); by the time the
-  // pause's audio-gap actually plays, the var paths are already frozen.
-  // `triggerDelay` defers the entire fire decision so where: and var resolvers
-  // see fresh, settled telemetry.
+  // Regression: where: is implemented as `triggerDelay` rather than a leading
+  // `{ pause }` step so the where: predicate and var resolvers see telemetry
+  // that has had time to settle. iRacing's `session.changed` lands on a tick
+  // where `TrackWetness` can briefly read `Unknown`; a leading pause inside
+  // the sequence wouldn't help because vars are resolved at expansion time
+  // (synchronously when the immediate where: returns true).
   it("re-evaluates where: at the deferred fire time, not at event arrival", () => {
     // Snapshot is null at event arrival — would cause an immediate where: to
     // reject. But triggerDelay defers the check, so we can populate the
@@ -331,6 +327,16 @@ describe("session-start scenario", () => {
 
   it("does not fire when the snapshot resolver returns null", () => {
     fire(null);
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  // Regression: trigger was moved from `driver.firstOnTrack` to
+  // `session.changed` (issue #668). Publishing the old event must play nothing.
+  it("does not fire on driver.firstOnTrack (old trigger)", () => {
+    currentSnapshot = snap();
+    bus.publishEvent("driver.firstOnTrack", {});
+    flush(audio);
 
     expect(voicePaths()).toEqual([]);
   });
