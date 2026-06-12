@@ -365,43 +365,11 @@ const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
 2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
 3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
 
-## Encoder Support
+## Encoder Support (superseded)
 
-For Stream Deck+ encoder (dial) support:
+**Dial/encoder/knob support was de-claimed in #640** — no action declares `Encoder` (Elgato) or `Knob` (Mirabox) in either manifest, and no new action may add those blocks until the planned rebuild. Existing `onDial*` handlers in action code are dormant (the manifests no longer route dial events to them) and stay in place for the rebuild; the `deck-core` dial event types and both adapters' dial wiring also stay.
 
-### Manifest Configuration
-
-```json
-{
-  "Controllers": ["Keypad", "Encoder"],
-  "Encoder": {
-    "layout": "$B1",
-    "TriggerDescription": {
-      "Rotate": "Description for rotation",
-      "Push": "Description for press"
-    }
-  }
-}
-```
-
-### Action Handlers
-
-- `onDialRotate(ev)` - Handle rotation. Use `ev.payload.ticks` (positive = clockwise, negative = counter-clockwise)
-- `onDialDown(ev)` - Handle press (only if needed)
-
-### Rotation Pattern
-
-```typescript
-override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
-  const settings = MySettings.parse(ev.payload.settings);
-  // Clockwise (ticks > 0) = next/increase
-  // Counter-clockwise (ticks < 0) = previous/decrease
-  const keyData = ev.payload.ticks > 0 ? settings.keyNext : settings.keyPrevious;
-  if (keyData?.key) {
-    await getKeyboard().sendKeyCombination({ key: keyData.key, modifiers: keyData.modifiers });
-  }
-}
-```
+For how dials and the touchscreen actually work, and the constraints any rebuilt dial UX must respect, see `@.claude/rules/encoders-and-touchscreen.md` and the full reference in `docs/reference/stream-deck-plus-encoders.md`.
 
 ## Per-Mode Communication Method & Binding Status (#612)
 

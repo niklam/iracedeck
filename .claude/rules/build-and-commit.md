@@ -177,6 +177,7 @@ When creating issues, always include requirements for updating all affected arti
 Merging
 
 - PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
+- **Temporary exception — `release/2.0` integration branch:** the dials/touchscreen clean-slate (#640) and the follow-up dial-rebuild issues are breaking changes that ship as v2.0.0. Their PRs target `release/2.0` (`gh pr create --base release/2.0`), not `master`, and are merged with **squash** (`gh pr merge --squash`) — one commit per feature; the PR title (with its `(#issue)` suffix) becomes the commit message, so title discipline matters doubly here. Master keeps shipping 1.x releases; merge `master` into `release/2.0` periodically to limit drift. The sync merges and the final merge-back are **regular merges** — never squash those. Avoid cherry-picking between the two lines; land shared fixes on `master` and sync them in. When 2.0 ships (`pnpm release major` run from `release/2.0`), the branch merges back into `master` and this exception is removed.
 - Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
 - **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`.
 - **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.

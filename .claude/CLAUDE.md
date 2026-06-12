@@ -45,6 +45,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `black-box-icons.md`: Design guidelines for iRacing black box key icons: canvas layout, inner frame spec, text labels, layout patterns, and per-icon details. Scoped to black-box-selector files.
 - `build-and-commit.md`: Worktree-based development workflow, pre-commit checks (`pnpm install` + `pnpm build`), build commands, conventional commit conventions, and post-merge worktree cleanup.
 - `code-style.md`: Formatting, linting, type conventions, Zod usage, and general code quality rules.
+- `encoders-and-touchscreen.md`: How Stream Deck+ dials and the LCD touch strip work, verified Mirabox knob/touch findings, current de-claimed state (issue #640), and rules for the planned dial-support rebuild. Full schema/payload reference in `docs/reference/stream-deck-plus-encoders.md`.
 - `global-settings.md`: Plugin-level global settings architecture: Property Inspector usage, `ird-key-binding` with `global` attribute, Zod schema, and settings path conventions.
 - `icons.md`: General icon guidelines: icon types (category, key, template), SVG structure, design specs, color palette, Mustache templates, and distinctiveness rules.
 - `key-icon-types.md`: Standardized key icon type definitions (Default, Black Box, Inverted): canvas layout, two-line label system, Standard vs Inverted label layouts, per-action background colors, and icon content separation patterns. Scoped to icon SVG/TS files.
