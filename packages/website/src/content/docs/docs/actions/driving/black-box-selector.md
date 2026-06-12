@@ -20,7 +20,7 @@ Open a specific black box overlay. Pressing the button toggles the overlay — p
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles through black boxes (clockwise = next, counter-clockwise = previous), using the **Cycle Next** / **Cycle Previous** bindings regardless of which black box is selected
+- **Dial:** No rotation support
 - **Default binding:** Depends on the selected black box — see the **Black Box** setting below
 - **Telemetry-aware icon:** No
 
@@ -49,7 +49,7 @@ Cycle to the next black box.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles through black boxes (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -66,7 +66,7 @@ Cycle to the previous black box.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles through black boxes (clockwise = next, counter-clockwise = previous)
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 

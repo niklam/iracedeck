@@ -32,12 +32,12 @@ Toggle the fuel fill checkbox on or off via the iRacing SDK. The icon shows the 
 
 ### Add Fuel
 
-Queue an "add fuel" chat macro. Pressing the button sends `#fuel +<amount><unit>$` (e.g., `#fuel +2l$`) to increase the pending fuel for the next pit stop. Dial rotation is bidirectional — clockwise adds, counter-clockwise reduces (using the Reduce Fuel macro) so you can fine-tune with a single dial.
+Queue an "add fuel" chat macro. Pressing the button sends `#fuel +<amount><unit>$` (e.g., `#fuel +2l$`) to increase the pending fuel for the next pit stop.
 
 #### Details
 
 - **Method:** Chat command
-- **Dial:** Rotation adjusts fuel (clockwise = add, counter-clockwise = reduce)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -55,12 +55,12 @@ The increment to add. Numeric — supports comma or period decimal separators (e
 
 ### Reduce Fuel
 
-Queue a "reduce fuel" chat macro. Pressing the button sends `#fuel -<amount><unit>$` (e.g., `#fuel -2l$`) to decrease the pending fuel for the next pit stop. Dial rotation is bidirectional — clockwise reduces, counter-clockwise adds (using the Add Fuel macro).
+Queue a "reduce fuel" chat macro. Pressing the button sends `#fuel -<amount><unit>$` (e.g., `#fuel -2l$`) to decrease the pending fuel for the next pit stop.
 
 #### Details
 
 - **Method:** Chat command
-- **Dial:** Rotation adjusts fuel (clockwise = reduce, counter-clockwise = add)
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -139,12 +139,12 @@ Toggle iRacing's autofuel checkbox on or off. The icon shows a green ON / red OF
 
 ### Lap Margin Increase
 
-Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap Margin Increase" hotkey. Dial rotation is bidirectional — clockwise increases, counter-clockwise decreases.
+Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap Margin Increase" hotkey.
 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts lap margin (clockwise = increase, counter-clockwise = decrease)
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -156,12 +156,12 @@ Raise the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 ### Lap Margin Decrease
 
-Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap Margin Decrease" hotkey. Dial rotation is bidirectional — clockwise decreases, counter-clockwise increases.
+Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap Margin Decrease" hotkey.
 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts lap margin (clockwise = decrease, counter-clockwise = increase)
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 

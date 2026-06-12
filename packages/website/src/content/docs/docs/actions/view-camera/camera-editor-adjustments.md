@@ -20,7 +20,7 @@ Move the camera along the latitude axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts latitude (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `D` (increase) and `A` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -38,7 +38,7 @@ Move the camera along the longitude axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts longitude (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `S` (increase) and `W` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -56,7 +56,7 @@ Move the camera along the altitude axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts altitude (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+S` (increase) and `Alt+W` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -74,7 +74,7 @@ Rotate the camera on the yaw axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts yaw (clockwise = positive, counter-clockwise = negative), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Ctrl+D` (increase) and `Ctrl+A` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -92,7 +92,7 @@ Tilt the camera on the pitch axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts pitch (clockwise = up, counter-clockwise = down), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Ctrl+W` (increase) and `Ctrl+S` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -110,7 +110,7 @@ Adjust the camera field of view.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts FOV zoom (clockwise = zoom in, counter-clockwise = zoom out), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `[` (increase/zoom in) and `]` (decrease/zoom out)
 - **Telemetry-aware icon:** No
 
@@ -128,7 +128,7 @@ Adjust the camera editor key step size.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts key step size (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `-` (increase) and `=` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -146,7 +146,7 @@ Shift the vanishing point along the X axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts the vanishing point X (clockwise = right, counter-clockwise = left), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+X` (increase/right) and `Ctrl+X` (decrease/left)
 - **Telemetry-aware icon:** No
 
@@ -164,7 +164,7 @@ Shift the vanishing point along the Y axis.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts the vanishing point Y (clockwise = up, counter-clockwise = down), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+Y` (increase/up) and `Ctrl+Y` (decrease/down)
 - **Telemetry-aware icon:** No
 
@@ -182,7 +182,7 @@ Adjust the blimp camera orbit radius.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts blimp radius (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Ctrl+H` (increase) and `Ctrl+G` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -200,7 +200,7 @@ Adjust the blimp camera orbit velocity.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts blimp velocity (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+H` (increase) and `Alt+G` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -218,7 +218,7 @@ Adjust the camera microphone gain.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts mic gain (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+Up` (increase) and `Alt+Down` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -253,7 +253,7 @@ Adjust the camera aperture (depth of field strength).
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts the F-number (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Alt+U` (increase) and `Alt+I` (decrease)
 - **Telemetry-aware icon:** No
 
@@ -271,7 +271,7 @@ Adjust the focus depth.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts focus depth (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** `Ctrl+U` (increase) and `Ctrl+I` (decrease)
 - **Telemetry-aware icon:** No
 

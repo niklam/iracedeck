@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Look Direction simulates holding a look-direction key for as long as the button is held. Press the button (or dial) to start looking, release it to return to the default view. Unlike most actions that send a single key tap, this one holds the key down until you release the button.
+Look Direction simulates holding a look-direction key for as long as the button is held. Press the button to start looking, release it to return to the default view. Unlike most actions that send a single key tap, this one holds the key down until you release the button.
 
 ## Modes
 

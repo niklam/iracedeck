@@ -8,7 +8,7 @@
           "id": "com.iracedeck.sd.core.session-info",
           "name": "Session Info",
           "file": "session-info.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             {
@@ -68,7 +68,7 @@
           "id": "com.iracedeck.sd.core.audio-controls",
           "name": "Audio Controls",
           "file": "audio-controls.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["category", "action"],
           "modes": [
             { "category": "push-to-talk", "label": "Push to Talk" },
@@ -88,7 +88,7 @@
           "id": "com.iracedeck.sd.core.black-box-selector",
           "name": "Black Box Selector",
           "file": "black-box-selector.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["mode", "blackBox"],
           "modes": [
             { "mode": "direct", "blackBox": "lap-timing", "label": "Select Lap Timing" },
@@ -124,7 +124,7 @@
           "id": "com.iracedeck.sd.core.car-control",
           "name": "Car Control",
           "file": "car-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "control",
           "modes": [
             { "value": "pit-speed-limiter", "label": "Pit Speed Limiter", "telemetryAware": true },
@@ -173,7 +173,7 @@
           "id": "com.iracedeck.sd.core.cockpit-misc",
           "name": "Cockpit Misc",
           "file": "cockpit-misc.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["control", "direction"],
           "modes": [
             { "control": "toggle-wipers", "label": "Toggle Wipers" },
@@ -192,7 +192,7 @@
           "id": "com.iracedeck.sd.core.force-feedback",
           "name": "Force Feedback",
           "file": "force-feedback.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["mode", "direction"],
           "modes": [
             { "mode": "auto-compute-ffb-force", "label": "Auto Compute FFB Force" },
@@ -212,7 +212,7 @@
           "id": "com.iracedeck.sd.core.splits-delta-cycle",
           "name": "Splits & Reference",
           "file": "splits-delta-cycle.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             {
@@ -252,7 +252,7 @@
           "id": "com.iracedeck.sd.core.telemetry-control",
           "name": "Telemetry Control",
           "file": "telemetry-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "toggle-logging", "label": "Toggle Logging" },
@@ -271,7 +271,7 @@
           "id": "com.iracedeck.sd.core.toggle-ui-elements",
           "name": "Toggle UI Elements",
           "file": "toggle-ui-elements.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "element",
           "modes": [
             { "value": "dash-box", "label": "Dash Box" },
@@ -300,7 +300,7 @@
           "id": "com.iracedeck.sd.core.view-adjustment",
           "name": "View Adjustment",
           "file": "view-adjustment.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["adjustment", "direction"],
           "modes": [
             { "adjustment": "fov", "direction": "increase", "label": "FOV Increase" },
@@ -318,7 +318,7 @@
           "id": "com.iracedeck.sd.core.replay-control",
           "name": "Replay Control",
           "file": "replay-control.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "play-pause", "label": "Play / Pause" },
@@ -367,7 +367,7 @@
           "id": "com.iracedeck.sd.core.replay-transport",
           "name": "Replay Transport",
           "file": "replay-transport.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "transport",
@@ -386,7 +386,7 @@
           "id": "com.iracedeck.sd.core.replay-speed",
           "name": "Replay Speed",
           "file": "replay-speed.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "direction",
@@ -399,7 +399,7 @@
           "id": "com.iracedeck.sd.core.replay-navigation",
           "name": "Replay Navigation",
           "file": "replay-navigation.ts",
-          "encoder": true,
+          "encoder": false,
           "deprecated": true,
           "replacedBy": "com.iracedeck.sd.core.replay-control",
           "settingsKey": "navigation",
@@ -421,7 +421,7 @@
           "id": "com.iracedeck.sd.core.camera-editor-adjustments",
           "name": "Camera Editor Adjustments",
           "file": "camera-editor-adjustments.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["adjustment", "direction"],
           "modes": [
             { "adjustment": "latitude", "direction": "increase", "label": "Latitude +" },
@@ -459,7 +459,7 @@
           "id": "com.iracedeck.sd.core.camera-editor-controls",
           "name": "Camera Editor Controls",
           "file": "camera-editor-controls.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "control",
           "modes": [
             { "value": "open-camera-tool", "label": "Open Camera Tool" },
@@ -496,7 +496,7 @@
           "id": "com.iracedeck.sd.core.camera-focus",
           "name": "Camera Controls",
           "file": "camera-controls.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "target",
           "modes": [
             { "value": "change-camera", "label": "Change Camera" },
@@ -522,7 +522,7 @@
           "id": "com.iracedeck.sd.core.media-capture",
           "name": "Media Capture",
           "file": "media-capture.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "start-stop-video", "label": "Start/Stop Video" },
@@ -543,7 +543,7 @@
           "id": "com.iracedeck.sd.core.pit-quick-actions",
           "name": "Pit Quick Actions",
           "file": "pit-quick-actions.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "modes": [
             { "value": "clear-all-checkboxes", "label": "Clear All Checkboxes" },
@@ -555,7 +555,7 @@
           "id": "com.iracedeck.sd.core.fuel-service",
           "name": "Fuel Service",
           "file": "fuel-service.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "toggle-fuel-fill", "label": "Toggle Fuel Fill" },
@@ -572,7 +572,7 @@
           "id": "com.iracedeck.sd.core.tire-service",
           "name": "Tire Service",
           "file": "tire-service.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "action",
           "telemetryAware": true,
           "modes": [
@@ -599,7 +599,7 @@
           "id": "com.iracedeck.sd.core.setup-brakes",
           "name": "Setup Brakes",
           "file": "setup-brakes.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-brake-bias", "label": "View Brake Bias", "controlType": "view" },
@@ -627,7 +627,7 @@
           "id": "com.iracedeck.sd.core.setup-chassis",
           "name": "Setup Chassis",
           "file": "setup-chassis.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-diff-preload", "label": "View Diff Preload", "controlType": "view" },
@@ -671,7 +671,7 @@
           "id": "com.iracedeck.sd.core.setup-aero",
           "name": "Setup Aero",
           "file": "setup-aero.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-front-wing", "label": "View Front Wing", "controlType": "view" },
@@ -689,7 +689,7 @@
           "id": "com.iracedeck.sd.core.setup-engine",
           "name": "Setup Engine",
           "file": "setup-engine.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-engine-power", "label": "View Engine Power", "controlType": "view" },
@@ -709,7 +709,7 @@
           "id": "com.iracedeck.sd.core.setup-fuel",
           "name": "Setup Fuel",
           "file": "setup-fuel.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-fuel-mixture", "label": "View Fuel Mixture", "controlType": "view" },
@@ -727,7 +727,7 @@
           "id": "com.iracedeck.sd.core.setup-hybrid",
           "name": "Setup Hybrid",
           "file": "setup-hybrid.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-mguk-deploy-mode", "label": "View MGU-K Deploy Mode", "controlType": "view" },
@@ -748,7 +748,7 @@
           "id": "com.iracedeck.sd.core.setup-traction",
           "name": "Setup Traction",
           "file": "setup-traction.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKeys": ["setting", "direction"],
           "modes": [
             { "setting": "view-tc-slot-1", "label": "View TC1", "controlType": "view" },
@@ -775,7 +775,7 @@
           "id": "com.iracedeck.sd.core.chat",
           "name": "Chat",
           "file": "chat.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "send-message", "label": "Send Custom Message" },
@@ -805,7 +805,7 @@
           "id": "com.iracedeck.sd.core.race-admin",
           "name": "Race Admin",
           "file": "race-admin.ts",
-          "encoder": true,
+          "encoder": false,
           "settingsKey": "mode",
           "modes": [
             { "value": "yellow", "label": "Throw Yellow Flag", "description": "Throw a caution flag" },

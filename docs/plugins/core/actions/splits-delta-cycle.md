@@ -10,17 +10,12 @@ Manages splits delta display cycling, reference car toggling, custom sector mark
 | Type | Multi-toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Encoder Support | No |
 
 ## Behavior
 
 ### Button Press
 Triggers the action configured in Settings.
-
-### Encoder
-- **Rotate clockwise**: Next splits delta display (Cycle mode only)
-- **Rotate counter-clockwise**: Previous splits delta display (Cycle mode only)
-- **Press**: Triggers the configured action (all modes except Cycle)
 
 ## Settings
 

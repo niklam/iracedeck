@@ -10,16 +10,12 @@ Adjusts the driver's field of view.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Encoder Support | No |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (increase or decrease).
-
-### Encoder
-- **Rotate clockwise**: Increase FOV
-- **Rotate counter-clockwise**: Decrease FOV
 
 ## Settings
 

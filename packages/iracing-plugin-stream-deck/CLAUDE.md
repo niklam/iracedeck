@@ -30,7 +30,6 @@ import {
   getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
-  type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
@@ -83,7 +82,7 @@ export class {ActionName} extends ConnectionStateAwareAction<{ActionName}Setting
   // The base class receives it: constructor(logger: ILogger)
 
   // Required lifecycle handlers: onWillAppear, onWillDisappear,
-  // onDidReceiveSettings, onKeyDown, onDialRotate
+  // onDidReceiveSettings, onKeyDown
   // IMPORTANT: Call super.onWillAppear(ev) and super.onDidReceiveSettings(ev)
   // as the first line in those handlers (required for flag overlay and CommonSettings).
   // See splits-delta-cycle.ts for the full pattern.
@@ -259,7 +258,7 @@ adapter.registerAction({ACTION_NAME}_UUID, new {ActionName}(adapter.createLogger
 
 #### 7b. Register in Mirabox plugin — `packages/iracing-plugin-mirabox/src/plugin.ts`
 
-Same pattern as above — import from `@iracedeck/iracing-actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated (note: uses `"Knob"` instead of `"Encoder"` for dial actions).
+Same pattern as above — import from `@iracedeck/iracing-actions` and register via the VSD adapter. Maintain alphabetical order. The manifest at `packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json` must also be updated.
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
@@ -272,14 +271,7 @@ Add entry to the `Actions` array:
   "Icon": "imgs/actions/{action-name}/icon",
   "Tooltip": "Brief description of what the action does",
   "PropertyInspectorPath": "ui/{action-name}.html",
-  "Controllers": ["Keypad", "Encoder"],
-  "Encoder": {
-    "layout": "$B1",
-    "TriggerDescription": {
-      "Rotate": "What rotation does",
-      "Push": "What press does"
-    }
-  },
+  "Controllers": ["Keypad"],
   "States": [
     {
       "Image": "imgs/actions/{action-name}/key",
@@ -290,9 +282,7 @@ Add entry to the `Actions` array:
 }
 ```
 
-- Use `"Controllers": ["Keypad"]` if encoder is not supported
-- Omit the `Encoder` block entirely if Keypad-only
-- Only include `TriggerDescription` keys for handlers the action implements
+- All actions are currently Keypad-only — use `"Controllers": ["Keypad"]` and do not add an `Encoder` block (dial/encoder support was de-claimed in issue #640; see `.claude/rules/encoders-and-touchscreen.md` for the planned rebuild)
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 

@@ -1,6 +1,6 @@
 ---
 title: Camera Controls
-description: Cycle cameras, change camera groups, and focus on specific targets with a single button or dial.
+description: Cycle cameras, change camera groups, and focus on specific targets with a single button.
 sidebar:
   badge:
     text: "12 modes"
@@ -35,7 +35,7 @@ Cycle through camera groups. The **Direction** setting picks whether pressing th
 
 #### Details
 
-- **Dial:** Rotation cycles camera groups (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the button shows a preview icon for the currently active camera group (Nose, Cockpit, TV1, etc.)
 
@@ -58,7 +58,7 @@ Cycle sub-cameras within the currently active camera group (e.g., left / right /
 
 #### Details
 
-- **Dial:** Rotation cycles sub-cameras (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -75,7 +75,7 @@ Switch camera focus to the next / previous car in the field.
 
 #### Details
 
-- **Dial:** Rotation cycles cars (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
@@ -92,7 +92,7 @@ Cycle through the driving-style cameras (cockpit, bumper, nose, chase, etc.).
 
 #### Details
 
-- **Dial:** Rotation cycles driving cameras (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 
