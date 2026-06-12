@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TemplateContext, TemplateValue } from "./template-context.js";
-import { resolvePathValue, resolveTemplate } from "./template-resolver.js";
+import { resolveTemplate } from "./template-resolver.js";
 
 /** Builds a combined context from a display map (raw defaults to empty). */
 function ctx(display: Record<string, unknown>, raw: Record<string, TemplateValue> = {}): TemplateContext {
@@ -136,22 +136,8 @@ describe("resolveTemplate expression integration", () => {
 
     expect(resolveTemplate("{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}", context)).toBe("PIT");
   });
-});
 
-describe("resolvePathValue", () => {
-  it("should resolve a flat key", () => {
-    expect(resolvePathValue({ name: "John" }, "name")).toBe("John");
-  });
-
-  it("should resolve a dot-notation flat key", () => {
-    expect(resolvePathValue({ "a.b.c": "deep" }, "a.b.c")).toBe("deep");
-  });
-
-  it("should return undefined for missing key", () => {
-    expect(resolvePathValue({}, "missing")).toBeUndefined();
-  });
-
-  it("should return undefined for missing dot-notation key", () => {
-    expect(resolvePathValue({ "a.b": "value" }, "a.b.c")).toBeUndefined();
+  it("should leave an unclosed expression marker verbatim", () => {
+    expect(resolveTemplate("{{= 1 + 2", ctx({}))).toBe("{{= 1 + 2");
   });
 });

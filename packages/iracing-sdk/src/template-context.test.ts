@@ -4,7 +4,7 @@ import {
   buildTemplateContextFromData,
   findDriverByRacePosition,
   findNearestDriverOnTrack,
-  flattenForDisplay,
+  flattenContext,
   formatTimeRemaining,
   prefixKeys,
   resolveRacePositions,
@@ -373,6 +373,35 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display["track.name"]).toBe("");
   });
 
+  it("should omit track_ahead fields from raw when there is no track-ahead driver", () => {
+    const drivers = [makeDriver({ CarIdx: 0, UserName: "Player" })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({
+      CarIdxPosition: [1],
+      CarIdxClassPosition: [1],
+      CarIdxLap: [5],
+      CarIdxLapCompleted: [4],
+      CarIdxLapDistPct: [0.5],
+      CarIdxOnPitRoad: [false],
+    });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect("track_ahead.position" in ctx.raw).toBe(false);
+    expect(ctx.display["track_ahead.position"]).toBe("");
+  });
+
+  it("should omit session.laps_remaining from raw when SessionLapsRemainEx is negative", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const telemetry = makeTelemetry({ SessionLapsRemainEx: -1 });
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect("session.laps_remaining" in ctx.raw).toBe(false);
+    expect(ctx.display["session.laps_remaining"]).toBe("");
+  });
+
   it("should populate race_ahead and race_behind from race position", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
@@ -733,65 +762,65 @@ describe("resolveRacePositions", () => {
   });
 });
 
-describe("flattenForDisplay", () => {
+describe("flattenContext display map", () => {
   it("should flatten a flat object", () => {
-    const result = flattenForDisplay({ Speed: 100, Gear: 4 });
+    const result = flattenContext({ Speed: 100, Gear: 4 }).display;
 
     expect(result.Speed).toBe("100");
     expect(result.Gear).toBe("4");
   });
 
   it("should flatten nested objects with dot notation", () => {
-    const result = flattenForDisplay({
+    const result = flattenContext({
       WeekendInfo: { TrackDisplayName: "Spa", TrackLength: "7.004 km" },
-    });
+    }).display;
 
     expect(result["WeekendInfo.TrackDisplayName"]).toBe("Spa");
     expect(result["WeekendInfo.TrackLength"]).toBe("7.004 km");
   });
 
   it("should round floating point numbers to 2 decimals", () => {
-    const result = flattenForDisplay({ Speed: 156.789, Throttle: 0.5 });
+    const result = flattenContext({ Speed: 156.789, Throttle: 0.5 }).display;
 
     expect(result.Speed).toBe("156.79");
     expect(result.Throttle).toBe("0.50");
   });
 
   it("should keep integers as integers", () => {
-    const result = flattenForDisplay({ Gear: 4, Lap: 12 });
+    const result = flattenContext({ Gear: 4, Lap: 12 }).display;
 
     expect(result.Gear).toBe("4");
     expect(result.Lap).toBe("12");
   });
 
   it("should convert booleans to Yes/No", () => {
-    const result = flattenForDisplay({ IsOnTrack: true, IsReplayPlaying: false });
+    const result = flattenContext({ IsOnTrack: true, IsReplayPlaying: false }).display;
 
     expect(result.IsOnTrack).toBe("Yes");
     expect(result.IsReplayPlaying).toBe("No");
   });
 
   it("should skip arrays", () => {
-    const result = flattenForDisplay({ CarIdxLap: [1, 2, 3], Speed: 100 });
+    const result = flattenContext({ CarIdxLap: [1, 2, 3], Speed: 100 }).display;
 
     expect(result.CarIdxLap).toBeUndefined();
     expect(result.Speed).toBe("100");
   });
 
   it("should skip arrays at nested levels", () => {
-    const result = flattenForDisplay({
+    const result = flattenContext({
       DriverInfo: { Drivers: [{ Name: "test" }], DriverCarIdx: 0 },
-    });
+    }).display;
 
     expect(result["DriverInfo.Drivers"]).toBeUndefined();
     expect(result["DriverInfo.DriverCarIdx"]).toBe("0");
   });
 
   it("should filter keys by excludePrefix", () => {
-    const result = flattenForDisplay(
+    const result = flattenContext(
       { Speed: 100, CarIdxLap: [1], CarIdxPosition: [1], Gear: 3 },
       { excludePrefix: "CarIdx" },
-    );
+    ).display;
 
     expect(result.Speed).toBe("100");
     expect(result.Gear).toBe("3");
@@ -800,15 +829,15 @@ describe("flattenForDisplay", () => {
   });
 
   it("should handle deeply nested objects", () => {
-    const result = flattenForDisplay({
+    const result = flattenContext({
       CarSetup: { Tires: { LeftFront: { TreadRemaining: 85.5 } } },
-    });
+    }).display;
 
     expect(result["CarSetup.Tires.LeftFront.TreadRemaining"]).toBe("85.50");
   });
 
   it("should convert known boolean-semantic integer fields to Yes/No", () => {
-    const result = flattenForDisplay({ IsOnTrack: 1, IsReplayPlaying: 0, Speed: 100 });
+    const result = flattenContext({ IsOnTrack: 1, IsReplayPlaying: 0, Speed: 100 }).display;
 
     expect(result.IsOnTrack).toBe("Yes");
     expect(result.IsReplayPlaying).toBe("No");
@@ -816,14 +845,14 @@ describe("flattenForDisplay", () => {
   });
 
   it("should not convert unknown integer fields to Yes/No", () => {
-    const result = flattenForDisplay({ Gear: 1, Lap: 0 });
+    const result = flattenContext({ Gear: 1, Lap: 0 }).display;
 
     expect(result.Gear).toBe("1");
     expect(result.Lap).toBe("0");
   });
 
   it("should skip null and undefined values", () => {
-    const result = flattenForDisplay({ a: null, b: undefined, c: "valid" } as Record<string, unknown>);
+    const result = flattenContext({ a: null, b: undefined, c: "valid" } as Record<string, unknown>).display;
 
     expect(result.a).toBeUndefined();
     expect(result.b).toBeUndefined();

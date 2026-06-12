@@ -40,6 +40,10 @@ type DriverFieldValue = string | number | undefined;
 
 /**
  * Shared fields available for all driver groups.
+ *
+ * Must stay a `type` alias (not `interface`): only aliases get the implicit
+ * index signature needed for assignability to `Record<string, DriverFieldValue>`
+ * in `fieldsToMaps`.
  */
 type DriverFields = {
   name: string;
@@ -173,16 +177,6 @@ export function flattenContext(obj: Record<string, unknown>, options?: FlattenOp
 }
 
 /**
- * @internal Exported for testing
- *
- * Flattens a nested object into dot-notation keys with display-formatted string values.
- * Thin wrapper over flattenContext() returning only the display map.
- */
-export function flattenForDisplay(obj: Record<string, unknown>, options?: FlattenOptions): Record<string, string> {
-  return flattenContext(obj, options).display;
-}
-
-/**
  * Builds the full template context from current SDK state.
  */
 export function buildTemplateContext(sdkController: SDKController): TemplateContext {
@@ -209,17 +203,18 @@ export function prefixKeys<T>(prefix: string, record: Record<string, T>): Record
 
 /**
  * Converts a raw driver fields record into the display/raw map pair.
- * Display keeps every key (undefined renders ""); raw omits undefined keys so
- * expressions referencing them fail as unknown variables (rendering "").
+ * Display keeps every key (null/undefined render ""); raw omits null/undefined
+ * keys so expressions referencing them fail as unknown variables (rendering "").
+ * Runtime nulls from YAML session data are treated like undefined.
  */
 function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
   const display: Record<string, string> = {};
   const raw: Record<string, TemplateValue> = {};
 
   for (const [key, value] of Object.entries(fields)) {
-    display[key] = value !== undefined ? String(value) : "";
+    display[key] = value != null ? String(value) : "";
 
-    if (value !== undefined) {
+    if (value != null) {
       raw[key] = value;
     }
   }
@@ -426,11 +421,11 @@ function buildDriverFields(driver: DriverEntry, telemetry: TelemetryData | null,
     last_name: lastName,
     abbrev_name: driver.AbbrevName,
     car_number: driver.CarNumber,
-    position: positions?.[driver.CarIdx] ?? telemetry?.CarIdxPosition?.[driver.CarIdx] ?? undefined,
-    class_position: telemetry?.CarIdxClassPosition?.[driver.CarIdx] ?? undefined,
-    lap: telemetry?.CarIdxLap?.[driver.CarIdx] ?? undefined,
-    laps_completed: telemetry?.CarIdxLapCompleted?.[driver.CarIdx] ?? undefined,
-    irating: driver.IRating ?? undefined,
+    position: positions?.[driver.CarIdx] ?? telemetry?.CarIdxPosition?.[driver.CarIdx],
+    class_position: telemetry?.CarIdxClassPosition?.[driver.CarIdx],
+    lap: telemetry?.CarIdxLap?.[driver.CarIdx],
+    laps_completed: telemetry?.CarIdxLapCompleted?.[driver.CarIdx],
+    irating: driver.IRating,
     license: driver.LicString ?? "",
   };
 }
@@ -453,7 +448,7 @@ function buildSelfFields(
     class_position: telemetry?.PlayerCarClassPosition ?? base.class_position,
     lap: telemetry?.Lap ?? base.lap,
     laps_completed: telemetry?.LapCompleted ?? base.laps_completed,
-    incidents: telemetry?.PlayerCarMyIncidentCount ?? undefined,
+    incidents: telemetry?.PlayerCarMyIncidentCount,
   };
 }
 

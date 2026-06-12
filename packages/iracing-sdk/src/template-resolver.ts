@@ -20,7 +20,10 @@
 import { resolveExpression } from "./expression-evaluator.js";
 import type { TemplateContext } from "./template-context.js";
 
-const TEMPLATE_PATTERN = /\{\{=([\s\S]*?)\}\}|\{\{([a-zA-Z0-9_.]+)\}\}/g;
+// The {0,1000} bound mirrors the evaluator's MAX_EXPRESSION_LENGTH (1000) so an
+// unclosed `{{=` marker can't trigger a long scan; an over-long or unclosed
+// expression simply stays verbatim (same visible outcome as a parse error).
+const TEMPLATE_PATTERN = /\{\{=([\s\S]{0,1000}?)\}\}|\{\{([a-zA-Z0-9_.]+)\}\}/g;
 
 /**
  * Resolves {{dot.notation}} and {{= expression }} placeholders in a template string.
@@ -39,15 +42,6 @@ export function resolveTemplate(template: string, context: TemplateContext): str
 
     const value = context.display[path as string];
 
-    return value !== undefined && value !== null ? String(value) : "";
+    return value ?? "";
   });
-}
-
-/**
- * @internal Exported for testing
- *
- * Looks up a dot-notation key in a flat record.
- */
-export function resolvePathValue(obj: Record<string, unknown>, path: string): unknown {
-  return obj[path];
 }
