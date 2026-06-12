@@ -230,6 +230,18 @@ const FURLED: Scenario = {
   when: { event: "flag.furled.raised" },
 };
 
+// Fires when an announced furled warning is withdrawn (issue #669) — the
+// translator gates `flag.furled.cleared` on the raised callout having fired,
+// so the all-clear never plays for a warning the driver was never told about.
+// `queueable: true` like YELLOW_CLEARED: the all-clear is a sustained state,
+// so a fire deferred behind an equal-weight line replays when the bus next
+// idles instead of being dropped.
+const FURLED_CLEARED: Scenario = {
+  ...flagScenario("furled-cleared", ["pool:flag-furled-cleared"]),
+  queueable: true,
+  when: { event: "flag.furled.cleared" },
+};
+
 const DQ_SCORING_INVALID: Scenario = {
   ...flagScenario("dq-scoring-invalid", ["pool:flag-dq-scoring-invalid"]),
   when: { event: "flag.dq-scoring-invalid.raised" },
@@ -306,6 +318,7 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   MEATBALL,
   DISQUALIFY,
   FURLED,
+  FURLED_CLEARED,
   DQ_SCORING_INVALID,
   CROSSED,
   ONE_PACE_LAP_TO_GO,

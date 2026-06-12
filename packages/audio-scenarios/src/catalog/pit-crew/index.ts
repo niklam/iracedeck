@@ -282,6 +282,7 @@ export type FlagCalloutId =
   // Issue #480 — missing-session-flag callouts.
   | "disqualify"
   | "furled"
+  | "furled-cleared"
   | "dq-scoring-invalid"
   | "crossed"
   | "one-pace-lap-to-go"
@@ -310,6 +311,7 @@ export const FLAG_CALLOUT_SETTING_KEYS: Record<FlagCalloutId, string> = {
   meatball: "calloutEnabledFlagMeatball",
   disqualify: "calloutEnabledFlagDisqualify",
   furled: "calloutEnabledFlagFurled",
+  "furled-cleared": "calloutEnabledFlagFurledCleared",
   "dq-scoring-invalid": "calloutEnabledFlagDqScoringInvalid",
   crossed: "calloutEnabledFlagCrossed",
   "one-pace-lap-to-go": "calloutEnabledFlagOnePaceLapToGo",
@@ -334,6 +336,7 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-meatball": "meatball",
   "pit-crew.flag-disqualify": "disqualify",
   "pit-crew.flag-furled": "furled",
+  "pit-crew.flag-furled-cleared": "furled-cleared",
   "pit-crew.flag-dq-scoring-invalid": "dq-scoring-invalid",
   "pit-crew.flag-crossed": "crossed",
   "pit-crew.flag-one-pace-lap-to-go": "one-pace-lap-to-go",

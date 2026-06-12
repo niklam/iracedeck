@@ -175,6 +175,7 @@ const FLAG_CLIP_NAMES = [
   // Issue #480 — missing-session-flag callouts.
   "disqualify-01",
   "furled-01",
+  "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
   "one-pace-lap-to-go-01",
@@ -359,6 +360,7 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   // Issue #480 additions.
   "disqualify",
   "furled",
+  "furled-cleared",
   "dq-scoring-invalid",
   "crossed",
   "one-pace-lap-to-go",
@@ -547,7 +549,13 @@ const FLAG_FIRES: ReadonlyArray<{
     id: "furled",
     event: "flag.furled.raised",
     data: {} as SimEventMap["flag.furled.raised"]["data"],
-    expectedClipFragment: "furled-",
+    expectedClipFragment: "furled-01",
+  },
+  {
+    id: "furled-cleared",
+    event: "flag.furled.cleared",
+    data: {} as SimEventMap["flag.furled.cleared"]["data"],
+    expectedClipFragment: "furled-cleared-",
   },
   {
     id: "dq-scoring-invalid",

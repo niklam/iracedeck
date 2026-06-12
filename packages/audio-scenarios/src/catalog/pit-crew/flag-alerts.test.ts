@@ -150,6 +150,7 @@ const FLAG_CLIP_NAMES = [
   // Issue #480 — missing-session-flag callouts.
   "disqualify-01",
   "furled-01",
+  "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
   "one-pace-lap-to-go-01",
@@ -230,8 +231,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 21 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(21);
+  it("defines 22 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(22);
   });
 
   it("exposes a stable list of ids", () => {
@@ -249,6 +250,7 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-meatball",
       "pit-crew.flag-disqualify",
       "pit-crew.flag-furled",
+      "pit-crew.flag-furled-cleared",
       "pit-crew.flag-dq-scoring-invalid",
       "pit-crew.flag-crossed",
       "pit-crew.flag-one-pace-lap-to-go",
@@ -282,8 +284,8 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
-    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-yellow-cleared"];
+  it("furled, furled-cleared and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-furled-cleared", "pit-crew.flag-yellow-cleared"];
 
     for (const id of queueableIds) {
       expect(findScenario(id).queueable).toBe(true);
@@ -368,6 +370,12 @@ describe("FLAG_ALERTS triggers", () => {
       event: "flag.furled.raised" as const,
       data: {},
       expected: "voice/luca/flags/furled-01.mp3",
+    },
+    {
+      label: "furled cleared",
+      event: "flag.furled.cleared" as const,
+      data: {},
+      expected: "voice/luca/flags/furled-cleared-01.mp3",
     },
     {
       label: "dq-scoring-invalid",
@@ -715,6 +723,7 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-checkered-race",
       "flag-disqualify",
       "flag-furled",
+      "flag-furled-cleared",
       "flag-dq-scoring-invalid",
       "flag-crossed",
       "flag-one-pace-lap-to-go",

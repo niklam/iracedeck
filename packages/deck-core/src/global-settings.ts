@@ -324,6 +324,11 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Furled-warning withdrawn callout opt-in (issue #669).
+    calloutEnabledFlagFurledCleared: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     calloutEnabledFlagDqScoringInvalid: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
