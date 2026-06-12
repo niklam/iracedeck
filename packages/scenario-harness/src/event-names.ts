@@ -61,6 +61,7 @@ export const EVENT_TEMPLATES = [
   { name: "flag.five-to-go.raised", description: "Five laps to go", data: {} },
   { name: "flag.disqualify.raised", description: "Disqualified", data: {} },
   { name: "flag.furled.raised", description: "Furled black flag (warning)", data: {} },
+  { name: "flag.furled.cleared", description: "Furled black flag cleared", data: {} },
   { name: "flag.dq-scoring-invalid.raised", description: "Disqualified — scoring invalid", data: {} },
   { name: "flag.yellow-waving.raised", description: "Yellow flag waving (slow down now)", data: {} },
   { name: "flag.caution-waving.raised", description: "Full-course caution waving", data: {} },

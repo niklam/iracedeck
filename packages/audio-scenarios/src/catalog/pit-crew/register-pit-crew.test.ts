@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import {
   type DamageCalloutId,
   type FlagCalloutId,
@@ -175,6 +176,7 @@ const FLAG_CLIP_NAMES = [
   // Issue #480 — missing-session-flag callouts.
   "disqualify-01",
   "furled-01",
+  "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
   "one-pace-lap-to-go-01",
@@ -359,6 +361,7 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   // Issue #480 additions.
   "disqualify",
   "furled",
+  "furled-cleared",
   "dq-scoring-invalid",
   "crossed",
   "one-pace-lap-to-go",
@@ -455,6 +458,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _setFurledRaisedSpoken(false);
   vi.clearAllMocks();
 });
 
@@ -467,6 +471,8 @@ const FLAG_FIRES: ReadonlyArray<{
   event: SimEventName;
   data: SimEventMap[SimEventName]["data"];
   expectedClipFragment: string;
+  /** Pre-publish setup a fire needs (e.g. furled-cleared's spoken marker). */
+  arrange?: () => void;
 }> = [
   {
     id: "yellow-local",
@@ -547,7 +553,16 @@ const FLAG_FIRES: ReadonlyArray<{
     id: "furled",
     event: "flag.furled.raised",
     data: {} as SimEventMap["flag.furled.raised"]["data"],
-    expectedClipFragment: "furled-",
+    expectedClipFragment: "furled-01",
+  },
+  {
+    id: "furled-cleared",
+    event: "flag.furled.cleared",
+    data: {} as SimEventMap["flag.furled.cleared"]["data"],
+    expectedClipFragment: "furled-cleared-",
+    // The cleared `where:` gates on the raised line having actually been
+    // spoken (issue #669) — seed the marker as if it had.
+    arrange: () => _setFurledRaisedSpoken(true),
   },
   {
     id: "dq-scoring-invalid",
@@ -600,7 +615,8 @@ const FLAG_FIRES: ReadonlyArray<{
 ];
 
 describe("registerPitCrew live gating", () => {
-  it.each(FLAG_FIRES)("$id fires when enabled", ({ event, data, expectedClipFragment }) => {
+  it.each(FLAG_FIRES)("$id fires when enabled", ({ event, data, expectedClipFragment, arrange }) => {
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 
@@ -608,8 +624,9 @@ describe("registerPitCrew live gating", () => {
     expect(matched).toBe(true);
   });
 
-  it.each(FLAG_FIRES)("$id is suppressed when its toggle is off", ({ id, event, data }) => {
+  it.each(FLAG_FIRES)("$id is suppressed when its toggle is off", ({ id, event, data, arrange }) => {
     enabled.set(id, false);
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 
@@ -1113,8 +1130,9 @@ describe("pit-window family registration (issue #655)", () => {
 // damage callouts could fire on a fresh install with no Pit Crew button
 // placed because dispatch only consulted per-callout flags.
 describe("Race Engineer master gate (issue #515)", () => {
-  it.each(FLAG_FIRES)("$id is suppressed when the master gate is off", ({ event, data }) => {
+  it.each(FLAG_FIRES)("$id is suppressed when the master gate is off", ({ event, data, arrange }) => {
     voiceMasterEnabled = false;
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 

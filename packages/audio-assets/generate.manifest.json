@@ -9088,6 +9088,14 @@
       "textPreview": "Ninety seconds to race start.",
       "generatedAt": "2026-06-12T05:37:16.958Z",
       "requestId": "ZsPLNfvZpRztLlzYi3R2"
+    },
+    "voice/default/flags/furled-cleared-01.mp3": {
+      "hash": "a85a2e8dfc03669a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Black flag cleared.",
+      "generatedAt": "2026-06-12T17:31:46.671Z",
+      "requestId": "IicDetKoHnk4SNlA4Qpn"
     }
   }
 }

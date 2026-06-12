@@ -53,10 +53,11 @@ reference them by name — `"pool:<name>"` in a sequence step, or `{ pool: "<nam
 in a step object.
 
 - Single-element pools resolve deterministically.
-- Multi-element pools **rotate** with a per-pool no-repeat tracker, shared
-  across every scenario that draws from the pool. So a callout family that
-  reuses a pool (e.g., the acknowledgment pool used by every pit-action
-  confirmation) gets a coherent rotation across the whole family.
+- Multi-element pools are **sampled uniform-random** with a per-pool
+  no-immediate-repeat guard (`pickFromPool`), shared across every scenario
+  that draws from the pool. So a callout family that reuses a pool (e.g., the
+  acknowledgment pool used by every pit-action confirmation) never plays the
+  same clip back-to-back across the whole family.
 - Voice substitution: `{voice}` in a path is replaced at playback time with
   the active Race Engineer voice setting. Always use `voice/{voice}/…` paths.
 
@@ -68,7 +69,7 @@ A `Scenario` (see `src/dsl.ts`) binds:
 - `family:` — shared identifier for same-family preemption. A newer same-family fire replaces the in-flight family-mate wholesale, **regardless of weight** (it is NOT stashed for replay).
 - `weight?:` — higher weight wins a busy bus. Named bands are exported from `dsl.ts` as `WEIGHT`: `TRANSIENT = 5`, `CHATTER = 10`, `NORMAL = 50` (the default when `weight` is omitted), `SAFETY = 70`, `CRITICAL = 100`. Any integer is allowed — scheduling importance is a tunable number, not a fixed enum.
 - `interrupt?:` (default `false`) — when a fire wins a busy bus over an in-flight LOWER-weight fire, `true` cuts that line mid-sentence immediately; `false` waits for the current line to finish, then plays. Equal/lower-weight fires never cut.
-- `queueable?:` (default `false`) — when a fire can't take the bus right now (equal/lower weight, or below a focus floor), `true` defers it for replay when the bus next idles; `false` drops it. The single per-bus pending slot holds the **highest-weight waiting fire** (ties → newest). The deferred fire replays **unconditionally** — its `where:` is NOT re-evaluated, because some `where:` predicates commit a side effect as their last gate (e.g. the position readout claims a shared cooldown); freshness comes from the var resolvers reading live state at speak time, not from re-gating.
+- `queueable?:` (default `false`) — when a fire can't take the bus right now (equal/lower weight, or below a focus floor), `true` defers it for replay when the bus next idles; `false` drops it. The single per-bus pending slot holds the **highest-weight waiting fire** (ties → newest). The deferred fire replays **unconditionally** — its `where:` is NOT re-evaluated, because some `where:` predicates commit a side effect as their last gate (e.g. the position readout claims a shared cooldown); freshness comes from the var resolvers reading live state at speak time, not from re-gating. When a queueable fire's *validity* (not just freshness) can expire while it waits, wrap the WHOLE sequence — radio frame included — in an `if:` step: `if:` predicates expand at speak time (inside `executeFire`, so deferred replays included) and an empty expansion plays nothing, so a stale fire dies silently. Reference: the furled raised/cleared pairing in `flag-alerts.ts` (issue #669).
 - `focusOwner?:` — marks a scenario as belonging to an exclusive-focus owner (see the focus floor below).
 - **Exclusive focus.** `IScenarioEngine.acquireFocus(bus, ownerId, floorWeight)` / `releaseFocus(bus, ownerId)` raise a per-bus weight floor. While a floor is held, only fires with `weight` at or above the floor — or the owner's own fires (`focusOwner === ownerId`) — play; everything else defers (if `queueable`) or drops. Set the floor to the band you want to admit (e.g. `WEIGHT.SAFETY` to let safety flags through while holding back routine chatter). Releasing the floor drains any deferred fire.
 - `sequence:` — ordered steps. The full sequence is `[@pit-crew.radio-open, …body…, @pit-crew.radio-close]` for everything that should sound like radio chatter; the radio frame is itself an include scenario.
@@ -98,6 +99,16 @@ The whole engine is gated by the **Race Engineer master** (`pitCrewRaceEngineerE
 The spotter engine also owns an **exclusive-focus floor**. While any car is alongside it holds `getScenarioEngine().acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY)` and releases it (`releaseFocus(AudioBus.Voice, "spotter")`) the instant the state returns to clear (or on force-clear: master off / both opt-ins off / pit road / Lone Qualify). The floor admits only fires at `WEIGHT.SAFETY` or above — so safety flag callouts still break through while routine chatter is held back — plus the spotter's own fires (matched by `focusOwner: "spotter"` on the `pit-crew.spotter-call` scenario, so a spotter call plays even while its own floor is held). See the #652 weighted-scheduling entry in `.claude/rules/race-engineer-callout-examples.md` for the focus model.
 
 Both engines reuse the existing `radar.changed` bus event (no new event, no translator diff). Road vs oval terminology in the spotter is resolved per fire from `resolveTrackDirection` / `getTrackDirection` (`@iracedeck/sim-events-iracing`): road courses speak left/right, ovals inside/outside.
+
+## Adding a subject to an existing family
+
+Adding one more callout to a family that already exists (e.g. another flag colour, or a paired `*-cleared`) needs **no `registerPitCrew` signature change and no plugin change** — the per-family `get<Family>CalloutEnabled` closure is generic over the family's id type, so a new union member routes through it automatically:
+
+1. Add the scenario to the family file and append it to the `<FAMILY>_ALERTS` array.
+2. Add its pool to `pools.ts` (clip path `voice/{voice}/<group>/<name>.mp3` — the clip itself is authored/generated in `@iracedeck/audio-assets`).
+3. In `index.ts`, extend three places: the `<Family>CalloutId` union, `<FAMILY>_CALLOUT_SETTING_KEYS` (key: `callout<Polarity><Family><Subject>`), and `SCENARIO_ID_TO_<FAMILY>_ID`.
+4. Cross-package companions: the Zod field in `deck-core/src/global-settings.ts` (default `true`), the PI checkbox row in `pit-crew.ejs`, BOTH exhaustive literals in `deck-core/src/simhub-service.test.ts`, and this package's test fixtures (`<family>.test.ts` + `register-pit-crew.test.ts` — clip-name lists, id lists, fire matrices).
+5. If the triggering bus event is new, also add the `scenario-harness` event template (`event-names.ts`, enforced by a compile-time completeness check) and a shortcut button (`scenario-shortcuts.ts`).
 
 ## Adding a new family
 

@@ -308,6 +308,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Five to Go", "flag.five-to-go.raised"),
   flag("Disqualify", "flag.disqualify.raised"),
   flag("Furled", "flag.furled.raised"),
+  flag("Furled Cleared", "flag.furled.cleared"),
   flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
   flag("Yellow Waving", "flag.yellow-waving.raised"),
   flag("Caution Waving", "flag.caution-waving.raised"),

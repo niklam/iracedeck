@@ -75,7 +75,8 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
-- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty).
+- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty). Announced only after the flag has stayed up for a full second — a brief off-track excursion flashes iRacing's furled bit for about half a second, and that flicker stays silent. And if the call gets queued behind other radio traffic and the warning is withdrawn before it can play, it stays silent too — the engineer never announces a flag that's already gone.
+- **Furled cleared** — "Black flag cleared." when an announced furled warning is withdrawn. It fires only if the furled callout actually played, so a transient flicker triggers neither callout.
 - **DQ scoring invalid** — "DQ — scoring's off." (disqualification because scoring is invalid).
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
 - **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
@@ -246,11 +247,11 @@ Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property In
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
-Under **Flags**, all 21 flag callouts are toggleable, all enabled by default:
+Under **Flags**, all 22 flag callouts are toggleable, all enabled by default:
 
 - **Yellow (local)**, **Yellow (full course)**, **Yellow waving (local)**, **Caution waving**, **Yellow cleared**
 - **Green**, **Blue**, **White**, **Red**, **Black**
-- **Disqualify**, **Furled**, **DQ scoring invalid**
+- **Disqualify**, **Furled**, **Furled cleared**, **DQ scoring invalid**
 - **Crossed**, **One pace lap to go**, **Green held**, **Ten to go**, **Five to go**
 - **Checkered**, **Debris**, **Meatball**
 
