@@ -99,6 +99,16 @@ The spotter engine also owns an **exclusive-focus floor**. While any car is alon
 
 Both engines reuse the existing `radar.changed` bus event (no new event, no translator diff). Road vs oval terminology in the spotter is resolved per fire from `resolveTrackDirection` / `getTrackDirection` (`@iracedeck/sim-events-iracing`): road courses speak left/right, ovals inside/outside.
 
+## Adding a subject to an existing family
+
+Adding one more callout to a family that already exists (e.g. another flag colour, or a paired `*-cleared`) needs **no `registerPitCrew` signature change and no plugin change** — the per-family `get<Family>CalloutEnabled` closure is generic over the family's id type, so a new union member routes through it automatically:
+
+1. Add the scenario to the family file and append it to the `<FAMILY>_ALERTS` array.
+2. Add its pool to `pools.ts` (clip path `voice/{voice}/<group>/<name>.mp3` — the clip itself is authored/generated in `@iracedeck/audio-assets`).
+3. In `index.ts`, extend three places: the `<Family>CalloutId` union, `<FAMILY>_CALLOUT_SETTING_KEYS` (key: `callout<Polarity><Family><Subject>`), and `SCENARIO_ID_TO_<FAMILY>_ID`.
+4. Cross-package companions: the Zod field in `deck-core/src/global-settings.ts` (default `true`), the PI checkbox row in `pit-crew.ejs`, BOTH exhaustive literals in `deck-core/src/simhub-service.test.ts`, and this package's test fixtures (`<family>.test.ts` + `register-pit-crew.test.ts` — clip-name lists, id lists, fire matrices).
+5. If the triggering bus event is new, also add the `scenario-harness` event template (`event-names.ts`, enforced by a compile-time completeness check) and a shortcut button (`scenario-shortcuts.ts`).
+
 ## Adding a new family
 
 This is the consumer-side checklist; see the rule

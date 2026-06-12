@@ -16,7 +16,7 @@ Each entry:
 
 - `name` — kebab-case file stem; the suffix `-01` reserves room for variants (`-02`, `-03`, …).
 - `text` — the spoken line; `<break time="0.3s" />` inserts a natural pause.
-- `seed` (optional) — fixed integer for reproducible prosody across regenerations.
+- `seed` — fixed integer for reproducible prosody across regenerations. New entries get `"seed": 1` by default; if the generated clip doesn't sound right, bump the seed (2, 3, …) for a different take. The seed feeds the entry hash, so changing it re-cuts just that clip.
 - `previous_request_ids` / `next_request_ids` (optional) — IDs of clips that semantically precede/follow this one; biases ElevenLabs toward continuous prosody. Either a `<group>/<entry-name>` reference (resolved per-voice at generate time) or a raw ElevenLabs request id.
 
 ## Key parity across voices
@@ -51,11 +51,21 @@ Requires `ELEVENLABS_API_KEY` in `.env.local` (auto-loaded from repo root).
 
 See `README.md` for the full CLI flag reference.
 
+## Adding an entry to an existing group
+
+The most common case — a new callout in an existing family (e.g. another flag):
+
+1. Add the entry to the group in `configs/default.voice.json`, and the same `<group>/<entry-name>` key to every other voice config (the parity test enforces it; wording may differ per voice). Use `"seed": 1` by default.
+2. Preview: `pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group>` — it must report exactly the new entries as "WOULD GENERATE" and everything else as cache hits.
+3. Generate scoped: `pnpm --filter @iracedeck/audio-assets generate --group <group>`.
+4. Rebuild the runtime manifest: `pnpm --filter @iracedeck/audio-assets generate:manifest`.
+5. Commit the new `voice/<voice>/<group>/<name>.mp3` clip(s) together with both manifests — clips are tracked in git.
+
 ## Adding a new group
 
 1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice; the parity test enforces that every other voice gets the same key set).
-2. Author the entries (text, seeds, optional `previous_request_ids`).
-3. Generate (scoped by `--group`).
+2. Author the entries (text, `"seed": 1` by default, optional `previous_request_ids`).
+3. Generate (scoped by `--group`), after a dry-run preview.
 4. Rebuild the runtime manifest.
 5. Reference the new clips from a pool in `@iracedeck/audio-scenarios` (`packages/audio-scenarios/src/catalog/pit-crew/pools.ts`).
 

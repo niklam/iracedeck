@@ -88,15 +88,16 @@ In `packages/event-bus/src/event-catalog.ts`:
 
 In `packages/audio-assets/configs/default.voice.json` (and every other voice file — `voice-parity.test.ts` enforces matching `<group>/<entry-name>` sets across voices, even though text can differ):
 - Add (or extend) a group with one entry per `(direction × subject)` combination.
-- Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, optional `seed` for reproducibility, optional `previous_request_ids` to bias prosody continuity.
+- Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, `seed` (use `"seed": 1` by default on new entries; bump it for a different take when the generated clip doesn't sound right — the seed feeds the hash, so the change re-cuts only that clip), optional `previous_request_ids` to bias prosody continuity.
 - Use `<break time="0.3s" />` for natural pauses inside a single line.
 - Per-entry overrides for `model_id`, `language_code` (inside `voice_settings`), `output_format`, normalization flags etc. are supported and shallow-merge on top of the voice's defaults.
 
 Generate the clips:
 
 ```bash
-pnpm --filter @iracedeck/audio-assets generate --group <group-name>     # only the new group
-pnpm --filter @iracedeck/audio-assets generate:manifest                  # rebuild runtime manifest
+pnpm --filter @iracedeck/audio-assets generate:dry-run --group <group-name>  # preview: must list ONLY the new entries
+pnpm --filter @iracedeck/audio-assets generate --group <group-name>          # only the new group
+pnpm --filter @iracedeck/audio-assets generate:manifest                      # rebuild runtime manifest
 ```
 
 Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices are self-contained, no cross-voice fallback. `generate.manifest.json` is the per-voice hash cache (keys include `voice/<voice-id>/…` so changing one voice's settings invalidates only that voice's entries). `manifest.json` is the runtime asset listing. The `--group` filter keeps the generator from re-cutting unrelated entries (and saves API cost); `--voice <id>` scopes to one voice. ElevenLabs is a paid API — never run unfiltered `generate` casually.
