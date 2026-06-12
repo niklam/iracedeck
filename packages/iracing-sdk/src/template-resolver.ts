@@ -17,13 +17,16 @@
  *
  * Pure string processing — no SDK or telemetry dependency.
  */
-import { resolveExpression } from "./expression-evaluator.js";
+import { MAX_EXPRESSION_LENGTH, resolveExpression } from "./expression-evaluator.js";
 import type { TemplateContext } from "./template-context.js";
 
-// The {0,1000} bound mirrors the evaluator's MAX_EXPRESSION_LENGTH (1000) so an
+// The expression branch's scan is bounded to MAX_EXPRESSION_LENGTH so an
 // unclosed `{{=` marker can't trigger a long scan; an over-long or unclosed
 // expression simply stays verbatim (same visible outcome as a parse error).
-const TEMPLATE_PATTERN = /\{\{=([\s\S]{0,1000}?)\}\}|\{\{([a-zA-Z0-9_.]+)\}\}/g;
+const TEMPLATE_PATTERN = new RegExp(
+  `\\{\\{=([\\s\\S]{0,${MAX_EXPRESSION_LENGTH}}?)\\}\\}|\\{\\{([a-zA-Z0-9_.]+)\\}\\}`,
+  "g",
+);
 
 /**
  * Resolves {{dot.notation}} and {{= expression }} placeholders in a template string.

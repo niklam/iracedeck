@@ -140,4 +140,14 @@ describe("resolveTemplate expression integration", () => {
   it("should leave an unclosed expression marker verbatim", () => {
     expect(resolveTemplate("{{= 1 + 2", ctx({}))).toBe("{{= 1 + 2");
   });
+
+  it("should leave over-limit expressions verbatim", () => {
+    const longExpr = "1".repeat(1001);
+
+    expect(resolveTemplate(`{{= ${longExpr} }}`, ctx({}))).toBe(`{{= ${longExpr} }}`);
+  });
+
+  it("should end the expression at the first }}, even inside a string literal", () => {
+    expect(resolveTemplate("{{= 'a }} b' }}", ctx({}))).toBe("{{= 'a }} b' }}");
+  });
 });
