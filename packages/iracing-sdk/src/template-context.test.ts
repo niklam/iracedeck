@@ -693,11 +693,11 @@ describe("buildTemplateContextFromData raw map", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     const result = resolveTemplate(
-      "{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 1) }}",
+      "{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 3.78541), 1) }}",
       ctx,
     );
 
-    expect(result).toBe("100.9");
+    expect(result).toBe("7.0");
   });
 });
 

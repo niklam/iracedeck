@@ -69,7 +69,7 @@ Speed in km/h, rounded to a whole number:
 Fuel to add, converted from kilograms to US gallons with one decimal:
 
 ```text
-{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 1) }}
+{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 3.78541), 1) }}
 ```
 
 Show `PIT` while on pit road, otherwise nothing:

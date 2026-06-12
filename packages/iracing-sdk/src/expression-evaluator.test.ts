@@ -647,10 +647,10 @@ describe("end-to-end examples", () => {
 
     expect(
       resolveExpression(
-        "round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 1)",
+        "round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 3.78541), 1)",
         vars,
       ),
-    ).toBe("103.9");
+    ).toBe("7.3");
   });
 });
 
