@@ -35,6 +35,8 @@ The Mustache template used to render the value. Defaults to `#{{self.car_number}
 
 Multi-line output is supported — newlines in the rendered output stack vertically on the button.
 
+Templates also support calculated values with the `{{= … }}` expression syntax — arithmetic, conditionals, and functions like `round()`. For example, `{{= round(telemetry.Speed * 3.6, 0) }}` shows your speed in km/h. See [Expressions](/docs/features/template-variables/#expressions) for the full syntax.
+
 #### Setting: Font Size
 
 The font size for the rendered value. Defaults to `15`. Adjust to fit more text on the button or to make small values easier to read at a glance.

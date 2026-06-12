@@ -10,7 +10,7 @@ import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn(),
   getAllCarNumbers: vi.fn(() => []),
-  buildTemplateContext: vi.fn(() => ({})),
+  buildTemplateContext: vi.fn(() => ({ display: {}, raw: {} })),
   resolveTemplate: vi.fn((template: string) => template),
 }));
 

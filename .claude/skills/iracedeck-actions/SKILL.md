@@ -66,7 +66,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | Session Info | 7 | incidents, time-remaining, laps, position, fuel, flags, track-wetness |
-| Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown) |
+| Telemetry Display | 1 | template (Mustache-driven display, no Mode dropdown; templates also support `{{= expr }}` expressions — arithmetic, comparisons, ternary, round/floor/ceil/abs/min/max — #192) |
 
 ### Driving Controls
 

@@ -100,17 +100,17 @@ export {
 } from "./commands/index.js";
 
 // Template variable system
-export { resolveTemplate, resolvePathValue } from "./template-resolver.js";
+export { resolveTemplate } from "./template-resolver.js";
 export {
   buildTemplateContext,
   buildTemplateContextFromData,
-  flattenForDisplay,
   prefixKeys,
   splitDriverName,
   findNearestDriverOnTrack,
   findDriverByRacePosition,
   formatTimeRemaining,
   type TemplateContext,
+  type TemplateValue,
 } from "./template-context.js";
 
 // Track utilities

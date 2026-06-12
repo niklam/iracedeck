@@ -1,13 +1,90 @@
 ---
 title: Template Variables
-description: iRacing telemetry and session variables available for Mustache templates in Telemetry Display and Chat actions.
+description: iRacing telemetry and session variables available for Mustache templates in the Telemetry Display, Chat, and Race Admin actions, plus expression syntax for calculated values.
 ---
 
-These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages.
+These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages, or compute calculated values with the `{{= expression }}` syntax (see [Expressions](#expressions)).
 
 Template variables are supported by:
 - [Telemetry Display](/docs/actions/display-session/telemetry-display/) — show any variable on a Stream Deck button
 - [Chat](/docs/actions/communication/chat/) — include variables in custom chat messages
+- [Race Admin](/docs/actions/communication/race-admin/) — include variables in admin message templates
+
+## Expressions
+
+Templates also support calculated values with the `{{= expression }}` syntax. The `=` must immediately follow the `{{` (no space before it); whitespace inside the expression is fine. Inside an expression, variables are referenced bare with dot notation — no inner braces:
+
+```text
+{{= telemetry.Speed * 3.6 }}
+```
+
+### Operators
+
+| Operator | Description |
+|----------|-------------|
+| `+` `-` `*` `/` `%` | Arithmetic; `+` also concatenates strings |
+| `(` `)` | Grouping |
+| `>` `<` `>=` `<=` `==` `!=` | Comparisons |
+| `condition ? a : b` | Conditional (ternary) |
+| `'text'` or `"text"` | String literals (single or double quotes) |
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `round(x)` | Round to the nearest whole number |
+| `round(x, decimals)` | Round to a fixed number of decimals; `decimals` must be a literal integer between 0 and 20 |
+| `floor(x)` | Round down |
+| `ceil(x)` | Round up |
+| `abs(x)` | Absolute value |
+| `min(a, b, …)` | Smallest of two or more values |
+| `max(a, b, …)` | Largest of two or more values |
+
+### Result formatting
+
+Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals wherever its result becomes text — as the expression's final result, the chosen branch of a ternary, or an operand of string concatenation: `{{= round(10 / 2, 1) }}` renders `5.0`, and `{{= round(telemetry.FuelLevel, 1) + ' L' }}` renders e.g. `42.4 L`. In numeric contexts (arithmetic, comparisons, function arguments) only the numeric value carries on. Boolean results render `Yes`/`No`.
+
+### Expressions use raw values
+
+Expressions compute on the raw, full-precision values — not the display-formatted strings that plain `{{variable}}` placeholders show. This has two consequences:
+
+- Intermediate math is exact: `{{= round(telemetry.Speed * 3.6, 0) }}` multiplies the full-precision speed by 3.6 before rounding — not the 2-decimal value that `{{telemetry.Speed}}` displays. Only the final result gets display formatting, so a bare `{{= telemetry.Speed }}` renders the same as `{{telemetry.Speed}}`.
+- Boolean-ish telemetry flags are `0`/`1` (or true/false) inside expressions, not `"Yes"`/`"No"`. Compare against the number: `{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}`.
+- A few convenience variables are pre-formatted strings even in expressions — notably `session.time_remaining` (`M:SS`), which is not usable for math. Use the underlying telemetry value instead, e.g. `{{= round(telemetry.SessionTimeRemain / 60, 0) }}` for whole minutes.
+
+### Errors
+
+A syntax error (a typo in the expression) leaves the raw `{{= ... }}` text visible on the key so you can spot the mistake. An evaluation problem (unknown variable, division by zero) renders as empty text.
+
+### Limits
+
+Expressions are limited to 1000 characters, and the sequence `}}` cannot appear inside a string literal — the placeholder ends at the first `}}`.
+
+### Examples
+
+Speed in km/h, rounded to a whole number:
+
+```text
+{{= round(telemetry.Speed * 3.6, 0) }}
+```
+
+Fuel to add, converted from kilograms to US gallons with one decimal:
+
+```text
+{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 3.78541), 1) }}
+```
+
+Show `PIT` while on pit road, otherwise nothing:
+
+```text
+{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}
+```
+
+Fuel level with one decimal and a unit suffix (renders e.g. `42.4 L`):
+
+```text
+{{= round(telemetry.FuelLevel, 1) + ' L' }}
+```
 
 ## Driver Info
 

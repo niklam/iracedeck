@@ -2,41 +2,69 @@
  * Template Context Builder
  *
  * Assembles a template variable context from iRacing telemetry and session data.
- * Used by resolveTemplate() to hydrate {{variable}} placeholders.
+ * Used by resolveTemplate() to hydrate {{variable}} placeholders (display map)
+ * and {{= expression }} calculations (raw map).
  */
+import type { ExpressionValue } from "./expression-evaluator.js";
 import { calculateRacePositions } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
+/** Value type for raw template-context entries. */
+export type TemplateValue = ExpressionValue;
+
+/**
+ * Flat template context — all keys use dot-notation (e.g., "self.name", "telemetry.Speed").
+ */
+export interface TemplateContext {
+  /** Display-formatted strings used by plain {{var}} placeholders. */
+  display: Record<string, string>;
+  /** Full-precision raw values used by {{= expr }} expressions. */
+  raw: Record<string, TemplateValue>;
+}
+
+/**
+ * A display/raw map pair for one context namespace.
+ */
+interface FieldMaps {
+  display: Record<string, string>;
+  raw: Record<string, TemplateValue>;
+}
+
+/**
+ * Raw driver field values — numeric fields stay numbers until display formatting.
+ * `undefined` means "unavailable": display renders "", raw omits the key.
+ */
+type DriverFieldValue = string | number | undefined;
+
 /**
  * Shared fields available for all driver groups.
+ *
+ * Must stay a `type` alias (not `interface`): only aliases get the implicit
+ * index signature needed for assignability to `Record<string, DriverFieldValue>`
+ * in `fieldsToMaps`.
  */
-interface DriverFields {
+type DriverFields = {
   name: string;
   first_name: string;
   last_name: string;
   abbrev_name: string;
   car_number: string;
-  position: string;
-  class_position: string;
-  lap: string;
-  laps_completed: string;
-  irating: string;
+  position: number | undefined;
+  class_position: number | undefined;
+  lap: number | undefined;
+  laps_completed: number | undefined;
+  irating: number | undefined;
   license: string;
-}
+};
 
 /**
  * Self driver extends DriverFields with additional player-specific data.
  */
-interface SelfDriverFields extends DriverFields {
-  incidents: string;
-}
-
-/**
- * Flat template context — all keys use dot-notation (e.g., "self.name", "telemetry.Speed").
- */
-export type TemplateContext = Record<string, string>;
+type SelfDriverFields = DriverFields & {
+  incidents: number | undefined;
+};
 
 interface DriverEntry {
   CarIdx: number;
@@ -55,17 +83,17 @@ const EMPTY_DRIVER_FIELDS: DriverFields = {
   last_name: "",
   abbrev_name: "",
   car_number: "",
-  position: "",
-  class_position: "",
-  lap: "",
-  laps_completed: "",
-  irating: "",
+  position: undefined,
+  class_position: undefined,
+  lap: undefined,
+  laps_completed: undefined,
+  irating: undefined,
   license: "",
 };
 
 const EMPTY_SELF_FIELDS: SelfDriverFields = {
   ...EMPTY_DRIVER_FIELDS,
-  incidents: "",
+  incidents: undefined,
 };
 
 /**
@@ -95,11 +123,15 @@ interface FlattenOptions {
 /**
  * @internal Exported for testing
  *
- * Flattens a nested object into dot-notation keys with display-formatted string values.
- * Skips arrays, filters keys by prefix, rounds floats to 2 decimals, converts booleans to Yes/No.
+ * Flattens a nested object into dot-notation keys, producing both maps in one walk:
+ * display-formatted strings (floats rounded to 2 decimals, booleans and known
+ * boolean-semantic integers as Yes/No) and full-precision raw values (numbers stay
+ * numbers — including BOOLEAN_INT_FIELDS, which stay 0/1 — booleans stay booleans,
+ * strings stay strings). Skips arrays and filters keys by prefix.
  */
-export function flattenForDisplay(obj: Record<string, unknown>, options?: FlattenOptions): Record<string, string> {
-  const result: Record<string, string> = {};
+export function flattenContext(obj: Record<string, unknown>, options?: FlattenOptions): FieldMaps {
+  const display: Record<string, string> = {};
+  const raw: Record<string, TemplateValue> = {};
   const prefix = options?.excludePrefix;
 
   function walk(current: Record<string, unknown>, path: string): void {
@@ -117,26 +149,31 @@ export function flattenForDisplay(obj: Record<string, unknown>, options?: Flatte
       }
 
       if (typeof value === "boolean") {
-        result[fullKey] = value ? "Yes" : "No";
+        display[fullKey] = value ? "Yes" : "No";
+        raw[fullKey] = value;
       } else if (typeof value === "number") {
         const leafKey = fullKey.includes(".") ? fullKey.substring(fullKey.lastIndexOf(".") + 1) : fullKey;
 
         if (BOOLEAN_INT_FIELDS.has(leafKey) && (value === 0 || value === 1)) {
-          result[fullKey] = value === 1 ? "Yes" : "No";
+          display[fullKey] = value === 1 ? "Yes" : "No";
         } else {
-          result[fullKey] = Number.isInteger(value) ? String(value) : value.toFixed(2);
+          display[fullKey] = Number.isInteger(value) ? String(value) : value.toFixed(2);
         }
+
+        raw[fullKey] = value;
       } else if (typeof value === "string") {
-        result[fullKey] = value;
+        display[fullKey] = value;
+        raw[fullKey] = value;
       } else if (value !== null && value !== undefined) {
-        result[fullKey] = String(value);
+        // Exotic primitive (e.g. bigint): display only — not a valid expression value.
+        display[fullKey] = String(value);
       }
     }
   }
 
   walk(obj, "");
 
-  return result;
+  return { display, raw };
 }
 
 /**
@@ -154,8 +191,8 @@ export function buildTemplateContext(sdkController: SDKController): TemplateCont
  *
  * Prefixes all keys in a record with a given prefix.
  */
-export function prefixKeys(prefix: string, record: Record<string, string>): Record<string, string> {
-  const result: Record<string, string> = {};
+export function prefixKeys<T>(prefix: string, record: Record<string, T>): Record<string, T> {
+  const result: Record<string, T> = {};
 
   for (const [key, value] of Object.entries(record)) {
     result[`${prefix}.${key}`] = value;
@@ -165,10 +202,35 @@ export function prefixKeys(prefix: string, record: Record<string, string>): Reco
 }
 
 /**
+ * Converts a raw driver fields record into the display/raw map pair.
+ * Display keeps every key (null/undefined render ""); raw omits null/undefined
+ * keys so expressions referencing them fail as unknown variables (rendering "").
+ * Runtime nulls from YAML session data are treated like undefined.
+ */
+function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
+  const display: Record<string, string> = {};
+  const raw: Record<string, TemplateValue> = {};
+
+  for (const [key, value] of Object.entries(fields)) {
+    display[key] = value != null ? String(value) : "";
+
+    if (value != null) {
+      raw[key] = value;
+    }
+  }
+
+  return { display, raw };
+}
+
+function driverMaps(driver: DriverEntry | null, telemetry: TelemetryData | null, positions?: number[]): FieldMaps {
+  return fieldsToMaps(driver ? buildDriverFields(driver, telemetry, positions) : { ...EMPTY_DRIVER_FIELDS });
+}
+
+/**
  * @internal Exported for testing
  *
  * Builds template context from raw telemetry and session data.
- * Returns a single flat Record<string, string> with dot-notation keys.
+ * Returns the combined { display, raw } context with dot-notation keys in both maps.
  */
 export function buildTemplateContextFromData(
   telemetry: TelemetryData | null,
@@ -182,52 +244,62 @@ export function buildTemplateContextFromData(
   const positions = isRaceSession(sessionInfo, telemetry) ? resolveRacePositions(telemetry) : undefined;
 
   const selfDriver = drivers.find((d) => d.CarIdx === playerCarIdx);
-  const selfFields = buildSelfFields(selfDriver, playerCarIdx, telemetry, positions);
+  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, positions));
 
-  const trackAhead = findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "ahead");
-  const trackBehind = findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "behind");
-  const raceAhead = findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, positions);
-  const raceBehind = findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, positions);
+  const trackAhead = driverMaps(
+    findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "ahead"),
+    telemetry,
+    positions,
+  );
+  const trackBehind = driverMaps(
+    findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "behind"),
+    telemetry,
+    positions,
+  );
+  const raceAhead = driverMaps(
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, positions),
+    telemetry,
+    positions,
+  );
+  const raceBehind = driverMaps(
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, positions),
+    telemetry,
+    positions,
+  );
 
   const sessionFields = buildSessionFields(sessionInfo, telemetry);
   const trackFields = buildTrackFields(sessionInfo);
 
+  const telemetryMaps = telemetry
+    ? flattenContext(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" })
+    : { display: {}, raw: {} };
+  const sessionInfoMaps = sessionInfo
+    ? flattenContext(sessionInfo as unknown as Record<string, unknown>)
+    : { display: {}, raw: {} };
+
   return {
-    ...prefixKeys("self", selfFields as unknown as Record<string, string>),
-    ...prefixKeys(
-      "track_ahead",
-      (trackAhead
-        ? buildDriverFields(trackAhead, telemetry, positions)
-        : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<string, string>,
-    ),
-    ...prefixKeys(
-      "track_behind",
-      (trackBehind
-        ? buildDriverFields(trackBehind, telemetry, positions)
-        : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<string, string>,
-    ),
-    ...prefixKeys(
-      "race_ahead",
-      (raceAhead
-        ? buildDriverFields(raceAhead, telemetry, positions)
-        : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<string, string>,
-    ),
-    ...prefixKeys(
-      "race_behind",
-      (raceBehind
-        ? buildDriverFields(raceBehind, telemetry, positions)
-        : { ...EMPTY_DRIVER_FIELDS }) as unknown as Record<string, string>,
-    ),
-    ...prefixKeys("session", sessionFields),
-    ...prefixKeys("track", trackFields),
-    ...prefixKeys(
-      "telemetry",
-      telemetry ? flattenForDisplay(telemetry as unknown as Record<string, unknown>, { excludePrefix: "CarIdx" }) : {},
-    ),
-    ...prefixKeys(
-      "sessionInfo",
-      sessionInfo ? flattenForDisplay(sessionInfo as unknown as Record<string, unknown>) : {},
-    ),
+    display: {
+      ...prefixKeys("self", self.display),
+      ...prefixKeys("track_ahead", trackAhead.display),
+      ...prefixKeys("track_behind", trackBehind.display),
+      ...prefixKeys("race_ahead", raceAhead.display),
+      ...prefixKeys("race_behind", raceBehind.display),
+      ...prefixKeys("session", sessionFields.display),
+      ...prefixKeys("track", trackFields),
+      ...prefixKeys("telemetry", telemetryMaps.display),
+      ...prefixKeys("sessionInfo", sessionInfoMaps.display),
+    },
+    raw: {
+      ...prefixKeys("self", self.raw),
+      ...prefixKeys("track_ahead", trackAhead.raw),
+      ...prefixKeys("track_behind", trackBehind.raw),
+      ...prefixKeys("race_ahead", raceAhead.raw),
+      ...prefixKeys("race_behind", raceBehind.raw),
+      ...prefixKeys("session", sessionFields.raw),
+      ...prefixKeys("track", trackFields),
+      ...prefixKeys("telemetry", telemetryMaps.raw),
+      ...prefixKeys("sessionInfo", sessionInfoMaps.raw),
+    },
   };
 }
 
@@ -349,11 +421,11 @@ function buildDriverFields(driver: DriverEntry, telemetry: TelemetryData | null,
     last_name: lastName,
     abbrev_name: driver.AbbrevName,
     car_number: driver.CarNumber,
-    position: positions?.[driver.CarIdx]?.toString() ?? telemetry?.CarIdxPosition?.[driver.CarIdx]?.toString() ?? "",
-    class_position: telemetry?.CarIdxClassPosition?.[driver.CarIdx]?.toString() ?? "",
-    lap: telemetry?.CarIdxLap?.[driver.CarIdx]?.toString() ?? "",
-    laps_completed: telemetry?.CarIdxLapCompleted?.[driver.CarIdx]?.toString() ?? "",
-    irating: driver.IRating?.toString() ?? "",
+    position: positions?.[driver.CarIdx] ?? telemetry?.CarIdxPosition?.[driver.CarIdx],
+    class_position: telemetry?.CarIdxClassPosition?.[driver.CarIdx],
+    lap: telemetry?.CarIdxLap?.[driver.CarIdx],
+    laps_completed: telemetry?.CarIdxLapCompleted?.[driver.CarIdx],
+    irating: driver.IRating,
     license: driver.LicString ?? "",
   };
 }
@@ -371,12 +443,12 @@ function buildSelfFields(
   return {
     ...base,
     position: telemetry?.OnPitRoad
-      ? (telemetry?.PlayerCarPosition?.toString() ?? base.position)
-      : (positions?.[playerCarIdx]?.toString() ?? telemetry?.PlayerCarPosition?.toString() ?? base.position),
-    class_position: telemetry?.PlayerCarClassPosition?.toString() ?? base.class_position,
-    lap: telemetry?.Lap?.toString() ?? base.lap,
-    laps_completed: telemetry?.LapCompleted?.toString() ?? base.laps_completed,
-    incidents: telemetry?.PlayerCarMyIncidentCount?.toString() ?? "",
+      ? (telemetry?.PlayerCarPosition ?? base.position)
+      : (positions?.[playerCarIdx] ?? telemetry?.PlayerCarPosition ?? base.position),
+    class_position: telemetry?.PlayerCarClassPosition ?? base.class_position,
+    lap: telemetry?.Lap ?? base.lap,
+    laps_completed: telemetry?.LapCompleted ?? base.laps_completed,
+    incidents: telemetry?.PlayerCarMyIncidentCount,
   };
 }
 
@@ -397,16 +469,31 @@ function isRaceSession(sessionInfo: SessionInfo | null, telemetry: TelemetryData
   return (getCurrentSession(sessionInfo, telemetry)?.SessionType as string) === "Race";
 }
 
-function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): Record<string, string> {
+function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: TelemetryData | null): FieldMaps {
   const currentSession = getCurrentSession(sessionInfo, telemetry);
 
   const lapsRemaining = telemetry?.SessionLapsRemainEx;
   const timeRemaining = telemetry?.SessionTimeRemain;
 
+  const type = (currentSession?.SessionType as string) ?? "";
+  const hasLapsRemaining = lapsRemaining !== undefined && lapsRemaining >= 0;
+  // time_remaining keeps the formatted M:SS string in BOTH maps — expressions
+  // wanting math on it should use telemetry.SessionTimeRemain instead.
+  const timeRemainingFormatted = formatTimeRemaining(timeRemaining);
+
+  const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
+
+  if (hasLapsRemaining) {
+    raw.laps_remaining = lapsRemaining;
+  }
+
   return {
-    type: (currentSession?.SessionType as string) ?? "",
-    laps_remaining: lapsRemaining !== undefined && lapsRemaining >= 0 ? String(lapsRemaining) : "",
-    time_remaining: formatTimeRemaining(timeRemaining),
+    display: {
+      type,
+      laps_remaining: hasLapsRemaining ? String(lapsRemaining) : "",
+      time_remaining: timeRemainingFormatted,
+    },
+    raw,
   };
 }
 
