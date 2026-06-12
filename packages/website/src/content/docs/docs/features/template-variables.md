@@ -50,6 +50,7 @@ Expressions compute on the raw, full-precision values — not the display-format
 
 - Intermediate math is exact: `{{= round(telemetry.Speed * 3.6, 0) }}` multiplies the full-precision speed by 3.6 before rounding — not the 2-decimal value that `{{telemetry.Speed}}` displays. Only the final result gets display formatting, so a bare `{{= telemetry.Speed }}` renders the same as `{{telemetry.Speed}}`.
 - Boolean-ish telemetry flags are `0`/`1` (or true/false) inside expressions, not `"Yes"`/`"No"`. Compare against the number: `{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}`.
+- A few convenience variables are pre-formatted strings even in expressions — notably `session.time_remaining` (`M:SS`), which is not usable for math. Use the underlying telemetry value instead, e.g. `{{= round(telemetry.SessionTimeRemain / 60, 0) }}` for whole minutes.
 
 ### Errors
 
