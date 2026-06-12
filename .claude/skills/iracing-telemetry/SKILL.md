@@ -37,6 +37,8 @@ The canonical user-facing list of template variables (for Telemetry Display and 
 
 This is the **source of truth** for which variables are available in Mustache templates. When adding or modifying template variable support, update this file in the same change.
 
+Templates also support `{{= expression }}` evaluation (arithmetic, comparisons, ternary, `round`/`floor`/`ceil`/`abs`/`min`/`max`), computed on raw full-precision values rather than the display-formatted strings plain placeholders show (#192). The evaluator lives in `packages/iracing-sdk/src/expression-evaluator.ts`; the user-facing syntax is documented in the website template-variables page above, which stays the canonical source.
+
 ## Length Values
 
 | Length | Meaning | TypeScript Type |

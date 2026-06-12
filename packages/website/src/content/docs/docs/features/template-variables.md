@@ -1,13 +1,88 @@
 ---
 title: Template Variables
-description: iRacing telemetry and session variables available for Mustache templates in Telemetry Display and Chat actions.
+description: iRacing telemetry and session variables available for Mustache templates in Telemetry Display and Chat actions, plus expression syntax for calculated values.
 ---
 
-These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages.
+These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages, or compute calculated values with the `{{= expression }}` syntax (see [Expressions](#expressions)).
 
 Template variables are supported by:
 - [Telemetry Display](/docs/actions/display-session/telemetry-display/) — show any variable on a Stream Deck button
 - [Chat](/docs/actions/communication/chat/) — include variables in custom chat messages
+
+## Expressions
+
+Templates also support calculated values with the `{{= expression }}` syntax. The `=` must immediately follow the `{{` (no space before it); whitespace inside the expression is fine. Inside an expression, variables are referenced bare with dot notation — no inner braces:
+
+```text
+{{= telemetry.Speed * 3.6 }}
+```
+
+### Operators
+
+| Operator | Description |
+|----------|-------------|
+| `+` `-` `*` `/` `%` | Arithmetic; `+` also concatenates strings |
+| `(` `)` | Grouping |
+| `>` `<` `>=` `<=` `==` `!=` | Comparisons |
+| `condition ? a : b` | Conditional (ternary) |
+| `'text'` or `"text"` | String literals (single or double quotes) |
+
+### Functions
+
+| Function | Description |
+|----------|-------------|
+| `round(x)` | Round to the nearest whole number |
+| `round(x, decimals)` | Round to a fixed number of decimals; `decimals` must be a literal integer between 0 and 20 |
+| `floor(x)` | Round down |
+| `ceil(x)` | Round up |
+| `abs(x)` | Absolute value |
+| `min(a, b, …)` | Smallest of two or more values |
+| `max(a, b, …)` | Largest of two or more values |
+
+### Result formatting
+
+Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals — `{{= round(10 / 2, 1) }}` renders `5.0`. Boolean results render `Yes`/`No`.
+
+### Expressions use raw values
+
+Expressions compute on the raw, full-precision values — not the display-formatted strings that plain `{{variable}}` placeholders show. This has two consequences:
+
+- `{{= telemetry.Speed }}` can show more precision than `{{telemetry.Speed}}`: the plain placeholder rounds floating-point values to 2 decimals for display, while inside an expression the input keeps its full precision and only the end result gets default formatting. Use `round()` when you want controlled output.
+- Boolean-ish telemetry flags are `0`/`1` (or true/false) inside expressions, not `"Yes"`/`"No"`. Compare against the number: `{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}`.
+
+### Errors
+
+A syntax error (a typo in the expression) leaves the raw `{{= ... }}` text visible on the key so you can spot the mistake. An evaluation problem (unknown variable, division by zero) renders as empty text.
+
+### Limits
+
+Expressions are limited to 1000 characters, and the sequence `}}` cannot appear inside a string literal — the placeholder ends at the first `}}`.
+
+### Examples
+
+Speed in km/h, rounded to a whole number:
+
+```text
+{{= round(telemetry.Speed * 3.6, 0) }}
+```
+
+Fuel to add, converted from kilograms to US gallons with one decimal:
+
+```text
+{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 1) }}
+```
+
+Show `PIT` while on pit road, otherwise nothing:
+
+```text
+{{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}
+```
+
+Fuel level with a unit suffix:
+
+```text
+{{= round(telemetry.FuelLevel, 1) + ' L' }}
+```
 
 ## Driver Info
 
