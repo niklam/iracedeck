@@ -1015,6 +1015,7 @@ describe("start-light family registration (issue #480)", () => {
   it.each([
     { event: "startLight.start-ready.raised", data: {}, fragment: "/start-lights/start-ready-" },
     { event: "startLight.start-go.raised", data: {}, fragment: "/start-lights/start-go-" },
+    { event: "startLight.countdown.raised", data: { seconds: 90 }, fragment: "/start-lights/countdown-90-" },
     { event: "startLight.countdown.raised", data: { seconds: 30 }, fragment: "/start-lights/countdown-30-" },
   ])("$event fires its registered clip", ({ event, data, fragment }) => {
     bus.publishEvent(event as SimEventName, data as never);
