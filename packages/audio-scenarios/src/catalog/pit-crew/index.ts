@@ -659,8 +659,10 @@ export function registerPitCrew(
   // in-flight clip. Default `() => true` preserves legacy behavior for
   // tests that don't supply a closure.
   getIncidentCalloutEnabled: (id: IncidentCalloutId) => boolean = () => true,
-  // User opt-in for the session-start ("car entry") readout (issue #542).
-  // Plugins wire this to the `calloutEnabledSessionStart` global setting via
+  // User opt-in for the session-start readout (issues #542, #668). Fired when
+  // a practice or qualifying session starts (on session.changed, ~3 s in),
+  // whether or not the driver leaves the garage. Plugins wire this to the
+  // `calloutEnabledSessionStart` global setting via
   // `SESSION_START_CALLOUT_SETTING_KEYS` — read live, same gate-at-event-
   // arrival shape as the other callout families. Default `() => true`
   // preserves legacy behavior for tests that don't supply a closure.

@@ -155,9 +155,10 @@ export type PitReadbackSnapshot = {
 };
 
 /**
- * Telemetry-derived half of the session-start ("car entry") readout snapshot
- * (issue #542). Built by the sim translator from the first-on-track telemetry
- * tick + session info, read at fire time by the session-start scenario via a
+ * Telemetry-derived half of the session-start readout snapshot (issues #542,
+ * #668). Built by the sim translator from live telemetry + session info at the
+ * time the session.changed event fires, read at fire time by the session-start
+ * scenario via a
  * resolver closure (same deferred-snapshot pattern as {@link PitReadbackSnapshot}).
  *
  * Units are resolved here, not in the scenario: the translator reads iRacing's

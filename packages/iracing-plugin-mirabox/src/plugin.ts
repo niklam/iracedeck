@@ -389,8 +389,8 @@ registerPitCrew(
   // families.
   (id: IncidentCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[INCIDENT_CALLOUT_SETTING_KEYS[id]] !== false,
-  // Session-start ("car entry") callout opt-in (issue #542). Single subject;
-  // same live-read pattern as the other callout families.
+  // Session-start callout opt-in (issues #542, #668). Single subject; same
+  // live-read pattern as the other callout families.
   (id: SessionStartCalloutId) =>
     (getGlobalSettings() as Record<string, unknown>)[SESSION_START_CALLOUT_SETTING_KEYS[id]] !== false,
   // Session-start conditions snapshot (issue #542). Composes the

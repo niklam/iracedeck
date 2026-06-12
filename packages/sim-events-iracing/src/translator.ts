@@ -311,8 +311,8 @@ export function getReadbackSnapshot(): PitReadbackSnapshot | null {
 }
 
 /**
- * Build the session-start ("car entry") conditions snapshot from the latest
- * telemetry tick + session info (issue #542). Returns `null` when telemetry
+ * Build the session-start conditions snapshot from the latest telemetry tick +
+ * session info (issues #542, #668). Returns `null` when telemetry
  * or session info is unavailable, or when track wetness is still `Unknown` —
  * the session-start scenario treats null as "skip the callout" rather than
  * speaking a nonsense line.
