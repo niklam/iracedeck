@@ -279,7 +279,7 @@
     ],
     "start-lights": [
       {
-        "name": "start-set-01",
+        "name": "start-ready-01",
         "text": "Lights. Get ready to go.",
         "seed": 2
       },
@@ -289,18 +289,23 @@
         "seed": 4
       },
       {
+        "name": "countdown-90-01",
+        "text": "Ninety seconds to race start.",
+        "seed": 5
+      },
+      {
         "name": "countdown-60-01",
-        "text": "Race starts in sixty seconds. Final checks now.",
+        "text": "Sixty seconds to race start.",
         "seed": 5
       },
       {
         "name": "countdown-30-01",
-        "text": "Thirty seconds to race start. Settle in and focus.",
+        "text": "Thirty seconds to race start.",
         "seed": 3
       },
       {
         "name": "countdown-10-01",
-        "text": "Ten seconds to race start. Focus up, it's go time.",
+        "text": "Ten seconds to race start.",
         "seed": 2
       }
     ],

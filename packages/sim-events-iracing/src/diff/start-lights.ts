@@ -1,21 +1,25 @@
 /**
- * Start-light transitions + pre-start numeric countdown (issue #480).
+ * Start-light transitions + pre-start numeric countdown (issues #480 / #673).
  *
  * Two independent pieces, both driven off `SessionFlags` / `SessionState` /
  * `SessionTimeRemain` and the session YAML helpers:
  *
- *   1. **Gantry rising edges.** `StartSet` / `StartGo` each fire once on their
- *      off→on edge (vs `state.lastStartLightBits`). (The earlier `start-ready`
- *      gantry cue was dropped in issue #666; the rolling-start lead-in is
- *      `one-pace-lap-to-go` (`diff/pace-laps.ts`, issue #657) / `green-held`.)
+ *   1. **Gantry rising edges.** `StartReady` / `StartGo` each fire once on
+ *      their off→on edge (vs `state.lastStartLightBits`). The procedure is
+ *      Ready → Set → Go: the heads-up line belongs on `StartReady` (issue
+ *      #673 — `StartSet` lights too late to be useful, so nothing is emitted
+ *      for it). `StartReady` is standing-only: rolling starts hold the bit
+ *      through Warmup→ParadeLaps too (rolling AI capture 2112), where the
+ *      rolling-start family (#660) owns the lead-in.
  *
  *   2. **Numeric countdown.** A `SessionTimeRemain` countdown that runs in the
  *      standing pre-start window — `standing ∧ SessionState ∈ {GetInCar,
  *      Warmup} ∧ ¬(StartSet ∨ StartGo) ∧ SessionTimeRemain>0`. `SessionTimeRemain`
  *      is the real time-to-lights from `GetInCar` onward (issue #666), so the
- *      window opens at `GetInCar` rather than waiting for the `StartReady` gantry
- *      bit, and closes once `StartSet`/`StartGo` light — the gantry lines own the
- *      final moment. On the first in-window tick the ceiling is seeded from
+ *      window opens at `GetInCar` and closes once `StartSet`/`StartGo` light —
+ *      the gantry owns the final moment. `StartReady` deliberately does NOT
+ *      close the window: the standing capture (2056) shows it's up while the
+ *      countdown runs. On the first in-window tick the ceiling is seeded from
  *      `SessionTimeRemain` so only thresholds the window can actually reach fire;
  *      each tick emits ONLY the smallest newly-crossed threshold so a dropped
  *      tick never produces a stale burst. AI races are NOT suppressed (issue
@@ -32,11 +36,11 @@ import { resolveStandingStart } from "../start-lights.js";
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-/** The two gantry bits, masked out of `SessionFlags` for edge detection. */
-const START_LIGHT_MASK = Flags.StartSet | Flags.StartGo;
+/** The two gantry bits we edge-detect, masked out of `SessionFlags`. */
+const START_LIGHT_MASK = Flags.StartReady | Flags.StartGo;
 
 /** Countdown thresholds (seconds), descending — drives smallest-of-many emit. */
-const COUNTDOWN_THRESHOLDS = [60, 30, 10] as const;
+const COUNTDOWN_THRESHOLDS = [90, 60, 30, 10] as const;
 
 export function diffStartLights(
   state: TranslatorState,
@@ -63,8 +67,10 @@ export function diffStartLights(
   const prevBits = state.lastStartLightBits;
   const rising = (flag: number): boolean => (startBits & flag) !== 0 && (prevBits & flag) === 0;
 
-  if (rising(Flags.StartSet)) {
-    emit({ event: "startLight.start-set.raised", data: {} });
+  // Standing-only: rolling starts raise StartReady through the formation too,
+  // but there's no gantry start — the rolling-start family owns that lead-in.
+  if (standing && rising(Flags.StartReady)) {
+    emit({ event: "startLight.start-ready.raised", data: {} });
   }
 
   if (rising(Flags.StartGo)) {
@@ -75,10 +81,10 @@ export function diffStartLights(
 
   // ── Numeric countdown ──────────────────────────────────────────────────
   // SessionTimeRemain is the real time-to-lights from GetInCar onward (issue
-  // #666), so the window opens at GetInCar (no longer waits for the StartReady
-  // gantry bit) and closes once StartSet/StartGo light — the gantry lines own
-  // the final moment. Race-only / in-car gating is handled at the scenario
-  // `where:` layer, not here.
+  // #666), so the window opens at GetInCar and closes once StartSet/StartGo
+  // light — the gantry lines own the final moment. StartReady does NOT close
+  // the window (it's up while the countdown runs — standing capture 2056).
+  // Race-only / in-car gating is handled at the scenario `where:` layer, not here.
   const inWindow =
     standing &&
     (sessionState === SessionState.GetInCar || sessionState === SessionState.Warmup) &&

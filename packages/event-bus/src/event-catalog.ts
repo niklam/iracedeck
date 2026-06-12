@@ -67,7 +67,7 @@ export type FlagScope = "local" | "full";
  * any future translator can emit the same `startLight.countdown.raised` shape;
  * the audio scenario maps each value to its own clip.
  */
-export type StartCountdownSeconds = 60 | 30 | 10;
+export type StartCountdownSeconds = 90 | 60 | 30 | 10;
 
 /**
  * Canonical incident-report type (issue #530). Maps the report byte of
@@ -355,13 +355,15 @@ export type SimEventMap = {
   /**
    * Start-light family (issue #480). The race-start gantry lights and the
    * numeric pre-start countdown. The two gantry states fire on the rising
-   * edge of iRacing's `StartSet` / `StartGo` bits; the countdown fires once per
-   * crossed threshold during the standing-start pre-start window (one event per
-   * number, see {@link StartCountdownSeconds}). All carry `family: "start-light"`
-   * so the audio scenarios preempt cleanly. (The earlier `start-ready` gantry
-   * event was dropped in issue #666.)
+   * edge of iRacing's `StartReady` / `StartGo` bits — the start procedure is
+   * Ready → Set → Go, and the heads-up line belongs on Ready (issue #673 moved
+   * it off `StartSet`, which lights too late to be useful; nothing is spoken
+   * at Set anymore). The countdown fires once per crossed threshold during the
+   * standing-start pre-start window (one event per number, see
+   * {@link StartCountdownSeconds}). All carry `family: "start-light"` so the
+   * audio scenarios preempt cleanly.
    */
-  "startLight.start-set.raised": SimEvent<"startLight.start-set.raised", EmptySimEventPayload>;
+  "startLight.start-ready.raised": SimEvent<"startLight.start-ready.raised", EmptySimEventPayload>;
   "startLight.start-go.raised": SimEvent<"startLight.start-go.raised", EmptySimEventPayload>;
   "startLight.countdown.raised": SimEvent<"startLight.countdown.raised", { seconds: StartCountdownSeconds }>;
 
