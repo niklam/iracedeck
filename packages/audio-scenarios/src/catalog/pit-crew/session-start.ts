@@ -1,16 +1,32 @@
 /**
- * Session-start ("car entry") readout scenario — issue #542.
+ * Session-start readout scenario — issues #542, #668.
  *
- * Fires once per session on `driver.firstOnTrack`, after a short delay
- * ({@link SESSION_START_DELAY_MS}): the engineer greets the driver by name,
- * names the session type, and reads the situational brief — pit speed limit,
- * track temperature, air temperature, track wetness.
+ * Fires when a practice or qualifying session starts — on `session.changed`,
+ * approximately {@link SESSION_START_DELAY_MS} after the session begins — whether
+ * or not the driver leaves the garage. Race sessions are covered exclusively by
+ * the race-start scenario (issue #568), which fires on the same event; the
+ * `where:` predicate rejects `sessionType === "race"` here so the two scenarios
+ * never double-greet.
  *
- * Script:
- *   [{@link SESSION_START_DELAY_MS} pause]
+ * Riding `session.changed` also inherits:
+ *   - Replay-only suppression (issue #604): the event is gated at emission in
+ *     the sim-events-iracing translator, so replays never trigger a brief.
+ *   - Fresh-connect synthetic event: when the plugin connects mid-session, the
+ *     translator emits a synthetic `session.changed { from: -1, to: N }` —
+ *     connecting mid-practice or mid-qualifying triggers the brief.
+ *
+ * The delay is implemented as `triggerDelay` (NOT a leading `{ pause }` step):
+ * iRacing's `session.changed` lands on a tick where `TrackWetness` (and a few
+ * other fields) can briefly read `Unknown`. A leading `{ pause }` step does NOT
+ * let telemetry settle because vars are resolved at expansion time,
+ * synchronously when `where:` returns true — by the time the pause's audio-gap
+ * plays, the var paths are already frozen. `triggerDelay` defers the entire fire
+ * decision so `where:` and var resolvers see fresh, settled telemetry.
+ *
+ * Script (fires ~{@link SESSION_START_DELAY_MS} ms after `session.changed`):
  *   [radio open]
  *   "Ok, <Name>,"                                  greeting (per-name clip)
- *   <session line>                                 practice / qualifying / race
+ *   <session line>                                 practice / qualifying
  *   "The pit speed limit is" <N> <speed-unit>      CONDITIONAL — see below
  *   "Track temperature is" <N> "degrees" <unit>
  *   "air temperature is" <N> "degrees" <unit>
@@ -30,9 +46,9 @@
  * outside {@link SESSION_START_SPEED_VALUES} — a guessed or rounded number
  * could imply a false pit-speed-penalty risk.
  *
- * `where:` is `getSnapshot() !== null`, so the scenario doesn't fire at all
- * when conditions are unavailable (no telemetry / session info, or wetness
- * still `Unknown`).
+ * `where:` is `getSnapshot() !== null && sessionType !== "race"`, so the
+ * scenario doesn't fire at all when conditions are unavailable (no telemetry /
+ * session info, or wetness still `Unknown`), and never fires in race sessions.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
@@ -67,10 +83,19 @@ export const SESSION_START_TEMP_MIN = 0;
 export const SESSION_START_TEMP_MAX = 150;
 
 /**
- * Delay before the readout starts, once `driver.firstOnTrack` fires. A short
- * beat after going on track feels more natural than the engineer blurting the
- * brief the instant the wheels move. The scenario holds the Voice bus for the
- * duration, so a higher-priority callout (e.g. meatball) can still preempt it.
+ * Delay before the where: predicate and sequence-expansion run, once
+ * `session.changed` fires for a practice or qualifying session. Implemented as
+ * the scenario's `triggerDelay` (NOT a leading `{ pause }` step) so iRacing's
+ * telemetry has a chance to settle before we read it.
+ *
+ * iRacing publishes `SessionNum`-changed ticks immediately on session
+ * transition, but `TrackWetness` (and a few other fields) can briefly read
+ * `Unknown` for a beat right at the transition. A leading `{ pause }` step
+ * inside the sequence does NOT help — vars are resolved at expansion time,
+ * synchronously when the where: returns true. By the time the pause's audio-
+ * gap actually plays, the var paths are already frozen. `triggerDelay`
+ * defers the entire fire decision so where: and var resolvers see fresh,
+ * settled telemetry.
  */
 export const SESSION_START_DELAY_MS = 3000;
 
@@ -181,17 +206,21 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
   return {
     id: "pit-crew.session-start",
     when: {
-      event: "driver.firstOnTrack",
+      event: "session.changed",
       where: () => {
         const snapshot = getSnapshot();
 
         if (snapshot === null) return false;
 
         // Race sessions are handled exclusively by the race-start scenario
-        // (issue #568) which fires earlier and reads the grid position. Without
-        // this gate the engineer would say both the race-start brief (~3 s
-        // after `session.changed`) and the session-start brief (on
-        // `driver.firstOnTrack` once the driver enters the car).
+        // (issue #568), which also fires on `session.changed`. Without this
+        // gate the engineer would double-greet on a race session.
+        //
+        // We read `snapshot.sessionType` (not `getSessionType()` from
+        // `@iracedeck/sim-events-iracing`) because the snapshot resolver is the
+        // injected seam: the scenario-harness drives it directly with no
+        // translator initialized, where `getSessionType()` would return `""`
+        // and misclassify every session as non-race.
         if (snapshot.sessionType === "race") return false;
 
         return true;
@@ -201,6 +230,10 @@ function sessionStartScenario(getSnapshot: SessionStartSnapshotResolver, sequenc
     bus: AudioBus.Voice,
     base: "voice/{voice}",
     family: "session-start",
+    // Defer where: + var resolution so telemetry has settled by the time we
+    // read TrackWetness / TrackTempCrew / AirTemp. See
+    // `SESSION_START_DELAY_MS` for the rationale.
+    triggerDelay: SESSION_START_DELAY_MS,
     sequence,
   };
 }
@@ -223,7 +256,6 @@ export function buildSessionStartScenario(
   getSetupWarningMismatch: (kind: "qualifying" | "race") => boolean = () => false,
 ): Scenario {
   const sequence: Step[] = [
-    { pause: SESSION_START_DELAY_MS },
     "@pit-crew.radio-open",
     { var: "sessionStart.greeting" },
     { var: "sessionStart.sessionLine" },
