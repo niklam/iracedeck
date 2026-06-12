@@ -20,12 +20,12 @@ Select the mode from the **Mode** dropdown in the Property Inspector. Voice Chat
 
 ### Push to Talk
 
-Hold voice chat push-to-talk for as long as the button is pressed. Release the button to stop transmitting. Works the same on a key and on a dial — pressing the dial holds, releasing the dial stops transmitting.
+Hold voice chat push-to-talk for as long as the button is pressed. Release the button to stop transmitting.
 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; press and hold the dial to transmit, release to stop
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -42,7 +42,7 @@ Control voice chat volume and mute.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts voice chat volume (clockwise = up, counter-clockwise = down) regardless of the Action setting; pressing the dial **always** toggles mute, even if the Action setting is Volume Up or Volume Down
+- **Dial:** No rotation support
 - **Default binding:** Depends on the selected action — see the **Action** setting below
 - **Telemetry-aware icon:** No
 
@@ -61,7 +61,7 @@ Control the iRacing master volume. The Master mode has no mute option — the Ac
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts master volume (clockwise = up, counter-clockwise = down) regardless of the Action setting; pressing the dial triggers the configured action
+- **Dial:** No rotation support
 - **Default binding:** Depends on the selected action — see the **Action** setting below
 - **Telemetry-aware icon:** No
 
@@ -79,7 +79,7 @@ Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the R
 #### Details
 
 - **Method:** iRaceDeck audio (no iRacing command)
-- **Dial:** Not supported yet — only key presses adjust the volume
+- **Dial:** No rotation support
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
 - **Telemetry-aware icon:** No
 
@@ -97,7 +97,7 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 #### Details
 
 - **Method:** iRaceDeck audio (no iRacing command)
-- **Dial:** Not supported yet — only key presses adjust the volume
+- **Dial:** No rotation support
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
 - **Telemetry-aware icon:** No
 

@@ -15,12 +15,12 @@ Select the mode from the **Mode** dropdown in the Property Inspector.
 
 ### Cycle Splits Delta
 
-Cycle through iRacing's splits delta display modes. When placed on a key, pressing the button sends the direction chosen in the **Direction** setting. When placed on a dial, rotating the dial cycles next / previous regardless of the Direction setting.
+Cycle through iRacing's splits delta display modes. Pressing the button sends the direction chosen in the **Direction** setting.
 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles splits delta modes (clockwise = next, counter-clockwise = previous); pressing the dial does nothing in this mode
+- **Dial:** No rotation support
 - **Default binding:** Depends on the selected direction — see the **Direction** setting below
 - **Telemetry-aware icon:** No
 

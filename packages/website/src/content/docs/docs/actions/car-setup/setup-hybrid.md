@@ -38,7 +38,7 @@ Adjust the MGU-K regeneration gain.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts MGU-K regen gain (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both MGU-K Re-Gen Gain + and MGU-K Re-Gen Gain - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -56,7 +56,7 @@ Step through the MGU-K deploy modes.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation steps through MGU-K deploy modes (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both MGU-K Deploy Mode + and MGU-K Deploy Mode - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -74,7 +74,7 @@ Adjust the fixed MGU-K deployment level.
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts the fixed deploy level (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both MGU-K Fixed Deploy + and MGU-K Fixed Deploy - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -92,7 +92,7 @@ Hold the HYS boost key for as long as the button is pressed. Release the button 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; press and hold the dial to boost, release to stop
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
@@ -109,7 +109,7 @@ Hold the HYS regen key for as long as the button is pressed. Release the button 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** No rotation support; press and hold the dial to regenerate, release to stop
+- **Dial:** No rotation support
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 

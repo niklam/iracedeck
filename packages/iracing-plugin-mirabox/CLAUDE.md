@@ -7,8 +7,7 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 ## Key Differences from iracing-plugin-stream-deck
 
 - Uses `VSDPlatformAdapter` instead of `ElgatoPlatformAdapter`
-- Manifest uses `"Knob"` instead of `"Encoder"` for dial actions
-- No `Encoder.layout` field (VSD doesn't support encoder layouts)
+- All actions are currently Keypad-only — do not add a `"Knob"` block (the VSD equivalent of Elgato's `"Encoder"`) to the manifest; dial support was de-claimed in issue #640 (see `.claude/rules/encoders-and-touchscreen.md` for the planned rebuild)
 - Uses `ws` package for WebSocket communication (VSD bundles Node.js 20)
 - `SDKVersion: 1` instead of `3`
 

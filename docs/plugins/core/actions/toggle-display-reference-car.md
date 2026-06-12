@@ -12,7 +12,7 @@ Toggles the reference car display for split-time comparison.
 | Type | Multi-toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Encoder Support | No |
 
 ## Migration
 

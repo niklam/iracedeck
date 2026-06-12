@@ -26,7 +26,7 @@
 
 ## Features
 
-**31 actions** with **262+ modes** across 8 categories, with Stream Deck+ dial rotation support on most modes:
+**31 actions** with **262+ modes** across 8 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |

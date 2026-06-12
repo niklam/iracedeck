@@ -10,7 +10,7 @@ Manages fuel pit stop settings: toggle fueling, add/reduce/set fuel amounts, cle
 | Type | Multi-toggle |
 | SDK Support | Yes (toggle, clear) / No (macros, keyboard modes) |
 | Communication Method | iRacing API (varies by mode — see note) |
-| Encoder Support | Yes |
+| Encoder Support | No |
 
 > **Communication method by mode:** Toggle Fuel Fill and Clear Fuel Checkbox use the **iRacing API**; Add Fuel, Reduce Fuel, and Set Fuel Amount use **Chat command** (`#fuel` macros); Toggle Autofuel and Lap Margin Increase/Decrease use **Key binding**.
 
@@ -24,11 +24,6 @@ Manages fuel pit stop settings: toggle fueling, add/reduce/set fuel amounts, cle
 - **Clear Fuel Checkbox**: Clears the fuel fill checkbox (SDK)
 - **Toggle Autofuel**: Toggles autofuel via keyboard binding
 - **Lap Margin Increase/Decrease**: Adjusts autofuel lap margin via keyboard binding
-
-### Encoder
-- **Rotate clockwise**: Executes the current mode action (or paired increase)
-- **Rotate counter-clockwise**: Executes the opposite action (or paired decrease)
-- **Press**: Same as button press
 
 ### Long-Press (Add/Reduce only)
 Holding the button repeats the action every 250ms.

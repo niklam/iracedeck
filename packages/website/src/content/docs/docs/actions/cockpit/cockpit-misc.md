@@ -54,7 +54,7 @@ Adjust the force feedback maximum force. The **Direction** setting picks whether
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation adjusts FFB max force (clockwise = increase, counter-clockwise = decrease), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both FFB Force Increase and FFB Force Decrease must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -89,7 +89,7 @@ Cycle through the pages on dashboard display 1. The **Direction** setting picks 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles dash page 1 (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both Dash Page 1 + and Dash Page 1 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 
@@ -107,7 +107,7 @@ Cycle through the pages on dashboard display 2. The **Direction** setting picks 
 #### Details
 
 - **Method:** Key binding
-- **Dial:** Rotation cycles dash page 2 (clockwise = next, counter-clockwise = previous), regardless of the Direction setting
+- **Dial:** No rotation support
 - **Default binding:** No default key binding — both Dash Page 2 + and Dash Page 2 - must be configured in iRacing and in the Property Inspector
 - **Telemetry-aware icon:** No
 

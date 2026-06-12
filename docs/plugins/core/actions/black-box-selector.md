@@ -10,18 +10,13 @@ Cycles through or directly selects iRacing black box screens.
 | Type | Multi-toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Encoder Support | No |
 
 ## Behavior
 
 ### Button Press
 - **Direct mode**: Opens the selected black box immediately
 - **Next/Previous mode**: Cycles to the next or previous black box
-
-### Encoder
-- **Rotate clockwise**: Next black box
-- **Rotate counter-clockwise**: Previous black box
-- **Press**: Opens the currently selected black box
 
 ## Settings
 
