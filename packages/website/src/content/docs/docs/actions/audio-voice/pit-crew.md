@@ -86,16 +86,16 @@ The engineer also calls out every iRacing-reported pit-service status transition
 
 ## Start Lights
 
-On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. As the lights come up the engineer says *"Get ready — lights coming up."*, then *"Lights are red. Focus."* when the lights go solid red, and *"Go, go, go!"* the instant they drop and the race is live. The red-lights and go calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment.
+On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. The moment the gantry shows its ready state the engineer says *"Lights. Get ready to go."*, and *"Go, go, go!"* the instant the lights drop and the race is live. Both calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment. (Nothing is spoken when the lights go solid red — by then the start is moments away and a callout would land too late to act on.)
 
-When iRacing supplies a real pre-start countdown, the engineer also speaks the numeric marks — *"Sixty seconds."*, *"Thirty."*, *"Fifteen."*, *"Ten."*, *"Five."* — as the clock crosses each threshold. The countdown is **standing-start only** and is automatically suppressed for AI races and short pre-start procedures, where the window is too compressed for the numbers to be useful (you'll still get the gantry lines). It announces only the marks that genuinely fall inside the live countdown window, so a short procedure that starts below sixty seconds simply skips the higher numbers rather than blurting a stale burst.
+During the pre-start countdown the engineer also speaks the numeric marks — *"Ninety seconds to race start."*, *"Sixty seconds to race start."*, *"Thirty seconds to race start."*, *"Ten seconds to race start."* — as the clock crosses each threshold. The countdown is **standing-start only** and announces only the marks that genuinely fall inside the live countdown window, so a compressed procedure (a short pre-start, an AI race) that starts below a mark simply skips the higher numbers rather than blurting a stale burst.
 
 On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as you begin the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
 
 Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Property Inspector, both on by default:
 
-- **Start lights** — the three gantry lines (get ready / lights are red / go).
-- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five).
+- **Start lights** — the two gantry lines (get ready / go).
+- **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten).
 
 ## Rolling Start
 
@@ -258,8 +258,8 @@ Disabling a flag also disables its preemption — a disabled callout can't inter
 
 Under **Start Lights**, two callouts are toggleable independently, both enabled by default (see [Start Lights](#start-lights) above for the full behavior):
 
-- **Start lights** — the three standing-start gantry lines (get ready / lights are red / go). Disabling silences the gantry calls without affecting the numeric countdown.
-- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
+- **Start lights** — the two standing-start gantry lines (get ready / go). Disabling silences the gantry calls without affecting the numeric countdown.
+- **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
 
 Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
 

@@ -347,9 +347,9 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
 /**
  * Stable identifier for each user-toggleable start-light callout (issue #480).
  * Two grouped subjects (mirrors the pit-box "many scenarios → one subject"
- * precedent): `lights` covers the two gantry lines (set / go) and `countdown`
- * covers the three numeric pre-start marks. The user gets two checkboxes for
- * the whole family rather than five.
+ * precedent): `lights` covers the two gantry lines (ready / go — #673) and
+ * `countdown` covers the four numeric pre-start marks. The user gets two
+ * checkboxes for the whole family rather than six.
  */
 export type StartLightCalloutId = "lights" | "countdown";
 
@@ -364,8 +364,9 @@ export const START_LIGHT_CALLOUT_SETTING_KEYS: Record<StartLightCalloutId, strin
 };
 
 const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
-  "pit-crew.start-light-set": "lights",
+  "pit-crew.start-light-ready": "lights",
   "pit-crew.start-light-go": "lights",
+  "pit-crew.start-light-countdown-90": "countdown",
   "pit-crew.start-light-countdown-60": "countdown",
   "pit-crew.start-light-countdown-30": "countdown",
   "pit-crew.start-light-countdown-10": "countdown",

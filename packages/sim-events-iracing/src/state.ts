@@ -142,9 +142,10 @@ export type TranslatorState = {
    */
   startLightInitialized: boolean;
   /**
-   * Previous-tick value of the three gantry bits (`StartReady | StartSet |
+   * Previous-tick value of the two edge-detected gantry bits (`StartReady |
    * StartGo`) masked out of `SessionFlags`. Drives the rising-edge gantry
-   * emissions.
+   * emissions (issue #673 — the heads-up line fires on Ready; nothing is
+   * emitted for `StartSet`).
    */
   lastStartLightBits: number;
   /**

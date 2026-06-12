@@ -1,7 +1,7 @@
 /**
- * Start-light family scenarios (issue #480).
+ * Start-light family scenarios (issues #480 / #673).
  *
- * Two gantry lines (set / go) plus a three-mark numeric pre-start
+ * Two gantry lines (ready / go) plus a four-mark numeric pre-start
  * countdown. Each callout wraps its clip in the shared radio frame
  * (`@pit-crew.radio-open` / `@pit-crew.radio-close`) so the engineer voice
  * matches every other Pit Crew message.
@@ -10,17 +10,20 @@
  * pool defined in `pools.ts` under the `start-light-` prefix, so a future
  * variant pack is a one-line append there.
  *
- * **Family preemption.** All five share `family: "start-light"` so a newer
- * start-light callout supersedes the in-flight one — e.g. `start-set` arriving
- * while `start-go` is mid-clip, or a faster-than-expected light sequence, never
- * stacks two gantry lines back-to-back; whichever fires last wins.
+ * **Family preemption.** All six share `family: "start-light"` so a newer
+ * start-light callout supersedes the in-flight one — e.g. `start-ready`
+ * arriving while a countdown number is mid-clip, or a faster-than-expected
+ * light sequence, never stacks two lines back-to-back; whichever fires last
+ * wins.
  *
- * **Weights.** The three countdown numbers sit at `WEIGHT.NORMAL` — pre-race,
- * low-stakes information (lowered from `SAFETY` by issue #666). `start-set` and
- * `start-go` are `WEIGHT.CRITICAL` + `interrupt: true` — "lights are red" and
- * "go, go, go!" must cut anything in flight. The countdown numbers are
- * `queueable: false`: a number that can't take the bus right now is dropped
- * rather than replayed stale a beat later.
+ * **Weights.** The four countdown numbers sit at `WEIGHT.NORMAL` — pre-race,
+ * low-stakes information (lowered from `SAFETY` by issue #666). `start-ready`
+ * and `start-go` are `WEIGHT.CRITICAL` + `interrupt: true` — "lights are up"
+ * and "go, go, go!" must cut anything in flight. (The heads-up line fires on
+ * the `StartReady` edge — issue #673; the procedure is Ready → Set → Go and
+ * `StartSet` lights too late to be useful, so nothing is spoken there.) The
+ * countdown numbers are `queueable: false`: a number that can't take the bus
+ * right now is dropped rather than replayed stale a beat later.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
@@ -46,16 +49,16 @@ function startLightSequence(steps: Step[]): Step[] {
 const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   isRaceSession(getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
-const START_SET: Scenario = {
-  id: "pit-crew.start-light-set",
+const START_READY: Scenario = {
+  id: "pit-crew.start-light-ready",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
   base: "voice/{voice}",
   weight: WEIGHT.CRITICAL,
   interrupt: true,
   family: "start-light",
-  sequence: startLightSequence(["pool:start-light-set"]),
-  when: { event: "startLight.start-set.raised", where: liveRaceCar },
+  sequence: startLightSequence(["pool:start-light-ready"]),
+  when: { event: "startLight.start-ready.raised", where: liveRaceCar },
 };
 
 const START_GO: Scenario = {
@@ -71,13 +74,13 @@ const START_GO: Scenario = {
 };
 
 /**
- * The three numeric countdown marks. One event (`startLight.countdown.raised`)
+ * The four numeric countdown marks. One event (`startLight.countdown.raised`)
  * carries the `seconds` payload; each scenario filters `where: seconds === N`
  * and draws from its own `start-light-countdown-<N>` pool (mirrors pit-box's
  * one-event-per-mark shape). All under the single `calloutEnabledStartCountdown`
  * opt-in via `SCENARIO_ID_TO_START_LIGHT_ID`.
  */
-const COUNTDOWN_SECONDS: readonly StartCountdownSeconds[] = [60, 30, 10];
+const COUNTDOWN_SECONDS: readonly StartCountdownSeconds[] = [90, 60, 30, 10];
 
 function countdownScenario(seconds: StartCountdownSeconds): Scenario {
   return {
@@ -97,7 +100,7 @@ function countdownScenario(seconds: StartCountdownSeconds): Scenario {
 }
 
 export const START_LIGHT_ALERTS: readonly Scenario[] = [
-  START_SET,
+  START_READY,
   START_GO,
   ...COUNTDOWN_SECONDS.map(countdownScenario),
 ];
