@@ -1,6 +1,6 @@
 ---
 title: Template Variables
-description: iRacing telemetry and session variables available for Mustache templates in Telemetry Display and Chat actions, plus expression syntax for calculated values.
+description: iRacing telemetry and session variables available for Mustache templates in the Telemetry Display, Chat, and Race Admin actions, plus expression syntax for calculated values.
 ---
 
 These are the variables available for use in Mustache templates. Use them with the `{{variable}}` syntax to display live iRacing data on your Stream Deck buttons or include dynamic values in chat messages, or compute calculated values with the `{{= expression }}` syntax (see [Expressions](#expressions)).
@@ -8,6 +8,7 @@ These are the variables available for use in Mustache templates. Use them with t
 Template variables are supported by:
 - [Telemetry Display](/docs/actions/display-session/telemetry-display/) — show any variable on a Stream Deck button
 - [Chat](/docs/actions/communication/chat/) — include variables in custom chat messages
+- [Race Admin](/docs/actions/communication/race-admin/) — include variables in admin message templates
 
 ## Expressions
 
@@ -41,7 +42,7 @@ Templates also support calculated values with the `{{= expression }}` syntax. Th
 
 ### Result formatting
 
-Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals when it is the outermost part of the expression (or the chosen branch of a ternary) — `{{= round(10 / 2, 1) }}` renders `5.0`. When its result feeds another operator (like `+` concatenation), the decimals hint is dropped and the final value uses the default formatting instead. Boolean results render `Yes`/`No`.
+Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals when it is the outermost part of the expression (or the chosen branch of a ternary) — `{{= round(10 / 2, 1) }}` renders `5.0`. When its result feeds another operator or function (like `+` concatenation or `abs(...)`), the decimals hint is dropped and the final value uses the default formatting instead. Boolean results render `Yes`/`No`.
 
 ### Expressions use raw values
 
