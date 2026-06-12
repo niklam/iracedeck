@@ -866,9 +866,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `state.lastSessionNum`) means the tracker survives the replay guard's
   // per-tick state wipes that would otherwise null out the comparison
   // baseline and let the transition slip past. The reset wipes `state` and
-  // clears `firstOnTrackFired` so the `driver.firstOnTrack` event (consumed by
-  // the welcome callout) re-fires on the next live-on-track tick.
-  // `session.changed` is published from here
+  // clears `firstOnTrackFired` so the `driver.firstOnTrack` event (reserved
+  // for the not-yet-registered welcome scenario) re-fires on the next
+  // live-on-track tick. `session.changed` is published from here
   // directly (not via diffLifecycle's `emit` aggregator) so the event reaches
   // subscribers even when the replay state wipe later this tick destroys
   // `state.lastSessionNum` — the race-start callout (issue #568) depends on
