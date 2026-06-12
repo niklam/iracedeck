@@ -1078,7 +1078,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
-  diffFlags(self.state, telemetry, emit);
+  diffFlags(self.state, telemetry, now, emit);
   // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
   // diffFlags (after the replay guard) and reads the already-resolved
   // `sessionInfo` for the standing-start / AI-race gates.

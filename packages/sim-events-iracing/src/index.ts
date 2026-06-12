@@ -29,6 +29,7 @@ export {
   type OvertakeTelemetryGate,
 } from "./translator.js";
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
+export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";

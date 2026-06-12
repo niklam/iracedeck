@@ -1,12 +1,12 @@
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { FLAG_ALERTS, FLAG_POOL_NAMES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
+import { FLAG_ALERTS, FLAG_POOL_NAMES, FLAG_SCENARIO_IDS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
@@ -282,13 +282,33 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled is queueable (defers behind a busy bus) — and it's the only flag that is", () => {
-    expect(findScenario("pit-crew.flag-furled").queueable).toBe(true);
+  it("furled and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-yellow-cleared"];
+
+    for (const id of queueableIds) {
+      expect(findScenario(id).queueable).toBe(true);
+    }
 
     for (const s of FLAG_ALERTS) {
-      if (s.id === "pit-crew.flag-furled") continue;
+      if (queueableIds.includes(s.id)) continue;
 
       expect(s.queueable).not.toBe(true);
+    }
+  });
+
+  // Issue #671 — iRacing re-raises the waving bits on every zone re-approach
+  // while an incident persists; the 30 s cooldown collapses the repeats.
+  it("the waving scenarios carry the 30 s cooldown — and they're the only flags that do", () => {
+    const cooldownIds = ["pit-crew.flag-yellow-waving", "pit-crew.flag-caution-waving"];
+
+    for (const id of cooldownIds) {
+      expect(findScenario(id).cooldown).toBe(WAVING_FLAG_COOLDOWN_MS);
+    }
+
+    for (const s of FLAG_ALERTS) {
+      if (cooldownIds.includes(s.id)) continue;
+
+      expect(s.cooldown).toBeUndefined();
     }
   });
 
@@ -586,6 +606,90 @@ describe("FLAG_ALERTS preemption", () => {
     flush(audio);
 
     expect(lastVoiceClip()).toBe("voice/luca/flags/red-01.mp3");
+  });
+});
+
+// Issue #671 — "no Yellow cleared heard": `flag.yellow.cleared` is a one-shot
+// event, so a non-queueable cleared callout arriving while an equal-weight
+// non-flag line held the Voice bus was silently dropped. And iRacing re-raises
+// the waving bits on every re-approach of a persistent incident zone, replaying
+// the waving callout each pass — debounced with a 30 s cooldown (CrewChief's
+// `timeBetweenYellowFlagMessages`).
+describe("FLAG_ALERTS yellow-cleared delivery + waving debounce (issue #671)", () => {
+  it("plays yellow-cleared after a completed yellow-waving callout (the #671 regression sequence)", () => {
+    bus.publishEvent("flag.yellow-waving.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/yellow-waving-01.mp3"]);
+
+    bus.publishEvent("flag.yellow.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      "voice/luca/flags/yellow-waving-01.mp3",
+      "voice/luca/flags/yellow-cleared-01.mp3",
+    ]);
+  });
+
+  it("yellow-cleared preempts an in-flight yellow-waving callout (same family)", () => {
+    bus.publishEvent("flag.yellow-waving.raised", {});
+    // Don't flush — the waving callout is still mid-playback.
+    bus.publishEvent("flag.yellow.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().at(-1)).toBe("voice/luca/flags/yellow-cleared-01.mp3");
+  });
+
+  it("yellow-cleared defers behind an equal-weight non-flag line and replays at idle (queueable)", () => {
+    // A stand-in for a spotter call / pit chatter: same Voice bus, same SAFETY
+    // weight, NOT in the flag family — so the cleared fire can't take the bus
+    // and can't family-preempt. Pre-#671 it was dropped here.
+    engine.defineScenario({
+      id: "test.blocker",
+      when: { event: "incident.occurred" },
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["flags/red-01.mp3"],
+    });
+
+    bus.publishEvent("incident.occurred", { delta: 1, type: "off-track" });
+    // Don't flush — the blocker holds the Voice bus.
+    bus.publishEvent("flag.yellow.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      "voice/luca/flags/red-01.mp3",
+      "voice/luca/flags/yellow-cleared-01.mp3",
+    ]);
+  });
+
+  it.each([
+    { event: "flag.yellow-waving.raised" as const, clip: "voice/luca/flags/yellow-waving-01.mp3" },
+    { event: "flag.caution-waving.raised" as const, clip: "voice/luca/flags/caution-waving-01.mp3" },
+  ])("$event re-raised within 30 s is debounced; fires again after the cooldown", ({ event, clip }) => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    bus.publishEvent(event, {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().filter((p) => p === clip)).toHaveLength(1);
+
+    // Re-approach the incident 10 s later — iRacing re-raises the bit.
+    now += 10_000;
+    bus.publishEvent(event, {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().filter((p) => p === clip)).toHaveLength(1);
+
+    // Past the cooldown window the incident is still out there — call it again.
+    now += WAVING_FLAG_COOLDOWN_MS;
+    bus.publishEvent(event, {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().filter((p) => p === clip)).toHaveLength(2);
   });
 });
 

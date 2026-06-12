@@ -268,12 +268,12 @@
       },
       {
         "name": "yellow-waving-01",
-        "text": "Local yellow waving. <break time=\"0.3s\" /> Slow, hazard ahead!",
+        "text": "Yellow flag",
         "seed": 3
       },
       {
         "name": "caution-waving-01",
-        "text": "Caution coming out!",
+        "text": "Caution is out. <break time=\"0.3s\" /> Slow down and close up safely.",
         "seed": 3
       }
     ],

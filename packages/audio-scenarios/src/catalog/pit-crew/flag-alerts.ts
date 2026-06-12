@@ -31,6 +31,14 @@
  * fits after a race; a green-flag "push now!" only fits a race start).
  * Each scenario nests `if`-step branches on `getSessionType()` to pick
  * the right pool at fire time.
+ *
+ * **Yellow-cleared delivery + waving debounce (issue #671).**
+ * `flag.yellow.cleared` is a one-shot event, so the cleared scenario is
+ * `queueable` — a fire deferred behind an equal-weight non-flag line
+ * (spotter call, pit chatter) replays when the bus idles instead of being
+ * silently dropped. The waving scenarios carry a 30 s `cooldown`
+ * ({@link WAVING_FLAG_COOLDOWN_MS}) because iRacing re-raises the waving
+ * bits on every re-approach of a persistent incident zone.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
@@ -103,8 +111,14 @@ const YELLOW_FULL: Scenario = {
   },
 };
 
+// `queueable: true` (issue #671) mirrors the FURLED precedent below: the
+// cleared event is one-shot and the all-clear is a sustained state, so a fire
+// deferred behind an equal-weight line (spotter call, pit chatter) must replay
+// when the bus idles instead of being dropped — the "no Yellow cleared heard"
+// bug.
 const YELLOW_CLEARED: Scenario = {
   ...flagScenario("yellow-cleared", ["pool:flag-yellow-cleared"]),
+  queueable: true,
   when: { event: "flag.yellow.cleared" },
 };
 
@@ -252,16 +266,29 @@ const FIVE_TO_GO: Scenario = {
   when: { event: "flag.five-to-go.raised", where: liveRaceCar },
 };
 
+/**
+ * Issue #671 — iRacing re-raises the waving bits on every zone re-approach
+ * while an incident persists; the cooldown collapses the repeats to one
+ * callout per 30 s window, mirroring CrewChief's
+ * `timeBetweenYellowFlagMessages`.
+ */
+export const WAVING_FLAG_COOLDOWN_MS = 30_000;
+
 // Caution-waving variants (issue #480) — separate, more-urgent callouts than the
 // base static yellows. The translator's reworked yellow detection guarantees a
-// base yellow and its waving variant never double-fire.
+// base yellow and its waving variant never double-fire. Both carry the 30 s
+// cooldown (issue #671): the iRacing YellowWaving bit re-raises each time the
+// player re-approaches a persistent incident, which replayed the callout on
+// every pass.
 const YELLOW_WAVING: Scenario = {
   ...flagScenario("yellow-waving", ["pool:flag-yellow-waving"]),
+  cooldown: WAVING_FLAG_COOLDOWN_MS,
   when: { event: "flag.yellow-waving.raised" },
 };
 
 const CAUTION_WAVING: Scenario = {
   ...flagScenario("caution-waving", ["pool:flag-caution-waving"]),
+  cooldown: WAVING_FLAG_COOLDOWN_MS,
   when: { event: "flag.caution-waving.raised" },
 };
 
