@@ -10,6 +10,7 @@ import {
   resolveRacePositions,
   splitDriverName,
 } from "./template-context.js";
+import { resolveTemplate } from "./template-resolver.js";
 import type { SessionInfo } from "./types.js";
 import type { TelemetryData } from "./types.js";
 
@@ -340,16 +341,16 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry();
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx["self.name"]).toBe("John Smith");
-    expect(ctx["self.first_name"]).toBe("John");
-    expect(ctx["self.last_name"]).toBe("Smith");
-    expect(ctx["self.position"]).toBe("2");
-    expect(ctx["self.incidents"]).toBe("3");
-    expect(ctx["session.type"]).toBe("Race");
-    expect(ctx["session.laps_remaining"]).toBe("10");
-    expect(ctx["session.time_remaining"]).toBe("61:01");
-    expect(ctx["track.name"]).toBe("Spa-Francorchamps");
-    expect(ctx["track.short_name"]).toBe("Spa");
+    expect(ctx.display["self.name"]).toBe("John Smith");
+    expect(ctx.display["self.first_name"]).toBe("John");
+    expect(ctx.display["self.last_name"]).toBe("Smith");
+    expect(ctx.display["self.position"]).toBe("2");
+    expect(ctx.display["self.incidents"]).toBe("3");
+    expect(ctx.display["session.type"]).toBe("Race");
+    expect(ctx.display["session.laps_remaining"]).toBe("10");
+    expect(ctx.display["session.time_remaining"]).toBe("61:01");
+    expect(ctx.display["track.name"]).toBe("Spa-Francorchamps");
+    expect(ctx.display["track.short_name"]).toBe("Spa");
   });
 
   it("should return empty fields with null telemetry", () => {
@@ -357,19 +358,19 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect(ctx["self.position"]).toBe("");
-    expect(ctx["self.incidents"]).toBe("");
-    expect(ctx["track_ahead.name"]).toBe("");
-    expect(ctx["track_behind.name"]).toBe("");
+    expect(ctx.display["self.position"]).toBe("");
+    expect(ctx.display["self.incidents"]).toBe("");
+    expect(ctx.display["track_ahead.name"]).toBe("");
+    expect(ctx.display["track_behind.name"]).toBe("");
   });
 
   it("should return empty fields with null session info", () => {
     const ctx = buildTemplateContextFromData(null, null);
 
-    expect(ctx["self.name"]).toBe("");
-    expect(ctx["track_ahead.name"]).toBe("");
-    expect(ctx["session.type"]).toBe("");
-    expect(ctx["track.name"]).toBe("");
+    expect(ctx.display["self.name"]).toBe("");
+    expect(ctx.display["track_ahead.name"]).toBe("");
+    expect(ctx.display["session.type"]).toBe("");
+    expect(ctx.display["track.name"]).toBe("");
   });
 
   it("should populate race_ahead and race_behind from race position", () => {
@@ -383,8 +384,8 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({ CarIdxPosition: [2, 1, 3] });
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx["race_ahead.name"]).toBe("P1 Driver");
-    expect(ctx["race_behind.name"]).toBe("P3 Driver");
+    expect(ctx.display["race_ahead.name"]).toBe("P1 Driver");
+    expect(ctx.display["race_behind.name"]).toBe("P3 Driver");
   });
 
   it("should use player-specific telemetry for self fields in non-race sessions", () => {
@@ -405,11 +406,11 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx["self.position"]).toBe("5");
-    expect(ctx["self.class_position"]).toBe("3");
-    expect(ctx["self.lap"]).toBe("12");
-    expect(ctx["self.laps_completed"]).toBe("11");
-    expect(ctx["self.incidents"]).toBe("7");
+    expect(ctx.display["self.position"]).toBe("5");
+    expect(ctx.display["self.class_position"]).toBe("3");
+    expect(ctx.display["self.lap"]).toBe("12");
+    expect(ctx.display["self.laps_completed"]).toBe("11");
+    expect(ctx.display["self.incidents"]).toBe("7");
   });
 
   it("should use calculated positions for race sessions", () => {
@@ -431,8 +432,8 @@ describe("buildTemplateContextFromData", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     // self.position should reflect calculated P1, not PlayerCarPosition (2)
-    expect(ctx["self.position"]).toBe("1");
-    expect(ctx["race_behind.name"]).toBe("Leader"); // Car 1 at P2 is behind player at P1
+    expect(ctx.display["self.position"]).toBe("1");
+    expect(ctx.display["race_behind.name"]).toBe("Leader"); // Car 1 at P2 is behind player at P1
   });
 
   it("should use native CarIdxPosition for non-race sessions", () => {
@@ -457,7 +458,7 @@ describe("buildTemplateContextFromData", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     // Non-race: should use PlayerCarPosition (2), not calculated (1)
-    expect(ctx["self.position"]).toBe("2");
+    expect(ctx.display["self.position"]).toBe("2");
   });
 
   it("should use official position for player on pit road in race session", () => {
@@ -479,7 +480,7 @@ describe("buildTemplateContextFromData", () => {
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
     // Player on pit road: self.position should use PlayerCarPosition=2, not calculated P1
-    expect(ctx["self.position"]).toBe("2");
+    expect(ctx.display["self.position"]).toBe("2");
   });
 
   it("should use official position for other car on pit road in race session", () => {
@@ -507,8 +508,8 @@ describe("buildTemplateContextFromData", () => {
     // Resolved: car 0=P2 (calculated), car 1=P2 (official, on pit road), car 2=P3 (calculated)
     // Player position is P2, so race_ahead is position 1 → no driver has position 1 in resolved
     // Let's check: player is at resolved[0]=P2, race_behind is position 3 = car 2
-    expect(ctx["race_behind.name"]).toBe("Third");
-    expect(ctx["race_behind.position"]).toBe("3");
+    expect(ctx.display["race_behind.name"]).toBe("Third");
+    expect(ctx.display["race_behind.position"]).toBe("3");
   });
 
   it("should fall back to official position when calculated is unavailable in race session", () => {
@@ -531,7 +532,7 @@ describe("buildTemplateContextFromData", () => {
 
     // Car 0 is inactive (calculated=0), falls back to official CarIdxPosition=2
     // PlayerCarPosition is also used for self.position fallback
-    expect(ctx["self.position"]).toBe("2");
+    expect(ctx.display["self.position"]).toBe("2");
   });
 
   it("should include telemetry with prefix and formatted values", () => {
@@ -547,11 +548,11 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx["telemetry.Speed"]).toBe("156.79");
-    expect(ctx["telemetry.OilTemp"]).toBe("95");
-    expect(ctx["telemetry.IsOnTrack"]).toBe("Yes");
-    expect(ctx["telemetry.CarIdxLap"]).toBeUndefined();
-    expect(ctx["telemetry.CarIdxPosition"]).toBeUndefined();
+    expect(ctx.display["telemetry.Speed"]).toBe("156.79");
+    expect(ctx.display["telemetry.OilTemp"]).toBe("95");
+    expect(ctx.display["telemetry.IsOnTrack"]).toBe("Yes");
+    expect(ctx.display["telemetry.CarIdxLap"]).toBeUndefined();
+    expect(ctx.display["telemetry.CarIdxPosition"]).toBeUndefined();
   });
 
   it("should include sessionInfo with prefix and nested dot-notation", () => {
@@ -559,15 +560,115 @@ describe("buildTemplateContextFromData", () => {
     const sessionInfo = makeSessionInfo(drivers, 0);
     const ctx = buildTemplateContextFromData(null, sessionInfo);
 
-    expect(ctx["sessionInfo.WeekendInfo.TrackDisplayName"]).toBe("Spa-Francorchamps");
-    expect(ctx["sessionInfo.WeekendInfo.TrackDisplayShortName"]).toBe("Spa");
+    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayName"]).toBe("Spa-Francorchamps");
+    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayShortName"]).toBe("Spa");
   });
 
   it("should return empty telemetry and sessionInfo with null data", () => {
     const ctx = buildTemplateContextFromData(null, null);
 
-    expect(ctx["telemetry.Speed"]).toBeUndefined();
-    expect(ctx["sessionInfo.WeekendInfo.TrackDisplayName"]).toBeUndefined();
+    expect(ctx.display["telemetry.Speed"]).toBeUndefined();
+    expect(ctx.display["sessionInfo.WeekendInfo.TrackDisplayName"]).toBeUndefined();
+  });
+});
+
+describe("buildTemplateContextFromData raw map", () => {
+  it("should keep full-precision numbers in raw while display is formatted", () => {
+    const telemetry = makeTelemetry({ Speed: 156.789 } as Partial<TelemetryData>);
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0 })], 0);
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["telemetry.Speed"]).toBe(156.789);
+    expect(ctx.display["telemetry.Speed"]).toBe("156.79");
+  });
+
+  it("should keep booleans as booleans in raw while display is Yes/No", () => {
+    const telemetry = makeTelemetry({ IsOnTrack: true } as Partial<TelemetryData>);
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0 })], 0);
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["telemetry.IsOnTrack"]).toBe(true);
+    expect(ctx.display["telemetry.IsOnTrack"]).toBe("Yes");
+  });
+
+  it("should keep boolean-semantic integer fields as 0/1 numbers in raw while display is Yes/No", () => {
+    const telemetry = makeTelemetry({ PushToPass: 1 } as unknown as Partial<TelemetryData>);
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0 })], 0);
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["telemetry.PushToPass"]).toBe(1);
+    expect(ctx.display["telemetry.PushToPass"]).toBe("Yes");
+  });
+
+  it("should keep driver position as a number in raw while display is a string", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0 })], 0);
+    const telemetry = makeTelemetry();
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    expect(ctx.raw["self.position"]).toBe(Number(ctx.display["self.position"]));
+    expect(typeof ctx.raw["self.position"]).toBe("number");
+    expect(typeof ctx.display["self.position"]).toBe("string");
+  });
+
+  it("should omit missing numeric driver fields from raw but keep empty string in display", () => {
+    const sessionInfo = makeSessionInfo([makeDriver({ CarIdx: 0 })], 0);
+
+    const ctx = buildTemplateContextFromData(null, sessionInfo);
+
+    expect("self.position" in ctx.raw).toBe(false);
+    expect(ctx.display["self.position"]).toBe("");
+  });
+
+  it("should produce essentially empty maps with null telemetry and session info", () => {
+    const ctx = buildTemplateContextFromData(null, null);
+
+    expect(ctx.raw["telemetry.Speed"]).toBeUndefined();
+    expect("self.position" in ctx.raw).toBe(false);
+    expect(ctx.raw["self.name"]).toBe("");
+    expect(ctx.display["self.name"]).toBe("");
+  });
+
+  it("should keep sessionInfo numbers full-precision in raw", () => {
+    const sessionInfo = {
+      DriverInfo: {
+        DriverCarIdx: 0,
+        DriverCarFuelKgPerLtr: 0.75,
+        Drivers: [makeDriver({ CarIdx: 0 })],
+      },
+      WeekendInfo: { TrackDisplayName: "Spa", TrackDisplayShortName: "Spa" },
+      SessionInfo: { Sessions: [{ SessionType: "Race", SessionName: "RACE" }] },
+    } as unknown as SessionInfo;
+
+    const ctx = buildTemplateContextFromData(null, sessionInfo);
+
+    expect(ctx.raw["sessionInfo.DriverInfo.DriverCarFuelKgPerLtr"]).toBe(0.75);
+    expect(ctx.display["sessionInfo.DriverInfo.DriverCarFuelKgPerLtr"]).toBe("0.75");
+  });
+
+  it("should resolve the fuel-add expression end to end with a real built context", () => {
+    const sessionInfo = {
+      DriverInfo: {
+        DriverCarIdx: 0,
+        DriverCarFuelKgPerLtr: 0.75,
+        Drivers: [makeDriver({ CarIdx: 0 })],
+      },
+      WeekendInfo: { TrackDisplayName: "Spa", TrackDisplayShortName: "Spa" },
+      SessionInfo: { Sessions: [{ SessionType: "Race", SessionName: "RACE" }] },
+    } as unknown as SessionInfo;
+    const telemetry = makeTelemetry({ dpFuelAddKg: 20 } as Partial<TelemetryData>);
+
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+
+    const result = resolveTemplate(
+      "{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 1) }}",
+      ctx,
+    );
+
+    expect(result).toBe("100.9");
   });
 });
 

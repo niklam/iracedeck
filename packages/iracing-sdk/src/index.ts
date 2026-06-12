@@ -111,6 +111,7 @@ export {
   findDriverByRacePosition,
   formatTimeRemaining,
   type TemplateContext,
+  type TemplateValue,
 } from "./template-context.js";
 
 // Track utilities
