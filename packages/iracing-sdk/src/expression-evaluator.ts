@@ -59,7 +59,11 @@ const FUNCTION_NAMES: readonly FunctionName[] = ["round", "floor", "ceil", "abs"
 
 const MAX_ROUND_DECIMALS = 20;
 
-const MAX_EXPRESSION_LENGTH = 1000;
+/**
+ * Maximum accepted expression length. Bounds tokenizer/parser recursion depth
+ * and is the single source for the template resolver's scan bound.
+ */
+export const MAX_EXPRESSION_LENGTH = 1000;
 
 function isDigit(ch: string | undefined): boolean {
   return ch !== undefined && ch >= "0" && ch <= "9";
@@ -481,18 +485,6 @@ function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-function stringifyValue(value: ExpressionValue): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  return formatNumber(value);
-}
-
 function isTruthy(value: ExpressionValue): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -529,13 +521,17 @@ function evaluateBinary(
   node: Extract<ExprNode, { type: "binary" }>,
   vars: Record<string, ExpressionValue>,
 ): EvalResult {
-  const left = evaluateAst(node.left, vars).value;
-  const right = evaluateAst(node.right, vars).value;
+  const leftResult = evaluateAst(node.left, vars);
+  const rightResult = evaluateAst(node.right, vars);
+  const left = leftResult.value;
+  const right = rightResult.value;
 
   switch (node.op) {
     case "+":
       if (typeof left === "string" || typeof right === "string") {
-        return { value: stringifyValue(left) + stringifyValue(right) };
+        // Each operand formats with its own fixedDecimals hint so
+        // round(x, n) keeps its precision inside concatenation.
+        return { value: formatResult(leftResult) + formatResult(rightResult) };
       }
 
       return { value: toNumber(left) + toNumber(right) };

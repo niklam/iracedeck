@@ -42,7 +42,7 @@ Templates also support calculated values with the `{{= expression }}` syntax. Th
 
 ### Result formatting
 
-Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals when it is the outermost part of the expression (or the chosen branch of a ternary) — `{{= round(10 / 2, 1) }}` renders `5.0`. When its result feeds another operator or function (like `+` concatenation or `abs(...)`), the decimals hint is dropped and the final value uses the default formatting instead. Boolean results render `Yes`/`No`.
+Whole-number results render bare (`5`); other numbers render with 2 decimals by default (`0.33`). `round(x, decimals)` renders with exactly that many decimals wherever its result becomes text — as the expression's final result, the chosen branch of a ternary, or an operand of string concatenation: `{{= round(10 / 2, 1) }}` renders `5.0`, and `{{= round(telemetry.FuelLevel, 1) + ' L' }}` renders e.g. `42.4 L`. In numeric contexts (arithmetic, comparisons, function arguments) only the numeric value carries on. Boolean results render `Yes`/`No`.
 
 ### Expressions use raw values
 
@@ -80,10 +80,10 @@ Show `PIT` while on pit road, otherwise nothing:
 {{= telemetry.OnPitRoad == 1 ? 'PIT' : '' }}
 ```
 
-Fuel level in whole liters with a unit suffix (renders e.g. `42 L`):
+Fuel level with one decimal and a unit suffix (renders e.g. `42.4 L`):
 
 ```text
-{{= round(telemetry.FuelLevel) + ' L' }}
+{{= round(telemetry.FuelLevel, 1) + ' L' }}
 ```
 
 ## Driver Info

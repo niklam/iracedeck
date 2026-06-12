@@ -30,7 +30,7 @@ Pipeline in `expression-evaluator.ts`: `tokenize` → `parseExpression` (recursi
 
 - Strings render as-is; booleans render `Yes`/`No`.
 - Whole-number results render bare (`5`); other numbers render with two decimals (`0.33`).
-- `round(x, n)` carries a fixed-decimals hint through to formatting — exactly `n` decimals (`round(10/2, 1)` → `5.0`). The ternary forwards its chosen branch's hint; all other constructs drop it.
+- `round(x, n)` carries a fixed-decimals hint through to formatting — exactly `n` decimals (`round(10/2, 1)` → `5.0`). The hint survives wherever the value becomes text: the final result, the chosen branch of a ternary, and string-concatenation operands (each `+` operand formats with its own hint). Numeric contexts (arithmetic, comparisons, function arguments) carry only the numeric value.
 - Non-finite results (division by zero, NaN) are runtime errors → empty string.
 
 ## Deliberately Not Done

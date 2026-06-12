@@ -482,6 +482,14 @@ describe("string concatenation", () => {
     expect(resolveExpression("'Lap ' + 5 + '/' + 10", {})).toBe("Lap 5/10");
   });
 
+  it("should preserve round(x, n) precision inside concatenation", () => {
+    expect(resolveExpression("round(1/3, 4) + 's'", {})).toBe("0.3333s");
+    expect(resolveExpression("'v=' + round(51.24, 1)", {})).toBe("v=51.2");
+    expect(resolveExpression("round(telemetry.FuelLevel, 1) + ' L'", { "telemetry.FuelLevel": 42.36789 })).toBe(
+      "42.4 L",
+    );
+  });
+
   it("should stringify booleans as Yes/No", () => {
     expect(resolveExpression("'DRS: ' + on", { on: true })).toBe("DRS: Yes");
     expect(resolveExpression("'DRS: ' + on", { on: false })).toBe("DRS: No");
