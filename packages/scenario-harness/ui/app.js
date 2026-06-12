@@ -742,7 +742,9 @@ function wireReadbackComposer() {
 // Unlike the readback composer (which round-trips through telemetry), the
 // session-start snapshot carries a non-telemetry `driverName`, so it's held
 // directly on the server. Fire = push the composed snapshot to
-// `/api/session-start/snapshot`, then publish `driver.firstOnTrack`.
+// `/api/session-start/snapshot`, then publish `session.changed` (same event
+// the production translator synthesizes on fresh connect for practice /
+// qualifying). Expect ~3 s of silence before the brief plays (triggerDelay).
 
 function readSessionStartSnapshot() {
   const driverName = ($("session-start-driver").value || "").trim().toLowerCase() || "driver";
@@ -766,7 +768,7 @@ function wireSessionStartComposer() {
       // then publish the trigger event. `/api/session-start/snapshot` awaits
       // a 204 before we publish, so there's no push-vs-fire race.
       await post("/api/session-start/snapshot", readSessionStartSnapshot());
-      await post("/api/bus/publish", { event: "driver.firstOnTrack", data: {} });
+      await post("/api/bus/publish", { event: "session.changed", data: { from: 0, to: 1 } });
     } catch (e) {
       alert(`Session start fire failed: ${e.message}`);
     }
