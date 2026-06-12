@@ -1832,6 +1832,30 @@ describe("sim-events-iracing translator", () => {
         expect(handler).toHaveBeenCalledTimes(2);
         expect(handler.mock.calls[1]![0].data).toEqual({ from: 0, to: 1 });
       });
+
+      // #668: disconnect → reconnect must re-arm the fresh-connect synthesis so
+      // the second connect fires a second synthetic session.changed.
+      it("re-arms and fires a second synthetic session.changed after disconnect → reconnect (practice)", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // First connect into practice at Racing — synthesis fires and latches.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+
+        // Disconnect — re-arms freshConnectFireChecked.
+        controller.__tick(null, false);
+
+        // Reconnect into the same practice session at Racing — synthesis fires again.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler.mock.calls[1]![0].data).toEqual({ from: -1, to: 0 });
+      });
     });
 
     it("does not synthesize engine.startup when the first tick already has RPM > threshold", () => {

@@ -934,16 +934,17 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
       // Race sessions fire pre-green only; practice/qualifying also fire during
       // green (Racing) because that's their normal connect-in state.
       const shouldFire = sessionType !== undefined && (isPreGreen || (sessionType !== "race" && isRacing));
-      // Disqualifying states that latch the check silently: a race at/after
-      // green (mid-race reconnect) or a non-race session winding down.
-      const isTooLate = (sessionType === "race" && (isRacing || isWindingDown)) || isWindingDown;
+      // Disqualifying states that latch the check silently: a race mid-session
+      // reconnect (race + Racing), or any session winding down (Checkered/
+      // CoolDown) where briefing is pointless regardless of session type.
+      const isTooLate = (sessionType === "race" && isRacing) || isWindingDown;
 
       if (sessionType === undefined) {
         // Raw session type not known yet (session YAML still loading). Keep the
         // latch open — don't classify or fire until we have a real value.
       } else if (shouldFire) {
         self.logger.info(
-          `Fresh-connect session.changed: firing synthetic session.changed (sessionType="${sessionType}", SessionNum=${currentSessionNum}, SessionState=${rawState})`,
+          `Fresh-connect session.changed: firing synthetic (sessionType="${sessionType}", SessionNum=${currentSessionNum}, SessionState=${rawState})`,
         );
         publish(self, { event: "session.changed", data: { from: -1, to: currentSessionNum } }, telemetry, Date.now());
         self.freshConnectFireChecked = true;
