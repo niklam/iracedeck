@@ -42,8 +42,8 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { isLiveOnTrack, isPostRace, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
+import { Flags, hasFlag, isLiveOnTrack, isPostRace, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getLatestTelemetry, getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
 
 import type { Scenario, Step } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
@@ -219,27 +219,92 @@ const DISQUALIFY: Scenario = {
   when: { event: "flag.disqualify.raised" },
 };
 
+// ── Furled raised/cleared pairing state (issue #669) ──
+// The queueable FURLED fire can sit behind a longer call (incident points,
+// readbacks) and replay only when the bus idles — by which time the warning
+// may already be withdrawn. A deferred fire's `where:` is NOT re-run, but
+// `if:` steps expand at speak time, so the raised line re-checks the LIVE
+// `Furled` bit just before speaking and expands to nothing (radio frame
+// included) when the flag is already down. `furledRaisedSpoken` records that
+// the raised line actually reached the speaker; FURLED_CLEARED consumes it so
+// "Black flag cleared." never plays for a warning the driver was never told
+// about. The translator's own `furledAnnounced` gate can't cover this — it
+// tracks event emission, not audio playback.
+let furledRaisedSpoken = false;
+
+/** @internal Test seam — seed/reset the raised-spoken pairing state. */
+export function _setFurledRaisedSpoken(value: boolean): void {
+  furledRaisedSpoken = value;
+}
+
+// Live "is the furled bit still up" read for the speak-time gate. Missing
+// telemetry (scenario harness, disconnect) counts as up — don't punish
+// missing data (the #574 precedent); with iRacing connected the translator's
+// latest tick is always available, which is the only case the gate exists for.
+function furledStillUp(): boolean {
+  const telemetry = getLatestTelemetry() as TelemetryData | null;
+
+  if (telemetry === null) return true;
+
+  return hasFlag(telemetry.SessionFlags ?? 0, Flags.Furled);
+}
+
 // `queueable: true` so a furled-black-flag call deferred behind another
 // safety-level line (another flag / spotter focus) replays when the bus next
 // idles instead of being dropped — it carries a give-the-time-back instruction
 // the driver needs to hear, and the furled state is sustained so a slightly
-// late call is still correct.
+// late call is still correct. The speak-time `if:` gate covers the case where
+// the state ISN'T sustained: a warning withdrawn while the call sat in the
+// queue expands to silence instead of announcing a flag that's already gone.
 const FURLED: Scenario = {
   ...flagScenario("furled", ["pool:flag-furled"]),
   queueable: true,
-  when: { event: "flag.furled.raised" },
+  when: {
+    event: "flag.furled.raised",
+    // A fresh raised episode invalidates any stale spoken marker a previous
+    // episode left behind (e.g. a session change wiped the translator's state
+    // before the falling edge, so no cleared event ever consumed it).
+    where: () => {
+      furledRaisedSpoken = false;
+
+      return true;
+    },
+  },
+  sequence: [
+    {
+      if: () => {
+        if (!furledStillUp()) return false;
+
+        furledRaisedSpoken = true;
+
+        return true;
+      },
+      then: flagSequence(["pool:flag-furled"]),
+    },
+  ],
 };
 
 // Fires when an announced furled warning is withdrawn (issue #669) — the
-// translator gates `flag.furled.cleared` on the raised callout having fired,
-// so the all-clear never plays for a warning the driver was never told about.
-// `queueable: true` like YELLOW_CLEARED: the all-clear is a sustained state,
-// so a fire deferred behind an equal-weight line replays when the bus next
-// idles instead of being dropped.
+// translator gates `flag.furled.cleared` on the raised EVENT having fired, and
+// the `where:` below narrows that to the raised LINE having actually been
+// spoken (consuming the marker): a raised fire that was queued behind a longer
+// call and then dropped at speak time (flag already down) must not be followed
+// by a stray "Black flag cleared.". `queueable: true` like YELLOW_CLEARED: the
+// all-clear is a sustained state, so a fire deferred behind an equal-weight
+// line replays when the bus next idles instead of being dropped.
 const FURLED_CLEARED: Scenario = {
   ...flagScenario("furled-cleared", ["pool:flag-furled-cleared"]),
   queueable: true,
-  when: { event: "flag.furled.cleared" },
+  when: {
+    event: "flag.furled.cleared",
+    where: () => {
+      if (!furledRaisedSpoken) return false;
+
+      furledRaisedSpoken = false;
+
+      return true;
+    },
+  },
 };
 
 const DQ_SCORING_INVALID: Scenario = {

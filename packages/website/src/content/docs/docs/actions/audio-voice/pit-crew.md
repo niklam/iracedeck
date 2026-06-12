@@ -75,7 +75,7 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
-- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty). Announced only after the flag has stayed up for a full second — a brief off-track excursion flashes iRacing's furled bit for about half a second, and that flicker stays silent.
+- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty). Announced only after the flag has stayed up for a full second — a brief off-track excursion flashes iRacing's furled bit for about half a second, and that flicker stays silent. And if the call gets queued behind other radio traffic and the warning is withdrawn before it can play, it stays silent too — the engineer never announces a flag that's already gone.
 - **Furled cleared** — "Black flag cleared." when an announced furled warning is withdrawn. It fires only if the furled callout actually played, so a transient flicker triggers neither callout.
 - **DQ scoring invalid** — "DQ — scoring's off." (disqualification because scoring is invalid).
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
