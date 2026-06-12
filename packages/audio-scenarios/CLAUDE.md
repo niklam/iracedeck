@@ -53,10 +53,11 @@ reference them by name — `"pool:<name>"` in a sequence step, or `{ pool: "<nam
 in a step object.
 
 - Single-element pools resolve deterministically.
-- Multi-element pools **rotate** with a per-pool no-repeat tracker, shared
-  across every scenario that draws from the pool. So a callout family that
-  reuses a pool (e.g., the acknowledgment pool used by every pit-action
-  confirmation) gets a coherent rotation across the whole family.
+- Multi-element pools are **sampled uniform-random** with a per-pool
+  no-immediate-repeat guard (`pickFromPool`), shared across every scenario
+  that draws from the pool. So a callout family that reuses a pool (e.g., the
+  acknowledgment pool used by every pit-action confirmation) never plays the
+  same clip back-to-back across the whole family.
 - Voice substitution: `{voice}` in a path is replaced at playback time with
   the active Race Engineer voice setting. Always use `voice/{voice}/…` paths.
 

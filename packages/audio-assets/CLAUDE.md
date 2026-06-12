@@ -79,7 +79,7 @@ The most common case — a new callout in an existing family (e.g. another flag)
 
 - One group per callout family (flags, pit-actions, pit-status, track-conditions, …). Mixing families in one group makes the cost-scoping flag `--group` less useful.
 - File names are stable identifiers — pools reference them by exact path. Renaming an entry's `name` is a breaking change for any pool that references it.
-- Variants use a `-NN` suffix (`flag-blue-01.mp3`, `flag-blue-02.mp3`). The pool array order drives playback rotation.
+- Variants use a `-NN` suffix (`flag-blue-01.mp3`, `flag-blue-02.mp3`). Playback picks from the pool uniform-random with a no-immediate-repeat guard (not in array order).
 
 ## Known re-render triggers
 

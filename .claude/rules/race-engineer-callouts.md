@@ -104,7 +104,7 @@ Each `configs/<voice-id>.voice.json` is the per-voice source of truth — voices
 
 ### 4. Audio pools + scenario
 
-- Add one pool per `(direction × subject)` to `packages/audio-scenarios/src/catalog/pit-crew/pools.ts`. Single-element pools are deterministic; multi-element pools rotate per-pool.
+- Add one pool per `(direction × subject)` to `packages/audio-scenarios/src/catalog/pit-crew/pools.ts`. Single-element pools are deterministic; multi-element pools are sampled uniform-random with a per-pool no-immediate-repeat guard (the interpreter's `pickFromPool` — not a sequential rotation).
 - Write a scenario file under `packages/audio-scenarios/src/catalog/pit-crew/<family>.ts`. Mirror `flag-alerts.ts` / `pit-status.ts` / `track-conditions.ts`. Each scenario has:
   - `id: "pit-crew.<family>-<subject>"`
   - `family: "<family>"` (shared across the whole family — a newer same-family fire replaces the in-flight family-mate wholesale, regardless of weight)
