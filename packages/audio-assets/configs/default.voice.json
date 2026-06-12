@@ -262,6 +262,11 @@
         "seed": 5
       },
       {
+        "name": "furled-cleared-01",
+        "text": "Black flag cleared.",
+        "seed": 1
+      },
+      {
         "name": "dq-scoring-invalid-01",
         "text": "D-Q. <break time=\"0.3s\" /> Scoring's off.",
         "seed": 3

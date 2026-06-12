@@ -348,6 +348,14 @@ export type SimEventMap = {
   "flag.five-to-go.raised": SimEvent<"flag.five-to-go.raised", EmptySimEventPayload>;
   "flag.disqualify.raised": SimEvent<"flag.disqualify.raised", EmptySimEventPayload>;
   "flag.furled.raised": SimEvent<"flag.furled.raised", EmptySimEventPayload>;
+  /**
+   * Fired when an ANNOUNCED furled black-flag warning is withdrawn — the
+   * falling edge of the `Furled` bit, gated on `flag.furled.raised` having
+   * actually fired for the current episode (issue #669). A transient flicker
+   * (e.g. running briefly off track) that never survived the raise debounce
+   * fires neither event.
+   */
+  "flag.furled.cleared": SimEvent<"flag.furled.cleared", EmptySimEventPayload>;
   "flag.dq-scoring-invalid.raised": SimEvent<"flag.dq-scoring-invalid.raised", EmptySimEventPayload>;
   "flag.yellow-waving.raised": SimEvent<"flag.yellow-waving.raised", EmptySimEventPayload>;
   "flag.caution-waving.raised": SimEvent<"flag.caution-waving.raised", EmptySimEventPayload>;

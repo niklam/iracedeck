@@ -1,21 +1,32 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { Flags } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
-import { FLAG_ALERTS, FLAG_POOL_NAMES, FLAG_SCENARIO_IDS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import {
+  _setFurledRaisedSpoken,
+  FLAG_ALERTS,
+  FLAG_POOL_NAMES,
+  FLAG_SCENARIO_IDS,
+  WAVING_FLAG_COOLDOWN_MS,
+} from "./flag-alerts.js";
 import { POOLS } from "./pools.js";
 import { RADIO_CLOSE, RADIO_OPEN } from "./radio-frame.js";
 
 const mockSessionType = vi.fn(() => "Race");
 const mockStandingStart = vi.fn(() => false);
+// Live-telemetry feed for the furled speak-time gate (issue #669). `null`
+// (the default) means "no live signal", which the gate treats as still-up.
+const mockLatestTelemetry = vi.fn((): unknown => null);
 
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getSessionType: () => mockSessionType(),
   getStandingStart: () => mockStandingStart(),
+  getLatestTelemetry: () => mockLatestTelemetry(),
 }));
 
 // Default telemetry attached to published events: driver live in the car. The
@@ -150,6 +161,7 @@ const FLAG_CLIP_NAMES = [
   // Issue #480 — missing-session-flag callouts.
   "disqualify-01",
   "furled-01",
+  "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
   "one-pace-lap-to-go-01",
@@ -195,6 +207,8 @@ beforeEach(() => {
   activeVoice = "luca";
   mockSessionType.mockReturnValue("Race");
   mockStandingStart.mockReturnValue(false);
+  mockLatestTelemetry.mockReturnValue(null);
+  _setFurledRaisedSpoken(false);
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => activeVoice);
@@ -230,8 +244,8 @@ function findScenario(id: string): (typeof FLAG_ALERTS)[number] {
 }
 
 describe("FLAG_ALERTS structure", () => {
-  it("defines 21 scenarios", () => {
-    expect(FLAG_ALERTS).toHaveLength(21);
+  it("defines 22 scenarios", () => {
+    expect(FLAG_ALERTS).toHaveLength(22);
   });
 
   it("exposes a stable list of ids", () => {
@@ -249,6 +263,7 @@ describe("FLAG_ALERTS structure", () => {
       "pit-crew.flag-meatball",
       "pit-crew.flag-disqualify",
       "pit-crew.flag-furled",
+      "pit-crew.flag-furled-cleared",
       "pit-crew.flag-dq-scoring-invalid",
       "pit-crew.flag-crossed",
       "pit-crew.flag-one-pace-lap-to-go",
@@ -282,8 +297,8 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
-    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-yellow-cleared"];
+  it("furled, furled-cleared and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-furled-cleared", "pit-crew.flag-yellow-cleared"];
 
     for (const id of queueableIds) {
       expect(findScenario(id).queueable).toBe(true);
@@ -370,6 +385,15 @@ describe("FLAG_ALERTS triggers", () => {
       expected: "voice/luca/flags/furled-01.mp3",
     },
     {
+      label: "furled cleared",
+      event: "flag.furled.cleared" as const,
+      data: {},
+      expected: "voice/luca/flags/furled-cleared-01.mp3",
+      // The cleared `where:` gates on the raised line having actually been
+      // spoken (issue #669) — seed the marker as if it had.
+      arrange: () => _setFurledRaisedSpoken(true),
+    },
+    {
       label: "dq-scoring-invalid",
       event: "flag.dq-scoring-invalid.raised" as const,
       data: {},
@@ -405,7 +429,8 @@ describe("FLAG_ALERTS triggers", () => {
       data: {},
       expected: "voice/luca/flags/caution-waving-01.mp3",
     },
-  ])("$label fires the matching clip", ({ event, data, expected }) => {
+  ])("$label fires the matching clip", ({ event, data, expected, ...row }) => {
+    (row as { arrange?: () => void }).arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 
@@ -715,6 +740,7 @@ describe("FLAG_POOL_NAMES", () => {
       "flag-checkered-race",
       "flag-disqualify",
       "flag-furled",
+      "flag-furled-cleared",
       "flag-dq-scoring-invalid",
       "flag-crossed",
       "flag-one-pace-lap-to-go",
@@ -824,5 +850,133 @@ describe("FLAG_ALERTS race-only gating", () => {
     const played = voiceClipsPlayed();
     expect(played).toHaveLength(1);
     expect(played[0]).toMatch(/voice\/luca\/flags\/green-held-0[1-5]\.mp3$/);
+  });
+});
+
+// Issue #669 follow-up: the queueable FURLED fire can replay only after a
+// longer call (incident points, readback) finishes — by which time the warning
+// may already be withdrawn. The raised line re-checks the LIVE Furled bit at
+// speak time and expands to nothing when the flag is down, and FURLED_CLEARED
+// only plays when the raised line actually reached the speaker.
+describe("furled speak-time validity + cleared pairing (issue #669)", () => {
+  const FURLED_UP = { SessionFlags: Flags.Furled };
+  const FURLED_DOWN = { SessionFlags: 0 };
+
+  it("raised plays when the live Furled bit is still up at speak time", () => {
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/furled-01.mp3"]);
+  });
+
+  it("raised expands to silence — no line, no radio frame — when the warning is already withdrawn at speak time", () => {
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+    expect(sfxClipsPlayed()).toEqual([]);
+  });
+
+  it("a cleared whose raised never reached the speaker plays nothing", () => {
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("spoken raised → cleared plays once; the marker is consumed so a second cleared is silent", () => {
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the warning drops
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      "voice/luca/flags/furled-01.mp3",
+      "voice/luca/flags/furled-cleared-01.mp3",
+    ]);
+  });
+
+  it("a clear arriving while the bit is up again plays nothing but keeps the marker for the real drop", () => {
+    _setFurledRaisedSpoken(true); // raised line was spoken
+    mockLatestTelemetry.mockReturnValue(FURLED_UP); // …but the warning is back up
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the genuine drop
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual(["voice/luca/flags/furled-cleared-01.mp3"]);
+  });
+
+  it("a fresh raised fire invalidates a stale spoken marker from a previous episode", () => {
+    _setFurledRaisedSpoken(true); // stale leftover (e.g. session change ate the falling edge)
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // and this episode never speaks
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio);
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([]);
+  });
+
+  it("queued behind a longer call: a withdrawn warning plays neither the raised nor the cleared line", () => {
+    // Equal-weight non-flag occupant, so the furled fire defers instead of
+    // family-preempting (the user-reported incident-points shape).
+    engine.defineScenario({
+      id: "test.filler",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["pool:flag-yellow-cleared"],
+    });
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+
+    engine.fire("test.filler"); // occupies the Voice bus; deliberately not flushed
+    bus.publishEvent("flag.furled.raised", {}); // equal weight + queueable → pending
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // warning withdrawn while queued
+    bus.publishEvent("flag.furled.cleared", {}); // raised never spoke → dropped at where:
+    flush(audio); // filler finishes → pending raised replays → expands to silence
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled"))).toEqual([]);
+  });
+
+  it("a queued clear is dropped at speak time when the warning is back up, and the kept marker pairs the eventual real drop", () => {
+    engine.defineScenario({
+      id: "test.filler2",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      base: "voice/{voice}",
+      weight: WEIGHT.SAFETY,
+      sequence: ["pool:flag-yellow-cleared"],
+    });
+    mockLatestTelemetry.mockReturnValue(FURLED_UP);
+    bus.publishEvent("flag.furled.raised", {});
+    flush(audio); // raised plays → marker set
+
+    engine.fire("test.filler2"); // occupies the Voice bus; deliberately not flushed
+    bus.publishEvent("flag.furled.cleared", {}); // bit dropped → diff cleared; equal weight → queued
+    // The bit is back up by the time the bus idles (the re-raise is debounced
+    // upstream, so no fresh raised fire has displaced the queued clear yet).
+    flush(audio); // filler finishes → queued clear replays → expands to silence
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([]);
+
+    mockLatestTelemetry.mockReturnValue(FURLED_DOWN); // the genuine withdrawal
+    bus.publishEvent("flag.furled.cleared", {});
+    flush(audio);
+
+    expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([
+      "voice/luca/flags/furled-cleared-01.mp3",
+    ]);
   });
 });

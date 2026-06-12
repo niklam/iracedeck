@@ -91,6 +91,7 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // (#657). Auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
   "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
   "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
+  "flag-furled-cleared": ["voice/{voice}/flags/furled-cleared-01.mp3"],
   "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
   "flag-crossed": ["voice/{voice}/flags/crossed-01.mp3"],
   "flag-one-pace-lap-to-go": [

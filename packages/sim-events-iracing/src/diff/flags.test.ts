@@ -6,13 +6,14 @@
  * branches that are *not* covered there — specifically the off→on
  * transitions for the debris and meatball (Repair) bits — and on the
  * "first tick seeds without firing" gate that all flag emission depends
- * on. The yellow-cleared hold window (issue #671) is covered in full here.
+ * on. The yellow-cleared hold window (issue #671) and the furled debounce +
+ * paired cleared (issue #669) are covered in full here.
  */
 import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffFlags, YELLOW_CLEARED_HOLD_MS } from "./flags.js";
+import { diffFlags, FURLED_DEBOUNCE_MS, YELLOW_CLEARED_HOLD_MS } from "./flags.js";
 import type { PendingEvent } from "./types.js";
 
 const T0 = 1_000_000;
@@ -96,8 +97,9 @@ describe("diffFlags — first-tick seeding", () => {
 });
 
 describe("diffFlags — new rising-edge bits (issue #480)", () => {
+  // NOTE: "furled" is absent — its rising edge is debounced and gets its own
+  // describe block below (issue #669).
   const cases: Array<[string, number, string]> = [
-    ["furled", Flags.Furled, "flag.furled.raised"],
     ["dq-scoring-invalid", Flags.DqScoringInvalid, "flag.dq-scoring-invalid.raised"],
     ["crossed", Flags.Crossed, "flag.crossed.raised"],
     ["green-held", Flags.GreenHeld, "flag.green-held.raised"],
@@ -354,5 +356,109 @@ describe("diffFlags — yellow.cleared hold window (issue #671)", () => {
     const { events, emit } = collect();
     diffFlags(fresh, tick(0), T0 + YELLOW_CLEARED_HOLD_MS, emit);
     expect(events.some((e) => e.event === "flag.yellow.cleared")).toBe(false);
+  });
+});
+
+describe("diffFlags — furled debounce + paired cleared (issue #669)", () => {
+  it("a flicker shorter than the debounce fires neither raised nor cleared", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Furled), T0, emit); // rising edge — arms only
+    diffFlags(state, tick(0), T0 + 500, emit); // off-track flicker — bit drops inside the window
+    diffFlags(state, tick(0), T0 + 500 + FURLED_DEBOUNCE_MS, emit); // well past the window
+
+    expect(events).toEqual([]);
+  });
+
+  it("emits flag.furled.raised exactly once when the bit has stayed set for FURLED_DEBOUNCE_MS (boundary, >=)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Furled), T0, () => {}); // rising edge — arms
+
+    // Mid-window tick stays silent.
+    const mid = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS - 1, mid.emit);
+    expect(mid.events).toEqual([]);
+
+    // Exactly at the boundary (>=) it fires once.
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS, emit);
+    expect(events).toEqual([{ event: "flag.furled.raised", data: {} }]);
+
+    // Further ticks with the bit still set emit nothing more.
+    const after = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS + 5000, after.emit);
+    expect(after.events).toEqual([]);
+  });
+
+  it("emits flag.furled.cleared exactly once when an announced furled is withdrawn", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Furled), T0, () => {}); // arm
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS, () => {}); // announce
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 5000, emit); // falling edge
+    expect(events).toEqual([{ event: "flag.furled.cleared", data: {} }]);
+
+    // A further all-clear tick does not re-fire.
+    const after = collect();
+    diffFlags(state, tick(0), T0 + 10_000, after.emit);
+    expect(after.events).toEqual([]);
+  });
+
+  it("a clear during the debounce window drops the pending announce — the falling edge emits no cleared", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Furled), T0, () => {}); // arm
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(0), T0 + 500, emit); // falling edge inside the window
+    expect(events).toEqual([]);
+    expect(state.furledPendingAt).toBe(0);
+    expect(state.furledAnnounced).toBe(false);
+
+    // Nothing fires later either — the episode never announced.
+    const later = collect();
+    diffFlags(state, tick(0), T0 + 500 + FURLED_DEBOUNCE_MS, later.emit);
+    expect(later.events).toEqual([]);
+  });
+
+  it("announces again after cleared → re-raise with a fresh debounce window (fresh episode)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, tick(Flags.Furled), T0, () => {}); // arm
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS, () => {}); // announce
+    diffFlags(state, tick(0), T0 + 5000, () => {}); // falling edge — cleared fires
+
+    // Re-raise — the fresh episode needs a fresh debounce window.
+    diffFlags(state, tick(Flags.Furled), T0 + 10_000, () => {}); // re-arm
+    const mid = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + 10_000 + FURLED_DEBOUNCE_MS - 1, mid.emit);
+    expect(mid.events).toEqual([]);
+
+    const raised = collect();
+    diffFlags(state, tick(Flags.Furled), T0 + 10_000 + FURLED_DEBOUNCE_MS, raised.emit);
+    expect(raised.events).toEqual([{ event: "flag.furled.raised", data: {} }]);
+
+    // ...and a second cleared after that.
+    const cleared = collect();
+    diffFlags(state, tick(0), T0 + 20_000, cleared.emit);
+    expect(cleared.events).toEqual([{ event: "flag.furled.cleared", data: {} }]);
+  });
+
+  it("connecting mid-furled seeds silently — no raised after the debounce, no cleared on the later drop", () => {
+    const state = createInitialState();
+    expect(state.flagStateInitialized).toBe(false);
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Furled), T0, emit); // first tick — seed without firing
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS, emit);
+    diffFlags(state, tick(Flags.Furled), T0 + FURLED_DEBOUNCE_MS + 5000, emit);
+    diffFlags(state, tick(0), T0 + 20_000, emit); // later falling edge
+
+    expect(events).toEqual([]);
   });
 });
