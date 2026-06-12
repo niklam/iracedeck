@@ -190,6 +190,34 @@ describe("parse errors", () => {
   });
 });
 
+describe("expression length limit", () => {
+  it("should return null for an over-limit expression", () => {
+    const source = "1+".repeat(600) + "1";
+
+    expect(source.length).toBeGreaterThan(1000);
+    expect(resolveExpression(source, {})).toBeNull();
+  });
+
+  it("should throw a parse error from parseExpression for an over-limit expression", () => {
+    expect(() => parseExpression("1+".repeat(600) + "1")).toThrowError(
+      expect.objectContaining({ name: "ExpressionParseError" }),
+    );
+  });
+
+  it("should return null for deeply nested parentheses over the limit", () => {
+    const source = "(".repeat(5000) + "1" + ")".repeat(5000);
+
+    expect(resolveExpression(source, {})).toBeNull();
+  });
+
+  it("should still evaluate an expression at a valid length", () => {
+    const source = "(".repeat(450) + "1" + ")".repeat(450);
+
+    expect(source.length).toBeLessThanOrEqual(1000);
+    expect(resolveExpression(source, {})).toBe("1");
+  });
+});
+
 describe("literals", () => {
   it("should evaluate integer literals", () => {
     expect(resolveExpression("42", {})).toBe("42");
@@ -222,6 +250,11 @@ describe("literals", () => {
 
   it("should drop the backslash for unknown escapes", () => {
     expect(resolveExpression("'a\\nb'", {})).toBe("anb");
+  });
+
+  it("should round-trip non-ASCII string literals unchanged", () => {
+    expect(resolveExpression("'Kämäräinen'", {})).toBe("Kämäräinen");
+    expect(resolveExpression("'你好 🏁 ñ' + ''", {})).toBe("你好 🏁 ñ");
   });
 });
 
@@ -476,6 +509,13 @@ describe("variables", () => {
   it("should return empty string for an unknown variable", () => {
     expect(resolveExpression("missing", {})).toBe("");
     expect(resolveExpression("1 + missing", {})).toBe("");
+  });
+
+  it("should not resolve prototype-chain properties as variables", () => {
+    expect(resolveExpression("constructor + 1", {})).toBe("");
+    expect(resolveExpression("toString", {})).toBe("");
+    expect(resolveExpression("hasOwnProperty * 2", {})).toBe("");
+    expect(resolveExpression("constructor ? 1 : 2", {})).toBe("");
   });
 });
 

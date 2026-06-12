@@ -45,15 +45,21 @@ export type ExprNode =
  */
 export type EvalResult = { value: ExpressionValue; fixedDecimals?: number };
 
-class ExpressionParseError extends Error {}
+class ExpressionParseError extends Error {
+  override name = "ExpressionParseError";
+}
 
-class ExpressionRuntimeError extends Error {}
+class ExpressionRuntimeError extends Error {
+  override name = "ExpressionRuntimeError";
+}
 
 const COMPARISON_OPERATORS: readonly ComparisonOperator[] = ["==", "!=", ">=", "<=", ">", "<"];
 
 const FUNCTION_NAMES: readonly FunctionName[] = ["round", "floor", "ceil", "abs", "min", "max"];
 
 const MAX_ROUND_DECIMALS = 20;
+
+const MAX_EXPRESSION_LENGTH = 1000;
 
 function isDigit(ch: string | undefined): boolean {
   return ch !== undefined && ch >= "0" && ch <= "9";
@@ -420,6 +426,12 @@ function buildCall(name: FunctionName, args: ExprNode[]): ExprNode {
  * including empty input and trailing tokens.
  */
 export function parseExpression(source: string): ExprNode {
+  // The length cap bounds both paren nesting depth and AST recursion depth
+  // (parser and evaluator are recursive) — verified safe well past 1000 chars.
+  if (source.length > MAX_EXPRESSION_LENGTH) {
+    throw new ExpressionParseError(`Expression exceeds ${MAX_EXPRESSION_LENGTH} characters`);
+  }
+
   const tokens = tokenize(source);
 
   if (tokens.length === 0) {
@@ -590,7 +602,9 @@ export function evaluateAst(node: ExprNode, vars: Record<string, ExpressionValue
     case "string":
       return { value: node.value };
     case "variable":
-      if (!(node.path in vars)) {
+      // Object.hasOwn (not `in`) so prototype-chain properties like
+      // "constructor" or "toString" never resolve as variables.
+      if (!Object.hasOwn(vars, node.path)) {
         throw new ExpressionRuntimeError(`Unknown variable "${node.path}"`);
       }
 
@@ -652,6 +666,12 @@ export function clearExpressionCache(): void {
  * error (the caller renders the original source verbatim on parse error).
  */
 export function resolveExpression(source: string, vars: Record<string, ExpressionValue>): string | null {
+  // Reject over-limit sources before touching the cache so huge strings are
+  // never stored as cache keys.
+  if (source.length > MAX_EXPRESSION_LENGTH) {
+    return null;
+  }
+
   let entry = expressionCache.get(source);
 
   if (!entry) {
