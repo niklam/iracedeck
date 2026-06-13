@@ -99,16 +99,22 @@ type TranslatorInstance = {
   firstOnTrackSeeded: boolean;
   firstOnTrackFired: boolean;
   /**
-   * Fresh-connect race-start latch (issue #568 follow-up). When the plugin
-   * connects directly into a race session there's no prior SessionNum to
-   * drive a `session.changed` delta, so the race-start callout would never
-   * fire. We synthesize one `session.changed { from: -1, to: SessionNum }`
-   * on the first tick that satisfies the gating conditions (sessionType
-   * resolves to "race", `SessionState` is pre-green so we don't fire on a
-   * mid-race reconnect). Latched once the decision is made — either we
-   * fired, or we observed a state that disqualifies the synthesis (Racing
-   * or later, or a non-race session). `SessionState.Invalid` keeps the
-   * latch open so telemetry that hasn't settled yet doesn't slam the door.
+   * Fresh-connect `session.changed` latch (issues #568, #668). When the
+   * plugin connects directly into a session there's no prior SessionNum to
+   * drive a `session.changed` delta, so the callouts keyed off it would never
+   * fire. We synthesize one `session.changed { from: -1, to: SessionNum }` on
+   * the first tick that satisfies the gating conditions. The SessionState gate
+   * depends on the classified session type:
+   *   - race (#568): pre-green only (GetInCar/Warmup/ParadeLaps), so we don't
+   *     fire the grid brief on a mid-race reconnect.
+   *   - practice/qualifying (#668): pre-green OR during green (Racing), since
+   *     those sessions sit in `Racing` their whole green period and connecting
+   *     mid-session is the normal case (the conditions brief is what the
+   *     driver wants on connect).
+   * Latched once the decision is made — either we fired, or we observed a
+   * state that disqualifies the synthesis (a race at/after green, or any
+   * session winding down at Checkered/CoolDown). `SessionState.Invalid` keeps
+   * the latch open so telemetry that hasn't settled yet doesn't slam the door.
    * Cleared by `handleDisconnect` so a reconnect re-checks.
    */
   freshConnectFireChecked: boolean;
@@ -305,8 +311,8 @@ export function getReadbackSnapshot(): PitReadbackSnapshot | null {
 }
 
 /**
- * Build the session-start ("car entry") conditions snapshot from the latest
- * telemetry tick + session info (issue #542). Returns `null` when telemetry
+ * Build the session-start conditions snapshot from the latest telemetry tick +
+ * session info (issues #542, #668). Returns `null` when telemetry
  * or session info is unavailable, or when track wetness is still `Unknown` —
  * the session-start scenario treats null as "skip the callout" rather than
  * speaking a nonsense line.
@@ -760,8 +766,8 @@ function handleDisconnect(self: TranslatorInstance): void {
   // `resetPerSessionState`.
   self.firstOnTrackSeeded = false;
   self.firstOnTrackFired = false;
-  // Re-arm the fresh-connect race-start synthesis so a reconnect into a race
-  // session re-checks the SessionState gate (issue #568 follow-up).
+  // Re-arm the fresh-connect session.changed synthesis so a reconnect into a
+  // session re-checks the SessionState gate (issues #568, #668).
   self.freshConnectFireChecked = false;
 }
 
@@ -860,8 +866,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `state.lastSessionNum`) means the tracker survives the replay guard's
   // per-tick state wipes that would otherwise null out the comparison
   // baseline and let the transition slip past. The reset wipes `state` and
-  // clears `firstOnTrackFired` so the session-start callout re-fires on the
-  // next live-on-track tick. `session.changed` is published from here
+  // clears `firstOnTrackFired` so the `driver.firstOnTrack` event (reserved
+  // for the not-yet-registered welcome scenario) re-fires on the next
+  // live-on-track tick. `session.changed` is published from here
   // directly (not via diffLifecycle's `emit` aggregator) so the event reaches
   // subscribers even when the replay state wipe later this tick destroys
   // `state.lastSessionNum` — the race-start callout (issue #568) depends on
@@ -877,15 +884,24 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // viewing stays silent.
   const currentSessionNum = telemetry.SessionNum ?? null;
 
-  // Fresh-connect race-start synthesis (issue #568 follow-up). On the first
+  // Fresh-connect session.changed synthesis (issues #568, #668). On the first
   // tick after connect (or reconnect) that satisfies the gating conditions,
-  // synthesize a `session.changed { from: -1, to: SessionNum }` so the race-
-  // start callout fires when the plugin lands directly in a race session
-  // (no prior session to drive a real delta). Pre-green gate so we don't
-  // fire the grid brief on a mid-race reconnect. Resolution latches the
-  // check — `SessionState.Invalid` (telemetry still settling) keeps it open.
-  // Runs BEFORE the delta check below so the latch is set before a real
-  // delta could trigger on a later tick.
+  // synthesize a `session.changed { from: -1, to: SessionNum }` so the
+  // callouts keyed off `session.changed` fire when the plugin lands directly
+  // in a session (no prior session to drive a real delta). Two consumers with
+  // different SessionState gates by classified session type:
+  //   - race (#568): fire pre-green only (GetInCar/Warmup/ParadeLaps). A race
+  //     at/after green is a mid-race reconnect — too late to brief the grid,
+  //     so we latch silently.
+  //   - practice/qualifying (#668): fire pre-green OR during green (Racing).
+  //     These sessions sit in `Racing` their entire green period and
+  //     connecting mid-session is the normal case (e.g. a lone-qualify driver
+  //     in the garage) — the conditions brief is exactly what the driver wants
+  //     on connect. A non-race session winding down (Checkered/CoolDown) makes
+  //     the brief pointless, so we latch silently there.
+  // Resolution latches the check — `SessionState.Invalid` (telemetry still
+  // settling) keeps it open. Runs BEFORE the delta check below so the latch is
+  // set before a real delta could trigger on a later tick.
   if (!self.freshConnectFireChecked && currentSessionNum !== null) {
     const sessionInfo = self.controller.getSessionInfo() as Record<string, unknown> | null;
 
@@ -894,12 +910,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // viewing from a live session that's transiently in replay mode during
     // a qual → race transition — see `isReplayOnlySession`. Without this,
     // connecting while a saved race replay is open synthesizes a
-    // session.changed { from: -1, to: race } and the race-start callout
-    // briefs a race the user isn't in.
+    // session.changed { from: -1, to: N } and the briefing callout briefs a
+    // session the user isn't actually in.
     if (isReplayOnlySession(sessionInfo)) {
       // Don't latch — a later live tick (e.g. user exits the replay UI) re-
       // evaluates and can still fire the synthesis.
-      self.logger.info(`Race-start fresh-connect: skipped (replay-only session, SessionNum=${currentSessionNum})`);
+      self.logger.info(`Fresh-connect session.changed: skipped (replay-only session, SessionNum=${currentSessionNum})`);
     } else {
       // Capture the RAW session type first. `classifySessionType("")` returns
       // "race" (its safe default), so classifying before the session YAML has
@@ -912,28 +928,31 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
       const rawState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
       const isPreGreen =
         rawState === SessionState.GetInCar || rawState === SessionState.Warmup || rawState === SessionState.ParadeLaps;
-      const isAtOrAfterGreen =
-        rawState === SessionState.Racing || rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
+      const isRacing = rawState === SessionState.Racing;
+      const isWindingDown = rawState === SessionState.Checkered || rawState === SessionState.CoolDown;
+
+      // Race sessions fire pre-green only; practice/qualifying also fire during
+      // green (Racing) because that's their normal connect-in state.
+      const shouldFire = sessionType !== undefined && (isPreGreen || (sessionType !== "race" && isRacing));
+      // Disqualifying states that latch the check silently: a race mid-session
+      // reconnect (race + Racing), or any session winding down (Checkered/
+      // CoolDown) where briefing is pointless regardless of session type.
+      const isTooLate = (sessionType === "race" && isRacing) || isWindingDown;
 
       if (sessionType === undefined) {
         // Raw session type not known yet (session YAML still loading). Keep the
         // latch open — don't classify or fire until we have a real value.
-      } else if (sessionType !== "race") {
-        // Not a race session — fresh-connect synthesis doesn't apply here.
+      } else if (shouldFire) {
         self.logger.info(
-          `Race-start fresh-connect: skipped (sessionType="${sessionType}", SessionNum=${currentSessionNum})`,
-        );
-        self.freshConnectFireChecked = true;
-      } else if (isPreGreen) {
-        self.logger.info(
-          `Race-start fresh-connect: firing synthetic session.changed (SessionNum=${currentSessionNum}, SessionState=${rawState})`,
+          `Fresh-connect session.changed: firing synthetic (sessionType="${sessionType}", SessionNum=${currentSessionNum}, SessionState=${rawState})`,
         );
         publish(self, { event: "session.changed", data: { from: -1, to: currentSessionNum } }, telemetry, Date.now());
         self.freshConnectFireChecked = true;
-      } else if (isAtOrAfterGreen) {
-        // Mid-race reconnect — too late to brief the grid. Latch silently.
+      } else if (isTooLate) {
+        // Too late to brief: race mid-session reconnect, or a non-race session
+        // winding down. Latch silently.
         self.logger.info(
-          `Race-start fresh-connect: skipped (mid-race reconnect, SessionState=${rawState}, SessionNum=${currentSessionNum})`,
+          `Fresh-connect session.changed: skipped (too late to brief, sessionType="${sessionType}", SessionState=${rawState}, SessionNum=${currentSessionNum})`,
         );
         self.freshConnectFireChecked = true;
       }
@@ -1078,7 +1097,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
-  diffFlags(self.state, telemetry, emit);
+  diffFlags(self.state, telemetry, now, emit);
   // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
   // diffFlags (after the replay guard) and reads the already-resolved
   // `sessionInfo` for the standing-start / AI-race gates.
@@ -1203,10 +1222,10 @@ function classifySessionType(raw: string): "practice" | "qualifying" | "race" {
  * Stricter variant of {@link classifySessionType} for the `lap.completed`
  * payload (issue #555): unresolved or unrecognized raw values return
  * `undefined` so the bus event omits `sessionType` rather than reporting a
- * false-positive "race" classification. Used only by `diffLaps` — the
- * session-start callout retains the looser fallback because its "race"
- * default is the right safe choice when the session info isn't yet
- * available at the moment of `driver.firstOnTrack`.
+ * false-positive "race" classification. Used only by `diffLaps` — callers
+ * outside `lap.completed` retain the looser {@link classifySessionType}
+ * because its "race" default is the right safe choice when the session info
+ * isn't yet available.
  */
 function classifyLapSessionType(raw: string): "practice" | "qualifying" | "race" | undefined {
   if (!raw) return undefined;

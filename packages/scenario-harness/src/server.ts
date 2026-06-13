@@ -412,12 +412,14 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     return reply.code(204).send();
   });
 
-  // Session-start ("car entry") composer (issue #542). The session-start
-  // snapshot carries a `driverName` that isn't telemetry-derived, so unlike
-  // the pit-readback composer it's held directly rather than round-tripped
-  // through telemetry — `main.ts` wires `getHarnessSessionStartSnapshot` as
-  // the scenario's resolver. The UI pushes here, then publishes
-  // `driver.firstOnTrack` via `/api/bus/publish` to fire the readout.
+  // Session-start composer (issue #542). The session-start snapshot carries a
+  // `driverName` that isn't telemetry-derived, so unlike the pit-readback
+  // composer it's held directly rather than round-tripped through telemetry —
+  // `main.ts` wires `getHarnessSessionStartSnapshot` as the scenario's
+  // resolver. The UI pushes here, then publishes `session.changed` via
+  // `/api/bus/publish` to fire the session-start brief (the same event the
+  // production translator synthesizes on fresh connect for practice /
+  // qualifying).
   app.post("/api/session-start/snapshot", async (req, reply) => {
     const snapshot = validateSessionStartSnapshot(req.body);
 

@@ -67,7 +67,7 @@ export type FlagScope = "local" | "full";
  * any future translator can emit the same `startLight.countdown.raised` shape;
  * the audio scenario maps each value to its own clip.
  */
-export type StartCountdownSeconds = 60 | 30 | 15 | 10 | 5;
+export type StartCountdownSeconds = 90 | 60 | 30 | 10;
 
 /**
  * Canonical incident-report type (issue #530). Maps the report byte of
@@ -155,9 +155,10 @@ export type PitReadbackSnapshot = {
 };
 
 /**
- * Telemetry-derived half of the session-start ("car entry") readout snapshot
- * (issue #542). Built by the sim translator from the first-on-track telemetry
- * tick + session info, read at fire time by the session-start scenario via a
+ * Telemetry-derived half of the session-start readout snapshot (issues #542,
+ * #668). Built by the sim translator from live telemetry + session info at the
+ * time the session.changed event fires, read at fire time by the session-start
+ * scenario via a
  * resolver closure (same deferred-snapshot pattern as {@link PitReadbackSnapshot}).
  *
  * Units are resolved here, not in the scenario: the translator reads iRacing's
@@ -348,20 +349,30 @@ export type SimEventMap = {
   "flag.five-to-go.raised": SimEvent<"flag.five-to-go.raised", EmptySimEventPayload>;
   "flag.disqualify.raised": SimEvent<"flag.disqualify.raised", EmptySimEventPayload>;
   "flag.furled.raised": SimEvent<"flag.furled.raised", EmptySimEventPayload>;
+  /**
+   * Fired when an ANNOUNCED furled black-flag warning is withdrawn — the
+   * falling edge of the `Furled` bit, gated on `flag.furled.raised` having
+   * actually fired for the current episode (issue #669). A transient flicker
+   * (e.g. running briefly off track) that never survived the raise debounce
+   * fires neither event.
+   */
+  "flag.furled.cleared": SimEvent<"flag.furled.cleared", EmptySimEventPayload>;
   "flag.dq-scoring-invalid.raised": SimEvent<"flag.dq-scoring-invalid.raised", EmptySimEventPayload>;
   "flag.yellow-waving.raised": SimEvent<"flag.yellow-waving.raised", EmptySimEventPayload>;
   "flag.caution-waving.raised": SimEvent<"flag.caution-waving.raised", EmptySimEventPayload>;
 
   /**
    * Start-light family (issue #480). The race-start gantry lights and the
-   * numeric pre-start countdown. The three gantry states fire on the rising
-   * edge of iRacing's `StartReady` / `StartSet` / `StartGo` bits; the countdown
-   * fires once per crossed threshold during the trustworthy standing-start
-   * window (one event per number, see {@link StartCountdownSeconds}). All carry
-   * `family: "start-light"` so the audio scenarios preempt cleanly.
+   * numeric pre-start countdown. The two gantry states fire on the rising
+   * edge of iRacing's `StartReady` / `StartGo` bits — the start procedure is
+   * Ready → Set → Go, and the heads-up line belongs on Ready (issue #673 moved
+   * it off `StartSet`, which lights too late to be useful; nothing is spoken
+   * at Set anymore). The countdown fires once per crossed threshold during the
+   * standing-start pre-start window (one event per number, see
+   * {@link StartCountdownSeconds}). All carry `family: "start-light"` so the
+   * audio scenarios preempt cleanly.
    */
   "startLight.start-ready.raised": SimEvent<"startLight.start-ready.raised", EmptySimEventPayload>;
-  "startLight.start-set.raised": SimEvent<"startLight.start-set.raised", EmptySimEventPayload>;
   "startLight.start-go.raised": SimEvent<"startLight.start-go.raised", EmptySimEventPayload>;
   "startLight.countdown.raised": SimEvent<"startLight.countdown.raised", { seconds: StartCountdownSeconds }>;
 

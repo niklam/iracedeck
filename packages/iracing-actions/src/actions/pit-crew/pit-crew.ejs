@@ -90,6 +90,7 @@
 				{ setting: "calloutEnabledFlagFiveToGo",      label: "Five to go" },
 				{ setting: "calloutEnabledFlagDisqualify",    label: "Disqualified" },
 				{ setting: "calloutEnabledFlagFurled",        label: "Black flag furled" },
+				{ setting: "calloutEnabledFlagFurledCleared", label: "Furled cleared" },
 				{ setting: "calloutEnabledFlagDqScoringInvalid", label: "DQ (scoring)" },
 			];
 			var flagCalloutRowCount = Math.ceil(flagCallouts.length / 2);
@@ -206,11 +207,12 @@
 				return '<sdpi-checkbox setting="' + c.setting + '" label="' + c.label + '" global default="true"></sdpi-checkbox>';
 			}).join('');
 
-			// Session-start ("car entry") readout (issue #542). Single subject —
-			// one toggle for the whole greeting + conditions brief fired on the
-			// driver's first time on track each session.
+			// Session-start readout (issues #542, #668). Single subject —
+			// one toggle for the whole greeting + conditions brief fired when a
+			// practice or qualifying session starts (on session.changed, ~3 s in),
+			// whether or not the driver leaves the garage.
 			var sessionStartCallouts = [
-				{ setting: "calloutEnabledSessionStart", label: "Car entry conditions" },
+				{ setting: "calloutEnabledSessionStart", label: "Session start conditions" },
 			];
 			var sessionStartRowCount = Math.ceil(sessionStartCallouts.length / 2);
 			var sessionStartCheckboxes = sessionStartCallouts.map(function (c) {

@@ -1,25 +1,30 @@
 /**
- * Start-light transitions + pre-start numeric countdown (issue #480).
+ * Start-light transitions + pre-start numeric countdown (issues #480 / #673).
  *
  * Two independent pieces, both driven off `SessionFlags` / `SessionState` /
  * `SessionTimeRemain` and the session YAML helpers:
  *
- *   1. **Gantry rising edges.** `StartReady` / `StartSet` / `StartGo` each fire
- *      once on their off→on edge (vs `state.lastStartLightBits`). `start-ready`
- *      is standing-only — in a rolling start `StartReady` is held through the
- *      whole parade, so the lead-in there comes from `one-pace-lap-to-go`
- *      (`diff/pace-laps.ts`, issue #657) / `green-held` instead.
+ *   1. **Gantry rising edges.** `StartReady` / `StartGo` each fire once on
+ *      their off→on edge (vs `state.lastStartLightBits`). The procedure is
+ *      Ready → Set → Go: the heads-up line belongs on `StartReady` (issue
+ *      #673 — `StartSet` lights too late to be useful, so nothing is emitted
+ *      for it). `StartReady` is standing-only: rolling starts hold the bit
+ *      through Warmup→ParadeLaps too (rolling AI capture 2112), where the
+ *      rolling-start family (#660) owns the lead-in.
  *
- *   2. **Numeric countdown.** A `SessionTimeRemain` countdown that only runs in
- *      the trustworthy standing pre-start window — `standing ∧
- *      SessionState===Warmup ∧ StartReady set ∧ SessionTimeRemain>0`. The
- *      inflated get-in buffer and the `-1` reset both fall outside that window
- *      (see the issue #480 telemetry findings). On the first in-window tick the
- *      ceiling is seeded from `SessionTimeRemain` so only thresholds the window
- *      can actually reach fire; each tick emits ONLY the smallest newly-crossed
- *      threshold so a dropped tick never produces a stale burst. An AI race
- *      suppresses all numbers (the window already compresses, this is the
- *      explicit guard).
+ *   2. **Numeric countdown.** A `SessionTimeRemain` countdown that runs in the
+ *      standing pre-start window — `standing ∧ SessionState ∈ {GetInCar,
+ *      Warmup} ∧ ¬(StartSet ∨ StartGo) ∧ SessionTimeRemain>0`. `SessionTimeRemain`
+ *      is the real time-to-lights from `GetInCar` onward (issue #666), so the
+ *      window opens at `GetInCar` and closes once `StartSet`/`StartGo` light —
+ *      the gantry owns the final moment. `StartReady` deliberately does NOT
+ *      close the window: the standing capture (2056) shows it's up while the
+ *      countdown runs. On the first in-window tick the ceiling is seeded from
+ *      `SessionTimeRemain` so only thresholds the window can actually reach fire;
+ *      each tick emits ONLY the smallest newly-crossed threshold so a dropped
+ *      tick never produces a stale burst. AI races are NOT suppressed (issue
+ *      #666) — the ceiling seed already keeps a compressed pre-start window from
+ *      speaking a number it can't reach.
  *
  * First tick after connect / window entry seeds without firing. State resets
  * whenever the diff observes a tick outside the window after the window was
@@ -27,15 +32,15 @@
  */
 import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import { resolveIsAiRace, resolveStandingStart } from "../start-lights.js";
+import { resolveStandingStart } from "../start-lights.js";
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-/** The three gantry bits, masked out of `SessionFlags` for edge detection. */
-const START_LIGHT_MASK = Flags.StartReady | Flags.StartSet | Flags.StartGo;
+/** The two gantry bits we edge-detect, masked out of `SessionFlags`. */
+const START_LIGHT_MASK = Flags.StartReady | Flags.StartGo;
 
 /** Countdown thresholds (seconds), descending — drives smallest-of-many emit. */
-const COUNTDOWN_THRESHOLDS = [60, 30, 15, 10, 5] as const;
+const COUNTDOWN_THRESHOLDS = [90, 60, 30, 10] as const;
 
 export function diffStartLights(
   state: TranslatorState,
@@ -62,13 +67,10 @@ export function diffStartLights(
   const prevBits = state.lastStartLightBits;
   const rising = (flag: number): boolean => (startBits & flag) !== 0 && (prevBits & flag) === 0;
 
-  // start-ready is standing-only (rolling holds StartReady through the parade).
+  // Standing-only: rolling starts raise StartReady through the formation too,
+  // but there's no gantry start — the rolling-start family owns that lead-in.
   if (standing && rising(Flags.StartReady)) {
     emit({ event: "startLight.start-ready.raised", data: {} });
-  }
-
-  if (rising(Flags.StartSet)) {
-    emit({ event: "startLight.start-set.raised", data: {} });
   }
 
   if (rising(Flags.StartGo)) {
@@ -78,8 +80,17 @@ export function diffStartLights(
   state.lastStartLightBits = startBits;
 
   // ── Numeric countdown ──────────────────────────────────────────────────
+  // SessionTimeRemain is the real time-to-lights from GetInCar onward (issue
+  // #666), so the window opens at GetInCar and closes once StartSet/StartGo
+  // light — the gantry lines own the final moment. StartReady does NOT close
+  // the window (it's up while the countdown runs — standing capture 2056).
+  // Race-only / in-car gating is handled at the scenario `where:` layer, not here.
   const inWindow =
-    standing && sessionState === SessionState.Warmup && hasFlag(sessionFlags, Flags.StartReady) && timeRemain > 0;
+    standing &&
+    (sessionState === SessionState.GetInCar || sessionState === SessionState.Warmup) &&
+    !hasFlag(sessionFlags, Flags.StartSet) &&
+    !hasFlag(sessionFlags, Flags.StartGo) &&
+    timeRemain > 0;
 
   if (!inWindow) {
     // Reset on exit from the pre-start window (StartGo / SessionState→Racing /
@@ -105,12 +116,6 @@ export function diffStartLights(
   // Mark every crossed threshold fired, but emit ONLY the smallest (the
   // most-recent crossing) so a dropped tick never replays a stale burst.
   for (const t of candidates) state.startCountdownFired.add(t);
-
-  // AI guard — suppress all numbers in an AI race (the window-gate already
-  // handles short procedures; this makes "never 5 s+ in an AI race" explicit).
-  // Resolved lazily here (only when a number is about to fire) rather than every
-  // tick, so the per-tick DriverInfo scan stays out of the hot path.
-  if (resolveIsAiRace(sessionInfo)) return;
 
   // COUNTDOWN_THRESHOLDS is descending and `filter` preserves order, so the
   // smallest crossed threshold is the last candidate.

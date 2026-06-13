@@ -308,23 +308,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Five to Go", "flag.five-to-go.raised"),
   flag("Disqualify", "flag.disqualify.raised"),
   flag("Furled", "flag.furled.raised"),
+  flag("Furled Cleared", "flag.furled.cleared"),
   flag("DQ — Scoring Invalid", "flag.dq-scoring-invalid.raised"),
   flag("Yellow Waving", "flag.yellow-waving.raised"),
   flag("Caution Waving", "flag.caution-waving.raised"),
 
-  // ── Start (issue #480) ──
-  // Start-gantry gantry lines + the per-number start countdown. The gantry
-  // lines carry no payload; the countdown fires `startLight.countdown.raised`
-  // once per number with the chosen `seconds` (60/30/15/10/5). Fire two
+  // ── Start (issues #480 / #673) ──
+  // Start-gantry lines + the per-number start countdown. The gantry lines carry
+  // no payload; the countdown fires `startLight.countdown.raised` once per number
+  // with the chosen `seconds` (90/60/30/10 — 90 added in #673). Fire two
   // countdown buttons in quick succession to confirm same-family preempt.
-  startLight("start-ready", "Ready", "startLight.start-ready.raised", "Standing-start gantry: Ready"),
-  startLight("start-set", "Set", "startLight.start-set.raised", "Start gantry: Set"),
+  startLight("start-ready", "Ready", "startLight.start-ready.raised", "Start gantry: Ready"),
   startLight("start-go", "Go", "startLight.start-go.raised", "Start gantry: Go"),
+  startCountdown(90),
   startCountdown(60),
   startCountdown(30),
-  startCountdown(15),
   startCountdown(10),
-  startCountdown(5),
 
   // ── Rolling Start (issue #660) ──
   // Payload-less: the pace car begins moving the field onto the formation lap.

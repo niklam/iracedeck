@@ -324,6 +324,11 @@ export const GlobalSettingsSchema = z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
       .default(true),
+    // Furled-warning withdrawn callout opt-in (issue #669).
+    calloutEnabledFlagFurledCleared: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(true),
     calloutEnabledFlagDqScoringInvalid: z
       .union([z.boolean(), z.string()])
       .transform((val) => val === true || val === "true")
@@ -512,14 +517,16 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true),
     /**
-     * Opt-in for the session-start ("car entry") readout (issue #542). One
-     * boolean for the whole readout — the engineer's greeting + session-type
-     * line + pit speed limit + track/air temperature + track wetness, fired
-     * once per session on `driver.firstOnTrack`. Defaults `true` so a fresh
-     * install hears it; the user can silence it from the PI mid-session and
-     * the change takes effect on the next session without cutting an
-     * in-flight clip. Canonical id↔key mapping in
-     * `SESSION_START_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
+     * Opt-in for the session-start readout (issues #542, #668). One boolean
+     * for the whole readout — the engineer's greeting + session-type line +
+     * pit speed limit + track/air temperature + track wetness. Fired when a
+     * practice or qualifying session starts (on `session.changed`, ~3 s in),
+     * whether or not the driver leaves the garage; also fires when the plugin
+     * connects into a practice/qualifying session mid-way (fresh-connect
+     * synthesis). Defaults `true` so a fresh install hears it; the user can
+     * silence it from the PI mid-session and the change takes effect on the
+     * next session without cutting an in-flight clip. Canonical id↔key mapping
+     * in `SESSION_START_CALLOUT_SETTING_KEYS` (in `@iracedeck/audio-scenarios`).
      */
     calloutEnabledSessionStart: z
       .union([z.boolean(), z.string()])

@@ -97,8 +97,8 @@ async function main(): Promise<void> {
   // Wire the pit-action cooldown so the harness sees the same suppression
   // window the production plugins do, the readback-snapshot resolver so
   // deferred replays speak the current queue (issue #481), the
-  // session-start snapshot resolver so the "car entry" composer can fire
-  // the readout (issue #542), and the lap-time snapshot resolver so the
+  // session-start snapshot resolver so the session-start composer can fire
+  // the brief (issue #542), and the lap-time snapshot resolver so the
   // best-lap composer can fire (issue #555). Other closures keep their
   // defaults.
   registerPitCrew(

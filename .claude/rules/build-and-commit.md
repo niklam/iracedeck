@@ -113,7 +113,7 @@ Do not commit if either step fails. Fix the issue first.
 
 ### Logical Commits
 
-Split work into logical, self-contained commits. Each commit should represent one coherent change that builds and passes tests on its own. This keeps the history readable and makes regular (non-squash) merges practical.
+Split work into logical, self-contained commits. Each commit should represent one coherent change that builds and passes tests on its own. This keeps the branch readable for review. Feature PRs are **squash-merged**, so these commits collapse into one commit on the target branch (the PR title becomes its message) — but the per-commit discipline is still what makes the branch reviewable, and branch-to-branch back-merges preserve full history (see **Merging**).
 
 Guidelines:
 
@@ -176,10 +176,10 @@ When creating issues, always include requirements for updating all affected arti
 
 Merging
 
-- PRs are merged into `master` via `gh pr merge --merge` (regular merge, not squash).
-- **Temporary exception — `release/2.0` integration branch:** the dials/touchscreen clean-slate (#640) and the follow-up dial-rebuild issues are breaking changes that ship as v2.0.0. Their PRs target `release/2.0` (`gh pr create --base release/2.0`), not `master`, and are merged with **squash** (`gh pr merge --squash`) — one commit per feature; the PR title (with its `(#issue)` suffix) becomes the commit message, so title discipline matters doubly here. Master keeps shipping 1.x releases; merge `master` into `release/2.0` periodically to limit drift. The sync merges and the final merge-back are **regular merges** — never squash those. Avoid cherry-picking between the two lines; land shared fixes on `master` and sync them in. When 2.0 ships (`pnpm release major` run from `release/2.0`), the branch merges back into `master` and this exception is removed.
-- Since commits are logical and self-contained, squashing is not needed — the full commit history is preserved on `master`.
-- **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`.
+- Feature/fix PRs are **squash-merged** into their target branch via `gh pr merge --squash` — one commit per PR. This is the default for `master` and every other branch (`release/*` / integration branches included). The PR **title** becomes the squashed commit's message, so title discipline matters doubly (see the title rules below).
+- **Branch-to-branch merges are NOT squashed.** Release-branch back-merges and the periodic `master` ↔ `release/*` syncs use a regular merge (`gh pr merge --merge`, or a local `git merge`) — squashing one would collapse the other branch's whole history into a single commit and re-introduce its entire diff, causing avoidable conflicts on the next sync. See **Back-merging a release branch** below.
+- **`release/2.0` integration branch (temporary).** The dials/touchscreen clean-slate (#640) and the follow-up dial-rebuild issues are breaking changes that ship as v2.0.0, so their PRs target `release/2.0` (`gh pr create --base release/2.0`), not `master` — squash-merged like any feature PR. Master keeps shipping 1.x releases; sync `master` into `release/2.0` periodically (a regular merge — see **Back-merging a release branch**) to limit drift, and avoid cherry-picking between the two lines (land shared fixes on `master` and sync them in). When 2.0 ships (`pnpm release major` from `release/2.0`), the branch merges back into `master` and this note is removed.
+- **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`. Under squash-merge this title is the commit message that lands on the branch, so it must read as a complete commit subject.
 - **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.
 - Merging is performed manually or by automation — never by a Claude review step.
 
@@ -192,3 +192,21 @@ git worktree remove ../ir-<issue>
 ```
 
 Confirm deletion by verifying it no longer appears in `git worktree list`.
+
+### Back-merging a release branch
+
+A release branch (e.g. `release/1.21`) collects fixes through its own PRs, then is merged **back into `master`** so master picks them up. Unlike a feature PR, this is a **regular merge, never a squash** — squashing would flatten the release branch's whole history into one commit and re-introduce its entire diff, breaking the next sync. Do it locally or via a PR; either way keep full history:
+
+```bash
+git checkout master
+git fetch origin
+git merge origin/release/<x.y>     # regular merge; resolve conflicts (usually version strings only)
+pnpm install && pnpm build && pnpm test   # verify the merge result before pushing
+git push origin master
+```
+
+Three things to get right:
+
+- **Version conflicts resolve in master's favour.** The release branch carries its release version (e.g. `1.21.0-rc.1`) while master is on the next dev version (e.g. `1.22.0-dev.0`), so every `package.json` / `manifest.json` conflict is version-only — keep master's. Strip the conflict markers **in place** (don't `git checkout --ours` the whole file) so any non-version content the release branch added stays merged.
+- **Closing keywords must reach the default branch to auto-close issues.** A PR merged into `release/<x.y>` does **not** auto-close its `Fixes #N` issue — GitHub only honours closing keywords on merges into the **default branch** (`master`). So when back-merging, put `Closes #<issue>` (one per issue arriving on master through this merge) in the **merge commit message** (local merge) or the **PR body** (PR back-merge). Otherwise close those issues manually after pushing.
+- **Do not delete the release branch on back-merge.** It stays alive to cut the actual release; the back-merge only forwards its commits to master.

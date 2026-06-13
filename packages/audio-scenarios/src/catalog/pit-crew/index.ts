@@ -282,6 +282,7 @@ export type FlagCalloutId =
   // Issue #480 — missing-session-flag callouts.
   | "disqualify"
   | "furled"
+  | "furled-cleared"
   | "dq-scoring-invalid"
   | "crossed"
   | "one-pace-lap-to-go"
@@ -310,6 +311,7 @@ export const FLAG_CALLOUT_SETTING_KEYS: Record<FlagCalloutId, string> = {
   meatball: "calloutEnabledFlagMeatball",
   disqualify: "calloutEnabledFlagDisqualify",
   furled: "calloutEnabledFlagFurled",
+  "furled-cleared": "calloutEnabledFlagFurledCleared",
   "dq-scoring-invalid": "calloutEnabledFlagDqScoringInvalid",
   crossed: "calloutEnabledFlagCrossed",
   "one-pace-lap-to-go": "calloutEnabledFlagOnePaceLapToGo",
@@ -334,6 +336,7 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-meatball": "meatball",
   "pit-crew.flag-disqualify": "disqualify",
   "pit-crew.flag-furled": "furled",
+  "pit-crew.flag-furled-cleared": "furled-cleared",
   "pit-crew.flag-dq-scoring-invalid": "dq-scoring-invalid",
   "pit-crew.flag-crossed": "crossed",
   "pit-crew.flag-one-pace-lap-to-go": "one-pace-lap-to-go",
@@ -347,9 +350,9 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
 /**
  * Stable identifier for each user-toggleable start-light callout (issue #480).
  * Two grouped subjects (mirrors the pit-box "many scenarios → one subject"
- * precedent): `lights` covers the three gantry lines (ready / set / go) and
- * `countdown` covers the five numeric pre-start marks. The user gets two
- * checkboxes for the whole family rather than eight.
+ * precedent): `lights` covers the two gantry lines (ready / go — #673) and
+ * `countdown` covers the four numeric pre-start marks. The user gets two
+ * checkboxes for the whole family rather than six.
  */
 export type StartLightCalloutId = "lights" | "countdown";
 
@@ -365,13 +368,11 @@ export const START_LIGHT_CALLOUT_SETTING_KEYS: Record<StartLightCalloutId, strin
 
 const SCENARIO_ID_TO_START_LIGHT_ID: Record<string, StartLightCalloutId> = {
   "pit-crew.start-light-ready": "lights",
-  "pit-crew.start-light-set": "lights",
   "pit-crew.start-light-go": "lights",
+  "pit-crew.start-light-countdown-90": "countdown",
   "pit-crew.start-light-countdown-60": "countdown",
   "pit-crew.start-light-countdown-30": "countdown",
-  "pit-crew.start-light-countdown-15": "countdown",
   "pit-crew.start-light-countdown-10": "countdown",
-  "pit-crew.start-light-countdown-5": "countdown",
 };
 
 /**
@@ -661,8 +662,10 @@ export function registerPitCrew(
   // in-flight clip. Default `() => true` preserves legacy behavior for
   // tests that don't supply a closure.
   getIncidentCalloutEnabled: (id: IncidentCalloutId) => boolean = () => true,
-  // User opt-in for the session-start ("car entry") readout (issue #542).
-  // Plugins wire this to the `calloutEnabledSessionStart` global setting via
+  // User opt-in for the session-start readout (issues #542, #668). Fired when
+  // a practice or qualifying session starts (on session.changed, ~3 s in),
+  // whether or not the driver leaves the garage. Plugins wire this to the
+  // `calloutEnabledSessionStart` global setting via
   // `SESSION_START_CALLOUT_SETTING_KEYS` — read live, same gate-at-event-
   // arrival shape as the other callout families. Default `() => true`
   // preserves legacy behavior for tests that don't supply a closure.
@@ -923,7 +926,7 @@ export function registerPitCrew(
   // registered en masse above via `Object.entries(POOLS)` (same as the flag
   // pools), so no explicit pool loop is needed here — `START_LIGHT_POOL_NAMES`
   // exists for the catalog tests to register pools in isolation. Two grouped
-  // opt-ins (`lights`, `countdown`) gate the eight scenarios via
+  // opt-ins (`lights`, `countdown`) gate the five scenarios via
   // `SCENARIO_ID_TO_START_LIGHT_ID`.
   for (const s of START_LIGHT_ALERTS) {
     engine.defineScenario(

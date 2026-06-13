@@ -75,7 +75,8 @@ The four race-formation / progression callouts above (Crossed, One pace lap to g
 
 - **Red / Black / Debris** — single dedicated callout each.
 - **Disqualify** — its own "Disqualified. Pull off." line, split out from the generic Black callout so a DQ reads distinctly.
-- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty).
+- **Furled** — "Black flag furled." (a furled black flag — a warning, not yet a penalty). Announced only after the flag has stayed up for a full second — a brief off-track excursion flashes iRacing's furled bit for about half a second, and that flicker stays silent. And if the call gets queued behind other radio traffic and the warning is withdrawn before it can play, it stays silent too — the engineer never announces a flag that's already gone.
+- **Furled cleared** — "Black flag cleared." when an announced furled warning is withdrawn. It fires only if the furled callout actually played, so a transient flicker triggers neither callout.
 - **DQ scoring invalid** — "DQ — scoring's off." (disqualification because scoring is invalid).
 - **Checkered** — session-aware: practice, qualifying, and race finishes get distinct lines.
 - **Meatball** — the only flag callout marked **urgent + preempt**: it cancels in-flight engineer chatter mid-message, since failing to pit on a meatball costs a black-flag penalty. All non-meatball flag callouts share a `flag` family so a newer flag preempts an older one (no "yellow's clear" + "green flag" double-talk on race restart).
@@ -86,16 +87,16 @@ The engineer also calls out every iRacing-reported pit-service status transition
 
 ## Start Lights
 
-On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. As the lights come up the engineer says *"Get ready — lights coming up."*, then *"Lights are red. Focus."* when the lights go solid red, and *"Go, go, go!"* the instant they drop and the race is live. The red-lights and go calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment.
+On a **standing start** the Race Engineer walks you through the gantry sequence so you can keep your eyes on the lights and your hands on the wheel. The moment the gantry shows its ready state the engineer says *"Lights. Get ready to go."*, and *"Go, go, go!"* the instant the lights drop and the race is live. Both calls are **critical and interrupt** any chatter in progress so nothing buries them at the most time-sensitive moment. (Nothing is spoken when the lights go solid red — by then the start is moments away and a callout would land too late to act on.)
 
-When iRacing supplies a real pre-start countdown, the engineer also speaks the numeric marks — *"Sixty seconds."*, *"Thirty."*, *"Fifteen."*, *"Ten."*, *"Five."* — as the clock crosses each threshold. The countdown is **standing-start only** and is automatically suppressed for AI races and short pre-start procedures, where the window is too compressed for the numbers to be useful (you'll still get the gantry lines). It announces only the marks that genuinely fall inside the live countdown window, so a short procedure that starts below sixty seconds simply skips the higher numbers rather than blurting a stale burst.
+During the pre-start countdown the engineer also speaks the numeric marks — *"Ninety seconds to race start."*, *"Sixty seconds to race start."*, *"Thirty seconds to race start."*, *"Ten seconds to race start."* — as the clock crosses each threshold. The countdown is **standing-start only** and announces only the marks that genuinely fall inside the live countdown window, so a compressed procedure (a short pre-start, an AI race) that starts below a mark simply skips the higher numbers rather than blurting a stale burst.
 
 On a **rolling start** there's no light gantry and no numeric countdown — the lead-in comes from the race-progression flags instead: **One pace lap to go**, spoken once when one pace lap remains (the engineer assumes at most two pace laps, so it lands as you begin the final pace lap), then **Green held** as the field bunches up, followed by the green flag.
 
 Two opt-ins live under **Race Engineer Callouts → Start Lights** in the Property Inspector, both on by default:
 
-- **Start lights** — the three gantry lines (get ready / lights are red / go).
-- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five).
+- **Start lights** — the two gantry lines (get ready / go).
+- **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten).
 
 ## Rolling Start
 
@@ -136,9 +137,9 @@ The eight callouts share a single family so a positioning correction (e.g. *"too
 
 ## Session Start
 
-The first time you go on track in a **practice or qualifying** session, the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying.
+Around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage — the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying. The brief also fires when you connect into a practice or qualifying session that is already in progress.
 
-Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is spoken exactly (never rounded); if the live limit isn't one the engineer has a clip for, the pit-speed part of the brief is simply skipped rather than guessing a number. The readout fires once per session, a few seconds after you first go on track, and does not re-fire when you return to the garage and back out.
+Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
 
 In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
 
@@ -152,7 +153,7 @@ Around 3 seconds after iRacing changes to a race session — even if you're stil
 
 In a multi-class race the grid position is your **class** grid slot, not your overall qualifying rank — so a GT3 racer who qualified P15 overall but third in class hears *"Qualifying put us to P three,"* and leading your class off the line plays *"Starting from pole."* This matches how the rest of the race callouts focus on your class.
 
-Because the callout fires off the session-change event (not your first time on track), it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions are unaffected and continue to use the standard session-start brief above.
+Because the callout fires off the session-change event, it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions get the same treatment from the session-start brief above, which fires the same way at session start.
 
 ## Setup Warning
 
@@ -246,11 +247,11 @@ Two opt-ins live under **Race Engineer Callouts → Spotter** in the Property In
 
 Some sessions throw the same flag over and over — debris that goes on/off every lap, rolling local yellows in a busy multi-class race. The **Race Engineer Callouts** accordion in the Property Inspector lets you switch off any individual callout while keeping the rest. The choice is plugin-global (every Pit Crew button agrees) and takes effect **live**: unchecking a callout stops new ones of that subject on the next event, but does **not** cut a callout already playing.
 
-Under **Flags**, all 21 flag callouts are toggleable, all enabled by default:
+Under **Flags**, all 22 flag callouts are toggleable, all enabled by default:
 
 - **Yellow (local)**, **Yellow (full course)**, **Yellow waving (local)**, **Caution waving**, **Yellow cleared**
 - **Green**, **Blue**, **White**, **Red**, **Black**
-- **Disqualify**, **Furled**, **DQ scoring invalid**
+- **Disqualify**, **Furled**, **Furled cleared**, **DQ scoring invalid**
 - **Crossed**, **One pace lap to go**, **Green held**, **Ten to go**, **Five to go**
 - **Checkered**, **Debris**, **Meatball**
 
@@ -258,8 +259,8 @@ Disabling a flag also disables its preemption — a disabled callout can't inter
 
 Under **Start Lights**, two callouts are toggleable independently, both enabled by default (see [Start Lights](#start-lights) above for the full behavior):
 
-- **Start lights** — the three standing-start gantry lines (get ready / lights are red / go). Disabling silences the gantry calls without affecting the numeric countdown.
-- **Start countdown** — the five numeric marks (sixty / thirty / fifteen / ten / five) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
+- **Start lights** — the two standing-start gantry lines (get ready / go). Disabling silences the gantry calls without affecting the numeric countdown.
+- **Start countdown** — the four numeric marks (ninety / sixty / thirty / ten) spoken during the standing-start countdown window. Disabling silences the numbers without affecting the gantry lines.
 
 Disabling either does not affect the other. Both are moot on rolling starts, where the lead-in comes from the **One pace lap to go** / **Green held** flag callouts instead.
 
@@ -285,7 +286,7 @@ Under **Damage**, one callout is toggleable, enabled by default:
 
 Under **Session Start**, one callout is toggleable, enabled by default:
 
-- **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track in **practice or qualifying** sessions. Race sessions are covered by **Race → Race start** below — disabling this checkbox does not affect the race readout.
+- **Session start conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads when a **practice or qualifying** session starts (~3 seconds in, whether or not you leave the garage). Race sessions are covered by **Race → Race start** below — disabling this checkbox does not affect the race readout.
 
 Under **Race Engineer Toggle**, one callout is toggleable, enabled by default:
 

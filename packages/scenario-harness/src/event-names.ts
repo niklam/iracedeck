@@ -61,17 +61,17 @@ export const EVENT_TEMPLATES = [
   { name: "flag.five-to-go.raised", description: "Five laps to go", data: {} },
   { name: "flag.disqualify.raised", description: "Disqualified", data: {} },
   { name: "flag.furled.raised", description: "Furled black flag (warning)", data: {} },
+  { name: "flag.furled.cleared", description: "Furled black flag cleared", data: {} },
   { name: "flag.dq-scoring-invalid.raised", description: "Disqualified — scoring invalid", data: {} },
   { name: "flag.yellow-waving.raised", description: "Yellow flag waving (slow down now)", data: {} },
   { name: "flag.caution-waving.raised", description: "Full-course caution waving", data: {} },
 
   // ── Start lights ──
-  { name: "startLight.start-ready.raised", description: "Start gantry: Ready (standing start)", data: {} },
-  { name: "startLight.start-set.raised", description: "Start gantry: Set", data: {} },
+  { name: "startLight.start-ready.raised", description: "Start gantry: Ready", data: {} },
   { name: "startLight.start-go.raised", description: "Start gantry: Go", data: {} },
   {
     name: "startLight.countdown.raised",
-    description: "Start countdown number (one event per number — 60/30/15/10/5 s)",
+    description: "Start countdown number (one event per number — 90/60/30/10 s)",
     data: { seconds: 30 },
   },
 

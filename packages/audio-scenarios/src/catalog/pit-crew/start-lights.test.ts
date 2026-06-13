@@ -1,15 +1,15 @@
 /**
- * Start-light scenario catalog tests (issue #480).
+ * Start-light scenario catalog tests (issues #480 / #673).
  *
  * Mirrors `flag-alerts.test.ts`: a fake bus + fake audio service, the
  * start-light pools registered from `pools.ts`, and the radio-frame include
  * scenarios. Covers:
  *   - each gantry line + countdown number fires its clip
- *   - start-set / start-go are CRITICAL + interrupt
- *   - family preemption (start-set → start-go: last clip is go)
+ *   - start-ready / start-go are CRITICAL + interrupt
+ *   - family preemption (start-ready → start-go: last clip is go)
  *   - the countdown event filters by `seconds` (30 fires only the 30 clip)
  *   - opt-in gating via the `registerPitCrew` closure: `countdown` off
- *     suppresses all five numbers; `lights` off suppresses ready/set/go.
+ *     suppresses all four numbers; `lights` off suppresses ready/go.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioChannel } from "@iracedeck/audio-service";
@@ -142,13 +142,11 @@ const VOICE_KEYS = ["luca", "titan"] as const;
 
 const START_LIGHT_CLIP_NAMES = [
   "start-ready-01",
-  "start-set-01",
   "start-go-01",
+  "countdown-90-01",
   "countdown-60-01",
   "countdown-30-01",
-  "countdown-15-01",
   "countdown-10-01",
-  "countdown-5-01",
 ] as const;
 
 const manifest: AudioAssetsManifest = {
@@ -212,20 +210,18 @@ function findScenario(id: string): (typeof START_LIGHT_ALERTS)[number] {
 }
 
 describe("START_LIGHT_ALERTS structure", () => {
-  it("defines 8 scenarios", () => {
-    expect(START_LIGHT_ALERTS).toHaveLength(8);
+  it("defines 6 scenarios", () => {
+    expect(START_LIGHT_ALERTS).toHaveLength(6);
   });
 
   it("exposes a stable list of ids", () => {
     expect(START_LIGHT_SCENARIO_IDS).toEqual([
       "pit-crew.start-light-ready",
-      "pit-crew.start-light-set",
       "pit-crew.start-light-go",
+      "pit-crew.start-light-countdown-90",
       "pit-crew.start-light-countdown-60",
       "pit-crew.start-light-countdown-30",
-      "pit-crew.start-light-countdown-15",
       "pit-crew.start-light-countdown-10",
-      "pit-crew.start-light-countdown-5",
     ]);
   });
 
@@ -239,24 +235,18 @@ describe("START_LIGHT_ALERTS structure", () => {
     }
   });
 
-  it("start-set and start-go are CRITICAL + interrupt", () => {
-    for (const id of ["pit-crew.start-light-set", "pit-crew.start-light-go"]) {
+  it("start-ready and start-go are CRITICAL + interrupt", () => {
+    for (const id of ["pit-crew.start-light-ready", "pit-crew.start-light-go"]) {
       const s = findScenario(id);
       expect(s.weight).toBe(WEIGHT.CRITICAL);
       expect(s.interrupt).toBe(true);
     }
   });
 
-  it("start-ready is SAFETY weight, not interrupt", () => {
-    const s = findScenario("pit-crew.start-light-ready");
-    expect(s.weight).toBe(WEIGHT.SAFETY);
-    expect(s.interrupt).not.toBe(true);
-  });
-
-  it("countdown scenarios are SAFETY weight + queueable:false", () => {
-    for (const seconds of [60, 30, 15, 10, 5]) {
+  it("countdown scenarios are NORMAL weight + queueable:false", () => {
+    for (const seconds of [90, 60, 30, 10]) {
       const s = findScenario(`pit-crew.start-light-countdown-${seconds}`);
-      expect(s.weight).toBe(WEIGHT.SAFETY);
+      expect(s.weight).toBe(WEIGHT.NORMAL);
       expect(s.queueable).toBe(false);
     }
   });
@@ -277,12 +267,6 @@ describe("START_LIGHT_ALERTS triggers", () => {
       expected: "voice/luca/start-lights/start-ready-01.mp3",
     },
     {
-      label: "start-set",
-      event: "startLight.start-set.raised" as const,
-      data: {},
-      expected: "voice/luca/start-lights/start-set-01.mp3",
-    },
-    {
       label: "start-go",
       event: "startLight.start-go.raised" as const,
       data: {},
@@ -296,11 +280,10 @@ describe("START_LIGHT_ALERTS triggers", () => {
   });
 
   it.each([
+    { seconds: 90 as const, expected: "voice/luca/start-lights/countdown-90-01.mp3" },
     { seconds: 60 as const, expected: "voice/luca/start-lights/countdown-60-01.mp3" },
     { seconds: 30 as const, expected: "voice/luca/start-lights/countdown-30-01.mp3" },
-    { seconds: 15 as const, expected: "voice/luca/start-lights/countdown-15-01.mp3" },
     { seconds: 10 as const, expected: "voice/luca/start-lights/countdown-10-01.mp3" },
-    { seconds: 5 as const, expected: "voice/luca/start-lights/countdown-5-01.mp3" },
   ])("countdown $seconds fires only its own clip", ({ seconds, expected }) => {
     bus.publishEvent("startLight.countdown.raised", { seconds });
     flush(audio);
@@ -337,9 +320,9 @@ describe("START_LIGHT_ALERTS preemption", () => {
     return voiceClipsPlayed().at(-1);
   }
 
-  it("start-go preempts an in-flight start-set (family share + interrupt)", () => {
-    bus.publishEvent("startLight.start-set.raised", {});
-    // Don't flush — start-set is still mid-playback.
+  it("start-go preempts an in-flight start-ready (family share + interrupt)", () => {
+    bus.publishEvent("startLight.start-ready.raised", {});
+    // Don't flush — start-ready is still mid-playback.
     bus.publishEvent("startLight.start-go.raised", {});
     flush(audio);
 
@@ -348,8 +331,8 @@ describe("START_LIGHT_ALERTS preemption", () => {
 });
 
 // Opt-in gating wired through `registerPitCrew`'s `getStartLightCalloutEnabled`
-// closure (issue #480). `countdown` gates all five numbers; `lights` gates the
-// three gantry lines. Each is independent. The manifest here only carries the
+// closure (issue #480). `countdown` gates all four numbers; `lights` gates the
+// two gantry lines. Each is independent. The manifest here only carries the
 // start-light clips, so unrelated families register with disabled scenarios
 // (pool-validation errors are logged but harmless) — the start-light events
 // under test still fire normally.
@@ -427,10 +410,10 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-30-"))).toBe(true);
   });
 
-  it("countdown off suppresses all five numbers but keeps the gantry lines", () => {
+  it("countdown off suppresses all four numbers but keeps the gantry lines", () => {
     startLightEnabled.set("countdown", false);
 
-    for (const seconds of [60, 30, 15, 10, 5] as const) {
+    for (const seconds of [90, 60, 30, 10] as const) {
       bus.publishEvent("startLight.countdown.raised", { seconds });
     }
 
@@ -442,18 +425,17 @@ describe("START_LIGHT_ALERTS opt-in gating (issue #480)", () => {
     expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/start-go-"))).toBe(true);
   });
 
-  it("lights off suppresses ready/set/go but keeps the countdown numbers", () => {
+  it("lights off suppresses ready/go but keeps the countdown numbers", () => {
     startLightEnabled.set("lights", false);
 
     bus.publishEvent("startLight.start-ready.raised", {});
-    bus.publishEvent("startLight.start-set.raised", {});
     bus.publishEvent("startLight.start-go.raised", {});
     flush(audio);
     expect(voiceClipsPlayed()).toEqual([]);
 
-    bus.publishEvent("startLight.countdown.raised", { seconds: 15 });
+    bus.publishEvent("startLight.countdown.raised", { seconds: 10 });
     flush(audio);
-    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-15-"))).toBe(true);
+    expect(voiceClipsPlayed().some((p) => p.includes("/start-lights/countdown-10-"))).toBe(true);
   });
 });
 
@@ -465,7 +447,6 @@ describe("START_LIGHT_ALERTS race-only gating", () => {
     mockSessionType.mockReturnValue("Qualify");
 
     bus.publishEvent("startLight.start-ready.raised", {});
-    bus.publishEvent("startLight.start-set.raised", {});
     bus.publishEvent("startLight.start-go.raised", {});
     bus.publishEvent("startLight.countdown.raised", { seconds: 30 });
     flush(audio);
@@ -490,7 +471,6 @@ describe("START_LIGHT_ALERTS race-only gating", () => {
     const outOfCar = { IsOnTrack: false, IsReplayPlaying: false };
 
     bus.publishEvent("startLight.start-ready.raised", {}, outOfCar);
-    bus.publishEvent("startLight.start-set.raised", {}, outOfCar);
     bus.publishEvent("startLight.start-go.raised", {}, outOfCar);
     bus.publishEvent("startLight.countdown.raised", { seconds: 30 }, outOfCar);
     flush(audio);

@@ -1,8 +1,8 @@
 /**
- * Session-start ("car entry") readout scenario tests (issue #542).
+ * Session-start readout scenario tests (issues #542, #668).
  *
  * Drives the scenario through the real scenario engine — same harness shape
- * as `readback.test.ts` — so load-time validation, var resolution, and the
+ * as `race-start.test.ts` — so load-time validation, var resolution, and the
  * conditional pit-speed clause all run the production path. The snapshot is
  * read from a resolver closure (`currentSnapshot`) at fire time.
  */
@@ -169,8 +169,8 @@ const manifest: AudioAssetsManifest = {
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
 
-// Default to a qualifying snapshot — issue #568 moved race entries to the
-// dedicated race-start scenario, so session-start's `where:` skips
+// Default to a qualifying snapshot — race sessions are spoken exclusively by
+// the race-start scenario, so session-start's `where:` skips
 // `sessionType === "race"` and a race-typed default snapshot would never fire.
 const BASE_SNAPSHOT: SessionStartSnapshot = {
   driverName: "niklas",
@@ -195,7 +195,7 @@ let setupWarningMismatch: (kind: "qualifying" | "race") => boolean;
 
 function fire(snapshot: SessionStartSnapshot | null): void {
   currentSnapshot = snapshot;
-  bus.publishEvent("driver.firstOnTrack", {});
+  bus.publishEvent("session.changed", { from: 0, to: 1 });
   flush(audio);
 }
 
@@ -272,7 +272,7 @@ describe("SESSION_START_SPEED_VALUES", () => {
 });
 
 describe("session-start scenario", () => {
-  it("plays the full readout on driver.firstOnTrack", () => {
+  it("plays the full readout on session.changed", () => {
     fire(snap());
 
     expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
@@ -291,7 +291,7 @@ describe("session-start scenario", () => {
 
   it("waits SESSION_START_DELAY_MS before any audio plays", () => {
     currentSnapshot = snap();
-    bus.publishEvent("driver.firstOnTrack", {});
+    bus.publishEvent("session.changed", { from: 0, to: 1 });
 
     // Nothing plays during the delay window.
     vi.advanceTimersByTime(SESSION_START_DELAY_MS - 100);
@@ -302,8 +302,41 @@ describe("session-start scenario", () => {
     expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
   });
 
+  // Regression: where: is implemented as `triggerDelay` rather than a leading
+  // `{ pause }` step so the where: predicate and var resolvers see telemetry
+  // that has had time to settle. iRacing's `session.changed` lands on a tick
+  // where `TrackWetness` can briefly read `Unknown`; a leading pause inside
+  // the sequence wouldn't help because vars are resolved at expansion time
+  // (synchronously when the immediate where: returns true).
+  it("re-evaluates where: at the deferred fire time, not at event arrival", () => {
+    // Snapshot is null at event arrival — would cause an immediate where: to
+    // reject. But triggerDelay defers the check, so we can populate the
+    // snapshot during the wait window.
+    currentSnapshot = null;
+    bus.publishEvent("session.changed", { from: 0, to: 1 });
+
+    // Mid-wait: snapshot becomes valid (simulating telemetry settling).
+    vi.advanceTimersByTime(SESSION_START_DELAY_MS - 1000);
+    currentSnapshot = snap();
+
+    // Complete the delay — where: should re-evaluate and now pass.
+    flush(audio);
+
+    expect(hasClip("/session-start-greeting/niklas.mp3")).toBe(true);
+  });
+
   it("does not fire when the snapshot resolver returns null", () => {
     fire(null);
+
+    expect(voicePaths()).toEqual([]);
+  });
+
+  // Regression: trigger was moved from `driver.firstOnTrack` to
+  // `session.changed` (issue #668). Publishing the old event must play nothing.
+  it("does not fire on driver.firstOnTrack (old trigger)", () => {
+    currentSnapshot = snap();
+    bus.publishEvent("driver.firstOnTrack", {});
+    flush(audio);
 
     expect(voicePaths()).toEqual([]);
   });

@@ -91,6 +91,7 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   // (#657). Auto-picked by `FLAG_POOL_NAMES` (the `flag-` prefix).
   "flag-disqualify": ["voice/{voice}/flags/disqualify-01.mp3"],
   "flag-furled": ["voice/{voice}/flags/furled-01.mp3"],
+  "flag-furled-cleared": ["voice/{voice}/flags/furled-cleared-01.mp3"],
   "flag-dq-scoring-invalid": ["voice/{voice}/flags/dq-scoring-invalid-01.mp3"],
   "flag-crossed": ["voice/{voice}/flags/crossed-01.mp3"],
   "flag-one-pace-lap-to-go": [
@@ -112,18 +113,18 @@ export const POOLS: Readonly<Record<string, readonly string[]>> = {
   "flag-yellow-waving": ["voice/{voice}/flags/yellow-waving-01.mp3"],
   "flag-caution-waving": ["voice/{voice}/flags/caution-waving-01.mp3"],
 
-  // Start-light family pools (issue #480). Three gantry lines plus the five
-  // numeric countdown marks. Auto-picked for the start-light catalog by the
-  // `start-light-` prefix (see `start-lights.ts` `START_LIGHT_POOL_NAMES`).
-  // Single-clip today; voice-scoped via `{voice}`.
+  // Start-light family pools (issues #480 / #673). Two gantry lines (ready /
+  // go — the heads-up line moved from StartSet to StartReady in #673) plus the
+  // four numeric countdown marks (90 added in #673; 15/5 dropped in #666).
+  // Auto-picked for the start-light catalog by the `start-light-` prefix (see
+  // `start-lights.ts` `START_LIGHT_POOL_NAMES`). Single-clip today; voice-scoped
+  // via `{voice}`.
   "start-light-ready": ["voice/{voice}/start-lights/start-ready-01.mp3"],
-  "start-light-set": ["voice/{voice}/start-lights/start-set-01.mp3"],
   "start-light-go": ["voice/{voice}/start-lights/start-go-01.mp3"],
+  "start-light-countdown-90": ["voice/{voice}/start-lights/countdown-90-01.mp3"],
   "start-light-countdown-60": ["voice/{voice}/start-lights/countdown-60-01.mp3"],
   "start-light-countdown-30": ["voice/{voice}/start-lights/countdown-30-01.mp3"],
-  "start-light-countdown-15": ["voice/{voice}/start-lights/countdown-15-01.mp3"],
   "start-light-countdown-10": ["voice/{voice}/start-lights/countdown-10-01.mp3"],
-  "start-light-countdown-5": ["voice/{voice}/start-lights/countdown-5-01.mp3"],
 
   // Rolling-start family pool (issue #660). Five random-pick variants for the
   // "pace car is moving" call at the start of a rolling-start formation lap.

@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "../../interpreter.js";
+import { _setFurledRaisedSpoken } from "./flag-alerts.js";
 import {
   type DamageCalloutId,
   type FlagCalloutId,
@@ -175,6 +176,7 @@ const FLAG_CLIP_NAMES = [
   // Issue #480 — missing-session-flag callouts.
   "disqualify-01",
   "furled-01",
+  "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
   "one-pace-lap-to-go-01",
@@ -278,17 +280,16 @@ const PIT_BOX_CLIP_PATHS = [
   `voice/${VOICE}/pit-box/pit-now-01.mp3`,
 ] as const;
 
-// Start-light clips referenced from `start-lights.ts` (issue #480). Three
-// gantry lines plus the five countdown marks.
+// Start-light clips referenced from `start-lights.ts` (issues #480 / #673).
+// Two gantry lines (ready / go) plus the four countdown marks (90 added in
+// #673; 15/5 dropped in #666).
 const START_LIGHT_CLIP_PATHS = [
   `voice/${VOICE}/start-lights/start-ready-01.mp3`,
-  `voice/${VOICE}/start-lights/start-set-01.mp3`,
   `voice/${VOICE}/start-lights/start-go-01.mp3`,
+  `voice/${VOICE}/start-lights/countdown-90-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-60-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-30-01.mp3`,
-  `voice/${VOICE}/start-lights/countdown-15-01.mp3`,
   `voice/${VOICE}/start-lights/countdown-10-01.mp3`,
-  `voice/${VOICE}/start-lights/countdown-5-01.mp3`,
 ] as const;
 
 // Rolling-start clips referenced from `rolling-start.ts` (issue #660). Five
@@ -360,6 +361,7 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   // Issue #480 additions.
   "disqualify",
   "furled",
+  "furled-cleared",
   "dq-scoring-invalid",
   "crossed",
   "one-pace-lap-to-go",
@@ -456,6 +458,7 @@ afterEach(() => {
   _resetAudioScenarios();
   _resetRadarEngine();
   _resetSpotterEngine();
+  _setFurledRaisedSpoken(false);
   vi.clearAllMocks();
 });
 
@@ -468,6 +471,8 @@ const FLAG_FIRES: ReadonlyArray<{
   event: SimEventName;
   data: SimEventMap[SimEventName]["data"];
   expectedClipFragment: string;
+  /** Pre-publish setup a fire needs (e.g. furled-cleared's spoken marker). */
+  arrange?: () => void;
 }> = [
   {
     id: "yellow-local",
@@ -548,7 +553,16 @@ const FLAG_FIRES: ReadonlyArray<{
     id: "furled",
     event: "flag.furled.raised",
     data: {} as SimEventMap["flag.furled.raised"]["data"],
-    expectedClipFragment: "furled-",
+    expectedClipFragment: "furled-01",
+  },
+  {
+    id: "furled-cleared",
+    event: "flag.furled.cleared",
+    data: {} as SimEventMap["flag.furled.cleared"]["data"],
+    expectedClipFragment: "furled-cleared-",
+    // The cleared `where:` gates on the raised line having actually been
+    // spoken (issue #669) — seed the marker as if it had.
+    arrange: () => _setFurledRaisedSpoken(true),
   },
   {
     id: "dq-scoring-invalid",
@@ -601,7 +615,8 @@ const FLAG_FIRES: ReadonlyArray<{
 ];
 
 describe("registerPitCrew live gating", () => {
-  it.each(FLAG_FIRES)("$id fires when enabled", ({ event, data, expectedClipFragment }) => {
+  it.each(FLAG_FIRES)("$id fires when enabled", ({ event, data, expectedClipFragment, arrange }) => {
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 
@@ -609,8 +624,9 @@ describe("registerPitCrew live gating", () => {
     expect(matched).toBe(true);
   });
 
-  it.each(FLAG_FIRES)("$id is suppressed when its toggle is off", ({ id, event, data }) => {
+  it.each(FLAG_FIRES)("$id is suppressed when its toggle is off", ({ id, event, data, arrange }) => {
     enabled.set(id, false);
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 
@@ -1015,8 +1031,8 @@ describe("pit-box count-in live gating (issue #600)", () => {
 describe("start-light family registration (issue #480)", () => {
   it.each([
     { event: "startLight.start-ready.raised", data: {}, fragment: "/start-lights/start-ready-" },
-    { event: "startLight.start-set.raised", data: {}, fragment: "/start-lights/start-set-" },
     { event: "startLight.start-go.raised", data: {}, fragment: "/start-lights/start-go-" },
+    { event: "startLight.countdown.raised", data: { seconds: 90 }, fragment: "/start-lights/countdown-90-" },
     { event: "startLight.countdown.raised", data: { seconds: 30 }, fragment: "/start-lights/countdown-30-" },
   ])("$event fires its registered clip", ({ event, data, fragment }) => {
     bus.publishEvent(event as SimEventName, data as never);
@@ -1114,8 +1130,9 @@ describe("pit-window family registration (issue #655)", () => {
 // damage callouts could fire on a fresh install with no Pit Crew button
 // placed because dispatch only consulted per-callout flags.
 describe("Race Engineer master gate (issue #515)", () => {
-  it.each(FLAG_FIRES)("$id is suppressed when the master gate is off", ({ event, data }) => {
+  it.each(FLAG_FIRES)("$id is suppressed when the master gate is off", ({ event, data, arrange }) => {
     voiceMasterEnabled = false;
+    arrange?.();
     bus.publishEvent(event, data as never);
     flush(audio);
 

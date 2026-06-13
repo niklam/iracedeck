@@ -77,6 +77,33 @@ export type TranslatorState = {
    * from `activeFlags` but does not actually clear the caution).
    */
   lastAnyYellow: boolean;
+  /**
+   * Timestamp (ms) of the most recent all-yellow-bits drop edge, while a
+   * `flag.yellow.cleared` emission is pending its sustain window (issue
+   * #671). iRacing's yellow bits mirror the flag SHOWN to the player —
+   * `YellowWaving` drops the moment the player passes out of the affected
+   * zone and re-raises next lap — so the cleared edge is only announced once
+   * the all-clear has held for `YELLOW_CLEARED_HOLD_MS`. Any yellow-ish
+   * re-raise cancels the pending clear. `null` when no clear is pending.
+   */
+  yellowClearPendingSince: number | null;
+  /**
+   * Timestamp (ms) when the `Furled` bit's rising edge was observed, while a
+   * `flag.furled.raised` emission is pending its debounce window (issue
+   * #669). Running briefly off track flashes the bit for ~0.5 s without a
+   * genuine furled-black-flag warning, so the raised callout only fires once
+   * the bit has stayed set for `FURLED_DEBOUNCE_MS`; the bit clearing
+   * meanwhile drops the pending announcement. `0` when no announce is
+   * pending.
+   */
+  furledPendingAt: number;
+  /**
+   * True once `flag.furled.raised` has actually been emitted for the current
+   * furled episode (issue #669). Gates the paired `flag.furled.cleared` on
+   * the falling edge — a transient flicker that never announced fires
+   * neither event.
+   */
+  furledAnnounced: boolean;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -132,9 +159,10 @@ export type TranslatorState = {
    */
   startLightInitialized: boolean;
   /**
-   * Previous-tick value of the three gantry bits (`StartReady | StartSet |
+   * Previous-tick value of the two edge-detected gantry bits (`StartReady |
    * StartGo`) masked out of `SessionFlags`. Drives the rising-edge gantry
-   * emissions.
+   * emissions (issue #673 — the heads-up line fires on Ready; nothing is
+   * emitted for `StartSet`).
    */
   lastStartLightBits: number;
   /**
@@ -479,6 +507,9 @@ export function createInitialState(): TranslatorState {
     activeFlags: new Set(),
     lastYellowScope: null,
     lastAnyYellow: false,
+    yellowClearPendingSince: null,
+    furledPendingAt: 0,
+    furledAnnounced: false,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

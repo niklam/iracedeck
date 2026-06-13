@@ -262,61 +262,56 @@
         "seed": 5
       },
       {
+        "name": "furled-cleared-01",
+        "text": "Black flag cleared.",
+        "seed": 1
+      },
+      {
         "name": "dq-scoring-invalid-01",
         "text": "D-Q. <break time=\"0.3s\" /> Scoring's off.",
         "seed": 3
       },
       {
         "name": "yellow-waving-01",
-        "text": "Local yellow waving. <break time=\"0.3s\" /> Slow, hazard ahead!",
+        "text": "Yellow flag",
         "seed": 3
       },
       {
         "name": "caution-waving-01",
-        "text": "Caution coming out!",
+        "text": "Caution is out. <break time=\"0.3s\" /> Slow down and close up safely.",
         "seed": 3
       }
     ],
     "start-lights": [
       {
         "name": "start-ready-01",
-        "text": "We're ready. Focus.",
-        "seed": 10
-      },
-      {
-        "name": "start-set-01",
-        "text": "Lights are on.",
-        "seed": 3
+        "text": "Lights. Get ready to go.",
+        "seed": 2
       },
       {
         "name": "start-go-01",
         "text": "Go, go, go!",
-        "seed": 3
+        "seed": 4
+      },
+      {
+        "name": "countdown-90-01",
+        "text": "Ninety seconds to race start.",
+        "seed": 5
       },
       {
         "name": "countdown-60-01",
-        "text": "Sixty seconds to the lights.",
-        "seed": 3
+        "text": "Sixty seconds to race start.",
+        "seed": 5
       },
       {
         "name": "countdown-30-01",
-        "text": "Thirty seconds to the lights.",
-        "seed": 3
-      },
-      {
-        "name": "countdown-15-01",
-        "text": "Fifteen seconds to the lights.",
+        "text": "Thirty seconds to race start.",
         "seed": 3
       },
       {
         "name": "countdown-10-01",
-        "text": "Ten seconds to the lights.",
-        "seed": 3
-      },
-      {
-        "name": "countdown-5-01",
-        "text": "Five seconds to the lights.",
-        "seed": 3
+        "text": "Ten seconds to race start.",
+        "seed": 2
       }
     ],
     "rolling-start": [
