@@ -316,6 +316,14 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     this.dialRotateCallbacks.push(callback);
   }
 
+  /**
+   * Open a URL in the user's default browser. Best-effort: delegates to the VSD
+   * client's `openUrl` command, which is harmless if the Stream Dock host ignores it.
+   */
+  async openUrl(url: string): Promise<void> {
+    this.client.openUrl(url);
+  }
+
   connect(): void {
     this.client.connect();
   }
