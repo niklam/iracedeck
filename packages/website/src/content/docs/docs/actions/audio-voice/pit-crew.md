@@ -138,7 +138,7 @@ The eight callouts share a single family so a positioning correction (e.g. *"too
 
 Around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage — the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying. The brief also fires when you connect into a practice or qualifying session that is already in progress.
 
-Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is spoken exactly (never rounded); if the live limit isn't one the engineer has a clip for, the pit-speed part of the brief is simply skipped rather than guessing a number. The readout fires once per session and does not re-fire mid-session.
+Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
 
 In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
 
