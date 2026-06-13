@@ -1,0 +1,28 @@
+---
+// Friendly lead-in shown only when the changelog is opened from an in-plugin
+// update notice. The plugin appends an "ecosystem" query parameter
+// (stream-deck or mirabox) plus an optional "type" device-type id. When the
+// params are absent (a direct visit from the navigation) the element stays
+// hidden and nothing extra renders.
+---
+
+<p id="update-lead-in" class="changelog-lead-in" hidden></p>
+
+<script is:inline>
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const ecosystem = params.get("ecosystem");
+
+    // Map the ecosystem id to a friendly label. The Elgato numeric device-type
+    // ids carried by "type" are intentionally left unmapped for now.
+    const labels = { "stream-deck": "Stream Deck", mirabox: "Mirabox" };
+    const label = ecosystem ? labels[ecosystem] : null;
+    if (!label) return;
+
+    const el = document.getElementById("update-lead-in");
+    if (el) {
+      el.textContent = label + " updated — here's what's new.";
+      el.hidden = false;
+    }
+  })();
+</script>

@@ -375,3 +375,15 @@ starlight-theme-select label select {
   color: var(--sl-color-gray-3);
   margin-top: 2rem;
 }
+
+/* ── Changelog page ── */
+
+.changelog-lead-in {
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  margin-bottom: 1rem;
+}
+
+.changelog-lead-in[hidden] {
+  display: none;
+}
