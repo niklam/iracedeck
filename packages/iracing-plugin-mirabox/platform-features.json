@@ -5,6 +5,8 @@
     "svgPatterns": false
   },
   "features": {
-    "borderGlow": false
+    "borderGlow": false,
+    "dialFeedback": false,
+    "dialLongPress": false
   }
 }
