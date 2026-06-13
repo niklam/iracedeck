@@ -44,6 +44,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `action-documentation.md`: How to document Stream Deck actions: settings tables, keyboard simulation tables, icon state tables, and the reference template.
 - `black-box-icons.md`: Design guidelines for iRacing black box key icons: canvas layout, inner frame spec, text labels, layout patterns, and per-icon details. Scoped to black-box-selector files.
 - `build-and-commit.md`: Worktree-based development workflow, pre-commit checks (`pnpm install` + `pnpm build`), build commands, conventional commit conventions, and post-merge worktree cleanup.
+- `changelog.md`: When and how to update the public changelog page (`changelog.mdx`) — required on merge to `master`/`release/*` for user-facing changes, one-line-per-change (a feature and its follow-up fixes collapse into a single line), the in-development version section, and the fixed entry format.
 - `code-style.md`: Formatting, linting, type conventions, Zod usage, and general code quality rules.
 - `global-settings.md`: Plugin-level global settings architecture: Property Inspector usage, `ird-key-binding` with `global` attribute, Zod schema, and settings path conventions.
 - `icons.md`: General icon guidelines: icon types (category, key, template), SVG structure, design specs, color palette, Mustache templates, and distinctiveness rules.

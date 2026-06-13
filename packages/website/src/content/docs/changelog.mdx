@@ -1,0 +1,462 @@
+---
+title: Changelog
+description: Release notes and version history for the iRaceDeck plugin for Elgato Stream Deck and Mirabox devices.
+---
+
+import ChangelogLeadIn from "../../components/ChangelogLeadIn.astro";
+
+<ChangelogLeadIn />
+
+Release notes for each version of iRaceDeck. The newest release is listed first. For installation help, see the [installation guide](/docs/getting-started/installation/); to grab the latest build, head to the [downloads page](/downloads/).
+
+## 1.22.0
+
+_Unreleased_
+
+**Features**
+
+- Telemetry Display now supports expressions — use `{{= … }}` alongside the usual `{{variable}}` placeholders to compute and format values: arithmetic, comparisons, ternaries (`cond ? "A" : "B"`), string concatenation, and the `round`, `floor`, `ceil`, `abs`, `min`, and `max` functions. For example, `{{= round(telemetry.dpFuelAddKg / (sessionInfo.DriverInfo.DriverCarFuelKgPerLtr * 0.264172), 2) }}` shows the fuel to add in gallons. Expressions are evaluated safely — no arbitrary code execution.
+- New Changelog page (this one). When you update to a new version, iRaceDeck now opens it in your browser so you can see what's new at a glance.
+
+## 1.21.0
+
+_Unreleased_
+
+**Features**
+
+- Race-start voice callouts. Standing starts get a countdown into the lights ("Ninety… sixty… thirty… ten seconds to race start."), "Lights. Get ready to go." as the gantry comes alive, and "Go, go, go!" the instant they drop — and the countdown only speaks marks that fit the pre-start window, so short procedures never blurt stale numbers. Rolling starts get "Pace car's rolling", "One pace lap to go", and "Green's coming".
+- Voice spotter — the Race Engineer spots traffic for you: "Car left." / "Car right.", "Two cars left.", "Three wide.", a "Still there." reminder while you're side-by-side, and "Clear." when you're free. Road courses use left/right, ovals inside/outside, and routine chatter is held back while a car is alongside so spotter calls and safety flags own the radio.
+- Pit window open/closed callouts, announced the moment they change so you can react under caution.
+- Black flag callouts — disqualification, a debounced furled black-flag warning with a paired "furled cleared" call, and late-race "Ten to go" / "Five to go" calls.
+- Setup sanity check — heading into a race on a qualifying setup (or the other way around), the engineer spots it from the setup name and asks you to double-check. Match patterns are configurable.
+- New Telemetry Control Snapshot mode — a developer/diagnostic key that saves the current telemetry and session info to disk, handy when reporting issues.
+- New Race Engineer driver names: Mike, Guido, and Fox.
+- As always, every new callout has its own on/off toggle in the Property Inspector.
+
+**Improvements**
+
+- The Race Engineer now knows your car: no pit-limiter chatter on cars that don't have one, and the pit-entry service readback works on dirt ovals.
+- Reworked radio discipline — critical calls (meatball, "Go, go, go!", fuel-critical) cut through instantly, while background commentary waits its turn instead of talking over them.
+- No more P0 on the grid — Session Info shows your qualifying grid slot through the formation lap, and the engineer no longer calls phantom position changes during the pre-green shuffle.
+- The Pit Limiter button is now tri-state — on cars without a pit limiter it greys out (keeping the pit-speed number) instead of pretending to toggle.
+- The practice and qualifying session-start brief now plays right at session start.
+
+**Bug Fixes**
+
+- "Yellow cleared." is back — it was silently dropped whenever the radio was busy, and now waits for a gap so it gets through.
+- The "approaching pits" call no longer repeats when you drift out of the pit entry and straight back in.
+
+**Maintenance**
+
+- Dependency updates and assorted cleanup.
+
+## 1.20.0
+
+_2026-06-02_
+
+**Features**
+
+- Session Info Position mode adds a Position Type setting (Class / Overall, with Class the default). Multi-class drivers see their live in-class position on the key, updating as you pass and get passed — not just at the start/finish line. Show Total Cars follows along: P2/8 for your class versus P5/24 for the whole field.
+- Every action's Property Inspector now shows its communication method (iRacing API, key binding, or chat command) under the Mode selector, with a live binding status and a "set it here" shortcut. A required key binding that isn't configured shows a ⚠️ on the key icon until you set one, and SimHub users get a live "SimHub not connected" indicator.
+- The Car Control Enter/Exit/Tow key is now context-aware, mirroring iRacing's own session button: out of the car it shows Test, Practice, Qualify, Grid, or Race; in the car the exit, reset-to-pits, and tow states switch to a red background.
+- An Administrator mismatch warning detects when iRacing runs as Administrator but Stream Deck doesn't (which silently blocks every command) and explains how to fix it in the Property Inspector.
+
+**Improvements**
+
+- Plugin logs now default to info level instead of flooding with debug output. A new "Enable debug logging" checkbox under Common Settings → Diagnostics turns on verbose logs immediately, no restart needed.
+
+## 1.19.0
+
+_2026-05-31_
+
+**Features**
+
+- Race Engineer race-start brief — at the green he greets you with your grid position and the conditions (track temp, air temp, wetness).
+- Race Engineer overtake calls — "Nice pass!" when you gain a spot and "Come on, `<name>`!" when you lose one, with a live position readout. Class-aware in multi-class and smart enough to ignore momentary position flickers.
+- Race Engineer race status and finish — periodic position updates through the race, plus a dedicated call when you take the checkered.
+- Race Engineer qualifying calls — your new position after each qualifying lap, and a heads-up when a lap is invalidated.
+- Race Engineer pit-box count-in — heading down pit lane he counts down the distance to your box ("5, 4, 3, 2, 1, pit now").
+- New Race Engineer volume and Radar volume buttons in Audio Controls, so you can balance each voice independently.
+- New Jump to Fastest Lap action in Replay Control — skip straight to the fastest lap of your car or the car you're watching.
+- Chat Send Message timing is now configurable, so you can tune the Enter hold and delays for reliable delivery.
+- More driver names in the callout pool (Jon, James, Noj), and every new callout has its own on/off toggle.
+
+**Bug Fixes**
+
+- The Race Engineer now stops mid-sentence (and kills ambient audio) the instant you toggle him off.
+- Multi-class overtake detection fixed.
+
+**Maintenance**
+
+- Dependency updates and assorted cleanup.
+
+## 1.18.0
+
+_2026-05-16_
+
+**Features**
+
+- Race Engineer session-start callout greets you the first time you go on track each session with a briefing: your name, session type, pit speed limit, track and air temperature, and track wetness. It fires once per session, about 3 seconds after going on track, and defaults on.
+- Race Engineer best-lap callout announces your time when you set a new personal best or complete your first valid lap. Sub-one-minute laps skip the minute clip; laps 11 minutes or longer stay silent. Defaults on.
+- Race Engineer toggle acknowledgement — pressing the toggle confirms the new state out loud.
+- Race Engineer telemetry-connect radio check plays a "radio check, standing by" line on a real SDK connection; reconnects re-fire.
+- Setup actions gain live-value View sub-modes that render the live telemetry value on the key — 28 new entries across Aero, Brakes, Chassis, Engine, Fuel, Hybrid, and Traction. The PI dropdowns are reorganized into Adjust and Display value groups.
+- Setup action View sub-modes double as one-key dual-press controls: a short press fires one direction, a long press the opposite. The threshold (200–2000 ms, default 500) and direction are configurable, with a per-action opt-out.
+- Toggle Driving Line added as a tenth mode on Toggle UI Elements (default keybind Ctrl+Alt+L).
+- Three new driver names — Dominic, Miguel, and Jasper.
+
+**Improvements**
+
+- Voice clips re-encoded to 16 kHz mono 32 kbps (the radio filter band-limits them to 250–3500 Hz anyway), cutting file sizes about 64% with no audible difference.
+
+**Maintenance**
+
+- The audio generator config was split into self-contained per-voice files, with a parity test ensuring every voice covers the same callouts; the voice "luca" was renamed to "default" (transparent to users).
+- No manual migration is needed; setup action layouts are backward-compatible, and TC Slot 1–4 was renamed to TC1–TC4 (cosmetic only).
+
+## 1.17.0
+
+_2026-05-11_
+
+**Features**
+
+- Race Engineer incident callouts react to six distinct situations: going off-track, spinning out, light contact with the wall or another car, and harder collisions. Collision lines mention the penalty points inline, multi-step crashes get one combined callout, and each category has its own toggle (all default on).
+- Race Engineer track wetness callouts announce every step transition as the track gets wetter or drier, with directional phrasing — twelve unique lines covering all the states.
+- Session Info gains a Track Wetness mode: a six-segment cyan-to-blue bar that fills as conditions worsen, with the live state name as the title.
+- Race Flags gains a "Blank when no flag" option to hide the "--" placeholder until a flag actually appears (opt-in, default off).
+- Replay Control gains progressive slow-motion stepping — Slow Motion walks from 1/2x down to 1/16x in configurable steps, and long-press holds it down the ladder; Slow Motion Rewind works the same in reverse.
+
+**Improvements**
+
+- Volume sliders now follow a perceptual loudness curve, giving fine control at low volumes; radar SFX was re-mastered to match the engineer's loudness; and default levels were rebalanced (Race Engineer and Radar 100→50, Background 35→25).
+- Telemetry now polls at 100 Hz with frame-level de-duplication (up from 4 Hz), unlocking sub-100 ms features; Telemetry Display and Car Control icons are capped at 10 Hz for visibly smoother updates.
+- Every static icon was re-authored — viewBoxes trimmed to the artwork, padding added, and several redesigned (Ignition, Reset to Pits, Restart Recording, Launch RPM, and more); decrease-variant icons were rebuilt to mirror their increase counterparts.
+
+## 1.16.0
+
+_2026-05-06_
+
+**Features**
+
+- Race Engineer pit-service status callouts: once the car is in the box he reads iRacing's pit-stop status out loud ("Crew working", "All done, ready to roll", "Too far left/right/forward/back", "Bad angle", "Can't fix that this stop"), each individually toggleable.
+- Replay Control gains a configurable Fast Forward / Rewind step rate and slow-motion rewind.
+- Chat gains an on/off toggle mode for cleaner one-button workflows.
+- Session Info gains display sizing, handy on the larger Mirabox touch surfaces (first contribution from @RCkanki).
+
+**Improvements**
+
+- SimHub Control Mapper roles are now sorted alphabetically in the binding dropdown.
+
+**Bug Fixes**
+
+- Race Engineer and Radar now default off. A schema migration deletes persisted enable values from older versions, every voice scenario and radar tick is master-gated, and a plugin-level audio listener keeps a deck without a Pit Crew button silent. Re-enable with the Race Engineer Toggle or Radar Toggle (thanks @thesewheels and @Lazagna42 for reporting).
+- Autofuel no longer ships a default key binding, so there are no accidental conflicts on first install.
+- The camera focus labelled "Focus on Exiting" (a typo) is now "Most Exciting", matching iRacing.
+
+**Maintenance**
+
+- The "Respond to Last PM" Chat mode is hidden — the unified Reply mode covers it, and existing buttons auto-migrate to Reply.
+
+## 1.15.1
+
+_2026-05-03_
+
+**Features**
+
+- New Pit Crew action with two features at launch: a Race Engineer voice assistant that reads out pit-action toggles, tells you what's planned for the next pit stop, calls out flags, and warns when your car is damaged; and Audio Radar, which ticks in your left or right ear when there's a car alongside so you can keep your eyes on the road. Both are off by default.
+- Race Admin gains a "Type in Chat" car-selection mode that types the command to the chat window for you; you fill in the car number and press Enter.
+- Flag overlay maximum flashing time limits how long flag overlays flash, useful on long tracks where green flags can persist for minutes (see Global Settings).
+
+**Bug Fixes**
+
+- Added default key bindings for Next and Previous car in replay (v and Shift+V); previously these had no defaults.
+
+## 1.14.0
+
+_2026-04-19_
+
+**Features**
+
+- Auto-hold for the Enter/Exit/Tow Car mode, with per-state behavior (Exit in the pit stall, Reset on track in non-race sessions, Tow on track in a race). A single tap holds Shift+R for 1.5 s; tap again to cancel. Manual press-and-hold still works.
+- A build-time platform feature-flag system per plugin. Its first use strips border glow (QT6.7+ only) from the Mirabox bundle and Property Inspector while Stream Deck keeps it.
+
+**Improvements**
+
+- All 12 audio-controls and AI spotter icons were redesigned with new, Mirabox-compatible artwork (artwork by Hesham).
+- Toggle Autofuel no longer shows the fuel amount, matching the Fast Repair look.
+- AI Spotter volume labels now follow the audio-controls convention (VOL UP / SPOTTER, and so on).
+- Black-box Next/Previous artwork is centered with the other black-box icons.
+- New Mirabox dev workflow scripts (relink, unlink, switch-test-env) with expanded setup docs.
+
+**Bug Fixes**
+
+- Replay Next/Previous Car no longer becomes a no-op during the warmup/formation lap.
+- The Master "Mute" option was removed from Audio Controls (it had no key binding and was a silent no-op).
+- Icon title alignment fixed for 21 icons by stripping a phantom leading newline that pushed artwork about 11 px too high.
+
+**Maintenance**
+
+- Long-press repeat logic extracted into a single shared RepeatController.
+- Shared PI assets moved into a dedicated @iracedeck/pi-components package consumed by both plugins.
+- Each action's PI template, icon, and key art now live alongside its code.
+- Package renames (@iracedeck/actions → @iracedeck/iracing-actions, plus the two plugin packages).
+
+## 1.13.1
+
+_2026-04-15_
+
+**Bug Fixes**
+
+- Fixed fuel and replay long-press sticking under rapid presses — the 1.13.0 fix wasn't enough. The root cause (a synchronous native chat send blocking the event loop just long enough for keyUp events to race past timer setup) is fixed, and held-button tracking is now the authoritative source of truth, so a release always stops the repeat immediately.
+
+## 1.13.0
+
+_2026-04-12_
+
+**Features**
+
+- New Force Feedback action to adjust FFB from the Stream Deck. Modes: Auto-compute FFB Force, FFB Force (+/−), Wheel LFE (+/−), Bass Shaker LFE (+/−), Wheel LFE Intensity (+/−), and Haptic LFE Intensity (+/−).
+- New "Auto-enable fueling on amount change" global setting (off by default) that arms fueling when you adjust the fuel amount (thanks @navy-exe).
+
+**Improvements**
+
+- The color picker now remembers recently used colors and shows preset swatches.
+- Status-bar icons show a gray "N/A" indicator when telemetry isn't available, instead of stale or zero values.
+- Toggle Tires gains a Toggle Mode setting: Select (default for new actions) replaces the current selection, while Toggle (legacy) flips each configured tire individually.
+- Toggle Autofuel adopts the status-bar style with border color and shows the current fuel amount (thanks @navy-exe).
+- Replay Set Speed uses the configured speed as its default title (e.g., "2×", "8×").
+- The Silence icon exposes its two graphic colors for per-action and global overrides.
+- Action documentation on iracedeck.com is now organized per mode.
+- The primary selector on every action is consistently labelled "Mode".
+
+**Bug Fixes**
+
+- Fuel increase/decrease long-press looping now has a safety timeout.
+- The replay play/pause toggle correctly resets when iRacing disconnects.
+- Fuel Service global settings are no longer hidden in non-keyboard modes.
+
+**Maintenance**
+
+- The build now generates a config.json carrying the plugin version and target platform, so the version is read at runtime rather than hardcoded.
+- Actions can declare addedWithVersion on CommonSettings, enabling version-dependent defaults without breaking existing settings.
+
+## 1.12.0
+
+_2026-04-08_
+
+**Features**
+
+- New Push-to-Talk mode for Audio Controls — hold to talk, release to mute, with a dedicated mic icon.
+- Dynamic icon scaling: artwork automatically scales and repositions based on title visibility and placement. A per-action scale override (50–150%) and a global Graphic Scale default were added.
+
+**Improvements**
+
+- The flags overlay now shows green, white, and checkered flags; the checkered flag uses a 2×2 pattern, and blue is suppressed when green is active (thanks @navy-exe).
+- Toggle Tires was redesigned with a race-car silhouette and per-tire color indicators (green changing, red configured but off, black not configured), and tire selection moved to a 2×2 checkbox grid (icon by Niklas, grid by @navy-exe).
+- Toggle Tires now sends shorthand iRacing pit macros when the selected tires match a recognized group (all four, left-side, right-side), fixing cars like the SF23 that only support all-or-nothing tire changes (reported by @rafeautie).
+- A new color picker adds a proper "not set" state, inline hex editing, and a clear button; legacy values auto-migrate.
+- A new synced slider-and-number range input replaces the old sliders across the Property Inspector.
+
+**Bug Fixes**
+
+- Toggle Fuel, DRS, Push-to-Pass, Windshield Tearoff, and Fast Repair now lock their essential title fields so global title settings can't suppress them.
+- Fixed a race condition that overwrote the saved title font size when opening the Property Inspector.
+- Fixed opening an action's Property Inspector writing the icon's default border color to settings.
+- Fixed border and glow rects being half-clipped at the SVG viewBox edges.
+
+## 1.11.0
+
+_2026-04-02_
+
+**Features**
+
+- Customizable button title text: override the default title on any action and control bold, font size, and position (top/middle/bottom/custom offset). Three-state Inherit/Yes/No controls and a four-level resolution chain (per-action → global → icon metadata → defaults) keep it predictable, with a global Title Defaults section.
+- Border indicator with inner glow: add a configurable border (width, color, optional glow) to any key icon. Toggle actions get state-driven border colors (green on, red off, gray N/A). Icon backgrounds also gain rounded corners.
+- Dynamic grid icon for Camera Cycling: the Cycle Camera target shows a miniature grid of your selected camera group icons, adapting the layout to the group count with a "+N" overflow indicator.
+- The Property Inspector was reorganized: Action and Global settings are separated by section headers, overrides are wrapped in collapsible accordions, global settings are split into focused sections, and accordion open/closed state persists across key selections.
+
+**Improvements**
+
+- Black box icon titles simplified to concise one-line labels (e.g., "LAP TIMING").
+
+**Bug Fixes**
+
+- Race position is now calculated in real time from laps completed plus track distance percentage, giving instant updates during races. Practice and qualifying still use the official positions, with the official position as a fallback on pit road.
+
+## 1.10.0
+
+_2026-03-29_
+
+**Features**
+
+- Long-press repeat for fuel controls — hold Fuel Add/Reduce to continuously adjust the amount.
+- Escape control added to the Car Control action.
+
+**Improvements**
+
+- Locked color slots protect semantic colors (like flag overlays) from global color overrides.
+- New artwork for the Report Laps, Damage Report, and Weather Report icons (artwork by @NAVY).
+- Bottom-positioned icon labels moved lower for better readability.
+
+**Bug Fixes**
+
+- Fixed replay next/previous car track navigation.
+- The fuel toggle now shows a "--" placeholder when no telemetry is available.
+- Fixed a hardcoded background color in replay car icons not respecting color overrides.
+
+## 1.9.1
+
+_2026-03-28_
+
+**Improvements**
+
+- Redesigned camera select icons and improved Property Inspector usability.
+
+**Bug Fixes**
+
+- Fixed camera group selection being shared across all buttons instead of stored per-action.
+
+## 1.9.0
+
+_2026-03-27_
+
+**Features**
+
+- Telemetry-driven pit service states: pit toggles (Windshield Tearoff, Fast Repair) and a new Toggle Fuel Fill action now show live ON/OFF status from telemetry, and Toggle Fuel Service also shows the amount of fuel to be added.
+- Context-aware Enter/Exit/Tow: the Car Control action adapts its icon and behavior to your current state, with updated icons.
+
+**Improvements**
+
+- The plugin version and a downloads link are now shown in all Property Inspector panels.
+- A documentation link was added to all Property Inspector panels.
+
+## 1.8.0
+
+_2026-03-26_
+
+**Bug Fixes**
+
+- Fixed the Enter / Exit / Tow button.
+
+## 1.7.0
+
+_2026-03-24_
+
+**Features**
+
+- SimHub Control Mapper integration: every key binding can now be routed through SimHub's Control Mapper instead of keyboard shortcuts. A per-binding dropdown switches between Keyboard and SimHub mode; in SimHub mode you pick a Control Mapper role name (with autocomplete) and iRaceDeck sends the command over the network. Configure the SimHub host and port once in Global Settings (contributed by @kelchm).
+
+## 1.6.0
+
+_2026-03-23_
+
+**Features**
+
+- Change Camera: switch directly to a specific camera group (Cockpit, Chase, TV1, and so on) with a single press. Pick from all 20 iRacing camera groups via a dropdown; the key icon updates to match.
+- Camera Group Subset Cycling: choose which camera groups to cycle through via a checkbox grid.
+- Car Control gains four new modes — Headlight Flash, Push to Pass (with live status), DRS (with live status), and Tear Off Visor.
+- Splits & Delta gains four new modes — Custom Sector Start/End for personalized split timing, and Active Reset for set-and-run reset points.
+
+**Improvements**
+
+- Color overrides now work on dynamic template actions (Car Control, Session Info, Tire Service, Telemetry Display).
+- Telemetry Display updated with an improved default template, title, and font size.
+
+**Maintenance**
+
+- The Stream Dock plugin was renamed to the Mirabox plugin to reflect the actual hardware brand.
+
+## 1.4.0
+
+_2026-03-20_
+
+**Features**
+
+- Customizable icon colors: change background, text, and graphic colors on every action. Per-action overrides, global defaults, and preset buttons (Default / White / Black) make it easy to match your Stream Deck layout.
+- Splits & Reference (renamed from Splits Delta Cycle) now includes a "Toggle Reference Car" mode alongside the cycle mode. Encoder rotation always cycles splits delta regardless of mode.
+
+**Improvements**
+
+- The global key bindings section now starts collapsed for a cleaner Property Inspector.
+
+**Bug Fixes**
+
+- Windshield Tearoff and Fast Repair now correctly toggle on/off instead of always enabling, and tire compound cycling is fixed for multi-compound cars.
+- Leading zeros are preserved in car numbers (e.g., "08") for Race Admin commands and camera operations.
+
+## 1.3.0
+
+_2026-03-15_
+
+**Features**
+
+- New Race Admin action (27 modes): quick access to admin chat commands for league race directors and hosted-session admins — throw yellows, issue black flags, disqualify drivers, manage pits, control restarts, and more. It can target the currently viewed car or a pre-defined car number.
+- Jump to car by number added to Replay Control.
+- Configurable font size for Chat action key text.
+
+## 1.2.0
+
+_2026-03-15_
+
+**Features**
+
+- Jump to next, previous, and my car: new camera sub-actions added to Replay Control.
+
+## 1.1.0
+
+_2026-03-14_
+
+**Features**
+
+- Progressive replay speed control spanning the full 1/16x to 16x range.
+- Long-press repeat for replay speed and transport controls.
+- Play backward mode with improved play/pause behavior.
+- Direction-aware speed control with turtle/rabbit icons.
+- Redesigned replay icons — a film strip for frame forward/backward, an oval track for next/previous lap, and a dynamic needle gauge for set-speed.
+
+**Improvements**
+
+- Improved iRacing window focus reliability.
+- New website with documentation at iracedeck.com.
+
+## 1.0.0
+
+_2026-03-14_
+
+**Features**
+
+- New Replay Control action that replaces the three separate replay actions with a single, unified action covering transport, speed, and navigation.
+- New AI Spotter Controls action: volume, silence, damage report, weather report, toggle report laps, and announce leader at the start/finish line.
+- Flag overlay: optional live flag indicators available for every action, displayed directly on your Stream Deck buttons.
+- Change All Tires sub-action added to Tire Service.
+- Toggle Wipers option added to Cockpit Misc.
+- Focus iRacing window: an optional setting to automatically focus iRacing before sending inputs, great for drivers using windowed mode.
+
+**Improvements**
+
+- Template variables now resolve in chat message icon display when Key Text is not defined.
+- Chat modes reordered with Send Message as the default, and the chat window now closes automatically after sending.
+- Differentiated louder/quieter icons for audio controls, plus various icon improvements.
+
+**Breaking changes**
+
+- Existing Replay Transport, Replay Speed, and Replay Navigation buttons still work but are hidden from the action list. Use the new Replay Control action going forward.
+- Spotter controls have moved from Audio Controls to the new AI Spotter Controls action. Reconfigure any existing spotter buttons using the new action.
+
+## 0.13.0
+
+**Features**
+
+- New Telemetry Display action: show any iRacing data on your Stream Deck using custom templates, with multiline support, configurable font size, and text color.
+- Template variables: use dynamic variables like car number, track name, and session info in chat messages.
+
+**Improvements**
+
+- Boolean telemetry values now display as Yes/No instead of 0/1.
+- Updated fuel service icon designs and improved sub-label readability.
+- Reduced plugin package size.
+
+**Bug Fixes**
+
+- Fixed an installation issue preventing some users from installing via Marketplace or by double-clicking the downloaded file.
+- Fixed the settings panel not showing default options on first load.

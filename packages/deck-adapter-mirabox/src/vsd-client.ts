@@ -230,4 +230,17 @@ export class VSDClient {
       payload: settings,
     });
   }
+
+  /**
+   * Open a URL in the user's default browser. Best-effort: the VSD Craft protocol
+   * mirrors Elgato's event names, so this is harmless if the Stream Dock host
+   * ignores the `openUrl` event.
+   */
+  openUrl(url: string): void {
+    this.send({
+      event: "openUrl",
+      context: this.params.pluginUuid,
+      payload: { url },
+    });
+  }
 }
