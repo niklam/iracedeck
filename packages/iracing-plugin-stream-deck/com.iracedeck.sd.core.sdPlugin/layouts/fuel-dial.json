@@ -20,6 +20,7 @@
       "key": "indicator",
       "type": "bar",
       "rect": [12, 76, 176, 14],
+      "value": 0,
       "subtype": 0,
       "bar_bg_c": "#333333",
       "range": { "min": 0, "max": 100 }
