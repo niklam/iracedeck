@@ -17,7 +17,9 @@ Astro + Starlight documentation site deployed via Firebase Hosting. Dark theme b
 | `packages/website/src/styles/custom.css` | Brand overrides (accent color, font, dark bg) |
 | `packages/website/src/content.config.ts` | Content collection config with Starlight loader |
 | `packages/website/src/content/docs/index.mdx` | Landing page (splash template) |
+| `packages/website/src/content/docs/changelog.mdx` | Changelog / version history at `/changelog/` (opened by the plugin on upgrade, #680) |
 | `packages/website/src/content/docs/` | All documentation pages (markdown) |
+| `packages/website/src/components/` | Astro components for MDX pages (e.g. `ChangelogLeadIn.astro`). Use a small `.astro` component for any client-side `<script>` — an inline `<script>` inside an `.mdx` file fails to parse (MDX reads `{`/`<` in the body as JSX). |
 | `packages/website/src/assets/` | Logo image |
 | `packages/website/public/` | Static assets (favicons, webmanifest) |
 | `packages/website/firebase.json` | Hosting config (serves `dist/`) |

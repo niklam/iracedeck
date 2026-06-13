@@ -39,6 +39,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `scan-code-map.ts` — PS/2 scan code mapping
 - `iracing-hotkeys.ts` — iRacing hotkey presets
 - `unit-conversion.ts` — Fuel unit conversion utilities
+- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `buildChangelogUrl`, `runVersionCheck`); see `.claude/rules/global-settings.md`
 
 ## Build
 

@@ -169,7 +169,7 @@ Issue templates automatically apply labels (`bug`, `enhancement`). These are sep
 When creating issues, always include requirements for updating all affected artifacts beyond the code itself. If the change affects actions, features, or behavior described in any of these, the issue must list them:
 
 - **All plugin packages** — registration in `plugin.ts`, manifest entries, and PI templates for every applicable plugin (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`)
-- **Website** (`@iracedeck/website`) — action descriptions, feature lists, action counts
+- **Website** (`@iracedeck/website`) — action descriptions, feature lists, action counts, and the changelog page (`changelog.mdx`) for any user-facing change — see `@.claude/rules/changelog.md`
 - **Action documentation** (`docs/`) — action docs, keyboard shortcut tables
 - **Skills** (`iracedeck-actions`, `iracing-telemetry`, etc.) — action/mode/sub-action listings
 - **Rules and guidance** (`.claude/rules/`, `CLAUDE.md` files) — conventions, patterns, references
@@ -181,6 +181,7 @@ Merging
 - **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)`. Example: `feat(actions): add Camera Focus action (#42)`. Under squash-merge this title is the commit message that lands on the branch, so it must read as a complete commit subject.
 - **PR titles drive release notes.** The conventional commit prefix determines the release notes category via auto-labeling (see **PR Labels** above). Use the correct prefix so the change appears in the right section.
 - Merging is performed manually or by automation — never by a Claude review step.
+- **Update the changelog.** Any user-facing change merging to `master` or a `release/*` branch must update the changelog page (`packages/website/src/content/docs/changelog.mdx`) in the same PR, collapsing a feature and its follow-up fixes into a single line. See `@.claude/rules/changelog.md`.
 
 ### Post-merge worktree cleanup
 
