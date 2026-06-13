@@ -19,7 +19,7 @@ This action has a single mode — there is no Mode dropdown in the Property Insp
 
 Rotate the dial to set the fuel-to-add target. Each detent changes the target by the configured step size, in your display units, and the new amount is sent to iRacing as an absolute fuel request, clamped to the car's tank capacity. A short press or touchscreen tap runs the configured **Press Action**; a long press or long touch (Elgato only) runs the configured **Long-Press Action**.
 
-The touch strip and the keypad icon both show a live "<target> / <capacity> <unit>" readout with a fill bar that turns green while fueling is armed. When the car's tank capacity is unknown the capacity reads `--` and the fill bar stays empty.
+The touch strip shows a live "<target> / <capacity> <unit>" readout, while the keypad icon shows the current target value — both with a fill bar that turns green while fueling is armed. When the car's tank capacity is unknown the capacity reads `--` and the fill bar stays empty.
 
 #### Details
 
