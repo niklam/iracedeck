@@ -1,6 +1,5 @@
 /**
- * Harness-side store for the session-start ("car entry") readout snapshot
- * (issue #542).
+ * Harness-side store for the session-start brief snapshot (issue #542).
  *
  * Unlike the pit-readback composer — which round-trips through telemetry so
  * the production `getReadbackSnapshot()` translator runs — the session-start

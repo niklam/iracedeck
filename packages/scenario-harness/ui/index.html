@@ -187,8 +187,10 @@
           <h2>Session Start</h2>
           <div class="readback-composer">
             <p class="hint">
-              Compose a "car entry" readout, then fire it. The harness holds this snapshot directly
-              (the driver name isn't telemetry-derived), so the values below are spoken verbatim.
+              Compose a session-start brief, then fire it. Fires a
+              <code>session.changed</code> event (the same trigger the production translator
+              synthesizes at practice / qualifying connect). The brief plays after a ~3 s delay —
+              silence after clicking Fire is expected.
             </p>
 
             <div class="readback-row">

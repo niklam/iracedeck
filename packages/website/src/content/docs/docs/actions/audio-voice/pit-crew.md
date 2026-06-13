@@ -137,9 +137,9 @@ The eight callouts share a single family so a positioning correction (e.g. *"too
 
 ## Session Start
 
-The first time you go on track in a **practice or qualifying** session, the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying.
+Around 3 seconds after a **practice or qualifying** session starts — even if you're still in the garage — the Race Engineer greets you by name and reads a short situational brief — *"Ok, Niklas, it's time to qualify. The pit speed limit is 80 kilometers per hour. Track temperature is 28 degrees Celsius, air temperature is 20 degrees Celsius, and the track is mostly dry."* The session-type line varies between practice and qualifying. The brief also fires when you connect into a practice or qualifying session that is already in progress.
 
-Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is spoken exactly (never rounded); if the live limit isn't one the engineer has a clip for, the pit-speed part of the brief is simply skipped rather than guessing a number. The readout fires once per session, a few seconds after you first go on track, and does not re-fire when you return to the garage and back out.
+Units follow iRacing's own display setting — metric drivers hear km/h and degrees Celsius, imperial drivers hear mph and degrees Fahrenheit. The pit speed limit is rounded to the nearest whole unit before it's spoken, and is only read out when it matches one of the known iRacing pit limits the engineer has a clip for — otherwise the pit-speed part of the brief is simply skipped rather than guessing a number.
 
 In **race** sessions the session-start brief is suppressed entirely — the dedicated **Race Start** callout below takes its place.
 
@@ -153,7 +153,7 @@ Around 3 seconds after iRacing changes to a race session — even if you're stil
 
 In a multi-class race the grid position is your **class** grid slot, not your overall qualifying rank — so a GT3 racer who qualified P15 overall but third in class hears *"Qualifying put us to P three,"* and leading your class off the line plays *"Starting from pole."* This matches how the rest of the race callouts focus on your class.
 
-Because the callout fires off the session-change event (not your first time on track), it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions are unaffected and continue to use the standard session-start brief above.
+Because the callout fires off the session-change event, it arrives in time to be useful during grid prep — even if you sit in the garage. Practice and qualifying sessions get the same treatment from the session-start brief above, which fires the same way at session start.
 
 ## Setup Warning
 
@@ -286,7 +286,7 @@ Under **Damage**, one callout is toggleable, enabled by default:
 
 Under **Session Start**, one callout is toggleable, enabled by default:
 
-- **Car entry conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads the first time you go on track in **practice or qualifying** sessions. Race sessions are covered by **Race → Race start** below — disabling this checkbox does not affect the race readout.
+- **Session start conditions** — the greeting + situational brief (session type, pit speed limit, track and air temperature, track wetness) the engineer reads when a **practice or qualifying** session starts (~3 seconds in, whether or not you leave the garage). Race sessions are covered by **Race → Race start** below — disabling this checkbox does not affect the race readout.
 
 Under **Race Engineer Toggle**, one callout is toggleable, enabled by default:
 
