@@ -6,6 +6,7 @@
  * adapter, enabling all iRaceDeck actions to run on VSDinside devices.
  */
 import type {
+  DeckFeedbackPayload,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialRotateEvent,
@@ -50,6 +51,16 @@ class VSDActionContext implements IDeckActionContext {
     // setImage, so display-only contexts should use the shared image path.
     return this.controllerType === "Keypad" || this.controllerType === "Information";
   }
+
+  isDial(): boolean {
+    return this.controllerType === "Knob" || this.controllerType === "Encoder";
+  }
+
+  // Stream Dock protocol has no plugin-facing touch-strip feedback, so these
+  // are no-ops on Mirabox (the interface members exist for Stream Deck+).
+  async setFeedback(_feedback: DeckFeedbackPayload): Promise<void> {}
+
+  async setFeedbackLayout(_layout: string): Promise<void> {}
 }
 
 /**
@@ -90,6 +101,15 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
       },
       isKey() {
         return false;
+      },
+      isDial() {
+        return false;
+      },
+      async setFeedback() {
+        /* no-op: action is disappearing */
+      },
+      async setFeedbackLayout() {
+        /* no-op: action is disappearing */
       },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
