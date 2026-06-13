@@ -1567,14 +1567,27 @@ describe("sim-events-iracing translator", () => {
       });
     });
 
-    // Issue #568 follow-up: fresh-connect race-start synthesis. When the
-    // plugin connects directly into a race session there's no prior
-    // SessionNum to drive a delta, so the race-start callout would never
+    // Fresh-connect session.changed synthesis (issues #568, #668). When the
+    // plugin connects directly into a session there's no prior SessionNum to
+    // drive a delta, so the callouts keyed off `session.changed` would never
     // fire. The translator synthesizes `session.changed { from: -1, to: N }`
-    // on the first tick that satisfies the SessionState pre-green gate.
-    describe("fresh-connect race-start synthesis", () => {
+    // on the first tick that satisfies the gating conditions. Two consumers:
+    // race-start (#568, race sessions, pre-green only) and session-start
+    // (#668, practice/qualifying, pre-green OR during green — those sessions
+    // sit in `Racing` their whole green period and connecting mid-session is
+    // the normal case, so the conditions brief is exactly what the driver
+    // wants on connect).
+    describe("fresh-connect session.changed synthesis", () => {
       const RACE_SESSION_INFO = {
         SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42 },
+      };
+      const PRACTICE_SESSION_INFO = {
+        SessionInfo: { Sessions: [{ SessionType: "Practice" }] },
+        WeekendInfo: { TrackID: 42 },
+      };
+      const QUALIFY_SESSION_INFO = {
+        SessionInfo: { Sessions: [{ SessionType: "Open Qualify" }] },
         WeekendInfo: { TrackID: 42 },
       };
 
@@ -1614,6 +1627,26 @@ describe("sim-events-iracing translator", () => {
         expect(handler).not.toHaveBeenCalled();
       });
 
+      // #568 regression guard: a race session at/after green is a mid-race
+      // reconnect — the synthesis must latch silently (no fire now, no fire on
+      // later ticks). This is the boundary the #668 change must NOT cross for
+      // race sessions.
+      it("does NOT synthesize on fresh-connect to race at Racing, and latches (no later fire)", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(RACE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).not.toHaveBeenCalled();
+
+        // Latched: a later pre-green tick (same SessionNum) must not re-open it.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        expect(handler).not.toHaveBeenCalled();
+      });
+
       it("waits while SessionState=Invalid then fires on the first pre-green tick", () => {
         const controller = createMockController();
         controller.__setSessionInfo(RACE_SESSION_INFO);
@@ -1632,36 +1665,109 @@ describe("sim-events-iracing translator", () => {
         expect(handler).toHaveBeenCalledTimes(1);
       });
 
-      it("does NOT synthesize on fresh-connect to qualifying", () => {
+      // #668: connecting into a practice/qualifying session synthesizes the
+      // session.changed too, so the session-start conditions brief plays for
+      // the first session after connect (e.g. a lone-qualify driver sitting in
+      // the garage). These sessions fire pre-green AND during green (Racing) —
+      // they sit in `Racing` their whole green period.
+      it.each([
+        ["GetInCar", SessionState.GetInCar],
+        ["Warmup", SessionState.Warmup],
+        ["ParadeLaps", SessionState.ParadeLaps],
+        ["Racing", SessionState.Racing],
+      ] as const)("synthesizes session.changed when SessionState=%s on fresh-connect qualifying", (_label, state) => {
         const controller = createMockController();
-        controller.__setSessionInfo({
-          SessionInfo: { Sessions: [{ SessionType: "Open Qualify" }] },
-          WeekendInfo: { TrackID: 42 },
-        });
+        controller.__setSessionInfo(QUALIFY_SESSION_INFO);
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
         initializeSimEventsIracing(bus, controller, createMockLogger());
 
-        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
 
+        expect(handler).toHaveBeenCalledTimes(1);
+        const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
+        expect(ev.data).toEqual({ from: -1, to: 0 });
+      });
+
+      it.each([
+        ["GetInCar", SessionState.GetInCar],
+        ["Warmup", SessionState.Warmup],
+        ["ParadeLaps", SessionState.ParadeLaps],
+        ["Racing", SessionState.Racing],
+      ] as const)("synthesizes session.changed when SessionState=%s on fresh-connect practice", (_label, state) => {
+        const controller = createMockController();
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const ev = handler.mock.calls[0]![0] as SimEventOf<"session.changed">;
+        expect(ev.data).toEqual({ from: -1, to: 0 });
+      });
+
+      it("synthesizes once for a practice session at Racing, then latches (no duplicate on later ticks)", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // Connect mid-practice (Racing) — fires.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+
+        // Latched: subsequent ticks on the same session don't re-fire.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      // #668: a practice/qualifying session winding down (Checkered/CoolDown)
+      // means the brief is pointless — latch silently, same as a mid-race
+      // reconnect.
+      it.each([
+        ["Checkered", SessionState.Checkered],
+        ["CoolDown", SessionState.CoolDown],
+      ] as const)("does NOT synthesize on fresh-connect to practice at %s (session winding down)", (_label, state) => {
+        const controller = createMockController();
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: state }));
+        expect(handler).not.toHaveBeenCalled();
+
+        // Latched: a later pre-green tick (same SessionNum) must not re-open it.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
         expect(handler).not.toHaveBeenCalled();
       });
 
-      it("does NOT synthesize on fresh-connect to practice", () => {
+      it("waits while a practice session reports SessionState=Invalid, then fires once it settles", () => {
         const controller = createMockController();
-        controller.__setSessionInfo({
-          SessionInfo: { Sessions: [{ SessionType: "Practice" }] },
-          WeekendInfo: { TrackID: 42 },
-        });
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
         const bus = getEventBus();
         const handler = vi.fn();
         bus.subscribe("session.changed", handler);
         initializeSimEventsIracing(bus, controller, createMockLogger());
 
-        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.GetInCar }));
-
+        // Telemetry settling: SessionState=Invalid for a few ticks — no latch.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Invalid }));
         expect(handler).not.toHaveBeenCalled();
+
+        // Settles to Racing (practice's green state) — synthesis fires.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
       });
 
       // CodeRabbit #579: classifySessionType("") returns "race", so an
@@ -1725,6 +1831,30 @@ describe("sim-events-iracing translator", () => {
         controller.__tick(telemetry({ SessionNum: 1, SessionState: SessionState.GetInCar }));
         expect(handler).toHaveBeenCalledTimes(2);
         expect(handler.mock.calls[1]![0].data).toEqual({ from: 0, to: 1 });
+      });
+
+      // #668: disconnect → reconnect must re-arm the fresh-connect synthesis so
+      // the second connect fires a second synthetic session.changed.
+      it("re-arms and fires a second synthetic session.changed after disconnect → reconnect (practice)", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(PRACTICE_SESSION_INFO);
+        const bus = getEventBus();
+        const handler = vi.fn();
+        bus.subscribe("session.changed", handler);
+        initializeSimEventsIracing(bus, controller, createMockLogger());
+
+        // First connect into practice at Racing — synthesis fires and latches.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0]![0].data).toEqual({ from: -1, to: 0 });
+
+        // Disconnect — re-arms freshConnectFireChecked.
+        controller.__tick(null, false);
+
+        // Reconnect into the same practice session at Racing — synthesis fires again.
+        controller.__tick(telemetry({ SessionNum: 0, SessionState: SessionState.Racing }));
+        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler.mock.calls[1]![0].data).toEqual({ from: -1, to: 0 });
       });
     });
 
