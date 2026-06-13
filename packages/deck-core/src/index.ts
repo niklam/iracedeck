@@ -283,3 +283,6 @@ export {
   type PlatformFeatureFlags,
   type PlatformFeatures,
 } from "./plugin-config.js";
+
+// Version-check / changelog opener (issue #680)
+export { CHANGELOG_BASE_URL, buildChangelogUrl, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
