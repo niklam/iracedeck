@@ -122,10 +122,10 @@ When creating a PR with `gh pr create`, use the PR template (`.github/pull_reque
 
 ## Merge Awareness
 
-PRs in this project are **regular-merged** (not squash-merged) into `master` via `gh pr merge --merge`. Since commits are logical and self-contained, the full commit history is preserved:
+PRs in this project are **squash-merged** into their target branch via `gh pr merge --squash` — one commit per PR, with the PR **title** as that commit's message. This is the default for `master` and every other branch. (Branch-to-branch back-merges — e.g. `release/*` → `master` — are the exception: those use a regular merge, never squash.)
 
-- **PR titles must include the PR number** at the end in parentheses: `<type>(<scope>): <description> (#<PR>)`
-- Individual commits on a feature branch are kept as-is on merge
+- **PR titles must include the issue number** at the end in parentheses: `<type>(<scope>): <description> (#<issue>)` — since the title becomes the squashed commit message, this is the message that lands on the branch, so it must read as a complete commit subject
+- Individual feature-branch commits collapse into one on merge, so they need only be coherent enough to review — still follow the **Logical Commits** discipline so the branch reads cleanly
 - Merging is handled manually or by automation — never by this agent
 - When reviewing a PR branch, focus on code quality and passing checks; do NOT merge
 
