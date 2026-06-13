@@ -12,7 +12,12 @@ Per-plugin build-time flags that gate features dependent on SVG rendering-engine
 ## Flag categories
 
 - **Capabilities** (`capabilities.*`) — raw SVG engine support (`svgFilters`, `svgMasks`, `svgPatterns`). These are the source of truth.
-- **Features** (`features.*`) — product-level flags that depend on one or more capabilities (`borderGlow`). When adding a new feature that requires a capability, document the dependency in the flag name or a comment.
+- **Features** (`features.*`) — product-level flags. Current flags:
+  - `borderGlow` — SVG-filter border glow (depends on `svgFilters`). Elgato `true`, Mirabox `false`.
+  - `dialFeedback` — Stream Deck+ touch-strip feedback + touch-tap input (Elgato-only; Mirabox has no plugin touch strip). Elgato `true`, Mirabox `false`.
+  - `dialLongPress` — timed dial press-and-hold (Elgato-only; Mirabox knobs fire `dialUp` immediately so hold can't work). Elgato `true`, Mirabox `false`.
+
+  When adding a new feature that requires a capability, document the dependency in the flag name or a comment.
 
 ## How flags reach runtime + PI
 
@@ -21,7 +26,7 @@ Both plugins' `rollup.config.mjs`:
 1. Read their `platform-features.json`.
 2. If `feature-flags.local.json` exists at the repo root, deep-merge it on top.
 3. Feed the merged object to three consumers:
-   - `@rollup/plugin-replace` — injects `__CAPABILITY_SVG_FILTERS__`, `__CAPABILITY_SVG_MASKS__`, `__CAPABILITY_SVG_PATTERNS__`, `__FEATURE_BORDER_GLOW__` as JSON-stringified boolean literals. Terser then tree-shakes the dead branches.
+   - `@rollup/plugin-replace` — injects `__CAPABILITY_SVG_FILTERS__`, `__CAPABILITY_SVG_MASKS__`, `__CAPABILITY_SVG_PATTERNS__`, `__FEATURE_BORDER_GLOW__`, `__FEATURE_DIAL_FEEDBACK__`, `__FEATURE_DIAL_LONG_PRESS__` as JSON-stringified boolean literals. Terser then tree-shakes the dead branches.
    - `emit-plugin-config` — writes the merged object as `featureFlags` in `/bin/config.json` (readable via `getFeatureFlag()` / `getPlatformFeatures()`).
    - `piTemplatePlugin` — passes the object to EJS render context as `platform` (and `locals.platform`).
 
@@ -37,6 +42,10 @@ if (!border.glowEnabled || !__FEATURE_BORDER_GLOW__) {
 ```
 
 Put the gating in shared `icon-composer` / `deck-core` utilities — **not in individual action files**. Actions call the utilities and stay platform-agnostic.
+
+**Exception — dial behavior gating.** The "not in actions" rule is about SVG-*rendering* gating. Per-platform *behavioral* dial differences are the documented exception: an action gates them directly on `__FEATURE_DIAL_FEEDBACK__` (touch-strip feedback + touch-tap, Elgato-only) and `__FEATURE_DIAL_LONG_PRESS__` (timed press-and-hold, Elgato-only) because the difference is action logic, not shared rendering. Reference: `packages/iracing-actions/src/actions/fuel-dial/fuel-dial.ts`. See `.claude/rules/encoders-and-touchscreen.md` for why.
+
+**Per-plugin ambient declarations for bundled action sources.** The shared `@iracedeck/iracing-actions` sources are compiled as part of each plugin's TypeScript program, so the `__FEATURE_*__` constants must be declared there too. Each plugin therefore carries its own `src/platform-features.d.ts` (mirroring `src/svg.d.ts`) duplicating the ambient declarations in `packages/icon-composer/src/platform-features.d.ts` — without it the bundled action gating fails to type-check.
 
 For resolved settings, force the flag's state so downstream callers don't see the feature enabled:
 
@@ -89,7 +98,7 @@ it("strips glow when flag is false", () => {
 ## Adding a new flag
 
 1. Add to both `platform-features.json` files under `capabilities` or `features` (enabled/disabled per platform).
-2. Add the `__CAPABILITY_*__` / `__FEATURE_*__` ambient declaration to `packages/icon-composer/src/platform-features.d.ts`.
+2. Add the `__CAPABILITY_*__` / `__FEATURE_*__` ambient declaration to `packages/icon-composer/src/platform-features.d.ts` **and** to both plugins' `src/platform-features.d.ts` (so the bundled `@iracedeck/iracing-actions` sources also see it).
 3. Add the replace entry to **both** `rollup.config.mjs` files.
 4. If it's a new feature, add its key to `PlatformFeatureFlags` in `packages/deck-core/src/plugin-config.ts`.
 5. Gate the relevant code in `icon-composer` / `deck-core` utilities and any relevant PI partial.

@@ -11,7 +11,8 @@ Mirabox adapter that implements `IDeckPlatformAdapter` from `@iracedeck/deck-cor
 - **`WillDisappearEvent` special case** — Same as Elgato adapter: provides no-op stubs for `setImage`/`setTitle`
 - **`createLogger(scope)`** — `createConsoleLogger()` from `@iracedeck/logger`, additionally teed to `<plugin>/log/<YYYY.M.D>.log` (via `file-logger.ts`) when a log directory is passed to the constructor (`new VSDPlatformAdapter(logger?, logDir?)`, issue #609). The Stream Dock host discards plugin stdout, so the file is what the "Enable debug logging" toggle captures for support. Console and file share the live `logLevel` (`setLogLevel`).
 - **Broadcast callbacks** — `onKeyDown`, `onDialDown`, `onDialRotate` fire before per-action handlers (for window focus)
-- **Controller tracking** — Tracks `Keypad` vs `Knob` per context from `willAppear` events for `isKey()` method
+- **Controller tracking** — Tracks `Keypad` vs `Knob` per context from `willAppear` events. `isKey()` is true for `Keypad`; `isDial()` is true for `Knob` (and `Encoder`).
+- **No touch strip** — `setFeedback`/`setFeedbackLayout` are **no-ops** (the Stream Dock protocol has no plugin-drawable touch strip; update knob icons via `setImage`), and there is **no touch-tap input** (`onTouchTap` is never delivered). Dial actions branch on `__FEATURE_DIAL_FEEDBACK__` so this code path is stripped from the Mirabox bundle. See `.claude/rules/encoders-and-touchscreen.md`.
 
 ## VSD Craft WebSocket Protocol
 

@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **31 actions with 291 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **32 actions with 292 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -25,7 +25,7 @@ Each action entry:
 }
 ```
 
-All actions are currently `encoder: false` — dial/encoder support was de-claimed in issue #640 pending a rebuild (see `.claude/rules/encoders-and-touchscreen.md`).
+Dial/encoder support was de-claimed in issue #640 pending a rebuild; that rebuild has begun in issue #681. **Fuel Dial** (`encoder: true`) is the first and reference dial-capable action — it supports a Stream Deck+ dial + touchscreen (and a Mirabox knob). Every other action remains keypad-only (`encoder: false`) until it is individually rebuilt. See `.claude/rules/encoders-and-touchscreen.md` for the per-action dial rules.
 
 ## Communication method (per mode) — `action-comms.json` (#612)
 
@@ -54,10 +54,10 @@ When asked about actions or controls:
 | Cockpit & Interface | 5 | 35 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
-| Pit Service | 3 | 15 | Fuel, tires, compounds, tearoff, fast repair |
+| Pit Service | 4 | 16 | Fuel, fuel dial (Stream Deck+ encoder), tires, compounds, tearoff, fast repair |
 | Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **31** | **291** | |
+| **Total** | **32** | **292** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -114,6 +114,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Pit Quick Actions | 3 | clear-all-checkboxes, windshield-tearoff (telemetry-aware), request-fast-repair (telemetry-aware) |
 | Fuel Service | 8 | toggle-fuel-fill (telemetry-aware), add-fuel, reduce-fuel, set-fuel-amount, clear-fuel, toggle-autofuel (telemetry-aware), lap-margin-increase, lap-margin-decrease |
 | Tire Service | 4 | change-all-tires, clear-tires, toggle-tires (telemetry-aware per-wheel), change-compound (telemetry-aware) |
+| Fuel Dial | 1 | single mode, no Mode dropdown (`encoder: true`, telemetry-aware) — Stream Deck+ dial sets an absolute fuel-to-add amount (iRacing API `pit.fuel`, clamped to tank capacity) with a live touch-strip readout; also works as a plain keypad button and a Mirabox knob. Press Action (Toggle Fueling / Clear Fueling / Fill To Max) and Long-Press Action are settings, not modes. First dial-capable action of the #681 rebuild |
 
 ### Car Setup
 

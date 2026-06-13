@@ -282,7 +282,7 @@ Add entry to the `Actions` array:
 }
 ```
 
-- All actions are currently Keypad-only — use `"Controllers": ["Keypad"]` and do not add an `Encoder` block (dial/encoder support was de-claimed in issue #640; see `.claude/rules/encoders-and-touchscreen.md` for the planned rebuild)
+- Most actions are Keypad-only — use `"Controllers": ["Keypad"]` with no `Encoder` block. A **dial-capable** action may instead declare `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block (a `layout` pointing at a committed custom touch layout under `<sdPlugin>/layouts/*.json`, plus a `TriggerDescription`). `fuel-dial` is the reference — see its manifest entry and `com.iracedeck.sd.core.sdPlugin/layouts/fuel-dial.json`, and `.claude/rules/encoders-and-touchscreen.md` for the action-side mechanics and gating rules.
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`
 
