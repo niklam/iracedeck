@@ -76,6 +76,12 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "lap-margin-decrease": keybind("fuelServiceLapMarginDecrease"),
   }),
 
+  "fuel-dial": entry("pressAction", {
+    "toggle-fueling": api,
+    "clear-fueling": api,
+    "fill-to-max": api,
+  }),
+
   "tire-service": entry("mode", {
     "change-all-tires": chat,
     "clear-tires": api,

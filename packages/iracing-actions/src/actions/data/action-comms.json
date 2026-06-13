@@ -40,6 +40,20 @@
       }
     }
   },
+  "fuel-dial": {
+    "_meta": {
+      "modeSetting": "pressAction"
+    },
+    "toggle-fueling": {
+      "method": "api"
+    },
+    "clear-fueling": {
+      "method": "api"
+    },
+    "fill-to-max": {
+      "method": "api"
+    }
+  },
   "tire-service": {
     "_meta": {
       "modeSetting": "mode"
