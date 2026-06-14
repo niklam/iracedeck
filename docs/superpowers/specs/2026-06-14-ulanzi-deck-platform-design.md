@@ -33,7 +33,7 @@ All facts below come from reading the Apache-2.0 SDK source (`UlanziTechnology/p
 - The plugin is the **WebSocket client**; UlanziStudio is the server. It dials `ws://${address}:${port}`.
 - `process.argv` layout (after `[node, script]`): `argv[2]=address` (default `127.0.0.1`), `argv[3]=port` (default `3906`), `argv[4]=language` (default `en`). **Simpler than Mirabox's `argv[3/5/7]`.**
 - On open the plugin sends a single handshake frame: `{ code: 0, cmd: "connected", uuid: <pluginUuid> }`. There is no separate registration payload (the host already parsed `manifest.json` from disk).
-- Plugin UUID must be **exactly 4 dot-segments** under `com.ulanzi.ulanzistudio.*`: `com.ulanzi.ulanzistudio.iracedeck`. Action UUIDs are 5+ segments: `com.ulanzi.ulanzistudio.iracedeck.<action>`.
+- Plugin UUID must be **exactly 4 dot-segments** (the prefix is not validated — confirmed live): iRaceDeck uses `com.iracedeck.sd.core`, the same UUID as the Elgato/Mirabox plugins. Action UUIDs are the canonical `com.iracedeck.sd.core.<action>`.
 
 ### Inbound (host → plugin) — dispatched by the `cmd` field
 
@@ -80,7 +80,7 @@ Other outbound used here: `setSettings` (`{cmd:"setSettings", …, settings}`), 
 
 ### Manifest
 
-`Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.ulanzi.ulanzistudio.iracedeck"`, per-action `{ Name, UUID, Icon, States:[{Image}], Controllers:["Keypad"|"Encoder"], Devices:[...], Encoder?:{layout} }`. `Devices` filter values: `D200 | D200H | Dial | D200X` (empty = all; `~Name` excludes). `Software:{MinVersion}`, `OS:[{Platform, MinimumVersion}]`, `ApplicationsToMonitor`.
+`Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.iracedeck.sd.core"`, per-action `{ Name, UUID, Icon, States:[{Image}], Controllers:["Keypad"|"Encoder"], Devices:[...], Encoder?:{layout} }`. `Devices` filter values: `D200 | D200H | Dial | D200X` (empty = all; `~Name` excludes). `Software:{MinVersion}`, `OS:[{Platform, MinimumVersion}]`, `ApplicationsToMonitor`.
 
 Plugin folder convention is `com.ulanzi.<plugin>.ulanziPlugin` (verified from the SDK demo `com.ulanzi.analogclock.ulanziPlugin`), distinct from the 4-segment UUID. **To verify against the SDK demo during implementation.**
 
@@ -126,7 +126,7 @@ packages/deck-adapter-ulanzi/
 
 **`file-logger.ts`** — `FileSink` + `withFileSink`, ported verbatim from Mirabox (the Ulanzi host likewise discards plugin stdout; `<plugin>/log/<YYYY.M.D>.log` keeps the debug-toggle support log working).
 
-**`action-uuid.ts`** — Ulanzi forces the `com.ulanzi.ulanzistudio.*` UUID namespace, but iRaceDeck actions export canonical `com.iracedeck.sd.core.<name>` UUID constants. `toUlanziActionUuid(coreUuid)` rewrites the `com.iracedeck.sd.core` prefix → `com.ulanzi.ulanzistudio.iracedeck`; `ULANZI_PLUGIN_UUID` constant. The plugin registers each action under its Ulanzi UUID and the manifest declares the same — actions stay untouched.
+**Plugin UUID** — `PLUGIN_UUID = "com.iracedeck.sd.core"` (the same UUID the Elgato/Mirabox plugins use), exported from the client and sent in the `connected` handshake + global-settings frames. UlanziStudio only requires a 4-segment main-service UUID and does **not** validate the prefix (confirmed live — see Validation outcome), so no remapping is needed: actions register under, and the manifest declares, their canonical `com.iracedeck.sd.core.*` UUIDs verbatim, exactly like Mirabox. *(An earlier draft assumed a `com.ulanzi.ulanzistudio.*` namespace requirement plus a `toUlanziActionUuid` mapper / `action-uuid.ts`; live testing showed the prefix is unvalidated, so the mapper was deleted.)*
 
 ### Package 2: `@iracedeck/iracing-plugin-ulanzi`
 
@@ -135,7 +135,7 @@ packages/iracing-plugin-ulanzi/
 ├── src/
 │   ├── plugin.ts               # entry — init order identical to Mirabox, UlanziPlatformAdapter
 │   └── shared/window-focus.ts  # duplicated (same as Mirabox today)
-├── com.ulanzi.iracedeck.ulanziPlugin/   # (folder name to verify vs SDK demo)
+├── com.ulanzi.iracedeck.ulanziPlugin/   # installed into …/UlanziDeck/Plugins/
 │   ├── manifest.json           # Ulanzi format
 │   ├── bin/ (gitignored)       # rollup output + emitted package.json + config.json
 │   ├── ui/                     # compiled PI HTML + sdpi-components.js + pi-components.js + ulanzi PI shim
@@ -149,14 +149,14 @@ packages/iracing-plugin-ulanzi/
 └── CLAUDE.md
 ```
 
-- **`plugin.ts`** — identical initialization order to `iracing-plugin-mirabox/src/plugin.ts` (config → adapter (with log dir) → debug-logging + setup-warning appliers → SDK → event bus → sim-events translator → keyboard → clipboard → audio → scenario engine → `registerPitCrew(...)` with the full per-callout live-read closure list → device/voice/name pushers → window focus → register actions (under Ulanzi UUIDs via `toUlanziActionUuid`) → global settings → SimHub → binding dispatcher → app monitor → elevation probe → `connect()`). Only the adapter type and action-UUID mapping differ.
-- **`rollup.config.mjs`** — copy of Mirabox's: SVG import plugin, feature-flag replace, `piTemplatePlugin`, asset copy (icons + PI browser assets), audio processing, externals (`@iracedeck/audio-native`, `@iracedeck/iracing-native`, `yaml`, `keysender`, `ws`), `emit-module-package-file`, `emit-plugin-config` (`platform: "ulanzi"`), `inlineDynamicImports`, terser. The `stripHtmlLangPlugin` (a VSD quirk) is retained only if Ulanzi's QWebEngineView needs it — Ulanzi PI is Chromium-based, so it likely does **not**; decide during implementation. A new rollup step copies the **Ulanzi PI shim** into `ui/`.
+- **`plugin.ts`** — identical initialization order to `iracing-plugin-mirabox/src/plugin.ts` (config → adapter (with log dir) → debug-logging + setup-warning appliers → SDK → event bus → sim-events translator → keyboard → clipboard → audio → scenario engine → `registerPitCrew(...)` with the full per-callout live-read closure list → device/voice/name pushers → window focus → register actions (directly, with their canonical `com.iracedeck.sd.core.*` UUIDs) → global settings → SimHub → binding dispatcher → app monitor → elevation probe → `connect()`). Only the adapter type differs.
+- **`rollup.config.mjs`** — copy of Mirabox's: SVG import plugin, feature-flag replace, `piTemplatePlugin`, asset copy (icons + PI browser assets), audio processing, externals (`@iracedeck/audio-native`, `@iracedeck/iracing-native`, `yaml`, `keysender`, `ws`), `emit-module-package-file`, `emit-plugin-config` (`platform: "ulanzi"`), `inlineDynamicImports`, terser. `stripHtmlLangPlugin` is dropped (Ulanzi's Chromium QWebEngineView accepts `<html lang>`). A new rollup step copies the **Ulanzi PI bridge** (`ulanzi-pi-bridge.js`) into `ui/` and injects its `<script>` before `sdpi-components.js` in each generated HTML.
 - **`manifest.json`** — Ulanzi format, generated from the same action set as the Mirabox manifest. Keypad-only and Keypad+Encoder actions map their `Controllers` accordingly; dial actions get an `Encoder.layout` (built-in `$UA1`). `Devices: []` (all models) unless an action is dial-only. **Generation approach to confirm vs how the Mirabox manifest is maintained** (hand-authored vs scripted).
-- **`platform-features.json`** — start conservative, mirroring Mirabox (`svgFilters/Masks/Patterns:false`, `borderGlow:false`), since the device-side SVG renderer is unverified. Revisit after hardware test.
+- **`platform-features.json`** — conservative, mirroring Mirabox (`svgFilters/Masks/Patterns:false`, `borderGlow:false`): basic SVG icons render in UlanziDeck, but filters/masks/patterns haven't been exercised, so keep them off until confirmed.
 
 ## Icon encoding decision — raw SVG data-URI passthrough
 
-iRaceDeck's icon pipeline produces `data:image/svg+xml,<urlencoded svg>` URIs (title baked in). Per the approved decision, the adapter sends this **string straight through** as the `data` field of a `type:1` state frame, betting on the device rendering SVG (the issue's stated assumption). No new dependency, no rasterization. **Risk + fallback:** if hardware shows the device does not render SVG data-URIs, the change is localized to `UlanziClient.setImage` — swap to rasterize SVG → PNG base64 (e.g. `@resvg/resvg-js`). Documented as known unknown #1.
+iRaceDeck's icon pipeline produces `data:image/svg+xml,<urlencoded svg>` URIs (title baked in). Per the approved decision, the adapter sends this **string straight through** as the `data` field of a `type:1` state frame, betting on the device rendering SVG (the issue's stated assumption). No new dependency, no rasterization. **Confirmed live in UlanziDeck** — the SVG data-URI icons render, so the rasterization fallback (swap `UlanziClient.setImage` to SVG → PNG base64, e.g. `@resvg/resvg-js`) wasn't needed.
 
 ## PI connection bridge — WebSocket-translating shim
 
@@ -171,20 +171,24 @@ iRaceDeck's icon pipeline produces `data:image/svg+xml,<urlencoded svg>` URIs (t
 
 **Where it lives.** Source in `@iracedeck/pi-components` (built to `browser/ulanzi-pi-bridge.js`, unit-tested with the existing vitest setup). The pure frame-translation functions (`elgatoToUlanzi` / `ulanziToElgato`) carry the testable logic; the WebSocket glue is thin. The Ulanzi plugin's rollup copies it into `ui/` and a post-generation step inserts `<script src="ulanzi-pi-bridge.js"></script>` before `sdpi-components.js` in each `ui/*.html` (keeps the shared partials untouched — mirrors how Mirabox's `stripHtmlLangPlugin` post-processes generated HTML).
 
-## Known unknowns (flagged, not blocking)
+## Validation outcome (resolved live in UlanziDeck)
 
-1. **Device-side SVG rendering.** Betting on SVG data-URI passthrough. Fallback: rasterize → PNG base64 (one-function change in `UlanziClient.setImage`).
-2. **Keypad-vs-Encoder detection at `add`.** The simulator's `add` frame carries no controller field. Default `isKey()` → Keypad; read a `controller`/`device` field if a real device sends one; dial *input* events route correctly regardless. Encoder-specific *rendering* (dial slot feedback) is limited — see #4.
-3. **PI-shim fidelity.** Cannot be fully verified without UlanziStudio. Frame translation is unit-tested; behavior validated on hardware.
-4. **D200X dial custom feedback layouts.** No SDK `setFeedback`/`setFeedbackLayout` method exists. Dial *input* (rotate/press) is supported; rich dial-slot display is deferred. Dial slots fall back to the standard key image.
-5. **Plugin folder / manifest naming.** Verify `com.ulanzi.<plugin>.ulanziPlugin` folder + 4-segment UUID against the SDK demo during implementation.
+The design's open unknowns were settled by installing the built plugin into `…/UlanziDeck/Plugins/` and running it against UlanziDeck with iRacing live:
 
-## Testing strategy (no hardware)
+1. **Device-side SVG rendering — confirmed.** The `data:image/svg+xml,...` passthrough renders; no rasterization fallback needed.
+2. **Manifest format + UUID — confirmed.** The Ulanzi manifest loads, the plugin appears in the action list, and the 4-segment `com.iracedeck.sd.core` UUID is accepted — UlanziStudio does **not** validate the prefix, so the canonical iRaceDeck UUID is reused and the `toUlanziActionUuid` remap was removed.
+3. **Wire protocol + connection — confirmed.** The host launches `bin/plugin.js` with argv `address port language` (`127.0.0.1 3906 en-US`); the `connected` handshake is accepted; the global-settings read/write round-trips.
+4. **PI bridge — confirmed.** The bridge drives `sdpi-components` over UlanziStudio's protocol (settings load/save observed).
+5. **Folder / install location — confirmed.** Folder `com.ulanzi.iracedeck.ulanziPlugin` under `…/UlanziDeck/Plugins/` (the user dir; `…/System/Plugins/` is first-party). Folder name and UUID are independent.
 
-- **Unit tests** (vitest) for: `UlanziClient` frame parse/normalize (every `cmd`), context encode/decode, `clear` array fan-out, `dialrotate` → ticks, outbound `state` frame shape, handshake; `UlanziPlatformAdapter` event translation + log-level; `action-uuid` mapping; `file-logger` (port of Mirabox's tests); PI-shim frame translation.
+Still to exercise on a **physical** device (none block the build): Keypad-vs-Encoder detection at `add` (the host's `add` carries no controller field, so `isKey()` defaults to Keypad — dial *input* routes correctly regardless), D200X dial custom feedback layouts (no SDK `setFeedback` method — dial display is deferred, falling back to the standard key image), and per-device behaviour across D200 / D200H / Dial / D200X.
+
+## Testing strategy
+
+- **Unit tests** (vitest) for: `UlanziClient` frame parse/normalize (every `cmd`), context encode/decode, `clear` array fan-out, `dialrotate` → ticks, outbound `state` frame shape, handshake; `UlanziPlatformAdapter` event translation + log-level; `file-logger` (port of Mirabox's tests); PI-bridge frame translation.
 - **Build:** `pnpm build` (tsc across all packages + rollup plugin bundle) — catches type-level issues vitest's esbuild path misses.
 - **Lint/format:** `pnpm lint:fix` + `pnpm format:fix`.
-- **Hand-off:** hardware validation (rendering, PI behavior, dial, per-device action availability) is a separate manual step for the maintainer once a D200/D200X is available.
+- **Live validation:** done against UlanziDeck (see Validation outcome — loading, connection, settings, PI, SVG icons, key dispatch). Remaining physical-device checks (dial feedback, per-device availability) await a D200/D200X.
 
 ## Affected artifacts / docs (in scope)
 

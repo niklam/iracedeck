@@ -5,7 +5,7 @@ import { type BridgeIdentity, elgatoToUlanzi, encodeContext, ulanziToElgato } fr
 const identity: BridgeIdentity = {
   address: "127.0.0.1",
   port: "49200",
-  uuid: "com.ulanzi.ulanzistudio.iracedeck.black-box-selector",
+  uuid: "com.iracedeck.sd.core.black-box-selector",
   key: "5",
   actionid: "abc",
   device: "D200X",
@@ -13,7 +13,7 @@ const identity: BridgeIdentity = {
   controller: "Keypad",
 };
 
-const context = "com.ulanzi.ulanzistudio.iracedeck.black-box-selector___5___abc";
+const context = "com.iracedeck.sd.core.black-box-selector___5___abc";
 
 describe("encodeContext", () => {
   it("joins parts with triple underscores", () => {

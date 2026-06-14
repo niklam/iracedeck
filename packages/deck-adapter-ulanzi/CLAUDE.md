@@ -11,7 +11,7 @@ Mirrors `@iracedeck/deck-adapter-mirabox`. The key difference: VSD Craft speaks 
 - **`UlanziActionContext.setTitle` is a no-op** — Ulanzi has no native title API (labels travel as the `text` field of the icon setter). iRaceDeck bakes the title into the icon SVG and every action only ever calls `setTitle("")` to clear the native title, which Ulanzi never draws (`setImage` sends `showtext:false`).
 - **`createLogger(scope)`** — `createConsoleLogger()` teed to `<plugin>/log/<YYYY.M.D>.log` (`file-logger.ts`) when a log dir is passed to the constructor (issue #609). The UlanziStudio host discards plugin stdout, same as Mirabox's Stream Dock host. Console + file share the live `logLevel` (`setLogLevel`).
 - **Broadcast callbacks** — `onKeyDown`, `onDialDown`, `onDialRotate` fire before per-action handlers (for window focus).
-- **`action-uuid.ts`** — Ulanzi forces the `com.ulanzi.ulanzistudio.*` UUID namespace, but actions export canonical `com.iracedeck.sd.core.*` UUIDs. `toUlanziActionUuid()` rewrites the prefix; the plugin registers under, and the manifest declares, the Ulanzi UUIDs. Actions stay untouched.
+- **Plugin UUID** — `PLUGIN_UUID` (`com.iracedeck.sd.core`, the same UUID the Elgato/Mirabox plugins use) is sent in the `connected` handshake and the global-settings frames. UlanziStudio only requires a 4-segment main-service UUID and does **not** validate the prefix, so there's no Ulanzi-specific remapping — actions register under, and the manifest declares, their canonical `com.iracedeck.sd.core.*` UUIDs verbatim (same as Mirabox).
 
 ## UlanziStudio WebSocket Protocol
 
@@ -49,7 +49,7 @@ UlanziStudio has no host-generated "PI appeared" event. The Ulanzi PI bridge (in
 
 ### Outbound icons
 
-A single `cmd:"state"` frame with `param.statelist:[{ …, type:1, data:<data-uri>, textData:"", showtext:false }]`. Ulanzi has no `setTitle`/`setState`/`setFeedback` — labels travel via the `text`/`showtext` fields, and dial layouts are manifest-declared only. iRaceDeck passes the `data:image/svg+xml,...` URI straight through (raw passthrough — see the known unknowns in the design spec; the device-side SVG renderer is unverified pending hardware).
+A single `cmd:"state"` frame with `param.statelist:[{ …, type:1, data:<data-uri>, textData:"", showtext:false }]`. Ulanzi has no `setTitle`/`setState`/`setFeedback` — labels travel via the `text`/`showtext` fields, and dial layouts are manifest-declared only. iRaceDeck passes the `data:image/svg+xml,...` URI straight through (raw passthrough). Validated live in UlanziDeck — the SVG data-URI icons render, so no rasterization fallback is needed.
 
 ## Build
 

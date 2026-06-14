@@ -7,19 +7,19 @@ Mirrors the structure of `@iracedeck/iracing-plugin-mirabox` but targets Ulanzi 
 ## Key Differences from iracing-plugin-mirabox
 
 - Uses `UlanziPlatformAdapter` instead of `VSDPlatformAdapter`.
-- **Action-UUID namespace mapping.** UlanziStudio requires the plugin UUID to be a 4-segment `com.ulanzi.ulanzistudio.*` and action UUIDs to extend it, so `plugin.ts` wraps every canonical `com.iracedeck.sd.core.*` action UUID through `toUlanziActionUuid()` (via the local `register()` helper) and the manifest declares the same rewritten UUIDs. The action classes are unchanged.
-- Manifest is the Ulanzi format: `Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.ulanzi.ulanzistudio.iracedeck"`, per-action `States:[{Image}]`, `Controllers:["Keypad"]`/`["Keypad","Encoder"]`, and `Encoder:{layout:"$UA1"}` for dial-capable actions. `"Knob"` (Mirabox) → `"Encoder"`; the Stream-Dock-293S `"Information"` controller has no Ulanzi equivalent and is dropped (Session Info / Telemetry Display become Keypad-only). No top-level `PropertyInspectorPath` (not in the Ulanzi manifest schema) — plugin-global settings are reached through each action's PI.
+- **Action UUIDs reused verbatim.** UlanziStudio only requires a 4-segment main-service UUID and doesn't validate the prefix, so the plugin uses the canonical `com.iracedeck.sd.core` UUID (the same one the Elgato/Mirabox plugins use) and registers actions under their `com.iracedeck.sd.core.*` UUIDs directly — no remapping, exactly like Mirabox. The manifest declares the same UUIDs.
+- Manifest is the Ulanzi format: `Type:"JavaScript"`, `CodePath:"bin/plugin.js"`, `UUID:"com.iracedeck.sd.core"`, per-action `States:[{Image}]`, `Controllers:["Keypad"]`/`["Keypad","Encoder"]`, and `Encoder:{layout:"$UA1"}` for dial-capable actions. `"Knob"` (Mirabox) → `"Encoder"`; the Stream-Dock-293S `"Information"` controller has no Ulanzi equivalent and is dropped (Session Info / Telemetry Display become Keypad-only). No top-level `PropertyInspectorPath` (not in the Ulanzi manifest schema) — plugin-global settings are reached through each action's PI.
 - **PI connection bridge.** Ulanzi's PI does not call `connectElgatoStreamDeckSocket` and speaks its own URL-param + `cmd` WebSocket protocol, so the rollup injects `ulanzi-pi-bridge.js` (from `@iracedeck/pi-components`) before `sdpi-components.js` into every generated PI HTML. The bridge monkeypatches `window.WebSocket` and translates frames both ways, so the shared `sdpi-components`/`ird-*` PI stack works unchanged. (Mirabox/VSD needs no bridge — its host mimics the Elgato PI socket.)
 - No `stripHtmlLangPlugin` — UlanziStudio renders PI HTML in QWebEngineView (Chromium), which accepts `<html lang>`.
-- No `@elgato/cli` / `pack:plugin` — Ulanzi packaging is not the Elgato `streamdeck pack` flow.
+- No `pack:plugin` script, but CI **does** package the Ulanzi plugin with `@elgato/cli pack` (the same tool as the other two plugins — it accepts the `.ulanziPlugin` folder and preserves the inner folder name). A committed `.sdignore` in the plugin folder strips native-module build cruft (~41 MB → ~7 MB), and the cli's `undefined.streamDeckPlugin` output is renamed to `com.ulanzi.iracedeck.ulanziPlugin`. See the matrix workflow in `.github/workflows/release-pack.yml`.
 
 PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`) comes from `@iracedeck/pi-components`, the same shared package Elgato/Mirabox consume. Per-action PI templates, static icons, and template data come from `@iracedeck/iracing-actions`. The `rollup.config.mjs` imports `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, copies per-action `icon.svg`/`key.svg` into `com.ulanzi.iracedeck.ulanziPlugin/imgs/actions/<name>/`, and the plugin-level branding icons in `imgs/plugin/` are copied from `iracing-plugin-stream-deck` until a dedicated branding package lands.
 
 ## Folder / UUID naming
 
-- Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` (the `*.ulanziPlugin` suffix is what UlanziStudio scans for; the `com.ulanzi.<plugin>.ulanziPlugin` prefix follows the SDK demo convention).
-- Manifest `UUID`: `com.ulanzi.ulanzistudio.iracedeck` (4-segment, == `ULANZI_PLUGIN_UUID`).
-- Action UUIDs: `com.ulanzi.ulanzistudio.iracedeck.<action>`.
+- Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` — installed into `…/UlanziDeck/Plugins/` (the user/third-party plugin dir; `…/System/Plugins/` holds first-party ones). The `*.ulanziPlugin` suffix is what UlanziStudio scans for; the `com.ulanzi.<name>.ulanziPlugin` form matches the installed first-party plugins (obsstudio, lightmaster). Folder name and manifest UUID are independent (the installed plugins' folders and UUIDs differ), so the folder keeps the host's install convention while the UUID is iRaceDeck's own.
+- Manifest `UUID`: `com.iracedeck.sd.core` (== `PLUGIN_UUID` in `@iracedeck/deck-adapter-ulanzi`; the same UUID the Elgato/Mirabox plugins use — UlanziStudio only checks for 4 dot-segments, not the prefix).
+- Action UUIDs: `com.iracedeck.sd.core.<action>` (the canonical iRaceDeck UUIDs, declared verbatim).
 
 ## Manifest maintenance
 
@@ -31,9 +31,11 @@ PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`
 pnpm build  # Rollup → com.ulanzi.iracedeck.ulanziPlugin/bin/plugin.js, then npm install in bin/
 ```
 
-## Unverified on hardware
+## Validation status
 
-This plugin builds and is unit-tested at the adapter/bridge layer, but has not yet been validated on real Ulanzi hardware. Open items (see the issue #508 design spec): device-side SVG rendering (icons are passed through as `data:image/svg+xml,...`), Keypad-vs-Encoder detection at `add`, PI-bridge fidelity against UlanziStudio, D200X dial custom feedback layouts, and the exact `Software.MinVersion` / folder-naming. None block the build; all need a D200/D200X to confirm.
+Validated live in UlanziDeck (the desktop host): the plugin loads, the WebSocket connects (handshake + argv layout `address port language`), the global-settings read/write round-trips, the PI bridge drives `sdpi-components`, the **SVG data-URI icons render**, and key presses dispatch to actions. The earlier known-unknowns (manifest format, the 4-segment UUID, the wire protocol, the PI bridge, SVG passthrough) are therefore confirmed, not deferred.
+
+Still to exercise on a physical device: D200X dial custom feedback layouts (no SDK `setFeedback` method — dial *input* works, but rich dial-slot display is deferred), Keypad-vs-Encoder detection at `add` (defaults to Keypad), and per-device behaviour across D200 / D200H / Dial / D200X. None block the build.
 
 ## Window Focus
 

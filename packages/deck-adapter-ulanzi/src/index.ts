@@ -10,9 +10,9 @@ export {
   encodeContext,
   normalizeFrame,
   parseConnectionParams,
+  PLUGIN_UUID,
   UlanziClient,
   type UlanziConnectionParams,
   type UlanziEvent,
   type UlanziEventHandler,
 } from "./ulanzi-client.js";
-export { toUlanziActionUuid, ULANZI_PLUGIN_UUID } from "./action-uuid.js";

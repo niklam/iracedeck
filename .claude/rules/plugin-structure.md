@@ -17,15 +17,16 @@ Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import
 
 The Ulanzi plugin diverges from the Elgato/Mirabox naming conventions below:
 
-- Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` (the `*.ulanziPlugin` suffix is what UlanziStudio scans for).
-- Manifest `UUID` / `ULANZI_PLUGIN_UUID`: `com.ulanzi.ulanzistudio.iracedeck` (must be exactly 4 dot-segments under `com.ulanzi.ulanzistudio.*`).
-- Action UUIDs: `com.ulanzi.ulanzistudio.iracedeck.<action>`. Actions still export canonical `com.iracedeck.sd.core.*` UUIDs; the plugin rewrites them via `toUlanziActionUuid()` and the manifest declares the rewritten form.
+- Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` (installed into `…/UlanziDeck/Plugins/`; the `*.ulanziPlugin` suffix is what UlanziStudio scans for, and the `com.ulanzi.<name>.ulanziPlugin` form matches the installed first-party plugins). The folder name and the manifest UUID are independent.
+- Manifest `UUID`: `com.iracedeck.sd.core` (== `PLUGIN_UUID` in `@iracedeck/deck-adapter-ulanzi` — the same UUID the Elgato/Mirabox plugins use). UlanziStudio only requires a 4-segment main-service UUID and does **not** validate the prefix, so iRaceDeck keeps its own namespace.
+- Action UUIDs: `com.iracedeck.sd.core.<action>` — the canonical iRaceDeck UUIDs, declared verbatim in the manifest. No remapping: the plugin registers actions directly, exactly like Mirabox.
 - Manifest is the Ulanzi format (`Type:"JavaScript"`, per-action `Controllers:["Keypad"|"Encoder"]`, `Encoder:{layout:"$UA1"}` for dials, `States:[{Image}]`). `"Information"` controllers are dropped (no Ulanzi equivalent).
 - PI connection: UlanziStudio does not call `connectElgatoStreamDeckSocket`, so the rollup injects `ulanzi-pi-bridge.js` (from `@iracedeck/pi-components`, built from `src/ulanzi-bridge/`) before `sdpi-components.js` into every generated PI HTML. The bridge monkeypatches `window.WebSocket` and translates Elgato ↔ Ulanzi PI frames, so the shared sdpi-components/`ird-*` stack is reused unchanged. See `packages/iracing-plugin-ulanzi/CLAUDE.md`.
 
 ## Active Plugins
 - `iracing-plugin-stream-deck` (com.iracedeck.sd.core) — Elgato Stream Deck, uses `@iracedeck/deck-adapter-elgato`
 - `iracing-plugin-mirabox` (com.iracedeck.sd.core) — Mirabox, uses `@iracedeck/deck-adapter-mirabox`
+- `iracing-plugin-ulanzi` (com.iracedeck.sd.core) — Ulanzi Deck, uses `@iracedeck/deck-adapter-ulanzi`
 
 Both plugins register the same actions from `@iracedeck/iracing-actions`. When adding or modifying actions, changes must be applied to **all** plugin packages (registration in `plugin.ts`, manifest entries, PI templates where applicable).
 

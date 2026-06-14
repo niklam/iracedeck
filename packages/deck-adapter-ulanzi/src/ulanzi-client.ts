@@ -18,7 +18,15 @@ import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 import { type WebSocket as WSType } from "ws";
 
-import { ULANZI_PLUGIN_UUID } from "./action-uuid.js";
+/**
+ * The iRaceDeck plugin UUID — shared verbatim with the Elgato and Mirabox
+ * plugins. UlanziStudio only requires a main-service UUID to have four
+ * dot-segments (it does not validate the prefix), so the plugin keeps the
+ * canonical iRaceDeck UUID rather than adopting a Ulanzi-vendor namespace.
+ * Because every action already exports `com.iracedeck.sd.core.<action>`, the
+ * manifest declares those UUIDs directly and no remapping is needed.
+ */
+export const PLUGIN_UUID = "com.iracedeck.sd.core";
 
 /**
  * Normalized, Elgato-style event the adapter consumes. The raw Ulanzi `cmd`
@@ -66,7 +74,7 @@ export function parseConnectionParams(): UlanziConnectionParams {
     address: process.argv[2] ?? "127.0.0.1",
     port: process.argv[3] ?? "3906",
     language: process.argv[4] ?? "en",
-    pluginUuid: ULANZI_PLUGIN_UUID,
+    pluginUuid: PLUGIN_UUID,
   };
 }
 

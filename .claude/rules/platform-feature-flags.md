@@ -6,7 +6,7 @@ Per-plugin build-time flags that gate features dependent on SVG rendering-engine
 
 - `packages/iracing-plugin-stream-deck/platform-features.json` — committed Stream Deck flags (all true by default).
 - `packages/iracing-plugin-mirabox/platform-features.json` — committed Mirabox flags (QT5-incompatible features off).
-- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags. Mirrors the Mirabox conservative baseline (filters/masks/patterns off) because the Ulanzi device-side SVG renderer is undocumented (issue #508); revisit once hardware confirms what renders.
+- `packages/iracing-plugin-ulanzi/platform-features.json` — committed Ulanzi flags. Kept at the Mirabox conservative baseline (filters/masks/patterns off): basic SVG data-URI icons are confirmed to render in UlanziDeck (issue #508), but filters/masks/patterns haven't been exercised — widen a flag only once that feature is confirmed on Ulanzi.
 - `feature-flags.local.json` — **optional, gitignored** developer override at repo root. Deep-merges over every plugin's committed flags at build time.
 - `feature-flags.local.json.example` — committed example showing the file shape.
 

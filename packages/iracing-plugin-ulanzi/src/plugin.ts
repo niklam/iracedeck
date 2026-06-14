@@ -4,9 +4,9 @@
  * Entry point for the UlanziStudio plugin. Registers all iRaceDeck actions
  * via the UlanziPlatformAdapter, enabling them on Ulanzi Deck devices.
  *
- * Mirrors the Mirabox / Elgato Stream Deck plugin initialization order. The only
- * differences are the platform adapter and the action-UUID namespace mapping
- * (UlanziStudio requires `com.ulanzi.ulanzistudio.*` UUIDs — see `register`).
+ * Mirrors the Mirabox / Elgato Stream Deck plugin initialization order; the only
+ * difference is the platform adapter. Action UUIDs are the canonical
+ * `com.iracedeck.sd.core.*` ones (UlanziStudio doesn't validate the UUID prefix).
  */
 import audioAssetsManifest from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import { AudioNative } from "@iracedeck/audio-native";
@@ -58,7 +58,7 @@ import {
   type TrackConditionsCalloutId,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { toUlanziActionUuid, UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
+import { UlanziPlatformAdapter } from "@iracedeck/deck-adapter-ulanzi";
 import {
   clearWarning,
   deleteGlobalSettings,
@@ -69,7 +69,6 @@ import {
   getGlobalSettings,
   getPluginPlatform,
   getPluginVersion,
-  type IDeckActionHandler,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -727,51 +726,55 @@ adapter.onKeyDown(() => focusIRacingIfEnabled());
 adapter.onDialDown(() => focusIRacingIfEnabled());
 adapter.onDialRotate(() => focusIRacingIfEnabled());
 
-// Register core actions via the platform adapter. UlanziStudio requires plugin
-// UUIDs under `com.ulanzi.ulanzistudio.*`, so every canonical `com.iracedeck.sd.core.*`
-// action UUID is rewritten to its Ulanzi namespace (and the manifest declares the
-// same rewritten UUIDs). The generic signature mirrors adapter.registerAction so
-// the handler's settings type is preserved.
-function register<T>(uuid: string, handler: IDeckActionHandler<T>): void {
-  adapter.registerAction(toUlanziActionUuid(uuid), handler);
-}
-
-register(AI_SPOTTER_CONTROLS_UUID, new AiSpotterControls(adapter.createLogger("AiSpotterControls")));
-register(AUDIO_CONTROLS_UUID, new AudioControls(adapter.createLogger("AudioControls")));
-register(BLACK_BOX_SELECTOR_UUID, new BlackBoxSelector(adapter.createLogger("BlackBoxSelector")));
-register(CAMERA_CONTROLS_UUID, new CameraControls(adapter.createLogger("CameraControls")));
+// Register core actions via the platform adapter. UlanziStudio only requires a
+// 4-segment main-service UUID (it does not validate the prefix), so the plugin
+// reuses the canonical `com.iracedeck.sd.core.*` action UUIDs verbatim — the same
+// ones the manifest declares — with no Ulanzi-specific remapping.
+adapter.registerAction(AI_SPOTTER_CONTROLS_UUID, new AiSpotterControls(adapter.createLogger("AiSpotterControls")));
+adapter.registerAction(AUDIO_CONTROLS_UUID, new AudioControls(adapter.createLogger("AudioControls")));
+adapter.registerAction(BLACK_BOX_SELECTOR_UUID, new BlackBoxSelector(adapter.createLogger("BlackBoxSelector")));
+adapter.registerAction(CAMERA_CONTROLS_UUID, new CameraControls(adapter.createLogger("CameraControls")));
 // Legacy UUID — existing Camera Cycle buttons continue to work after merge into Camera Controls
-register("com.iracedeck.sd.core.camera-cycle", new CameraControls(adapter.createLogger("CameraControls")));
-register(CAMERA_EDITOR_ADJUSTMENTS_UUID, new CameraEditorAdjustments(adapter.createLogger("CameraEditorAdjustments")));
-register(CAMERA_EDITOR_CONTROLS_UUID, new CameraEditorControls(adapter.createLogger("CameraEditorControls")));
-register(CAR_CONTROL_UUID, new CarControl(adapter.createLogger("CarControl")));
-register(CHAT_UUID, new Chat(adapter.createLogger("Chat")));
-register(COCKPIT_MISC_UUID, new CockpitMisc(adapter.createLogger("CockpitMisc")));
-register(FORCE_FEEDBACK_UUID, new ForceFeedback(adapter.createLogger("ForceFeedback")));
-register(FUEL_SERVICE_UUID, new FuelService(adapter.createLogger("FuelService")));
-register(LOOK_DIRECTION_UUID, new LookDirection(adapter.createLogger("LookDirection")));
-register(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger("MediaCapture")));
-register(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew")));
-register(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
-register(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
-register(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
-register(REPLAY_NAVIGATION_UUID, new ReplayNavigation(adapter.createLogger("ReplayNavigation")));
-register(REPLAY_SPEED_UUID, new ReplaySpeed(adapter.createLogger("ReplaySpeed")));
-register(REPLAY_TRANSPORT_UUID, new ReplayTransport(adapter.createLogger("ReplayTransport")));
-register(SESSION_INFO_UUID, new SessionInfo(adapter.createLogger("SessionInfo")));
-register(SETUP_AERO_UUID, new SetupAero(adapter.createLogger("SetupAero")));
-register(SETUP_BRAKES_UUID, new SetupBrakes(adapter.createLogger("SetupBrakes")));
-register(SETUP_CHASSIS_UUID, new SetupChassis(adapter.createLogger("SetupChassis")));
-register(SETUP_ENGINE_UUID, new SetupEngine(adapter.createLogger("SetupEngine")));
-register(SETUP_FUEL_UUID, new SetupFuel(adapter.createLogger("SetupFuel")));
-register(SETUP_HYBRID_UUID, new SetupHybrid(adapter.createLogger("SetupHybrid")));
-register(SETUP_TRACTION_UUID, new SetupTraction(adapter.createLogger("SetupTraction")));
-register(SPLITS_DELTA_CYCLE_UUID, new SplitsDeltaCycle(adapter.createLogger("SplitsDeltaCycle")));
-register(TELEMETRY_CONTROL_UUID, new TelemetryControl(adapter.createLogger("TelemetryControl")));
-register(TELEMETRY_DISPLAY_UUID, new TelemetryDisplay(adapter.createLogger("TelemetryDisplay")));
-register(TIRE_SERVICE_UUID, new TireService(adapter.createLogger("TireService")));
-register(TOGGLE_UI_ELEMENTS_UUID, new ToggleUiElements(adapter.createLogger("ToggleUiElements")));
-register(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLogger("ViewAdjustment")));
+adapter.registerAction(
+  "com.iracedeck.sd.core.camera-cycle",
+  new CameraControls(adapter.createLogger("CameraControls")),
+);
+adapter.registerAction(
+  CAMERA_EDITOR_ADJUSTMENTS_UUID,
+  new CameraEditorAdjustments(adapter.createLogger("CameraEditorAdjustments")),
+);
+adapter.registerAction(
+  CAMERA_EDITOR_CONTROLS_UUID,
+  new CameraEditorControls(adapter.createLogger("CameraEditorControls")),
+);
+adapter.registerAction(CAR_CONTROL_UUID, new CarControl(adapter.createLogger("CarControl")));
+adapter.registerAction(CHAT_UUID, new Chat(adapter.createLogger("Chat")));
+adapter.registerAction(COCKPIT_MISC_UUID, new CockpitMisc(adapter.createLogger("CockpitMisc")));
+adapter.registerAction(FORCE_FEEDBACK_UUID, new ForceFeedback(adapter.createLogger("ForceFeedback")));
+adapter.registerAction(FUEL_SERVICE_UUID, new FuelService(adapter.createLogger("FuelService")));
+adapter.registerAction(LOOK_DIRECTION_UUID, new LookDirection(adapter.createLogger("LookDirection")));
+adapter.registerAction(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger("MediaCapture")));
+adapter.registerAction(PIT_CREW_UUID, new PitCrew(adapter.createLogger("PitCrew")));
+adapter.registerAction(PIT_QUICK_ACTIONS_UUID, new PitQuickActions(adapter.createLogger("PitQuickActions")));
+adapter.registerAction(RACE_ADMIN_UUID, new RaceAdmin(adapter.createLogger("RaceAdmin")));
+adapter.registerAction(REPLAY_CONTROL_UUID, new ReplayControl(adapter.createLogger("ReplayControl")));
+adapter.registerAction(REPLAY_NAVIGATION_UUID, new ReplayNavigation(adapter.createLogger("ReplayNavigation")));
+adapter.registerAction(REPLAY_SPEED_UUID, new ReplaySpeed(adapter.createLogger("ReplaySpeed")));
+adapter.registerAction(REPLAY_TRANSPORT_UUID, new ReplayTransport(adapter.createLogger("ReplayTransport")));
+adapter.registerAction(SESSION_INFO_UUID, new SessionInfo(adapter.createLogger("SessionInfo")));
+adapter.registerAction(SETUP_AERO_UUID, new SetupAero(adapter.createLogger("SetupAero")));
+adapter.registerAction(SETUP_BRAKES_UUID, new SetupBrakes(adapter.createLogger("SetupBrakes")));
+adapter.registerAction(SETUP_CHASSIS_UUID, new SetupChassis(adapter.createLogger("SetupChassis")));
+adapter.registerAction(SETUP_ENGINE_UUID, new SetupEngine(adapter.createLogger("SetupEngine")));
+adapter.registerAction(SETUP_FUEL_UUID, new SetupFuel(adapter.createLogger("SetupFuel")));
+adapter.registerAction(SETUP_HYBRID_UUID, new SetupHybrid(adapter.createLogger("SetupHybrid")));
+adapter.registerAction(SETUP_TRACTION_UUID, new SetupTraction(adapter.createLogger("SetupTraction")));
+adapter.registerAction(SPLITS_DELTA_CYCLE_UUID, new SplitsDeltaCycle(adapter.createLogger("SplitsDeltaCycle")));
+adapter.registerAction(TELEMETRY_CONTROL_UUID, new TelemetryControl(adapter.createLogger("TelemetryControl")));
+adapter.registerAction(TELEMETRY_DISPLAY_UUID, new TelemetryDisplay(adapter.createLogger("TelemetryDisplay")));
+adapter.registerAction(TIRE_SERVICE_UUID, new TireService(adapter.createLogger("TireService")));
+adapter.registerAction(TOGGLE_UI_ELEMENTS_UUID, new ToggleUiElements(adapter.createLogger("ToggleUiElements")));
+adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLogger("ViewAdjustment")));
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));

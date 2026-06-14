@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ULANZI_PLUGIN_UUID } from "./action-uuid.js";
 import {
   decodeContext,
   encodeContext,
   normalizeFrame,
   parseConnectionParams,
+  PLUGIN_UUID,
   UlanziClient,
   type UlanziConnectionParams,
   type UlanziEvent,
@@ -52,7 +52,7 @@ const params: UlanziConnectionParams = {
   address: "127.0.0.1",
   port: "3906",
   language: "en",
-  pluginUuid: ULANZI_PLUGIN_UUID,
+  pluginUuid: PLUGIN_UUID,
 };
 
 /** Parse captured outbound messages back into objects for assertion. */
@@ -89,7 +89,7 @@ describe("parseConnectionParams", () => {
       address: "192.168.0.5",
       port: "49200",
       language: "de",
-      pluginUuid: ULANZI_PLUGIN_UUID,
+      pluginUuid: PLUGIN_UUID,
     });
   });
 
@@ -100,7 +100,7 @@ describe("parseConnectionParams", () => {
       address: "127.0.0.1",
       port: "3906",
       language: "en",
-      pluginUuid: ULANZI_PLUGIN_UUID,
+      pluginUuid: PLUGIN_UUID,
     });
   });
 });
@@ -194,8 +194,8 @@ describe("UlanziClient connection", () => {
     lastSocket.emit("open");
 
     expect(sentMessages()).toEqual([
-      { code: 0, cmd: "connected", uuid: ULANZI_PLUGIN_UUID },
-      { cmd: "getGlobalSettings", uuid: ULANZI_PLUGIN_UUID, key: "", actionid: "" },
+      { code: 0, cmd: "connected", uuid: PLUGIN_UUID },
+      { cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" },
     ]);
   });
 
@@ -377,7 +377,7 @@ describe("UlanziClient outbound commands", () => {
 
     expect(sentMessages()).toContainEqual({
       cmd: "setGlobalSettings",
-      uuid: ULANZI_PLUGIN_UUID,
+      uuid: PLUGIN_UUID,
       key: "",
       actionid: "",
       settings: { debugLogging: true },

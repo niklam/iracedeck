@@ -19,7 +19,7 @@
  */
 import { type BridgeIdentity, elgatoToUlanzi, encodeContext, ulanziToElgato } from "./translate.js";
 
-const ULANZI_PLUGIN_UUID = "com.ulanzi.ulanzistudio.iracedeck";
+const PLUGIN_UUID = "com.iracedeck.sd.core";
 const WS_OPEN = 1;
 const WS_CLOSED = 3;
 
@@ -133,7 +133,7 @@ export function installUlanziBridge(win: Window & typeof globalThis = window): v
   const context = encodeContext(identity.uuid, identity.key, identity.actionid);
   const info = JSON.stringify({
     application: { language: identity.language, platform: "windows", version: "" },
-    plugin: { uuid: ULANZI_PLUGIN_UUID, version: "" },
+    plugin: { uuid: PLUGIN_UUID, version: "" },
     devicePixelRatio: 1,
     colors: {},
   });
