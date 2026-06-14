@@ -6,14 +6,14 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Dial Mode">
+		<sdpi-item label="Mode">
 			<sdpi-select setting="dialMode" default="add-amount">
-				<option value="add-amount">Add amount</option>
-				<option value="target-level">Target level</option>
+				<option value="add-amount">Add Amount</option>
+				<option value="fill-to">Fill To</option>
 			</sdpi-select>
 		</sdpi-item>
 		<div class="ird-supporting-text">
-			Add amount: dial the amount of fuel to add. Target level: dial the total
+			Add Amount: dial the amount of fuel to add. Fill To: dial the total
 			you want in the tank after the stop — it's kept topped up as you burn fuel.
 		</div>
 

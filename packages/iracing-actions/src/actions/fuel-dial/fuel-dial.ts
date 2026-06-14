@@ -56,8 +56,8 @@ const LONG_PRESS_THRESHOLD_MS = 500;
 const USER_ACTIVITY_GRACE_MS = 3000;
 
 /**
- * Cadence (ms) for the target-level top-up recompute. While fuel-fill is ON in
- * target-level mode the request is periodically recomputed from the current
+ * Cadence (ms) for the fill-to top-up recompute. While fuel-fill is ON in
+ * fill-to mode the request is periodically recomputed from the current
  * fuel level and re-sent so the requested add stays topped up as fuel burns.
  */
 const TARGET_RECOMPUTE_MS = 30000;
@@ -71,6 +71,25 @@ const TARGET_RECOMPUTE_MS = 30000;
  */
 const DISPLAY_REFRESH_MS = 5000;
 
+/**
+ * Minimum gap (ms) between change-driven feedback pushes. The bar/value re-render
+ * the moment the DISPLAYED state changes (fuel-fill flips, or a rounded value
+ * moves) rather than waiting for the 5 s heartbeat — but no more than once per
+ * this window so a burst of telemetry can't exceed the ≤10 setFeedback/sec/dial
+ * cap (issue #681).
+ */
+const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
+
+/**
+ * Dialed value set when toggling Fill to Max off. In add-amount mode this IS the
+ * add, so 1 L sends `pit.fuel(1)` (a real 1 L add). In fill-to mode it is the
+ * target; with current fuel above 1 L the resolved add is 0, which `sendFuel`
+ * maps to `pit.clearFuel()` (the SDK treats `pit.fuel(0)` as "keep existing", so a
+ * 0 add must clear instead). Either way Fill to Max "empty" means ~no fuel added
+ * (issue #681).
+ */
+const FILL_TO_MAX_MIN_LTR = 1;
+
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
 const GRAY = "#888888";
@@ -78,13 +97,15 @@ const GRAY = "#888888";
 const CURRENT_SEGMENT = "#9aa7b4";
 /** Dark track behind both bar segments. */
 const BAR_TRACK = "#1a1f26";
-/** Color of the on-bar amount labels (high contrast over track + segments). */
+/** Color of the on-bar "current" amount label (dark, sits over the light current segment). */
 const BAR_LABEL = "#0d1117";
-/** Color of the target "locked" vertical marker line (target-level mode). */
-const TARGET_LINE = "#ffffff";
+/** Color of the on-bar "+add" amount label (white, sits over the green/gray add segment). */
+const ADD_LABEL = "#ffffff";
+/** Color of the "fill-to" target marker line (red, extends past the bar vertically). */
+const TARGET_LINE = "#e74c3c";
 
 const FuelDialSettings = CommonSettings.extend({
-  dialMode: z.enum(["add-amount", "target-level"]).default("add-amount"),
+  dialMode: z.enum(["add-amount", "fill-to"]).default("add-amount"),
   stepSize: z.preprocess(
     (val) => (typeof val === "string" ? val.replace(",", ".") : val),
     z.coerce.number().min(0.1).max(50).default(1),
@@ -113,7 +134,7 @@ interface FuelDialContext {
   action: IDeckActionContext;
   /**
    * Dialed quantity, always in LITERS. In add-amount mode this is the amount to
-   * ADD; in target-level mode this is the desired TOTAL after the stop.
+   * ADD; in fill-to mode this is the desired TOTAL after the stop.
    */
   dialValueLtr: number;
   /** Timestamp (ms) of the last user rotation; guards telemetry re-seed. */
@@ -124,10 +145,18 @@ interface FuelDialContext {
   longPressFired: boolean;
   /** Timestamp (ms) the current press started (dial down). */
   pressStart: number;
-  /** Recurring target-level top-up timer, or null when inactive. */
+  /** Recurring fill-to top-up timer, or null when inactive. */
   targetTimer: ReturnType<typeof setInterval> | null;
   /** Recurring display-refresh timer (re-renders bar + value), or null. */
   displayTimer: ReturnType<typeof setInterval> | null;
+  /**
+   * Signature of the DISPLAYED state at the last change-driven feedback push.
+   * Compared on every telemetry tick so a render fires the moment the displayed
+   * fuel-fill color or a rounded value moves, not just on the 5 s heartbeat.
+   */
+  lastRenderSig: string | null;
+  /** Timestamp (ms) of the last change-driven feedback push (throttle gate). */
+  lastChangeRenderAt: number;
   throttle: ThrottleState;
 }
 
@@ -214,7 +243,7 @@ export function formatDisplayValue(liters: number, displayUnits: number): string
  *
  * - add-amount: `"+<add> = <total> <unit>"` (e.g. `"+20 = 65 L"`). The total is
  *   `min(current + add, capacity)` and reflects live fuel burn.
- * - target-level: `"→ <target> <unit>"` (e.g. `"→ 65 L"`). The target is shown
+ * - fill-to: `"→ <target> <unit>"` (e.g. `"→ 65 L"`). The target is shown
  *   even when capacity is unknown.
  */
 export function buildValueText(
@@ -226,11 +255,21 @@ export function buildValueText(
 ): string {
   const suffix = unitSuffix(displayUnits);
 
-  if (dialMode === "target-level") {
+  if (dialMode === "fill-to") {
     return `→ ${formatDisplayValue(targetLtr, displayUnits)} ${suffix}`;
   }
 
   return `+${formatDisplayValue(addLtr, displayUnits)} = ${formatDisplayValue(totalLtr, displayUnits)} ${suffix}`;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The mode-aware title shown on the touch strip and keypad icon:
+ * `"Fuel: Add Amount"` in add-amount mode, `"Fuel: Fill To"` in fill-to mode.
+ */
+export function buildTitleText(dialMode: FuelDialSettings["dialMode"]): string {
+  return dialMode === "fill-to" ? "Fuel: Fill To" : "Fuel: Add Amount";
 }
 
 /**
@@ -278,7 +317,7 @@ export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
  * @internal Exported for testing
  *
  * Rounds a liters amount so it lands on a whole integer in DISPLAY units, then
- * converts back to liters. Used in target-level mode so the dialed target is
+ * converts back to liters. Used in fill-to mode so the dialed target is
  * always a whole displayed value (e.g. an integer number of liters/gallons).
  */
 export function roundToWholeDisplayLtr(liters: number, displayUnits: number): number {
@@ -297,7 +336,7 @@ export function roundToWholeDisplayLtr(liters: number, displayUnits: number): nu
  *   — it does not change as fuel burns. iRacing clamps at the pump, so here we
  *   only enforce the lower bound (and the upper tank capacity, since the dial
  *   already spans the full tank range `[0, capacity]`).
- * - target-level: `dialValueLtr` is the desired TOTAL after the stop (kept a
+ * - fill-to: `dialValueLtr` is the desired TOTAL after the stop (kept a
  *   whole integer display value). The add is `max(0, target − current)`, rounded
  *   UP to the next whole DISPLAY unit so the stop never finishes below the
  *   (integer) target, then clamped to the remaining tank space so it never
@@ -310,7 +349,7 @@ export function computeAddLtr(
   maxLtr: number | undefined,
   displayUnits: number,
 ): number {
-  if (dialMode === "target-level") {
+  if (dialMode === "fill-to") {
     const headroom = maxLtr === undefined ? undefined : Math.max(0, maxLtr - currentLtr);
     const rawAdd = Math.max(0, dialValueLtr - currentLtr);
     // Round the ADD up to the next whole display unit so current + add is at or
@@ -392,9 +431,17 @@ export function roundedBarPath(
  * - Only the OUTER corners round (left end of current, right end of add); the
  *   shared current↔add boundary is SQUARE. When add is 0 the current segment
  *   alone rounds both ends; when current is 0 the add segment alone rounds both.
- * - Small on-bar amount labels: current LEFT-aligned, to-be-added RIGHT-aligned.
- * - In target-level mode a thin vertical "locked" line marks the target total
- *   (`targetLtr` set + capacity known); omitted otherwise.
+ * - On-bar amount labels: current LEFT-aligned in dark over the light current
+ *   segment; the to-be-added `+add` RIGHT-aligned at the add segment's right end
+ *   in WHITE for contrast over the green/gray add fill. Each label is omitted
+ *   when its segment is too narrow to hold it legibly (never drawn over the dark
+ *   empty track).
+ * - In fill-to mode a thin RED vertical marker line marks the target total
+ *   (`targetLtr` set + capacity known); it extends a few px beyond the top and
+ *   bottom edges of the bar. The SVG viewBox is padded vertically so the overhang
+ *   is not clipped — the whole graphic scales into the same pixmap rect, so the
+ *   bar reads at the same place while the line visibly pokes out top and bottom.
+ *   Omitted in add-amount mode.
  */
 export function renderFuelBarSvg(
   currentLtr: number,
@@ -414,6 +461,9 @@ export function renderFuelBarSvg(
   const fontSize = Math.max(8, Math.round(heightPx * 0.5));
   const labelY = heightPx / 2;
   const pad = Math.max(3, Math.round(heightPx * 0.18));
+  // Vertical overhang for the target line; the viewBox is padded by this on the
+  // top and bottom so the line can poke past the bar without being clipped.
+  const overhang = Math.max(4, Math.round(heightPx * 0.2));
 
   const parts = [
     `<rect x="0" y="0" width="${widthPx}" height="${heightPx}" rx="${radius}" fill="${BAR_TRACK}"/>`,
@@ -433,24 +483,43 @@ export function renderFuelBarSvg(
     );
   }
 
-  // Target-level "locked" vertical marker line.
+  // Fill-to target marker line: red, ~2-3px wide, extending past the bar top/bottom.
   if (targetLtr !== undefined && maxLtr !== undefined && maxLtr > 0) {
     const targetX = Math.max(0, Math.min(widthPx, (targetLtr / span) * widthPx));
-    const lineW = Math.max(2, Math.round(heightPx * 0.1));
+    const lineW = Math.max(2, Math.min(3, Math.round(heightPx * 0.1)));
     parts.push(
-      `<rect x="${(targetX - lineW / 2).toFixed(2)}" y="0" width="${lineW}" height="${heightPx}" fill="${TARGET_LINE}"/>`,
+      `<rect x="${(targetX - lineW / 2).toFixed(2)}" y="${(-overhang).toFixed(2)}" width="${lineW}" height="${(heightPx + overhang * 2).toFixed(2)}" fill="${TARGET_LINE}"/>`,
     );
   }
 
-  // On-bar amount labels: current LEFT, to-be-added RIGHT.
-  parts.push(
-    `<text x="${pad}" y="${labelY}" text-anchor="start" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${formatDisplayValue(currentLtr, displayUnits)}</text>`,
-  );
-  parts.push(
-    `<text x="${widthPx - pad}" y="${labelY}" text-anchor="end" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">+${formatDisplayValue(addLtr, displayUnits)}</text>`,
-  );
+  // Current label: dark, left-aligned, only when the current segment can hold it.
+  const currentLabel = formatDisplayValue(currentLtr, displayUnits);
+  const currentLabelW = currentLabel.length * fontSize * 0.6 + pad;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${parts.join("")}</svg>`;
+  if (currentW >= currentLabelW) {
+    parts.push(
+      `<text x="${pad}" y="${labelY}" text-anchor="start" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${currentLabel}</text>`,
+    );
+  }
+
+  // +add label: WHITE, right-aligned at the add segment's right end, only when
+  // the add segment can hold it (so it never lands on the dark empty track).
+  const addLabel = `+${formatDisplayValue(addLtr, displayUnits)}`;
+  const addLabelW = addLabel.length * fontSize * 0.6 + pad;
+
+  if (addW >= addLabelW) {
+    const addRight = currentW + addW;
+    parts.push(
+      `<text x="${(addRight - pad).toFixed(2)}" y="${labelY}" text-anchor="end" dominant-baseline="central" fill="${ADD_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${addLabel}</text>`,
+    );
+  }
+
+  // The viewBox is padded by `overhang` top and bottom so the target line's
+  // overhang renders within a slightly taller coordinate space mapped into the
+  // same pixmap rect; the bar band stays at y in [0, heightPx].
+  const vbHeight = heightPx + overhang * 2;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${-overhang} ${widthPx} ${vbHeight}" width="${widthPx}" height="${vbHeight}">${parts.join("")}</svg>`;
 }
 
 /**
@@ -475,26 +544,30 @@ export function generateFuelDialSvg(
   const graphic1 = colors.graphic1Color || WHITE;
   const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
   const valueText = buildValueText(settings.dialMode, addLtr, totalLtr, targetLtr, displayUnits);
-  // The target line is only drawn in target-level mode.
-  const barTarget = settings.dialMode === "target-level" ? targetLtr : undefined;
+  // The target line is only drawn in fill-to mode.
+  const barTarget = settings.dialMode === "fill-to" ? targetLtr : undefined;
 
   // Continuous two-segment fuel bar (current + add) with on-bar labels.
   const barX = 16;
   const barY = 100;
   const barW = 112;
   const barH = 28;
-  // Add-mode text ("+20 = 65 L") is wider than target-mode ("→ 65 L"); size it
+  // Add-mode text ("+20 = 65 L") is wider than fill-to text ("→ 65 L"); size it
   // down so the longer string fits the 144-wide canvas.
-  const valueFontSize = settings.dialMode === "target-level" ? 30 : 24;
+  const valueFontSize = settings.dialMode === "fill-to" ? 30 : 24;
   const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, barW, barH, displayUnits, barTarget);
   const iconContent = `
     <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
           fill="${graphic1}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${valueText}</text>
     <g transform="translate(${barX}, ${barY})">${stripSvgWrapper(barSvg)}</g>`;
 
+  // Mode-aware title ("Fuel: Add Amount" / "Fuel: Fill To") replaces the static
+  // "FUEL" label. The longer text is sized down so it fits the 144-wide canvas.
   const resolvedTitle = resolveTitleSettings(fuelDialTemplate, getGlobalTitleSettings(), settings.titleOverrides);
+  const titleText = buildTitleText(settings.dialMode);
+  const titleFontSize = 18;
   const titleContent = resolvedTitle.showTitle
-    ? `<text x="72" y="26" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor ?? WHITE}" font-family="Arial, sans-serif" font-size="${resolvedTitle.fontSize}" font-weight="bold">${resolvedTitle.titleText}</text>`
+    ? `<text x="72" y="26" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor ?? WHITE}" font-family="Arial, sans-serif" font-size="${titleFontSize}" font-weight="bold">${titleText}</text>`
     : "";
 
   const border = resolveBorderSettings(fuelDialTemplate, getGlobalBorderSettings(), settings.borderOverrides);
@@ -551,7 +624,7 @@ export function buildTriggerDescription(settings: FuelDialSettings): DeckTrigger
       : `${actionLabel(settings.pressAction)} (hold: ${actionLabel(settings.longPressAction)})`;
 
   const description: DeckTriggerDescription = {
-    rotate: settings.dialMode === "target-level" ? "Adjust target level" : "Adjust fuel to add",
+    rotate: settings.dialMode === "fill-to" ? "Adjust target level" : "Adjust fuel to add",
     push,
   };
 
@@ -566,7 +639,7 @@ export function buildTriggerDescription(settings: FuelDialSettings): DeckTrigger
  * Fuel Dial Action
  *
  * A dial-first action for Stream Deck+. Rotating sets either the amount to add
- * (add-amount mode) or the desired total after the stop (target-level mode);
+ * (add-amount mode) or the desired total after the stop (fill-to mode);
  * pressing/tapping runs a configurable action (toggle/clear/fill); the touch
  * strip shows a live "65 / 90 L" readout with a two-segment fuel bar. On a
  * plain keypad it shows the value and a press runs the configured action. All
@@ -584,7 +657,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // Seed the dialed value from current pit fuel request on appear.
     this.seedFromTelemetry(ctx, true);
 
-    // Resume the target-level top-up if fuel-fill is already on.
+    // Resume the fill-to top-up if fuel-fill is already on.
     this.syncTargetTimer(ctx);
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
@@ -632,13 +705,13 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const stepLtr = fuelFromDisplayUnits(settings.stepSize, displayUnits);
     // Per-mode clamp: BOTH modes span the full tank range [0, capacity]. In
-    // add-amount the dialed value is the (fixed) amount to add; in target-level
+    // add-amount the dialed value is the (fixed) amount to add; in fill-to
     // it is the desired total, snapped to a whole integer display value on every
     // rotate. ticks is a SIGNED DELTA (may be >1).
     const upperBound = this.effectiveMaxLtr();
     let nextValue = ctx.dialValueLtr + ev.payload.ticks * stepLtr;
 
-    if (settings.dialMode === "target-level") {
+    if (settings.dialMode === "fill-to") {
       nextValue = roundToWholeDisplayLtr(nextValue, displayUnits);
     }
 
@@ -654,7 +727,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // per-event here; flushSend issues the broadcast + feedback at the edges.
     this.scheduleSend(ctx);
 
-    // Keep the target-level top-up timer running while fuel-fill is on.
+    // Keep the fill-to top-up timer running while fuel-fill is on.
     this.syncTargetTimer(ctx);
     await this.render(ctx, { skipFeedback: true });
   }
@@ -752,8 +825,10 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
           this.logger.debug("Toggle: cleared fueling");
         } else {
           const addLtr = this.effectiveAddLtr(ctx);
-          pit.fuel(addLtr);
-          ctx.throttle.lastSentLtr = addLtr;
+          this.sendFuel(addLtr);
+          // A resolved add of 0 clears instead of arming — keep bookkeeping in sync.
+          cleared = addLtr <= 0;
+          ctx.throttle.lastSentLtr = cleared ? null : addLtr;
           this.logger.debug(`Toggle: requested ${addLtr.toFixed(2)}L`);
         }
 
@@ -775,13 +850,20 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
           return;
         }
 
-        // Fill the TANK to capacity: add-mode dials the remaining space,
-        // target-mode dials the full capacity.
-        ctx.dialValueLtr = ctx.settings.dialMode === "target-level" ? maxLtr : Math.max(0, maxLtr - this.currentLtr());
+        // Fill to Max is a TOGGLE (issue #681). In BOTH modes the dialed value
+        // is set to the FULL tank capacity (add-mode: capacity as the add;
+        // fill-to: capacity as the target). A second invocation while already at
+        // max drops it to ~empty (FILL_TO_MAX_MIN_LTR). So repeatedly pressing
+        // Fill to Max alternates full ↔ ~empty; the resolved-0 add path clears.
+        const atMax = ctx.dialValueLtr >= maxLtr - 0.5;
+        ctx.dialValueLtr = atMax ? FILL_TO_MAX_MIN_LTR : maxLtr;
         const addLtr = this.effectiveAddLtr(ctx);
-        pit.fuel(addLtr);
-        ctx.throttle.lastSentLtr = addLtr;
-        this.logger.debug(`Fill to max: requested ${addLtr.toFixed(2)}L`);
+        this.sendFuel(addLtr);
+        // In fill-to mode "empty" (target ~1 L) resolves to add 0 → clearFuel; treat
+        // it like a clear so the top-up timer stops and the armed amount resets.
+        cleared = addLtr <= 0;
+        ctx.throttle.lastSentLtr = cleared ? null : addLtr;
+        this.logger.debug(`Fill to max (${atMax ? "empty" : "full"}): requested ${addLtr.toFixed(2)}L`);
         break;
       }
     }
@@ -791,7 +873,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       // here since it reads the not-yet-updated live fuel-fill flag.
       this.clearTargetTimer(ctx);
     } else {
-      // A toggle-on or fill in target-level mode should keep the request topped up.
+      // A toggle-on or fill in fill-to mode should keep the request topped up.
       this.syncTargetTimer(ctx);
     }
 
@@ -832,11 +914,28 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       return;
     }
 
-    getCommands().pit.fuel(target);
+    this.sendFuel(target);
     ctx.throttle.lastSentLtr = target;
     this.logger.info("Fuel request sent");
     this.logger.debug(`Sent ${target.toFixed(2)}L`);
     void this.renderFeedback(ctx);
+  }
+
+  /**
+   * Sends a fuel request through the single SDK entry point, mapping a resolved
+   * add of 0 (or less) to `pit.clearFuel()` instead of `pit.fuel(0)`. The iRacing
+   * SDK treats `pit.fuel(0)` as "keep the existing amount", NOT "request zero", so
+   * a computed add of 0 must clear the request to mean "don't add anything"
+   * (issue #681). Any non-zero add (including the 1 L Fill-to-max minimum) goes
+   * through `pit.fuel`.
+   */
+  private sendFuel(addLtr: number): void {
+    if (addLtr <= 0) {
+      getCommands().pit.clearFuel();
+      this.logger.debug("Resolved add is 0 — cleared fueling instead of requesting 0 L");
+    } else {
+      getCommands().pit.fuel(addLtr);
+    }
   }
 
   private parseSettings(settings: unknown): FuelDialSettings {
@@ -859,6 +958,8 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         pressStart: 0,
         targetTimer: null,
         displayTimer: null,
+        lastRenderSig: null,
+        lastChangeRenderAt: 0,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
       };
       this.contextsState.set(action.id, ctx);
@@ -903,13 +1004,13 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   }
 
   /**
-   * Starts/stops the target-level top-up timer to match the current state. The
-   * timer runs only in target-level mode while fuel-fill is ON; it recomputes
+   * Starts/stops the fill-to top-up timer to match the current state. The
+   * timer runs only in fill-to mode while fuel-fill is ON; it recomputes
    * the add against the latest fuel level every TARGET_RECOMPUTE_MS and re-sends
    * it (respecting the user's toggle — it never re-arms when fuel is off).
    */
   private syncTargetTimer(ctx: FuelDialContext): void {
-    const shouldRun = ctx.settings.dialMode === "target-level" && this.isFuelFillOn();
+    const shouldRun = ctx.settings.dialMode === "fill-to" && this.isFuelFillOn();
 
     if (!shouldRun) {
       this.clearTargetTimer(ctx);
@@ -920,16 +1021,16 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     if (ctx.targetTimer !== null) return;
 
     ctx.targetTimer = setInterval(() => {
-      // Stop quietly if the user has since turned fuel off or left target mode.
-      if (ctx.settings.dialMode !== "target-level" || !this.isFuelFillOn()) {
+      // Stop quietly if the user has since turned fuel off or left fill-to mode.
+      if (ctx.settings.dialMode !== "fill-to" || !this.isFuelFillOn()) {
         this.clearTargetTimer(ctx);
 
         return;
       }
 
       const addLtr = this.effectiveAddLtr(ctx);
-      getCommands().pit.fuel(addLtr);
-      ctx.throttle.lastSentLtr = addLtr;
+      this.sendFuel(addLtr);
+      ctx.throttle.lastSentLtr = addLtr <= 0 ? null : addLtr;
       this.logger.debug(`Target top-up: requested ${addLtr.toFixed(2)}L`);
       void this.render(ctx);
     }, TARGET_RECOMPUTE_MS);
@@ -939,7 +1040,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
    * Re-seeds the dialed value from telemetry. When `force` is false the re-seed
    * is skipped if the user rotated recently (so live telemetry can't fight an
    * in-flight adjustment). add-mode seeds from `PitSvFuel` (the requested add);
-   * target-mode seeds from `current + PitSvFuel` (the resulting total).
+   * fill-to mode seeds from `current + PitSvFuel` (the resulting total).
    */
   private seedFromTelemetry(ctx: FuelDialContext, force: boolean): void {
     if (!force && Date.now() - ctx.lastUserActivity < USER_ACTIVITY_GRACE_MS) return;
@@ -951,7 +1052,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     const maxLtr = this.effectiveMaxLtr();
 
-    if (ctx.settings.dialMode === "target-level") {
+    if (ctx.settings.dialMode === "fill-to") {
       const current = readFuelLevel(telemetry);
       // Seed the target as a whole integer display value.
       ctx.dialValueLtr = clampTargetLtr(
@@ -965,7 +1066,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
   private onTelemetry(ctx: FuelDialContext, telemetry: TelemetryData | null): void {
     // Re-seed the dialed value from telemetry only when the user hasn't rotated
-    // recently — and ONLY in add-amount mode. In target-level mode the dialed
+    // recently — and ONLY in add-amount mode. In fill-to mode the dialed
     // value is the user's chosen TOTAL: re-seeding it from `current + PitSvFuel`
     // would silently lower the target as fuel burns (PitSvFuel is the last-sent
     // add, not the live gap). The 30 s target timer + the live add computation
@@ -980,17 +1081,65 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     // Keep the top-up timer in sync with the live fuel-fill state.
     this.syncTargetTimer(ctx);
+
+    // Render-on-CHANGE (issue #681): the bar's fuel-fill color and the displayed
+    // values must track telemetry without the up-to-5s lag of the heartbeat
+    // timer. Push feedback immediately when the DISPLAYED signature changes
+    // (fuel-fill flips, or a rounded current/add/total moves), throttled to at
+    // most once per CHANGE_RENDER_MIN_INTERVAL_MS so a burst of ticks can't blow
+    // past the ≤10 setFeedback/sec/dial cap. Unchanged ticks update the keypad
+    // icon only (no feedback). The 5s timer remains as a heartbeat.
+    const sig = this.displayedSignature(ctx);
+
+    if (sig !== ctx.lastRenderSig && Date.now() - ctx.lastChangeRenderAt >= CHANGE_RENDER_MIN_INTERVAL_MS) {
+      ctx.lastRenderSig = sig;
+      ctx.lastChangeRenderAt = Date.now();
+      void this.render(ctx);
+
+      return;
+    }
+
     // Update the keypad icon, but do NOT push touch-strip feedback on every tick
-    // — the ≤10 setFeedback/sec/dial cap is respected by the display-refresh
-    // timer + event-driven renders instead (issue #681).
+    // — the ≤10 setFeedback/sec/dial cap is respected by the change-detector + the
+    // display-refresh timer + event-driven renders instead (issue #681).
     void this.render(ctx, { skipFeedback: true });
+  }
+
+  /**
+   * A compact signature of the DISPLAYED state used by the render-on-change path:
+   * the live fuel-fill flag plus the rounded current / add / total values. When
+   * this string differs from the last rendered one, a feedback push is due.
+   *
+   * In fill-to mode the displayed target (`dialValueLtr`, shown in the "→ <target>"
+   * readout and the red target line) can change while the resolved add stays 0 —
+   * dialing the target at/below current fuel leaves add at 0 but moves the marker.
+   * The target is therefore appended only in fill-to mode so the readout refreshes
+   * promptly instead of waiting for the 5 s heartbeat (issue #681). In add-amount
+   * mode the dialed value is already captured via `addLtr`.
+   */
+  private displayedSignature(ctx: FuelDialContext): string {
+    const displayUnits = this.effectiveDisplayUnits(ctx);
+    const maxLtr = this.effectiveMaxLtr();
+    const currentLtr = this.currentLtr();
+    const addLtr = this.effectiveAddLtr(ctx);
+    const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
+    const fuelOn = this.isFuelFillOn();
+
+    return [
+      fuelOn ? "on" : "off",
+      formatDisplayValue(currentLtr, displayUnits),
+      formatDisplayValue(addLtr, displayUnits),
+      formatDisplayValue(totalLtr, displayUnits),
+      ctx.settings.dialMode === "fill-to" ? formatDisplayValue(ctx.dialValueLtr, displayUnits) : "",
+    ].join("|");
   }
 
   /**
    * Starts the periodic display-refresh timer for a context. While appeared it
    * re-renders the bar + value every DISPLAY_REFRESH_MS so the displayed add
-   * (target − current in target mode) and the live total track fuel burn without
-   * pushing feedback on every telemetry tick. Idempotent — never stacks.
+   * (target − current in fill-to mode) and the live total track fuel burn without
+   * pushing feedback on every telemetry tick. Acts as a heartbeat alongside the
+   * render-on-change path in onTelemetry. Idempotent — never stacks.
    */
   private startDisplayTimer(ctx: FuelDialContext): void {
     if (ctx.displayTimer !== null) return;
@@ -1094,14 +1243,19 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const addLtr = this.effectiveAddLtr(ctx);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fuelOn = this.isFuelFillOn();
-    // The target line is only drawn in target-level mode.
-    const barTarget = ctx.settings.dialMode === "target-level" ? ctx.dialValueLtr : undefined;
+    // The target line is only drawn in fill-to mode.
+    const barTarget = ctx.settings.dialMode === "fill-to" ? ctx.dialValueLtr : undefined;
     const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, 184, 30, displayUnits, barTarget);
     const feedback: DeckFeedbackPayload = {
-      title: "FUEL",
+      title: buildTitleText(ctx.settings.dialMode),
       value: buildValueText(ctx.settings.dialMode, addLtr, totalLtr, ctx.dialValueLtr, displayUnits),
       bar: svgToDataUri(barSvg),
     };
     await ctx.action.setFeedback(feedback);
+
+    // Reset the change-detector baseline so a pushed feedback (rotate/press/
+    // heartbeat) doesn't immediately re-fire the render-on-change path next tick.
+    ctx.lastRenderSig = this.displayedSignature(ctx);
+    ctx.lastChangeRenderAt = Date.now();
   }
 }
