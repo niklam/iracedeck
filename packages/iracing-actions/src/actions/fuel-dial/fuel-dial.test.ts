@@ -2,14 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildReadout,
+  buildTriggerDescription,
   clampTargetLtr,
-  fillPercent,
+  computeAddLtr,
+  computeTotalLtr,
   formatDisplayValue,
   FUEL_DIAL_UUID,
   FuelDial,
   generateFuelDialSvg,
+  isFuelFillOn,
   readEffectiveMaxLtr,
+  readFuelLevel,
   readPitSvFuel,
+  renderFuelBarSvg,
   resolveDisplayUnits,
   unitSuffix,
 } from "./fuel-dial.js";
@@ -26,8 +31,13 @@ const { mockPitClearFuel, mockPitFuel, mockGetCommands, mockGetSessionInfo, mock
   }),
 );
 
+// PitSvFlags.FuelFill is bit 0 (value 1) in the real enum.
+const FUEL_FILL = 1;
+
 vi.mock("@iracedeck/iracing-sdk", () => ({
   DisplayUnits: { English: 0, Metric: 1 },
+  PitSvFlags: { FuelFill: 1 },
+  hasFlag: (value: number | undefined, flag: number) => ((value ?? 0) & flag) === flag,
 }));
 
 vi.mock("../../../icons/fuel-dial.svg", () => ({
@@ -38,10 +48,11 @@ vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
       const defaults = {
+        dialMode: "add-amount",
         stepSize: 1,
         pressAction: "toggle-fueling",
         longPressAction: "clear-fueling",
-        touchScreenEnabled: true,
+        touchAction: "toggle-fueling",
         unitMode: "auto",
       };
       const schema = {
@@ -116,6 +127,7 @@ function keyContext(id: string) {
     setSettings: vi.fn().mockResolvedValue(undefined),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -130,6 +142,7 @@ function dialContext(id: string) {
     setSettings: vi.fn().mockResolvedValue(undefined),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -148,6 +161,7 @@ function touchTapEvent(action: ReturnType<typeof dialContext>, settings: Record<
   return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
 }
 
+const SESSION_90L = { DriverInfo: { DriverCarFuelMaxLtr: 90, DriverCarMaxFuelPct: 1 } };
 const SESSION_110L = { DriverInfo: { DriverCarFuelMaxLtr: 110, DriverCarMaxFuelPct: 1 } };
 
 describe("fuel-dial pure helpers", () => {
@@ -224,27 +238,24 @@ describe("fuel-dial pure helpers", () => {
   });
 
   describe("buildReadout", () => {
-    it("shows target / max with suffix", () => {
-      expect(buildReadout(74, 100, 1)).toBe("74 / 100 L");
+    it("shows total / max with suffix", () => {
+      expect(buildReadout(65, 90, 1)).toBe("65 / 90 L");
     });
 
     it("shows -- when max unknown", () => {
-      expect(buildReadout(74, undefined, 1)).toBe("74 / -- L");
+      expect(buildReadout(65, undefined, 1)).toBe("65 / -- L");
     });
   });
 
-  describe("fillPercent", () => {
-    it("computes percentage", () => {
-      expect(fillPercent(50, 100)).toBe(50);
+  describe("readFuelLevel", () => {
+    it("reads finite FuelLevel", () => {
+      expect(readFuelLevel({ FuelLevel: 45 } as never)).toBe(45);
     });
 
-    it("returns 0 when max unknown", () => {
-      expect(fillPercent(50, undefined)).toBe(0);
-    });
-
-    it("clamps to 0-100", () => {
-      expect(fillPercent(150, 100)).toBe(100);
-      expect(fillPercent(-5, 100)).toBe(0);
+    it("treats unknown/non-finite as 0", () => {
+      expect(readFuelLevel(null)).toBe(0);
+      expect(readFuelLevel({} as never)).toBe(0);
+      expect(readFuelLevel({ FuelLevel: -3 } as never)).toBe(0);
     });
   });
 
@@ -259,13 +270,137 @@ describe("fuel-dial pure helpers", () => {
     });
   });
 
+  describe("isFuelFillOn", () => {
+    it("returns true when the FuelFill flag is set", () => {
+      expect(isFuelFillOn({ PitSvFlags: FUEL_FILL } as never)).toBe(true);
+    });
+
+    it("returns false when the flag is clear or telemetry missing", () => {
+      expect(isFuelFillOn({ PitSvFlags: 0 } as never)).toBe(false);
+      expect(isFuelFillOn({} as never)).toBe(false);
+      expect(isFuelFillOn(null)).toBe(false);
+    });
+  });
+
+  describe("computeAddLtr", () => {
+    it("add-amount returns the dialed amount clamped to remaining space", () => {
+      // current 45, max 90 -> headroom 45; dialed 20 fits
+      expect(computeAddLtr("add-amount", 20, 45, 90, 1)).toBe(20);
+      // dialed 60 clamped to headroom 45
+      expect(computeAddLtr("add-amount", 60, 45, 90, 1)).toBe(45);
+    });
+
+    it("add-amount only enforces lower bound when capacity unknown", () => {
+      expect(computeAddLtr("add-amount", 60, 45, undefined, 1)).toBe(60);
+      expect(computeAddLtr("add-amount", -5, 45, undefined, 1)).toBe(0);
+    });
+
+    it("target-level returns target minus current", () => {
+      // target 65, current 45 -> add 20
+      expect(computeAddLtr("target-level", 65, 45, 90, 1)).toBe(20);
+    });
+
+    it("target-level rounds up so the stop never finishes under target", () => {
+      // target 65, current 44.3 -> raw add 20.7 -> rounds up to 21 (metric whole unit)
+      expect(computeAddLtr("target-level", 65, 44.3, 90, 1)).toBe(21);
+    });
+
+    it("target-level clamps the add to remaining tank space", () => {
+      // target 90, current 50, max 90 -> raw add 40 (fits headroom 40)
+      expect(computeAddLtr("target-level", 90, 50, 90, 1)).toBe(40);
+      // target above capacity is impossible to over-fill: headroom caps it
+      expect(computeAddLtr("target-level", 200, 50, 90, 1)).toBe(40);
+    });
+
+    it("target-level returns 0 when already at/above target", () => {
+      expect(computeAddLtr("target-level", 40, 50, 90, 1)).toBe(0);
+    });
+  });
+
+  describe("computeTotalLtr", () => {
+    it("sums current and add", () => {
+      expect(computeTotalLtr(45, 20, 90)).toBe(65);
+    });
+
+    it("caps at capacity", () => {
+      expect(computeTotalLtr(80, 30, 90)).toBe(90);
+    });
+
+    it("does not cap when capacity unknown", () => {
+      expect(computeTotalLtr(80, 30, undefined)).toBe(110);
+    });
+  });
+
+  describe("renderFuelBarSvg", () => {
+    it("renders both segments green when fuel on", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30);
+
+      expect(svg).toContain("<svg");
+      expect(svg).toContain("#2ecc71"); // green add segment
+      expect(svg).toContain("#7f93a8"); // current segment color
+    });
+
+    it("renders the add segment gray when fuel off", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, false, 184, 30);
+
+      expect(svg).toContain("#888888");
+      expect(svg).not.toContain("#2ecc71");
+    });
+
+    it("omits the add segment when there is nothing to add", () => {
+      const svg = renderFuelBarSvg(45, 0, 90, true, 184, 30);
+
+      expect(svg).not.toContain("#2ecc71");
+    });
+  });
+
+  describe("buildTriggerDescription", () => {
+    it("appends the long-press as a hold hint on push and never sets longTouch", () => {
+      const desc = buildTriggerDescription({
+        dialMode: "add-amount",
+        pressAction: "toggle-fueling",
+        longPressAction: "clear-fueling",
+        touchAction: "fill-to-max",
+      } as never);
+
+      expect(desc.rotate).toBe("Adjust fuel to add");
+      // Long-press of the dial button has no dedicated SDK field — it rides on push.
+      expect(desc.push).toBe("Toggle fueling (hold: Clear fueling)");
+      expect(desc.longTouch).toBeUndefined();
+      expect(desc.touch).toBe("Fill to max");
+    });
+
+    it("uses target-level rotate label, plain push when no long-press, and omits none actions", () => {
+      const desc = buildTriggerDescription({
+        dialMode: "target-level",
+        pressAction: "clear-fueling",
+        longPressAction: "none",
+        touchAction: "none",
+      } as never);
+
+      expect(desc.rotate).toBe("Adjust target level");
+      expect(desc.push).toBe("Clear fueling");
+      expect(desc.longTouch).toBeUndefined();
+      expect(desc.touch).toBeUndefined();
+    });
+  });
+
   describe("generateFuelDialSvg", () => {
-    it("produces a data URI containing the readout value", () => {
-      const result = generateFuelDialSvg({ stepSize: 1 } as never, 74, 100, 1, true);
+    it("produces a data URI containing the total readout value", () => {
+      // current 45, add 20, max 90 -> total 65
+      const result = generateFuelDialSvg({} as never, 45, 20, 90, 1, true);
       const decoded = decodeURIComponent(result);
 
       expect(result).toContain("data:image/svg+xml");
-      expect(decoded).toContain("74 L");
+      expect(decoded).toContain("65 L");
+    });
+
+    it("shows -- semantics via the bar when capacity unknown but renders total", () => {
+      const result = generateFuelDialSvg({} as never, 45, 20, undefined, 1, false);
+      const decoded = decodeURIComponent(result);
+
+      // total still computed (no cap) = 65
+      expect(decoded).toContain("65 L");
     });
   });
 
@@ -281,7 +416,8 @@ describe("FuelDial action", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     mockGetSessionInfo.mockReturnValue(SESSION_110L);
-    mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0 });
+    // Default telemetry: metric, no current fuel, no pending request, fuel off.
+    mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
     action = new FuelDial();
   });
 
@@ -316,13 +452,16 @@ describe("FuelDial action", () => {
       expect(mockPitFuel).toHaveBeenCalledWith(6);
     });
 
-    it("clamps the upper bound to the tank max", async () => {
+    it("clamps the upper bound to remaining tank space in add mode", async () => {
       const ctx = dialContext("d3");
-      await appear(ctx, { stepSize: 50, unitMode: "liters" });
-      // 50 * 3 = 150, clamped to 110
-      await action.onDialRotate(rotateEvent(ctx, { stepSize: 50, unitMode: "liters" }, 3) as never);
+      // 110L tank, 30L current -> headroom 80; 50 * 3 = 150 clamped to 80
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 30, PitSvFlags: 0 });
+      await appear(ctx, { stepSize: 50, unitMode: "liters", dialMode: "add-amount" });
+      await action.onDialRotate(
+        rotateEvent(ctx, { stepSize: 50, unitMode: "liters", dialMode: "add-amount" }, 3) as never,
+      );
 
-      expect(mockPitFuel).toHaveBeenCalledWith(110);
+      expect(mockPitFuel).toHaveBeenCalledWith(80);
     });
 
     it("clamps the lower bound to 0", async () => {
@@ -340,6 +479,30 @@ describe("FuelDial action", () => {
 
       // 1 gal -> 3.78541 L
       expect(mockPitFuel).toHaveBeenCalledWith(expect.closeTo(3.78541, 4));
+    });
+  });
+
+  describe("dialMode add vs target", () => {
+    it("target-level sends target minus current", async () => {
+      const ctx = dialContext("dm1");
+      // current 45 -> seed target = 45; rotate +20 -> target 65 -> add 20
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
+      const settings = { stepSize: 20, unitMode: "liters", dialMode: "target-level" };
+      await appear(ctx, settings);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(20);
+    });
+
+    it("target-level rounds the add up so it never finishes under target", async () => {
+      const ctx = dialContext("dm2");
+      // current 44.3 -> seed target = 44.3; rotate +20.7 -> target 65 -> raw add 20.7 -> ceil 21
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 44.3, PitSvFlags: 0 });
+      const settings = { stepSize: 20.7, unitMode: "liters", dialMode: "target-level" };
+      await appear(ctx, settings);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(21);
     });
   });
 
@@ -367,7 +530,6 @@ describe("FuelDial action", () => {
       await appear(ctx, { stepSize: 1, unitMode: "liters" });
 
       await action.onDialRotate(rotateEvent(ctx, { stepSize: 1, unitMode: "liters" }, 1) as never); // -> 1 leading
-      // Rotate up then back down within the window: pending ends at 1 (already sent)
       await action.onDialRotate(rotateEvent(ctx, { stepSize: 1, unitMode: "liters" }, 1) as never); // -> 2
       await action.onDialRotate(rotateEvent(ctx, { stepSize: 1, unitMode: "liters" }, -1) as never); // -> 1
       vi.advanceTimersByTime(100);
@@ -377,25 +539,39 @@ describe("FuelDial action", () => {
     });
   });
 
-  describe("doPress dispatch", () => {
-    it("toggle-fueling requests when disarmed then clears when armed", async () => {
+  describe("doPress dispatch — live fuel-fill state", () => {
+    it("toggle-fueling requests when fuel-fill is OFF then clears when ON", async () => {
       const ctx = dialContext("p1");
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
-      await appear(ctx, { pressAction: "toggle-fueling", unitMode: "liters", stepSize: 1 });
+      const settings = { pressAction: "toggle-fueling", unitMode: "liters", stepSize: 1 };
 
-      // disarmed -> request
-      await action.onDialDown(
-        basicEvent(ctx, { pressAction: "toggle-fueling", unitMode: "liters", stepSize: 1 }) as never,
-      );
+      // fuel off -> dial a value first so the request is non-zero
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      await appear(ctx, settings);
+      await action.onDialRotate(rotateEvent(ctx, settings, 10) as never); // dial 10L
+      mockPitFuel.mockClear();
 
-      expect(mockPitFuel).toHaveBeenCalledWith(0);
+      // fuel off -> toggle requests the dialed amount
+      await action.onDialDown(basicEvent(ctx, settings) as never);
 
-      // armed -> clear
-      await action.onDialDown(
-        basicEvent(ctx, { pressAction: "toggle-fueling", unitMode: "liters", stepSize: 1 }) as never,
-      );
+      expect(mockPitFuel).toHaveBeenCalledWith(10);
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+
+      // Now fuel is ON in telemetry -> toggle clears
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 10, FuelLevel: 0, PitSvFlags: FUEL_FILL });
+      mockPitFuel.mockClear();
+      await action.onDialDown(basicEvent(ctx, settings) as never);
 
       expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
+      expect(mockPitFuel).not.toHaveBeenCalled();
+
+      // Back OFF -> toggle requests again (alternates with the real state)
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      mockPitClearFuel.mockClear();
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(10);
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
     });
 
     it("clear-fueling always clears", async () => {
@@ -408,19 +584,31 @@ describe("FuelDial action", () => {
       expect(mockPitFuel).not.toHaveBeenCalled();
     });
 
-    it("fill-to-max sets target to tank max and requests it", async () => {
+    it("fill-to-max (add mode) requests remaining tank space", async () => {
       const ctx = dialContext("p3");
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
-      await appear(ctx, { pressAction: "fill-to-max" });
-      await action.onDialDown(basicEvent(ctx, { pressAction: "fill-to-max" }) as never);
+      // 110L tank, 40L current -> headroom 70
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 40, PitSvFlags: 0 });
+      await appear(ctx, { pressAction: "fill-to-max", dialMode: "add-amount" });
+      await action.onDialDown(basicEvent(ctx, { pressAction: "fill-to-max", dialMode: "add-amount" }) as never);
 
-      expect(mockPitFuel).toHaveBeenCalledWith(110);
+      expect(mockPitFuel).toHaveBeenCalledWith(70);
     });
 
-    it("fill-to-max with unknown tank capacity does not send, warns, and stays disarmed", async () => {
+    it("fill-to-max (target mode) requests enough to reach capacity", async () => {
+      const ctx = dialContext("p3b");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      // 110L tank, 40L current -> target 110 -> add 70
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 40, PitSvFlags: 0 });
+      await appear(ctx, { pressAction: "fill-to-max", dialMode: "target-level" });
+      await action.onDialDown(basicEvent(ctx, { pressAction: "fill-to-max", dialMode: "target-level" }) as never);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(70);
+    });
+
+    it("fill-to-max with unknown tank capacity does not send and warns", async () => {
       const ctx = dialContext("p4");
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
-      // No session info -> effectiveMaxLtr() is undefined.
       mockGetSessionInfo.mockReturnValue(null);
       await appear(ctx, { pressAction: "fill-to-max" });
 
@@ -432,11 +620,79 @@ describe("FuelDial action", () => {
       const logger = (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger;
 
       expect(logger.warn).toHaveBeenCalledWith("Fill-to-max: tank capacity unknown, skipping");
-      // Not armed: a subsequent toggle requests rather than clears.
-      await action.onDialDown(basicEvent(ctx, { pressAction: "toggle-fueling" }) as never);
+    });
+  });
 
-      expect(mockPitFuel).toHaveBeenCalledTimes(1);
-      expect(mockPitClearFuel).not.toHaveBeenCalled();
+  describe("target-level top-up timer", () => {
+    it("recomputes and re-sends every 30s while fuel-fill is on", async () => {
+      const ctx = dialContext("tt-timer1");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const settings = { stepSize: 1, unitMode: "liters", dialMode: "target-level", pressAction: "toggle-fueling" };
+      // Fuel ON, current 45, requested add 20 -> seed target = current + add = 65; timer arms on appear
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      await appear(ctx, settings);
+      mockPitFuel.mockClear();
+
+      // Fuel burned: current now 40 -> add must grow to 25 to still reach 65
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 40, PitSvFlags: FUEL_FILL });
+      vi.advanceTimersByTime(30000);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(25);
+    });
+
+    it("does not re-send when fuel-fill is off (respects toggle-off)", async () => {
+      const ctx = dialContext("tt-timer2");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      const settings = { stepSize: 65, unitMode: "liters", dialMode: "target-level" };
+      // Fuel OFF
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
+      await appear(ctx, settings);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      vi.advanceTimersByTime(100);
+      mockPitFuel.mockClear();
+
+      // Advance well past the recompute interval — no timer should fire while off
+      vi.advanceTimersByTime(60000);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("stops the top-up timer immediately when clear-fueling is pressed", async () => {
+      const ctx = dialContext("tt-timer-clear");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const settings = { stepSize: 1, unitMode: "liters", dialMode: "target-level", pressAction: "clear-fueling" };
+      // Fuel ON, current 45, requested add 20 -> seed target 65; timer arms on appear.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      await appear(ctx, settings);
+      mockPitFuel.mockClear();
+
+      // Press clear. Telemetry still reports fuel-fill ON (the flag flips on a
+      // later tick), so the timer must be stopped explicitly, not via syncTargetTimer.
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+
+      expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
+
+      // Advance past the recompute interval — the stopped timer must not re-send.
+      vi.advanceTimersByTime(30000);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("does not run the timer in add-amount mode", async () => {
+      const ctx = dialContext("tt-timer3");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      const settings = { stepSize: 20, unitMode: "liters", dialMode: "add-amount" };
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      await appear(ctx, settings);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      vi.advanceTimersByTime(100);
+      mockPitFuel.mockClear();
+
+      vi.advanceTimersByTime(60000);
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
     });
   });
 
@@ -454,6 +710,7 @@ describe("FuelDial action", () => {
     it("fires longPressAction after the hold threshold when long-press enabled", async () => {
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", true);
       const ctx = dialContext("l1");
+      // 110L tank, 0 current -> fill-to-max add 110
       await appear(ctx, { pressAction: "toggle-fueling", longPressAction: "fill-to-max" });
 
       await action.onDialDown(
@@ -462,7 +719,6 @@ describe("FuelDial action", () => {
       vi.advanceTimersByTime(500);
       await Promise.resolve();
 
-      // long press -> fill-to-max -> pit.fuel(110)
       expect(mockPitFuel).toHaveBeenCalledWith(110);
     });
 
@@ -497,7 +753,6 @@ describe("FuelDial action", () => {
       await appear(ctx, { pressAction: "clear-fueling", longPressAction: "none" });
 
       await action.onDialDown(basicEvent(ctx, { pressAction: "clear-fueling", longPressAction: "none" }) as never);
-      // Hold well beyond the long-press threshold — no long-press timer was armed.
       vi.advanceTimersByTime(600);
       await action.onDialUp(basicEvent(ctx, { pressAction: "clear-fueling", longPressAction: "none" }) as never);
 
@@ -506,116 +761,185 @@ describe("FuelDial action", () => {
   });
 
   describe("onTouchTap routing", () => {
-    it("routes a tap to the press action", async () => {
+    it("routes a tap to the configured touch action", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", true);
       const ctx = dialContext("tt1");
-      await appear(ctx, { pressAction: "clear-fueling", touchScreenEnabled: true });
+      await appear(ctx, { touchAction: "clear-fueling" });
 
-      await action.onTouchTap(
-        touchTapEvent(ctx, { pressAction: "clear-fueling", touchScreenEnabled: true }, false) as never,
-      );
+      await action.onTouchTap(touchTapEvent(ctx, { touchAction: "clear-fueling" }, false) as never);
 
       expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
     });
 
-    it("routes a hold to the long-press action", async () => {
+    it("does nothing when touchAction is none", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", true);
       const ctx = dialContext("tt2");
-      await appear(ctx, { pressAction: "toggle-fueling", longPressAction: "fill-to-max", touchScreenEnabled: true });
+      await appear(ctx, { touchAction: "none" });
 
-      await action.onTouchTap(
-        touchTapEvent(
-          ctx,
-          { pressAction: "toggle-fueling", longPressAction: "fill-to-max", touchScreenEnabled: true },
-          true,
-        ) as never,
-      );
-
-      expect(mockPitFuel).toHaveBeenCalledWith(110);
-    });
-
-    it("is ignored when touchScreenEnabled is false", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      const ctx = dialContext("tt3");
-      await appear(ctx, { pressAction: "clear-fueling", touchScreenEnabled: false });
-
-      await action.onTouchTap(
-        touchTapEvent(ctx, { pressAction: "clear-fueling", touchScreenEnabled: false }, false) as never,
-      );
+      await action.onTouchTap(touchTapEvent(ctx, { touchAction: "none" }, false) as never);
 
       expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
     });
 
     it("is ignored when feedback feature flag is off", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
       const ctx = dialContext("tt4");
-      await appear(ctx, { pressAction: "clear-fueling", touchScreenEnabled: true });
+      await appear(ctx, { touchAction: "clear-fueling" });
 
-      await action.onTouchTap(
-        touchTapEvent(ctx, { pressAction: "clear-fueling", touchScreenEnabled: true }, false) as never,
-      );
+      await action.onTouchTap(touchTapEvent(ctx, { touchAction: "clear-fueling" }, false) as never);
 
       expect(mockPitClearFuel).not.toHaveBeenCalled();
     });
+
+    it("routes a tap to fill-to-max", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("tt5");
+      await appear(ctx, { touchAction: "fill-to-max" });
+
+      await action.onTouchTap(touchTapEvent(ctx, { touchAction: "fill-to-max" }, false) as never);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(110);
+    });
   });
 
-  describe("touch feedback", () => {
-    it("pushes feedback for a dial when enabled", async () => {
+  describe("touch feedback — two-segment bar", () => {
+    it("pushes a pixmap bar and the total readout for a dial", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("f1");
-      await appear(ctx, { unitMode: "liters", touchScreenEnabled: true, stepSize: 1 });
+      // current 45, max 90; dial +20 -> total 65
+      mockGetSessionInfo.mockReturnValue(SESSION_90L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      const settings = { unitMode: "liters", stepSize: 20 };
+      await appear(ctx, settings);
 
       ctx.setFeedback.mockClear();
-      await action.onDialRotate(
-        rotateEvent(ctx, { unitMode: "liters", touchScreenEnabled: true, stepSize: 1 }, 1) as never,
-      );
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
       expect(ctx.setFeedback).toHaveBeenCalled();
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
 
-      expect(payload.value).toBe("1 / 110 L");
-      expect(payload.indicator.bar_fill_c).toBe("#2ecc71");
+      expect(payload.value).toBe("65 / 90 L");
+      expect(typeof payload.bar).toBe("string");
+      expect(payload.bar).toContain("data:image/svg+xml");
+      // Bar is green because fuel-fill is on
+      expect(decodeURIComponent(payload.bar)).toContain("#2ecc71");
     });
 
-    it("does not push feedback when touchScreenEnabled is false", async () => {
+    it("shows -- in the readout when capacity unknown", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      const ctx = dialContext("f2");
-      await appear(ctx, { unitMode: "liters", touchScreenEnabled: false, stepSize: 1 });
+      const ctx = dialContext("f1b");
+      mockGetSessionInfo.mockReturnValue(null);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
+      const settings = { unitMode: "liters", stepSize: 20 };
+      await appear(ctx, settings);
 
       ctx.setFeedback.mockClear();
-      await action.onDialRotate(
-        rotateEvent(ctx, { unitMode: "liters", touchScreenEnabled: false, stepSize: 1 }, 1) as never,
-      );
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+
+      expect(payload.value).toBe("65 / -- L");
     });
 
     it("coalesces setFeedback across rapid rotations within one throttle window", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("f3");
-      const settings = { unitMode: "liters", touchScreenEnabled: true, stepSize: 1 };
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      const settings = { unitMode: "liters", stepSize: 1 };
       await appear(ctx, settings);
 
       ctx.setFeedback.mockClear();
 
-      // Several rapid rotates within a single ~100ms throttle window.
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // leading -> 1 feedback
-      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced -> no feedback
-      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced -> no feedback
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // coalesced
 
-      // During the window the touch strip is updated at most once (leading edge),
-      // NOT once per rotate — keeps within the ≤10 setFeedback/sec/dial cap.
       expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
 
-      // Trailing flush coalesces the tail into a single additional feedback.
       vi.advanceTimersByTime(100);
 
       expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
 
       expect(payload.value).toBe("3 / 110 L");
+    });
+  });
+
+  describe("dynamic trigger descriptions", () => {
+    it("sets trigger descriptions on appear for a dial (add mode)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("tr1");
+      await appear(ctx, {
+        dialMode: "add-amount",
+        pressAction: "toggle-fueling",
+        longPressAction: "none",
+        touchAction: "clear-fueling",
+      });
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ rotate: "Adjust fuel to add", push: "Toggle fueling", touch: "Clear fueling" }),
+      );
+      const desc = ctx.setTriggerDescription.mock.calls.at(-1)?.[0];
+
+      expect(desc.longTouch).toBeUndefined();
+    });
+
+    it("appends the long-press hold hint to push and leaves longTouch unset", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("tr1b");
+      await appear(ctx, {
+        dialMode: "add-amount",
+        pressAction: "toggle-fueling",
+        longPressAction: "clear-fueling",
+        touchAction: "none",
+      });
+
+      const desc = ctx.setTriggerDescription.mock.calls.at(-1)?.[0];
+
+      expect(desc.push).toBe("Toggle fueling (hold: Clear fueling)");
+      expect(desc.longTouch).toBeUndefined();
+    });
+
+    it("sets trigger descriptions on settings change (target mode)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("tr2");
+      await appear(ctx, { dialMode: "add-amount" });
+      ctx.setTriggerDescription.mockClear();
+
+      await action.onDidReceiveSettings(
+        basicEvent(ctx, {
+          dialMode: "target-level",
+          pressAction: "fill-to-max",
+          longPressAction: "none",
+          touchAction: "none",
+        }) as never,
+      );
+
+      expect(ctx.setTriggerDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ rotate: "Adjust target level", push: "Fill to max" }),
+      );
+      const desc = ctx.setTriggerDescription.mock.calls.at(-1)?.[0];
+
+      expect(desc.touch).toBeUndefined();
+      expect(desc.longTouch).toBeUndefined();
+    });
+
+    it("does not set trigger descriptions for a keypad context", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = keyContext("tr3");
+      await appear(ctx, {});
+
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+    });
+
+    it("does not set trigger descriptions when feedback flag is off", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", false);
+      const ctx = dialContext("tr4");
+      await appear(ctx, {});
+
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
     });
   });
 });

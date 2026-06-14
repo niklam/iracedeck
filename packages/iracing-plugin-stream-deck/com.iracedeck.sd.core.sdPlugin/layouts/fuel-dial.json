@@ -12,18 +12,14 @@
     {
       "key": "value",
       "type": "text",
-      "rect": [0, 28, 200, 36],
+      "rect": [0, 28, 200, 32],
       "alignment": "center",
       "font": { "size": 26, "weight": 700 }
     },
     {
-      "key": "indicator",
-      "type": "bar",
-      "rect": [12, 76, 176, 14],
-      "value": 0,
-      "subtype": 0,
-      "bar_bg_c": "#333333",
-      "range": { "min": 0, "max": 100 }
+      "key": "bar",
+      "type": "pixmap",
+      "rect": [8, 62, 184, 30]
     }
   ]
 }

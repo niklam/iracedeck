@@ -6,6 +6,17 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
+		<sdpi-item label="Dial Mode">
+			<sdpi-select setting="dialMode" default="add-amount">
+				<option value="add-amount">Add amount</option>
+				<option value="target-level">Target level</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div class="ird-supporting-text">
+			Add amount: dial the amount of fuel to add. Target level: dial the total
+			you want in the tank after the stop — it's kept topped up as you burn fuel.
+		</div>
+
 		<sdpi-item label="Step Size">
 			<sdpi-textfield
 				id="step-size"
@@ -45,12 +56,17 @@
 
 		<% if (locals.platform?.features?.dialFeedback !== false) { %>
 		<sdpi-item label="Touch Screen">
-			<sdpi-checkbox
-				setting="touchScreenEnabled"
-				label="Show fuel readout on the touch strip"
-				default="true"
-			></sdpi-checkbox>
+			<sdpi-select setting="touchAction" default="toggle-fueling">
+				<option value="toggle-fueling">Toggle Fueling</option>
+				<option value="clear-fueling">Clear Fueling</option>
+				<option value="fill-to-max">Fill To Max</option>
+				<option value="none">None</option>
+			</sdpi-select>
 		</sdpi-item>
+		<div class="ird-supporting-text">
+			What a tap on the touch strip does. The fuel readout always shows on the
+			touch strip; None only disables taps.
+		</div>
 		<% } %>
 
 		<sdpi-item label="Units">
@@ -61,20 +77,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<%- include('title-overrides') %>
-
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['fuel-dial'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['fuel-dial'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
-
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
 		<%- include('global-common-settings') %>
 
 		<script>
