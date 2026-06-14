@@ -7,9 +7,9 @@ sidebar:
     variant: tip
 ---
 
-Fuel Dial turns a Stream Deck+ dial into a fuel controller. Choose whether the dial sets the **amount to add** or the **total you want after the stop**, watch the live "total / capacity" readout with a two-segment fuel bar on the touch strip, and tap or press to toggle, clear, or fill the tank. It is the first action to support the Stream Deck+ dial and touchscreen since the dial rebuild — but it also works on a plain keypad button and on a Mirabox knob.
+Fuel Dial turns a Stream Deck+ dial into a fuel controller. Choose whether the dial sets the **amount to add** or the **total you want after the stop**, watch the live readout with a continuous two-segment fuel bar on the touch strip, and tap or press to toggle, clear, or fill the tank. It is the first action to support the Stream Deck+ dial and touchscreen since the dial rebuild — but it also works on a plain keypad button and on a Mirabox knob.
 
-The amount sent to iRacing is always clamped to the remaining tank space, so you can never request more fuel than the tank holds.
+The two modes are deliberately distinct. **Add amount** dials a fixed amount to add over the full tank range and shows `+<add> = <total>` (the total reflects live fuel burn). **Target level** dials the whole-number total you want after the stop, marks it with a "locked" line on the bar, and automatically tops the request up as fuel burns.
 
 ## Modes
 
@@ -17,16 +17,16 @@ This action has a single mode — there is no Mode dropdown in the Property Insp
 
 ### Fuel
 
-Rotate the dial to set the fuel value. Each detent changes it by the configured step size, in your display units. In **Add amount** mode the dialed value is the amount to add; in **Target level** mode it is the desired total after the stop, and the amount to add (target − current) is rounded up so the stop never finishes under target. The resulting amount is sent to iRacing and clamped to the remaining tank space. A short press runs the configured **Press Action**, a long press (Elgato only) runs the **Long-Press Action**, and a touch-strip tap runs the **Touch Screen** action.
+Rotate the dial to set the fuel value over the full tank range. Each detent changes it by the configured step size, in your display units. In **Add amount** mode the dialed value is the (fixed) amount to add; in **Target level** mode it is the desired total after the stop, kept a whole integer in your display units, and the amount to add (target − current) auto-recomputes as fuel burns. A short press runs the configured **Press Action**, a long press (Elgato only) runs the **Long-Press Action**, and a touch-strip tap runs the **Touch Screen** action.
 
-The touch strip always shows a live "<total> / <capacity> <unit>" readout (the total after the stop) with a two-segment fuel bar: the current fuel as a static first segment and the fuel-to-add butted onto it — green when fuel-fill is on, gray when off. The keypad icon shows the same total and bar. When the car's tank capacity is unknown the capacity reads `--`.
+The touch strip always shows a live per-mode readout — `+<add> = <total>` in Add amount, `→ <target>` in Target level — with one continuous two-segment fuel bar: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off). Only the outer corners are rounded; the boundary between the two is flush. Small on-bar labels show the current amount (left) and the amount to add (right), and Target level adds a thin vertical "locked" line at the target. The bar and readout refresh every 5 seconds to track live fuel burn (plus instantly on any rotate, press, or settings change). The keypad icon shows the same readout and bar.
 
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotating adjusts the dialed value by the step size per detent (amount to add, or target total); the resulting add is sent and clamped to the remaining tank space
+- **Dial:** Rotating adjusts the dialed value by the step size per detent over the full tank range (amount to add, or target total); in Target level mode the resulting add auto-recomputes as fuel burns
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the readout and bar reflect the live fuel level, the pit fuel request, the fuel-fill checkbox state, the display units, and the tank capacity
+- **Telemetry-aware icon:** Yes — the readout and bar reflect the live fuel level, the pit fuel request, the fuel-fill checkbox state, the display units, and the tank capacity, refreshed every 5 seconds
 
 #### Controls
 
@@ -38,8 +38,8 @@ The touch strip always shows a live "<total> / <capacity> <unit>" readout (the t
 
 Whether the dial sets the amount to add or the desired total. Defaults to **Add amount**.
 
-- **Add amount** (default) — The dial sets how much fuel to add; the request is clamped to the remaining tank space.
-- **Target level** — The dial sets the total you want in the tank after the stop. The add (target − current) is rounded up so the stop never finishes under target, and it is kept topped up automatically (re-sent every 30 seconds) as fuel burns while fuel-fill is on. It is never re-armed while fuel-fill is off.
+- **Add amount** (default) — The dial sets how much fuel to add over the full tank range. The add is fixed: it does not change as fuel burns. The readout shows `+<add> = <total>`, and the total reflects live fuel burn.
+- **Target level** — The dial sets the whole-number total you want in the tank after the stop. The add (target − current) is kept topped up automatically (re-sent every 30 seconds) as fuel burns while fuel-fill is on, and a vertical "locked" line marks the target on the bar. It is never re-armed while fuel-fill is off.
 
 #### Setting: Step Size
 
