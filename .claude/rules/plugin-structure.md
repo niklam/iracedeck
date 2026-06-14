@@ -8,9 +8,20 @@ The plugin system uses a platform abstraction architecture with these key packag
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
 - `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
+- `@iracedeck/deck-adapter-ulanzi` — Ulanzi Deck adapter implementing `IDeckPlatformAdapter` via WebSocket (normalizes UlanziStudio `cmd` frames into Elgato-style events)
 - `@iracedeck/iracing-actions` — All action implementations (import from `@iracedeck/deck-core`, not platform-specific SDKs)
 
 Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import from `@iracedeck/deck-core` and are registered via the platform adapter in each plugin.
+
+### Ulanzi naming + PI bridge (issue #508)
+
+The Ulanzi plugin diverges from the Elgato/Mirabox naming conventions below:
+
+- Plugin folder: `com.ulanzi.iracedeck.ulanziPlugin` (the `*.ulanziPlugin` suffix is what UlanziStudio scans for).
+- Manifest `UUID` / `ULANZI_PLUGIN_UUID`: `com.ulanzi.ulanzistudio.iracedeck` (must be exactly 4 dot-segments under `com.ulanzi.ulanzistudio.*`).
+- Action UUIDs: `com.ulanzi.ulanzistudio.iracedeck.<action>`. Actions still export canonical `com.iracedeck.sd.core.*` UUIDs; the plugin rewrites them via `toUlanziActionUuid()` and the manifest declares the rewritten form.
+- Manifest is the Ulanzi format (`Type:"JavaScript"`, per-action `Controllers:["Keypad"|"Encoder"]`, `Encoder:{layout:"$UA1"}` for dials, `States:[{Image}]`). `"Information"` controllers are dropped (no Ulanzi equivalent).
+- PI connection: UlanziStudio does not call `connectElgatoStreamDeckSocket`, so the rollup injects `ulanzi-pi-bridge.js` (from `@iracedeck/pi-components`, built from `src/ulanzi-bridge/`) before `sdpi-components.js` into every generated PI HTML. The bridge monkeypatches `window.WebSocket` and translates Elgato ↔ Ulanzi PI frames, so the shared sdpi-components/`ird-*` stack is reused unchanged. See `packages/iracing-plugin-ulanzi/CLAUDE.md`.
 
 ## Active Plugins
 - `iracing-plugin-stream-deck` (com.iracedeck.sd.core) — Elgato Stream Deck, uses `@iracedeck/deck-adapter-elgato`

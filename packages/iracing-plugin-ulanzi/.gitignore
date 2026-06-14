@@ -1,0 +1,11 @@
+# Node.js
+node_modules/
+
+# Ulanzi plugin generated output — only manifest.json is committed; bin/, ui/,
+# imgs/, assets/, and log/ are produced (or copied) by the rollup build.
+*.ulanziPlugin/bin
+*.ulanziPlugin/log
+*.ulanziPlugin/logs
+*.ulanziPlugin/imgs
+*.ulanziPlugin/ui
+*.ulanziPlugin/assets
