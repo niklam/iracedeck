@@ -458,6 +458,11 @@ describe("VSDPlatformAdapter", () => {
       expect(action.isDial()).toBe(true);
     });
 
+    it("should return isDial=true for Encoder controller", async () => {
+      const action = await getContextForController("Encoder");
+      expect(action.isDial()).toBe(true);
+    });
+
     it("should return isDial=false for Keypad controller", async () => {
       const action = await getContextForController("Keypad");
       expect(action.isDial()).toBe(false);
