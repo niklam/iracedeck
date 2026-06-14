@@ -323,7 +323,7 @@ const config = {
           dependencies: {
             "@iracedeck/audio-native": "file:../../../audio-native",
             "@iracedeck/iracing-native": "file:../../../iracing-native",
-            ws: "8.18.2",
+            ws: "8.21.0",
             yaml: "2.8.2",
           },
           optionalDependencies: {
