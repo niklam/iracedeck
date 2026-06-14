@@ -17,14 +17,14 @@ This action has a single mode — there is no Mode dropdown in the Property Insp
 
 ### Fuel
 
-Rotate the dial to set the fuel value over the full tank range. Each detent changes it by the configured step size, in your display units. In **Add Amount** mode the dialed value is the (fixed) amount to add; in **Fill To** mode it is the desired total after the stop, kept a whole integer in your display units, and the amount to add (target − current) auto-recomputes as fuel burns. A short press runs the configured **Press Action**, a long press (Elgato only) runs the **Long-Press Action**, and a touch-strip tap runs the **Touch Screen** action.
+Rotate the dial to set the fuel value over the full tank range. Each detent changes it by the configured step size, in your display units. In **Add Amount** mode the dialed value is the (fixed) amount to add; in **Fill To** mode it is the desired total after the stop, kept a whole integer in your display units, and the amount to add (target − current, plus a fixed +1 L safety buffer so you finish at least the target) auto-recomputes as fuel burns while fueling is on — when fueling is off the fuel amount is not updated (rotating still plans the new target, and turning fueling on or pressing sends it). A short press runs the configured **Press Action**, a long press (Elgato only) runs the **Long-Press Action**, and a touch-strip tap runs the **Touch Screen** action.
 
 The touch strip always shows a live per-mode readout — `+<add> = <total>` in Add Amount, `→ <target>` in Fill To — with one continuous two-segment fuel bar: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off). Only the outer corners are rounded; the boundary between the two is flush. Small on-bar labels show the current amount (left, dark over the light current segment) and the amount to add (right, white over the green/gray add segment); a label is dropped when its segment is too narrow to hold it. Fill To adds a thin **red** vertical target line that spans the full bar height (confined to the bar). The bar and readout refresh every 5 seconds as a heartbeat and react immediately when the displayed state changes — the fuel-fill color flips, or a displayed value moves — so the readout tracks telemetry without the up-to-5-second lag (throttled to stay within the touch-strip update cap). They also update instantly on any rotate, press, or settings change. The keypad icon shows the same mode-aware title, readout, and bar.
 
 #### Details
 
 - **Method:** iRacing API
-- **Dial:** Rotating adjusts the dialed value by the step size per detent over the full tank range (amount to add, or target total); in Fill To mode the resulting add auto-recomputes as fuel burns
+- **Dial:** Rotating adjusts the dialed value by the step size per detent over the full tank range (amount to add, or target total); in Fill To mode the resulting add (plus a +1 L safety buffer) auto-recomputes as fuel burns while fueling is on — while fueling is off the amount is not updated
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the readout and bar reflect the live fuel level, the pit fuel request, the fuel-fill checkbox state, the display units, and the tank capacity, refreshed every 5 seconds and immediately when the displayed state changes
 
@@ -39,7 +39,7 @@ The touch strip always shows a live per-mode readout — `+<add> = <total>` in A
 Whether the dial sets the amount to add or the desired total. Defaults to **Add Amount**.
 
 - **Add Amount** (default) — The dial sets how much fuel to add over the full tank range. The add is fixed: it does not change as fuel burns. The readout shows `+<add> = <total>`, and the total reflects live fuel burn.
-- **Fill To** — The dial sets the whole-number total you want in the tank after the stop. The add (target − current) is kept topped up automatically (re-sent every 30 seconds) as fuel burns while fuel-fill is on, and a red vertical target line marks the target on the bar. It is never re-armed while fuel-fill is off.
+- **Fill To** — The dial sets the whole-number total you want in the tank after the stop. The add (target − current, plus a fixed +1 L safety buffer so you reach at least the target despite fuel burned during the top-up) is kept topped up automatically (re-sent every 30 seconds) as fuel burns **while fuel-fill is on**. While fuel-fill is off the fuel amount is **not** updated — rotating still plans the target, and turning fueling on or pressing sends it. A red vertical target line marks the target on the bar. The buffer is clamped to the tank, so it is dropped when the target is the full tank.
 
 #### Setting: Step Size
 
