@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src/ulanzi-bridge",
+    "lib": ["ES2022", "DOM"],
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": false
+  },
+  "include": ["src/ulanzi-bridge/**/*"],
+  "exclude": ["src/ulanzi-bridge/**/*.test.ts"]
+}
