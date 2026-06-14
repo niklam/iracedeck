@@ -56,13 +56,6 @@ const LONG_PRESS_THRESHOLD_MS = 500;
 const USER_ACTIVITY_GRACE_MS = 3000;
 
 /**
- * Cadence (ms) for the fill-to top-up recompute. While fuel-fill is ON in
- * fill-to mode the request is periodically recomputed from the current
- * fuel level and re-sent so the requested add stays topped up as fuel burns.
- */
-const TARGET_RECOMPUTE_MS = 30000;
-
-/**
  * Cadence (ms) for the periodic display refresh. While the action is appeared,
  * the bar + value are re-rendered on this interval to track live fuel burn
  * without pushing `setFeedback` on every telemetry tick (which would blow past
@@ -89,16 +82,6 @@ const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
  * (issue #681).
  */
 const FILL_TO_MAX_MIN_LTR = 1;
-
-/**
- * Fixed safety buffer (liters) added to a non-zero fill-to add so the stop
- * finishes AT LEAST the target. The fill-to request is recomputed and re-sent
- * on the 30 s top-up cadence, but the car keeps burning fuel between that live
- * recompute and the moment you actually pit — without the buffer the request can
- * leave you ~1 L short on arrival. The buffer is clamped to the remaining tank
- * space, so it's naturally dropped when the target is the full tank (issue #681).
- */
-const FUEL_TARGET_BUFFER_LTR = 1;
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
@@ -155,8 +138,6 @@ interface FuelDialContext {
   longPressFired: boolean;
   /** Timestamp (ms) the current press started (dial down). */
   pressStart: number;
-  /** Recurring fill-to top-up timer, or null when inactive. */
-  targetTimer: ReturnType<typeof setInterval> | null;
   /** Recurring display-refresh timer (re-renders bar + value), or null. */
   displayTimer: ReturnType<typeof setInterval> | null;
   /**
@@ -167,6 +148,15 @@ interface FuelDialContext {
   lastRenderSig: string | null;
   /** Timestamp (ms) of the last change-driven feedback push (throttle gate). */
   lastChangeRenderAt: number;
+  /**
+   * Whole-DISPLAY-unit add value at the last continuous fill-to re-broadcast, or
+   * null when nothing is armed. The continuous monitor gates on this (not the raw
+   * add) so it re-broadcasts at most once per whole unit: at/near tank capacity
+   * `computeAddLtr` clamps the rounded-up add to the FRACTIONAL headroom, which
+   * drifts by a sub-litre amount on every tick — gating on the raw value would
+   * spam `pit.fuel` ~60×/sec (issue #681).
+   */
+  lastSentWholeAdd: number | null;
   throttle: ThrottleState;
 }
 
@@ -349,13 +339,12 @@ export function roundToWholeDisplayLtr(liters: number, displayUnits: number): nu
  * - fill-to: `dialValueLtr` is the desired TOTAL after the stop (kept a
  *   whole integer display value). The add is `max(0, target − current)`, rounded
  *   UP to the next whole DISPLAY unit so the stop never finishes below the
- *   (integer) target. When that rounded add is non-zero a fixed
- *   `FUEL_TARGET_BUFFER_LTR` is added to cover fuel burned between the live 30 s
- *   recompute and the actual pit stop, so you finish AT LEAST the target. The
- *   result is then clamped to the remaining tank space so it never over-fills
- *   (the buffer is naturally dropped when the target is the full tank). When the
- *   need is ≤ 0 (target at/below current) the add stays 0 — no buffer — so the
- *   "0 → clearFuel" path still fires.
+ *   (integer) target — the round-up alone guarantees current + add ≥ target. The
+ *   result is clamped to the remaining tank space so it never over-fills. Because
+ *   the add is recomputed against the LIVE fuel level on every telemetry tick
+ *   (continuous monitoring), it stays fresh as fuel burns and needs no extra
+ *   safety buffer. When the need is ≤ 0 (target at/below current) the add stays 0
+ *   so the "0 → clearFuel" path still fires (issue #681).
  */
 export function computeAddLtr(
   dialMode: FuelDialSettings["dialMode"],
@@ -368,13 +357,10 @@ export function computeAddLtr(
     const headroom = maxLtr === undefined ? undefined : Math.max(0, maxLtr - currentLtr);
     const rawAdd = Math.max(0, dialValueLtr - currentLtr);
     // Round the ADD up to the next whole display unit so current + add is at or
-    // just above the integer target — a stop never finishes under target.
+    // just above the integer target — a stop never finishes under target. A need
+    // of ≤ 0 stays 0 so the "0 → clearFuel" path still fires.
     const addDisplay = Math.ceil(fuelToDisplayUnits(rawAdd, displayUnits));
-    const roundedAddLtr = fuelFromDisplayUnits(addDisplay, displayUnits);
-    // Apply the safety buffer only to a real (non-zero) add so a target at/below
-    // current still resolves to 0 (→ clearFuel). The clamp drops the buffer when
-    // the target is the full tank.
-    const addLtr = roundedAddLtr > 0 ? roundedAddLtr + FUEL_TARGET_BUFFER_LTR : 0;
+    const addLtr = addDisplay > 0 ? fuelFromDisplayUnits(addDisplay, displayUnits) : 0;
 
     return clampTargetLtr(addLtr, headroom);
   }
@@ -669,8 +655,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // Seed the dialed value from current pit fuel request on appear.
     this.seedFromTelemetry(ctx, true);
 
-    // Resume the fill-to top-up if fuel-fill is already on.
-    this.syncTargetTimer(ctx);
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
     await this.applyTriggerDescription(ctx);
@@ -703,8 +687,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const ctx = this.ensureContext(ev.action, settings);
     ctx.settings = settings;
 
-    // A mode switch may start or stop the top-up timer.
-    this.syncTargetTimer(ctx);
     await this.applyTriggerDescription(ctx);
     await this.render(ctx);
   }
@@ -739,8 +721,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // per-event here; flushSend issues the broadcast + feedback at the edges.
     this.scheduleSend(ctx);
 
-    // Keep the fill-to top-up timer running while fuel-fill is on.
-    this.syncTargetTimer(ctx);
     await this.render(ctx, { skipFeedback: true });
   }
 
@@ -824,10 +804,13 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   private async doPress(action: PressAction, ctx: FuelDialContext): Promise<void> {
     const pit = getCommands().pit;
     const fuelOn = this.isFuelFillOn();
-    // Whether this press cleared fueling. The live fuel-fill flag won't flip to
-    // OFF until a later telemetry tick, so syncTargetTimer (which reads it) must
-    // be skipped here — otherwise it would immediately re-arm the timer we stop.
+    // Whether this press cleared fueling. Tracked so the continuous-monitoring
+    // re-send baselines (`ctx.throttle.lastSentLtr` and `ctx.lastSentWholeAdd`)
+    // stay in sync: a clear resets them to null, an arm records the amount
+    // actually broadcast.
     let cleared = false;
+    // The amount actually armed (liters), or null when this press cleared.
+    let armedLtr: number | null = null;
 
     switch (action) {
       case "toggle-fueling":
@@ -840,7 +823,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
           this.sendFuel(addLtr);
           // A resolved add of 0 clears instead of arming — keep bookkeeping in sync.
           cleared = addLtr <= 0;
-          ctx.throttle.lastSentLtr = cleared ? null : addLtr;
+          armedLtr = cleared ? null : addLtr;
           this.logger.debug(`Toggle: requested ${addLtr.toFixed(2)}L`);
         }
 
@@ -872,22 +855,21 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         const addLtr = this.effectiveAddLtr(ctx);
         this.sendFuel(addLtr);
         // In fill-to mode "empty" (target ~1 L) resolves to add 0 → clearFuel; treat
-        // it like a clear so the top-up timer stops and the armed amount resets.
+        // it like a clear so the armed amount resets.
         cleared = addLtr <= 0;
-        ctx.throttle.lastSentLtr = cleared ? null : addLtr;
+        armedLtr = cleared ? null : addLtr;
         this.logger.debug(`Fill to max (${atMax ? "empty" : "full"}): requested ${addLtr.toFixed(2)}L`);
         break;
       }
     }
 
-    if (cleared) {
-      // Stop the top-up timer immediately on clear; do not call syncTargetTimer
-      // here since it reads the not-yet-updated live fuel-fill flag.
-      this.clearTargetTimer(ctx);
-    } else {
-      // A toggle-on or fill in fill-to mode should keep the request topped up.
-      this.syncTargetTimer(ctx);
-    }
+    // Sync the continuous-monitoring baselines: a clear resets both to null; an
+    // arm records the broadcast amount (raw liters for the rotate throttle, the
+    // whole DISPLAY unit for the per-litre re-send gate) so the next telemetry
+    // tick doesn't immediately re-broadcast or wrongly suppress.
+    ctx.throttle.lastSentLtr = armedLtr;
+    ctx.lastSentWholeAdd =
+      armedLtr === null ? null : Math.round(fuelToDisplayUnits(armedLtr, this.effectiveDisplayUnits(ctx)));
 
     await this.render(ctx);
   }
@@ -928,6 +910,12 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     this.sendFuel(target);
     ctx.throttle.lastSentLtr = target;
+    // Keep the continuous fill-to monitor's per-litre re-send gate in sync with
+    // what was just broadcast (mirrors doPress). Without this, the first telemetry
+    // tick after a fill-to rotate sees a stale `lastSentWholeAdd` and emits one
+    // redundant `pit.fuel` (issue #681).
+    const displayUnits = this.effectiveDisplayUnits(ctx);
+    ctx.lastSentWholeAdd = target <= 0 ? null : Math.round(fuelToDisplayUnits(target, displayUnits));
     this.logger.info("Fuel request sent");
     this.logger.debug(`Sent ${target.toFixed(2)}L`);
     void this.renderFeedback(ctx);
@@ -968,10 +956,10 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         longPressTimer: null,
         longPressFired: false,
         pressStart: 0,
-        targetTimer: null,
         displayTimer: null,
         lastRenderSig: null,
         lastChangeRenderAt: 0,
+        lastSentWholeAdd: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
       };
       this.contextsState.set(action.id, ctx);
@@ -1016,39 +1004,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   }
 
   /**
-   * Starts/stops the fill-to top-up timer to match the current state. The
-   * timer runs only in fill-to mode while fuel-fill is ON; it recomputes
-   * the add against the latest fuel level every TARGET_RECOMPUTE_MS and re-sends
-   * it (respecting the user's toggle — it never re-arms when fuel is off).
-   */
-  private syncTargetTimer(ctx: FuelDialContext): void {
-    const shouldRun = ctx.settings.dialMode === "fill-to" && this.isFuelFillOn();
-
-    if (!shouldRun) {
-      this.clearTargetTimer(ctx);
-
-      return;
-    }
-
-    if (ctx.targetTimer !== null) return;
-
-    ctx.targetTimer = setInterval(() => {
-      // Stop quietly if the user has since turned fuel off or left fill-to mode.
-      if (ctx.settings.dialMode !== "fill-to" || !this.isFuelFillOn()) {
-        this.clearTargetTimer(ctx);
-
-        return;
-      }
-
-      const addLtr = this.effectiveAddLtr(ctx);
-      this.sendFuel(addLtr);
-      ctx.throttle.lastSentLtr = addLtr <= 0 ? null : addLtr;
-      this.logger.debug(`Target top-up: requested ${addLtr.toFixed(2)}L`);
-      void this.render(ctx);
-    }, TARGET_RECOMPUTE_MS);
-  }
-
-  /**
    * Re-seeds the dialed value from telemetry. When `force` is false the re-seed
    * is skipped if the user rotated recently (so live telemetry can't fight an
    * in-flight adjustment). add-mode seeds from `PitSvFuel` (the requested add);
@@ -1081,8 +1036,8 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // recently — and ONLY in add-amount mode. In fill-to mode the dialed
     // value is the user's chosen TOTAL: re-seeding it from `current + PitSvFuel`
     // would silently lower the target as fuel burns (PitSvFuel is the last-sent
-    // add, not the live gap). The 30 s target timer + the live add computation
-    // already keep the request matched to the burning fuel (issue #681).
+    // add, not the live gap). Continuous monitoring (below) + the live add
+    // computation keep the request matched to the burning fuel (issue #681).
     if (ctx.settings.dialMode === "add-amount" && Date.now() - ctx.lastUserActivity >= USER_ACTIVITY_GRACE_MS) {
       const pitFuel = readPitSvFuel(telemetry);
 
@@ -1091,8 +1046,31 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       }
     }
 
-    // Keep the top-up timer in sync with the live fuel-fill state.
-    this.syncTargetTimer(ctx);
+    // Continuous fill-to monitoring (issue #681): while fuel-fill is ON in
+    // fill-to mode, recompute the add from the LIVE fuel level on every tick and
+    // re-broadcast only when the whole-DISPLAY-unit add actually changes (i.e.
+    // about once per litre/gallon burned). The round-up keeps the request always
+    // at/above target with no buffer. We gate on the WHOLE-unit value, not the raw
+    // add: at/near tank capacity `computeAddLtr` clamps the rounded-up add to the
+    // FRACTIONAL headroom (`maxLtr − currentLtr`), which drifts sub-litre every
+    // tick — gating on the raw add would spam `pit.fuel` ~60×/sec. We never re-send
+    // when fuel-fill is OFF (the user's toggle-off is respected) nor in add-amount
+    // mode (its add is fixed). The render-on-change path below pushes the resulting
+    // feedback — `sendFuel` here only updates the request.
+    if (ctx.settings.dialMode === "fill-to" && this.isFuelFillOn()) {
+      const addLtr = this.effectiveAddLtr(ctx);
+      const displayUnits = this.effectiveDisplayUnits(ctx);
+      const wholeKey = addLtr <= 0 ? null : Math.round(fuelToDisplayUnits(addLtr, displayUnits));
+
+      if (wholeKey !== ctx.lastSentWholeAdd) {
+        this.sendFuel(addLtr);
+        ctx.lastSentWholeAdd = wholeKey;
+        // Keep the rotate/doPress throttle baseline in sync so its no-op
+        // suppression stays consistent with what was actually broadcast.
+        ctx.throttle.lastSentLtr = addLtr <= 0 ? null : addLtr;
+        this.logger.debug(`Continuous fill-to: requested ${addLtr.toFixed(2)}L`);
+      }
+    }
 
     // Render-on-CHANGE (issue #681): the bar's fuel-fill color and the displayed
     // values must track telemetry without the up-to-5s lag of the heartbeat
@@ -1175,16 +1153,8 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     }
   }
 
-  private clearTargetTimer(ctx: FuelDialContext): void {
-    if (ctx.targetTimer !== null) {
-      clearInterval(ctx.targetTimer);
-      ctx.targetTimer = null;
-    }
-  }
-
   private clearTimers(ctx: FuelDialContext): void {
     this.clearLongPressTimer(ctx);
-    this.clearTargetTimer(ctx);
     this.clearDisplayTimer(ctx);
 
     if (ctx.throttle.timer !== null) {
