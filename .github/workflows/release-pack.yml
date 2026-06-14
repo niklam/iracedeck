@@ -7,39 +7,19 @@ on:
 permissions:
   contents: write
 
-# All three plugins share the same build pipeline (install → build → prune →
-# @elgato/cli pack → rename) and differ only in data: the plugin folder, the
-# pack flags, the canonical output filename, and the artifact name. So a single
-# matrix job covers every plugin; adding a future plugin is one matrix entry.
+# All three plugins share one build pipeline (install → build → prune) that
+# produces every plugin's self-contained bin/ folder in a single pass, so the
+# build runs ONCE here. Packing is a cheap per-plugin zip, so the three packs
+# run sequentially in this same job instead of fanning out into a matrix that
+# would rebuild the whole monorepo once per plugin. Adding a future plugin is
+# one entry in the $plugins array below plus its upload step.
+#
+# Stream Deck and Mirabox share the com.iracedeck.sd.core UUID, so both pack to
+# the same com.iracedeck.sd.core.streamDeckPlugin filename — packing each into
+# its own -o subdir keeps them from colliding in this single working directory.
 jobs:
   build-and-pack:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Stream Deck (Elgato): keep manifest validation (no flags).
-          - name: stream-deck
-            path: packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin
-            output: com.iracedeck.sd.core.streamDeckPlugin
-            artifact: streamdeck-plugin
-            flags: ""
-          # Mirabox: its manifest isn't Elgato-valid, so skip validation; the
-          # .sdPlugin folder packs to .streamDeckPlugin which we rename back.
-          - name: mirabox
-            path: packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin
-            output: com.iracedeck.sd.core.sdPlugin
-            artifact: iracing-plugin-mirabox
-            flags: "--force --ignore-validation"
-          # Ulanzi: a .ulanziPlugin folder; the cli still packs it (a zip with the
-          # folder preserved) but can't derive the name, so it emits
-          # undefined.streamDeckPlugin which we rename. A committed .sdignore in
-          # the folder strips native-module build cruft (~41 MB → ~7 MB).
-          - name: ulanzi
-            path: packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin
-            output: com.ulanzi.iracedeck.ulanziPlugin
-            artifact: iracing-plugin-ulanzi
-            flags: "--force --ignore-validation"
     steps:
       - uses: actions/checkout@v6
 
@@ -61,26 +41,61 @@ jobs:
       - name: Remove dev dependencies
         run: pnpm install --prod --no-frozen-lockfile
 
-      - name: Pack ${{ matrix.name }} plugin
+      - name: Pack plugins
         shell: pwsh
         run: |
-          npx @elgato/cli@1.7.4 pack "${{ matrix.path }}" ${{ matrix.flags }}
-          # The cli writes <name>.streamDeckPlugin into the working dir. Rename it
-          # to the canonical output name when they differ (Mirabox/Ulanzi).
-          $packed = Get-ChildItem -Filter *.streamDeckPlugin | Select-Object -First 1
-          if (-not $packed) { throw "Pack produced no .streamDeckPlugin file" }
-          if ($packed.Name -ne "${{ matrix.output }}") {
-            Rename-Item -Path $packed.FullName -NewName "${{ matrix.output }}"
+          # Each plugin packs from its built .sdPlugin/.ulanziPlugin folder into
+          # its own output subdir (-o), then the produced <name>.streamDeckPlugin
+          # is moved to the canonical output name under packed/.
+          #   - Stream Deck (Elgato): keep manifest validation (no flags).
+          #   - Mirabox: manifest isn't Elgato-valid, so skip validation.
+          #   - Ulanzi: a .ulanziPlugin folder; the cli packs it but can't derive
+          #     the name, emitting undefined.streamDeckPlugin which we rename. A
+          #     committed .sdignore strips native-module build cruft (~41 MB → ~7 MB).
+          $plugins = @(
+            @{ Name = "stream-deck"; Path = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin"; Output = "com.iracedeck.sd.core.streamDeckPlugin"; Flags = @() }
+            @{ Name = "mirabox";     Path = "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin";     Output = "com.iracedeck.sd.core.sdPlugin";          Flags = @("--force", "--ignore-validation") }
+            @{ Name = "ulanzi";      Path = "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin";   Output = "com.ulanzi.iracedeck.ulanziPlugin";       Flags = @("--force", "--ignore-validation") }
+          )
+          New-Item -ItemType Directory -Force -Path packed | Out-Null
+          foreach ($p in $plugins) {
+            Write-Host "::group::Pack $($p.Name) plugin"
+            $outDir = Join-Path packed $p.Name
+            New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+            $packArgs = @("@elgato/cli@1.7.4", "pack", $p.Path) + $p.Flags + @("-o", $outDir)
+            & npx $packArgs
+            if ($LASTEXITCODE -ne 0) { throw "Pack failed for $($p.Name) (exit $LASTEXITCODE)" }
+            # The cli writes <name>.streamDeckPlugin into the -o subdir; rename it
+            # to the canonical output name when they differ (Mirabox/Ulanzi).
+            $produced = Get-ChildItem -Path $outDir -Filter *.streamDeckPlugin | Select-Object -First 1
+            if (-not $produced) { throw "Pack produced no .streamDeckPlugin file for $($p.Name)" }
+            Move-Item -Path $produced.FullName -Destination (Join-Path packed $p.Output) -Force
+            Write-Host "::endgroup::"
           }
 
-      - name: Upload artifact
+      - name: Upload Stream Deck artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.output }}
+          name: streamdeck-plugin
+          path: packed/com.iracedeck.sd.core.streamDeckPlugin
 
-      - name: Attach plugin to GitHub Release
+      - name: Upload Mirabox artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: iracing-plugin-mirabox
+          path: packed/com.iracedeck.sd.core.sdPlugin
+
+      - name: Upload Ulanzi artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: iracing-plugin-ulanzi
+          path: packed/com.ulanzi.iracedeck.ulanziPlugin
+
+      - name: Attach plugins to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ matrix.output }}
+          files: |
+            packed/com.iracedeck.sd.core.streamDeckPlugin
+            packed/com.iracedeck.sd.core.sdPlugin
+            packed/com.ulanzi.iracedeck.ulanziPlugin

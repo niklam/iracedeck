@@ -167,13 +167,13 @@ The release script will:
 4. Create a commit (`chore(release): vX.Y.Z`), git tag (`vX.Y.Z`), and push to origin
 5. Create a GitHub Release with the changelog as release notes
 
-### Stream Deck plugin pack (CI)
+### Plugin packaging (CI)
 
-A GitHub Actions workflow (`.github/workflows/release-pack.yml`) triggers automatically when a version tag is pushed. It:
+`.github/workflows/release-pack.yml` is a reusable workflow invoked by `release.yml` (which runs automatically when a version tag is pushed). It:
 
-1. Builds the full project on Windows
-2. Packs the Stream Deck plugin using `streamdeck pack`
-3. Attaches the `iracedeck-vX.Y.Z.streamDeckPlugin` file to the GitHub Release
+1. Builds the full monorepo once on Windows
+2. Packs all three plugins (Stream Deck, Mirabox, Ulanzi) from that single build using `streamdeck pack`
+3. Attaches each packed plugin to the GitHub Release
 
 ### Requirements
 
