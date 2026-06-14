@@ -10,14 +10,12 @@ permissions:
   pull-requests: write
 
 jobs:
-  build-streamdeck:
-    uses: ./.github/workflows/release-pack-streamdeck.yml
-    secrets: inherit
-  build-mirabox:
-    uses: ./.github/workflows/release-pack-mirabox.yml
-    secrets: inherit
+  build-plugins:
+    # No custom secrets needed — the packaging workflow only uses the
+    # auto-provided GITHUB_TOKEN (for the release upload), so don't inherit.
+    uses: ./.github/workflows/release-pack.yml
   deploy-website:
-    needs: [build-streamdeck, build-mirabox]
+    needs: [build-plugins]
     if: ${{ !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/firebase-hosting-release.yml
     secrets: inherit

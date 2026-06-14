@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  iRaceDeck is an <a href="https://www.elgato.com/stream-deck">Elgato Stream Deck</a> and <a href="https://miraboxbuy.com/">Mirabox</a> plugin for <a href="https://www.iracing.com/">iRacing</a>. Turn your Stream Deck or Mirabox into a fully-featured button box with live telemetry, pit controls, camera management, and more.
+  iRaceDeck is an <a href="https://www.elgato.com/stream-deck">Elgato Stream Deck</a>, <a href="https://miraboxbuy.com/">Mirabox</a>, and <a href="https://www.ulanzi.com/">Ulanzi Deck</a> plugin for <a href="https://www.iracing.com/">iRacing</a>. Turn your Stream Deck, Mirabox, or Ulanzi Deck into a fully-featured button box with live telemetry, pit controls, camera management, and more.
 </p>
 
 <p align="center">
@@ -98,6 +98,7 @@ packages/
   iracing-actions/         Platform-agnostic iRacing action implementations
   deck-adapter-elgato/     Elgato Stream Deck adapter (bridges Elgato SDK to deck-core)
   deck-adapter-mirabox/    Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
+  deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
   deck-core/               Platform-agnostic base classes, types, and shared utilities
   icon-composer/           Standalone SVG icon assembly (zero dependencies)
   icons/                   SVG icon templates (Mustache)
@@ -105,6 +106,7 @@ packages/
   iracing-sdk/             TypeScript SDK (telemetry, broadcast commands, session parsing)
   logger/                  Shared logger interface
   iracing-plugin-mirabox/          Mirabox device plugin
+  iracing-plugin-ulanzi/           Ulanzi Deck device plugin
   pi-components/           Shared Property Inspector assets (web components, EJS templates, partials, data)
   iracing-plugin-stream-deck/      Elgato Stream Deck plugin
   website/                 Documentation website (iracedeck.com)
@@ -116,6 +118,7 @@ packages/
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
+| `@iracedeck/deck-adapter-ulanzi`  | Bridges the UlanziStudio WebSocket protocol to deck-core                                  |
 | `@iracedeck/icon-composer`        | Standalone SVG icon assembly (pure functions, zero dependencies)                          |
 | `@iracedeck/icons`                | SVG icon Mustache templates with colorization support                                     |
 | `@iracedeck/iracing-native`       | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
@@ -124,13 +127,14 @@ packages/
 | `@iracedeck/pi-components`        | Shared PI web components, EJS templates + partials, template data, and Rollup EJS plugin  |
 | `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — registers actions, PI templates, manifest                     |
 | `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — registers the same actions for Mirabox devices                           |
+| `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — registers the same actions for Ulanzi devices                         |
 | `@iracedeck/website`              | Documentation website at [iracedeck.com](https://iracedeck.com)                           |
 
 ### How it fits together
 
 ```text
-Button press (Stream Deck or Mirabox)
-  -> adapter (deck-adapter-elgato or deck-adapter-mirabox)
+Button press (Stream Deck, Mirabox, or Ulanzi Deck)
+  -> adapter (deck-adapter-elgato / deck-adapter-mirabox / deck-adapter-ulanzi)
     -> actions (platform-agnostic action handler)
       -> deck-core (keyboard service / SDK commands)
         -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)

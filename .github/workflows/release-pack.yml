@@ -1,0 +1,86 @@
+name: Release - Build Plugins
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+# All three plugins share the same build pipeline (install → build → prune →
+# @elgato/cli pack → rename) and differ only in data: the plugin folder, the
+# pack flags, the canonical output filename, and the artifact name. So a single
+# matrix job covers every plugin; adding a future plugin is one matrix entry.
+jobs:
+  build-and-pack:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Stream Deck (Elgato): keep manifest validation (no flags).
+          - name: stream-deck
+            path: packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin
+            output: com.iracedeck.sd.core.streamDeckPlugin
+            artifact: streamdeck-plugin
+            flags: ""
+          # Mirabox: its manifest isn't Elgato-valid, so skip validation; the
+          # .sdPlugin folder packs to .streamDeckPlugin which we rename back.
+          - name: mirabox
+            path: packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin
+            output: com.iracedeck.sd.core.sdPlugin
+            artifact: iracing-plugin-mirabox
+            flags: "--force --ignore-validation"
+          # Ulanzi: a .ulanziPlugin folder; the cli still packs it (a zip with the
+          # folder preserved) but can't derive the name, so it emits
+          # undefined.streamDeckPlugin which we rename. A committed .sdignore in
+          # the folder strips native-module build cruft (~41 MB → ~7 MB).
+          - name: ulanzi
+            path: packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin
+            output: com.ulanzi.iracedeck.ulanziPlugin
+            artifact: iracing-plugin-ulanzi
+            flags: "--force --ignore-validation"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.0.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Remove dev dependencies
+        run: pnpm install --prod --no-frozen-lockfile
+
+      - name: Pack ${{ matrix.name }} plugin
+        shell: pwsh
+        run: |
+          npx @elgato/cli@1.7.4 pack "${{ matrix.path }}" ${{ matrix.flags }}
+          # The cli writes <name>.streamDeckPlugin into the working dir. Rename it
+          # to the canonical output name when they differ (Mirabox/Ulanzi).
+          $packed = Get-ChildItem -Filter *.streamDeckPlugin | Select-Object -First 1
+          if (-not $packed) { throw "Pack produced no .streamDeckPlugin file" }
+          if ($packed.Name -ne "${{ matrix.output }}") {
+            Rename-Item -Path $packed.FullName -NewName "${{ matrix.output }}"
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.output }}
+
+      - name: Attach plugin to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ${{ matrix.output }}

@@ -1,0 +1,33 @@
+{
+  "name": "@iracedeck/deck-adapter-ulanzi",
+  "version": "1.22.0-dev.0",
+  "description": "Ulanzi Deck adapter for @iracedeck/deck-core",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.5",
+    "@types/node": "25.9.1",
+    "@types/ws": "8.18.1",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.7"
+  }
+}
