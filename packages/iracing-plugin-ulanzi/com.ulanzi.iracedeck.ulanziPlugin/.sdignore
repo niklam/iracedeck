@@ -1,0 +1,64 @@
+# Build intermediate objects
+**/build/Release/obj/
+
+# MSVC debug symbols
+*.pdb
+
+# MSVC incremental linking cache
+*.iobj
+*.ipdb
+
+# MSVC linker artifacts
+*.exp
+*.lib
+
+# MSBuild tracking logs
+*.tlog
+
+# node-gyp generated build files (only build/Release/*.node is needed at runtime)
+**/build/*.sln
+**/build/*.gypi
+**/build/*.vcxproj
+**/build/*.vcxproj.filters
+
+# Python bytecode cache (node-gyp)
+**/__pycache__/
+
+# Standalone Python distribution downloaded by node-gyp
+**/node_modules/@iracedeck/audio-native/Python/
+**/node_modules/@iracedeck/iracing-native/Python/
+
+# Dev dependencies (nested in native modules)
+**/node_modules/typescript/
+**/node_modules/@types/
+**/node_modules/vitest/
+**/node_modules/node-gyp/
+**/node_modules/rimraf/
+
+# Source files (already compiled)
+**/node_modules/*/src/
+**/node_modules/@*/*/src/
+
+# Compiled test artifacts in shipped dist/ folders
+**/node_modules/**/dist/**/*.test.*
+
+# iRacing SDK reference projects and build scripts (not runtime artifacts).
+# Listed per-package on purpose: a wildcard like @iracedeck/*/ would silently
+# drop runtime files from any future @iracedeck package shipped via file: dep.
+**/node_modules/@iracedeck/audio-native/assets/
+**/node_modules/@iracedeck/audio-native/scripts/
+**/node_modules/@iracedeck/audio-native/README.md
+**/node_modules/@iracedeck/iracing-native/assets/
+**/node_modules/@iracedeck/iracing-native/scripts/
+**/node_modules/@iracedeck/iracing-native/README.md
+
+# Dev/build config files
+**/tsconfig.json
+**/package-lock.json
+**/binding.gyp
+**/.gitignore
+**/.npmignore
+**/CLAUDE.md
+
+# Compiled object files
+*.obj

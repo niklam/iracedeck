@@ -10,14 +10,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  build-streamdeck:
-    uses: ./.github/workflows/release-pack-streamdeck.yml
-    secrets: inherit
-  build-mirabox:
-    uses: ./.github/workflows/release-pack-mirabox.yml
+  build-plugins:
+    uses: ./.github/workflows/release-pack.yml
     secrets: inherit
   deploy-website:
-    needs: [build-streamdeck, build-mirabox]
+    needs: [build-plugins]
     if: ${{ !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/firebase-hosting-release.yml
     secrets: inherit
