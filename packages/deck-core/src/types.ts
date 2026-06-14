@@ -36,6 +36,11 @@ export interface IDeckActionContext {
    * path). No-op where unsupported.
    */
   setFeedbackLayout(layout: string): Promise<void>;
+  /**
+   * Update the encoder trigger descriptions (Stream Deck+). No-op where
+   * unsupported.
+   */
+  setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void>;
 }
 
 /**
@@ -75,6 +80,14 @@ export type IDeckDialUpEvent<T> = IDeckEvent<T>;
 /** Fired when the encoder touchscreen (Stream Deck+) is tapped */
 export interface IDeckTouchTapEvent<T> extends IDeckEvent<T> {
   payload: { settings: T; tapPos: [number, number]; hold: boolean; coordinates?: { row: number; column: number } };
+}
+
+/** Encoder trigger (interaction) descriptions shown in the Stream Deck app (Stream Deck+). */
+export interface DeckTriggerDescription {
+  rotate?: string;
+  push?: string;
+  touch?: string;
+  longTouch?: string;
 }
 
 /**

@@ -60,6 +60,7 @@ function createMockDialAction(id: string) {
     isDial: vi.fn().mockReturnValue(true),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -124,6 +125,19 @@ describe("ElgatoPlatformAdapter", () => {
       expect(action.setFeedbackLayout).toHaveBeenCalledWith("$B1");
     });
 
+    it("should forward setTriggerDescription to the underlying dial action", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
+      const bridge = registerAndGetBridge(handler);
+      const action = createMockDialAction("ctx-dial");
+
+      await bridge.onWillAppear({ action, payload: { settings: {} } });
+
+      const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      await ev.action.setTriggerDescription({ rotate: "Adjust", push: "Apply" });
+
+      expect(action.setTriggerDescription).toHaveBeenCalledWith({ rotate: "Adjust", push: "Apply" });
+    });
+
     it("should reflect isDial() from the underlying action", async () => {
       const handler: IDeckActionHandler = { onWillAppear: vi.fn() };
       const bridge = registerAndGetBridge(handler);
@@ -144,9 +158,10 @@ describe("ElgatoPlatformAdapter", () => {
 
       const ev = (handler.onWillAppear as ReturnType<typeof vi.fn>).mock.calls[0][0];
       // Should resolve without throwing even though the action has no
-      // setFeedback/setFeedbackLayout/isDial.
+      // setFeedback/setFeedbackLayout/setTriggerDescription/isDial.
       await expect(ev.action.setFeedback({ value: 1 })).resolves.toBeUndefined();
       await expect(ev.action.setFeedbackLayout("$B1")).resolves.toBeUndefined();
+      await expect(ev.action.setTriggerDescription({ rotate: "Adjust" })).resolves.toBeUndefined();
       expect(ev.action.isDial()).toBe(false);
     });
   });

@@ -472,5 +472,14 @@ describe("VSDPlatformAdapter", () => {
       await expect(action.setFeedbackLayout("$B1")).resolves.toBeUndefined();
       expect(client.setImage).not.toHaveBeenCalled();
     });
+
+    it("should treat setTriggerDescription as a safe no-op", async () => {
+      const action = await getContextForController("Knob");
+
+      // Stream Dock knobs have no trigger descriptions; this resolves without
+      // touching the client.
+      await expect(action.setTriggerDescription({ rotate: "Adjust", push: "Apply" })).resolves.toBeUndefined();
+      expect(client.setImage).not.toHaveBeenCalled();
+    });
   });
 });

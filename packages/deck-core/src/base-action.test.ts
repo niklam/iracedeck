@@ -83,6 +83,7 @@ function createTestContext(): TestContext {
     setSettings: vi.fn().mockResolvedValue(undefined),
     setFeedback: vi.fn().mockResolvedValue(undefined),
     setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
   };
 
   const willAppear = {

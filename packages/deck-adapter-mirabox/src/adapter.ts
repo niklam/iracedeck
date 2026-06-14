@@ -7,6 +7,7 @@
  */
 import type {
   DeckFeedbackPayload,
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialRotateEvent,
@@ -61,6 +62,9 @@ class VSDActionContext implements IDeckActionContext {
   async setFeedback(_feedback: DeckFeedbackPayload): Promise<void> {}
 
   async setFeedbackLayout(_layout: string): Promise<void> {}
+
+  // Stream Dock knobs have no trigger descriptions, so this is a no-op too.
+  async setTriggerDescription(_descriptions: DeckTriggerDescription): Promise<void> {}
 }
 
 /**
@@ -109,6 +113,9 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
         /* no-op: action is disappearing */
       },
       async setFeedbackLayout() {
+        /* no-op: action is disappearing */
+      },
+      async setTriggerDescription() {
         /* no-op: action is disappearing */
       },
     },

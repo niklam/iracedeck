@@ -7,6 +7,7 @@
 
 // Platform abstraction types
 export type {
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialDownEvent,

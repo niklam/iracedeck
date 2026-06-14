@@ -22,6 +22,7 @@ import {
 import type { JsonObject } from "@elgato/utils";
 import type {
   DeckFeedbackPayload,
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialDownEvent,
@@ -53,6 +54,12 @@ class ElgatoActionContext implements IDeckActionContext {
       isDial?(): boolean;
       setFeedback?(feedback: FeedbackPayload): Promise<void>;
       setFeedbackLayout?(layout: string): Promise<void>;
+      setTriggerDescription?(descriptions: {
+        rotate?: string;
+        push?: string;
+        touch?: string;
+        longTouch?: string;
+      }): Promise<void>;
     },
   ) {}
 
@@ -87,6 +94,10 @@ class ElgatoActionContext implements IDeckActionContext {
   async setFeedbackLayout(layout: string): Promise<void> {
     if (this.sdAction.setFeedbackLayout) await this.sdAction.setFeedbackLayout(layout);
   }
+
+  async setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void> {
+    if (this.sdAction.setTriggerDescription) await this.sdAction.setTriggerDescription(descriptions);
+  }
 }
 
 /**
@@ -103,6 +114,12 @@ function wrapEvent<T>(ev: {
     isDial?(): boolean;
     setFeedback?(feedback: FeedbackPayload): Promise<void>;
     setFeedbackLayout?(layout: string): Promise<void>;
+    setTriggerDescription?(descriptions: {
+      rotate?: string;
+      push?: string;
+      touch?: string;
+      longTouch?: string;
+    }): Promise<void>;
   };
   payload: { settings: T; coordinates?: { row: number; column: number } };
 }): { action: IDeckActionContext; payload: { settings: T; coordinates?: { row: number; column: number } } } {
@@ -146,6 +163,9 @@ function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWil
         /* no-op: action is disappearing */
       },
       async setFeedbackLayout() {
+        /* no-op: action is disappearing */
+      },
+      async setTriggerDescription() {
         /* no-op: action is disappearing */
       },
     },
