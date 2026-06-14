@@ -169,7 +169,7 @@ The release script will:
 
 ### Plugin packaging (CI)
 
-A GitHub Actions workflow (`.github/workflows/release-pack.yml`) triggers automatically when a version tag is pushed. It:
+`.github/workflows/release-pack.yml` is a reusable workflow invoked by `release.yml` (which runs automatically when a version tag is pushed). It:
 
 1. Builds the full monorepo once on Windows
 2. Packs all three plugins (Stream Deck, Mirabox, Ulanzi) from that single build using `streamdeck pack`
