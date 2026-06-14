@@ -90,6 +90,16 @@ const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
  */
 const FILL_TO_MAX_MIN_LTR = 1;
 
+/**
+ * Fixed safety buffer (liters) added to a non-zero fill-to add so the stop
+ * finishes AT LEAST the target. The fill-to request is recomputed and re-sent
+ * on the 30 s top-up cadence, but the car keeps burning fuel between that live
+ * recompute and the moment you actually pit — without the buffer the request can
+ * leave you ~1 L short on arrival. The buffer is clamped to the remaining tank
+ * space, so it's naturally dropped when the target is the full tank (issue #681).
+ */
+const FUEL_TARGET_BUFFER_LTR = 1;
+
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
 const GRAY = "#888888";
@@ -339,8 +349,13 @@ export function roundToWholeDisplayLtr(liters: number, displayUnits: number): nu
  * - fill-to: `dialValueLtr` is the desired TOTAL after the stop (kept a
  *   whole integer display value). The add is `max(0, target − current)`, rounded
  *   UP to the next whole DISPLAY unit so the stop never finishes below the
- *   (integer) target, then clamped to the remaining tank space so it never
- *   over-fills.
+ *   (integer) target. When that rounded add is non-zero a fixed
+ *   `FUEL_TARGET_BUFFER_LTR` is added to cover fuel burned between the live 30 s
+ *   recompute and the actual pit stop, so you finish AT LEAST the target. The
+ *   result is then clamped to the remaining tank space so it never over-fills
+ *   (the buffer is naturally dropped when the target is the full tank). When the
+ *   need is ≤ 0 (target at/below current) the add stays 0 — no buffer — so the
+ *   "0 → clearFuel" path still fires.
  */
 export function computeAddLtr(
   dialMode: FuelDialSettings["dialMode"],
@@ -355,7 +370,11 @@ export function computeAddLtr(
     // Round the ADD up to the next whole display unit so current + add is at or
     // just above the integer target — a stop never finishes under target.
     const addDisplay = Math.ceil(fuelToDisplayUnits(rawAdd, displayUnits));
-    const addLtr = fuelFromDisplayUnits(addDisplay, displayUnits);
+    const roundedAddLtr = fuelFromDisplayUnits(addDisplay, displayUnits);
+    // Apply the safety buffer only to a real (non-zero) add so a target at/below
+    // current still resolves to 0 (→ clearFuel). The clamp drops the buffer when
+    // the target is the full tank.
+    const addLtr = roundedAddLtr > 0 ? roundedAddLtr + FUEL_TARGET_BUFFER_LTR : 0;
 
     return clampTargetLtr(addLtr, headroom);
   }

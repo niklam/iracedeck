@@ -357,35 +357,55 @@ describe("fuel-dial pure helpers", () => {
       expect(computeAddLtr("add-amount", -5, 45, undefined, 1)).toBe(0);
     });
 
-    it("fill-to returns target minus current", () => {
-      // target 65, current 45 -> add 20
-      expect(computeAddLtr("fill-to", 65, 45, 90, 1)).toBe(20);
+    it("add-amount applies NO fill-to safety buffer (the dialed add is sent verbatim)", () => {
+      // The +1 L fill-to buffer must never touch add-amount mode.
+      expect(computeAddLtr("add-amount", 48, 42, 100, 1)).toBe(48);
+      expect(computeAddLtr("add-amount", 20, 45, 90, 1)).toBe(20);
     });
 
-    it("fill-to rounds the add UP to the next whole display unit (never under target)", () => {
-      // target 65, current 45.3 -> rawAdd 19.7 -> rounds up to 20 (metric whole liter)
-      expect(computeAddLtr("fill-to", 65, 45.3, 110, 1)).toBe(20);
-      // current + add = 45.3 + 20 = 65.3 >= 65, so the stop never finishes under target
-      expect(45.3 + computeAddLtr("fill-to", 65, 45.3, 110, 1)).toBeGreaterThanOrEqual(65);
-      // a tiny fractional gap still rounds up to a full whole unit
-      expect(computeAddLtr("fill-to", 65, 64.1, 110, 1)).toBe(1);
+    it("fill-to returns target minus current PLUS the 1 L safety buffer", () => {
+      // target 65, current 45 -> need 20 -> +1 L buffer -> 21 (issue #681)
+      expect(computeAddLtr("fill-to", 65, 45, 90, 1)).toBe(21);
     });
 
-    it("fill-to rounds the add UP in display units (english/gallons)", () => {
-      // displayUnits 0 (gallons): rawAdd in liters is rounded up to a whole gallon.
-      // target 100L, current 90L -> rawAdd 10L ≈ 2.64 gal -> ceil 3 gal -> 3*3.78541 ≈ 11.36 L
-      expect(computeAddLtr("fill-to", 100, 90, 200, 0)).toBeCloseTo(3 * 3.78541, 4);
+    it("fill-to rounds the add UP to the next whole display unit then adds the buffer (never under target)", () => {
+      // target 65, current 45.3 -> rawAdd 19.7 -> rounds up to 20 -> +1 buffer -> 21
+      expect(computeAddLtr("fill-to", 65, 45.3, 110, 1)).toBe(21);
+      // current + add = 45.3 + 21 = 66.3 >= 65 + 1, so the stop finishes at least 1 L over target
+      expect(45.3 + computeAddLtr("fill-to", 65, 45.3, 110, 1)).toBeGreaterThanOrEqual(65 + 1);
+      // a tiny fractional gap still rounds up to a full whole unit, then the buffer
+      expect(computeAddLtr("fill-to", 65, 64.1, 110, 1)).toBe(2); // ceil(0.9)=1 -> +1 buffer
     });
 
-    it("fill-to clamps the rounded add to remaining tank space", () => {
-      // target 90, current 50, max 90 -> raw add 40 (fits headroom 40)
+    it("fill-to adds N+1 for a need that rounds to a whole N (buffer margin)", () => {
+      // current 42, target 90, capacity 100 -> need 48 -> +1 buffer -> 49 (the example)
+      const add = computeAddLtr("fill-to", 90, 42, 100, 1);
+
+      expect(add).toBe(49);
+      // headroom allows the buffer, so current + add overshoots the target by ≥ 1 L
+      expect(42 + add).toBeGreaterThanOrEqual(90 + 1);
+    });
+
+    it("fill-to rounds the add UP in display units then buffers (english/gallons)", () => {
+      // displayUnits 0 (gallons): rawAdd in liters is rounded up to a whole gallon,
+      // then the 1 L buffer is added in liters.
+      // target 100L, current 90L -> rawAdd 10L ≈ 2.64 gal -> ceil 3 gal -> 3*3.78541 ≈ 11.36 L -> +1 L
+      expect(computeAddLtr("fill-to", 100, 90, 200, 0)).toBeCloseTo(3 * 3.78541 + 1, 4);
+    });
+
+    it("fill-to clamps the buffered add to remaining tank space (buffer dropped at full tank)", () => {
+      // target == capacity 90, current 42 -> need 48 -> +1 buffer = 49, clamped to headroom 48.
+      expect(computeAddLtr("fill-to", 90, 42, 90, 1)).toBe(48);
+      // target 90, current 50, max 90 -> need 40 -> +1 = 41, clamped to headroom 40.
       expect(computeAddLtr("fill-to", 90, 50, 90, 1)).toBe(40);
-      // target above capacity is impossible to over-fill: headroom caps it
+      // target above capacity is impossible to over-fill: headroom caps it (no buffer overshoot)
       expect(computeAddLtr("fill-to", 200, 50, 90, 1)).toBe(40);
     });
 
-    it("fill-to returns 0 when already at/above target", () => {
+    it("fill-to returns 0 (NO buffer) when already at/above target", () => {
+      // need ≤ 0 must resolve to exactly 0 so the 0 → clearFuel path still fires.
       expect(computeAddLtr("fill-to", 40, 50, 90, 1)).toBe(0);
+      expect(computeAddLtr("fill-to", 50, 50, 90, 1)).toBe(0);
     });
   });
 
@@ -639,40 +659,40 @@ describe("FuelDial action", () => {
   });
 
   describe("dialMode add vs target", () => {
-    it("fill-to sends target minus current", async () => {
+    it("fill-to sends target minus current plus the 1 L buffer", async () => {
       const ctx = dialContext("dm1");
-      // current 45 -> seed target = 45; rotate +20 -> target 65 -> add 20
+      // current 45 -> seed target = 45; rotate +20 -> target 65 -> need 20 -> +1 buffer -> 21
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
       const settings = { stepSize: 20, unitMode: "liters", dialMode: "fill-to" };
       await appear(ctx, settings);
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      expect(mockPitFuel).toHaveBeenCalledWith(20);
+      expect(mockPitFuel).toHaveBeenCalledWith(21);
     });
 
-    it("fill-to snaps the target to a whole integer and rounds the add UP on rotate", async () => {
+    it("fill-to snaps the target to a whole integer, rounds the add UP, then buffers on rotate", async () => {
       const ctx = dialContext("dm2");
       // current 44.3 -> seed target snaps to 44; rotate +20.7 -> 64.7 -> snaps to 65.
-      // rawAdd = 65 - 44.3 = 20.7 -> rounds UP to a whole liter = 21 (never under target).
+      // rawAdd = 65 - 44.3 = 20.7 -> rounds UP to a whole liter = 21 -> +1 buffer -> 22.
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 44.3, PitSvFlags: 0 });
       const settings = { stepSize: 20.7, unitMode: "liters", dialMode: "fill-to" };
       await appear(ctx, settings);
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      // The add is rounded up so current + add (44.3 + 21 = 65.3) lands at/above the target.
-      expect(mockPitFuel).toHaveBeenCalledWith(21);
+      // The add is rounded up + buffered so current + add (44.3 + 22 = 66.3) lands above the target.
+      expect(mockPitFuel).toHaveBeenCalledWith(22);
     });
 
-    it("fill-to keeps the displayed target an integer as the dial steps", async () => {
+    it("fill-to keeps the displayed target an integer as the dial steps (add buffered)", async () => {
       const ctx = dialContext("dm3");
-      // current 40 -> seed target snaps to 40; rotate +25.4 -> 65.4 -> snaps to 65 -> add 25
+      // current 40 -> seed target snaps to 40; rotate +25.4 -> 65.4 -> snaps to 65 -> need 25 -> +1 -> 26
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 40, PitSvFlags: 0 });
       const settings = { stepSize: 25.4, unitMode: "liters", dialMode: "fill-to" };
       await appear(ctx, settings);
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      // target snaps 65.4 -> 65; add = 65 - 40 = 25
-      expect(mockPitFuel).toHaveBeenCalledWith(25);
+      // target snaps 65.4 -> 65; need = 65 - 40 = 25 -> +1 buffer -> 26
+      expect(mockPitFuel).toHaveBeenCalledWith(26);
     });
   });
 
@@ -743,11 +763,11 @@ describe("FuelDial action", () => {
   });
 
   describe("target-mode round-up on send (issue #681)", () => {
-    it("rounds the add UP so current + add reaches at/above the integer target", async () => {
+    it("rounds the add UP and buffers so current + add reaches at least the integer target", async () => {
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("ru1");
-      // capacity 110, current 45.3, target 65 -> rawAdd 19.7 -> rounds up to 20.
+      // capacity 110, current 45.3, target 65 -> rawAdd 19.7 -> rounds up to 20 -> +1 buffer -> 21.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45.3, PitSvFlags: 0 });
       // Seed target = 45 (snap of 45.3), then rotate +20 -> target 65.
@@ -755,11 +775,11 @@ describe("FuelDial action", () => {
       await appear(ctx, settings);
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      // rawAdd = 65 - 45.3 = 19.7 -> ceil(19.7) = 20; never under target (45.3 + 20 = 65.3).
-      expect(mockPitFuel).toHaveBeenLastCalledWith(20);
+      // rawAdd = 65 - 45.3 = 19.7 -> ceil(19.7) = 20 -> +1 buffer -> 21 (45.3 + 21 = 66.3 ≥ 66).
+      expect(mockPitFuel).toHaveBeenLastCalledWith(21);
       const sent = mockPitFuel.mock.calls.at(-1)?.[0] as number;
 
-      expect(45.3 + sent).toBeGreaterThanOrEqual(65);
+      expect(45.3 + sent).toBeGreaterThanOrEqual(65 + 1);
     });
   });
 
@@ -986,11 +1006,11 @@ describe("FuelDial action", () => {
       await appear(ctx, settings);
       mockPitFuel.mockClear();
 
-      // Fuel burned: current now 40 -> add must grow to 25 to still reach 65
+      // Fuel burned: current now 40 -> need 25 to reach 65 -> +1 buffer -> 26
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 40, PitSvFlags: FUEL_FILL });
       vi.advanceTimersByTime(30000);
 
-      expect(mockPitFuel).toHaveBeenCalledWith(25);
+      expect(mockPitFuel).toHaveBeenCalledWith(26);
     });
 
     it("does not re-send when fuel-fill is off (respects toggle-off)", async () => {
