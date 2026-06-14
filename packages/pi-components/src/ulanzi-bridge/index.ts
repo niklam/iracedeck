@@ -147,13 +147,15 @@ export function installUlanziBridge(win: Window & typeof globalThis = window): v
   const connect = (win as unknown as { connectElgatoStreamDeckSocket?: (...args: unknown[]) => void })
     .connectElgatoStreamDeckSocket;
 
-  if (typeof connect === "function") {
-    connect(identity.port, context, "registerPropertyInspector", info, actionInfo);
+  try {
+    if (typeof connect === "function") {
+      connect(identity.port, context, "registerPropertyInspector", info, actionInfo);
+    }
+  } finally {
+    // Restore the native WebSocket even if connect throws: sdpi created its
+    // (bridged) socket synchronously inside connect, so nothing else should be bridged.
+    (win as unknown as { WebSocket: unknown }).WebSocket = Native;
   }
-
-  // Restore the native WebSocket: sdpi created its (bridged) socket synchronously
-  // inside connect, so nothing else should be bridged.
-  (win as unknown as { WebSocket: unknown }).WebSocket = Native;
 }
 
 // Bootstrap once the DOM — and the synchronous sdpi-components.js script that

@@ -11,8 +11,9 @@ permissions:
 
 jobs:
   build-plugins:
+    # No custom secrets needed — the packaging workflow only uses the
+    # auto-provided GITHUB_TOKEN (for the release upload), so don't inherit.
     uses: ./.github/workflows/release-pack.yml
-    secrets: inherit
   deploy-website:
     needs: [build-plugins]
     if: ${{ !contains(github.ref_name, '-') }}

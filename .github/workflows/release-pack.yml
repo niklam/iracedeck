@@ -64,7 +64,7 @@ jobs:
       - name: Pack ${{ matrix.name }} plugin
         shell: pwsh
         run: |
-          npx @elgato/cli@latest pack "${{ matrix.path }}" ${{ matrix.flags }}
+          npx @elgato/cli@1.7.4 pack "${{ matrix.path }}" ${{ matrix.flags }}
           # The cli writes <name>.streamDeckPlugin into the working dir. Rename it
           # to the canonical output name when they differ (Mirabox/Ulanzi).
           $packed = Get-ChildItem -Filter *.streamDeckPlugin | Select-Object -First 1

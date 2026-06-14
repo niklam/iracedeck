@@ -52,7 +52,6 @@ const params: UlanziConnectionParams = {
   address: "127.0.0.1",
   port: "3906",
   language: "en",
-  pluginUuid: PLUGIN_UUID,
 };
 
 /** Parse captured outbound messages back into objects for assertion. */
@@ -89,7 +88,6 @@ describe("parseConnectionParams", () => {
       address: "192.168.0.5",
       port: "49200",
       language: "de",
-      pluginUuid: PLUGIN_UUID,
     });
   });
 
@@ -100,7 +98,6 @@ describe("parseConnectionParams", () => {
       address: "127.0.0.1",
       port: "3906",
       language: "en",
-      pluginUuid: PLUGIN_UUID,
     });
   });
 });

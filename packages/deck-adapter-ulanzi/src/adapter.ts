@@ -73,8 +73,11 @@ function wrapEvent<T>(
   };
 }
 
-/** Create a deck-core disappear event with no-op stubs. */
-function wrapDisappearEvent<T>(data: UlanziEvent & { context: string }): IDeckWillDisappearEvent<T> {
+/** Create a deck-core disappear event with no-op image/title/settings stubs. */
+function wrapDisappearEvent<T>(
+  data: UlanziEvent & { context: string },
+  controllerType: ControllerType,
+): IDeckWillDisappearEvent<T> {
   return {
     action: {
       get id() {
@@ -90,7 +93,7 @@ function wrapDisappearEvent<T>(data: UlanziEvent & { context: string }): IDeckWi
         /* no-op: action is disappearing */
       },
       isKey() {
-        return false;
+        return controllerType === "Keypad" || controllerType === "Information";
       },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
@@ -235,8 +238,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     this.client.onActionEvent(uuid, "willDisappear", async (data) => {
       if (!data.context) return;
 
-      await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }));
-      this.contextControllers.delete(data.context);
+      const controller = getControllerType(data.context);
+
+      try {
+        await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }, controller));
+      } finally {
+        // Always drop controller tracking, even if the handler throws.
+        this.contextControllers.delete(data.context);
+      }
     });
 
     // didReceiveSettings

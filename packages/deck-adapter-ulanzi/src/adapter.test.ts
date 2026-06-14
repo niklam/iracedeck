@@ -8,7 +8,7 @@ const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 
 // Mock UlanziClient — factory must not reference variables defined after vi.mock
 vi.mock("./ulanzi-client.js", () => ({
-  parseConnectionParams: () => ({ address: "127.0.0.1", port: "3906", language: "en", pluginUuid: "com.test" }),
+  parseConnectionParams: () => ({ address: "127.0.0.1", port: "3906", language: "en" }),
   UlanziClient: class {
     onActionEvent = vi.fn();
     onGlobalEvent = vi.fn();
@@ -253,6 +253,68 @@ describe("UlanziPlatformAdapter", () => {
       await ev.action.setImage("test");
       await ev.action.setTitle("test");
       expect(client.setImage).not.toHaveBeenCalled();
+    });
+
+    it("reflects the tracked controller type in willDisappear isKey()", async () => {
+      const handler: IDeckActionHandler = { onWillAppear: vi.fn(), onWillDisappear: vi.fn() };
+      adapter.registerAction("com.test.action", handler);
+      const find = (event: string) =>
+        client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === event)[2];
+
+      // willAppear tracks the Encoder controller for this context...
+      await find("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx",
+        payload: { settings: {}, controller: "Encoder" },
+      });
+      // ...so willDisappear's isKey() reflects it (Encoder → not a key).
+      await find("willDisappear")({
+        event: "willDisappear",
+        action: "com.test.action",
+        context: "ctx",
+        payload: { settings: {} },
+      });
+
+      const ev = (handler.onWillDisappear as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.action.isKey()).toBe(false);
+    });
+
+    it("deletes controller tracking even when onWillDisappear throws", async () => {
+      const handler: IDeckActionHandler = {
+        onWillAppear: vi.fn(),
+        onWillDisappear: vi.fn().mockRejectedValue(new Error("boom")),
+        onKeyDown: vi.fn(),
+      };
+      adapter.registerAction("com.test.action", handler);
+      const find = (event: string) =>
+        client.onActionEvent.mock.calls.find((call: [string, string, unknown]) => call[1] === event)[2];
+
+      await find("willAppear")({
+        event: "willAppear",
+        action: "com.test.action",
+        context: "ctx",
+        payload: { settings: {}, controller: "Encoder" },
+      });
+      await expect(
+        find("willDisappear")({
+          event: "willDisappear",
+          action: "com.test.action",
+          context: "ctx",
+          payload: { settings: {} },
+        }),
+      ).rejects.toThrow("boom");
+
+      // The finally cleared the cache → a later event for the same context defaults to
+      // Keypad (it would still report Encoder if cleanup were skipped on throw).
+      await find("keyDown")({
+        event: "keyDown",
+        action: "com.test.action",
+        context: "ctx",
+        payload: { settings: {} },
+      });
+      const keyEv = (handler.onKeyDown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(keyEv.action.isKey()).toBe(true);
     });
   });
 

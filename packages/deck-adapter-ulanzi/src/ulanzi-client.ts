@@ -47,12 +47,15 @@ export interface UlanziEvent {
 /** Callback type for normalized Ulanzi event handlers. */
 export type UlanziEventHandler = (data: UlanziEvent) => void | Promise<void>;
 
-/** Connection parameters for UlanziStudio. */
+/**
+ * Connection parameters for UlanziStudio (from process.argv). The plugin UUID is
+ * a fixed identity, not a connection param — outbound frames use the
+ * {@link PLUGIN_UUID} constant directly so it can never drift from the manifest.
+ */
 export interface UlanziConnectionParams {
   address: string;
   port: string;
   language: string;
-  pluginUuid: string;
 }
 
 /** Registration for a per-action event handler. */
@@ -74,7 +77,6 @@ export function parseConnectionParams(): UlanziConnectionParams {
     address: process.argv[2] ?? "127.0.0.1",
     port: process.argv[3] ?? "3906",
     language: process.argv[4] ?? "en",
-    pluginUuid: PLUGIN_UUID,
   };
 }
 
@@ -229,7 +231,7 @@ export class UlanziClient {
     }
 
     this.logger.info("Connecting to UlanziStudio");
-    this.logger.debug(`WebSocket address: ${this.params.address}:${this.params.port}, UUID: ${this.params.pluginUuid}`);
+    this.logger.debug(`WebSocket address: ${this.params.address}:${this.params.port}, UUID: ${PLUGIN_UUID}`);
 
     // Dynamic import to avoid bundling issues with the native CommonJS module
     const { WebSocket } = await import("ws");
@@ -239,7 +241,7 @@ export class UlanziClient {
       this.logger.info("Connected to UlanziStudio");
       // Ulanzi handshake — no separate registration payload (the host already
       // parsed manifest.json from disk).
-      this.send({ code: 0, cmd: "connected", uuid: this.params.pluginUuid });
+      this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
       this.requestGlobalSettings();
     });
 
@@ -357,11 +359,11 @@ export class UlanziClient {
   }
 
   requestGlobalSettings(): void {
-    this.send({ cmd: "getGlobalSettings", uuid: this.params.pluginUuid, key: "", actionid: "" });
+    this.send({ cmd: "getGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "" });
   }
 
   setGlobalSettings(settings: Record<string, unknown>): void {
-    this.send({ cmd: "setGlobalSettings", uuid: this.params.pluginUuid, key: "", actionid: "", settings });
+    this.send({ cmd: "setGlobalSettings", uuid: PLUGIN_UUID, key: "", actionid: "", settings });
   }
 
   /**
