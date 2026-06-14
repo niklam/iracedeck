@@ -7,6 +7,7 @@ import {
   fuelToDisplayUnits,
   generateBorderParts,
   getCommands,
+  getFuelUnitSuffix,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalTitleSettings,
@@ -19,7 +20,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isMetricUnits,
   renderIconTemplate,
   resolveBorderSettings,
   resolveIconColors,
@@ -93,7 +93,7 @@ const BAR_TRACK = "#1a1f26";
 /** Color of the on-bar "current" amount label (dark, sits over the light current segment). */
 const BAR_LABEL = "#0d1117";
 /** Color of the on-bar "+add" amount label (white, sits over the green/gray add segment). */
-const ADD_LABEL = "#ffffff";
+const ADD_LABEL = WHITE;
 /** Color of the "fill-to" target marker line (red, confined to the bar height). */
 const TARGET_LINE = "#e74c3c";
 
@@ -181,15 +181,6 @@ export function resolveDisplayUnits(
 /**
  * @internal Exported for testing
  *
- * Short unit suffix for the touch-strip / icon readout ("L" or "gal").
- */
-export function unitSuffix(displayUnits: number): string {
-  return isMetricUnits(displayUnits) ? "L" : "gal";
-}
-
-/**
- * @internal Exported for testing
- *
  * Reads the effective fuel tank capacity (liters) from session info:
  * `DriverCarFuelMaxLtr × (DriverCarMaxFuelPct ?? 1)`. Returns undefined when
  * the capacity is unknown so callers can avoid clamping the upper bound.
@@ -253,7 +244,7 @@ export function buildValueText(
   targetLtr: number,
   displayUnits: number,
 ): string {
-  const suffix = unitSuffix(displayUnits);
+  const suffix = getFuelUnitSuffix(displayUnits);
 
   if (dialMode === "fill-to") {
     return `→ ${formatDisplayValue(targetLtr, displayUnits)} ${suffix}`;
@@ -281,7 +272,7 @@ export function buildTitleText(dialMode: FuelDialSettings["dialMode"]): string {
 export function readFuelLevel(telemetry: TelemetryData | null): number {
   if (!telemetry) return 0;
 
-  const value = (telemetry as Record<string, unknown>).FuelLevel;
+  const value = telemetry.FuelLevel;
 
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -295,7 +286,7 @@ export function readFuelLevel(telemetry: TelemetryData | null): number {
 export function readPitSvFuel(telemetry: TelemetryData | null): number | undefined {
   if (!telemetry) return undefined;
 
-  const value = (telemetry as Record<string, unknown>).PitSvFuel;
+  const value = telemetry.PitSvFuel;
 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -308,9 +299,9 @@ export function readPitSvFuel(telemetry: TelemetryData | null): number | undefin
  * on/off" — never a sticky local flag.
  */
 export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || (telemetry as Record<string, unknown>).PitSvFlags === undefined) return false;
+  if (!telemetry || telemetry.PitSvFlags === undefined) return false;
 
-  return hasFlag((telemetry as Record<string, unknown>).PitSvFlags as number, PitSvFlags.FuelFill);
+  return hasFlag(telemetry.PitSvFlags, PitSvFlags.FuelFill);
 }
 
 /**
@@ -977,7 +968,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
   private effectiveDisplayUnits(ctx: FuelDialContext): number {
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const telemetryUnits = telemetry ? (telemetry as Record<string, unknown>).DisplayUnits : undefined;
+    const telemetryUnits = telemetry?.DisplayUnits;
 
     return resolveDisplayUnits(ctx.settings.unitMode, typeof telemetryUnits === "number" ? telemetryUnits : undefined);
   }
@@ -1077,25 +1068,28 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     // Render-on-CHANGE (issue #681): the bar's fuel-fill color and the displayed
     // values must track telemetry without the up-to-5s lag of the heartbeat
-    // timer. Push feedback immediately when the DISPLAYED signature changes
-    // (fuel-fill flips, or a rounded current/add/total moves), throttled to at
-    // most once per CHANGE_RENDER_MIN_INTERVAL_MS so a burst of ticks can't blow
-    // past the ≤10 setFeedback/sec/dial cap. Unchanged ticks update the keypad
-    // icon only (no feedback). The 5s timer remains as a heartbeat.
+    // timer. When the DISPLAYED signature is UNCHANGED nothing renders at all —
+    // the icon + feedback already reflect the current state and the 5s heartbeat
+    // still refreshes — so an unchanged tick never rebuilds the SVG or pushes an
+    // image ~60×/s. When the signature changes, push feedback immediately,
+    // throttled to at most once per CHANGE_RENDER_MIN_INTERVAL_MS so a burst of
+    // ticks can't blow past the ≤10 setFeedback/sec/dial cap; while inside the
+    // throttle window the keypad icon refreshes (no feedback) and lastRenderSig is
+    // deliberately NOT advanced so the throttled feedback still fires once the
+    // window elapses. The 5s timer remains as a heartbeat.
     const sig = this.displayedSignature(ctx);
 
-    if (sig !== ctx.lastRenderSig && Date.now() - ctx.lastChangeRenderAt >= CHANGE_RENDER_MIN_INTERVAL_MS) {
-      ctx.lastRenderSig = sig;
-      ctx.lastChangeRenderAt = Date.now();
-      void this.render(ctx);
-
-      return;
+    if (sig !== ctx.lastRenderSig) {
+      if (Date.now() - ctx.lastChangeRenderAt >= CHANGE_RENDER_MIN_INTERVAL_MS) {
+        ctx.lastRenderSig = sig;
+        ctx.lastChangeRenderAt = Date.now();
+        void this.render(ctx);
+      } else {
+        // Changed but feedback-throttled: refresh the keypad icon now, but do NOT
+        // advance lastRenderSig so the throttled feedback still fires next window.
+        void this.render(ctx, { skipFeedback: true });
+      }
     }
-
-    // Update the keypad icon, but do NOT push touch-strip feedback on every tick
-    // — the ≤10 setFeedback/sec/dial cap is respected by the change-detector + the
-    // display-refresh timer + event-driven renders instead (issue #681).
-    void this.render(ctx, { skipFeedback: true });
   }
 
   /**

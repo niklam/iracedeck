@@ -19,7 +19,6 @@ import {
   resolveDisplayUnits,
   roundedBarPath,
   roundToWholeDisplayLtr,
-  unitSuffix,
 } from "./fuel-dial.js";
 
 const { mockPitClearFuel, mockPitFuel, mockGetCommands, mockGetSessionInfo, mockGetCurrentTelemetry } = vi.hoisted(
@@ -116,7 +115,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
     displayUnits === 1 ? amount : amount * 3.78541,
   ),
-  isMetricUnits: vi.fn((displayUnits: number | undefined) => displayUnits === 1),
+  getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
 }));
 
 /** Fake key (keypad) action context. */
@@ -184,13 +183,6 @@ describe("fuel-dial pure helpers", () => {
 
     it("defaults to metric in auto mode when telemetry unknown", () => {
       expect(resolveDisplayUnits("auto", undefined)).toBe(1);
-    });
-  });
-
-  describe("unitSuffix", () => {
-    it("returns L for metric and gal for english", () => {
-      expect(unitSuffix(1)).toBe("L");
-      expect(unitSuffix(0)).toBe("gal");
     });
   });
 
