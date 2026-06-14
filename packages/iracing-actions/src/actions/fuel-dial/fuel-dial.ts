@@ -62,13 +62,26 @@ const USER_ACTIVITY_GRACE_MS = 3000;
  */
 const TARGET_RECOMPUTE_MS = 30000;
 
+/**
+ * Cadence (ms) for the periodic display refresh. While the action is appeared,
+ * the bar + value are re-rendered on this interval to track live fuel burn
+ * without pushing `setFeedback` on every telemetry tick (which would blow past
+ * the documented ≤10 setFeedback/sec/dial cap). Event-driven renders (rotate,
+ * press, settings, appear) still fire immediately.
+ */
+const DISPLAY_REFRESH_MS = 5000;
+
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
 const GRAY = "#888888";
 /** Neutral color for the static "current fuel" segment of the two-segment bar. */
-const CURRENT_SEGMENT = "#7f93a8";
+const CURRENT_SEGMENT = "#9aa7b4";
 /** Dark track behind both bar segments. */
 const BAR_TRACK = "#1a1f26";
+/** Color of the on-bar amount labels (high contrast over track + segments). */
+const BAR_LABEL = "#0d1117";
+/** Color of the target "locked" vertical marker line (target-level mode). */
+const TARGET_LINE = "#ffffff";
 
 const FuelDialSettings = CommonSettings.extend({
   dialMode: z.enum(["add-amount", "target-level"]).default("add-amount"),
@@ -113,6 +126,8 @@ interface FuelDialContext {
   pressStart: number;
   /** Recurring target-level top-up timer, or null when inactive. */
   targetTimer: ReturnType<typeof setInterval> | null;
+  /** Recurring display-refresh timer (re-renders bar + value), or null. */
+  displayTimer: ReturnType<typeof setInterval> | null;
   throttle: ThrottleState;
 }
 
@@ -195,14 +210,27 @@ export function formatDisplayValue(liters: number, displayUnits: number): string
 /**
  * @internal Exported for testing
  *
- * Builds the touch-strip readout value as the TOTAL after the stop over tank
- * capacity, e.g. "65 / 90 L" or "65 / -- L".
+ * Builds the per-mode value text shown on the touch strip and keypad icon.
+ *
+ * - add-amount: `"+<add> = <total> <unit>"` (e.g. `"+20 = 65 L"`). The total is
+ *   `min(current + add, capacity)` and reflects live fuel burn.
+ * - target-level: `"→ <target> <unit>"` (e.g. `"→ 65 L"`). The target is shown
+ *   even when capacity is unknown.
  */
-export function buildReadout(totalLtr: number, maxLtr: number | undefined, displayUnits: number): string {
-  const total = formatDisplayValue(totalLtr, displayUnits);
-  const max = maxLtr === undefined ? "--" : formatDisplayValue(maxLtr, displayUnits);
+export function buildValueText(
+  dialMode: FuelDialSettings["dialMode"],
+  addLtr: number,
+  totalLtr: number,
+  targetLtr: number,
+  displayUnits: number,
+): string {
+  const suffix = unitSuffix(displayUnits);
 
-  return `${total} / ${max} ${unitSuffix(displayUnits)}`;
+  if (dialMode === "target-level") {
+    return `→ ${formatDisplayValue(targetLtr, displayUnits)} ${suffix}`;
+  }
+
+  return `+${formatDisplayValue(addLtr, displayUnits)} = ${formatDisplayValue(totalLtr, displayUnits)} ${suffix}`;
 }
 
 /**
@@ -249,15 +277,31 @@ export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
 /**
  * @internal Exported for testing
  *
+ * Rounds a liters amount so it lands on a whole integer in DISPLAY units, then
+ * converts back to liters. Used in target-level mode so the dialed target is
+ * always a whole displayed value (e.g. an integer number of liters/gallons).
+ */
+export function roundToWholeDisplayLtr(liters: number, displayUnits: number): number {
+  const display = Math.round(fuelToDisplayUnits(liters, displayUnits));
+
+  return fuelFromDisplayUnits(display, displayUnits);
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Computes the effective liters to ADD for the next stop from the dialed value,
  * the current fuel level, and the tank capacity.
  *
- * - add-amount: `dialValueLtr` is the amount to add; clamped to the remaining
- *   tank space (when capacity is known) or just the lower bound otherwise.
- * - target-level: `dialValueLtr` is the desired total; the raw add is
- *   `max(0, target − current)` rounded UP to the next whole DISPLAY unit (so a
- *   stop never finishes below the requested target), then clamped to the
- *   remaining tank space.
+ * - add-amount: `dialValueLtr` is the requested amount to add. The add is FIXED
+ *   — it does not change as fuel burns. iRacing clamps at the pump, so here we
+ *   only enforce the lower bound (and the upper tank capacity, since the dial
+ *   already spans the full tank range `[0, capacity]`).
+ * - target-level: `dialValueLtr` is the desired TOTAL after the stop (kept a
+ *   whole integer display value). The add is `max(0, target − current)`, rounded
+ *   UP to the next whole DISPLAY unit so the stop never finishes below the
+ *   (integer) target, then clamped to the remaining tank space so it never
+ *   over-fills.
  */
 export function computeAddLtr(
   dialMode: FuelDialSettings["dialMode"],
@@ -266,18 +310,19 @@ export function computeAddLtr(
   maxLtr: number | undefined,
   displayUnits: number,
 ): number {
-  const headroom = maxLtr === undefined ? undefined : Math.max(0, maxLtr - currentLtr);
-
   if (dialMode === "target-level") {
+    const headroom = maxLtr === undefined ? undefined : Math.max(0, maxLtr - currentLtr);
     const rawAdd = Math.max(0, dialValueLtr - currentLtr);
-    // Round up to the next whole display unit so we never finish under target.
+    // Round the ADD up to the next whole display unit so current + add is at or
+    // just above the integer target — a stop never finishes under target.
     const addDisplay = Math.ceil(fuelToDisplayUnits(rawAdd, displayUnits));
-    const roundedAdd = fuelFromDisplayUnits(addDisplay, displayUnits);
+    const addLtr = fuelFromDisplayUnits(addDisplay, displayUnits);
 
-    return clampTargetLtr(roundedAdd, headroom);
+    return clampTargetLtr(addLtr, headroom);
   }
 
-  return clampTargetLtr(dialValueLtr, headroom);
+  // add-amount: the dial spans the FULL tank range; clamp to [0, capacity].
+  return clampTargetLtr(dialValueLtr, maxLtr);
 }
 
 /**
@@ -295,11 +340,61 @@ export function computeTotalLtr(currentLtr: number, addLtr: number, maxLtr: numb
 /**
  * @internal Exported for testing
  *
- * Renders the two-segment fuel bar as a full SVG string (used as the pixmap
- * data source on the touch strip and inside the keypad icon). Shows the current
- * fuel as a static first segment and the fuel-to-add as a variable second
- * segment butted onto it, over the tank capacity. The add segment is GREEN when
- * fuel-fill is ON and GRAY when OFF.
+ * Builds an SVG `<path>` `d` for a horizontal bar segment with INDEPENDENTLY
+ * rounded left/right ends. The left end rounds its top-left + bottom-left
+ * corners; the right end rounds its top-right + bottom-right corners. A square
+ * end is drawn flush. This lets two butted segments share a square boundary
+ * while keeping the outer ends rounded — without `clipPath` (unsupported on
+ * Mirabox QT5), using only arcs/paths from the safe SVG Tiny 1.2 set.
+ */
+export function roundedBarPath(
+  x: number,
+  width: number,
+  height: number,
+  roundLeft: boolean,
+  roundRight: boolean,
+  radius: number,
+): string {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  const left = x;
+  const right = x + width;
+  const top = 0;
+  const bottom = height;
+  const rl = roundLeft ? r : 0;
+  const rr = roundRight ? r : 0;
+
+  // Clockwise from the top-left (after its arc).
+  return [
+    `M ${(left + rl).toFixed(2)} ${top}`,
+    `L ${(right - rr).toFixed(2)} ${top}`,
+    rr ? `A ${rr.toFixed(2)} ${rr.toFixed(2)} 0 0 1 ${right.toFixed(2)} ${(top + rr).toFixed(2)}` : "",
+    `L ${right.toFixed(2)} ${(bottom - rr).toFixed(2)}`,
+    rr ? `A ${rr.toFixed(2)} ${rr.toFixed(2)} 0 0 1 ${(right - rr).toFixed(2)} ${bottom}` : "",
+    `L ${(left + rl).toFixed(2)} ${bottom}`,
+    rl ? `A ${rl.toFixed(2)} ${rl.toFixed(2)} 0 0 1 ${left.toFixed(2)} ${(bottom - rl).toFixed(2)}` : "",
+    `L ${left.toFixed(2)} ${(top + rl).toFixed(2)}`,
+    rl ? `A ${rl.toFixed(2)} ${rl.toFixed(2)} 0 0 1 ${(left + rl).toFixed(2)} ${top}` : "",
+    "Z",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Renders ONE continuous two-segment fuel bar as a full SVG string (used as the
+ * pixmap data source on the touch strip and inside the keypad icon).
+ *
+ * - A dark rounded track spans the full width.
+ * - The CURRENT segment runs from the left (neutral gray-blue), the ADD segment
+ *   is butted directly onto it: GREEN when fuel-fill is ON, GRAY when OFF.
+ * - Only the OUTER corners round (left end of current, right end of add); the
+ *   shared current↔add boundary is SQUARE. When add is 0 the current segment
+ *   alone rounds both ends; when current is 0 the add segment alone rounds both.
+ * - Small on-bar amount labels: current LEFT-aligned, to-be-added RIGHT-aligned.
+ * - In target-level mode a thin vertical "locked" line marks the target total
+ *   (`targetLtr` set + capacity known); omitted otherwise.
  */
 export function renderFuelBarSvg(
   currentLtr: number,
@@ -308,39 +403,61 @@ export function renderFuelBarSvg(
   fuelOn: boolean,
   widthPx: number,
   heightPx: number,
+  displayUnits: number,
+  targetLtr?: number,
 ): string {
   const radius = Math.min(heightPx / 2, 8);
   const span = maxLtr !== undefined && maxLtr > 0 ? maxLtr : Math.max(currentLtr + addLtr, 1);
   const currentW = Math.max(0, Math.min(widthPx, (currentLtr / span) * widthPx));
   const addW = Math.max(0, Math.min(widthPx - currentW, (addLtr / span) * widthPx));
   const addColor = fuelOn ? GREEN : GRAY;
+  const fontSize = Math.max(8, Math.round(heightPx * 0.5));
+  const labelY = heightPx / 2;
+  const pad = Math.max(3, Math.round(heightPx * 0.18));
 
-  const segments = [
+  const parts = [
     `<rect x="0" y="0" width="${widthPx}" height="${heightPx}" rx="${radius}" fill="${BAR_TRACK}"/>`,
   ];
 
   if (currentW > 0) {
-    segments.push(
-      `<rect x="0" y="0" width="${currentW.toFixed(2)}" height="${heightPx}" rx="${radius}" fill="${CURRENT_SEGMENT}"/>`,
+    // Round the left end always; round the right end too only when there's no add.
+    parts.push(
+      `<path d="${roundedBarPath(0, currentW, heightPx, true, addW <= 0, radius)}" fill="${CURRENT_SEGMENT}"/>`,
     );
   }
 
   if (addW > 0) {
-    // The add segment is butted onto the current segment; round only its right
-    // edge by drawing it from a point just inside the current segment's radius.
-    segments.push(
-      `<rect x="${currentW.toFixed(2)}" y="0" width="${addW.toFixed(2)}" height="${heightPx}" rx="${radius}" fill="${addColor}"/>`,
+    // Round the right (leading) end always; round the left end too only when there's no current.
+    parts.push(
+      `<path d="${roundedBarPath(currentW, addW, heightPx, currentW <= 0, true, radius)}" fill="${addColor}"/>`,
     );
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${segments.join("")}</svg>`;
+  // Target-level "locked" vertical marker line.
+  if (targetLtr !== undefined && maxLtr !== undefined && maxLtr > 0) {
+    const targetX = Math.max(0, Math.min(widthPx, (targetLtr / span) * widthPx));
+    const lineW = Math.max(2, Math.round(heightPx * 0.1));
+    parts.push(
+      `<rect x="${(targetX - lineW / 2).toFixed(2)}" y="0" width="${lineW}" height="${heightPx}" fill="${TARGET_LINE}"/>`,
+    );
+  }
+
+  // On-bar amount labels: current LEFT, to-be-added RIGHT.
+  parts.push(
+    `<text x="${pad}" y="${labelY}" text-anchor="start" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${formatDisplayValue(currentLtr, displayUnits)}</text>`,
+  );
+  parts.push(
+    `<text x="${widthPx - pad}" y="${labelY}" text-anchor="end" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">+${formatDisplayValue(addLtr, displayUnits)}</text>`,
+  );
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${parts.join("")}</svg>`;
 }
 
 /**
  * @internal Exported for testing
  *
- * Generates the keypad icon (data URI) showing "FUEL", the TOTAL value, and the
- * two-segment fuel bar.
+ * Generates the keypad icon (data URI) showing "FUEL", the per-mode value text,
+ * and the continuous two-segment fuel bar.
  */
 export function generateFuelDialSvg(
   settings: FuelDialSettings,
@@ -349,6 +466,7 @@ export function generateFuelDialSvg(
   maxLtr: number | undefined,
   displayUnits: number,
   fuelOn: boolean,
+  targetLtr: number,
 ): string {
   const colors = resolveIconColors(fuelDialTemplate, getGlobalColors(), settings.colorOverrides) as Record<
     string,
@@ -356,17 +474,22 @@ export function generateFuelDialSvg(
   >;
   const graphic1 = colors.graphic1Color || WHITE;
   const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
-  const valueText = `${formatDisplayValue(totalLtr, displayUnits)} ${unitSuffix(displayUnits)}`;
+  const valueText = buildValueText(settings.dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  // The target line is only drawn in target-level mode.
+  const barTarget = settings.dialMode === "target-level" ? targetLtr : undefined;
 
-  // Two-segment fuel bar (current + add), roughly double the old height.
+  // Continuous two-segment fuel bar (current + add) with on-bar labels.
   const barX = 16;
-  const barY = 98;
+  const barY = 100;
   const barW = 112;
-  const barH = 18;
-  const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, barW, barH);
+  const barH = 28;
+  // Add-mode text ("+20 = 65 L") is wider than target-mode ("→ 65 L"); size it
+  // down so the longer string fits the 144-wide canvas.
+  const valueFontSize = settings.dialMode === "target-level" ? 30 : 24;
+  const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, barW, barH, displayUnits, barTarget);
   const iconContent = `
-    <text x="72" y="70" text-anchor="middle" dominant-baseline="central"
-          fill="${graphic1}" font-family="Arial, sans-serif" font-size="32" font-weight="bold">${valueText}</text>
+    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
+          fill="${graphic1}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${valueText}</text>
     <g transform="translate(${barX}, ${barY})">${stripSvgWrapper(barSvg)}</g>`;
 
   const resolvedTitle = resolveTitleSettings(fuelDialTemplate, getGlobalTitleSettings(), settings.titleOverrides);
@@ -463,6 +586,8 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     // Resume the target-level top-up if fuel-fill is already on.
     this.syncTargetTimer(ctx);
+    // Start the periodic display refresh so the bar + value track live burn.
+    this.startDisplayTimer(ctx);
     await this.applyTriggerDescription(ctx);
     await this.render(ctx);
 
@@ -506,10 +631,18 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const stepLtr = fuelFromDisplayUnits(settings.stepSize, displayUnits);
-    // Per-mode clamp: add-amount clamps to remaining tank space; target-level
-    // clamps to total tank capacity. ticks is a SIGNED DELTA (may be >1).
-    const upperBound = this.rotationUpperBound(settings.dialMode);
-    ctx.dialValueLtr = clampTargetLtr(ctx.dialValueLtr + ev.payload.ticks * stepLtr, upperBound);
+    // Per-mode clamp: BOTH modes span the full tank range [0, capacity]. In
+    // add-amount the dialed value is the (fixed) amount to add; in target-level
+    // it is the desired total, snapped to a whole integer display value on every
+    // rotate. ticks is a SIGNED DELTA (may be >1).
+    const upperBound = this.effectiveMaxLtr();
+    let nextValue = ctx.dialValueLtr + ev.payload.ticks * stepLtr;
+
+    if (settings.dialMode === "target-level") {
+      nextValue = roundToWholeDisplayLtr(nextValue, displayUnits);
+    }
+
+    ctx.dialValueLtr = clampTargetLtr(nextValue, upperBound);
     ctx.lastUserActivity = Date.now();
     this.logger.debug(
       `Dial=${ctx.dialValueLtr.toFixed(2)}L (${settings.dialMode}), ticks=${ev.payload.ticks}, step=${stepLtr.toFixed(2)}L`,
@@ -725,6 +858,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         longPressFired: false,
         pressStart: 0,
         targetTimer: null,
+        displayTimer: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
       };
       this.contextsState.set(action.id, ctx);
@@ -750,19 +884,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   /** Current fuel level (liters) from live telemetry; 0 when unknown. */
   private currentLtr(): number {
     return readFuelLevel(this.sdkController.getCurrentTelemetry());
-  }
-
-  /**
-   * Upper bound for clamping the dialed value during rotation. add-amount mode
-   * clamps to the remaining tank space; target-level clamps to total capacity.
-   * Returns undefined when the tank capacity is unknown (lower bound only).
-   */
-  private rotationUpperBound(dialMode: FuelDialSettings["dialMode"]): number | undefined {
-    const maxLtr = this.effectiveMaxLtr();
-
-    if (maxLtr === undefined) return undefined;
-
-    return dialMode === "target-level" ? maxLtr : Math.max(0, maxLtr - this.currentLtr());
   }
 
   /** Live pit fuel-fill checkbox state. */
@@ -832,31 +953,58 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     if (ctx.settings.dialMode === "target-level") {
       const current = readFuelLevel(telemetry);
-      ctx.dialValueLtr = clampTargetLtr(current + pitFuel, maxLtr);
+      // Seed the target as a whole integer display value.
+      ctx.dialValueLtr = clampTargetLtr(
+        roundToWholeDisplayLtr(current + pitFuel, this.effectiveDisplayUnits(ctx)),
+        maxLtr,
+      );
     } else {
       ctx.dialValueLtr = clampTargetLtr(pitFuel, maxLtr);
     }
   }
 
   private onTelemetry(ctx: FuelDialContext, telemetry: TelemetryData | null): void {
-    // Re-seed from telemetry only when the user hasn't rotated recently.
-    if (Date.now() - ctx.lastUserActivity >= USER_ACTIVITY_GRACE_MS) {
+    // Re-seed the dialed value from telemetry only when the user hasn't rotated
+    // recently — and ONLY in add-amount mode. In target-level mode the dialed
+    // value is the user's chosen TOTAL: re-seeding it from `current + PitSvFuel`
+    // would silently lower the target as fuel burns (PitSvFuel is the last-sent
+    // add, not the live gap). The 30 s target timer + the live add computation
+    // already keep the request matched to the burning fuel (issue #681).
+    if (ctx.settings.dialMode === "add-amount" && Date.now() - ctx.lastUserActivity >= USER_ACTIVITY_GRACE_MS) {
       const pitFuel = readPitSvFuel(telemetry);
 
       if (pitFuel !== undefined) {
-        const maxLtr = this.effectiveMaxLtr();
-
-        if (ctx.settings.dialMode === "target-level") {
-          ctx.dialValueLtr = clampTargetLtr(readFuelLevel(telemetry) + pitFuel, maxLtr);
-        } else {
-          ctx.dialValueLtr = clampTargetLtr(pitFuel, maxLtr);
-        }
+        ctx.dialValueLtr = clampTargetLtr(pitFuel, this.effectiveMaxLtr());
       }
     }
 
     // Keep the top-up timer in sync with the live fuel-fill state.
     this.syncTargetTimer(ctx);
-    void this.render(ctx);
+    // Update the keypad icon, but do NOT push touch-strip feedback on every tick
+    // — the ≤10 setFeedback/sec/dial cap is respected by the display-refresh
+    // timer + event-driven renders instead (issue #681).
+    void this.render(ctx, { skipFeedback: true });
+  }
+
+  /**
+   * Starts the periodic display-refresh timer for a context. While appeared it
+   * re-renders the bar + value every DISPLAY_REFRESH_MS so the displayed add
+   * (target − current in target mode) and the live total track fuel burn without
+   * pushing feedback on every telemetry tick. Idempotent — never stacks.
+   */
+  private startDisplayTimer(ctx: FuelDialContext): void {
+    if (ctx.displayTimer !== null) return;
+
+    ctx.displayTimer = setInterval(() => {
+      void this.render(ctx);
+    }, DISPLAY_REFRESH_MS);
+  }
+
+  private clearDisplayTimer(ctx: FuelDialContext): void {
+    if (ctx.displayTimer !== null) {
+      clearInterval(ctx.displayTimer);
+      ctx.displayTimer = null;
+    }
   }
 
   private clearLongPressTimer(ctx: FuelDialContext): void {
@@ -876,6 +1024,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   private clearTimers(ctx: FuelDialContext): void {
     this.clearLongPressTimer(ctx);
     this.clearTargetTimer(ctx);
+    this.clearDisplayTimer(ctx);
 
     if (ctx.throttle.timer !== null) {
       clearTimeout(ctx.throttle.timer);
@@ -918,6 +1067,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       this.effectiveMaxLtr(),
       this.effectiveDisplayUnits(ctx),
       this.isFuelFillOn(),
+      ctx.dialValueLtr,
     );
   }
 
@@ -944,10 +1094,12 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const addLtr = this.effectiveAddLtr(ctx);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fuelOn = this.isFuelFillOn();
-    const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, 184, 30);
+    // The target line is only drawn in target-level mode.
+    const barTarget = ctx.settings.dialMode === "target-level" ? ctx.dialValueLtr : undefined;
+    const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, 184, 30, displayUnits, barTarget);
     const feedback: DeckFeedbackPayload = {
       title: "FUEL",
-      value: buildReadout(totalLtr, maxLtr, displayUnits),
+      value: buildValueText(ctx.settings.dialMode, addLtr, totalLtr, ctx.dialValueLtr, displayUnits),
       bar: svgToDataUri(barSvg),
     };
     await ctx.action.setFeedback(feedback);

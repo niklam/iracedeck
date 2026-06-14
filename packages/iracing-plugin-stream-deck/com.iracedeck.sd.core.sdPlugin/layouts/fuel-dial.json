@@ -14,7 +14,7 @@
       "type": "text",
       "rect": [0, 28, 200, 32],
       "alignment": "center",
-      "font": { "size": 26, "weight": 700 }
+      "font": { "size": 22, "weight": 700 }
     },
     {
       "key": "bar",
