@@ -469,24 +469,24 @@ describe("fuel-dial pure helpers", () => {
       expect(withoutTarget).not.toContain('fill="#e74c3c"');
     });
 
-    it("extends the target line past the bar top and bottom (padded viewBox)", () => {
+    it("confines the target line to the full bar height (no overhang, unpadded viewBox)", () => {
       const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1, 65);
 
-      // The viewBox is padded vertically so the overhang isn't clipped: its
-      // y-origin is negative and its height exceeds the bar height.
+      // The viewBox spans exactly the bar (no vertical padding) so the track +
+      // segments fill the full pixmap rect.
       const vb = /viewBox="0 (-?\d+(?:\.\d+)?) 184 (\d+(?:\.\d+)?)"/.exec(svg);
 
       expect(vb).not.toBeNull();
-      expect(Number(vb![1])).toBeLessThan(0); // top padding above y=0
-      expect(Number(vb![2])).toBeGreaterThan(30); // taller than the bar band
+      expect(Number(vb![1])).toBe(0); // y-origin at 0, no top padding
+      expect(Number(vb![2])).toBe(30); // exactly the bar height
 
-      // The red marker rect starts above y=0 and is taller than the bar.
+      // The red marker rect spans the full bar height (y=0, height=bar) — confined.
       const line = /<rect[^>]*fill="#e74c3c"[^>]*\/>/.exec(svg)?.[0] ?? "";
       const lineY = /y="(-?\d+(?:\.\d+)?)"/.exec(line);
       const lineH = /height="(\d+(?:\.\d+)?)"/.exec(line);
 
-      expect(Number(lineY?.[1])).toBeLessThan(0);
-      expect(Number(lineH?.[1])).toBeGreaterThan(30);
+      expect(Number(lineY?.[1])).toBe(0);
+      expect(Number(lineH?.[1])).toBe(30);
     });
   });
 
@@ -530,15 +530,15 @@ describe("fuel-dial pure helpers", () => {
       expect(result).toContain("data:image/svg+xml");
       expect(decoded).toContain("+20 = 65 L");
       // Mode-aware title replaces the static "FUEL".
-      expect(decoded).toContain("Fuel: Add Amount");
+      expect(decoded).toContain("Add Fuel");
     });
 
-    it("fill-to: shows the integer target with an arrow and the Fill To title", () => {
+    it("fill-to: shows the integer target with an arrow and the Fuel Target title", () => {
       const result = generateFuelDialSvg({ dialMode: "fill-to" } as never, 45, 20, 90, 1, true, 65);
       const decoded = decodeURIComponent(result);
 
       expect(decoded).toContain("→ 65 L");
-      expect(decoded).toContain("Fuel: Fill To");
+      expect(decoded).toContain("Fuel Target");
     });
 
     it("renders total even when capacity unknown (add-amount, no cap)", () => {
@@ -551,9 +551,9 @@ describe("fuel-dial pure helpers", () => {
   });
 
   describe("buildTitleText", () => {
-    it("is mode-aware: Add Amount vs Fill To", () => {
-      expect(buildTitleText("add-amount")).toBe("Fuel: Add Amount");
-      expect(buildTitleText("fill-to")).toBe("Fuel: Fill To");
+    it("is mode-aware: Add Fuel vs Fuel Target", () => {
+      expect(buildTitleText("add-amount")).toBe("Add Fuel");
+      expect(buildTitleText("fill-to")).toBe("Fuel Target");
     });
   });
 

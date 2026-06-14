@@ -101,7 +101,7 @@ const BAR_TRACK = "#1a1f26";
 const BAR_LABEL = "#0d1117";
 /** Color of the on-bar "+add" amount label (white, sits over the green/gray add segment). */
 const ADD_LABEL = "#ffffff";
-/** Color of the "fill-to" target marker line (red, extends past the bar vertically). */
+/** Color of the "fill-to" target marker line (red, confined to the bar height). */
 const TARGET_LINE = "#e74c3c";
 
 const FuelDialSettings = CommonSettings.extend({
@@ -266,10 +266,10 @@ export function buildValueText(
  * @internal Exported for testing
  *
  * The mode-aware title shown on the touch strip and keypad icon:
- * `"Fuel: Add Amount"` in add-amount mode, `"Fuel: Fill To"` in fill-to mode.
+ * `"Add Fuel"` in add-amount mode, `"Fuel Target"` in fill-to mode.
  */
 export function buildTitleText(dialMode: FuelDialSettings["dialMode"]): string {
-  return dialMode === "fill-to" ? "Fuel: Fill To" : "Fuel: Add Amount";
+  return dialMode === "fill-to" ? "Fuel Target" : "Add Fuel";
 }
 
 /**
@@ -437,11 +437,10 @@ export function roundedBarPath(
  *   when its segment is too narrow to hold it legibly (never drawn over the dark
  *   empty track).
  * - In fill-to mode a thin RED vertical marker line marks the target total
- *   (`targetLtr` set + capacity known); it extends a few px beyond the top and
- *   bottom edges of the bar. The SVG viewBox is padded vertically so the overhang
- *   is not clipped — the whole graphic scales into the same pixmap rect, so the
- *   bar reads at the same place while the line visibly pokes out top and bottom.
- *   Omitted in add-amount mode.
+ *   (`targetLtr` set + capacity known); it spans the FULL bar height (y=0 to
+ *   y=height) and is confined to the bar — no overhang past the top/bottom. The
+ *   SVG viewBox is `0 0 width height` so the track + segments fill the full
+ *   pixmap rect. Omitted in add-amount mode.
  */
 export function renderFuelBarSvg(
   currentLtr: number,
@@ -461,9 +460,6 @@ export function renderFuelBarSvg(
   const fontSize = Math.max(8, Math.round(heightPx * 0.5));
   const labelY = heightPx / 2;
   const pad = Math.max(3, Math.round(heightPx * 0.18));
-  // Vertical overhang for the target line; the viewBox is padded by this on the
-  // top and bottom so the line can poke past the bar without being clipped.
-  const overhang = Math.max(4, Math.round(heightPx * 0.2));
 
   const parts = [
     `<rect x="0" y="0" width="${widthPx}" height="${heightPx}" rx="${radius}" fill="${BAR_TRACK}"/>`,
@@ -483,12 +479,12 @@ export function renderFuelBarSvg(
     );
   }
 
-  // Fill-to target marker line: red, ~2-3px wide, extending past the bar top/bottom.
+  // Fill-to target marker line: red, ~2-3px wide, spanning the full bar height (confined to the bar).
   if (targetLtr !== undefined && maxLtr !== undefined && maxLtr > 0) {
     const targetX = Math.max(0, Math.min(widthPx, (targetLtr / span) * widthPx));
     const lineW = Math.max(2, Math.min(3, Math.round(heightPx * 0.1)));
     parts.push(
-      `<rect x="${(targetX - lineW / 2).toFixed(2)}" y="${(-overhang).toFixed(2)}" width="${lineW}" height="${(heightPx + overhang * 2).toFixed(2)}" fill="${TARGET_LINE}"/>`,
+      `<rect x="${(targetX - lineW / 2).toFixed(2)}" y="0" width="${lineW}" height="${heightPx}" fill="${TARGET_LINE}"/>`,
     );
   }
 
@@ -514,12 +510,9 @@ export function renderFuelBarSvg(
     );
   }
 
-  // The viewBox is padded by `overhang` top and bottom so the target line's
-  // overhang renders within a slightly taller coordinate space mapped into the
-  // same pixmap rect; the bar band stays at y in [0, heightPx].
-  const vbHeight = heightPx + overhang * 2;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 ${-overhang} ${widthPx} ${vbHeight}" width="${widthPx}" height="${vbHeight}">${parts.join("")}</svg>`;
+  // The viewBox spans exactly the bar so the track + segments fill the full
+  // pixmap rect; the target line is confined to y in [0, heightPx].
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${parts.join("")}</svg>`;
 }
 
 /**
@@ -561,7 +554,7 @@ export function generateFuelDialSvg(
           fill="${graphic1}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${valueText}</text>
     <g transform="translate(${barX}, ${barY})">${stripSvgWrapper(barSvg)}</g>`;
 
-  // Mode-aware title ("Fuel: Add Amount" / "Fuel: Fill To") replaces the static
+  // Mode-aware title ("Add Fuel" / "Fuel Target") replaces the static
   // "FUEL" label. The longer text is sized down so it fits the 144-wide canvas.
   const resolvedTitle = resolveTitleSettings(fuelDialTemplate, getGlobalTitleSettings(), settings.titleOverrides);
   const titleText = buildTitleText(settings.dialMode);
