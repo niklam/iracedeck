@@ -114,7 +114,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Pit Quick Actions | 3 | clear-all-checkboxes, windshield-tearoff (telemetry-aware), request-fast-repair (telemetry-aware) |
 | Fuel Service | 8 | toggle-fuel-fill (telemetry-aware), add-fuel, reduce-fuel, set-fuel-amount, clear-fuel, toggle-autofuel (telemetry-aware), lap-margin-increase, lap-margin-decrease |
 | Tire Service | 4 | change-all-tires, clear-tires, toggle-tires (telemetry-aware per-wheel), change-compound (telemetry-aware) |
-| Fuel Dial | 1 | single mode, no Mode dropdown (`encoder: true`, telemetry-aware) — Stream Deck+ dial sets an absolute fuel-to-add amount (iRacing API `pit.fuel`, clamped to tank capacity) with a live touch-strip readout; also works as a plain keypad button and a Mirabox knob. Press Action (Toggle Fueling / Clear Fueling / Fill To Max) and Long-Press Action are settings, not modes. First dial-capable action of the #681 rebuild |
+| Fuel Dial | 1 | single mode, no Mode dropdown (`encoder: true`, telemetry-aware) — Stream Deck+ dial sets fuel via two Dial Modes: Add amount (amount to add) or Target level (desired total after the stop, rounded up and kept topped up every 30 s while fuel-fill is on). Sends iRacing API `pit.fuel` (clamped to remaining tank space) with a live touch-strip readout and a two-segment fuel bar (current + add over capacity); also works as a plain keypad button and a Mirabox knob. Dial Mode, Step Size, Press Action / Long-Press Action / Touch Screen action (Toggle Fueling / Clear Fueling / Fill To Max / None) and Units are settings, not modes. Toggle reads the live `PitSvFlags`/`FuelFill` checkbox. First dial-capable action of the #681 rebuild |
 
 ### Car Setup
 

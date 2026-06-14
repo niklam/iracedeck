@@ -1,6 +1,6 @@
 # Fuel Dial
 
-Sets the pit-stop fuel-to-add amount from a Stream Deck+ dial with a live touch-strip readout.
+Sets the pit-stop fuel from a Stream Deck+ dial with a live touch-strip readout. The dial sets either the amount to add or the desired total after the stop, depending on the Dial Mode.
 
 ## Properties
 
@@ -18,19 +18,18 @@ This is the first action to (re-)support a Stream Deck+ dial/encoder and touchsc
 
 ### Encoder (Dial)
 
-- **Rotate**: Adjusts the fuel-to-add target by the step size per detent, in the displayed unit. The new amount is sent to iRacing as an absolute fuel request (`pit.fuel`) and clamped to the car's tank capacity.
+- **Rotate**: Adjusts the dialed value by the step size per detent, in the displayed unit. In **Add amount** mode this is the amount to add; in **Target level** mode it is the desired total after the stop. The resulting amount to add is sent to iRacing (`pit.fuel`) and clamped to the remaining tank space.
 - **Short press**: Runs the configured Press Action.
 - **Long press** (Elgato only): Runs the configured Long-Press Action.
 
 ### Touchscreen (Elgato only)
 
-- Shows a live "<target> / <capacity> <unit>" readout with a fill bar.
-- **Tap**: Mimics the dial button — runs the configured Press Action.
-- **Long touch**: Runs the configured Long-Press Action.
+- Always shows a live "<total> / <capacity> <unit>" readout (the total after the stop) with a two-segment fuel bar: the static current fuel as the first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off).
+- **Tap**: Runs the configured Touch Screen action (independent of the dial-button Press Action). Set to **None** to disable taps; the readout still shows.
 
 ### Button Press (keypad)
 
-- The icon shows the current fuel-to-add value with a fill bar (no rotation support on a plain keypad).
+- The icon shows the total after the stop with the same two-segment fuel bar (no rotation support on a plain keypad).
 - **Press**: Runs the configured Press Action.
 
 ### Platform differences
@@ -45,21 +44,27 @@ This is the first action to (re-)support a Stream Deck+ dial/encoder and touchsc
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Step Size | Number | 1 | Amount the target changes per detent, in the displayed unit |
-| Press Action | Dropdown | Toggle Fueling | What a short press or touchscreen tap does |
-| Long-Press Action | Dropdown | Clear Fueling | What a long dial press or long touch does (Elgato only) |
-| Touch Screen | Checkbox | Checked | Show the fuel readout on the touch strip (Elgato only) |
+| Dial Mode | Dropdown | Add amount | Whether the dial sets the amount to add or the target total |
+| Step Size | Number | 1 | Amount the dialed value changes per detent, in the displayed unit |
+| Press Action | Dropdown | Toggle Fueling | What a short dial press (or keypad press) does |
+| Long-Press Action | Dropdown | Clear Fueling | What a long dial press does (Elgato only) |
+| Touch Screen | Dropdown | Toggle Fueling | What a touch-strip tap does, or None to disable taps (Elgato only) |
 | Units | Dropdown | Auto (from iRacing) | Display unit for the readout and step |
 
-### Press Action Options
-- **Toggle Fueling** - Arms a fuel request for the current target, or clears it if already armed
+### Dial Mode Options
+- **Add amount** - The dial sets the amount of fuel to add; the request is clamped to the remaining tank space
+- **Target level** - The dial sets the total you want in the tank after the stop. The amount to add (target − current) is rounded up so the stop never finishes under target, and is kept topped up automatically (re-sent every 30 s) as fuel burns while fuel-fill is on
+
+### Press / Touch Screen Action Options
+- **Toggle Fueling** - Reads the live fuel-fill checkbox: requests the dialed amount when off, or clears it when on
 - **Clear Fueling** - Clears the pending fuel request
-- **Fill To Max** - Sets the target to the full tank capacity and arms the request (no-op when capacity is unknown)
+- **Fill To Max** - Fills the tank to capacity (no-op when capacity is unknown)
+- **None** (Touch Screen only) - A tap does nothing; the readout still shows
 
 ### Long-Press Action Options
 - **Clear Fueling** - Clears the pending fuel request
-- **Fill To Max** - Sets the target to the full tank capacity and arms the request
-- **Toggle Fueling** - Arms or clears the fuel request for the current target
+- **Fill To Max** - Fills the tank to capacity
+- **Toggle Fueling** - Requests or clears the fuel request based on the live fuel-fill state
 - **None** - A long press does nothing; any press fires the Press Action on release
 
 ### Units Options
@@ -69,23 +74,24 @@ This is the first action to (re-)support a Stream Deck+ dial/encoder and touchsc
 
 ## Icon States
 
-The Fuel Dial icon uses a distinct dial/knob motif so it is visually distinguishable from the Fuel Service icons. It shows the current fuel-to-add value with a fill bar beneath it.
+The Fuel Dial icon uses a distinct dial/knob motif so it is visually distinguishable from the Fuel Service icons. It shows the total after the stop with a two-segment fuel bar beneath it (current fuel + fuel-to-add over capacity).
 
 | State | Icon |
 |-------|------|
-| Fueling armed | "FUEL" title, current value, green fill bar |
-| Fueling not armed | "FUEL" title, current value, gray fill bar |
-| Tank capacity unknown | Value shown with an empty fill bar; touch-strip readout shows `--` for the capacity |
+| Fuel-fill on | "FUEL" title, total value, current segment + green add segment |
+| Fuel-fill off | "FUEL" title, total value, current segment + gray add segment |
+| Tank capacity unknown | Total shown; touch-strip readout shows `--` for the capacity |
 
 ## Telemetry Integration
 
-- The target seeds from the live pit fuel request (`PitSvFuel`) on appear and re-seeds from telemetry when the user has not rotated recently, so the readout stays in sync with iRacing.
-- The tank capacity is read from session info (`DriverCarFuelMaxLtr × DriverCarMaxFuelPct`) and used to clamp the target and drive the fill bar; when unknown, only the lower bound (0) is enforced.
+- Fueling on/off is derived from the live pit fuel-fill checkbox (`PitSvFlags` / `FuelFill`) on every event — never a sticky local flag — so Toggle alternates correctly with iRacing.
+- The current fuel level is read from `FuelLevel` (the static first bar segment); the dialed value seeds from the live pit fuel request (`PitSvFuel`) on appear and re-seeds from telemetry when the user has not rotated recently.
+- The tank capacity is read from session info (`DriverCarFuelMaxLtr × DriverCarMaxFuelPct`) and used to clamp the amount to add and cap the total; when unknown, only the lower bound (0) is enforced.
 - The display unit follows iRacing's `DisplayUnits` when **Units** is set to Auto.
 
 ## Notes
 
-- All communication uses the iRacing API (`pit.fuel` absolute set and `pit.clearFuel`) — there are no key bindings and no chat commands.
-- The rotation sets an **absolute** fuel amount, not a relative add/reduce; it is always clamped to the car's tank capacity.
+- All communication uses the iRacing API (`pit.fuel` and `pit.clearFuel`) — there are no key bindings and no chat commands.
+- In Target level mode the request is recomputed and re-sent every 30 s while fuel-fill is on, so the target stays topped up as fuel burns; it is never re-armed while fuel-fill is off (the user's toggle-off is respected).
 - The Long-Press Action and Touch Screen settings are hidden on Mirabox, where knobs cannot hold reliably and there is no touchscreen.
-- Disable the touch screen for VR drivers who cannot see the touch strip — the dial and press still work.
+- Set Touch Screen to None for VR drivers who cannot see the touch strip — the dial and press still work, and the readout still renders.

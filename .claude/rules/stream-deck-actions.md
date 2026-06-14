@@ -385,7 +385,7 @@ Declare both controllers and a custom touch layout. Elgato gets an `Encoder` blo
 "Controllers": ["Keypad", "Knob"]
 ```
 
-The custom layout JSON is committed under `<sdPlugin>/layouts/*.json` (Elgato only). Item `key`s (e.g. `title`, `value`, `indicator`) are exactly what `setFeedback` addresses. See `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/layouts/fuel-dial.json`.
+The custom layout JSON is committed under `<sdPlugin>/layouts/*.json` (Elgato only). Item `key`s (e.g. `title`, `value`, `bar`) are exactly what `setFeedback` addresses — a `bar`/`gbar` item takes a number or object, a `text` item a string, and a `pixmap` item a data-URI string (fuel-dial draws its two-segment bar as a `pixmap`). See `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/layouts/fuel-dial.json`.
 
 ### Action handlers
 
@@ -399,7 +399,7 @@ override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
 
 // Branch surfaces inside render(): isKey() → key image, isDial() → touch-strip feedback
 if (ev.action.isKey()) await this.setKeyImage(ev, svg);
-if (ev.action.isDial()) await ev.action.setFeedback({ title: "FUEL", value: "74 / 100 L", indicator: { value: 74, bar_fill_c: "#2ecc71" } });
+if (ev.action.isDial()) await ev.action.setFeedback({ title: "FUEL", value: "65 / 90 L", bar: "data:image/svg+xml,…" });
 ```
 
 - **Push the touchscreen** with `ev.action.setFeedback({...})` (keyed by layout item `key`, values typed by `DeckFeedbackPayload`) or switch layouts at runtime with `ev.action.setFeedbackLayout("layouts/other.json")`.
