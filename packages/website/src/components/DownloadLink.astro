@@ -1,0 +1,55 @@
+---
+// Renders a download / install link and reports a GA4 `file_download` event when
+// it is clicked, so install activity can be broken down by platform, install
+// method, and the app version that was current at the time. A single bundled
+// <script> (below) wires every <DownloadLink> on the page from its data-
+// attributes — Astro dedupes the script, so it is emitted and runs once no
+// matter how many links use this component.
+interface Props {
+  /** Destination URL (a direct-download redirect or an external store page). */
+  href: string;
+  /** Ecosystem id, matching the values used elsewhere (see ChangelogLeadIn). */
+  platform: "stream-deck" | "mirabox" | "ulanzi";
+  /** How the user installs: our direct download, or an external store. */
+  method: "direct" | "store";
+  /** Optional CSS class forwarded to the anchor (e.g. "download-button"). */
+  class?: string;
+}
+
+const { href, platform, method, class: className } = Astro.props;
+
+// Latest-release version, resolved at build time from the same source as the
+// version badge. Empty when no release version is injected (e.g. local dev) — it
+// is then omitted from the event rather than reported as a blank value.
+const appVersion = import.meta.env.PUBLIC_IRACEDECK_VERSION ?? "";
+---
+
+<a
+  href={href}
+  class={className}
+  data-download-link
+  data-platform={platform}
+  data-method={method}
+  data-app-version={appVersion}
+>
+  <slot />
+</a>
+
+<script>
+  // gtag() is defined synchronously in the document head (it queues into
+  // dataLayer until the GA library finishes loading), so the event is captured
+  // even on the click that navigates away — GA4 flushes it via sendBeacon. We
+  // never delay or block the navigation / download.
+  for (const el of document.querySelectorAll<HTMLAnchorElement>("a[data-download-link]")) {
+    el.addEventListener("click", () => {
+      const gtag = (window as unknown as { gtag?: (...args: unknown[]) => void }).gtag;
+      if (typeof gtag !== "function") return;
+
+      gtag("event", "file_download", {
+        platform: el.dataset.platform,
+        method: el.dataset.method,
+        app_version: el.dataset.appVersion || undefined,
+      });
+    });
+  }
+</script>
