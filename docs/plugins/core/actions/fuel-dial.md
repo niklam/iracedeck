@@ -23,11 +23,11 @@ This is the first action to (re-)support a Stream Deck+ dial/encoder and touchsc
   - **Fill To** — the dialed value is the desired **total** after the stop, kept a whole integer in the displayed unit. The amount to add (`target − current`) is sent to iRacing (`pit.fuel`) and **auto-recomputes** as fuel burns. The readout shows `→ <target>` (e.g. `→ 65 L`).
 - **Short press**: Runs the configured Press Action.
 - **Long press** (Elgato only): Runs the configured Long-Press Action.
-- The touch-strip title and keypad title are **mode-aware**: `Fuel: Add Amount` in Add Amount mode, `Fuel: Fill To` in Fill To mode.
+- The touch-strip title and keypad title are **mode-aware**: `Add Fuel` in Add Amount mode, `Fuel Target` in Fill To mode.
 
 ### Touchscreen (Elgato only)
 
-- Always shows a live readout (per-mode, see above) with one continuous two-segment fuel bar over the tank capacity: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off). Only the outer corners are rounded; the current↔add boundary is flush. Small on-bar labels show the current amount (left, dark over the light current segment) and the amount to add (right, white over the green/gray add segment); a label is omitted when its segment is too narrow to hold it. In **Fill To** mode a thin **red** vertical target line marks the target total, extending past the bar's top and bottom edges.
+- Always shows a live readout (per-mode, see above) with one continuous two-segment fuel bar over the tank capacity: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off). Only the outer corners are rounded; the current↔add boundary is flush. Small on-bar labels show the current amount (left, dark over the light current segment) and the amount to add (right, white over the green/gray add segment); a label is omitted when its segment is too narrow to hold it. In **Fill To** mode a thin **red** vertical target line marks the target total, spanning the full bar height (confined to the bar).
 - The bar and readout refresh every 5 seconds as a heartbeat **and immediately when the displayed state changes** (the fuel-fill color flips, or a displayed value moves), throttled to stay within the touch-strip update cap — so the readout reacts fast to telemetry rather than lagging the 5-second timer. They also update immediately on any rotate/press/settings change.
 - **Tap**: Runs the configured Touch Screen action (independent of the dial-button Press Action). Set to **None** to disable taps; the readout still shows.
 
@@ -84,12 +84,12 @@ This is the first action to (re-)support a Stream Deck+ dial/encoder and touchsc
 
 The Fuel Dial icon is visually distinguishable from the Fuel Service icons. It shows the mode-aware title, the per-mode readout, and a continuous two-segment fuel bar beneath it (current fuel + fuel-to-add over capacity) with on-bar labels.
 
-| State                     | Icon                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| Add Amount, fuel-fill on  | "Fuel: Add Amount" title, `+<add> = <total>`, neutral current segment + green add segment       |
-| Add Amount, fuel-fill off | "Fuel: Add Amount" title, `+<add> = <total>`, neutral current segment + gray add segment        |
-| Fill To                   | "Fuel: Fill To" title, `→ <target>`, two-segment bar + red vertical target line (overhangs bar) |
-| Tank capacity unknown     | Readout shown; the bar falls back to the requested span                                         |
+| State                     | Icon                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| Add Amount, fuel-fill on  | "Add Fuel" title, `+<add> = <total>`, neutral current segment + green add segment              |
+| Add Amount, fuel-fill off | "Add Fuel" title, `+<add> = <total>`, neutral current segment + gray add segment               |
+| Fill To                   | "Fuel Target" title, `→ <target>`, two-segment bar + red vertical target line (within the bar) |
+| Tank capacity unknown     | Readout shown; the bar falls back to the requested span                                        |
 
 ## Telemetry Integration
 
