@@ -150,11 +150,11 @@ interface FuelDialContext {
   lastChangeRenderAt: number;
   /**
    * Whole-DISPLAY-unit add value at the last continuous fill-to re-broadcast, or
-   * null when nothing is armed. The continuous monitor gates on this (not the raw
-   * add) so it re-broadcasts at most once per whole unit: at/near tank capacity
-   * `computeAddLtr` clamps the rounded-up add to the FRACTIONAL headroom, which
-   * drifts by a sub-litre amount on every tick — gating on the raw value would
-   * spam `pit.fuel` ~60×/sec (issue #681).
+   * null when nothing is armed. The continuous monitor gates on this so it
+   * re-broadcasts at most once per whole unit. `computeAddLtr` returns the add
+   * rounded UP to a whole display unit (no fractional headroom clamp), so the
+   * whole-unit key only moves when the rounded-up need crosses a whole-unit
+   * boundary — never sub-litre spam (issue #681).
    */
   lastSentWholeAdd: number | null;
   throttle: ThrottleState;
@@ -340,11 +340,15 @@ export function roundToWholeDisplayLtr(liters: number, displayUnits: number): nu
  *   whole integer display value). The add is `max(0, target − current)`, rounded
  *   UP to the next whole DISPLAY unit so the stop never finishes below the
  *   (integer) target — the round-up alone guarantees current + add ≥ target. The
- *   result is clamped to the remaining tank space so it never over-fills. Because
- *   the add is recomputed against the LIVE fuel level on every telemetry tick
- *   (continuous monitoring), it stays fresh as fuel burns and needs no extra
- *   safety buffer. When the need is ≤ 0 (target at/below current) the add stays 0
- *   so the "0 → clearFuel" path still fires (issue #681).
+ *   add is NOT clamped to the remaining tank space: it is simply the amount needed
+ *   to reach the target, and may exceed the CURRENT remaining space because more
+ *   fuel burns before the pit stop (iRacing only fills up to the tank capacity
+ *   anyway). Because the add is recomputed against the LIVE fuel level on every
+ *   telemetry tick (continuous monitoring), it stays fresh as fuel burns and needs
+ *   no extra safety buffer. The unclamped add is always a clean whole display value,
+ *   so the continuous re-send fires exactly once per whole unit. When the need is
+ *   ≤ 0 (target at/below current) the add stays 0 so the "0 → clearFuel" path still
+ *   fires (issue #681).
  */
 export function computeAddLtr(
   dialMode: FuelDialSettings["dialMode"],
@@ -354,15 +358,15 @@ export function computeAddLtr(
   displayUnits: number,
 ): number {
   if (dialMode === "fill-to") {
-    const headroom = maxLtr === undefined ? undefined : Math.max(0, maxLtr - currentLtr);
     const rawAdd = Math.max(0, dialValueLtr - currentLtr);
     // Round the ADD up to the next whole display unit so current + add is at or
-    // just above the integer target — a stop never finishes under target. A need
-    // of ≤ 0 stays 0 so the "0 → clearFuel" path still fires.
+    // just above the integer target — a stop never finishes under target. The add
+    // is the amount NEEDED to reach the target; it is NOT clamped to the current
+    // remaining space (more fuel burns before the stop, and iRacing fills only up
+    // to capacity). A need of ≤ 0 stays 0 so the "0 → clearFuel" path still fires.
     const addDisplay = Math.ceil(fuelToDisplayUnits(rawAdd, displayUnits));
-    const addLtr = addDisplay > 0 ? fuelFromDisplayUnits(addDisplay, displayUnits) : 0;
 
-    return clampTargetLtr(addLtr, headroom);
+    return addDisplay > 0 ? fuelFromDisplayUnits(addDisplay, displayUnits) : 0;
   }
 
   // add-amount: the dial spans the FULL tank range; clamp to [0, capacity].
@@ -1050,13 +1054,12 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // fill-to mode, recompute the add from the LIVE fuel level on every tick and
     // re-broadcast only when the whole-DISPLAY-unit add actually changes (i.e.
     // about once per litre/gallon burned). The round-up keeps the request always
-    // at/above target with no buffer. We gate on the WHOLE-unit value, not the raw
-    // add: at/near tank capacity `computeAddLtr` clamps the rounded-up add to the
-    // FRACTIONAL headroom (`maxLtr − currentLtr`), which drifts sub-litre every
-    // tick — gating on the raw add would spam `pit.fuel` ~60×/sec. We never re-send
-    // when fuel-fill is OFF (the user's toggle-off is respected) nor in add-amount
-    // mode (its add is fixed). The render-on-change path below pushes the resulting
-    // feedback — `sendFuel` here only updates the request.
+    // at/above target with no buffer. `computeAddLtr` returns the rounded-up need
+    // as a clean whole display value (no headroom clamp), so the whole-unit key
+    // only moves when the need crosses a whole-unit boundary — no sub-litre spam.
+    // We never re-send when fuel-fill is OFF (the user's toggle-off is respected)
+    // nor in add-amount mode (its add is fixed). The render-on-change path below
+    // pushes the resulting feedback — `sendFuel` here only updates the request.
     if (ctx.settings.dialMode === "fill-to" && this.isFuelFillOn()) {
       const addLtr = this.effectiveAddLtr(ctx);
       const displayUnits = this.effectiveDisplayUnits(ctx);

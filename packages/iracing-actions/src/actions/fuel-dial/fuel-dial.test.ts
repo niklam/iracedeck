@@ -387,13 +387,19 @@ describe("fuel-dial pure helpers", () => {
       expect(computeAddLtr("fill-to", 100, 90, 200, 0)).toBeCloseTo(3 * 3.78541, 4);
     });
 
-    it("fill-to clamps the add to remaining tank space at the full tank", () => {
-      // target == capacity 90, current 42 -> need 48, headroom 48 -> 48.
-      expect(computeAddLtr("fill-to", 90, 42, 90, 1)).toBe(48);
-      // target 90, current 50, max 90 -> need 40, headroom 40 -> 40.
+    it("fill-to does NOT clamp the add to remaining tank space at the full tank (#681)", () => {
+      // target == capacity 90, current 41.9 -> need 48.1 -> ceil 49 (NOT clamped to
+      // headroom 48.1/48). The request may exceed the CURRENT remaining space because
+      // more fuel burns before the stop; iRacing fills only up to capacity anyway.
+      expect(computeAddLtr("fill-to", 90, 41.9, 90, 1)).toBe(49);
+      // target 90, current 43.9 -> need 46.1 -> ceil 47 (unclamped).
+      expect(computeAddLtr("fill-to", 90, 43.9, 90, 1)).toBe(47);
+      // target 90, current 44.0 -> need 46.0 -> already whole -> 46.
+      expect(computeAddLtr("fill-to", 90, 44.0, 90, 1)).toBe(46);
+      // target 90, current 0 -> need 90 -> 90 (add never exceeds capacity since target ≤ capacity).
+      expect(computeAddLtr("fill-to", 90, 0, 90, 1)).toBe(90);
+      // a whole-number gap at full tank is not bumped: target 90, current 50 -> 40.
       expect(computeAddLtr("fill-to", 90, 50, 90, 1)).toBe(40);
-      // target above capacity is impossible to over-fill: headroom caps it.
-      expect(computeAddLtr("fill-to", 200, 50, 90, 1)).toBe(40);
     });
 
     it("fill-to returns 0 when already at/above target (so the 0 → clearFuel path fires)", () => {
@@ -467,6 +473,32 @@ describe("fuel-dial pure helpers", () => {
       expect(svg).toContain(">45<");
       // The add segment is too narrow; its label is omitted (no over-track text).
       expect(svg).not.toContain(">+1<");
+    });
+
+    it("caps the add segment to the track when current + add exceeds capacity (#681)", () => {
+      // The sent add may now make current + add > capacity (e.g. 41.9 + 49 = 90.9 in
+      // a 90 L tank), since the request is the amount NEEDED to reach the target and
+      // more fuel burns before the stop. The bar must still cap the green segment to
+      // the track — never overflow past the right edge.
+      const widthPx = 184;
+      const svg = renderFuelBarSvg(41.9, 49, 90, true, widthPx, 30, 1);
+
+      // Every path's geometry stays within [0, widthPx]: pull all x-like numeric
+      // coordinates from the segment paths and assert none exceeds the track width
+      // (allow a hair for rounding).
+      const paths = [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+
+      expect(paths.length).toBeGreaterThan(0);
+
+      for (const d of paths) {
+        // Coordinates appear as "<num> <num>" pairs; the first of each pair is x.
+        const coords = [...d.matchAll(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g)];
+
+        for (const [, x] of coords) {
+          expect(Number(x)).toBeLessThanOrEqual(widthPx + 0.01);
+          expect(Number(x)).toBeGreaterThanOrEqual(-0.01);
+        }
+      }
     });
 
     it("draws a RED target line ONLY when a target is supplied (fill-to mode)", () => {
@@ -1045,6 +1077,33 @@ describe("FuelDial action", () => {
       expect(mockPitFuel).toHaveBeenLastCalledWith(47);
     });
 
+    it("broadcasts the unclamped rounded-up add (49, not the 48 fractional headroom) at fuel 41.9 target 90 (#681)", async () => {
+      // The bug: at/near a full tank the rounded-up add (49) was clamped down to the
+      // fractional remaining space (48.1, shown as 48), under-requesting. The fix
+      // sends the unclamped ceil (49). Continuous monitor at fuel 41.9, target 90,
+      // fuel-fill ON must broadcast 49.
+      const ctx = dialContext("cm-unclamped");
+      vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      // 90L tank, target == capacity (90). Fuel ON, current 41.9.
+      mockGetSessionInfo.mockReturnValue(SESSION_90L);
+      mockGetCurrentTelemetry.mockReturnValue({
+        DisplayUnits: 1,
+        PitSvFuel: 48,
+        FuelLevel: 41.9,
+        PitSvFlags: FUEL_FILL,
+      });
+      const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to", pressAction: "toggle-fueling" };
+      await appear(ctx, settings);
+
+      const onTick = telemetryCallback();
+
+      // First tick at 41.9: need = 90 − 41.9 = 48.1 → ceil 49 (NOT clamped to 48.1/48).
+      onTick({ DisplayUnits: 1, PitSvFuel: 48, FuelLevel: 41.9, PitSvFlags: FUEL_FILL });
+
+      expect(mockPitFuel).toHaveBeenLastCalledWith(49);
+    });
+
     it("does NOT re-send on the first tick after a fill-to ROTATE (flushSend keeps lastSentWholeAdd in sync)", async () => {
       // Regression (issue #681): flushSend must mirror doPress and update
       // ctx.lastSentWholeAdd, else the first telemetry tick after a rotate sees a
@@ -1080,11 +1139,11 @@ describe("FuelDial action", () => {
     });
 
     it("does NOT spam pit.fuel per tick when filling to (near) full, then re-sends once across a whole-unit boundary", async () => {
-      // Regression for the headroom-clamp spam (issue #681): with the target AT
-      // capacity, computeAddLtr clamps the rounded-up add to the FRACTIONAL
-      // headroom (maxLtr − currentLtr), which drifts sub-litre every tick. Gating
-      // on the raw add re-broadcast pit.fuel ~60×/sec; gating on the WHOLE-unit
-      // add must broadcast at most once per whole litre.
+      // With the target AT capacity the add (target − current, rounded UP) is a
+      // clean whole display value and is NOT clamped to the fractional headroom
+      // (issue #681). As fuel burns within the same whole litre the rounded-up add
+      // stays constant, so the whole-unit gate broadcasts at most once per litre —
+      // no ~60×/sec spam.
       const ctx = dialContext("cm-full");
       vi.stubGlobal("__FEATURE_DIAL_LONG_PRESS__", false);
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
@@ -1101,16 +1160,15 @@ describe("FuelDial action", () => {
 
       const onTick = telemetryCallback();
 
-      // Prime the re-send baseline: first tick at 43.92 computes the clamped add
-      // (headroom = 90 − 43.92 = 46.08, rounded-up need 47 → clamped to 46.08) and
-      // broadcasts it (lastSentWholeAdd was null after appear).
+      // Prime the re-send baseline: first tick at 43.92 computes the add
+      // (need = 90 − 43.92 = 46.08 → ceil 47, unclamped) and broadcasts it
+      // (lastSentWholeAdd was null after appear).
       onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 43.92, PitSvFlags: FUEL_FILL });
       mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
 
-      // Several ticks burning WITHIN the same whole litre (43.92 → 43.90 → 43.88).
-      // The clamped fractional add drifts every tick, but the whole-unit add stays
-      // 46 — so NOT a single re-send across these ticks.
+      // Several ticks burning WITHIN the same whole litre (43.92 → 43.81). The
+      // rounded-up need stays 47 (need 46.x → ceil 47), so NOT a single re-send.
       for (const fuel of [43.9, 43.88, 43.85, 43.81]) {
         mockGetCurrentTelemetry.mockReturnValue({
           DisplayUnits: 1,
@@ -1123,8 +1181,9 @@ describe("FuelDial action", () => {
 
       expect(mockPitFuel).not.toHaveBeenCalled();
 
-      // Drop across the whole-litre boundary (43.81 → 42.95): the whole-unit add
-      // moves 46 → 47 (round(90 − 42.95) = round(47.05) = 47) → exactly ONE re-send.
+      // Drop across the whole-litre boundary (43.81 → 42.95): the need crosses 47
+      // (90 − 42.95 = 47.05 → ceil 48), so the whole-unit add moves 47 → 48 →
+      // exactly ONE re-send.
       mockGetCurrentTelemetry.mockReturnValue({
         DisplayUnits: 1,
         PitSvFuel: 46,
@@ -1134,6 +1193,7 @@ describe("FuelDial action", () => {
       onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 42.95, PitSvFlags: FUEL_FILL });
 
       expect(mockPitFuel).toHaveBeenCalledTimes(1);
+      expect(mockPitFuel).toHaveBeenLastCalledWith(48);
     });
 
     it("does NOT re-send on ticks where the whole-unit add is unchanged", async () => {
