@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
+  <desc>{"colors":{"backgroundColor":"#2a3340","textColor":"#ffffff","graphic1Color":"#ffffff"},"border":{"color":"#4a5a6a"},"title":{"text":"FUEL","position":"top","fontSize":11,"showTitle":true,"locked":["showTitle","fontSize","position"]}}</desc>
+  {{borderDefs}}
+  <g filter="url(#activity-state)">
+    <rect x="0" y="0" width="144" height="144" rx="24" fill="{{backgroundColor}}"/>
+{{borderContent}}
+    {{titleContent}}
+{{iconContent}}
+  </g>
+</svg>

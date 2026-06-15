@@ -106,7 +106,9 @@ import {
   CockpitMisc,
   FORCE_FEEDBACK_UUID,
   ForceFeedback,
+  FUEL_DIAL_UUID,
   FUEL_SERVICE_UUID,
+  FuelDial,
   FuelService,
   LOOK_DIRECTION_UUID,
   LookDirection,
@@ -728,6 +730,7 @@ adapter.registerAction(CAR_CONTROL_UUID, new CarControl(adapter.createLogger("Ca
 adapter.registerAction(CHAT_UUID, new Chat(adapter.createLogger("Chat")));
 adapter.registerAction(COCKPIT_MISC_UUID, new CockpitMisc(adapter.createLogger("CockpitMisc")));
 adapter.registerAction(FORCE_FEEDBACK_UUID, new ForceFeedback(adapter.createLogger("ForceFeedback")));
+adapter.registerAction(FUEL_DIAL_UUID, new FuelDial(adapter.createLogger("FuelDial")));
 adapter.registerAction(FUEL_SERVICE_UUID, new FuelService(adapter.createLogger("FuelService")));
 adapter.registerAction(LOOK_DIRECTION_UUID, new LookDirection(adapter.createLogger("LookDirection")));
 adapter.registerAction(MEDIA_CAPTURE_UUID, new MediaCapture(adapter.createLogger("MediaCapture")));

@@ -214,6 +214,12 @@
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
   },
+  "fuel-dial": {
+    "backgroundColor": "#2a3340",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#4a5a6a"
+  },
   "pit-crew": {
     "backgroundColor": "#2a3a5a",
     "textColor": "#ffffff",

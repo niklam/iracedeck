@@ -2,7 +2,7 @@
 
 Authoritative reference for how Stream Deck+ dials (encoders) and the LCD touch strip actually work, plus the verified state of Mirabox knob/touch support. Produced for issue #640 as the foundation for rebuilding dial support; researched against the official Elgato SDK docs/schemas/Node SDK (v2.1.0, 2026-06-11) and the Mirabox Stream Dock plugin SDK. Project-facing conventions live in `.claude/rules/encoders-and-touchscreen.md`.
 
-**Current project state:** no iRaceDeck action declares `Encoder`/`Knob` in either plugin manifest (de-claimed in #640). The `onDial*` handlers in `@iracedeck/iracing-actions`, the `IDeckDial*` types in `deck-core`, and both adapters' dial wiring remain in place, dormant, for the rebuild.
+**Current project state (rebuild begun, #681):** the dial-support rebuild has started. `fuel-dial` is the first/reference dial action — Elgato declares `["Keypad", "Encoder"]` with a custom touch layout (`com.iracedeck.sd.core.sdPlugin/layouts/fuel-dial.json`) and `setFeedback` wiring; Mirabox declares `["Keypad", "Knob"]` with no layout/feedback. deck-core now carries `IDeckActionContext.isDial/setFeedback/setFeedbackLayout`, `IDeckTouchTapEvent` + `onTouchTap`, and the `DeckFeedbackPayload` model (`feedback-types.ts`); the Elgato adapter bridges these to `DialAction` and the Mirabox adapter no-ops feedback. Project-facing conventions and the gating rules live in `.claude/rules/encoders-and-touchscreen.md`; the reference action is `packages/iracing-actions/src/actions/fuel-dial/fuel-dial.ts`.
 
 ## 1. Hardware reality
 
@@ -83,7 +83,7 @@ All four share the envelope `{ action, context, device, event, payload }`; the p
 - **`touchTap`** — `tapPos: [x, y]` **relative to the action's own 200×100 slot** (not the full strip), and `hold: boolean` (the long-touch signal — there is no separate long-touch event).
 - **`willAppear`/`willDisappear`** — fire for keys and dials alike; branch on `payload.controller` (`"Keypad" | "Encoder"`). For dials `coordinates.row` is always 0. Encoder actions can never be inside multi-actions (`MultiActionPayload.controller` is hard-typed `"Keypad"`).
 
-Mapping to our abstraction: `deck-core` already defines `IDeckDialRotateEvent` (with `ticks`), `IDeckDialDownEvent`, `IDeckDialUpEvent` in `packages/deck-core/src/types.ts`, and both adapters wire them. **There is no touch event type anywhere in our stack yet** — a rebuild adding touch needs a new `IDeckTouchTapEvent` in `deck-core`, wiring in both adapters, and a base-action stub.
+Mapping to our abstraction: `deck-core` defines `IDeckDialRotateEvent` (with `ticks`), `IDeckDialDownEvent`, `IDeckDialUpEvent`, and `IDeckTouchTapEvent` (`tapPos`, `hold`) in `packages/deck-core/src/types.ts`, plus the `onTouchTap` handler on `IDeckActionHandler`. The Elgato adapter wires all four (touch via `wrapTouchTapEvent`); the Mirabox adapter wires the dial events but delivers no touch tap (the protocol has no plugin touch strip).
 
 ## 6. Commands the plugin sends (Elgato)
 

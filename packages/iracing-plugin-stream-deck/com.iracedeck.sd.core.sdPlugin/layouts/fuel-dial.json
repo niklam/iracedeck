@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "fuel-dial",
+  "items": [
+    {
+      "key": "title",
+      "type": "text",
+      "rect": [0, 6, 200, 20],
+      "alignment": "center",
+      "font": { "size": 16, "weight": 600 }
+    },
+    {
+      "key": "value",
+      "type": "text",
+      "rect": [0, 28, 200, 32],
+      "alignment": "center",
+      "font": { "size": 22, "weight": 700 }
+    },
+    {
+      "key": "bar",
+      "type": "pixmap",
+      "rect": [8, 62, 184, 30]
+    }
+  ]
+}

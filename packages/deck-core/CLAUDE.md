@@ -6,10 +6,14 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 
 ### Platform Abstraction (`types.ts`)
 
-- `IDeckActionContext` — Handle to a single action instance (wraps `setImage`, `setTitle`, `isKey`, `id`)
-- `IDeckEvent<T>` and variants (`IDeckKeyDownEvent`, `IDeckWillAppearEvent`, etc.) — Platform-neutral events
-- `IDeckActionHandler<T>` — Interface for action lifecycle handlers
+- `IDeckActionContext` — Handle to a single action instance. Wraps `id`, `setImage`, `setTitle`, `setSettings`, `isKey`, and (for Stream Deck+ dials) `isDial()`, `setFeedback(feedback)`, `setFeedbackLayout(layout)`. `setFeedback`/`setFeedbackLayout` no-op on platforms/controllers without a plugin-drawable touch strip (e.g. Mirabox).
+- `IDeckEvent<T>` and variants (`IDeckKeyDownEvent`, `IDeckWillAppearEvent`, etc.) — Platform-neutral events. Dial/touch variants: `IDeckDialRotateEvent` (carries signed `ticks`), `IDeckDialDownEvent`, `IDeckDialUpEvent`, and `IDeckTouchTapEvent` (carries `tapPos: [x, y]` and `hold: boolean`).
+- `IDeckActionHandler<T>` — Interface for action lifecycle handlers (includes `onDialRotate`/`onDialDown`/`onDialUp`/`onTouchTap`).
 - `IDeckPlatformAdapter` — Interface that platform adapters implement (Elgato, VSDinside, etc.)
+
+### Encoder Touch-Strip Feedback (`feedback-types.ts`)
+
+- `DeckFeedbackPayload` — Platform-neutral Stream Deck+ touch-strip ("touch strip") feedback payload, keyed by the layout item's `key`. Each value is either a primitive shorthand (`number` for bar/gbar fill, `string` for text/pixmap source) or a partial item override (`DeckFeedbackBarItem` / `DeckFeedbackTextItem` / `DeckFeedbackPixmapItem`) for mutable visual properties. Passed to `IDeckActionContext.setFeedback`. Platforms without a plugin-drawable touch strip (Mirabox) ignore it. Reference consumer: the `fuel-dial` action.
 
 ### Base Classes
 

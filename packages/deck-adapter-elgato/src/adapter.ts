@@ -11,14 +11,18 @@ import {
   type DialRotateEvent,
   type DialUpEvent,
   type DidReceiveSettingsEvent,
+  type FeedbackPayload,
   type KeyDownEvent,
   type KeyUpEvent,
   SingletonAction,
+  type TouchTapEvent,
   type WillAppearEvent,
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 import type {
+  DeckFeedbackPayload,
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialDownEvent,
@@ -28,6 +32,7 @@ import type {
   IDeckKeyDownEvent,
   IDeckKeyUpEvent,
   IDeckPlatformAdapter,
+  IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
 } from "@iracedeck/deck-core";
@@ -46,6 +51,15 @@ class ElgatoActionContext implements IDeckActionContext {
       setTitle(title: string): Promise<void>;
       setSettings(settings: unknown): Promise<void>;
       isKey(): boolean;
+      isDial?(): boolean;
+      setFeedback?(feedback: FeedbackPayload): Promise<void>;
+      setFeedbackLayout?(layout: string): Promise<void>;
+      setTriggerDescription?(descriptions: {
+        rotate?: string;
+        push?: string;
+        touch?: string;
+        longTouch?: string;
+      }): Promise<void>;
     },
   ) {}
 
@@ -68,6 +82,22 @@ class ElgatoActionContext implements IDeckActionContext {
   isKey(): boolean {
     return this.sdAction.isKey();
   }
+
+  isDial(): boolean {
+    return this.sdAction.isDial?.() ?? false;
+  }
+
+  async setFeedback(feedback: DeckFeedbackPayload): Promise<void> {
+    if (this.sdAction.setFeedback) await this.sdAction.setFeedback(feedback as FeedbackPayload);
+  }
+
+  async setFeedbackLayout(layout: string): Promise<void> {
+    if (this.sdAction.setFeedbackLayout) await this.sdAction.setFeedbackLayout(layout);
+  }
+
+  async setTriggerDescription(descriptions: DeckTriggerDescription): Promise<void> {
+    if (this.sdAction.setTriggerDescription) await this.sdAction.setTriggerDescription(descriptions);
+  }
 }
 
 /**
@@ -81,6 +111,15 @@ function wrapEvent<T>(ev: {
     setTitle(title: string): Promise<void>;
     setSettings(settings: unknown): Promise<void>;
     isKey(): boolean;
+    isDial?(): boolean;
+    setFeedback?(feedback: FeedbackPayload): Promise<void>;
+    setFeedbackLayout?(layout: string): Promise<void>;
+    setTriggerDescription?(descriptions: {
+      rotate?: string;
+      push?: string;
+      touch?: string;
+      longTouch?: string;
+    }): Promise<void>;
   };
   payload: { settings: T; coordinates?: { row: number; column: number } };
 }): { action: IDeckActionContext; payload: { settings: T; coordinates?: { row: number; column: number } } } {
@@ -117,6 +156,18 @@ function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWil
       isKey() {
         return false;
       },
+      isDial() {
+        return false;
+      },
+      async setFeedback() {
+        /* no-op: action is disappearing */
+      },
+      async setFeedbackLayout() {
+        /* no-op: action is disappearing */
+      },
+      async setTriggerDescription() {
+        /* no-op: action is disappearing */
+      },
     },
     payload: ev.payload as { settings: T },
   };
@@ -131,6 +182,21 @@ function wrapDialRotateEvent<T>(ev: DialRotateEvent<T & JsonObject>): IDeckDialR
     payload: {
       settings: ev.payload.settings as T,
       ticks: ev.payload.ticks,
+    },
+  };
+}
+
+/**
+ * Wrap an Elgato encoder touch-tap event (Stream Deck+ touchscreen).
+ */
+function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapEvent<T> {
+  return {
+    action: new ElgatoActionContext(ev.action),
+    payload: {
+      settings: ev.payload.settings as T,
+      tapPos: ev.payload.tapPos,
+      hold: ev.payload.hold,
+      coordinates: ev.payload.coordinates,
     },
   };
 }
@@ -218,6 +284,10 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
 
       override async onDialUp(ev: DialUpEvent<T & JsonObject>): Promise<void> {
         await handler.onDialUp?.(wrapEvent(ev) as IDeckDialUpEvent<T>);
+      }
+
+      override async onTouchTap(ev: TouchTapEvent<T & JsonObject>): Promise<void> {
+        await handler.onTouchTap?.(wrapTouchTapEvent<T>(ev));
       }
     }
 

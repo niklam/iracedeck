@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a3340"/>
+  <circle cx="36" cy="28" r="17" fill="none" stroke="#ffffff" stroke-width="3"/>
+  <line x1="36" y1="28" x2="36" y2="15" stroke="#2ecc71" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="36" cy="28" r="3" fill="#ffffff"/>
+  <path d="M19 14 L19 21 M15.5 17.5 L22.5 17.5" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="36" y="58" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">FUEL</text>
+  <text x="36" y="67" text-anchor="middle" dominant-baseline="central"
+        fill="#888888" font-family="Arial, sans-serif" font-size="7">DIAL</text>
+</svg>

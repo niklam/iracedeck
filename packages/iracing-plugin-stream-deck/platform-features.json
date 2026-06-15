@@ -5,6 +5,8 @@
     "svgPatterns": true
   },
   "features": {
-    "borderGlow": true
+    "borderGlow": true,
+    "dialFeedback": true,
+    "dialLongPress": true
   }
 }

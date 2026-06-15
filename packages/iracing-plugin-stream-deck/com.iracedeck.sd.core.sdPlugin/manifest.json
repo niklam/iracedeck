@@ -209,6 +209,32 @@
       ]
     },
     {
+      "Name": "Fuel Dial",
+      "UUID": "com.iracedeck.sd.core.fuel-dial",
+      "Icon": "imgs/actions/fuel-dial/icon",
+      "Tooltip": "Set fuel to add with a dial; press to toggle, clear or fill fueling",
+      "PropertyInspectorPath": "ui/fuel-dial.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "layouts/fuel-dial.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust fuel to add",
+          "Push": "Toggle / clear / fill fueling",
+          "Touch": "Toggle / clear / fill fueling"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/fuel-dial/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Tire Service",
       "UUID": "com.iracedeck.sd.core.tire-service",
       "Icon": "imgs/actions/tire-service/icon",

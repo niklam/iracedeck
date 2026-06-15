@@ -26,7 +26,7 @@
 
 ## Features
 
-**31 actions** with **262+ modes** across 8 categories:
+**32 actions** with **263+ modes** across 8 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -35,7 +35,7 @@
 | **Cockpit & Interface** | 5       | 34    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 5       | 89    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
-| **Pit Service**         | 3       | 15    | Fuel, tires, compounds, tearoff, fast repair                          |
+| **Pit Service**         | 4       | 16    | Fuel, fuel dial, tires, compounds, tearoff, fast repair               |
 | **Car Setup**           | 7       | 44    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
 
@@ -112,7 +112,7 @@ packages/
 
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@iracedeck/iracing-actions`              | All 31 action implementations, platform-agnostic                                          |
+| `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings                    |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |

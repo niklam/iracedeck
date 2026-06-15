@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<%- include('head-common') %>
+	</head>
+	<body>
+		<%- include('section-header', { title: 'Action Settings' }) %>
+
+		<sdpi-item label="Mode">
+			<sdpi-select setting="dialMode" default="add-amount">
+				<option value="add-amount">Add Amount</option>
+				<option value="fill-to">Fill To</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div class="ird-supporting-text">
+			Add Amount: dial the amount of fuel to add. Fill To: dial the total
+			you want in the tank after the stop — it's kept topped up as you burn fuel.
+		</div>
+
+		<sdpi-item label="Step Size">
+			<sdpi-textfield
+				id="step-size"
+				setting="stepSize"
+				placeholder="1"
+				type="number"
+				min="0.1"
+				max="50"
+				step="0.1"
+			></sdpi-textfield>
+		</sdpi-item>
+		<div class="ird-supporting-text">
+			Fuel added or removed per dial detent, in your display units.
+		</div>
+
+		<sdpi-item label="Press Action">
+			<sdpi-select setting="pressAction" default="toggle-fueling">
+				<option value="toggle-fueling">Toggle Fueling</option>
+				<option value="clear-fueling">Clear Fueling</option>
+				<option value="fill-to-max">Fill To Max</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<% var __comms = require('./data/action-comms.json')['fuel-dial']; %>
+		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+		<% if (locals.platform?.features?.dialLongPress !== false) { %>
+		<sdpi-item label="Long Press">
+			<sdpi-select setting="longPressAction" default="clear-fueling">
+				<option value="clear-fueling">Clear Fueling</option>
+				<option value="fill-to-max">Fill To Max</option>
+				<option value="toggle-fueling">Toggle Fueling</option>
+				<option value="none">None</option>
+			</sdpi-select>
+		</sdpi-item>
+		<% } %>
+
+		<% if (locals.platform?.features?.dialFeedback !== false) { %>
+		<sdpi-item label="Touch Screen">
+			<sdpi-select setting="touchAction" default="toggle-fueling">
+				<option value="toggle-fueling">Toggle Fueling</option>
+				<option value="clear-fueling">Clear Fueling</option>
+				<option value="fill-to-max">Fill To Max</option>
+				<option value="none">None</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div class="ird-supporting-text">
+			What a tap on the touch strip does. The fuel readout always shows on the
+			touch strip; None only disables taps.
+		</div>
+		<% } %>
+
+		<sdpi-item label="Units">
+			<sdpi-select setting="unitMode" default="auto">
+				<option value="auto">Auto (from iRacing)</option>
+				<option value="liters">Liters</option>
+				<option value="gallons">Gallons</option>
+			</sdpi-select>
+		</sdpi-item>
+
+		<%- include('section-header', { title: 'Global Settings' }) %>
+
+		<%- include('global-common-settings') %>
+
+		<script>
+			async function initialize() {
+				await customElements.whenDefined("sdpi-textfield");
+
+				const stepInput = document.getElementById("step-size");
+
+				if (stepInput) {
+					stepInput.addEventListener("input", (e) => {
+						e.target.value = e.target.value.replace(",", ".");
+					});
+				}
+			}
+
+			if (document.readyState === "loading") {
+				document.addEventListener("DOMContentLoaded", initialize);
+			} else {
+				initialize();
+			}
+		</script>
+
+		<%- include('docs-link') %>
+
+		<%- include('version') %>
+	</body>
+</html>

@@ -7,6 +7,7 @@
 
 // Platform abstraction types
 export type {
+  DeckTriggerDescription,
   IDeckActionContext,
   IDeckActionHandler,
   IDeckDialDownEvent,
@@ -17,9 +18,19 @@ export type {
   IDeckKeyDownEvent,
   IDeckKeyUpEvent,
   IDeckPlatformAdapter,
+  IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
 } from "./types.js";
+
+// Encoder touch-strip feedback types (platform-agnostic)
+export type {
+  DeckFeedbackPayload,
+  DeckFeedbackValue,
+  DeckFeedbackBarItem,
+  DeckFeedbackTextItem,
+  DeckFeedbackPixmapItem,
+} from "./feedback-types.js";
 
 // Base action with inactive overlay support
 export { BaseAction } from "./base-action.js";

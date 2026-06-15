@@ -160,6 +160,7 @@ export default defineConfig({
               items: [
                 { slug: "docs/actions/pit-service/pit-quick-actions" },
                 { slug: "docs/actions/pit-service/fuel-service" },
+                { slug: "docs/actions/pit-service/fuel-dial" },
                 { slug: "docs/actions/pit-service/tire-service" },
               ],
             },

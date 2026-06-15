@@ -169,6 +169,8 @@ const config = {
 				__CAPABILITY_SVG_MASKS__: JSON.stringify(platformFeatures.capabilities.svgMasks),
 				__CAPABILITY_SVG_PATTERNS__: JSON.stringify(platformFeatures.capabilities.svgPatterns),
 				__FEATURE_BORDER_GLOW__: JSON.stringify(platformFeatures.features.borderGlow),
+				__FEATURE_DIAL_FEEDBACK__: JSON.stringify(platformFeatures.features.dialFeedback),
+				__FEATURE_DIAL_LONG_PRESS__: JSON.stringify(platformFeatures.features.dialLongPress),
 			},
 		}),
 		piTemplatePlugin({

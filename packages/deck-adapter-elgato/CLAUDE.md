@@ -6,9 +6,10 @@ Elgato Stream Deck adapter that implements `IDeckPlatformAdapter` from `@iracede
 
 `ElgatoPlatformAdapter` wraps the Elgato SDK:
 
-- **`registerAction(uuid, handler)`** — Creates a bridge `SingletonAction` subclass with the `@action({ UUID })` decorator, delegates all lifecycle methods (`onWillAppear`, `onKeyDown`, etc.) to the platform-neutral handler
-- **Event wrapping** — Converts Elgato events (`WillAppearEvent`, `KeyDownEvent`, etc.) to deck-core events (`IDeckWillAppearEvent`, `IDeckKeyDownEvent`, etc.) via `ElgatoActionContext`
-- **`WillDisappearEvent` special case** — Elgato's `ActionContext` lacks `setImage`/`setTitle`/`isKey`, so `wrapDisappearEvent()` provides no-op stubs
+- **`registerAction(uuid, handler)`** — Creates a bridge `SingletonAction` subclass with the `@action({ UUID })` decorator, delegates all lifecycle methods (`onWillAppear`, `onKeyDown`, dial handlers `onDialRotate`/`onDialDown`/`onDialUp`, and `onTouchTap`) to the platform-neutral handler
+- **Event wrapping** — Converts Elgato events (`WillAppearEvent`, `KeyDownEvent`, etc.) to deck-core events (`IDeckWillAppearEvent`, `IDeckKeyDownEvent`, etc.) via `ElgatoActionContext`. The dial rotate event is wrapped with `ticks` (`wrapDialRotateEvent`), and the encoder touchscreen tap via `wrapTouchTapEvent` (`tapPos`, `hold`).
+- **Stream Deck+ dial bridging** — `ElgatoActionContext` bridges `isDial()`, `setFeedback(payload)`, and `setFeedbackLayout(layout)` to the SDK `DialAction` (forwarding `DeckFeedbackPayload` as the Elgato `FeedbackPayload`); these are guarded so they no-op when the underlying action lacks them.
+- **`WillDisappearEvent` special case** — Elgato's `ActionContext` lacks `setImage`/`setTitle`/`isKey` (and dial methods), so `wrapDisappearEvent()` provides no-op stubs
 - **`createLogger(scope)`** — Wraps `streamDeck.logger.createScope()` via `createSDLogger()`
 - **Other adapter methods** — Delegate directly to the Elgato SDK (`onDidReceiveGlobalSettings`, `onApplicationDidLaunch`, `connect`, etc.)
 

@@ -365,11 +365,48 @@ const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
 2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
 3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
 
-## Encoder Support (superseded)
+## Encoder (Dial) & Touchscreen Support
 
-**Dial/encoder/knob support was de-claimed in #640** — no action declares `Encoder` (Elgato) or `Knob` (Mirabox) in either manifest, and no new action may add those blocks until the planned rebuild. Existing `onDial*` handlers in action code are dormant (the manifests no longer route dial events to them) and stay in place for the rebuild; the `deck-core` dial event types and both adapters' dial wiring also stay.
+Dial support is being rebuilt (#681); `fuel-dial` is the reference implementation. **Read `@.claude/rules/encoders-and-touchscreen.md` first** — it is the authority for the platform facts and gating rules; the full payload/schema reference is `docs/reference/stream-deck-plus-encoders.md`. The per-action mechanics:
 
-For how dials and the touchscreen actually work, and the constraints any rebuilt dial UX must respect, see `@.claude/rules/encoders-and-touchscreen.md` and the full reference in `docs/reference/stream-deck-plus-encoders.md`.
+### Manifest
+
+Declare both controllers and a custom touch layout. Elgato gets an `Encoder` block; Mirabox declares the knob with no block and no touch strip:
+
+```jsonc
+// Elgato (com.iracedeck.sd.core.sdPlugin/manifest.json)
+"Controllers": ["Keypad", "Encoder"],
+"Encoder": {
+  "layout": "layouts/fuel-dial.json",
+  "TriggerDescription": { "Rotate": "Adjust fuel to add", "Push": "Toggle / clear / fill fueling", "Touch": "Toggle / clear / fill fueling" }
+}
+
+// Mirabox (separate manifest) — no Encoder/Knob block, no touch strip
+"Controllers": ["Keypad", "Knob"]
+```
+
+The custom layout JSON is committed under `<sdPlugin>/layouts/*.json` (Elgato only). Item `key`s (e.g. `title`, `value`, `bar`) are exactly what `setFeedback` addresses — a `bar`/`gbar` item takes a number or object, a `text` item a string, and a `pixmap` item a data-URI string (fuel-dial draws its two-segment bar as a `pixmap`). See `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/layouts/fuel-dial.json`.
+
+### Action handlers
+
+Implement `onDialRotate` / `onDialDown` / `onDialUp` / `onTouchTap` alongside `onKeyDown` (a dial-capable action declaring both controllers receives key events on the keypad surface and dial/touch events on the encoder surface). Branch rendering on the surface:
+
+```typescript
+override async onDialRotate(ev: IDeckDialRotateEvent<Settings>): Promise<void> {
+  // ticks is a SIGNED DELTA (may be >1 on a fast spin) — scale, never count.
+  ctx.target += ev.payload.ticks * step;
+}
+
+// Branch surfaces inside render(): isKey() → key image, isDial() → touch-strip feedback
+if (ev.action.isKey()) await this.setKeyImage(ev, svg);
+if (ev.action.isDial()) await ev.action.setFeedback({ title: "FUEL", value: "65 / 90 L", bar: "data:image/svg+xml,…" });
+```
+
+- **Push the touchscreen** with `ev.action.setFeedback({...})` (keyed by layout item `key`, values typed by `DeckFeedbackPayload`) or switch layouts at runtime with `ev.action.setFeedbackLayout("layouts/other.json")`.
+- **Throttle feedback to ≤ 10 calls/sec per dial** — coalesce a continuous spin into a leading/trailing throttled flush (see `fuel-dial`'s `scheduleSend`/`flushSend`).
+- **Gate Elgato-only behavior** on the compile-time constants, not on `isDial()` alone: `__FEATURE_DIAL_FEEDBACK__` (touch + feedback) and `__FEATURE_DIAL_LONG_PRESS__` (timed `dialDown`→`dialUp` long-press). Mirabox knobs fire `dialUp` immediately, so the press is done in `onDialDown` when `__FEATURE_DIAL_LONG_PRESS__` is false.
+
+Reference implementation: `packages/iracing-actions/src/actions/fuel-dial/fuel-dial.ts`.
 
 ## Per-Mode Communication Method & Binding Status (#612)
 
