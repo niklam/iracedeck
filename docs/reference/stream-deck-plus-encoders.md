@@ -29,6 +29,27 @@ Authoritative reference for how Stream Deck+ dials (encoders) and the LCD touch 
 
 The only Mirabox hardware iRaceDeck has been confirmed on is the 293-class (PR #473 added 293S `Information`-area sizing) — i.e. devices **without** knobs.
 
+### Image dimensions (Mirabox)
+
+Neither layer is on the plugin-SDK doc site. Manifest asset sizes come from the Stream Dock **Style Guide**; the runtime per-device sizes the host rasterizes to come from the **Device SDK** `_info`/`_feature` structs.
+
+**Manifest static assets** (`sdk.key123.vip` Style Guide): action/list icon **40×40**, category icon **48×48**, key icon **128×128**, plugin icon **128×128**. These are source assets — the host scales them to each device's physical key size below, so author at 128×128 and let the host downscale.
+
+**Per-device runtime image sizes** (`StreamDock-Device-SDK`, CPP `_info->keyWidth/keyHeight`, `_feature->_2rdScreen*`):
+
+| Device | Main screen | Key image | 2nd-screen key |
+| ------ | ----------- | --------- | -------------- |
+| N4 / N4 Pro | 800×480 | 112×112 | 176×112 (4 keys, press-only) |
+| 293V3 | 800×480 | 112×112 | — |
+| N1 | 480×854 | 96×96 | 64×64 |
+| M3 | 854×480 | 96×96 | — |
+| XL | 1024×600 | 80×80 | — |
+| N3 V2 | 320×240 | 64×64 | — |
+| M18 | 480×272 | 64×64 | — |
+| K1 Pro | — | 64×64 | — |
+
+The "2nd-screen key" column is the N4-class touch strip in its **secondary-screen-buttons** interpretation (hardware keys 1–4 / logical `KEY_11`–`KEY_14`, **press events only**) — see §8 for why this never reaches a WebSocket plugin.
+
 ## 2. Manifest schema (Elgato)
 
 From the official schemas repo (`elgatosf/schemas`, `src/streamdeck/plugins/manifest/latest.ts`):
@@ -44,7 +65,7 @@ From the official schemas repo (`elgatosf/schemas`, `src/streamdeck/plugins/mani
 
 ### Mirabox manifest differences
 
-The Stream Dock plugin SDK (sdk.key123.vip) accepts `Controllers` values `"Keypad"`, `"Knob"`, `"Information"`, `"SecondaryScreen"` — **`"Encoder"` is not recognized; use `"Knob"`**. The official docs define **no** `Encoder`/`Knob` config block, no layouts, and no `TriggerDescription`; Mirabox's own first-party knob plugins ship `"Controllers": ["Knob"]` with no block at all. `SecondaryScreen` appears in the manifest docs but has zero usages in Mirabox's own plugins — semantics unknown.
+The Stream Dock plugin SDK (sdk.key123.vip) accepts `Controllers` values `"Keypad"`, `"Knob"`, `"Information"`, `"SecondaryScreen"` — **`"Encoder"` is not recognized; use `"Knob"`**. The official docs define **no** `Encoder`/`Knob` config block, no layouts, and no `TriggerDescription`; Mirabox's own first-party knob plugins ship `"Controllers": ["Knob"]` with no block at all. `SecondaryScreen` appears in the manifest docs but has **zero usages** across all of MiraboxSpace and **delivers no plugin input events** — the SDK's TypeScript handler interface (`_streamdock.d.ts`) defines handlers only for `keyDown`/`keyUp`/`touchTap`/`dialDown`/`dialUp`/`dialRotate`, with no SecondaryScreen event; the N4 secondary-screen touch is a **host-app function** (changelog: *"N4 secondary screen touch can choose: scene switching or page switching"*), reachable by a plugin only through the native Device SDK (USB/HID), never the WebSocket. `Information` is view-only (no input events).
 
 ## 3. Built-in layout IDs (Elgato)
 
@@ -116,6 +137,8 @@ The Stream Dock events-sent docs define only `setImage`, `setTitle`, `setSetting
 | Our plugin receives knob events through VSD Craft on real knob hardware | **Unknown — needs hardware test** | All in-repo Mirabox hardware evidence is 293-class (no knobs); no commit/test ever recorded an observed knob event |
 | Plugin-drawable touch strip (`touchTap` with position, `setFeedback`, layouts) | **Not supported (verified from docs)** | Absent from the official events docs; zero usages in Mirabox's own plugins; Mirabox's porting guide states `setFeedback`/layouts don't exist and the N4 strip is host-managed (knob icons via `setImage`, built-in swipe paging) |
 
+**On the event names & the native touch bar.** The Mirabox plugin SDK *does* define a `touchTap` handler in its TypeScript defs (`_streamdock.d.ts`), but it carries the key-area payload (`coordinates {column,row}`, **no** `controller` field) — the Stream Deck+-heritage *key tap*, not a strip surface — and is unused/unverified through VSD Craft. `touchBarTap`/`touchBarSlide` (named in a VSDinside blog post) are **not** real protocol events (zero code hits anywhere in MiraboxSpace). The N4 Pro's genuine analog touch bar — absolute `x`/`y` touch points (`EventType.TOUCH_POINT`, `set_touch_bar_callback`) — exists **only** in the native Device SDK (`StreamDockN4Pro`), i.e. USB/HID; it is not exposed over the plugin WebSocket, so iRaceDeck cannot consume it without a different (non-VSD-Craft) integration.
+
 **Practical implication:** Mirabox dial **rotation and press-as-tap** are worth rebuilding — the protocol demonstrably delivers them and our adapter already speaks it. Mirabox **touchscreen feedback should be written off** (no plugin-facing surface exists), and rebuilt dial UX must **not depend on press-and-hold** on Mirabox.
 
 ### Hardware-test checklist (needs an N3/N4-class device owner)
@@ -153,6 +176,8 @@ The Stream Dock events-sent docs define only `setImage`, `setTitle`, `setSetting
 - Official Node SDK v2.1.0 source: <https://github.com/elgatosf/streamdeck>
 - Elgato help: SD+ specs <https://help.elgato.com/hc/en-us/articles/10567379685901>, touch strip gestures <https://help.elgato.com/hc/en-us/articles/10567698991629>, Dial Stacks <https://help.elgato.com/hc/en-us/articles/10843581380109>, Action Trigger <https://help.elgato.com/hc/en-us/articles/29655069662609>
 - Mirabox Stream Dock SDK: <https://sdk.key123.vip/en/guide/events-received.html>, <https://sdk.key123.vip/en/guide/events-sent.html>, <https://sdk.key123.vip/en/guide/manifest.html>
-- Mirabox SDK + plugins source: <https://github.com/MiraboxSpace/StreamDock-Plugin-SDK>, <https://github.com/MiraboxSpace/StreamDock-Plugins> (VoiceMeeter `gain_adjust.js`, Discord plugin, issue #46)
+- Mirabox image sizes — Style Guide (manifest asset sizes 40/48/128): <https://sdk.key123.vip/en/guide/style-guide.html>; changelog (N4 secondary-screen touch = scene/page switching): <https://sdk.key123.vip/en/guide/changelog.html>
+- Mirabox SDK + plugins source: <https://github.com/MiraboxSpace/StreamDock-Plugin-SDK>, <https://github.com/MiraboxSpace/StreamDock-Plugins> (VoiceMeeter `gain_adjust.js`, Discord plugin, issue #46); plugin handler set + `touchTap` payload in `SDVueSDK/.../_streamdock.d.ts` (no `SecondaryScreen` event)
+- Mirabox Device SDK (per-device key/screen sizes via `_info`/`_feature`; N4 Pro native touch-point API): <https://github.com/MiraboxSpace/StreamDock-Device-SDK>
 - VSDinside porting guide (Encoder→Knob, no layouts/setFeedback, dialUp-after-dialDown report): <https://www.vsdinside.com/blogs/blog/porting-stream-deck-plugins-to-stream-dock-m18-a-practical-guide>
 - Bitfocus Companion Mirabox surface docs (N3/N4/293V3 hardware, encoder press limitation): <https://companion.free/user-guide/v4.2/surfaces/mirabox-streamdock/>
