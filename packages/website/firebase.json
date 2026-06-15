@@ -14,6 +14,11 @@
         "type": 302
       },
       {
+        "source": "/downloads/plugin/latest/ulanzi",
+        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.ulanzi.iracedeck.ulanziPlugin",
+        "type": 302
+      },
+      {
         "source": "/docs/actions/driving/ai-spotter-controls",
         "destination": "/docs/actions/audio-voice/ai-spotter-controls",
         "type": 301
