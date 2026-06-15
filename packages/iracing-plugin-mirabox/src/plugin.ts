@@ -65,6 +65,8 @@ import {
   evaluateSetupWarning,
   getController,
   getGlobalSettings,
+  getPluginPlatform,
+  getPluginVersion,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -77,6 +79,7 @@ import {
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  runVersionCheck,
   setWarning,
   updateGlobalSettings,
   validateSetupWarningPatterns,
@@ -632,6 +635,21 @@ onGlobalSettingsChange((settings) => {
     updateGlobalSettings({
       pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup,
       pitCrewRadarEnabled: settings.pitCrewRadarEnabledOnStartup,
+    });
+
+    // Open the website changelog once when a newer stable version is
+    // detected (issue #680). Reads the last-seen version from the
+    // passthrough `_lastSeenVersion` key and persists the running version.
+    // No-op for pre-release builds and same/older versions. The VSD Craft
+    // protocol exposes no device-type id, so `type` is omitted; opening the
+    // browser is best-effort (harmless if the Stream Dock host ignores it).
+    void runVersionCheck({
+      currentVersion: getPluginVersion(),
+      lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      ecosystem: getPluginPlatform(),
+      persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      openUrl: (url) => adapter.openUrl(url),
+      logger: adapter.createLogger("VersionCheck"),
     });
   }
 

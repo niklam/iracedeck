@@ -1,3 +1,4 @@
+import type StreamDeck from "@elgato/streamdeck";
 import type { IDeckActionHandler } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -213,5 +214,19 @@ describe("ElgatoPlatformAdapter", () => {
       const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.payload.ticks).toBe(4);
     });
+  });
+});
+
+describe("ElgatoPlatformAdapter.openUrl", () => {
+  it("should delegate to streamDeck.system.openUrl", async () => {
+    const sdMock = {
+      system: { openUrl: vi.fn().mockResolvedValue(undefined) },
+    } as unknown as typeof StreamDeck;
+
+    const adapter = new ElgatoPlatformAdapter(sdMock);
+    await adapter.openUrl("https://example.test/");
+
+    expect(sdMock.system.openUrl).toHaveBeenCalledTimes(1);
+    expect(sdMock.system.openUrl).toHaveBeenCalledWith("https://example.test/");
   });
 });

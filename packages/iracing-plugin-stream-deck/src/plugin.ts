@@ -58,6 +58,8 @@ import {
   evaluateSetupWarning,
   getController,
   getGlobalSettings,
+  getPluginPlatform,
+  getPluginVersion,
   initAppMonitor,
   initGlobalSettings,
   initializeBindingDispatcher,
@@ -70,6 +72,7 @@ import {
   type PluginConfig,
   resolveActiveDriverName,
   resolveActiveRaceEngineerVoice,
+  runVersionCheck,
   setWarning,
   updateGlobalSettings,
   validateSetupWarningPatterns,
@@ -656,6 +659,22 @@ onGlobalSettingsChange((settings) => {
     updateGlobalSettings({
       pitCrewRaceEngineerEnabled: settings.pitCrewRaceEngineerEnabledOnStartup,
       pitCrewRadarEnabled: settings.pitCrewRadarEnabledOnStartup,
+    });
+
+    // Open the website changelog once when a newer stable version is
+    // detected (issue #680). Reads the last-seen version from the
+    // passthrough `_lastSeenVersion` key and persists the running version.
+    // No-op for pre-release builds and same/older versions; opens the
+    // browser via the Elgato SDK. `type` is the connected device's type id
+    // (best-effort), omitted when no device is connected yet.
+    void runVersionCheck({
+      currentVersion: getPluginVersion(),
+      lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      ecosystem: getPluginPlatform(),
+      deviceType: [...streamDeck.devices].find((d) => d.isConnected)?.type,
+      persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      openUrl: (url) => adapter.openUrl(url),
+      logger: adapter.createLogger("VersionCheck"),
     });
   }
 

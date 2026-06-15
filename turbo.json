@@ -8,8 +8,10 @@
         "build/**",
         "bin/**",
         "browser/pi-components.js",
+        "browser/ulanzi-pi-bridge.js",
         "com.iracedeck.sd.sdPlugin/**",
-        "com.iracedeck.sd.*.sdPlugin/**"
+        "com.iracedeck.sd.*.sdPlugin/**",
+        "com.ulanzi.*.ulanziPlugin/**"
       ]
     },
     "@iracedeck/audio-assets#build": {

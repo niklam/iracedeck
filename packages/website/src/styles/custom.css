@@ -297,7 +297,7 @@ starlight-theme-select label select {
 
 .download-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   align-items: stretch;
   gap: 1.5rem;
   margin: 2rem 0;
@@ -374,4 +374,16 @@ starlight-theme-select label select {
   font-size: 0.9rem;
   color: var(--sl-color-gray-3);
   margin-top: 2rem;
+}
+
+/* ── Changelog page ── */
+
+.changelog-lead-in {
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  margin-bottom: 1rem;
+}
+
+.changelog-lead-in[hidden] {
+  display: none;
 }

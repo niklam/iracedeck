@@ -306,6 +306,13 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     this.sd.actions.onDialRotate(() => callback());
   }
 
+  /**
+   * Open a URL in the user's default browser via the Elgato SDK.
+   */
+  async openUrl(url: string): Promise<void> {
+    await this.sd.system.openUrl(url);
+  }
+
   connect(): void {
     this.sd.connect();
   }

@@ -1,16 +1,19 @@
 ---
 # SVG Platform Compatibility
 
-This project renders SVG icons on two platforms with different SVG engines:
+This project renders SVG icons across platforms with different SVG engines:
 
 | Platform | SVG Engine | SVG Support |
 |----------|-----------|-------------|
 | **Elgato Stream Deck** | QT6 (6.7+) | SVG Tiny 1.2 + extended features (filters, masks, patterns, etc.) |
 | **Mirabox VSD Craft** | QT5 | SVG Tiny 1.2 static only (via QtSVG module) |
+| **Ulanzi Deck (UlanziStudio)** | renders SVG data-URIs (validated in UlanziDeck) | basic SVG confirmed; kept at the QT5 lower bound for filters/masks/patterns until those are exercised |
 
 **Rule: All icons must render correctly on the lowest common denominator (QT5 / SVG Tiny 1.2 static).** Features unsupported by QT5 are silently ignored — the icon renders but without the effect.
 
 For code paths that generate QT6-only SVG (e.g., filters), gate them behind platform feature flags so the Mirabox bundle doesn't ship unused code and the Mirabox PI doesn't show controls that have no effect. See `@.claude/rules/platform-feature-flags.md`.
+
+**Ulanzi note (issue #508).** iRaceDeck passes its `data:image/svg+xml,...` icons through unchanged (`UlanziClient.setImage`), and this was **validated live in UlanziDeck** — the SVG data-URI icons render, so no rasterization fallback is needed. The Ulanzi `platform-features.json` still mirrors Mirabox's conservative QT5 baseline (filters/masks/patterns off) because only *basic* SVG has been exercised so far; widen a flag only once that specific feature is confirmed to render on Ulanzi.
 
 ## Safe to Use (both platforms)
 

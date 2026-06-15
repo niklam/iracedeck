@@ -1,6 +1,6 @@
 ---
 title: Download iRaceDeck
-description: Download the latest iRaceDeck plugin for Elgato Stream Deck or Mirabox devices.
+description: Download the latest iRaceDeck plugin for Elgato Stream Deck, Mirabox, or Ulanzi Deck devices.
 template: splash
 prev: false
 next: false
@@ -8,6 +8,8 @@ hero:
   title: Download iRaceDeck
   tagline: Get the latest plugin for your device.
 ---
+
+import DownloadLink from "../../components/DownloadLink.astro";
 
 export const version = import.meta.env.PUBLIC_IRACEDECK_VERSION;
 
@@ -17,14 +19,19 @@ export const version = import.meta.env.PUBLIC_IRACEDECK_VERSION;
   <div class="download-card">
     <span class="download-title">Elgato Stream Deck</span>
     <span class="download-desc">For Stream Deck, Stream Deck Mini, Stream Deck XL, and Stream Deck+. Requires Stream Deck software version 7.1 or newer.</span>
-    <a class="download-button" href="/downloads/plugin/latest/streamdeck">Download for Stream Deck</a>
-    <span class="download-alt">Or install from <a href="https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d">Elgato Marketplace</a></span>
+    <DownloadLink class="download-button" href="/downloads/plugin/latest/streamdeck" platform="stream-deck" method="direct">Download for Stream Deck</DownloadLink>
+    <span class="download-alt">Or install from <DownloadLink href="https://marketplace.elgato.com/product/iracedeck-042a0efb-58aa-428c-b1de-8b6169edd21d" platform="stream-deck" method="store">Elgato Marketplace</DownloadLink></span>
   </div>
   <div class="download-card">
     <span class="download-title">Mirabox Ecosystem</span>
     <span class="download-desc">For Stream Dock, SOOMFON, VAPOURD, KILOGOGRAPH, HALCONTORNO, VSDinside, Nouvolo, and other Mirabox devices.</span>
-    <a class="download-button" href="/downloads/plugin/latest/mirabox">Download for Mirabox</a>
-    <span class="download-alt">Or install from <a href="https://space.key123.vip/product?id=20260322000598">Mirabox Space</a></span>
+    <DownloadLink class="download-button" href="/downloads/plugin/latest/mirabox" platform="mirabox" method="direct">Download for Mirabox</DownloadLink>
+    <span class="download-alt">Or install from <DownloadLink href="https://space.key123.vip/product?id=20260322000598" platform="mirabox" method="store">Mirabox Space</DownloadLink></span>
+  </div>
+  <div class="download-card">
+    <span class="download-title">Ulanzi Deck</span>
+    <span class="download-desc">For Ulanzi Deck D200, D200H, D200X, and Dial. Requires the UlanziStudio app.</span>
+    <DownloadLink class="download-button" href="/downloads/plugin/latest/ulanzi" platform="ulanzi" method="direct">Download for Ulanzi</DownloadLink>
   </div>
 </div>
 
