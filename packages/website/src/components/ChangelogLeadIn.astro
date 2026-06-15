@@ -1,9 +1,16 @@
 ---
-// Friendly lead-in shown only when the changelog is opened from an in-plugin
-// update notice. The plugin appends an "ecosystem" query parameter
-// (stream-deck or mirabox) plus an optional "type" device-type id. When the
-// params are absent (a direct visit from the navigation) the element stays
-// hidden and nothing extra renders.
+// Shown only when the changelog is opened from an in-plugin update notice. The
+// plugin appends an "ecosystem" query parameter (stream-deck, mirabox, or
+// ulanzi) plus an optional "type" device-type id. This component does two
+// things with those params:
+//   1. Reports a GA4 `changelog_view` event carrying the ecosystem (and the
+//      device type when present), so plugin-driven changelog opens can be
+//      broken down by platform — mirroring the `file_download` instrumentation
+//      in DownloadLink. It fires for ANY ecosystem the plugin sends, so the
+//      open is measured even for a platform we have not announced site-wide.
+//   2. Shows a friendly lead-in line for the ecosystems we have a label for.
+// When the params are absent (a direct visit from the navigation) it does
+// neither and nothing extra renders.
 ---
 
 <p id="update-lead-in" class="changelog-lead-in" hidden></p>
@@ -13,9 +20,22 @@
     const params = new URLSearchParams(window.location.search);
     const ecosystem = params.get("ecosystem");
 
+    // Report the open to GA4 for any ecosystem the plugin sends, independent of
+    // whether we have a friendly label below. gtag() is defined synchronously
+    // in the document head (it queues into dataLayer until GA finishes loading),
+    // so the event is captured; this no-ops when GA is unavailable and never
+    // blocks rendering. `type` is omitted from the event when absent rather than
+    // reported as a blank value (matching DownloadLink's app_version).
+    if (ecosystem && typeof window.gtag === "function") {
+      window.gtag("event", "changelog_view", {
+        ecosystem: ecosystem,
+        device_type: params.get("type") || undefined,
+      });
+    }
+
     // Map the ecosystem id to a friendly label. The Elgato numeric device-type
     // ids carried by "type" are intentionally left unmapped for now.
-    const labels = { "stream-deck": "Stream Deck", mirabox: "Mirabox" };
+    const labels = { "stream-deck": "Stream Deck", mirabox: "Mirabox", ulanzi: "Ulanzi" };
     const label = ecosystem ? labels[ecosystem] : null;
     if (!label) return;
 
