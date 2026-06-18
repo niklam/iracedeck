@@ -10,6 +10,8 @@ iRaceDeck is a monorepo built with [pnpm](https://pnpm.io/) workspaces. The code
 | Package | Description |
 |---------|-------------|
 | `@iracedeck/iracing-plugin-stream-deck` | The main Stream Deck plugin — all 31 actions, Property Inspector UI, and icon rendering |
+| `@iracedeck/iracing-plugin-mirabox` | The Mirabox plugin — the same actions for Mirabox / VSD Craft devices |
+| `@iracedeck/iracing-plugin-ulanzi` | The Ulanzi Deck plugin — the same actions for Ulanzi Deck devices |
 | `@iracedeck/iracing-sdk` | TypeScript SDK for reading iRacing telemetry and session data via shared memory |
 | `@iracedeck/iracing-native` | Native C++ addon for Windows keyboard simulation and window management |
 | `@iracedeck/icons` | SVG icon library for all Stream Deck button icons |
