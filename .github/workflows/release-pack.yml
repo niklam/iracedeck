@@ -50,12 +50,13 @@ jobs:
           #   - Stream Deck (Elgato): keep manifest validation (no flags).
           #   - Mirabox: manifest isn't Elgato-valid, so skip validation.
           #   - Ulanzi: a .ulanziPlugin folder; the cli packs it but can't derive
-          #     the name, emitting undefined.streamDeckPlugin which we rename. A
+          #     the name, emitting undefined.streamDeckPlugin which we rename to a
+          #     .zip-suffixed name so the download is self-describing (#692). A
           #     committed .sdignore strips native-module build cruft (~41 MB → ~7 MB).
           $plugins = @(
             @{ Name = "stream-deck"; Path = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin"; Output = "com.iracedeck.sd.core.streamDeckPlugin"; Flags = @() }
             @{ Name = "mirabox";     Path = "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin";     Output = "com.iracedeck.sd.core.sdPlugin";          Flags = @("--force", "--ignore-validation") }
-            @{ Name = "ulanzi";      Path = "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin";   Output = "com.ulanzi.iracedeck.ulanziPlugin";       Flags = @("--force", "--ignore-validation") }
+            @{ Name = "ulanzi";      Path = "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin";   Output = "com.ulanzi.iracedeck.ulanziPlugin.zip";   Flags = @("--force", "--ignore-validation") }
           )
           New-Item -ItemType Directory -Force -Path packed | Out-Null
           foreach ($p in $plugins) {
@@ -89,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: iracing-plugin-ulanzi
-          path: packed/com.ulanzi.iracedeck.ulanziPlugin
+          path: packed/com.ulanzi.iracedeck.ulanziPlugin.zip
 
       - name: Attach plugins to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -98,4 +99,4 @@ jobs:
           files: |
             packed/com.iracedeck.sd.core.streamDeckPlugin
             packed/com.iracedeck.sd.core.sdPlugin
-            packed/com.ulanzi.iracedeck.ulanziPlugin
+            packed/com.ulanzi.iracedeck.ulanziPlugin.zip

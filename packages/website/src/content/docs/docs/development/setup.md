@@ -10,6 +10,7 @@ description: How to clone, build, and run iRaceDeck locally for development.
 - **Windows** (required for the native addon and iRacing integration)
 - **Stream Deck software** 7.1 or newer — required to run the Elgato plugin
 - **HotSpot StreamDock** (or another QT5 SVG Tiny 1.2 compatible Mirabox host) — only required if you're developing or testing the Mirabox plugin
+- **UlanziStudio** — only required if you're developing or testing the Ulanzi Deck plugin
 
 ## Getting Started
 
@@ -51,6 +52,15 @@ pnpm --filter @iracedeck/iracing-plugin-mirabox run watch
 
 On Windows, `link:mirabox` defaults to the standard HotSpot StreamDock install path (`%APPDATA%\HotSpot\StreamDock\plugins`). If you're using a different host (e.g. VSD Craft), point `MIRABOX_PLUGINS_DIR` at its plugins directory in `.env.local` (see below).
 
+### Ulanzi Deck
+
+There's no root-level link shortcut for Ulanzi yet. Build the plugin (or run its watcher), then make the built `packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin` folder available to UlanziStudio by copying or symlinking it into `%APPDATA%\Ulanzi\UlanziDeck\Plugins\`, and restart UlanziStudio.
+
+```bash
+# Watch mode for the Ulanzi plugin (no root-level shortcut yet)
+pnpm --filter @iracedeck/iracing-plugin-ulanzi run watch
+```
+
 ## `.env.local`
 
 Some dev scripts read per-developer settings from `.env.local` at the repo root. The file is gitignored and never committed. Copy `.env.local.example` as a starting point:
@@ -83,6 +93,7 @@ For pure action-code edits, the watch process plus the host's built-in refresh u
 | `pnpm build:stream-deck` | Build only the Stream Deck plugin |
 | `pnpm watch:stream-deck` | Watch mode — rebuild on file changes (Stream Deck) |
 | `pnpm --filter @iracedeck/iracing-plugin-mirabox run watch` | Watch mode for the Mirabox plugin |
+| `pnpm --filter @iracedeck/iracing-plugin-ulanzi run watch` | Watch mode for the Ulanzi Deck plugin |
 | `pnpm link:stream-deck` | Register the plugin with Stream Deck |
 | `pnpm unlink:stream-deck` | Unregister the Stream Deck plugin |
 | `pnpm relink:stream-deck` | Unlink + link Stream Deck (useful when switching branches) |
