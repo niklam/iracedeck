@@ -402,6 +402,15 @@ export type TranslatorState = {
    * Issue #603.
    */
   lastFrozenPositions: number[];
+  /**
+   * Per-car score (`lc + dp`) from the previous in-world tick (issue #697).
+   * `updatePositionTracking` compares it against the current score to tell
+   * continuous racing motion (a small forward advance) apart from a teleport (a
+   * discontinuous jump) and from a stop (no advance) — which is what decides
+   * freezing a car on a tow and releasing it once it's moving again. Indexed by
+   * carIdx; `undefined` for a car not yet seen in-world this connection.
+   */
+  positionPrevScore: number[];
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -596,6 +605,7 @@ export function createInitialState(): TranslatorState {
     positionLastKnownScores: [],
     positionFrozen: new Set(),
     lastFrozenPositions: [],
+    positionPrevScore: [],
 
     radarState: "clear",
 
