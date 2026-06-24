@@ -87,6 +87,11 @@ export function updatePositionTracking(state: TranslatorState, telemetry: Teleme
   const ts = telemetry.CarIdxTrackSurface as number[] | undefined;
   const length = Math.min(lc.length, dp.length);
 
+  // Reset the one-tick "just released from frozen" signal; the release branch
+  // below repopulates it so `diffOvertakes` (later this tick) can still treat a
+  // tow-released car as a retirement rather than a real on-track pass (#697).
+  state.positionJustReleased.clear();
+
   for (let i = 0; i < length; i++) {
     const inWorld = lc[i] >= 0 && dp[i] >= 0 && ts?.[i] !== TrkLoc.NotInWorld;
 
@@ -123,8 +128,11 @@ export function updatePositionTracking(state: TranslatorState, telemetry: Teleme
     if (state.positionFrozen.has(i)) {
       // Held after a tow / teleport. Release the moment it's moving normally
       // again — wherever it is (issue #697) — and roll its position to live.
+      // Flag the release for this tick so the overtake retirement classifier
+      // doesn't read the player's resulting gain as a real on-track pass.
       if (movingNormally) {
         state.positionFrozen.delete(i);
+        state.positionJustReleased.add(i);
         state.positionLastKnownScores[i] = score;
       }
 

@@ -411,6 +411,17 @@ export type TranslatorState = {
    * carIdx; `undefined` for a car not yet seen in-world this connection.
    */
   positionPrevScore: number[];
+  /**
+   * Cars released from {@link positionFrozen} on THIS tick (issue #697). A
+   * one-tick signal: `updatePositionTracking` clears it at the start of every
+   * pass and adds a car when it resumes motion after a tow/teleport. The
+   * overtake retirement classifier treats a just-released car the same as a
+   * still-frozen one, so the player "gaining" a place because a towed rival
+   * dropped back on release is classified `fromRetirement` (no "Nice pass")
+   * rather than a real on-track pass. Read by `diffOvertakes` later in the same
+   * tick, so the clear-then-populate order matters.
+   */
+  positionJustReleased: Set<number>;
 
   // ── Radar ─────────────────────────────────────────────────────────────
   radarState: RadarState;
@@ -606,6 +617,7 @@ export function createInitialState(): TranslatorState {
     positionFrozen: new Set(),
     lastFrozenPositions: [],
     positionPrevScore: [],
+    positionJustReleased: new Set(),
 
     radarState: "clear",
 

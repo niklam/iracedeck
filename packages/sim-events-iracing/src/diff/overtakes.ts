@@ -241,12 +241,13 @@ export function diffOvertakes(
   // Retirement classification (issue #603, single-class only): latch the flag
   // while a gain pending is open if some car ranked ahead of the player last
   // tick is currently FROZEN (blinked NotInWorld / teleported / disconnected /
-  // finished into the garage). Re-evaluated each held tick so a real pass
-  // that's then deepened by a retirement ahead is also flagged.
+  // finished into the garage) or was just released from the freeze this tick (a
+  // tow-released rival dropping back, #697). Re-evaluated each held tick so a
+  // real pass that's then deepened by a retirement ahead is also flagged.
   if (
     !useClass &&
     state.pendingOvertakePos > 0 &&
-    isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen)
+    isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen, state.positionJustReleased)
   ) {
     state.pendingOvertakeFromRetirement = true;
   }
@@ -407,9 +408,11 @@ export function diffOvertakes(
       state.pendingOvertakePrevPos = state.lastPosition;
       state.pendingOvertakePrevClassPos = state.lastClassPosition;
       // Classify at open (issue #603, single-class): did a non-finished car
-      // ahead just leave the world? Latched true on later held ticks too.
+      // ahead just leave the world — or get released from a tow this tick
+      // (#697)? Latched true on later held ticks too.
       state.pendingOvertakeFromRetirement =
-        !useClass && isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen);
+        !useClass &&
+        isRetirementGain(state.lastFrozenPositions, playerCarIdx, state.positionFrozen, state.positionJustReleased);
     }
   }
 
@@ -439,21 +442,31 @@ export function diffOvertakes(
  * (retirement / blink / tow / disconnect / finished into the garage) rather
  * than a genuine on-track pass (issue #603). True when at least one car ranked
  * ahead of the player in the previous tick's FROZEN positions is currently in
- * {@link TranslatorState.positionFrozen}. Using the previous frozen ordering —
- * not the raw active one — is what lets the classifier fire on the tick the
- * player CROSSES a frozen car's anchor (which is when the rank actually
- * changes), not just on the tick the car vanished. Single-class only — the
- * caller gates on `!useClass`.
+ * {@link TranslatorState.positionFrozen}, OR was released from it on THIS tick
+ * ({@link TranslatorState.positionJustReleased}, issue #697) — a towed rival
+ * that resumes motion drops back the instant it's released, handing the player
+ * a place that isn't a real pass. Using the previous frozen ordering — not the
+ * raw active one — is what lets the classifier fire on the tick the player
+ * CROSSES a frozen car's anchor (which is when the rank actually changes), not
+ * just on the tick the car vanished. Single-class only — the caller gates on
+ * `!useClass`.
  */
-function isRetirementGain(prevFrozen: number[], playerCarIdx: number, positionFrozen: Set<number>): boolean {
+function isRetirementGain(
+  prevFrozen: number[],
+  playerCarIdx: number,
+  positionFrozen: Set<number>,
+  justReleased: Set<number>,
+): boolean {
   const prevPlayerRank = prevFrozen[playerCarIdx];
 
   if (typeof prevPlayerRank !== "number" || prevPlayerRank <= 0) return false;
 
   // A gain is from a "retirement" iff at least one car ranked ahead of the
   // player last tick is currently FROZEN (blinked NotInWorld / teleported /
-  // disconnected / finished into the garage) — i.e. not a real on-track pass
-  // by the player. Single-class only — the caller gates on `!useClass`.
+  // disconnected / finished into the garage) or was just released from the
+  // freeze this tick (a tow-released rival dropping back, #697) — i.e. not a
+  // real on-track pass by the player. Single-class only — the caller gates on
+  // `!useClass`.
   for (let i = 0; i < prevFrozen.length; i++) {
     if (i === playerCarIdx) continue;
 
@@ -461,7 +474,7 @@ function isRetirementGain(prevFrozen: number[], playerCarIdx: number, positionFr
 
     if (typeof prevRank !== "number" || prevRank <= 0 || prevRank >= prevPlayerRank) continue;
 
-    if (positionFrozen.has(i)) return true;
+    if (positionFrozen.has(i) || justReleased.has(i)) return true;
   }
 
   return false;

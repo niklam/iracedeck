@@ -1204,6 +1204,53 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     expect((fires[0]!.data as { fromRetirement?: boolean }).fromRetirement).toBe(true);
   });
 
+  it("flags fromRetirement when a towed rival is released and drops back (#697)", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Seed: idx2 leads (P1, 5.80), rival idx1 ahead of the player (P2, 5.60),
+    // player P3 (5.50).
+    tickAt(state, mkTel([0.5, 0.6, 0.8]), 0, emit);
+
+    // Rival idx1 is towed to the pit stall — its score jumps discontinuously, so
+    // it freezes at the pre-tow anchor (5.60) and stays ranked ahead. Player P3.
+    tickAt(
+      state,
+      mkTel([0.502, 0.05, 0.802], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall, TrkLoc.OnTrack] }),
+      100,
+      emit,
+    );
+    expect(state.positionFrozen.has(1)).toBe(true);
+    expect(state.pendingOvertakePos).toBe(-1);
+
+    // Rival starts rolling again → released this tick, drops to its live back-of-
+    // field score, and the player inherits P2. The gain must read fromRetirement
+    // (the rival fell back; the player didn't pass it on track), NOT a real pass.
+    tickAt(
+      state,
+      mkTel([0.51, 0.06, 0.81], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall, TrkLoc.OnTrack] }),
+      200,
+      emit,
+    );
+    expect(state.positionFrozen.has(1)).toBe(false);
+    expect(state.positionJustReleased.has(1)).toBe(true);
+    expect(state.pendingOvertakePos).toBe(2);
+    expect(state.pendingOvertakeFromRetirement).toBe(true);
+
+    // Hold elapsed → emits with fromRetirement=true (no "Nice pass").
+    tickAt(
+      state,
+      mkTel([0.512, 0.06, 0.812], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall, TrkLoc.OnTrack] }),
+      200 + OVERTAKE_HOLD_MS,
+      emit,
+    );
+
+    const fires = overtakeEvents(events);
+    expect(fires).toHaveLength(1);
+    expect(fires[0]!.event).toBe("overtake.completed");
+    expect((fires[0]!.data as { fromRetirement?: boolean }).fromRetirement).toBe(true);
+  });
+
   it("does not flag fromRetirement for a genuine on-track pass", () => {
     const state = createInitialState();
     const { events, emit } = collect();
