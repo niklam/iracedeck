@@ -1251,6 +1251,34 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     expect((fires[0]!.data as { fromRetirement?: boolean }).fromRetirement).toBe(true);
   });
 
+  it("does not flag fromRetirement when a released car stays ahead and the player passes a different car (#698)", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    // Seed: idx1 leads (P1, 5.90), idx2 just ahead of the player (P2, 5.501),
+    // player P3 (5.50).
+    tickAt(state, mkTel([0.5, 0.9, 0.501]), 0, emit);
+
+    // idx1 blinks out of the world for a tick → frozen at 5.90, still ranked P1.
+    const lc1 = [5, 5, 5];
+    const dp1 = [0.502, 0.9, 0.503];
+    const ts1 = [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack];
+
+    vanishCar(lc1, dp1, ts1, 1);
+    tickAt(state, mkTel(dp1, { lapCompleted: lc1, trackSurface: ts1 }), 100, emit);
+    expect(state.positionFrozen.has(1)).toBe(true);
+    expect(state.pendingOvertakePos).toBe(-1);
+
+    // idx1 returns near its anchor → released this tick but STILL ahead (P1).
+    // Meanwhile the player makes a genuine on-track pass of idx2 (P3 → P2). The
+    // gain came from idx2, not the released idx1, so it must NOT read
+    // fromRetirement — the just-released idx1 is still ahead in the current order.
+    tickAt(state, mkTel([0.508, 0.905, 0.506]), 200, emit);
+    expect(state.positionJustReleased.has(1)).toBe(true);
+    expect(state.pendingOvertakePos).toBe(2);
+    expect(state.pendingOvertakeFromRetirement).toBe(false);
+  });
+
   it("does not flag fromRetirement for a genuine on-track pass", () => {
     const state = createInitialState();
     const { events, emit } = collect();
