@@ -16,24 +16,25 @@
  * **effective score** is its live `lc + dp` while it's moving normally on
  * track, and is **frozen at its last-known good value** whenever its telemetry
  * is invalid (`NotInWorld`) or has drifted discontinuously from the last-known
- * point (teleport / tow / post-blink-different-location). The player only
- * passes a frozen car when the player's own score genuinely exceeds the frozen
- * point — "…until we've passed that point". A frozen car becomes unfrozen
- * automatically when its live score returns to within {@link TELEPORT_THRESHOLD}
- * of its anchor (it's racing nearby again).
+ * point (teleport / tow). A frozen car is held at that score until it **resumes
+ * continuous forward motion** — at which point its position rolls back to live,
+ * wherever it is (issue #697). Release is judged tick-to-tick, NOT by distance
+ * from the now-stale anchor: a towed car returns far from where it vanished, so
+ * an anchor-proximity test could never re-open and pinned the car (and the
+ * player, after their own tow) at a dead position for the rest of the race.
  *
- * One rule replaces three patches:
- *   - **Blink** (`NotInWorld` for a tick) → frozen at last → the player's rank
- *     doesn't move during the blip; the car unfreezes on its first in-world
- *     tick (live score ≈ anchor).
- *   - **Disconnect** (`NotInWorld` indefinitely) → frozen at last → the player
+ * One rule replaces the per-symptom patches:
+ *   - **Blink** (`NotInWorld` for a tick) → held at last → the player's rank
+ *     doesn't move during the blip; released as soon as the car is moving again.
+ *   - **Disconnect** (`NotInWorld` indefinitely) → held at last → the player
  *     passes it naturally by racing past its point; no sudden reshuffle.
- *   - **Finished** (crosses S/F, drives to garage, vanishes) → frozen at the
+ *   - **Finished** (crosses S/F, drives to garage, vanishes) → held at the
  *     finishing score (last-known just before vanishing) → the player can't
  *     pass it without finishing too. No separate checkered detection needed.
- *   - **Tow** (teleport to pit stall) → live score jumps far from the anchor
- *     → frozen at the pre-tow on-track score → stays where it was. No `-1`
- *     hack, and more accurate than subtracting a whole lap.
+ *   - **Tow** (teleport to pit stall) → score jumps discontinuously → held at
+ *     the pre-tow on-track score while out → released the moment the car drives
+ *     off again, so it rejoins the order at its true (dropped-back) position
+ *     instead of staying pinned where it was.
  *
  * **Celebration rule** (applied by `diffOvertakes`): when the player's rank
  * improves, the gain is `fromRetirement` (no "Nice pass") iff at least one car
@@ -59,17 +60,23 @@ export const TELEPORT_THRESHOLD = 0.05;
  * Update the self-managed running order from this tick's telemetry. Call once
  * per tick, before `calculateFrozenRacePositions` and `diffOvertakes`.
  *
- * For each car:
- *   - `NotInWorld` (live `lc`/`dp`/`ts` snapped to `-1`) → freeze at the
- *     last-known score (preserved across the blip).
- *   - In world but live `lc + dp` differs from the anchor by more than
- *     {@link TELEPORT_THRESHOLD} → freeze (teleport / drifted-away post-blink);
- *     keep the anchor pinned to where the car was last seen racing.
- *   - In world and the live score is close to the anchor → continuous on-track
- *     motion → unfreeze and roll the anchor forward to the live score.
+ * Two gates, both decided from per-tick motion (issue #697):
+ *   - **Freeze on teleport only.** A car that goes `NotInWorld`, or whose score
+ *     jumps discontinuously in a single tick (by more than {@link
+ *     TELEPORT_THRESHOLD} — a tow teleporting to the pit stall), is held at its
+ *     last known racing position so nothing reshuffles around it. A car that
+ *     merely slows or stops is NOT frozen — it keeps its live position and
+ *     correctly loses places to cars still racing.
+ *   - **Release when it's moving again.** A frozen car is released the moment it
+ *     resumes continuous forward motion (a small positive per-tick advance),
+ *     wherever it is, and its position rolls to live. The check is tick-to-tick,
+ *     NOT distance from the (now stale) anchor — the old anchor-proximity test
+ *     never re-opened once a towed car returned far from where it vanished, so
+ *     it pinned the car (and the player, after their own tow) at a dead position
+ *     for the rest of the race.
  *
- * Cars that have never been seen in-world (no anchor yet) are seeded on their
- * first in-world tick and stay unfrozen from there.
+ * Cars never seen in-world (no anchor) are seeded on their first in-world tick
+ * and stay unfrozen from there.
  */
 export function updatePositionTracking(state: TranslatorState, telemetry: TelemetryData): void {
   const lc = telemetry.CarIdxLapCompleted;
@@ -80,32 +87,63 @@ export function updatePositionTracking(state: TranslatorState, telemetry: Teleme
   const ts = telemetry.CarIdxTrackSurface as number[] | undefined;
   const length = Math.min(lc.length, dp.length);
 
+  // Reset the one-tick "just released from frozen" signal; the release branch
+  // below repopulates it so `diffOvertakes` (later this tick) can still treat a
+  // tow-released car as a retirement rather than a real on-track pass (#697).
+  state.positionJustReleased.clear();
+
   for (let i = 0; i < length; i++) {
     const inWorld = lc[i] >= 0 && dp[i] >= 0 && ts?.[i] !== TrkLoc.NotInWorld;
 
     if (!inWorld) {
-      // Telemetry has snapped to the NotInWorld sentinels — keep the anchor,
-      // mark frozen if we'd ever seen the car (so it can be ranked). A car we
-      // haven't seen yet has no anchor and stays absent from the order.
+      // Out of the world (mid-tow teleport / disconnect). Hold the car at its
+      // last known racing position if we'd ever seen it. The previous-tick score
+      // is deliberately left as-is, so the first in-world tick after the gap is
+      // measured against where the car vanished.
       if (state.positionLastKnownScores[i] !== undefined) state.positionFrozen.add(i);
 
       continue;
     }
 
     const score = lc[i] + dp[i];
+    const prev = state.positionPrevScore[i];
+
+    state.positionPrevScore[i] = score;
+
     const anchor = state.positionLastKnownScores[i];
 
     if (anchor === undefined) {
       // First sighting — seed the anchor, unfrozen.
       state.positionLastKnownScores[i] = score;
       state.positionFrozen.delete(i);
-    } else if (Math.abs(score - anchor) > TELEPORT_THRESHOLD) {
-      // Live score has drifted far from the anchor: teleport (tow) or just
-      // returned in a different spot after a blink. Freeze — keep the anchor.
+
+      continue;
+    }
+
+    // Continuous forward motion since the previous in-world tick — the car is
+    // racing normally (a small fraction of a lap per tick). A teleport (tow)
+    // shows up as a discontinuous jump; a stationary car shows no advance.
+    const movingNormally = prev !== undefined && score > prev && score - prev <= TELEPORT_THRESHOLD;
+
+    if (state.positionFrozen.has(i)) {
+      // Held after a tow / teleport. Release the moment it's moving normally
+      // again — wherever it is (issue #697) — and roll its position to live.
+      // Flag the release for this tick so the overtake retirement classifier
+      // doesn't read the player's resulting gain as a real on-track pass.
+      if (movingNormally) {
+        state.positionFrozen.delete(i);
+        state.positionJustReleased.add(i);
+        state.positionLastKnownScores[i] = score;
+      }
+
+      continue;
+    }
+
+    // Racing normally. Freeze ONLY on a teleport: a discontinuous one-tick jump
+    // (a tow). Anything continuous rolls the anchor forward to the live score.
+    if (prev !== undefined && Math.abs(score - prev) > TELEPORT_THRESHOLD) {
       state.positionFrozen.add(i);
     } else {
-      // Continuous on-track motion close to the anchor — roll it forward.
-      state.positionFrozen.delete(i);
       state.positionLastKnownScores[i] = score;
     }
   }

@@ -1155,6 +1155,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // positions are read.
   updatePositionTracking(self.state, telemetry);
   const frozenPositions = calculateFrozenRacePositions(self.state, telemetry);
+
   diffOvertakes(
     self.state,
     telemetry,
