@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/iracing-plugin-ulanzi",
-  "version": "1.22.1",
+  "version": "1.22.2",
   "description": "Ulanzi Deck plugin for iRacing - Core driving and interface controls",
   "type": "module",
   "packageManager": "pnpm@10.0.0",

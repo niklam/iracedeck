@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/website",
-  "version": "1.22.1",
+  "version": "1.22.2",
   "private": true,
   "description": "Documentation website for iRaceDeck Stream Deck plugins",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/audio-service",
-  "version": "1.22.1",
+  "version": "1.22.2",
   "description": "Multi-channel audio mixer singleton over @iracedeck/audio-native",
   "type": "module",
   "main": "dist/index.js",
