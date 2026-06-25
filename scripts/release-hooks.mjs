@@ -36,18 +36,40 @@ const packageJsonPaths = readdirSync(packagesDir, { withFileTypes: true })
   })
   .sort();
 
-// Bump Version in manifest.json files. Elgato's manifest schema requires a
-// strict 4-part numeric format `{major}.{minor}.{patch}.{build}`
-// (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so semver pre-release / build metadata
-// suffixes must be stripped. The build slot is populated from
-// `git rev-list --count HEAD` so each release (pre or final alike) gets a
-// unique 4-part version; the final naturally outranks its preceding
-// pre-releases because release-it commits the version bump between runs,
-// which advances the commit count.
-const manifestPaths = [
-  "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json",
-  "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json",
-];
+// Bump Version in manifest.json files. Discovered dynamically — the same way as
+// the package.json files above — rather than a hardcoded list: scan every
+// `packages/*/<plugin-folder>/manifest.json` that declares a `Version`. The old
+// static array silently skipped the Ulanzi plugin's manifest (it stayed at
+// 1.22.0.0 while the others advanced), exactly the drift issue #435 fixed for
+// package.json; auto-discovery picks up any current or future plugin manifest
+// (`.sdPlugin` / `.ulanziPlugin`) automatically.
+//
+// Elgato's manifest schema requires a strict 4-part numeric format
+// `{major}.{minor}.{patch}.{build}` (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so
+// semver pre-release / build metadata suffixes must be stripped. The build slot
+// is populated from `git rev-list --count HEAD` so each release (pre or final
+// alike) gets a unique 4-part version; the final naturally outranks its
+// preceding pre-releases because release-it commits the version bump between
+// runs, which advances the commit count.
+const manifestPaths = readdirSync(packagesDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .flatMap((pkgEntry) => {
+    const pkgDir = join(packagesDir, pkgEntry.name);
+    return readdirSync(pkgDir, { withFileTypes: true })
+      .filter((sub) => sub.isDirectory())
+      .map((sub) => `packages/${pkgEntry.name}/${sub.name}/manifest.json`);
+  })
+  .filter((rel) => {
+    const filePath = join(root, rel);
+    if (!existsSync(filePath)) return false;
+    try {
+      const manifest = JSON.parse(readFileSync(filePath, "utf-8"));
+      return typeof manifest.Version === "string";
+    } catch {
+      return false;
+    }
+  })
+  .sort();
 
 const numericVersion = version.replace(/[-+].*$/, "");
 const buildNumber = execFileSync("git", ["rev-list", "--count", "HEAD"], {
