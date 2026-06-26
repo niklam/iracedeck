@@ -15,14 +15,6 @@ on:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    # Force GitHub's runner to execute JavaScript actions on Node 24. The Firebase
-    # deploy action below still declares `using: node20`, which GitHub has deprecated:
-    # Node 20 actions are forced to Node 24 from 2026-06-02 and Node 20 is removed
-    # from runners on 2026-09-16. Opting in early verifies the action runs under
-    # Node 24 before the forced cutover. Remove this once
-    # FirebaseExtended/action-hosting-deploy ships a Node 24 release (issue #388).
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
     steps:
       - uses: actions/checkout@v7
 
