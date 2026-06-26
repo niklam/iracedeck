@@ -9096,6 +9096,206 @@
       "textPreview": "Black flag cleared.",
       "generatedAt": "2026-06-12T17:31:46.671Z",
       "requestId": "IicDetKoHnk4SNlA4Qpn"
+    },
+    "voice/default/names/dean.mp3": {
+      "hash": "2bb718b3e60df9d8",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Dean",
+      "generatedAt": "2026-06-26T17:45:06.824Z",
+      "requestId": "cy0Rym3Ur0M6rqtxLaCX"
+    },
+    "voice/default/names/dylan.mp3": {
+      "hash": "dc3309d33b814e18",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Dylan",
+      "generatedAt": "2026-06-26T17:45:07.089Z",
+      "requestId": "HTZsxJkqeh0zGrxtzLtp"
+    },
+    "voice/default/names/jakub.mp3": {
+      "hash": "2cdf31bd3946222b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jakub",
+      "generatedAt": "2026-06-26T17:45:07.245Z",
+      "requestId": "4049btVKBvUBJglue3uO"
+    },
+    "voice/default/names/ron.mp3": {
+      "hash": "3b37bc78a8395bff",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ron",
+      "generatedAt": "2026-06-26T17:45:07.387Z",
+      "requestId": "YzcVbFvpzQJ2cBqeHsji"
+    },
+    "voice/default/names/tom.mp3": {
+      "hash": "de77fc75c8f4a0d2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Tom",
+      "generatedAt": "2026-06-26T17:45:07.529Z",
+      "requestId": "EeSqeXDV8dnLliMUGh9b"
+    },
+    "voice/default/session-start-greeting/dean.mp3": {
+      "hash": "53d59ef1d04b1372",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Dean,",
+      "generatedAt": "2026-06-26T17:45:07.674Z",
+      "requestId": "OCG6g3UbWZyplP3wfQy0"
+    },
+    "voice/default/session-start-greeting/dylan.mp3": {
+      "hash": "3bfd76de1f210157",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Dylan,",
+      "generatedAt": "2026-06-26T17:45:07.827Z",
+      "requestId": "OrxQhkGFVaDTldFTVF4E"
+    },
+    "voice/default/session-start-greeting/jakub.mp3": {
+      "hash": "0b1dc5eb0bf4bd11",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Jakub,",
+      "generatedAt": "2026-06-26T17:45:07.981Z",
+      "requestId": "CWu6Sx9I2IU8Xawk4p5Q"
+    },
+    "voice/default/session-start-greeting/ron.mp3": {
+      "hash": "4efc1bb15e3af087",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Ron,",
+      "generatedAt": "2026-06-26T17:45:08.139Z",
+      "requestId": "SpgGiaMwEbRgdlBp4l31"
+    },
+    "voice/default/session-start-greeting/tom.mp3": {
+      "hash": "0532127ca555af5a",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ok, Tom,",
+      "generatedAt": "2026-06-26T17:45:08.284Z",
+      "requestId": "w1zqeFywDKmrWzT3OGyK"
+    },
+    "voice/default/race-end-greeting/dean.mp3": {
+      "hash": "5e961bb12b72ffa2",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Dean,",
+      "generatedAt": "2026-06-26T17:45:08.423Z",
+      "requestId": "zDf0dCmrXnLm2YJo1ZED"
+    },
+    "voice/default/race-end-greeting/dylan.mp3": {
+      "hash": "b3ce6c7068ac46ca",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Dylan,",
+      "generatedAt": "2026-06-26T17:45:08.575Z",
+      "requestId": "jrNNwSoSmPdP0YCO4PYt"
+    },
+    "voice/default/race-end-greeting/jakub.mp3": {
+      "hash": "238788914909a420",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Jakub,",
+      "generatedAt": "2026-06-26T17:45:08.737Z",
+      "requestId": "skKK07S8RtByTnDzbvbu"
+    },
+    "voice/default/race-end-greeting/ron.mp3": {
+      "hash": "28bc835103152f64",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Ron,",
+      "generatedAt": "2026-06-26T17:45:08.877Z",
+      "requestId": "LUi74jfBHU757CPqusEo"
+    },
+    "voice/default/race-end-greeting/tom.mp3": {
+      "hash": "91d9222c75b18caa",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Tom,",
+      "generatedAt": "2026-06-26T17:45:09.039Z",
+      "requestId": "geTm1fIdlBNgNCJC8UMS"
+    },
+    "voice/default/race-start-greeting/dean.mp3": {
+      "hash": "dd0d50e4059ae2d1",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Dean.",
+      "generatedAt": "2026-06-26T17:45:09.198Z",
+      "requestId": "7DIEs6DMS4reKRoWGuIs"
+    },
+    "voice/default/race-start-greeting/dylan.mp3": {
+      "hash": "df74c055ba1b87f7",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Dylan.",
+      "generatedAt": "2026-06-26T17:45:09.359Z",
+      "requestId": "vRzJrlSQK0B5CilKlYvy"
+    },
+    "voice/default/race-start-greeting/jakub.mp3": {
+      "hash": "12ea6faff9191e28",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Jakub.",
+      "generatedAt": "2026-06-26T17:45:09.518Z",
+      "requestId": "Dxs5tgDMWFX0sL03j0IS"
+    },
+    "voice/default/race-start-greeting/ron.mp3": {
+      "hash": "9c33df3d808aff25",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Ron.",
+      "generatedAt": "2026-06-26T17:45:09.676Z",
+      "requestId": "556y8J9OioL3YZ6TqkV9"
+    },
+    "voice/default/race-start-greeting/tom.mp3": {
+      "hash": "dd294fb83d57bd64",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Time to race, Tom.",
+      "generatedAt": "2026-06-26T17:45:09.822Z",
+      "requestId": "8z6hvXWKy0zFeMHTtDbd"
+    },
+    "voice/default/position-overtake-come-on/dean.mp3": {
+      "hash": "cfd331df9f599462",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Dean.",
+      "generatedAt": "2026-06-26T17:45:09.986Z",
+      "requestId": "B246aYA7ksyzBhFCyBYN"
+    },
+    "voice/default/position-overtake-come-on/dylan.mp3": {
+      "hash": "8665274204bb2f6f",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Dylan.",
+      "generatedAt": "2026-06-26T17:45:10.137Z",
+      "requestId": "TKThtsYN8Djxk9x5fYdL"
+    },
+    "voice/default/position-overtake-come-on/jakub.mp3": {
+      "hash": "0ed7d27f3f27283b",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Jakub.",
+      "generatedAt": "2026-06-26T17:45:10.296Z",
+      "requestId": "S4sirTqblmGHO0MBWKci"
+    },
+    "voice/default/position-overtake-come-on/ron.mp3": {
+      "hash": "2f91e03f97a7dd38",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Ron.",
+      "generatedAt": "2026-06-26T17:45:10.441Z",
+      "requestId": "mtsAKrWmOuhY6Ongo5Ck"
+    },
+    "voice/default/position-overtake-come-on/tom.mp3": {
+      "hash": "ad765b624230f9a0",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Come on, Tom.",
+      "generatedAt": "2026-06-26T17:45:10.589Z",
+      "requestId": "yuwaX8Shu47v2BCoJtoc"
     }
   }
 }
