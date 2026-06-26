@@ -182,6 +182,7 @@ function wrapDialRotateEvent<T>(ev: DialRotateEvent<T & JsonObject>): IDeckDialR
     payload: {
       settings: ev.payload.settings as T,
       ticks: ev.payload.ticks,
+      pressed: ev.payload.pressed,
     },
   };
 }

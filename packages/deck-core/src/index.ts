@@ -188,6 +188,18 @@ export {
   formatFuelSettingWithUnit,
 } from "./unit-conversion.js";
 
+// Shared pit fuel-fill / autofuel telemetry readers (Fuel Service + Fuel Dial)
+export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled } from "./fuel-telemetry.js";
+
+// Shared dial-gesture convention (Push + Turn pair + release-time classifier)
+export {
+  DIAL_LONG_PRESS_THRESHOLD_MS,
+  type DirectionalPair,
+  type DialReleaseKind,
+  resolvePairedAction,
+  classifyDialRelease,
+} from "./dial-gesture.js";
+
 // Keyboard types
 export {
   KEYBOARD_KEYS,

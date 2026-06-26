@@ -47,11 +47,15 @@
     "toggle-fueling": {
       "method": "api"
     },
-    "clear-fueling": {
-      "method": "api"
-    },
     "fill-to-max": {
       "method": "api"
+    },
+    "toggle-autofuel-mode": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "fuelServiceToggleAutofuel"
+      }
     }
   },
   "tire-service": {

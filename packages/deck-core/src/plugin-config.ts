@@ -26,7 +26,6 @@ export interface PlatformCapabilities {
 export interface PlatformFeatureFlags {
   borderGlow: boolean;
   dialFeedback: boolean;
-  dialLongPress: boolean;
 }
 
 export interface PlatformFeatures {
