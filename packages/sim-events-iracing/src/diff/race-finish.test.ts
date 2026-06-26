@@ -1,12 +1,11 @@
 /**
- * Unit tests for the self-managed running order (issue #603).
+ * Unit tests for the self-managed running order (issues #603 / #697).
  *
- * One rule replaces the old per-symptom patches (checkered finished-freeze,
- * tow `-isTowed`, blink churn): each car has a last-known on-track score; a
- * car is FROZEN at that score whenever its telemetry is `NotInWorld` or has
- * drifted discontinuously from the anchor; otherwise it tracks live `lc + dp`.
- * The player only passes a frozen car when their own score genuinely exceeds
- * the frozen point — "…until we've passed that point".
+ * Each car has a last-known on-track score. A car is FROZEN at that score when
+ * it goes `NotInWorld` or teleports (a one-tick discontinuous jump — a tow), and
+ * is RELEASED back to its live `lc + dp` the moment it resumes continuous
+ * forward motion, wherever it is (#697). A permanently departed car (disconnect
+ * / finish into the garage) stays frozen and is passed naturally.
  */
 import { calculateRacePositions, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -241,5 +240,71 @@ describe("TELEPORT_THRESHOLD", () => {
     // tenths of a lap).
     expect(TELEPORT_THRESHOLD).toBeGreaterThan(0.01);
     expect(TELEPORT_THRESHOLD).toBeLessThan(0.5);
+  });
+});
+
+describe("tow / teleport release (issue #697)", () => {
+  it("releases a frozen car once it resumes forward motion, wherever it is", () => {
+    const state = createInitialState();
+    // Racing on track at lap 5, dp 0.5.
+    updatePositionTracking(state, mkTel([0.5]));
+    // Tow: teleports to the pit stall (dp 0.05) — frozen at the pre-tow score.
+    updatePositionTracking(state, mkTel([0.05], { trackSurface: [TrkLoc.InPitStall] }));
+    expect(state.positionFrozen.has(0)).toBe(true);
+    expect(state.positionLastKnownScores[0]).toBeCloseTo(5.5, 5);
+
+    // Starts moving again — released even though still in the pit stall (#697:
+    // release on motion, not on location) — and the anchor rolls to live.
+    updatePositionTracking(state, mkTel([0.06], { trackSurface: [TrkLoc.InPitStall] }));
+
+    expect(state.positionFrozen.has(0)).toBe(false);
+    expect(state.positionLastKnownScores[0]).toBeCloseTo(5.06, 5);
+  });
+
+  it("holds a NotInWorld-towed car until it moves again (the player-tow case)", () => {
+    const state = createInitialState();
+    updatePositionTracking(state, mkTel([0.5], { lapCompleted: [20] })); // racing, score 20.5
+    // Towed out of the world for a couple of ticks.
+    updatePositionTracking(state, mkTel([-1], { lapCompleted: [-1], trackSurface: [TrkLoc.NotInWorld] }));
+    updatePositionTracking(state, mkTel([-1], { lapCompleted: [-1], trackSurface: [TrkLoc.NotInWorld] }));
+    expect(state.positionFrozen.has(0)).toBe(true);
+
+    // Reappears in the pit far from the anchor — still held (jumped, not moving yet).
+    updatePositionTracking(state, mkTel([0.05], { lapCompleted: [20], trackSurface: [TrkLoc.InPitStall] }));
+    expect(state.positionFrozen.has(0)).toBe(true);
+    expect(state.positionLastKnownScores[0]).toBeCloseTo(20.5, 5);
+
+    // Now moving again → released to its live (dropped-back) score.
+    updatePositionTracking(state, mkTel([0.06], { lapCompleted: [20], trackSurface: [TrkLoc.OnTrack] }));
+    expect(state.positionFrozen.has(0)).toBe(false);
+    expect(state.positionLastKnownScores[0]).toBeCloseTo(20.06, 5);
+  });
+
+  it("does NOT freeze a car that merely stops on track (freeze is teleport-only)", () => {
+    const state = createInitialState();
+    updatePositionTracking(state, mkTel([0.5]));
+    // Spins to a halt — same score, no teleport jump. Stays live (so it loses
+    // places to cars still racing) and is never frozen.
+    updatePositionTracking(state, mkTel([0.5]));
+    updatePositionTracking(state, mkTel([0.5]));
+
+    expect(state.positionFrozen.has(0)).toBe(false);
+  });
+
+  it("ranks a released (post-tow) car at its live score, not the stale anchor", () => {
+    const state = createInitialState();
+    // Player idx0 at 5.50; rival idx1 just behind at 5.20.
+    updatePositionTracking(state, mkTel([0.5, 0.2]));
+    // Player tows to the pits → frozen at 5.50 (anchor still "ahead" of idx1).
+    updatePositionTracking(state, mkTel([0.05, 0.25], { trackSurface: [TrkLoc.InPitStall, TrkLoc.OnTrack] }));
+    // idx1 races past where the player really is while the player is serviced.
+    updatePositionTracking(state, mkTel([0.05, 0.3], { trackSurface: [TrkLoc.InPitStall, TrkLoc.OnTrack] }));
+    // Player rejoins behind idx1 and is moving → released to its live 5.10.
+    updatePositionTracking(state, mkTel([0.1, 0.35]));
+
+    const order = calculateFrozenRacePositions(state, mkTel([0.1, 0.35]));
+
+    expect(order[1]).toBe(1); // idx1 genuinely ahead now (5.35)
+    expect(order[0]).toBe(2); // player correctly behind at live 5.10 — not pinned ahead at 5.50
   });
 });

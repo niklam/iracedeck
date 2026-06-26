@@ -74,6 +74,7 @@ Where the log file lives:
 
 - **Stream Deck (Elgato)**: in the plugin's `logs` folder under `%APPDATA%\Elgato\StreamDeck\Plugins\com.iracedeck.sd.core.sdPlugin\`.
 - **Stream Dock (Mirabox)**: in the plugin's `log` folder under `%APPDATA%\HotSpot\StreamDock\plugins\com.iracedeck.sd.core.sdPlugin\`, named by date (e.g. `2026.5.31.log`).
+- **Ulanzi Deck (UlanziStudio)**: in the plugin's `log` folder under `%APPDATA%\Ulanzi\UlanziDeck\Plugins\com.ulanzi.iracedeck.ulanziPlugin\`, named by date (e.g. `2026.5.31.log`).
 
 ## Need more help?
 

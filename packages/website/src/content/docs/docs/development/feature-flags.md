@@ -3,7 +3,7 @@ title: Feature Flags
 description: How iRaceDeck gates platform-specific features at build time, and how to override flags locally for testing.
 ---
 
-iRaceDeck ships two plugins — the Elgato Stream Deck plugin and the Mirabox VSD Craft plugin. They share most code, but the two hosts use different SVG engines (Stream Deck is QT 6.7+, Mirabox is QT 5), so some features work on one platform and are silently ignored on the other.
+iRaceDeck ships three plugins — the Elgato Stream Deck plugin, the Mirabox VSD Craft plugin, and the Ulanzi Deck plugin. They share most code, but the hosts use different SVG engines (Stream Deck is QT 6.7+, Mirabox is QT 5), so some features work on one platform and are silently ignored on the other. The Ulanzi plugin stays on the same conservative QT5 baseline as Mirabox until its renderer's support for those features is confirmed on hardware.
 
 Feature flags let us gate those features at **build time**: unsupported code is stripped from the bundle, and Property Inspector controls that would have no effect are hidden. Flags also provide a lightweight way for contributors to test in-development features locally without shipping them to everyone.
 
@@ -13,6 +13,7 @@ Each plugin has a committed `platform-features.json`:
 
 - `packages/iracing-plugin-stream-deck/platform-features.json`
 - `packages/iracing-plugin-mirabox/platform-features.json`
+- `packages/iracing-plugin-ulanzi/platform-features.json`
 
 The file has two top-level keys:
 
@@ -72,20 +73,20 @@ A committed `feature-flags.local.json.example` at the repo root documents the sh
 
 ## Current flags
 
-| Flag | Category | Stream Deck | Mirabox | Purpose |
-|------|----------|-------------|---------|---------|
-| `svgFilters` | capability | `true` | `false` | SVG `<filter>` support (required by `feGaussianBlur`, etc.) |
-| `svgMasks` | capability | `true` | `false` | SVG `<mask>` support |
-| `svgPatterns` | capability | `true` | `false` | SVG `<pattern>` support |
-| `borderGlow` | feature | `true` | `false` | The glow halo around border overlays — uses `feGaussianBlur` and only renders on Stream Deck |
+| Flag | Category | Stream Deck | Mirabox | Ulanzi | Purpose |
+|------|----------|-------------|---------|--------|---------|
+| `svgFilters` | capability | `true` | `false` | `false` | SVG `<filter>` support (required by `feGaussianBlur`, etc.) |
+| `svgMasks` | capability | `true` | `false` | `false` | SVG `<mask>` support |
+| `svgPatterns` | capability | `true` | `false` | `false` | SVG `<pattern>` support |
+| `borderGlow` | feature | `true` | `false` | `false` | The glow halo around border overlays — uses `feGaussianBlur` and only renders on Stream Deck |
 
 ## Adding a new flag
 
 Short version (see the in-repo rule `.claude/rules/platform-feature-flags.md` for full details):
 
-1. Add the flag to both `platform-features.json` files with the correct per-platform default.
+1. Add the flag to all three `platform-features.json` files with the correct per-platform default.
 2. For a new `features.*` flag, add it to the `PlatformFeatureFlags` interface in `packages/deck-core/src/plugin-config.ts`. For a new `capabilities.*` flag, add it to the `PlatformCapabilities` interface in the same file.
 3. Declare the `__FEATURE_*__` or `__CAPABILITY_*__` ambient global in `packages/icon-composer/src/platform-features.d.ts`.
-4. Add a replace entry in **both** plugin `rollup.config.mjs` files.
+4. Add a replace entry in **all three** plugin `rollup.config.mjs` files.
 5. Gate the affected code and/or PI partials (`locals.platform?.features?.yourFlag !== false`, or `locals.platform?.capabilities?.yourCapability` for capability checks).
 6. Seed the default in `test-setup.ts` and cover both the `true` and `false` paths with `vi.stubGlobal`.

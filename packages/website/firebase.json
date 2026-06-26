@@ -15,7 +15,7 @@
       },
       {
         "source": "/downloads/plugin/latest/ulanzi",
-        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.ulanzi.iracedeck.ulanziPlugin",
+        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.ulanzi.iracedeck.ulanziPlugin.zip",
         "type": 302
       },
       {

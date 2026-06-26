@@ -1,9 +1,9 @@
 ---
 title: Installation
-description: How to install iRaceDeck on your Elgato Stream Deck or Mirabox device.
+description: How to install iRaceDeck on your Elgato Stream Deck, Mirabox, or Ulanzi Deck device.
 ---
 
-iRaceDeck is available for **Elgato Stream Deck** and **Mirabox** devices. Choose the installation method that matches your hardware.
+iRaceDeck is available for **Elgato Stream Deck**, **Mirabox**, and **Ulanzi Deck** devices. Choose the installation method that matches your hardware.
 
 ## Elgato Stream Deck
 
@@ -61,6 +61,26 @@ The Mirabox ecosystem covers devices from brands including **Stream Dock**, **SO
 ### Direct Download from iRaceDeck
 
 You can also download the Mirabox plugin (`.sdPlugin` file) directly from the [iRaceDeck Downloads page](/downloads/) and import it via the Mirabox Space app.
+
+## Ulanzi Deck
+
+iRaceDeck runs on **Ulanzi Deck** devices (D200, D200H, D200X, and Dial) through the UlanziStudio app.
+
+### Requirements
+
+- A Ulanzi Deck device with the **UlanziStudio** app installed
+
+### Install from iRaceDeck
+
+1. Go to the [iRaceDeck Downloads page](/downloads/)
+2. Click **Download for Ulanzi** to download the plugin `.zip` file
+3. Unzip the file into `%APPDATA%\Ulanzi\UlanziDeck\Plugins\`
+4. Restart UlanziStudio
+5. Look for the **iRaceDeck** category in the action list
+
+### Install from UlanziStudio
+
+You can also install iRaceDeck directly from within UlanziStudio via the [iRaceDeck marketplace listing](https://ugc.ulanzistudio.com/contentView/1031).
 
 ## After Installation
 

@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Release notes and version history for the iRaceDeck plugin for Elgato Stream Deck and Mirabox devices.
+description: Release notes and version history for the iRaceDeck plugin for Elgato Stream Deck, Mirabox, and Ulanzi Deck devices.
 ---
 
 import ChangelogLeadIn from "../../components/ChangelogLeadIn.astro";
@@ -16,6 +16,22 @@ _Unreleased_
 **Features**
 
 - Fuel Dial now adapts to your fuel mode: a bare turn adjusts fuel manually, or — when iRacing's autofuel is on — adjusts the autofuel lap margin, with a dedicated autofuel display (`Autofuel` / `AUTO OFF`) and a shared two-segment Add-Fuel bar. Every gesture — Push, Long Press, Push + Turn, Tap Display, and Long Touch — is configurable, with Long Press defaulting to Toggle Autofuel (a blind-safe choice for VR). The touch gestures default to off for VR safety.
+
+## 1.22.2
+
+_2026-06-25_
+
+**Bug Fixes**
+
+- Fixed towed cars (and cars that briefly dropped out) staying stuck at their pre-tow position in the running order — which drifted the Race Engineer's spoken position and the Session Info display off, sometimes by several places over a long race. Positions now recover the moment the car is moving normally again.
+
+## 1.22.1
+
+_2026-06-18_
+
+**Maintenance**
+
+- Expanded the Ulanzi Deck documentation (installation, troubleshooting, and developer guides) and renamed the Ulanzi plugin download to a self-describing `.zip` file. No functional changes to the plugin.
 
 ## 1.22.0
 
