@@ -7,13 +7,13 @@ sidebar:
     variant: tip
 ---
 
-Fuel Dial turns a Stream Deck+ dial into a fuel controller. A bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. Five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, you watch the live readout with a continuous two-segment fuel bar on the touch strip, and the dial works on a plain keypad button and on a Mirabox knob too.
+Fuel Dial turns a Stream Deck+ dial into a fuel controller. A bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. Five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, you watch the live readout with a continuous two-segment fuel bar on the touch strip, and the dial works on a plain keypad button and on Mirabox and Ulanzi knobs too.
 
 The dial is **modal**, read live from iRacing — never a stored setting. In **manual** mode a bare turn sets fuel; in **autofuel** mode (iRacing's autofuel is on) a bare turn adjusts the autofuel lap margin. The two manual sub-modes are deliberately distinct: **Add Amount** dials a fixed amount to add over the full tank range and shows `+<add> = <total>` (the total reflects live fuel burn); **Target Amount** dials the whole-number total you want after the stop, marks it with a red target line on the bar, and recomputes the request continuously as fuel burns. The title — on the touch strip and the keypad icon — is a cue to the mode and fuel-fill state: `Add Fuel`, `Fuel Target`, `Autofuel`, `FUEL OFF`, or `AUTO OFF`.
 
 ## Modes
 
-This action has a single mode — there is no Mode dropdown in the Property Inspector. The manual / autofuel behaviour switches automatically based on iRacing's autofuel state.
+The manual / autofuel behaviour isn't a setting — it switches automatically based on iRacing's live autofuel state. Separately, within manual mode, a **Mode** setting (below) chooses whether a turn sets the amount to add (**Add Amount**) or the desired total (**Target Amount**).
 
 ### Fuel
 
@@ -32,8 +32,9 @@ The touch strip always shows a live per-mode readout — `+<add> = <total>` in A
 
 #### Controls
 
-- **Elgato Stream Deck+** — dial rotation, a touchscreen readout that always shows, and a press (short or long). A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-- **Mirabox** — knob rotation and a press (short or long). There is no touchscreen, so the Tap Display and Long Touch settings do not apply; the long press works, degrading to a short press only if a particular knob reports release instantly.
+- **Elgato Stream Deck+** — dial rotation, Push + Turn, a touchscreen readout that always shows, and a press (short or long). A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+- **Mirabox** — knob rotation, Push + Turn, and a press (short or long). There is no touchscreen, so the Tap Display and Long Touch settings do not apply; the long press works, degrading to a short press only if a particular knob reports release instantly.
+- **Ulanzi (Dial / D200X)** — knob rotation, Push + Turn, and a press (short or long), the same as Mirabox. No touchscreen, so the Tap Display and Long Touch settings do not apply.
 - **Plain keypad button** — press only (no rotation). The icon shows the readout, and a press runs the Push action.
 
 #### Setting: Mode

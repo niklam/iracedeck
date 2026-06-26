@@ -4,12 +4,12 @@ Sets the pit-stop fuel from a Stream Deck+ dial with a live touch-strip readout.
 
 ## Properties
 
-| Property             | Value                                |
-| -------------------- | ------------------------------------ |
-| Action ID            | `com.iracedeck.sd.core.fuel-dial`    |
-| Type                 | +/-                                  |
-| SDK Support          | Yes                                  |
-| Encoder Support      | Yes                                  |
+| Property             | Value                                              |
+| -------------------- | -------------------------------------------------- |
+| Action ID            | `com.iracedeck.sd.core.fuel-dial`                  |
+| Type                 | +/-                                                |
+| SDK Support          | Yes                                                |
+| Encoder Support      | Yes                                                |
 | Communication Method | iRacing API + Key binding (per gesture, see below) |
 
 This is the first action to (re-)support a Stream Deck+ dial/encoder and touchscreen since the dial rebuild.
@@ -53,24 +53,25 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 
 ### Platform differences
 
-| Controller          | Rotate | Touchscreen (Tap Display / Long Touch) | Push | Long Press |
-| ------------------- | ------ | -------------------------------------- | ---- | ---------- |
-| Elgato Stream Deck+ | Yes    | Yes                                    | Yes  | Yes        |
-| Mirabox knob        | Yes    | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
-| Plain keypad        | No     | No                                     | Yes  | No (no dial button) |
+| Controller                 | Rotate | Push + Turn | Touchscreen (Tap Display / Long Touch) | Push | Long Press                                                            |
+| -------------------------- | ------ | ----------- | -------------------------------------- | ---- | --------------------------------------------------------------------- |
+| Elgato Stream Deck+        | Yes    | Yes         | Yes                                    | Yes  | Yes                                                                   |
+| Mirabox knob               | Yes    | Yes         | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
+| Ulanzi knob (Dial / D200X) | Yes    | Yes         | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
+| Plain keypad               | No     | No          | No                                     | Yes  | No (no dial button)                                                   |
 
 ## Settings
 
-| Setting     | Type     | Default             | Description                                                                  |
-| ----------- | -------- | ------------------- | ---------------------------------------------------------------------------- |
-| Mode        | Dropdown | Add Amount          | Whether a manual-mode turn sets the amount to add or the target total        |
-| Step Size   | Number   | 1                   | Amount the dialed value changes per detent, in the displayed unit            |
-| Push        | Dropdown | Toggle Fueling      | What a short dial press (or keypad press) does                               |
-| Long Press  | Dropdown | Toggle Autofuel     | What a long dial press does                                                  |
-| Push + Turn | Dropdown | None                | What a pressed rotation does — Full / No Fuel (CW fills, CCW empties) or None  |
-| Tap Display | Dropdown | None                | What a touch-strip tap does, or None to disable taps (Elgato only)           |
-| Long Touch  | Dropdown | None                | What a touch-strip long tap does, or None to disable it (Elgato only)        |
-| Units       | Dropdown | Auto (from iRacing) | Display unit for the readout and step                                        |
+| Setting     | Type     | Default             | Description                                                                   |
+| ----------- | -------- | ------------------- | ----------------------------------------------------------------------------- |
+| Mode        | Dropdown | Add Amount          | Whether a manual-mode turn sets the amount to add or the target total         |
+| Step Size   | Number   | 1                   | Amount the dialed value changes per detent, in the displayed unit             |
+| Push        | Dropdown | Toggle Fueling      | What a short dial press (or keypad press) does                                |
+| Long Press  | Dropdown | Toggle Autofuel     | What a long dial press does                                                   |
+| Push + Turn | Dropdown | None                | What a pressed rotation does — Full / No Fuel (CW fills, CCW empties) or None |
+| Tap Display | Dropdown | None                | What a touch-strip tap does, or None to disable taps (Elgato only)            |
+| Long Touch  | Dropdown | None                | What a touch-strip long tap does, or None to disable it (Elgato only)         |
+| Units       | Dropdown | Auto (from iRacing) | Display unit for the readout and step                                         |
 
 ### Mode Options
 
@@ -100,14 +101,14 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 
 The Fuel Dial icon is visually distinguishable from the Fuel Service icons. It shows the mode/fuel-fill cue title, the per-mode readout, and a continuous two-segment fuel bar beneath it (current fuel + fuel-to-add over capacity) with on-bar labels.
 
-| State                       | Icon                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------- |
-| Manual Add Amount, fuel on  | "Add Fuel" title, `+<add> = <total>`, neutral current segment + green add segment                 |
-| Manual Target Amount, fuel on | "Fuel Target" title, `→ <target>`, two-segment bar + red vertical target line (within the bar)   |
-| Fuel-fill off (either mode) | "FUEL OFF" title, readout shown, gray add segment (a text cue, not just gray)                      |
-| Autofuel on                 | "Autofuel" title, `AUTO → <add> <unit>` (add sourced from `PitSvFuel`), no red target line         |
-| Autofuel unavailable        | "AUTO OFF" title (red), dash readout, current segment only (`dpFuelAutoFillEnabled` is false)      |
-| Tank capacity unknown       | Readout shown; the bar falls back to the requested span                                           |
+| State                         | Icon                                                                                           |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| Manual Add Amount, fuel on    | "Add Fuel" title, `+<add> = <total>`, neutral current segment + green add segment              |
+| Manual Target Amount, fuel on | "Fuel Target" title, `→ <target>`, two-segment bar + red vertical target line (within the bar) |
+| Fuel-fill off (either mode)   | "FUEL OFF" title, readout shown, gray add segment (a text cue, not just gray)                  |
+| Autofuel on                   | "Autofuel" title, `AUTO → <add> <unit>` (add sourced from `PitSvFuel`), no red target line     |
+| Autofuel unavailable          | "AUTO OFF" title (red), dash readout, current segment only (`dpFuelAutoFillEnabled` is false)  |
+| Tank capacity unknown         | Readout shown; the bar falls back to the requested span                                        |
 
 ## Telemetry Integration
 
