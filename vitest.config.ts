@@ -57,6 +57,9 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ["./test-setup.ts"],
-    include: ["packages/*/src/**/*.test.ts"],
+    // Top-level scripts/ tests are plain ESM (.mjs) so release tooling can be
+    // run directly by `node` at release time. Scoped to the top level so the
+    // gitignored scripts/local/** is never scanned.
+    include: ["packages/*/src/**/*.test.ts", "scripts/*.test.mjs"],
   },
 });

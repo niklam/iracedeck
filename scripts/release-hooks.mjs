@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { formatLocalDate, stampChangelog } from "./changelog-stamp.mjs";
+
 const version = process.argv[2];
 if (!version) {
   console.error("Usage: node release-hooks.mjs <version>");
@@ -78,6 +80,18 @@ const buildNumber = execFileSync("git", ["rev-list", "--count", "HEAD"], {
 }).trim();
 const manifestVersion = `${numericVersion}.${buildNumber}`;
 
+// Stamp the changelog's in-development `_Unreleased_` date line with today's
+// release date on stable releases (issue #690). The release tooling bumps
+// package.json / manifest.json versions but historically left changelog.mdx
+// untouched, so the date had to be edited by hand. stampChangelog is a no-op
+// (with a clear reason) for pre-releases and for a missing or already-dated
+// section, so a release never fails just because the changelog wasn't staged.
+const changelogRel = "packages/website/src/content/docs/changelog.mdx";
+const changelogPath = join(root, changelogRel);
+const changelogStamp = existsSync(changelogPath)
+  ? stampChangelog(readFileSync(changelogPath, "utf-8"), version, formatLocalDate(new Date()))
+  : { content: "", stamped: false, reason: `No changelog at ${changelogRel} — skipping date stamp` };
+
 // release-it runs before:bump hooks even in dry-run mode, which would otherwise
 // modify real package.json / manifest.json files and stage them with `git add`.
 // `scripts/release.mjs` sets RELEASE_IT_DRY_RUN=1 when --dry-run is passed.
@@ -86,6 +100,7 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   for (const rel of packageJsonPaths) console.log(`    - ${rel}`);
   console.log(`  [dry-run] Would bump ${manifestPaths.length} manifest.json files to version ${manifestVersion}:`);
   for (const rel of manifestPaths) console.log(`    - ${rel}`);
+  console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
   process.exit(0);
 }
 
@@ -105,8 +120,15 @@ for (const rel of manifestPaths) {
   console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
 
+const stampedPaths = [];
+if (changelogStamp.stamped) {
+  writeFileSync(changelogPath, changelogStamp.content);
+  stampedPaths.push(changelogRel);
+}
+console.log(`  ${changelogStamp.reason}`);
+
 // Stage all modified files. Use argv form (no shell) so package directory
 // names containing spaces or shell metacharacters can't break or inject into
 // the git invocation.
-const allPaths = [...packageJsonPaths, ...manifestPaths];
+const allPaths = [...packageJsonPaths, ...manifestPaths, ...stampedPaths];
 execFileSync("git", ["add", "--", ...allPaths], { cwd: root, stdio: "inherit" });
