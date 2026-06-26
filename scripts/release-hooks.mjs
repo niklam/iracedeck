@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-import { discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
+import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 const version = process.argv[2];
 if (!version) {
@@ -33,7 +33,7 @@ const packageJsonFiles = discoverVersionedFiles(root, {
 });
 
 // Manifests are anchored to real plugin folders (`*.sdPlugin` / `*.ulanziPlugin`)
-// so an unrelated `packages/*​/<dir>/manifest.json` that happens to declare a
+// so an unrelated `packages/<pkg>/<dir>/manifest.json` that happens to declare a
 // string `Version` is never clobbered (issue #701, defect 3). `required: true`
 // makes a plugin folder whose manifest is missing or malformed abort the
 // release rather than ship it stale (defect 4).
@@ -52,13 +52,16 @@ const manifestFiles = discoverVersionedFiles(root, {
   required: true,
 });
 
-// Sanity floor (issue #701, defect 4): if the plugin-folder anchor matched
-// nothing — every plugin folder renamed/removed, or PLUGIN_FOLDER_SUFFIXES out
-// of date — no candidates are generated and the per-candidate `required` check
-// never fires; only an explicit floor catches that. (All plugins landing in
-// SKIPPED_PACKAGES would also trip this, which is review-worthy, not silent.)
-if (manifestFiles.length === 0) {
-  throw new Error("No plugin manifests discovered — refusing to release with a potentially stale manifest set.");
+// Sanity floor (issue #701, defect 4): abort only when NO plugin folders exist
+// on disk at all — the anchor matched nothing (every plugin folder renamed or
+// removed, or PLUGIN_FOLDER_SUFFIXES out of date), so no candidates were
+// generated and the per-candidate `required` check never fired. An empty
+// `manifestFiles` while plugin folders DO exist means every plugin package was
+// opted out via SKIPPED_PACKAGES — intentional, so it is not a failure.
+if (manifestFiles.length === 0 && allPluginManifestRelPaths(root).length === 0) {
+  throw new Error(
+    "No plugin manifests found under packages/*/{*.sdPlugin,*.ulanziPlugin} — refusing to release with a potentially stale manifest set.",
+  );
 }
 
 const numericVersion = version.replace(/[-+].*$/, "");

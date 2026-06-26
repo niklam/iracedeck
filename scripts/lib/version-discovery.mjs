@@ -4,7 +4,7 @@ import { join } from "node:path";
 /**
  * Plugin-folder suffixes whose `manifest.json` carries the Elgato-style
  * `Version` field the release bumps. Discovery is anchored to these suffixes
- * rather than "any `packages/*​/<dir>/manifest.json` that declares a string
+ * rather than "any `packages/<pkg>/<dir>/manifest.json` that declares a string
  * `Version`", so an unrelated manifest (e.g. the audio-assets clip manifest)
  * can never be clobbered with the build number (issue #701, defect 3).
  *
@@ -30,6 +30,21 @@ export function pluginManifestRelPaths(root, pkgName) {
   return readdirSync(pkgDir, { withFileTypes: true })
     .filter((sub) => sub.isDirectory() && PLUGIN_FOLDER_SUFFIXES.some((suffix) => sub.name.endsWith(suffix)))
     .map((sub) => `packages/${pkgName}/${sub.name}/manifest.json`);
+}
+
+/**
+ * Forward-slashed relative paths to every plugin folder's `manifest.json` across
+ * all packages, regardless of SKIPPED_PACKAGES or whether the manifest declares
+ * a `Version`. Lets a caller tell "no plugin folders exist at all" (a layout /
+ * anchor bug) apart from "every plugin folder was skipped" (intentional).
+ *
+ * @param {string} root absolute repository root
+ * @returns {string[]}
+ */
+export function allPluginManifestRelPaths(root) {
+  return readdirSync(join(root, "packages"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => pluginManifestRelPaths(root, entry.name));
 }
 
 /**

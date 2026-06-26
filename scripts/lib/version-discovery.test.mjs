@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { discoverVersionedFiles, PLUGIN_FOLDER_SUFFIXES, pluginManifestRelPaths } from "./version-discovery.mjs";
+import {
+  allPluginManifestRelPaths,
+  discoverVersionedFiles,
+  PLUGIN_FOLDER_SUFFIXES,
+  pluginManifestRelPaths,
+} from "./version-discovery.mjs";
 
 let root;
 
@@ -156,6 +161,37 @@ describe("discoverVersionedFiles — SKIPPED_PACKAGES", () => {
       required: true,
     });
     expect(manifests.map((f) => f.rel)).toEqual(["packages/plugin-b/com.x.b.ulanziPlugin/manifest.json"]);
+  });
+
+  it("returns no manifests when every plugin package is skipped, even though the folders still exist", () => {
+    buildStandardTree();
+    const skip = new Set(["@x/plugin-a", "@x/plugin-b"]);
+
+    const manifests = discoverVersionedFiles(root, {
+      candidatesFor: manifestCandidates,
+      versionField: "Version",
+      skip,
+      required: true,
+    });
+    // Legitimately empty (all opted out) — the orchestrator's floor must NOT
+    // abort here, which is why it cross-checks allPluginManifestRelPaths().
+    expect(manifests).toEqual([]);
+    expect(allPluginManifestRelPaths(root).length).toBeGreaterThan(0);
+  });
+});
+
+describe("allPluginManifestRelPaths", () => {
+  it("lists every plugin folder's manifest path, ignoring skip and Version presence", () => {
+    buildStandardTree();
+    expect(allPluginManifestRelPaths(root).sort()).toEqual([
+      "packages/plugin-a/com.x.a.sdPlugin/manifest.json",
+      "packages/plugin-b/com.x.b.ulanziPlugin/manifest.json",
+    ]);
+  });
+
+  it("is empty when no plugin folders exist at all (the genuine floor-abort case)", () => {
+    writeJson("packages/lib-only/package.json", { name: "@x/lib-only", version: "1.0.0" });
+    expect(allPluginManifestRelPaths(root)).toEqual([]);
   });
 });
 
