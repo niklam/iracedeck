@@ -68,7 +68,12 @@ export type IDeckKeyUpEvent<T> = IDeckEvent<T>;
 
 /** Fired when a rotary encoder/dial is turned */
 export interface IDeckDialRotateEvent<T> extends IDeckEvent<T> {
-  payload: { settings: T; ticks: number };
+  /**
+   * `pressed` reports whether the dial button was held down while the rotation
+   * occurred — the basis for the "Push + Turn" gesture. Native on both the
+   * Elgato (`DialRotate.pressed`) and Mirabox/Ulanzi (`payload.pressed`) SDKs.
+   */
+  payload: { settings: T; ticks: number; pressed: boolean };
 }
 
 /** Fired when a rotary encoder/dial is pressed */

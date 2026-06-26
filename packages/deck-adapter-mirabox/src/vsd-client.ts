@@ -25,6 +25,8 @@ export interface VSDEvent {
   payload?: {
     settings?: Record<string, unknown>;
     ticks?: number;
+    /** Whether the dial button was held while rotating (rotate-while-pressed). */
+    pressed?: boolean;
     coordinates?: { column: number; row: number };
     controller?: string;
     [key: string]: unknown;

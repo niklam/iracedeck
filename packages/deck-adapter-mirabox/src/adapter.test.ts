@@ -228,12 +228,35 @@ describe("VSDPlatformAdapter", () => {
         event: "dialRotate",
         action: "com.test.action",
         context: "ctx-789",
-        payload: { settings: {}, ticks: 3 },
+        payload: { settings: {}, ticks: 3, pressed: true },
       });
 
       expect(handler.onDialRotate).toHaveBeenCalledOnce();
       const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.payload.ticks).toBe(3);
+      // Mirabox sends `pressed` natively (rotate-while-pressed); pass it through.
+      expect(ev.payload.pressed).toBe(true);
+    });
+
+    it("defaults onDialRotate pressed to false when the frame omits it", async () => {
+      const handler: IDeckActionHandler = {
+        onDialRotate: vi.fn(),
+      };
+      adapter.registerAction("com.test.action", handler);
+
+      const dialRotateCall = client.onActionEvent.mock.calls.find(
+        (call: [string, string, unknown]) => call[1] === "dialRotate",
+      );
+
+      await dialRotateCall[2]({
+        event: "dialRotate",
+        action: "com.test.action",
+        context: "ctx-789",
+        payload: { settings: {}, ticks: 1 },
+      });
+
+      const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(ev.payload.pressed).toBe(false);
     });
 
     it("should provide no-op stubs for willDisappear context", async () => {

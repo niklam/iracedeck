@@ -9,9 +9,6 @@ import {
   generateFuelServiceSvg,
   getFuelAmount,
   getFuelServiceLabels,
-  isAutofuelActive,
-  isAutofuelEnabled,
-  isFuelFillOn,
 } from "./fuel-service.js";
 
 const {
@@ -122,6 +119,10 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalSettings: mockGetGlobalSettings,
+  // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
+  isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x0010) === 0x0010,
+  isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
+  isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
     pressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -639,24 +640,6 @@ describe("FuelService", () => {
     });
   });
 
-  describe("isFuelFillOn", () => {
-    it("returns true when FuelFill flag is set", () => {
-      expect(isFuelFillOn({ PitSvFlags: 0x0010 } as any)).toBe(true);
-    });
-
-    it("returns false when FuelFill flag is not set", () => {
-      expect(isFuelFillOn({ PitSvFlags: 0 } as any)).toBe(false);
-    });
-
-    it("returns false when telemetry is null", () => {
-      expect(isFuelFillOn(null)).toBe(false);
-    });
-
-    it("returns false when PitSvFlags is undefined", () => {
-      expect(isFuelFillOn({} as any)).toBe(false);
-    });
-  });
-
   describe("getFuelAmount", () => {
     it("returns fuel amount from telemetry", () => {
       expect(getFuelAmount({ PitSvFuel: 50.0 } as any)).toBe(50.0);
@@ -813,42 +796,6 @@ describe("FuelService", () => {
 
         expect(action.sdkController.unsubscribe).toHaveBeenCalledWith("action-1");
       });
-    });
-  });
-
-  describe("isAutofuelActive", () => {
-    it("returns true when dpFuelAutoFillActive is non-zero", () => {
-      expect(isAutofuelActive({ dpFuelAutoFillActive: 1 } as any)).toBe(true);
-    });
-
-    it("returns false when dpFuelAutoFillActive is 0", () => {
-      expect(isAutofuelActive({ dpFuelAutoFillActive: 0 } as any)).toBe(false);
-    });
-
-    it("returns false when telemetry is null", () => {
-      expect(isAutofuelActive(null)).toBe(false);
-    });
-
-    it("returns false when dpFuelAutoFillActive is undefined", () => {
-      expect(isAutofuelActive({} as any)).toBe(false);
-    });
-  });
-
-  describe("isAutofuelEnabled", () => {
-    it("returns true when dpFuelAutoFillEnabled is non-zero", () => {
-      expect(isAutofuelEnabled({ dpFuelAutoFillEnabled: 1 } as any)).toBe(true);
-    });
-
-    it("returns false when dpFuelAutoFillEnabled is 0", () => {
-      expect(isAutofuelEnabled({ dpFuelAutoFillEnabled: 0 } as any)).toBe(false);
-    });
-
-    it("returns true when telemetry is null (default available)", () => {
-      expect(isAutofuelEnabled(null)).toBe(true);
-    });
-
-    it("returns true when dpFuelAutoFillEnabled is undefined", () => {
-      expect(isAutofuelEnabled({} as any)).toBe(true);
     });
   });
 

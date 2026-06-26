@@ -136,6 +136,9 @@ function wrapDialRotateEvent<T>(
     payload: {
       settings: (data.payload?.settings ?? {}) as T,
       ticks: data.payload?.ticks ?? 0,
+      // Mirabox's C++ SDK sends `pressed` on rotate frames (rotate-while-pressed
+      // is native, not Elgato-only). Default false when the frame omits it.
+      pressed: data.payload?.pressed ?? false,
     },
   };
 }

@@ -1,12 +1,16 @@
 import {
+  applyBindingWarning,
+  classifyDialRelease,
   CommonSettings,
   ConnectionStateAwareAction,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
+  type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
   generateBorderParts,
   getCommands,
+  getDualPressThresholdMs,
   getFuelUnitSuffix,
   getGlobalBorderSettings,
   getGlobalColors,
@@ -20,19 +24,47 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isAutofuelActive,
+  isAutofuelEnabled,
+  isFuelFillOn,
   renderIconTemplate,
   resolveBorderSettings,
   resolveIconColors,
+  resolvePairedAction,
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { DisplayUnits, hasFlag, PitSvFlags, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { DisplayUnits, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import fuelDialTemplate from "../../../icons/fuel-dial.svg";
 
-/** Action triggered by a press / dial button / touch tap. */
-type PressAction = "toggle-fueling" | "clear-fueling" | "fill-to-max";
+/**
+ * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
+ * Long Touch) can run, plus the "none" sentinel. `fill-to-max` toggles a full
+ * tank vs no fuel; `toggle-autofuel-mode` flips iRacing's autofuel via its key
+ * binding (switching which mode the bare turn adjusts); `switch-mode` flips the
+ * manual dial mode between Add Amount and Target Amount.
+ */
+const GESTURE_ACTIONS = ["toggle-fueling", "fill-to-max", "toggle-autofuel-mode", "switch-mode", "none"] as const;
+
+/** A configurable gesture-slot value (one of {@link GESTURE_ACTIONS}). */
+type GestureSlot = (typeof GESTURE_ACTIONS)[number];
+
+/**
+ * Push + Turn pair members — directional fuel endpoints dispatched per pressed
+ * rotation. They are not offered as standalone gesture slots; they only appear
+ * inside a {@link PUSH_TURN_PAIRS} pair.
+ */
+type PushTurnMember = "fill-full" | "no-fuel";
+
+/** Anything {@link FuelDial.doPress} can run (gesture slots minus "none", plus push+turn members). */
+type GestureAction = Exclude<GestureSlot, "none"> | PushTurnMember;
+
+/** Global-settings keys for the autofuel key bindings (shared with Fuel Service). */
+const TOGGLE_AUTOFUEL_KEY = "fuelServiceToggleAutofuel";
+const LAP_MARGIN_INCREASE_KEY = "fuelServiceLapMarginIncrease";
+const LAP_MARGIN_DECREASE_KEY = "fuelServiceLapMarginDecrease";
 
 /**
  * Trailing-throttle window for coalescing rapid rotations into a single
@@ -41,13 +73,6 @@ type PressAction = "toggle-fueling" | "clear-fueling" | "fill-to-max";
  * and the latest value is flushed at the trailing edge.
  */
 const THROTTLE_WINDOW_MS = 100;
-
-/**
- * How long (ms) a dial/touch press must be held to count as a long press
- * rather than a short press. Only consulted when `__FEATURE_DIAL_LONG_PRESS__`
- * is enabled (Elgato).
- */
-const LONG_PRESS_THRESHOLD_MS = 500;
 
 /**
  * How long (ms) after a user rotation we keep ignoring telemetry re-seeds, so
@@ -74,14 +99,11 @@ const DISPLAY_REFRESH_MS = 5000;
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
 /**
- * Dialed value set when toggling Fill to Max off. In add-amount mode this IS the
- * add, so 1 L sends `pit.fuel(1)` (a real 1 L add). In fill-to mode it is the
- * target; with current fuel above 1 L the resolved add is 0, which `sendFuel`
- * maps to `pit.clearFuel()` (the SDK treats `pit.fuel(0)` as "keep existing", so a
- * 0 add must clear instead). Either way Fill to Max "empty" means ~no fuel added
- * (issue #681).
+ * The dialed value the "No Fuel" side of "Toggle Full / No Fuel" parks at (0).
+ * The command itself is sent by `sendNoFuel` (1 L then clear); this just records
+ * the empty state so the toggle's next press detects "not at max" and fills again.
  */
-const FILL_TO_MAX_MIN_LTR = 1;
+const TOGGLE_FULL_EMPTY_LTR = 0;
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
@@ -103,13 +125,36 @@ const FuelDialSettings = CommonSettings.extend({
     (val) => (typeof val === "string" ? val.replace(",", ".") : val),
     z.coerce.number().min(0.1).max(50).default(1),
   ),
-  pressAction: z.enum(["toggle-fueling", "clear-fueling", "fill-to-max"]).default("toggle-fueling"),
-  longPressAction: z.enum(["clear-fueling", "fill-to-max", "toggle-fueling", "none"]).default("clear-fueling"),
-  touchAction: z.enum(["toggle-fueling", "clear-fueling", "fill-to-max", "none"]).default("toggle-fueling"),
+  // Push (short press) — fires on dialUp. Default: toggle fuel-fill on/off.
+  pressAction: z.enum(GESTURE_ACTIONS).default("toggle-fueling"),
+  // Long Press (held dial button past the threshold, no rotation) — fires on
+  // dialUp. Default: toggle autofuel mode (blind-safe for VR).
+  longPressAction: z.enum(GESTURE_ACTIONS).default("toggle-autofuel-mode"),
+  // Push + Turn — a single bidirectional pair, dispatched per pressed rotation
+  // (clockwise → cw action, counter-clockwise → ccw action) via the shared dial
+  // convention. "full-empty": CW fills the tank, CCW empties it (no fuel).
+  pushTurnAction: z.enum(["none", "full-empty"]).default("none"),
+  // Tap Display (touch-strip tap, hold === false) — renamed from `touchAction`.
+  // Default None for VR safety; the legacy key is migrated in parseSettings.
+  tapAction: z.enum(GESTURE_ACTIONS).default("none"),
+  // Long Touch (touch-strip tap, hold === true). Default None for VR safety.
+  longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
   unitMode: z.enum(["auto", "liters", "gallons"]).default("auto"),
 });
 
 type FuelDialSettings = z.infer<typeof FuelDialSettings>;
+
+/**
+ * The "Push + Turn" pair for each `pushTurnAction` value. The per-tick dispatch
+ * goes through the shared {@link resolvePairedAction} — the same path a future
+ * Traction Control action will reuse with its own pairs. "none" maps to `null`
+ * (no dispatch).
+ */
+const PUSH_TURN_PAIRS: Record<FuelDialSettings["pushTurnAction"], DirectionalPair<GestureAction> | null> = {
+  none: null,
+  // Press + turn: clockwise fills the tank to full, counter-clockwise empties it (no fuel).
+  "full-empty": { cw: "fill-full", ccw: "no-fuel" },
+};
 
 /** Pending throttle state for one context. */
 interface ThrottleState {
@@ -119,6 +164,19 @@ interface ThrottleState {
   pendingLtr: number | null;
   /** Last liters value actually broadcast (suppresses no-op repeats). */
   lastSentLtr: number | null;
+}
+
+/**
+ * Coalescing state for autofuel lap-margin keybind taps (one context). A fast
+ * spin accumulates net detents within a window and dispatches a single
+ * increase/decrease tap per window instead of one tap per detent, so the
+ * black box isn't flooded (mirrors the {@link ThrottleState} pit.fuel pattern).
+ */
+interface MarginThrottleState {
+  /** Timer for the trailing tap, or null when idle. */
+  timer: ReturnType<typeof setTimeout> | null;
+  /** Net dial detents accumulated during the current window (signed). */
+  pendingTicks: number;
 }
 
 /** Per-context runtime state. */
@@ -132,12 +190,14 @@ interface FuelDialContext {
   dialValueLtr: number;
   /** Timestamp (ms) of the last user rotation; guards telemetry re-seed. */
   lastUserActivity: number;
-  /** Long-press timer (Elgato), or null. */
-  longPressTimer: ReturnType<typeof setTimeout> | null;
-  /** Whether the long-press timer already fired for the current press. */
-  longPressFired: boolean;
-  /** Timestamp (ms) the current press started (dial down). */
+  /** Timestamp (ms) the current dial-button press started (dialDown). */
   pressStart: number;
+  /**
+   * Whether the dial was rotated while the button was held during the current
+   * press. Set in onDialRotate (pressed === true), read once at dialUp to
+   * pre-empt both press actions — a push+turn fires nothing on release.
+   */
+  rotatedWhilePressed: boolean;
   /** Recurring display-refresh timer (re-renders bar + value), or null. */
   displayTimer: ReturnType<typeof setInterval> | null;
   /**
@@ -158,6 +218,8 @@ interface FuelDialContext {
    */
   lastSentWholeAdd: number | null;
   throttle: ThrottleState;
+  /** Coalescing state for autofuel lap-margin keybind taps. */
+  marginThrottle: MarginThrottleState;
 }
 
 /**
@@ -263,6 +325,68 @@ export function buildTitleText(dialMode: FuelDialSettings["dialMode"]): string {
   return dialMode === "fill-to" ? "Fuel Target" : "Add Fuel";
 }
 
+/** Manual / autofuel / autofuel-unavailable, derived from live autofuel telemetry. */
+export type DialDisplayMode = "manual" | "autofuel" | "autofuel-off";
+
+/**
+ * @internal Exported for testing
+ *
+ * Derives the Fuel Dial display mode from live telemetry. The dial is modal:
+ * `dpFuelAutoFillActive` selects manual vs autofuel, and `dpFuelAutoFillEnabled`
+ * downgrades an engaged autofuel to "autofuel-off" (unavailable for this
+ * car/series, mirroring Fuel Service's N/A). It never fabricates a combination —
+ * it reflects exactly what telemetry reports.
+ */
+export function resolveDialDisplayMode(telemetry: TelemetryData | null): DialDisplayMode {
+  if (!isAutofuelActive(telemetry)) return "manual";
+
+  return isAutofuelEnabled(telemetry) ? "autofuel" : "autofuel-off";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The mode/fuel-fill cue shown as the title — the most legible line. Precedence:
+ * autofuel-unavailable > fuel-fill-off > mode name, so a glance tells the driver
+ * which mode the bare turn adjusts and whether fuel-fill is armed. The
+ * fuel-fill-off cue is text (`FUEL OFF`), never colour alone, so VR drivers
+ * catching a peripheral look can read the unarmed state.
+ */
+export function buildDialTitle(mode: DialDisplayMode, dialMode: FuelDialSettings["dialMode"], fuelOn: boolean): string {
+  if (mode === "autofuel-off") return "AUTO OFF";
+
+  if (!fuelOn) return "FUEL OFF";
+
+  if (mode === "autofuel") return "Autofuel";
+
+  return buildTitleText(dialMode);
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The amount readout. Autofuel shows the telemetry-derived intended add
+ * (`PitSvFuel`) as `AUTO → <add> <u>` — open-loop, since the lap-margin value is
+ * not in telemetry, so it is never a fabricated counter. Manual delegates to
+ * {@link buildValueText}; autofuel-unavailable shows a dash.
+ */
+export function buildDialReadout(
+  mode: DialDisplayMode,
+  dialMode: FuelDialSettings["dialMode"],
+  addLtr: number,
+  totalLtr: number,
+  targetLtr: number,
+  displayUnits: number,
+): string {
+  if (mode === "autofuel-off") return "—";
+
+  if (mode === "autofuel") {
+    return `AUTO → ${formatDisplayValue(addLtr, displayUnits)} ${getFuelUnitSuffix(displayUnits)}`;
+  }
+
+  return buildValueText(dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+}
+
 /**
  * @internal Exported for testing
  *
@@ -289,19 +413,6 @@ export function readPitSvFuel(telemetry: TelemetryData | null): number | undefin
   const value = telemetry.PitSvFuel;
 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-/**
- * @internal Exported for testing
- *
- * Whether the iRacing pit fuel-fill checkbox is currently ON, derived from the
- * live `PitSvFlags` bitfield. This is the single source of truth for "fueling
- * on/off" — never a sticky local flag.
- */
-export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.PitSvFlags === undefined) return false;
-
-  return hasFlag(telemetry.PitSvFlags, PitSvFlags.FuelFill);
 }
 
 /**
@@ -518,17 +629,21 @@ export function renderFuelBarSvg(
 /**
  * @internal Exported for testing
  *
- * Generates the keypad icon (data URI) showing "FUEL", the per-mode value text,
- * and the continuous two-segment fuel bar.
+ * Generates the keypad icon (data URI) showing the mode/fuel-fill cue title, the
+ * per-mode value readout, and the continuous two-segment fuel bar. The `mode`
+ * (manual / autofuel / autofuel-off) selects the cue, readout, the bar's add
+ * source (caller-supplied), and whether the red fill-to target line is drawn.
  */
 export function generateFuelDialSvg(
   settings: FuelDialSettings,
+  mode: DialDisplayMode,
   currentLtr: number,
   addLtr: number,
   maxLtr: number | undefined,
   displayUnits: number,
   fuelOn: boolean,
   targetLtr: number,
+  bindingMissing = false,
 ): string {
   const colors = resolveIconColors(fuelDialTemplate, getGlobalColors(), settings.colorOverrides) as Record<
     string,
@@ -536,28 +651,32 @@ export function generateFuelDialSvg(
   >;
   const graphic1 = colors.graphic1Color || WHITE;
   const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
-  const valueText = buildValueText(settings.dialMode, addLtr, totalLtr, targetLtr, displayUnits);
-  // The target line is only drawn in fill-to mode.
-  const barTarget = settings.dialMode === "fill-to" ? targetLtr : undefined;
+  const valueText = buildDialReadout(mode, settings.dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  // The red target line is drawn only in MANUAL fill-to mode; in autofuel the
+  // current + add already equals the resulting total, so it is suppressed.
+  const barTarget = mode === "manual" && settings.dialMode === "fill-to" ? targetLtr : undefined;
 
   // Continuous two-segment fuel bar (current + add) with on-bar labels.
   const barX = 16;
   const barY = 100;
   const barW = 112;
   const barH = 28;
-  // Add-mode text ("+20 = 65 L") is wider than fill-to text ("→ 65 L"); size it
-  // down so the longer string fits the 144-wide canvas.
-  const valueFontSize = settings.dialMode === "fill-to" ? 30 : 24;
+  // The add ("+20 = 65 L") and autofuel ("AUTO → 48 L") readouts are wider than
+  // the fill-to target ("→ 65 L"); size the longer strings down to fit 144px.
+  const valueFontSize = mode === "manual" && settings.dialMode === "fill-to" ? 30 : 24;
   const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, barW, barH, displayUnits, barTarget);
-  const iconContent = `
+  const baseIconContent = `
     <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
           fill="${graphic1}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${valueText}</text>
     <g transform="translate(${barX}, ${barY})">${stripSvgWrapper(barSvg)}</g>`;
+  // When a gesture slot needs the autofuel key binding but it's unset, dim the
+  // content and draw the centered #612 warning triangle over it.
+  const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
 
-  // Mode-aware title ("Add Fuel" / "Fuel Target") replaces the static
-  // "FUEL" label. The longer text is sized down so it fits the 144-wide canvas.
+  // Mode/fuel-fill cue title ("Add Fuel" / "Fuel Target" / "Autofuel" /
+  // "FUEL OFF" / "AUTO OFF") replaces the static "FUEL" label.
   const resolvedTitle = resolveTitleSettings(fuelDialTemplate, getGlobalTitleSettings(), settings.titleOverrides);
-  const titleText = buildTitleText(settings.dialMode);
+  const titleText = buildDialTitle(mode, settings.dialMode, fuelOn);
   const titleFontSize = 18;
   const titleContent = resolvedTitle.showTitle
     ? `<text x="72" y="26" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor ?? WHITE}" font-family="Arial, sans-serif" font-size="${titleFontSize}" font-weight="bold">${titleText}</text>`
@@ -587,15 +706,19 @@ function stripSvgWrapper(svg: string): string {
   return svg.slice(open + 1, close);
 }
 
-/** Human-readable label for a press/touch action (for trigger descriptions). */
-function actionLabel(action: PressAction): string {
+/** Human-readable label for a gesture slot (for trigger descriptions). */
+function actionLabel(action: GestureSlot): string {
   switch (action) {
     case "toggle-fueling":
       return "Toggle fueling";
-    case "clear-fueling":
-      return "Clear fueling";
     case "fill-to-max":
-      return "Fill to max";
+      return "Toggle full / no fuel";
+    case "toggle-autofuel-mode":
+      return "Toggle autofuel";
+    case "switch-mode":
+      return "Switch mode";
+    case "none":
+      return "None";
   }
 }
 
@@ -605,24 +728,33 @@ function actionLabel(action: PressAction): string {
  * Computes the encoder trigger descriptions from the current settings.
  *
  * The Elgato SDK fields describe specific gestures: `rotate` (dial rotation),
- * `push` (dial button press), `touch` (touchscreen tap), and `longTouch`
- * (touchscreen LONG tap). This action's long press is a hold of the physical
- * DIAL BUTTON, which has no dedicated SDK field — so it is appended to the
- * `push` label as a "(hold: …)" hint rather than mis-assigned to `longTouch`.
+ * `push` (dial button press), `touch` (touchscreen tap) and `longTouch`
+ * (touchscreen LONG tap). The dial-button LONG PRESS has no dedicated SDK field,
+ * so it rides on the `push` label as a "(hold: …)" hint; the touchscreen long
+ * tap (Long Touch slot) maps to `longTouch`.
  */
 export function buildTriggerDescription(settings: FuelDialSettings): DeckTriggerDescription {
-  const push =
-    settings.longPressAction === "none"
-      ? actionLabel(settings.pressAction)
-      : `${actionLabel(settings.pressAction)} (hold: ${actionLabel(settings.longPressAction)})`;
-
   const description: DeckTriggerDescription = {
-    rotate: settings.dialMode === "fill-to" ? "Adjust target level" : "Adjust fuel to add",
-    push,
+    rotate: settings.dialMode === "fill-to" ? "Adjust target / autofuel margin" : "Adjust fuel / autofuel margin",
   };
 
-  if (settings.touchAction !== "none") {
-    description.touch = actionLabel(settings.touchAction);
+  const pushLabel = settings.pressAction === "none" ? undefined : actionLabel(settings.pressAction);
+  const holdLabel = settings.longPressAction === "none" ? undefined : actionLabel(settings.longPressAction);
+
+  if (pushLabel && holdLabel) {
+    description.push = `${pushLabel} (hold: ${holdLabel})`;
+  } else if (pushLabel) {
+    description.push = pushLabel;
+  } else if (holdLabel) {
+    description.push = `Hold: ${holdLabel}`;
+  }
+
+  if (settings.tapAction !== "none") {
+    description.touch = actionLabel(settings.tapAction);
+  }
+
+  if (settings.longTouchAction !== "none") {
+    description.longTouch = actionLabel(settings.longTouchAction);
   }
 
   return description;
@@ -642,6 +774,15 @@ export const FUEL_DIAL_UUID = "com.iracedeck.sd.core.fuel-dial" as const;
 
 export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   private contextsState = new Map<string, FuelDialContext>();
+  /** Whether the last pit command this action sent was a clearFuel (dedup guard). */
+  private lastPitWasClear = false;
+  /**
+   * Last observed fuel-fill state, to detect the OFF→ON edge in {@link onTelemetry}.
+   * When fuel becomes armed (by us OR anything external — Fuel Service, the in-sim
+   * checkbox, a `#fuel` macro), the dedup guard is released so a later clear isn't
+   * wrongly skipped.
+   */
+  private lastFuelFillObserved = false;
 
   override async onWillAppear(ev: IDeckWillAppearEvent<FuelDialSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -691,12 +832,44 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const ctx = this.ensureContext(ev.action, settings);
     ctx.settings = settings;
 
+    // Push + Turn: a pressed rotation dispatches the configured bidirectional
+    // pair (cw on a positive tick sign, ccw on a negative one) and sets the guard
+    // so the dialUp classifier pre-empts both press actions. It does NOT adjust
+    // the bare-turn primary. Fuel Dial's "full-empty" pair maps CW → fill full,
+    // CCW → no fuel; "none" dispatches nothing.
+    if (ev.payload.pressed) {
+      ctx.rotatedWhilePressed = true;
+      const action = resolvePairedAction(PUSH_TURN_PAIRS[settings.pushTurnAction], ev.payload.ticks);
+
+      if (action) {
+        await this.doPress(action, ctx);
+      }
+
+      return;
+    }
+
+    // Bare turn in AUTOFUEL mode adjusts the autofuel lap margin via key bindings
+    // (coalesced so a fast spin doesn't flood the black box). The readout settles
+    // a beat later from PitSvFuel — there is no margin value in telemetry.
+    const mode = this.displayMode();
+
+    if (mode === "autofuel") {
+      ctx.lastUserActivity = Date.now();
+      this.adjustLapMargin(ctx, ev.payload.ticks);
+
+      return;
+    }
+
+    // Autofuel engaged but unavailable (AUTO OFF): there is no controllable fuel
+    // value and the display is frozen, so a bare turn does nothing — it must NOT
+    // broadcast pit.fuel against a readout the driver can't see change.
+    if (mode === "autofuel-off") return;
+
+    // Bare turn in MANUAL mode: adjust the fuel add / fill-to target. BOTH modes
+    // span the full tank range [0, capacity]; fill-to snaps to a whole display
+    // value on every rotate. ticks is a SIGNED DELTA (may be >1).
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const stepLtr = fuelFromDisplayUnits(settings.stepSize, displayUnits);
-    // Per-mode clamp: BOTH modes span the full tank range [0, capacity]. In
-    // add-amount the dialed value is the (fixed) amount to add; in fill-to
-    // it is the desired total, snapped to a whole integer display value on every
-    // rotate. ticks is a SIGNED DELTA (may be >1).
     const upperBound = this.effectiveMaxLtr();
     let nextValue = ctx.dialValueLtr + ev.payload.ticks * stepLtr;
 
@@ -724,56 +897,54 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const ctx = this.ensureContext(ev.action, settings);
     ctx.settings = settings;
 
-    if (!__FEATURE_DIAL_LONG_PRESS__) {
-      // Mirabox: knobs fire dialUp immediately after dialDown, so do the press here.
-      this.logger.info("Fuel dial pressed");
-      await this.doPress(settings.pressAction, ctx);
-
-      return;
-    }
-
-    // Elgato: defer classification to dialUp; start a long-press timer.
+    // Record the press start and clear the push+turn guard. Fire NOTHING and
+    // start NO timer — press vs long-press is classified once at dialUp.
     ctx.pressStart = Date.now();
-    ctx.longPressFired = false;
-    this.clearLongPressTimer(ctx);
-
-    if (settings.longPressAction !== "none") {
-      ctx.longPressTimer = setTimeout(() => {
-        ctx.longPressTimer = null;
-        ctx.longPressFired = true;
-        this.logger.info("Fuel dial long-pressed");
-        // doPress already renders at its end — no extra render needed here.
-        void this.doPress(settings.longPressAction as PressAction, ctx);
-      }, LONG_PRESS_THRESHOLD_MS);
-    }
+    ctx.rotatedWhilePressed = false;
   }
 
   override async onDialUp(ev: IDeckDialUpEvent<FuelDialSettings>): Promise<void> {
-    if (!__FEATURE_DIAL_LONG_PRESS__) return;
-
     const ctx = this.contextsState.get(ev.action.id);
 
     if (!ctx) return;
 
-    this.clearLongPressTimer(ctx);
+    // Consume the press start immediately so a stray dialUp without a preceding
+    // dialDown (e.g. the context was recreated while the button was held) can't
+    // reclassify. A 0 sentinel means "no press in progress" — fire nothing; else
+    // `nowMs - 0` would read as a huge elapsed time and misfire the long press.
+    const pressStartMs = ctx.pressStart;
+    ctx.pressStart = 0;
 
-    if (ctx.longPressFired) return;
+    if (pressStartMs === 0) return;
 
-    const elapsed = Date.now() - ctx.pressStart;
+    // Classify the release with full information (duration + the rotated guard),
+    // so long-press never races push+turn. No timer fired mid-hold.
+    const kind = classifyDialRelease({
+      pressStartMs,
+      nowMs: Date.now(),
+      rotatedWhilePressed: ctx.rotatedWhilePressed,
+      // Honor the plugin-wide "Long-press threshold" global setting (shared with
+      // the dual-press feature); falls back to DIAL_LONG_PRESS_THRESHOLD_MS.
+      thresholdMs: getDualPressThresholdMs(),
+    });
 
-    // When longPressAction is "none" no long-press timer was started, so a hold
-    // of any duration must still fire pressAction on release — otherwise a slow
-    // press would be silently swallowed.
-    if (ctx.settings.longPressAction === "none" || elapsed < LONG_PRESS_THRESHOLD_MS) {
-      this.logger.info("Fuel dial pressed");
-      await this.doPress(ctx.settings.pressAction, ctx);
-    }
+    if (kind === "push-turn") return;
+
+    const action = kind === "long" ? ctx.settings.longPressAction : ctx.settings.pressAction;
+
+    if (action === "none") return;
+
+    this.logger.info(kind === "long" ? "Fuel dial long-pressed" : "Fuel dial pressed");
+    await this.doPress(action, ctx);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<FuelDialSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     const ctx = this.ensureContext(ev.action, settings);
     ctx.settings = settings;
+
+    if (settings.pressAction === "none") return;
+
     this.logger.info("Fuel dial key pressed");
     await this.doPress(settings.pressAction, ctx);
   }
@@ -782,13 +953,15 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
     const settings = this.parseSettings(ev.payload.settings);
+    // hold === true → Long Touch slot; hold === false → Tap Display slot.
+    const action = ev.payload.hold ? settings.longTouchAction : settings.tapAction;
 
-    if (settings.touchAction === "none") return;
+    if (action === "none") return;
 
     const ctx = this.ensureContext(ev.action, settings);
     ctx.settings = settings;
-    this.logger.info("Fuel dial touch tap");
-    await this.doPress(settings.touchAction, ctx);
+    this.logger.info(ev.payload.hold ? "Fuel dial long touch" : "Fuel dial tap");
+    await this.doPress(action, ctx);
   }
 
   /**
@@ -796,8 +969,33 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
    * re-renders. Toggle reads the real checkbox each time so it correctly
    * alternates between requesting fuel and clearing it.
    */
-  private async doPress(action: PressAction, ctx: FuelDialContext): Promise<void> {
-    const pit = getCommands().pit;
+  private async doPress(action: GestureAction, ctx: FuelDialContext): Promise<void> {
+    // Toggle autofuel mode: flip iRacing's autofuel via its key binding. The dial
+    // re-derives manual vs autofuel from the resulting dpFuelAutoFillActive
+    // telemetry, so there is no local mode flag to keep in sync.
+    if (action === "toggle-autofuel-mode") {
+      this.logger.info("Fuel dial toggled autofuel");
+      await this.tapBinding(TOGGLE_AUTOFUEL_KEY);
+      await this.render(ctx);
+
+      return;
+    }
+
+    // Switch the manual dial mode between Add Amount and Target Amount. Persists
+    // so it sticks and the Property Inspector reflects it; re-seeds the dialed
+    // value for the new mode and re-renders.
+    if (action === "switch-mode") {
+      const next = ctx.settings.dialMode === "fill-to" ? "add-amount" : "fill-to";
+      this.logger.info(`Fuel dial switched mode to ${next}`);
+      ctx.settings = { ...ctx.settings, dialMode: next };
+      this.seedFromTelemetry(ctx, true);
+      await this.applyTriggerDescription(ctx);
+      await this.render(ctx);
+      await ctx.action.setSettings({ ...ctx.settings });
+
+      return;
+    }
+
     const fuelOn = this.isFuelFillOn();
     // Whether this press cleared fueling. Tracked so the continuous-monitoring
     // re-send baselines (`ctx.throttle.lastSentLtr` and `ctx.lastSentWholeAdd`)
@@ -810,7 +1008,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     switch (action) {
       case "toggle-fueling":
         if (fuelOn) {
-          pit.clearFuel();
+          this.pitClearFuel();
           cleared = true;
           this.logger.debug("Toggle: cleared fueling");
         } else {
@@ -824,36 +1022,67 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
         break;
 
-      case "clear-fueling":
-        pit.clearFuel();
-        cleared = true;
-        this.logger.debug("Cleared fueling");
-        break;
-
       case "fill-to-max": {
         const maxLtr = this.effectiveMaxLtr();
 
         if (maxLtr === undefined) {
           // No tank capacity to fill to — don't send a stale/zero target or arm.
-          this.logger.warn("Fill-to-max: tank capacity unknown, skipping");
+          this.logger.warn("Toggle full/no fuel: tank capacity unknown, skipping");
 
           return;
         }
 
-        // Fill to Max is a TOGGLE (issue #681). In BOTH modes the dialed value
-        // is set to the FULL tank capacity (add-mode: capacity as the add;
-        // fill-to: capacity as the target). A second invocation while already at
-        // max drops it to ~empty (FILL_TO_MAX_MIN_LTR). So repeatedly pressing
-        // Fill to Max alternates full ↔ ~empty; the resolved-0 add path clears.
+        // "Toggle Full / No Fuel" is a TOGGLE. The dialed value is set to the FULL
+        // tank capacity (add-mode: capacity as the add; fill-to: capacity as the
+        // target). A second invocation while already at max empties the request.
         const atMax = ctx.dialValueLtr >= maxLtr - 0.5;
-        ctx.dialValueLtr = atMax ? FILL_TO_MAX_MIN_LTR : maxLtr;
+
+        if (atMax) {
+          // No Fuel side — reduce the request by the full tank so the requested
+          // amount drops to 0 (see sendNoFuel).
+          ctx.dialValueLtr = TOGGLE_FULL_EMPTY_LTR;
+          this.sendNoFuel();
+          cleared = true;
+          armedLtr = null;
+          this.logger.debug("Toggle full/no fuel (no fuel): reduced by max");
+        } else {
+          ctx.dialValueLtr = maxLtr;
+          const addLtr = this.effectiveAddLtr(ctx);
+          this.sendFuel(addLtr);
+          cleared = addLtr <= 0;
+          armedLtr = cleared ? null : addLtr;
+          this.logger.debug(`Toggle full/no fuel (full): requested ${addLtr.toFixed(2)}L`);
+        }
+
+        break;
+      }
+
+      case "fill-full": {
+        // Push + Turn CW — always fill the tank to capacity (directional, not a toggle).
+        const maxLtr = this.effectiveMaxLtr();
+
+        if (maxLtr === undefined) {
+          this.logger.warn("Push+turn full: tank capacity unknown, skipping");
+
+          return;
+        }
+
+        ctx.dialValueLtr = maxLtr;
         const addLtr = this.effectiveAddLtr(ctx);
         this.sendFuel(addLtr);
-        // In fill-to mode "empty" (target ~1 L) resolves to add 0 → clearFuel; treat
-        // it like a clear so the armed amount resets.
         cleared = addLtr <= 0;
         armedLtr = cleared ? null : addLtr;
-        this.logger.debug(`Fill to max (${atMax ? "empty" : "full"}): requested ${addLtr.toFixed(2)}L`);
+        this.logger.debug(`Push+turn full: requested ${addLtr.toFixed(2)}L`);
+        break;
+      }
+
+      case "no-fuel": {
+        // Push + Turn CCW — empty the request by reducing it by the full tank.
+        ctx.dialValueLtr = TOGGLE_FULL_EMPTY_LTR;
+        this.sendNoFuel();
+        cleared = true;
+        armedLtr = null;
+        this.logger.debug("Push+turn no fuel: reduced by max");
         break;
       }
     }
@@ -921,22 +1150,87 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
    * add of 0 (or less) to `pit.clearFuel()` instead of `pit.fuel(0)`. The iRacing
    * SDK treats `pit.fuel(0)` as "keep the existing amount", NOT "request zero", so
    * a computed add of 0 must clear the request to mean "don't add anything"
-   * (issue #681). Any non-zero add (including the 1 L Fill-to-max minimum) goes
-   * through `pit.fuel`.
+   * (issue #681). Any non-zero add goes through `pit.fuel`, which arms the
+   * fuel-fill checkbox per iRacing's default behaviour.
    */
   private sendFuel(addLtr: number): void {
     if (addLtr <= 0) {
-      getCommands().pit.clearFuel();
+      this.pitClearFuel();
       this.logger.debug("Resolved add is 0 — cleared fueling instead of requesting 0 L");
-    } else {
-      getCommands().pit.fuel(addLtr);
+
+      return;
     }
+
+    this.pitFuel(addLtr);
+  }
+
+  /**
+   * Empties the pit fuel request: set a minimal 1 L, then clear the checkbox. The
+   * pit fuel broadcast is an UNSIGNED int, so a negative wraps to a huge positive
+   * (e.g. −120 → 65416), and `pit.fuel(0)` means "keep existing" — so 1 L is the
+   * smallest value that actually resets the requested amount, after which
+   * `pit.clearFuel` unchecks the box. Used by the "No Fuel" gestures.
+   */
+  private sendNoFuel(): void {
+    this.pitFuel(1);
+    this.pitClearFuel();
+    this.logger.debug("No fuel — set 1 L then cleared");
+  }
+
+  /** Sends a `pit.fuel` request and records that the last pit command was not a clear. */
+  private pitFuel(liters: number): void {
+    getCommands().pit.fuel(liters);
+    this.lastPitWasClear = false;
+  }
+
+  /**
+   * Clears the fuel checkbox — but never twice in a row. A redundant repeat (e.g.
+   * a throttle's trailing flush landing on an already-cleared request) is skipped
+   * so iRacing isn't sent back-to-back clears.
+   */
+  private pitClearFuel(): void {
+    if (this.lastPitWasClear) return;
+
+    getCommands().pit.clearFuel();
+    this.lastPitWasClear = true;
   }
 
   private parseSettings(settings: unknown): FuelDialSettings {
-    const parsed = FuelDialSettings.safeParse(settings);
+    const parsed = FuelDialSettings.safeParse(this.migrateLegacySettings(settings));
 
     return parsed.success ? parsed.data : FuelDialSettings.parse({});
+  }
+
+  /**
+   * Brings older saved configs forward so a single stale field can't fail the
+   * whole `safeParse` (which would reset EVERY setting to default):
+   *  - the legacy `touchAction` key is renamed to `tapAction`;
+   *  - any gesture slot holding a retired value (e.g. the removed "clear-fueling",
+   *    which used to be the `longPressAction` default) is coerced to "none" so the
+   *    rest of the user's config — step size, mode, units, other slots — survives.
+   */
+  private migrateLegacySettings(settings: unknown): unknown {
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return settings;
+
+    const obj: Record<string, unknown> = { ...(settings as Record<string, unknown>) };
+
+    // Legacy `touchAction` → renamed `tapAction`.
+    if (obj.touchAction !== undefined && obj.tapAction === undefined) {
+      obj.tapAction = obj.touchAction;
+    }
+
+    // Coerce any retired gesture-slot value so it can't fail the whole parse.
+    const validSlots: readonly string[] = GESTURE_ACTIONS;
+
+    for (const key of ["pressAction", "longPressAction", "tapAction", "longTouchAction"] as const) {
+      const val = obj[key];
+
+      if (typeof val === "string" && !validSlots.includes(val)) {
+        obj[key] = "none";
+      }
+    }
+
+    return obj;
   }
 
   private ensureContext(action: IDeckActionContext, settings: FuelDialSettings): FuelDialContext {
@@ -948,14 +1242,14 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         action,
         dialValueLtr: 0,
         lastUserActivity: 0,
-        longPressTimer: null,
-        longPressFired: false,
         pressStart: 0,
+        rotatedWhilePressed: false,
         displayTimer: null,
         lastRenderSig: null,
         lastChangeRenderAt: 0,
         lastSentWholeAdd: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
+        marginThrottle: { timer: null, pendingTicks: 0 },
       };
       this.contextsState.set(action.id, ctx);
     } else {
@@ -998,6 +1292,76 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     );
   }
 
+  /** The live display mode (manual / autofuel / autofuel-off) from telemetry. */
+  private displayMode(): DialDisplayMode {
+    return resolveDialDisplayMode(this.sdkController.getCurrentTelemetry());
+  }
+
+  /** Whether the bare turn adjusts the autofuel lap margin (autofuel engaged + available). */
+  private isAutofuelMode(): boolean {
+    return this.displayMode() === "autofuel";
+  }
+
+  /**
+   * The liters value used for the bar's add segment and the readout, by mode:
+   * manual uses the dialed add; autofuel uses the live requested add (`PitSvFuel`);
+   * autofuel-off has no controllable add (current segment only).
+   */
+  private displayAddLtr(ctx: FuelDialContext, mode: DialDisplayMode): number {
+    if (mode === "autofuel-off") return 0;
+
+    if (mode === "autofuel") return Math.max(0, readPitSvFuel(this.sdkController.getCurrentTelemetry()) ?? 0);
+
+    return this.effectiveAddLtr(ctx);
+  }
+
+  /**
+   * Whether the autofuel key binding is required (a gesture slot is set to
+   * toggle-autofuel-mode) but unset — drives the #612 missing-binding overlay on
+   * the key. The dial's primary functions (rotate to add fuel, press to toggle
+   * fueling) go through the iRacing API and need NO binding, so a missing autofuel
+   * binding must never gate the whole key's readiness — that would dim the key out
+   * of the box for everyone (the default Long Press is toggle-autofuel-mode).
+   */
+  private autofuelBindingMissing(settings: FuelDialSettings): boolean {
+    const slots = [settings.pressAction, settings.longPressAction, settings.tapAction, settings.longTouchAction];
+
+    return slots.includes("toggle-autofuel-mode") && this.isBindingMissing(TOGGLE_AUTOFUEL_KEY);
+  }
+
+  /**
+   * Schedules a coalesced autofuel lap-margin keybind tap from a dial rotation.
+   * Net detents accumulate within a window; a single increase/decrease tap fires
+   * per window (leading + trailing edges) so a fast spin can't flood the iRacing
+   * black box. The readout settles from `PitSvFuel` a beat later (open-loop).
+   */
+  private adjustLapMargin(ctx: FuelDialContext, ticks: number): void {
+    ctx.marginThrottle.pendingTicks += ticks;
+
+    if (ctx.marginThrottle.timer === null) {
+      // Leading edge — tap immediately, then open the coalescing window.
+      void this.flushMarginTap(ctx);
+      ctx.marginThrottle.timer = setTimeout(() => {
+        ctx.marginThrottle.timer = null;
+        void this.flushMarginTap(ctx);
+      }, THROTTLE_WINDOW_MS);
+    }
+  }
+
+  /** Dispatches one margin tap for the net accumulated direction, then refreshes feedback. */
+  private async flushMarginTap(ctx: FuelDialContext): Promise<void> {
+    const net = ctx.marginThrottle.pendingTicks;
+    ctx.marginThrottle.pendingTicks = 0;
+
+    if (net === 0) return;
+
+    const key = net > 0 ? LAP_MARGIN_INCREASE_KEY : LAP_MARGIN_DECREASE_KEY;
+    this.logger.info("Fuel dial autofuel margin adjusted");
+    this.logger.debug(`Lap margin ${net > 0 ? "increase" : "decrease"} (net ${net})`);
+    await this.tapBinding(key);
+    await this.renderFeedback(ctx);
+  }
+
   /**
    * Re-seeds the dialed value from telemetry. When `force` is false the re-seed
    * is skipped if the user rotated recently (so live telemetry can't fight an
@@ -1026,7 +1390,12 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     }
   }
 
-  private onTelemetry(ctx: FuelDialContext, telemetry: TelemetryData | null): void {
+  /**
+   * Manual-mode telemetry behaviours: re-seed the dialed value (add-amount only)
+   * and run the continuous fill-to re-broadcast. Called from onTelemetry only
+   * when NOT in autofuel mode.
+   */
+  private updateManualFromTelemetry(ctx: FuelDialContext, telemetry: TelemetryData | null): void {
     // Re-seed the dialed value from telemetry only when the user hasn't rotated
     // recently — and ONLY in add-amount mode. In fill-to mode the dialed
     // value is the user's chosen TOTAL: re-seeding it from `current + PitSvFuel`
@@ -1049,7 +1418,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // as a clean whole display value (no headroom clamp), so the whole-unit key
     // only moves when the need crosses a whole-unit boundary — no sub-litre spam.
     // We never re-send when fuel-fill is OFF (the user's toggle-off is respected)
-    // nor in add-amount mode (its add is fixed). The render-on-change path below
+    // nor in add-amount mode (its add is fixed). The render-on-change path
     // pushes the resulting feedback — `sendFuel` here only updates the request.
     if (ctx.settings.dialMode === "fill-to" && this.isFuelFillOn()) {
       const addLtr = this.effectiveAddLtr(ctx);
@@ -1064,6 +1433,26 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
         ctx.throttle.lastSentLtr = addLtr <= 0 ? null : addLtr;
         this.logger.debug(`Continuous fill-to: requested ${addLtr.toFixed(2)}L`);
       }
+    }
+  }
+
+  private onTelemetry(ctx: FuelDialContext, telemetry: TelemetryData | null): void {
+    // Release the no-double-clear guard on the fuel-fill OFF→ON edge: once fuel is
+    // armed again (by us OR anything external — Fuel Service, the in-sim checkbox,
+    // a `#fuel` macro), a later clear is meaningful and must not be skipped. Edge-
+    // triggered so it never fires during the lag after our own clear (fuel reads
+    // ON→OFF there, not OFF→ON).
+    const fuelOn = isFuelFillOn(telemetry);
+
+    if (fuelOn && !this.lastFuelFillObserved) this.lastPitWasClear = false;
+
+    this.lastFuelFillObserved = fuelOn;
+
+    // Manual-mode telemetry behaviours (dialed-value re-seed + continuous fill-to
+    // re-broadcast) are skipped in autofuel mode — iRacing's autofuel owns the
+    // fuel request there; the dial only mirrors PitSvFuel.
+    if (!this.isAutofuelMode()) {
+      this.updateManualFromTelemetry(ctx, telemetry);
     }
 
     // Render-on-CHANGE (issue #681): the bar's fuel-fill color and the displayed
@@ -1107,17 +1496,23 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   private displayedSignature(ctx: FuelDialContext): string {
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const maxLtr = this.effectiveMaxLtr();
+    const mode = this.displayMode();
     const currentLtr = this.currentLtr();
-    const addLtr = this.effectiveAddLtr(ctx);
+    const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fuelOn = this.isFuelFillOn();
 
     return [
+      mode,
       fuelOn ? "on" : "off",
       formatDisplayValue(currentLtr, displayUnits),
       formatDisplayValue(addLtr, displayUnits),
       formatDisplayValue(totalLtr, displayUnits),
-      ctx.settings.dialMode === "fill-to" ? formatDisplayValue(ctx.dialValueLtr, displayUnits) : "",
+      mode === "manual" && ctx.settings.dialMode === "fill-to"
+        ? formatDisplayValue(ctx.dialValueLtr, displayUnits)
+        : "",
+      // So the key re-renders when the autofuel binding is set/cleared (#612).
+      this.autofuelBindingMissing(ctx.settings) ? "warn" : "",
     ].join("|");
   }
 
@@ -1143,20 +1538,17 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     }
   }
 
-  private clearLongPressTimer(ctx: FuelDialContext): void {
-    if (ctx.longPressTimer !== null) {
-      clearTimeout(ctx.longPressTimer);
-      ctx.longPressTimer = null;
-    }
-  }
-
   private clearTimers(ctx: FuelDialContext): void {
-    this.clearLongPressTimer(ctx);
     this.clearDisplayTimer(ctx);
 
     if (ctx.throttle.timer !== null) {
       clearTimeout(ctx.throttle.timer);
       ctx.throttle.timer = null;
+    }
+
+    if (ctx.marginThrottle.timer !== null) {
+      clearTimeout(ctx.marginThrottle.timer);
+      ctx.marginThrottle.timer = null;
     }
   }
 
@@ -1188,14 +1580,18 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
   /** Builds the keypad icon for a context from live telemetry. */
   private generateIcon(ctx: FuelDialContext): string {
+    const mode = this.displayMode();
+
     return generateFuelDialSvg(
       ctx.settings,
+      mode,
       this.currentLtr(),
-      this.effectiveAddLtr(ctx),
+      this.displayAddLtr(ctx, mode),
       this.effectiveMaxLtr(),
       this.effectiveDisplayUnits(ctx),
       this.isFuelFillOn(),
       ctx.dialValueLtr,
+      this.autofuelBindingMissing(ctx.settings),
     );
   }
 
@@ -1218,16 +1614,17 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     const displayUnits = this.effectiveDisplayUnits(ctx);
     const maxLtr = this.effectiveMaxLtr();
+    const mode = this.displayMode();
     const currentLtr = this.currentLtr();
-    const addLtr = this.effectiveAddLtr(ctx);
+    const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
     const fuelOn = this.isFuelFillOn();
-    // The target line is only drawn in fill-to mode.
-    const barTarget = ctx.settings.dialMode === "fill-to" ? ctx.dialValueLtr : undefined;
+    // The red target line is drawn only in MANUAL fill-to mode; suppressed in autofuel.
+    const barTarget = mode === "manual" && ctx.settings.dialMode === "fill-to" ? ctx.dialValueLtr : undefined;
     const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, 184, 30, displayUnits, barTarget);
     const feedback: DeckFeedbackPayload = {
-      title: buildTitleText(ctx.settings.dialMode),
-      value: buildValueText(ctx.settings.dialMode, addLtr, totalLtr, ctx.dialValueLtr, displayUnits),
+      title: buildDialTitle(mode, ctx.settings.dialMode, fuelOn),
+      value: buildDialReadout(mode, ctx.settings.dialMode, addLtr, totalLtr, ctx.dialValueLtr, displayUnits),
       bar: svgToDataUri(barSvg),
     };
     await ctx.action.setFeedback(feedback);

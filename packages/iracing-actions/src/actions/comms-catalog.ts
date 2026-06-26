@@ -78,8 +78,10 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
 
   "fuel-dial": entry("pressAction", {
     "toggle-fueling": api,
-    "clear-fueling": api,
     "fill-to-max": api,
+    "toggle-autofuel-mode": keybind("fuelServiceToggleAutofuel"),
+    // "switch-mode" and "none" intentionally omitted — they issue no iRacing
+    // command, so the binding-status line renders nothing for them.
   }),
 
   "tire-service": entry("mode", {

@@ -208,11 +208,13 @@ describe("ElgatoPlatformAdapter", () => {
       const bridge = registerAndGetBridge(handler);
       const action = createMockDialAction("ctx-dial");
 
-      await bridge.onDialRotate({ action, payload: { settings: {}, ticks: 4 } });
+      await bridge.onDialRotate({ action, payload: { settings: {}, ticks: 4, pressed: true } });
 
       expect(handler.onDialRotate).toHaveBeenCalledOnce();
       const ev = (handler.onDialRotate as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(ev.payload.ticks).toBe(4);
+      // `pressed` (rotate-while-pressed) passes straight through from the Elgato SDK.
+      expect(ev.payload.pressed).toBe(true);
     });
   });
 });

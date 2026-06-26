@@ -7,7 +7,7 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 ## Key Differences from iracing-plugin-stream-deck
 
 - Uses `VSDPlatformAdapter` instead of `ElgatoPlatformAdapter`
-- Most actions are Keypad-only. A **dial-capable** action declares `"Controllers": ["Keypad", "Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip — the Stream Dock protocol defines no layouts/`setFeedback`, so touch-strip feedback is unsupported (the Mirabox adapter no-ops it). `fuel-dial` is the example; the rotation/press behavior is shared with the Elgato build via `@iracedeck/iracing-actions`, gated by `__FEATURE_DIAL_FEEDBACK__` / `__FEATURE_DIAL_LONG_PRESS__` (both `false` here). See `.claude/rules/encoders-and-touchscreen.md`.
+- Most actions are Keypad-only. A **dial-capable** action declares `"Controllers": ["Keypad", "Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip — the Stream Dock protocol defines no layouts/`setFeedback`, so touch-strip feedback is unsupported (the Mirabox adapter no-ops it). `fuel-dial` is the example; the rotation, press, long-press, and push+turn behavior is shared with the Elgato build via `@iracedeck/iracing-actions`. Only the touch strip is gated, by `__FEATURE_DIAL_FEEDBACK__` (`false` here); press/long-press are classified at `dialUp` (no timer, no `__FEATURE_DIAL_LONG_PRESS__` flag) so they work on Mirabox knobs too. See `.claude/rules/encoders-and-touchscreen.md`.
 - Uses `ws` package for WebSocket communication (VSD bundles Node.js 20)
 - `SDKVersion: 2` instead of `3` (initially shipped as `1`, deliberately bumped to `2` in commit `51515173`)
 

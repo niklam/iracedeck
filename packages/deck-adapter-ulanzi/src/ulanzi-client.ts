@@ -39,6 +39,8 @@ export interface UlanziEvent {
   payload?: {
     settings?: Record<string, unknown>;
     ticks?: number;
+    /** Whether the dial button was held while rotating (rotate-while-pressed). */
+    pressed?: boolean;
     controller?: string;
     [key: string]: unknown;
   };
@@ -121,6 +123,17 @@ function ticksFromRotate(rotateEvent: unknown): number {
 }
 
 /**
+ * Whether a Ulanzi `rotateEvent` is a rotation with the dial button held. The
+ * wire encodes the held state as `hold-left` / `hold-right`; surfacing it as
+ * `pressed` lets dial actions implement Push + Turn gestures (the adapter and
+ * the deck-core payload already carry `pressed`, but the bare-rotate variants
+ * leave it false).
+ */
+function pressedFromRotate(rotateEvent: unknown): boolean {
+  return rotateEvent === "hold-left" || rotateEvent === "hold-right";
+}
+
+/**
  * Normalize a raw Ulanzi wire frame (keyed by `cmd`) into zero or more
  * Elgato-style {@link UlanziEvent}s. Most frames map 1:1; `clear` fans out to
  * one disappear event per item in its `param` array; `sendToPlugin` is surfaced
@@ -147,7 +160,16 @@ export function normalizeFrame(frame: Record<string, unknown>): UlanziEvent[] {
       return [{ event: "dialUp", action, context, payload: { settings: {} } }];
     case "dialrotate":
       return [
-        { event: "dialRotate", action, context, payload: { settings: {}, ticks: ticksFromRotate(frame.rotateEvent) } },
+        {
+          event: "dialRotate",
+          action,
+          context,
+          payload: {
+            settings: {},
+            ticks: ticksFromRotate(frame.rotateEvent),
+            pressed: pressedFromRotate(frame.rotateEvent),
+          },
+        },
       ];
     case "didReceiveSettings":
     case "paramfromapp":

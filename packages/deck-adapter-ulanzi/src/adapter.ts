@@ -138,6 +138,8 @@ function wrapDialRotateEvent<T>(
     payload: {
       settings: (data.payload?.settings ?? {}) as T,
       ticks: data.payload?.ticks ?? 0,
+      // Default false when the frame omits it (rotate-while-pressed support).
+      pressed: data.payload?.pressed ?? false,
     },
   };
 }

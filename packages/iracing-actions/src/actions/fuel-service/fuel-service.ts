@@ -19,6 +19,9 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  isAutofuelActive,
+  isAutofuelEnabled,
+  isFuelFillOn,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -33,7 +36,7 @@ import lapMarginIncreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-incr
 import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
 import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
 import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
-import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
@@ -143,15 +146,6 @@ export type FuelServiceTelemetryState = {
 
 /**
  * @internal Exported for testing
- */
-export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.PitSvFlags === undefined) return false;
-
-  return hasFlag(telemetry.PitSvFlags, PitSvFlags.FuelFill);
-}
-
-/**
- * @internal Exported for testing
  *
  * Returns the pit service fuel amount (liters) from telemetry,
  * or undefined when no telemetry is available.
@@ -160,29 +154,6 @@ export function getFuelAmount(telemetry: TelemetryData | null): number | undefin
   if (!telemetry || telemetry.PitSvFuel === undefined) return undefined;
 
   return telemetry.PitSvFuel;
-}
-
-/**
- * @internal Exported for testing
- *
- * Returns whether autofuel is active for the next pit stop.
- */
-export function isAutofuelActive(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.dpFuelAutoFillActive === undefined) return false;
-
-  return telemetry.dpFuelAutoFillActive !== 0;
-}
-
-/**
- * @internal Exported for testing
- *
- * Returns whether the autofuel system is enabled for this car/series.
- * When disabled, toggle-autofuel should show N/A.
- */
-export function isAutofuelEnabled(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.dpFuelAutoFillEnabled === undefined) return true;
-
-  return telemetry.dpFuelAutoFillEnabled !== 0;
 }
 
 const WHITE = "#ffffff";

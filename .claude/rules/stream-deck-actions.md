@@ -404,7 +404,7 @@ if (ev.action.isDial()) await ev.action.setFeedback({ title: "FUEL", value: "65 
 
 - **Push the touchscreen** with `ev.action.setFeedback({...})` (keyed by layout item `key`, values typed by `DeckFeedbackPayload`) or switch layouts at runtime with `ev.action.setFeedbackLayout("layouts/other.json")`.
 - **Throttle feedback to ≤ 10 calls/sec per dial** — coalesce a continuous spin into a leading/trailing throttled flush (see `fuel-dial`'s `scheduleSend`/`flushSend`).
-- **Gate Elgato-only behavior** on the compile-time constants, not on `isDial()` alone: `__FEATURE_DIAL_FEEDBACK__` (touch + feedback) and `__FEATURE_DIAL_LONG_PRESS__` (timed `dialDown`→`dialUp` long-press). Mirabox knobs fire `dialUp` immediately, so the press is done in `onDialDown` when `__FEATURE_DIAL_LONG_PRESS__` is false.
+- **Gate the touch strip** on the compile-time constant `__FEATURE_DIAL_FEEDBACK__` (touch + feedback), not on `isDial()` alone — Mirabox/Ulanzi have no plugin touch strip. Dial press / long-press / push+turn are **not** gated: classify them at `dialUp` with `classifyDialRelease` (a duration comparison ≥ `DIAL_LONG_PRESS_THRESHOLD_MS`, plus a `rotatedWhilePressed` guard so push+turn pre-empts both press actions). No `setTimeout`, no `__FEATURE_DIAL_LONG_PRESS__` — that flag was removed; a knob reporting release instantly just degrades a hold to a short press.
 
 Reference implementation: `packages/iracing-actions/src/actions/fuel-dial/fuel-dial.ts`.
 
