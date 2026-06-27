@@ -32,6 +32,7 @@ High-level guidance
 - Use `paths` frontmatter in rules when a rule applies only to certain files.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
 - **Keep `README.md` in sync with reality.** When changes affect the project structure, action count, features, or development workflow described in `README.md`, update it in the same change.
+- **Keep the developer Architecture page in sync with reality.** When a change alters the system's structure — packages or their boundaries, the two abstraction seams (`event-bus`, `IDeckPlatformAdapter`), runtime data/control flow, the internal dependency graph, or adding/removing a sim translator or device adapter — update the diagrams and prose in `packages/website/src/content/docs/docs/development/architecture.md` in the same change. Its Mermaid diagrams are hand-maintained, not generated.
 
 Cross-platform development
 
