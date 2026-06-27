@@ -441,10 +441,12 @@ function firstPositive(...values: (number | undefined)[]): number | undefined {
 /**
  * Live class position for a car: the count of same-class cars (`CarIdxClass`)
  * ranked ahead of it in the canonical live race `order`, +1 — derived from the
- * single source of truth, exactly like the overall position. Falls back to
- * iRacing's official `CarIdxClassPosition` only when there's no live order
- * (non-race / pre-init) or `CarIdxClass` can't be read. A non-positive official
- * counter (0 = not classified) renders blank, not "0".
+ * single source of truth, exactly like the overall position. Once a live order
+ * exists it is authoritative: a car not in it (rank 0) renders blank rather than
+ * falling back to the official counter. The official `CarIdxClassPosition` is
+ * used only when there's no live order at all (non-race / pre-init) or there's a
+ * live order but no `CarIdxClass` to derive from. A non-positive official counter
+ * (0 = not classified) renders blank, not "0".
  */
 function resolveClassPosition(
   order: number[] | undefined,
@@ -452,11 +454,21 @@ function resolveClassPosition(
   carIdx: number,
 ): number | undefined {
   if (order) {
-    const derived = classPositionFromOrder(order, telemetry?.CarIdxClass as number[] | undefined, carIdx);
+    const carIdxClass = telemetry?.CarIdxClass as number[] | undefined;
 
-    if (derived > 0) return derived;
+    // With both an order and class data, the order is the sole source — a car not
+    // in it stays blank, never the stale official counter.
+    if (Array.isArray(carIdxClass)) {
+      const derived = classPositionFromOrder(order, carIdxClass, carIdx);
+
+      return derived > 0 ? derived : undefined;
+    }
+
+    // Live order but no class data to derive from → official class counter.
+    return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
   }
 
+  // No live order (non-race / pre-init) → official class counter.
   return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
 }
 
@@ -491,10 +503,15 @@ function buildDriverFields(
     last_name: lastName,
     abbrev_name: driver.AbbrevName,
     car_number: driver.CarNumber,
-    // Single source: the canonical live order, falling back to iRacing's official
-    // CarIdxPosition only when no live order exists. No pit-road / PlayerCar*
-    // overlay — a car in the pits shows its live track position like any other.
-    position: isCompetitor ? firstPositive(order?.[carIdx], telemetry?.CarIdxPosition?.[carIdx]) : undefined,
+    // Single source: the canonical live order. When it exists it's authoritative
+    // (a car not in it stays blank); only with no live order at all do we fall
+    // back to iRacing's official CarIdxPosition. No pit-road / PlayerCar* overlay —
+    // a car in the pits shows its live track position like any other.
+    position: isCompetitor
+      ? order
+        ? firstPositive(order[carIdx])
+        : firstPositive(telemetry?.CarIdxPosition?.[carIdx])
+      : undefined,
     class_position: isCompetitor ? resolveClassPosition(order, telemetry, carIdx) : undefined,
     lap: (isPlayer ? telemetry?.Lap : undefined) ?? telemetry?.CarIdxLap?.[carIdx],
     laps_completed: (isPlayer ? telemetry?.LapCompleted : undefined) ?? telemetry?.CarIdxLapCompleted?.[carIdx],

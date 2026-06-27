@@ -595,6 +595,28 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display["focused.class_position"]).toBe("");
   });
 
+  it("should blank a car absent from the live order rather than fall back to official", () => {
+    const drivers = [
+      makeDriver({ CarIdx: 0, UserName: "Player" }),
+      makeDriver({ CarIdx: 1, UserName: "Garaged" }),
+    ];
+
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    // A live order exists, but car 1 isn't in it (rank 0). Its stale official
+    // CarIdxPosition / CarIdxClassPosition must NOT leak in — once the canonical
+    // order exists, a car absent from it stays blank.
+    const telemetry = makeTelemetry({
+      CamCarIdx: 1,
+      CarIdxClass: [10, 10],
+      CarIdxPosition: [1, 9],
+      CarIdxClassPosition: [1, 9],
+    });
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 0]); // car 1 not ranked
+
+    expect(ctx.display["focused.position"]).toBe("");
+    expect(ctx.display["focused.class_position"]).toBe("");
+  });
+
   it("should resolve a focused template end to end with a real built context", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
