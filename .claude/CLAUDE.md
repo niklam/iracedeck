@@ -32,6 +32,7 @@ High-level guidance
 - Use `paths` frontmatter in rules when a rule applies only to certain files.
 - **Keep documentation in sync with reality.** When code changes alter conventions, patterns, APIs, or workflows described in any `CLAUDE.md` or `.claude/rules/` file, update those files in the same change. Stale instructions cause repeated mistakes.
 - **Keep `README.md` in sync with reality.** When changes affect the project structure, action count, features, or development workflow described in `README.md`, update it in the same change.
+- **Keep the developer Architecture page in sync with reality.** When a change alters the system's structure — packages or their boundaries, the two abstraction seams (`event-bus`, `IDeckPlatformAdapter`), runtime data/control flow, the internal dependency graph, or adding/removing a sim translator or device adapter — update the diagrams and prose in `packages/website/src/content/docs/docs/development/architecture.md` in the same change. Its Mermaid diagrams are hand-maintained, not generated.
 
 Cross-platform development
 
@@ -56,11 +57,12 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `pi-templates.md`: EJS templates for Property Inspector HTML: directory structure, available partials, Rollup plugin config, key bindings JSON format.
 - `platform-feature-flags.md`: Build-time feature flags per plugin (capabilities + features) with a gitignored `feature-flags.local.json` dev override; compile-time `__FEATURE_*__` / `__CAPABILITY_*__` constants for tree-shaking; PI template gating via `locals.platform`.
 - `plugin-structure.md`: Plugin package naming conventions, Rollup config, native module handling (`keysender`), app monitoring, and critical initialization order in `plugin.ts`.
+- `race-positions.md`: Single source of truth for race position/standings — the translator's canonical live order (`getLiveRacePositions` / `getLivePosition`, built on `calculateFrozenRacePositions`). Any feature needing a car's position, the running order, a position-relative neighbour, or class position MUST consume it (injected where the dependency direction requires) and never invent its own calculation; official `CarIdxPosition` is a fallback only. Scoped (`paths:`) to the position packages.
 - `race-engineer-callouts.md`: How to add or modify a Race Engineer voice callout end-to-end. Architecture across event-bus / sim-events-iracing / audio-assets / audio-scenarios / deck-core / plugins / scenario-harness, naming conventions, and a step-by-step checklist with where each piece lives. Scoped (`paths:`) to the callout packages, so it only loads during callout work.
 - `race-engineer-callout-examples.md`: Reference-implementation catalog for `race-engineer-callouts.md` — one entry per past callout (issue #) naming the pattern it established and the reusable lesson. Scoped to the same callout packages; consult when a new callout needs a variation the checklist doesn't cover.
 - `sdpi-components.md`: Comprehensive reference for the `sdpi-components` web component library used in all Property Inspectors: every component's attributes and value types, Stream Deck client communication helpers, data sources, and localization. Scoped to PI files.
-- `stream-deck-actions.md`: Action requirements (`ConnectionStateAwareAction`), SDK-first principle, PI components (`sdpi-select` quirks, conditional visibility), global settings setup, and encoder support.
-- `terminology-and-refs.md`: Project terminology (Property Inspector, Key Icon, Encoder, Action ID) and external reference links.
+- `stream-deck-actions.md`: Action requirements (`ConnectionStateAwareAction`), SDK-first principle, PI components (`sdpi-select` quirks, conditional visibility), global settings setup, and dial support.
+- `terminology-and-refs.md`: Project terminology (Property Inspector, Key Icon, Dial, Action ID) and external reference links.
 - `testing.md`: Vitest conventions, test file naming, mocking patterns for Stream Deck SDK, and action test structure.
 - `svg-platform-compatibility.md`: SVG feature support across platforms (QT5 SVG Tiny 1.2 for Mirabox vs QT6.7+ for Elgato): safe features, Elgato-only features, unsupported features, and guidelines for new icons.
-- `website-action-docs.md`: Website action documentation format: per-mode sections with self-contained settings, encoder info, and h5 setting subheaders. Scoped to website action pages. Canonical example: tire-service.md.
+- `website-action-docs.md`: Website action documentation format: per-mode sections with self-contained settings, dial info, and h5 setting subheaders. Scoped to website action pages. Canonical example: tire-service.md.

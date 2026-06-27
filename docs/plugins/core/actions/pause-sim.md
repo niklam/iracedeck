@@ -10,7 +10,7 @@ Pauses the simulation (single-player/replay only).
 | Type | Toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

@@ -9,8 +9,8 @@ Action documentation follows this section order:
 
 1. **Title** (H1) - Action name
 2. **Description** - One-line description of what the action does
-3. **Properties** - Table with Action ID, Type, SDK Support, Encoder Support
-4. **Behavior** - Button Press and Encoder subsections (if applicable)
+3. **Properties** - Table with Action ID, Type, SDK Support, Dial Support
+4. **Behavior** - Button Press and Dial subsections (if applicable)
 5. **Settings** - Configuration options table + option lists as bullet points
 6. **Keyboard Simulation** - Keys sent and iRacing setting names
 7. **Icon States** - Visual states table
@@ -25,7 +25,7 @@ Action documentation follows this section order:
 | Action ID | `com.iracedeck.sd.{plugin}.{action-name}` |
 | Type | Button / Toggle / +/- / Multi-toggle |
 | SDK Support | Yes / No |
-| Encoder Support | Yes / No |
+| Dial Support | Yes / No |
 | Communication Method | iRacing API / Key binding / Chat command |
 ```
 

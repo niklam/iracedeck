@@ -10,7 +10,7 @@ Engages the car's starter motor.
 | Type | Button |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

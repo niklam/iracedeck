@@ -94,7 +94,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 | Action | Modes | Mode values |
 |--------|-------|-------------|
 | View Adjustment | 5 | fov (+/-), horizon (+/-), driver-height (+/-), recenter-vr, ui-size (+/-) |
-| Replay Control | 27 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind (FF/RW + slow-mo modes share a configurable Step Rate that walks the speed ladder per press), frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, jump-to-fastest-lap (target: Viewed Car / Always my car; session-scoped; no clean-lap filter; no encoder support), next/prev car, next/prev car number |
+| Replay Control | 27 | play/pause, play-backward, stop, FF, rewind, slow-mo, slow-mo-rewind (FF/RW + slow-mo modes share a configurable Step Rate that walks the speed ladder per press), frame +/-, speed +/-, set-speed, speed-display, session next/prev, lap next/prev, incident next/prev, jump to beginning/live/my car, jump-to-fastest-lap (target: Viewed Car / Always my car; session-scoped; no clean-lap filter; no dial support), next/prev car, next/prev car number |
 | Camera Controls | 12 | change-camera, cycle (camera / sub-camera / car / driving), focus (your car / leader / incident / most exciting), switch (by position / car number), set-camera-state |
 | Camera Editor Adjustments | 15 | latitude, longitude, altitude, yaw, pitch, fov-zoom, key-step, vanish-x, vanish-y, blimp-radius, blimp-velocity, mic-gain (all +/-), auto-set-mic-gain, f-number (+/-), focus-depth (+/-) |
 | Camera Editor Controls | 30 | Open Camera Tool, 14 toggles (key accel/10x, parabolic mic, temp edits, dampening, zoom, beyond fence, in cockpit, mouse nav, pitch/roll gyro, limit shot range, show camera, shot selection, manual focus), cycle position/aim type, acquire start/end, camera CRUD (insert/remove/copy/paste), group CRUD (copy/paste), track/car save/load |
@@ -157,7 +157,7 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 
 | File | Role |
 |------|------|
-| `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json` | Action registration, UUIDs, encoder config |
+| `packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json` | Action registration, UUIDs, dial config |
 | `packages/iracing-actions/src/actions/<name>/` | Per-action folder: `<name>.ts`, `<name>.test.ts`, `<name>.ejs`, `icon.svg`, `key.svg` |
 | `packages/iracing-actions/src/actions/data/key-bindings.json` | Global key binding definitions |
 | `packages/iracing-actions/src/actions/data/icon-defaults.json` | Default icon colors by action/variant |

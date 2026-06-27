@@ -94,7 +94,7 @@ The `focused` prefix resolves to whichever car the **current camera is focused o
 
 Examples shown with `self` prefix. Replace with any prefix above. (`incidents` is `self`-only.)
 
-In race sessions, `position` and `class_position` follow the **live race order** — they update continuously as cars move (the same live ordering the [Session Info](/docs/actions/display-session/session-info/) Position readout uses while racing on track), rather than only refreshing at the start/finish line. A car in the pits shows its official position. Before the green flag — and until a car has been classified into the running order — the value may be blank.
+In race sessions, `position` and `class_position` follow the **live race order** — they update continuously as cars move (the same live ordering the [Session Info](/docs/actions/display-session/session-info/) Position readout uses while racing on track), rather than only refreshing at the start/finish line. A car physically in the pits shows its **live track position**, not its held official position. Before the green flag — and for any car not yet classified into the running order — the value renders blank.
 
 | Variable | Description |
 |----------|-------------|

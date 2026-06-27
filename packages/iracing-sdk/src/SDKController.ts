@@ -334,8 +334,8 @@ export class SDKController {
   /**
    * Inject the live per-car race-order provider (see {@link livePositionsProvider}).
    * Called once during plugin init with the iRacing translator's
-   * `getLiveRacePositions`. Passing `null` clears it (template positions then fall
-   * back to the locally calculated lap-progress order / official `CarIdxPosition`).
+   * `getLiveRacePositions`. Passing `null` clears it — template positions then fall
+   * back per car to iRacing's official `CarIdxPosition`.
    */
   setLivePositionsProvider(provider: (() => number[] | null) | null): void {
     this.livePositionsProvider = provider;

@@ -383,15 +383,12 @@ describe("SDKController", () => {
       };
       vi.mocked(mockSdk.getTelemetry).mockReturnValue({
         SessionNum: 0,
-        CarIdxPosition: [5, 6], // stale official standings
-        CarIdxLapCompleted: [4, 5],
-        CarIdxLapDistPct: [0.5, 0.7],
-        CarIdxOnPitRoad: [false, false],
+        CarIdxPosition: [5, 6], // stale official standings — must be overridden
       } as unknown as TelemetryData);
       vi.mocked(mockSdk.getSessionInfo).mockReturnValue(sessionInfo as never);
 
-      // Injected order says the player is P1, the other car P2 — overriding both
-      // the lap-calculated order and the stale official CarIdxPosition.
+      // Injected canonical order says the player is P1, the other car P2 —
+      // overriding the stale official CarIdxPosition.
       controller.setLivePositionsProvider(() => [1, 2]);
 
       const ctx = controller.getCurrentTemplateContext();

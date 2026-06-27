@@ -8,7 +8,6 @@ import {
   flattenContext,
   formatTimeRemaining,
   prefixKeys,
-  resolveRacePositions,
   splitDriverName,
 } from "./template-context.js";
 import { resolveTemplate } from "./template-resolver.js";
@@ -596,6 +595,28 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display["focused.class_position"]).toBe("");
   });
 
+  it("should blank a car absent from the live order rather than fall back to official", () => {
+    const drivers = [
+      makeDriver({ CarIdx: 0, UserName: "Player" }),
+      makeDriver({ CarIdx: 1, UserName: "Garaged" }),
+    ];
+
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    // A live order exists, but car 1 isn't in it (rank 0). Its stale official
+    // CarIdxPosition / CarIdxClassPosition must NOT leak in — once the canonical
+    // order exists, a car absent from it stays blank.
+    const telemetry = makeTelemetry({
+      CamCarIdx: 1,
+      CarIdxClass: [10, 10],
+      CarIdxPosition: [1, 9],
+      CarIdxClassPosition: [1, 9],
+    });
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 0]); // car 1 not ranked
+
+    expect(ctx.display["focused.position"]).toBe("");
+    expect(ctx.display["focused.class_position"]).toBe("");
+  });
+
   it("should resolve a focused template end to end with a real built context", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
@@ -656,7 +677,7 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display["focused.class_position"]).toBe("2"); // car2, class 10, behind car0
   });
 
-  it("should use the official class position for a car on pit road", () => {
+  it("should derive a pit-road car's class from the canonical order (no pit-road special-casing)", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Pit Car" }),
@@ -666,14 +687,15 @@ describe("buildTemplateContextFromData", () => {
     const telemetry = makeTelemetry({
       CamCarIdx: 1,
       CarIdxClass: [10, 10],
-      CarIdxClassPosition: [1, 7], // car1 officially class P7
+      CarIdxClassPosition: [1, 7], // stale official class — must NOT win on pit road
       CarIdxOnPitRoad: [false, true],
     });
 
-    // Live order would derive car1 as class P2, but it's on pit road → official P7.
+    // Single source of truth: the pit car is class P2 in the live order (one car
+    // of its class ahead), and pit road no longer forces the official counter.
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 2]);
 
-    expect(ctx.display["focused.class_position"]).toBe("7");
+    expect(ctx.display["focused.class_position"]).toBe("2");
   });
 
   it("should fall back to the official class position when CarIdxClass is unavailable", () => {
@@ -700,20 +722,25 @@ describe("buildTemplateContextFromData", () => {
     expect("focused.incidents" in ctx.raw).toBe(false);
   });
 
-  it("should use player-specific telemetry for self fields in non-race sessions", () => {
+  it("should use official position/class and player lap/incidents for self in non-race sessions", () => {
     const drivers = [makeDriver({ CarIdx: 0, UserName: "Player" })];
     const sessionInfo = {
       DriverInfo: { DriverCarIdx: 0, Drivers: drivers },
       WeekendInfo: { TrackDisplayName: "Spa", TrackDisplayShortName: "Spa" },
       SessionInfo: { Sessions: [{ SessionType: "Practice", SessionName: "PRACTICE" }] },
     } as unknown as SessionInfo;
+    // Position/class are single-sourced: in non-race there's no live order, so
+    // they come from iRacing's official per-car counters (PlayerCar* deliberately
+    // disagree to prove they're no longer used). Lap counts + incidents stay
+    // player-authoritative.
     const telemetry = makeTelemetry({
-      PlayerCarPosition: 5,
-      PlayerCarClassPosition: 3,
+      PlayerCarPosition: 99,
+      PlayerCarClassPosition: 99,
       Lap: 12,
       LapCompleted: 11,
       PlayerCarMyIncidentCount: 7,
-      CarIdxPosition: [99],
+      CarIdxPosition: [5],
+      CarIdxClassPosition: [3],
     });
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
@@ -725,7 +752,7 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display["self.incidents"]).toBe("7");
   });
 
-  it("should use calculated positions for race sessions", () => {
+  it("should use the injected canonical order for race positions", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Leader" }),
@@ -733,17 +760,13 @@ describe("buildTemplateContextFromData", () => {
     ];
 
     const sessionInfo = makeSessionInfo(drivers, 0);
-    const telemetry = makeTelemetry({
-      PlayerCarPosition: 2,
-      CarIdxPosition: [2, 1, 3],
-      CarIdxLapCompleted: [10, 5, 3],
-      CarIdxLapDistPct: [0.9, 0.1, 0.3],
-      // Calculated: Car 0 = 10.9 → P1, Car 1 = 5.1 → P2, Car 2 = 3.3 → P3
-    });
+    // Official CarIdxPosition (stale) disagrees with the injected live order; the
+    // live order wins for both self.position and neighbour selection.
+    const telemetry = makeTelemetry({ PlayerCarPosition: 2, CarIdxPosition: [2, 1, 3] });
 
-    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+    // Canonical order: car0 P1, car1 P2, car2 P3.
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [1, 2, 3]);
 
-    // self.position should reflect calculated P1, not PlayerCarPosition (2)
     expect(ctx.display["self.position"]).toBe("1");
     expect(ctx.display["race_behind.name"]).toBe("Leader"); // Car 1 at P2 is behind player at P1
   });
@@ -761,19 +784,17 @@ describe("buildTemplateContextFromData", () => {
     } as unknown as SessionInfo;
 
     const telemetry = makeTelemetry({
-      PlayerCarPosition: 2,
+      PlayerCarPosition: 99, // ignored — position is single-sourced from CarIdxPosition
       CarIdxPosition: [2, 1],
-      CarIdxLapCompleted: [10, 5],
-      CarIdxLapDistPct: [0.9, 0.1],
     });
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    // Non-race: should use PlayerCarPosition (2), not calculated (1)
+    // Non-race: no live order, so self.position comes from official CarIdxPosition.
     expect(ctx.display["self.position"]).toBe("2");
   });
 
-  it("should use official position for player on pit road in race session", () => {
+  it("should show the player's live track position on pit road, not held official", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Leader" }),
@@ -781,69 +802,60 @@ describe("buildTemplateContextFromData", () => {
 
     const sessionInfo = makeSessionInfo(drivers, 0);
     const telemetry = makeTelemetry({
-      PlayerCarPosition: 2,
+      PlayerCarPosition: 1, // held official — must NOT win
       OnPitRoad: true,
-      CarIdxPosition: [2, 1],
-      CarIdxLapCompleted: [10, 5],
-      CarIdxLapDistPct: [0.9, 0.1],
+      CarIdxPosition: [1, 2],
       CarIdxOnPitRoad: [true, false],
     });
 
-    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+    // Live order: the pitting player has dropped to P2 on track. Live track order
+    // everywhere — no pit-road official overlay, even for self.
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [2, 1]);
 
-    // Player on pit road: self.position should use PlayerCarPosition=2, not calculated P1
     expect(ctx.display["self.position"]).toBe("2");
   });
 
-  it("should use official position for other car on pit road in race session", () => {
+  it("should resolve race neighbours from the single canonical order without duplicate-rank collisions (issue #710)", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Pit Car" }),
-      makeDriver({ CarIdx: 2, UserName: "Third" }),
+      makeDriver({ CarIdx: 2, UserName: "Ahead" }),
+      makeDriver({ CarIdx: 3, UserName: "Behind" }),
     ];
 
     const sessionInfo = makeSessionInfo(drivers, 0);
+    // The player is P2, so race_behind targets P3. The pit car's OFFICIAL position
+    // is also P3 — under the old pit-road blend the pit car got its official P3
+    // while "Behind" kept live P3, two cars at the target rank, and the iteration
+    // returned the pit car (lower carIdx) → the wrong race_behind. The single
+    // canonical order ranks every car uniquely (pit car is live P4), so the
+    // collision at the target rank can't happen.
     const telemetry = makeTelemetry({
-      PlayerCarPosition: 1,
-      CarIdxPosition: [1, 2, 3],
-      CarIdxClassPosition: [1, 2, 3],
-      CarIdxLap: [5, 10, 3],
-      CarIdxLapCompleted: [5, 10, 3],
-      CarIdxLapDistPct: [0.5, 0.9, 0.3],
-      CarIdxOnPitRoad: [false, true, false],
+      CamCarIdx: 1,
+      CarIdxOnPitRoad: [false, true, false, false],
+      CarIdxPosition: [2, 3, 1, 3], // official — pit car (P3) collides with "Behind" (P3) at the target rank
     });
+    // Canonical order: Ahead P1, Player P2, Behind P3, Pit Car P4 (its track slot).
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo, [2, 4, 1, 3]);
 
-    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
-
-    // Car 1 on pit road: calculated would be P1 (10.9), but official is P2
-    // Player (car 0) calculated is P2 (5.5), race_ahead should be car 1 at resolved P2? No...
-    // Resolved: car 0=P2 (calculated), car 1=P2 (official, on pit road), car 2=P3 (calculated)
-    // Player position is P2, so race_ahead is position 1 → no driver has position 1 in resolved
-    // Let's check: player is at resolved[0]=P2, race_behind is position 3 = car 2
-    expect(ctx.display["race_behind.name"]).toBe("Third");
+    expect(ctx.display["race_ahead.name"]).toBe("Ahead");
+    expect(ctx.display["race_behind.name"]).toBe("Behind"); // P3 — the old blend returned "Pit Car" here
     expect(ctx.display["race_behind.position"]).toBe("3");
+    // The pit car itself shows its live track position (P4), not its held official P3.
+    expect(ctx.display["focused.position"]).toBe("4");
   });
 
-  it("should fall back to official position when calculated is unavailable in race session", () => {
+  it("should fall back to official CarIdxPosition when no live order is injected", () => {
     const drivers = [
       makeDriver({ CarIdx: 0, UserName: "Player" }),
       makeDriver({ CarIdx: 1, UserName: "Other" }),
     ];
 
     const sessionInfo = makeSessionInfo(drivers, 0);
-    const telemetry = makeTelemetry({
-      PlayerCarPosition: 2,
-      OnPitRoad: false,
-      CarIdxPosition: [2, 1],
-      CarIdxLapCompleted: [-1, 5],
-      CarIdxLapDistPct: [-1, 0.7],
-      CarIdxOnPitRoad: [false, false],
-    });
+    const telemetry = makeTelemetry({ PlayerCarPosition: 99, CarIdxPosition: [2, 1] });
 
-    const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
+    const ctx = buildTemplateContextFromData(telemetry, sessionInfo); // no injected order
 
-    // Car 0 is inactive (calculated=0), falls back to official CarIdxPosition=2
-    // PlayerCarPosition is also used for self.position fallback
     expect(ctx.display["self.position"]).toBe("2");
   });
 
@@ -995,67 +1007,6 @@ describe("buildTemplateContextFromData raw map", () => {
 
     expect(ctx.raw["focused.irating"]).toBe(4200);
     expect(resolveTemplate("{{= focused.irating + 100 }}", ctx)).toBe("4300");
-  });
-});
-
-describe("resolveRacePositions", () => {
-  it("should use calculated positions for cars not on pit road", () => {
-    const telemetry = makeTelemetry({
-      CarIdxLapCompleted: [10, 5, 3],
-      CarIdxLapDistPct: [0.9, 0.1, 0.3],
-      CarIdxPosition: [1, 2, 3],
-      CarIdxOnPitRoad: [false, false, false],
-    });
-
-    const result = resolveRacePositions(telemetry);
-
-    // Calculated: Car 0=10.9→P1, Car 1=5.1→P2, Car 2=3.3→P3
-    expect(result).toEqual([1, 2, 3]);
-  });
-
-  it("should use official position for cars on pit road", () => {
-    const telemetry = makeTelemetry({
-      CarIdxLapCompleted: [10, 5, 3],
-      CarIdxLapDistPct: [0.9, 0.1, 0.3],
-      CarIdxPosition: [2, 1, 3],
-      CarIdxOnPitRoad: [true, false, false],
-    });
-
-    const result = resolveRacePositions(telemetry);
-
-    // Car 0 on pit road → uses official P2; Car 1 calculated P2; Car 2 calculated P3
-    expect(result![0]).toBe(2);
-    expect(result![1]).toBe(2);
-    expect(result![2]).toBe(3);
-  });
-
-  it("should fall back to official for inactive cars (calculated=0)", () => {
-    const telemetry = makeTelemetry({
-      CarIdxLapCompleted: [-1, 5, 3],
-      CarIdxLapDistPct: [-1, 0.7, 0.3],
-      CarIdxPosition: [4, 1, 2],
-      CarIdxOnPitRoad: [false, false, false],
-    });
-
-    const result = resolveRacePositions(telemetry);
-
-    // Car 0 inactive (calculated=0) → falls back to official P4
-    expect(result![0]).toBe(4);
-    expect(result![1]).toBe(1);
-    expect(result![2]).toBe(2);
-  });
-
-  it("should return undefined for null telemetry", () => {
-    expect(resolveRacePositions(null)).toBeUndefined();
-  });
-
-  it("should return undefined when lap data is missing", () => {
-    const telemetry = makeTelemetry({
-      CarIdxLapCompleted: undefined,
-      CarIdxLapDistPct: undefined,
-    });
-
-    expect(resolveRacePositions(telemetry)).toBeUndefined();
   });
 });
 

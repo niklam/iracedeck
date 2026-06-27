@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mermaid from "astro-mermaid";
 
 // Fallback: read version from root package.json if env var not set
 if (!process.env.PUBLIC_IRACEDECK_VERSION) {
@@ -11,6 +12,20 @@ if (!process.env.PUBLIC_IRACEDECK_VERSION) {
 export default defineConfig({
   site: "https://iracedeck.com",
   integrations: [
+    // Must come BEFORE starlight so its rehype plugin transforms ```mermaid
+    // code fences into rendered diagrams ahead of Expressive Code.
+    //
+    // Known, non-fatal startup warnings: astro-mermaid 2.1.0 (the latest release)
+    // lags Astro 6's reworked markdown API, so it logs "isUnifiedProcessor is not
+    // a function" and falls back to the deprecated `markdown.rehypePlugins` array,
+    // which in turn makes Astro print its own deprecation notice. Diagrams still
+    // transform and render correctly in dev and build. Revisit (and drop this note)
+    // when astro-mermaid ships Astro 6 support.
+    mermaid({
+      theme: "default",
+      autoTheme: true,
+      mermaidConfig: { flowchart: { curve: "basis" } },
+    }),
     starlight({
       title: "iRaceDeck",
       logo: {
@@ -78,6 +93,10 @@ export default defineConfig({
         {
           tag: "link",
           attrs: { rel: "manifest", href: "/site.webmanifest" },
+        },
+        {
+          tag: "script",
+          attrs: { src: "/diagram-zoom.js", defer: true },
         },
       ],
       sidebar: [
@@ -197,6 +216,7 @@ export default defineConfig({
           items: [
             { slug: "docs/development" },
             { slug: "docs/development/tech-stack" },
+            { slug: "docs/development/architecture" },
             { slug: "docs/development/contributing" },
             { slug: "docs/development/setup" },
             { slug: "docs/development/feature-flags" },

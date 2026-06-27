@@ -347,7 +347,7 @@
               "value": "jump-to-fastest-lap",
               "label": "Jump to Fastest Lap",
               "additionalSettings": ["fastestLapTarget"],
-              "description": "Jump the replay cursor to the fastest lap of either the viewed car or always your own car (session-scoped; no encoder support)"
+              "description": "Jump the replay cursor to the fastest lap of either the viewed car or always your own car (session-scoped; no dial support)"
             },
             { "value": "next-car", "label": "Next Car" },
             { "value": "prev-car", "label": "Previous Car" },

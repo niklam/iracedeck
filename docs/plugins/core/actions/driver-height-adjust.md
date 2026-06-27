@@ -10,14 +10,14 @@ Adjusts the virtual driver's seating height.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Dial Support | Yes |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (increase or decrease).
 
-### Encoder
+### Dial
 - **Rotate clockwise**: Increase height
 - **Rotate counter-clockwise**: Decrease height
 

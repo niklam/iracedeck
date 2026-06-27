@@ -10,14 +10,14 @@ Adjusts the iRacing master audio volume.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Dial Support | Yes |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (louder or quieter).
 
-### Encoder
+### Dial
 - **Rotate clockwise**: Increase volume
 - **Rotate counter-clockwise**: Decrease volume
 
