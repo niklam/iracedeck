@@ -664,6 +664,32 @@ export function getLivePosition(): LivePosition | null {
 }
 
 /**
+ * The LIVE per-car race order — 1-based overall positions indexed by carIdx
+ * (`0` for cars not in the order). This is the same frozen calculation that
+ * backs {@link getLivePosition} (towed / finished / left-world cars keep their
+ * rank instead of churning the order — issues #574, #603), but exposed for the
+ * WHOLE field so callers that need an arbitrary car's live position can index
+ * it directly — e.g. the Telemetry Display / Chat / Race Admin template prefixes
+ * (`self`, `track_ahead/behind`, `race_ahead/behind`, `focused`), which would
+ * otherwise see only iRacing's start/finish-line-frozen `CarIdxPosition`.
+ *
+ * Returns `null` when telemetry isn't resolvable yet. The array is meaningful
+ * for race sessions; callers gate non-race sessions themselves (where the
+ * lap-progress order isn't the standings).
+ *
+ * Note: during replay, `handleTick` returns at the replay guard before
+ * `updatePositionTracking` runs, so the frozen-anchor state isn't maintained and
+ * this falls back to the plain lap-progress order (no tow/finish freezing). That
+ * is by design — a scrubbing/rewinding replay timeline breaks the forward-motion
+ * assumption the freezing relies on, so there's no correct order to reconstruct.
+ */
+export function getLiveRacePositions(): number[] | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  return calculateFrozenRacePositions(instance.state, instance.latestTelemetry);
+}
+
+/**
  * Player's STARTING GRID position (overall + class, both 1-based) from the
  * qualifying results — the source the race-start callout already uses
  * ({@link resolveStartingGridPosition}). Exposed for the Session Info position
