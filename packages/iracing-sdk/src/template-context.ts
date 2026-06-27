@@ -222,6 +222,11 @@ function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
   return { display, raw };
 }
 
+/**
+ * Builds the display/raw field-map pair for one relative-driver group
+ * (`track_ahead`, `race_behind`, `focused`, …). A null driver — no car in that
+ * slot — yields the empty field set, so every key renders "".
+ */
 function driverMaps(
   driver: DriverEntry | null,
   telemetry: TelemetryData | null,
@@ -509,6 +514,13 @@ function resolveClassPosition(
   return firstPositive(officialClass, telemetry?.CarIdxClassPosition?.[carIdx]);
 }
 
+/**
+ * Resolves the shared driver fields (name, car number, live overall/class
+ * position, lap counts, iRating, license) for one car. When `playerCarIdx`
+ * matches the car, the player-authoritative telemetry fields are used so `self`
+ * and `focused`-on-the-player agree; a pace car / spectator / unclassified car
+ * gets a blank position and class. See the inline notes for the per-field rules.
+ */
 function buildDriverFields(
   driver: DriverEntry,
   telemetry: TelemetryData | null,
@@ -574,6 +586,11 @@ function buildDriverFields(
   };
 }
 
+/**
+ * Builds the `self` fields: the player-aware driver field set (so `self` and
+ * `focused`-on-the-player resolve identically) plus the player-only incident
+ * count. Returns the empty set when the player's driver entry isn't found.
+ */
 function buildSelfFields(
   driver: DriverEntry | undefined,
   playerCarIdx: number,
