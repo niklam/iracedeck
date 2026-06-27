@@ -10,7 +10,7 @@ Recenters the virtual reality headset view.
 | Type | Button |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

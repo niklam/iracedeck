@@ -9,7 +9,7 @@ Multi-mode action covering the iRaceDeck pit-side audio framework. Modes availab
 | Action ID | `com.iracedeck.sd.core.pit-crew` |
 | Type | Multi-toggle / Incremental |
 | SDK Support | No |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Default state
 

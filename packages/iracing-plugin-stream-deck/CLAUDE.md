@@ -290,8 +290,8 @@ Add entry to the `Actions` array:
 }
 ```
 
-- Use `"Controllers": ["Keypad"]` if encoder is not supported
-- Omit the `Encoder` block entirely if Keypad-only
+- Use `"Controllers": ["Keypad"]` if the dial is not supported
+- Omit the `Encoder` manifest block entirely if Keypad-only
 - Only include `TriggerDescription` keys for handlers the action implements
 
 #### 9. Add key bindings — `packages/iracing-actions/src/actions/data/key-bindings.json`

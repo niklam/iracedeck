@@ -10,7 +10,7 @@ Triggers a single wipe of the windshield wipers.
 | Type | Button |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

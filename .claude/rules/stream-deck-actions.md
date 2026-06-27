@@ -365,9 +365,9 @@ const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
 2. **Callback never fires**: Handlers must be registered BEFORE `adapter.connect()`
 3. **Wrong adapter instance**: Always pass the `IDeckPlatformAdapter` to `initGlobalSettings(adapter, logger)`
 
-## Encoder Support
+## Dial Support
 
-For Stream Deck+ encoder (dial) support:
+For Stream Deck+ dial support:
 
 ### Manifest Configuration
 
