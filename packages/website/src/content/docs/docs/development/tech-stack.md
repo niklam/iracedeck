@@ -5,6 +5,10 @@ description: iRaceDeck's architecture, packages, and how it communicates with iR
 
 iRaceDeck is a monorepo built with [pnpm](https://pnpm.io/) workspaces. The codebase is organized into these packages:
 
+:::tip[See also]
+For a visual walkthrough of how these packages fit together and how data flows from iRacing to your deck, see [Architecture](/docs/development/architecture/).
+:::
+
 ## Packages
 
 | Package | Description |
