@@ -6,7 +6,7 @@
  * and {{= expression }} calculations (raw map).
  */
 import type { ExpressionValue } from "./expression-evaluator.js";
-import { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
+import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
@@ -230,13 +230,10 @@ function fieldsToMaps(fields: Record<string, DriverFieldValue>): FieldMaps {
 function driverMaps(
   driver: DriverEntry | null,
   telemetry: TelemetryData | null,
-  positions?: number[],
   order?: number[],
   playerCarIdx?: number,
 ): FieldMaps {
-  return fieldsToMaps(
-    driver ? buildDriverFields(driver, telemetry, positions, order, playerCarIdx) : { ...EMPTY_DRIVER_FIELDS },
-  );
+  return fieldsToMaps(driver ? buildDriverFields(driver, telemetry, order, playerCarIdx) : { ...EMPTY_DRIVER_FIELDS });
 }
 
 /**
@@ -253,54 +250,46 @@ export function buildTemplateContextFromData(
   const drivers = extractDrivers(sessionInfo);
   const playerCarIdx = extractPlayerCarIdx(sessionInfo);
 
-  // The live per-car race order (1-based, indexed by carIdx) drives both the
-  // overall position and the derived class position. Prefer the injected order
-  // (the translator's frozen live standings — towed/finished cars kept at their
-  // rank, matching the Session Info display) and fall back to the locally
-  // calculated lap-progress order. Race sessions only: in non-race the lap order
-  // isn't the standings, so positions come straight from iRacing's CarIdx* counters.
+  // SINGLE SOURCE OF TRUTH for race position: the translator's canonical live
+  // race order (1-based, indexed by carIdx) — the same order Session Info derives
+  // from. The template NEVER computes its own order. Race sessions use the
+  // injected order; otherwise (non-race, or before it's available) every prefix
+  // falls back per-car to iRacing's official CarIdxPosition. One coherent order
+  // means a strict 1..N ranking, so neighbour selection can't hit duplicate
+  // ranks (issue #710). See @.claude/rules/race-positions.md.
   const liveOrder = livePositions && livePositions.length > 0 ? livePositions : undefined;
-  const rawOrder = isRaceSession(sessionInfo, telemetry) ? (liveOrder ?? calculateRacePositions(telemetry)) : [];
-  const order = rawOrder.length > 0 ? rawOrder : undefined;
-  // Pit-blended standings: a car on pit road holds its official position rather
-  // than its (demoted) on-track lap-order slot. Drives driver selection and the
-  // overall position field; class position is derived from the pure `order`.
-  const positions = order ? resolveRacePositions(telemetry, order) : undefined;
+  const order = isRaceSession(sessionInfo, telemetry) ? liveOrder : undefined;
 
   const selfDriver = drivers.find((d) => d.CarIdx === playerCarIdx);
-  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, positions, order));
+  const self = fieldsToMaps(buildSelfFields(selfDriver, playerCarIdx, telemetry, order));
 
   const trackAhead = driverMaps(
     findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "ahead"),
     telemetry,
-    positions,
     order,
     playerCarIdx,
   );
   const trackBehind = driverMaps(
     findNearestDriverOnTrack(playerCarIdx, drivers, telemetry, "behind"),
     telemetry,
-    positions,
     order,
     playerCarIdx,
   );
   const raceAhead = driverMaps(
-    findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, positions),
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, -1, order),
     telemetry,
-    positions,
     order,
     playerCarIdx,
   );
   const raceBehind = driverMaps(
-    findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, positions),
+    findDriverByRacePosition(playerCarIdx, drivers, telemetry, +1, order),
     telemetry,
-    positions,
     order,
     playerCarIdx,
   );
   // `focused` can resolve to the player's own car (camera on you) — passing
   // playerCarIdx makes it use the same player-authoritative fields as `self`.
-  const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, positions, order, playerCarIdx);
+  const focused = driverMaps(findDriverByCamCarIdx(drivers, telemetry), telemetry, order, playerCarIdx);
 
   const sessionFields = buildSessionFields(sessionInfo, telemetry);
   const trackFields = buildTrackFields(sessionInfo);
@@ -441,41 +430,6 @@ export function findDriverByCamCarIdx(drivers: DriverEntry[], telemetry: Telemet
 }
 
 /**
- * @internal Exported for testing
- *
- * Builds a resolved positions array for a race session.
- * For each car: if on pit road or calculated position is unavailable, uses official CarIdxPosition.
- * Otherwise uses the calculated position.
- *
- * `order` supplies the base 1-based race order (indexed by carIdx) to blend; when
- * omitted it is computed locally via {@link calculateRacePositions}. Callers pass
- * the injected live order so the pit-road blend applies to the same order the
- * Session Info display uses.
- */
-export function resolveRacePositions(telemetry: TelemetryData | null, order?: number[]): number[] | undefined {
-  const calculated = order ?? calculateRacePositions(telemetry);
-
-  if (calculated.length === 0) return undefined;
-
-  const official = telemetry?.CarIdxPosition as number[] | undefined;
-  const onPitRoad = telemetry?.CarIdxOnPitRoad as boolean[] | undefined;
-
-  if (!official) return calculated;
-
-  const resolved = new Array<number>(calculated.length).fill(0);
-
-  for (let i = 0; i < calculated.length; i++) {
-    if (onPitRoad?.[i] || !calculated[i] || calculated[i] < 1) {
-      resolved[i] = official[i] ?? 0;
-    } else {
-      resolved[i] = calculated[i];
-    }
-  }
-
-  return resolved;
-}
-
-/**
  * First strictly-positive value, or undefined. Used to skip iRacing's `0`
  * "not classified" position/class sentinel as we fall through candidate sources,
  * so an unclassified car renders blank instead of "0".
@@ -486,82 +440,62 @@ function firstPositive(...values: (number | undefined)[]): number | undefined {
 
 /**
  * Live class position for a car: the count of same-class cars (`CarIdxClass`)
- * ranked ahead of it in the live race `order`, +1 (issue #700). Mirrors the
- * Session Info display, which derives class position from the live order rather
- * than iRacing's start/finish-line-frozen `CarIdxClassPosition`.
- *
- * Falls back to the official counter when the car is on pit road (its on-track
- * lap-order slot isn't its standing), when there's no live order (non-race), or
- * when `CarIdxClass` can't be read. `officialClass` overrides the official
- * fallback — the player passes `PlayerCarClassPosition`, the value iRacing
- * maintains authoritatively for the player. `onPitRoad` is supplied by the
- * caller so overall and class position share one pit-road signal.
+ * ranked ahead of it in the canonical live race `order`, +1 — derived from the
+ * single source of truth, exactly like the overall position. Once a live order
+ * exists it is authoritative: a car not in it (rank 0) renders blank rather than
+ * falling back to the official counter. The official `CarIdxClassPosition` is
+ * used only when there's no live order at all (non-race / pre-init) or there's a
+ * live order but no `CarIdxClass` to derive from. A non-positive official counter
+ * (0 = not classified) renders blank, not "0".
  */
 function resolveClassPosition(
   order: number[] | undefined,
   telemetry: TelemetryData | null,
   carIdx: number,
-  onPitRoad: boolean,
-  officialClass?: number,
 ): number | undefined {
-  if (order && !onPitRoad) {
-    const derived = classPositionFromOrder(order, telemetry?.CarIdxClass as number[] | undefined, carIdx);
+  if (order) {
+    const carIdxClass = telemetry?.CarIdxClass as number[] | undefined;
 
-    if (derived > 0) return derived;
+    // With both an order and class data, the order is the sole source — a car not
+    // in it stays blank, never the stale official counter.
+    if (Array.isArray(carIdxClass)) {
+      const derived = classPositionFromOrder(order, carIdxClass, carIdx);
+
+      return derived > 0 ? derived : undefined;
+    }
+
+    // Live order but no class data to derive from → official class counter.
+    return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
   }
 
-  // A non-positive official counter (0 = not classified) renders blank, not "0".
-  return firstPositive(officialClass, telemetry?.CarIdxClassPosition?.[carIdx]);
+  // No live order (non-race / pre-init) → official class counter.
+  return firstPositive(telemetry?.CarIdxClassPosition?.[carIdx]);
 }
 
 /**
  * Resolves the shared driver fields (name, car number, live overall/class
- * position, lap counts, iRating, license) for one car. When `playerCarIdx`
- * matches the car, the player-authoritative telemetry fields are used so `self`
- * and `focused`-on-the-player agree; a pace car / spectator / unclassified car
- * gets a blank position and class. See the inline notes for the per-field rules.
+ * position, lap counts, iRating, license) for one car. Overall and class
+ * position both come from the one canonical race `order` (the single source of
+ * truth — live track order everywhere, including the player), falling back to
+ * iRacing's official per-car counters only when no live order exists. A pace car
+ * / spectator / unclassified car gets a blank position and class. `playerCarIdx`
+ * only selects the player-authoritative lap counters, so `self` and
+ * `focused`-on-the-player still agree (issue #700).
  */
 function buildDriverFields(
   driver: DriverEntry,
   telemetry: TelemetryData | null,
-  positions?: number[],
   order?: number[],
   playerCarIdx?: number,
 ): DriverFields {
   const { firstName, lastName } = splitDriverName(driver.UserName);
   const carIdx = driver.CarIdx;
-  // When this entry IS the player's own car — `self`, or `focused` while the
-  // camera is on the player — read the player-authoritative telemetry fields so
-  // the `self` and `focused` prefixes resolve to identical values for the same
-  // car (issue #700). For every other car those player-only fields don't exist,
-  // so we use the per-car arrays.
   const isPlayer = playerCarIdx !== undefined && carIdx === playerCarIdx;
   // The pace car and spectators have no race position. The relative prefixes
   // already exclude them in their finders, so this only matters for `focused`,
   // the one prefix that can be aimed at a non-competitor: render its
   // position/class blank rather than a 0 or a bogus on-track lap-order rank.
   const isCompetitor = driver.CarIsPaceCar !== 1 && driver.IsSpectator !== 1;
-  // One pit-road signal for BOTH overall and class position so they can't
-  // disagree: the player's own scalar `OnPitRoad`, the per-car array otherwise.
-  const onPitRoad = isPlayer
-    ? telemetry?.OnPitRoad === true
-    : (telemetry?.CarIdxOnPitRoad as boolean[] | undefined)?.[carIdx] === true;
-
-  const livePosition = positions?.[carIdx];
-  const carIdxPosition = telemetry?.CarIdxPosition?.[carIdx];
-  let position: number | undefined;
-
-  if (!isCompetitor) {
-    position = undefined;
-  } else if (isPlayer) {
-    // On pit road the live lap-order demotes the player to their on-track slot,
-    // but they hold their official standing — so prefer PlayerCarPosition there.
-    position = onPitRoad
-      ? firstPositive(telemetry?.PlayerCarPosition, livePosition, carIdxPosition)
-      : firstPositive(livePosition, telemetry?.PlayerCarPosition, carIdxPosition);
-  } else {
-    position = firstPositive(livePosition, carIdxPosition);
-  }
 
   return {
     name: driver.UserName,
@@ -569,16 +503,16 @@ function buildDriverFields(
     last_name: lastName,
     abbrev_name: driver.AbbrevName,
     car_number: driver.CarNumber,
-    position,
-    class_position: isCompetitor
-      ? resolveClassPosition(
-          order,
-          telemetry,
-          carIdx,
-          onPitRoad,
-          isPlayer ? telemetry?.PlayerCarClassPosition : undefined,
-        )
+    // Single source: the canonical live order. When it exists it's authoritative
+    // (a car not in it stays blank); only with no live order at all do we fall
+    // back to iRacing's official CarIdxPosition. No pit-road / PlayerCar* overlay —
+    // a car in the pits shows its live track position like any other.
+    position: isCompetitor
+      ? order
+        ? firstPositive(order[carIdx])
+        : firstPositive(telemetry?.CarIdxPosition?.[carIdx])
       : undefined,
+    class_position: isCompetitor ? resolveClassPosition(order, telemetry, carIdx) : undefined,
     lap: (isPlayer ? telemetry?.Lap : undefined) ?? telemetry?.CarIdxLap?.[carIdx],
     laps_completed: (isPlayer ? telemetry?.LapCompleted : undefined) ?? telemetry?.CarIdxLapCompleted?.[carIdx],
     irating: driver.IRating,
@@ -595,7 +529,6 @@ function buildSelfFields(
   driver: DriverEntry | undefined,
   playerCarIdx: number,
   telemetry: TelemetryData | null,
-  positions?: number[],
   order?: number[],
 ): SelfDriverFields {
   if (!driver) return { ...EMPTY_SELF_FIELDS };
@@ -603,7 +536,7 @@ function buildSelfFields(
   // Self is the player-aware per-car field set plus the player-only incident
   // count — so `self` and `focused`-on-the-player share one code path.
   return {
-    ...buildDriverFields(driver, telemetry, positions, order, playerCarIdx),
+    ...buildDriverFields(driver, telemetry, order, playerCarIdx),
     incidents: telemetry?.PlayerCarMyIncidentCount,
   };
 }
