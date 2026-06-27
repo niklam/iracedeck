@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
+import { formatLocalDate, stampChangelog } from "./lib/changelog-stamp.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 const version = process.argv[2];
@@ -71,7 +73,20 @@ const buildNumber = execFileSync("git", ["rev-list", "--count", "HEAD"], {
 }).trim();
 const manifestVersion = `${numericVersion}.${buildNumber}`;
 
+// Stamp the changelog's in-development `_Unreleased_` date line with today's
+// release date on stable releases (issue #690). stampChangelog is a no-op (with
+// a clear reason) for pre-releases and for a missing or already-dated section,
+// so a release never fails just because the changelog wasn't pre-staged.
+const changelogRel = "packages/website/src/content/docs/changelog.mdx";
+const changelogPath = join(root, changelogRel);
+const changelogStamp = existsSync(changelogPath)
+  ? stampChangelog(readFileSync(changelogPath, "utf-8"), version, formatLocalDate(new Date()))
+  : { content: "", stamped: false, reason: `No changelog at ${changelogRel} — skipping date stamp` };
+
+// Stage the changelog alongside the version files only when it was actually
+// stamped, so the preflight and the real `git add` both see it.
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
+if (changelogStamp.stamped) allPaths.push(changelogRel);
 
 // Preflight (issue #701, defect 5): confirm every file we're about to bump can
 // be staged BEFORE writing anything. `git add --dry-run` mirrors the real
@@ -96,6 +111,7 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   for (const { rel } of packageJsonFiles) console.log(`    - ${rel}`);
   console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files to version ${manifestVersion}:`);
   for (const { rel } of manifestFiles) console.log(`    - ${rel}`);
+  console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
   process.exit(0);
 }
 
@@ -111,6 +127,11 @@ for (const { rel, filePath, data } of manifestFiles) {
   writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
   console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
+
+if (changelogStamp.stamped) {
+  writeFileSync(changelogPath, changelogStamp.content);
+}
+console.log(`  ${changelogStamp.reason}`);
 
 // Stage all modified files. Use argv form (no shell) so package directory
 // names containing spaces or shell metacharacters can't break or inject into
