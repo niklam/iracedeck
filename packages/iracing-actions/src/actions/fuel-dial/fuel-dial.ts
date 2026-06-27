@@ -1304,13 +1304,31 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
   /**
    * The liters value used for the bar's add segment and the readout, by mode:
-   * manual uses the dialed add; autofuel uses the live requested add (`PitSvFuel`);
-   * autofuel-off has no controllable add (current segment only).
+   *
+   * - autofuel: the live requested add (`PitSvFuel`).
+   * - manual add-amount: ALSO the live requested add (`PitSvFuel`), clamped to the
+   *   dial's domain `[0, capacity]` — the display follows what iRacing actually
+   *   banked, never the optimistically-dialed guess, so the readout matches the
+   *   in-sim black box and never shows a value that resyncs a beat later (e.g.
+   *   dialing "+1 gal" shows the real integer-litre amount the SDK applied, not a
+   *   fabricated "+1") (#726). The capacity clamp preserves the prior `[0, max]`
+   *   bound so a pit request set above the tank (e.g. externally) can't render a
+   *   nonsensical add larger than the capped total. The dialed value still drives
+   *   what is SENT (`effectiveAddLtr` via `scheduleSend`/`doPress`); only the
+   *   DISPLAY is decoupled onto telemetry.
+   * - manual fill-to: the computed target − current add (already telemetry-aware
+   *   via the live fuel level + continuous monitoring), keeping the bar's add
+   *   segment reaching the user's target marker.
+   * - autofuel-off: no controllable add (current segment only).
    */
   private displayAddLtr(ctx: FuelDialContext, mode: DialDisplayMode): number {
     if (mode === "autofuel-off") return 0;
 
     if (mode === "autofuel") return Math.max(0, readPitSvFuel(this.sdkController.getCurrentTelemetry()) ?? 0);
+
+    if (ctx.settings.dialMode === "add-amount") {
+      return clampTargetLtr(readPitSvFuel(this.sdkController.getCurrentTelemetry()) ?? 0, this.effectiveMaxLtr());
+    }
 
     return this.effectiveAddLtr(ctx);
   }
@@ -1420,7 +1438,24 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // We never re-send when fuel-fill is OFF (the user's toggle-off is respected)
     // nor in add-amount mode (its add is fixed). The render-on-change path
     // pushes the resulting feedback — `sendFuel` here only updates the request.
-    if (ctx.settings.dialMode === "fill-to" && this.isFuelFillOn()) {
+    //
+    // The `!lastPitWasClear` guard respects a deliberate clear during the telemetry
+    // LAG window: right after a toggle-off (or an auto-clear when the add hits 0)
+    // iRacing keeps reporting fuel-fill ON for a few ticks, while the clear nulls
+    // `lastSentWholeAdd`. Without the guard the monitor would see "the add changed"
+    // and re-broadcast `pit.fuel`, silently RE-ARMING the fueling the user just
+    // turned off. `lastPitWasClear` stays set until fueling is genuinely re-armed
+    // (our own `pit.fuel`, or an external fuel-fill OFF→ON edge), so the monitor
+    // resumes the moment a real request exists again.
+    //
+    // `lastPitWasClear` is action-wide (one flag per FuelDial instance, shared by
+    // every button/dial context) on purpose: all Fuel Dial buttons drive the SAME
+    // single iRacing pit fuel request, so "the request was deliberately cleared" is
+    // an action-wide fact, not a per-context one. With two fill-to dials targeting
+    // the same request a clear on either correctly suppresses the other's re-arm
+    // (last command wins, no ping-pong) — a per-context flag would have them fight
+    // over the shared request every tick.
+    if (ctx.settings.dialMode === "fill-to" && this.isFuelFillOn() && !this.lastPitWasClear) {
       const addLtr = this.effectiveAddLtr(ctx);
       const displayUnits = this.effectiveDisplayUnits(ctx);
       const wholeKey = addLtr <= 0 ? null : Math.round(fuelToDisplayUnits(addLtr, displayUnits));
@@ -1491,7 +1526,8 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
    * dialing the target at/below current fuel leaves add at 0 but moves the marker.
    * The target is therefore appended only in fill-to mode so the readout refreshes
    * promptly instead of waiting for the 5 s heartbeat (issue #681). In add-amount
-   * mode the dialed value is already captured via `addLtr`.
+   * mode the displayed add is the live `PitSvFuel` (already captured via `addLtr`),
+   * and the dialed value is not displayed, so it need not be in the signature (#726).
    */
   private displayedSignature(ctx: FuelDialContext): string {
     const displayUnits = this.effectiveDisplayUnits(ctx);
