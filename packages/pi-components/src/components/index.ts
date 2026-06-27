@@ -1,3 +1,6 @@
+// External links - reroute external http(s) PI link clicks to the OS default browser
+import { installExternalLinkHandler } from "./external-links.js";
+
 /**
  * Property Inspector Components for iRaceDeck Stream Deck plugins
  *
@@ -45,3 +48,6 @@ export { WarningsBanner } from "./warnings.js";
 
 // Binding Status - per-mode communication / binding status line under the Mode selector
 export { BindingStatus } from "./binding-status.js";
+
+// Side effect on bundle load: reroute external PI links to the default browser (issue #243).
+installExternalLinkHandler();

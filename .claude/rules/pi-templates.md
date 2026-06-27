@@ -116,8 +116,8 @@ Located in `packages/pi-components/partials/`:
 - **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion
 - **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490.
 - **global-common-settings.ejs** - Global common settings (window focus, SimHub server) in accordion
-- **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped)
-- **version.ejs** - Version footer with downloads link
+- **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped). Opens in the default browser (see _External Links_ below).
+- **version.ejs** - Version footer with downloads link. Opens in the default browser (see _External Links_ below).
 
 ## Shared CSS Classes
 
@@ -136,6 +136,16 @@ Common style classes are defined in `head-common.ejs` (loaded by every PI page).
   ```
 
 When a new shared style is needed, add the class to `head-common.ejs` and document it here — do not introduce inline styles in partials or per-action templates.
+
+## External Links — default browser (issue #243)
+
+External links in a PI otherwise open in the deck app's small built-in browser, which no PI link ever wants. A single delegated click handler — `installExternalLinkHandler()` in `packages/pi-components/src/components/external-links.ts`, run on load from the `pi-components.js` bundle entry (`src/components/index.ts`) — reroutes **every** external `http(s)` anchor click through sdpi-components' built-in `openUrl` event. So just author a normal link; it opens in the user's **default browser** automatically, no marker class or per-link wiring:
+
+```html
+<a href="https://iracedeck.com/downloads/" target="_blank" rel="noopener noreferrer">Downloads</a>
+```
+
+That event reaches the OS default browser on every host: Elgato handles it natively, the VSD (Mirabox) host receives it directly, and the Ulanzi PI bridge translates it to its `openurl` cmd (`src/ulanzi-bridge/translate.ts`). No plugin-side code is needed. The handler resolves the anchor's normalized `.href` and only reroutes `http(s)` (the SDK can't open other schemes, e.g. `mailto:`/`app://`, and in-PI/relative targets are left alone). It only intercepts when sdpi-components is loaded, so a load failure falls back to the link's default behavior; the `openUrl` send is fire-and-forget (rejections swallowed) and the listener installs once per document.
 
 ## Title Overrides Partial
 
