@@ -13,11 +13,11 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // of needing to be added to a parallel hardcoded list here.
 const manifests = allPluginManifestRelPaths(repoRoot);
 
-// Case-insensitive alphabetical order on the user-facing display name, with a
-// deterministic tiebreak so two names differing only in case/accent still have a
-// defined order — otherwise the guard would silently accept either ordering for
-// such a pair.
-const byName = (a, b) => a.localeCompare(b, "en", { sensitivity: "base" }) || a.localeCompare(b, "en");
+// Case- and accent-insensitive alphabetical order on the user-facing display
+// name — the order the host app should present. The uniqueness check below
+// forbids two names that collide under this comparator, so the ordering is always
+// unambiguous (no two distinct allowed names compare equal).
+const byName = (a, b) => a.localeCompare(b, "en", { sensitivity: "base" });
 
 function actionNames(manifestRelPath) {
   const manifest = JSON.parse(readFileSync(join(repoRoot, manifestRelPath), "utf-8"));
@@ -42,12 +42,14 @@ describe("plugin manifest action lists", () => {
   });
 
   // Ordering alone can't catch a reorder that drops or duplicates an action — the
-  // surviving list is still sorted. Assert uniqueness explicitly so a doubled
-  // entry fails loudly instead of silently shipping a duplicate.
-  it.each(manifests)("has no duplicate action names: %s", (manifestRelPath) => {
-    const names = actionNames(manifestRelPath);
+  // surviving list is still sorted. Assert uniqueness explicitly, using the same
+  // case/accent-insensitive rule as the ordering so a doubled entry — or two
+  // confusable names like "Chat" and "chat" — fails loudly instead of shipping.
+  it.each(manifests)("has no duplicate or confusable action names: %s", (manifestRelPath) => {
+    const sorted = [...actionNames(manifestRelPath)].sort(byName);
+    const collisions = sorted.filter((name, i) => i > 0 && byName(sorted[i - 1], name) === 0);
 
-    expect(names).toEqual([...new Set(names)]);
+    expect(collisions).toEqual([]);
   });
 
   // Every plugin must expose the same action set; adding an action to one manifest
