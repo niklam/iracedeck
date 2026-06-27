@@ -44,6 +44,23 @@ export class SDKController {
   private templateContextDirty = true;
   private lastTemplateContext: TemplateContext | null = null;
   /**
+   * `CamCarIdx` the cached template context was built for. The `focused` prefix
+   * depends on the camera target, which can change without `SessionTick`
+   * advancing (panning the camera on a paused/scrubbed replay) — so a change
+   * here rebuilds the context even though the SessionTick dedupe left the tick
+   * "unchanged" (issue #700).
+   */
+  private lastCamCarIdx: number | undefined;
+  /**
+   * Optional provider for the live per-car race order (1-based positions indexed
+   * by carIdx). Injected from a higher layer (the iRacing translator's
+   * `getLiveRacePositions`) because this package sits below it — see
+   * `setLivePositionsProvider`. When set, the template context uses this
+   * continuously-updating order for driver positions instead of iRacing's
+   * start/finish-line-frozen `CarIdxPosition`.
+   */
+  private livePositionsProvider: (() => number[] | null) | null = null;
+  /**
    * iRacing's `SessionTick` value at the last notified frame. We poll
    * faster than iRacing's native write rate (see TELEMETRY_INTERVAL_MS)
    * and skip notifying subscribers when the tick hasn't advanced, so each
@@ -302,13 +319,34 @@ export class SDKController {
 
     if (!telemetry) return null;
 
-    if (this.templateContextDirty || !this.lastTemplateContext) {
+    const camCarIdx = telemetry.CamCarIdx;
+
+    if (this.templateContextDirty || !this.lastTemplateContext || camCarIdx !== this.lastCamCarIdx) {
       const sessionInfo = this.getSessionInfo();
-      this.lastTemplateContext = buildTemplateContextFromData(telemetry, sessionInfo);
+      this.lastTemplateContext = buildTemplateContextFromData(telemetry, sessionInfo, this.getLiveRacePositions());
+      this.lastCamCarIdx = camCarIdx;
       this.templateContextDirty = false;
     }
 
     return this.lastTemplateContext;
+  }
+
+  /**
+   * Inject the live per-car race-order provider (see {@link livePositionsProvider}).
+   * Called once during plugin init with the iRacing translator's
+   * `getLiveRacePositions`. Passing `null` clears it (template positions then fall
+   * back to the locally calculated lap-progress order / official `CarIdxPosition`).
+   */
+  setLivePositionsProvider(provider: (() => number[] | null) | null): void {
+    this.livePositionsProvider = provider;
+  }
+
+  /**
+   * Current live per-car race order from the injected provider, or `null` when no
+   * provider is set or it has no data yet.
+   */
+  getLiveRacePositions(): number[] | null {
+    return this.livePositionsProvider?.() ?? null;
   }
 
   /**

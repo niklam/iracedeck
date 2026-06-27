@@ -88,9 +88,13 @@ Fuel level with one decimal and a unit suffix (renders e.g. `42.4 L`):
 
 ## Driver Info
 
-Available prefixes: `self`, `track_ahead`, `track_behind`, `race_ahead`, `race_behind`
+Available prefixes: `self`, `track_ahead`, `track_behind`, `race_ahead`, `race_behind`, `focused`
 
-Examples shown with `self` prefix. Replace with any prefix above.
+The `focused` prefix resolves to whichever car the **current camera is focused on** — pair it with a [Camera Focus](/docs/actions/view-camera/camera-focus/) button to make an adjacent display follow your camera selection (great for spotting, broadcasting, or race control). When the camera is on a scenic/track cam rather than a specific car, every `focused.*` field renders blank. It also works in replays.
+
+Examples shown with `self` prefix. Replace with any prefix above. (`incidents` is `self`-only.)
+
+In race sessions, `position` and `class_position` follow the **live race order** — they update continuously as cars move (the same live ordering the [Session Info](/docs/actions/display-session/session-info/) Position readout uses while racing on track), rather than only refreshing at the start/finish line. A car in the pits shows its official position. Before the green flag — and until a car has been classified into the running order — the value may be blank.
 
 | Variable | Description |
 |----------|-------------|
@@ -99,8 +103,8 @@ Examples shown with `self` prefix. Replace with any prefix above.
 | `{{self.last_name}}` | Last name |
 | `{{self.abbrev_name}}` | Abbreviated name (e.g., "J. Smith") |
 | `{{self.car_number}}` | Car number |
-| `{{self.position}}` | Overall race position |
-| `{{self.class_position}}` | Class position |
+| `{{self.position}}` | Overall race position (live) |
+| `{{self.class_position}}` | Class position (live) |
 | `{{self.lap}}` | Current lap number |
 | `{{self.laps_completed}}` | Laps completed |
 | `{{self.irating}}` | iRating |
