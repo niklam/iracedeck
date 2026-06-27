@@ -13,6 +13,7 @@ This page is the visual companion to the [Tech Stack](/docs/development/tech-sta
 flowchart TB
   ir["iRacing sim"]:::ext
   future["future sims<br/>(AC, rF2, ...)"]:::ghost
+  futureTrans["future translator<br/>(sim-events-...)"]:::ghost
   sdk["iracing-sdk"]:::sim
   trans["sim-events-iracing<br/>(translator)"]:::sim
   bus(["event-bus<br/>SEAM 1 — semantic events"]):::seam
@@ -28,7 +29,8 @@ flowchart TB
   ir --> sdk
   sdk --> trans
   trans --> bus
-  future -.-> bus
+  future -.-> futureTrans
+  futureTrans -.-> bus
   bus --> actions
   bus --> re
   actions --> adapter
