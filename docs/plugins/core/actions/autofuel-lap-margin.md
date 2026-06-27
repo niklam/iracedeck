@@ -10,14 +10,14 @@ Adjusts the lap margin for automatic fuel calculation.
 | Type | +/- |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | Yes |
+| Dial Support | Yes |
 
 ## Behavior
 
 ### Button Press
 Triggers the direction configured in Settings (increase or decrease).
 
-### Encoder
+### Dial
 - **Rotate clockwise**: Increase lap margin
 - **Rotate counter-clockwise**: Decrease lap margin
 

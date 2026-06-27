@@ -10,7 +10,7 @@ Toggles the in-car dash information box display.
 | Type | Toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

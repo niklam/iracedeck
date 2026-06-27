@@ -10,7 +10,7 @@ Reports current network latency to the chat.
 | Type | Button |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

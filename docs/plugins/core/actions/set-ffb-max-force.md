@@ -9,14 +9,14 @@ Adjusts the maximum force feedback force.
 | Action ID | `com.iracedeck.sd.core.set-ffb-max-force` |
 | Type | Adjustment |
 | SDK Support | Yes |
-| Encoder Support | Yes |
+| Dial Support | Yes |
 
 ## Behavior
 
 ### Button Press
 Sets or adjusts FFB max force based on configured mode.
 
-### Encoder
+### Dial
 - **Rotate clockwise**: Increase max force
 - **Rotate counter-clockwise**: Decrease max force
 

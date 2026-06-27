@@ -10,7 +10,7 @@ Changes the driver's view direction.
 | Type | Multi-toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

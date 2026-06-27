@@ -40,9 +40,9 @@ GitHub Releases may have a newer version available before it appears on the Elga
 4. The Stream Deck software will open and install the plugin automatically
 5. Look for the **iRaceDeck** category in the Stream Deck action list
 
-### Stream Deck+ Encoder Support
+### Stream Deck+ Dial Support
 
-Most iRaceDeck actions support the Stream Deck+ encoder (rotary dial). When you place an action on an encoder slot, rotating the dial typically cycles through options or adjusts values, while pressing the dial activates the primary action.
+Most iRaceDeck actions support the Stream Deck+ dial. When you place an action on a dial slot, rotating the dial typically cycles through options or adjusts values, while pressing the dial activates the primary action.
 
 ## Mirabox Ecosystem
 

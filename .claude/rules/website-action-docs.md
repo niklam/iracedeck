@@ -106,5 +106,5 @@ The Details block is mode-specific: within a single action, different modes may 
 ### What NOT to include
 
 - No settings summary tables (Type/Default columns add no value)
-- No separate "Dial Support" / "Encoder Support" top-level section (documented per mode)
+- No separate "Dial Support" top-level section (documented per mode)
 - No "Properties" table (Action ID, SDK support, etc. — that belongs in internal docs)

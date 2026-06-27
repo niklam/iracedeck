@@ -10,7 +10,7 @@ Toggles the automatic fuel calculation feature.
 | Type | Toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 
