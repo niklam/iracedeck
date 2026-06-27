@@ -263,7 +263,7 @@ Same pattern as above — import from `@iracedeck/iracing-actions` and register 
 
 #### 8. Declare in manifest — `com.iracedeck.sd.core.sdPlugin/manifest.json`
 
-Add entry to the `Actions` array:
+Insert the entry into the `Actions` array **at its alphabetical position by `Name`** (the array drives the action-list order in the host app, which is kept alphabetical), and add the matching entry to the Mirabox and Ulanzi manifests too — every plugin must expose the same action set. `scripts/manifest-actions-order.test.mjs` fails the build if any manifest's `Actions` drift out of order, gain a duplicate, or diverge from the others.
 
 ```json
 {
