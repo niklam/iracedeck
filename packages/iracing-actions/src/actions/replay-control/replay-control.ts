@@ -1,6 +1,7 @@
 import {
   applyGraphicTransform,
   assembleIcon,
+  clearSelectedCar,
   CommonSettings,
   computeGraphicArea,
   ConnectionStateAwareAction,
@@ -1707,6 +1708,11 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
 
         const jumpCamera = getCommands().camera;
         const jumpSuccess = jumpCamera.switchNum(selected.carNumberRaw, 0, 0);
+
+        if (jumpSuccess) {
+          clearSelectedCar();
+        }
+
         this.logger.info("Jump to selected car executed");
         this.logger.debug(`Result: ${jumpSuccess}, carNumberRaw: ${selected.carNumberRaw}, carIdx: ${selected.carIdx}`);
         break;

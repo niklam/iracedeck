@@ -1,5 +1,6 @@
 import {
   assembleIcon,
+  clearSelectedCar,
   CommonSettings,
   ConnectionStateAwareAction,
   extractGraphicContent,
@@ -917,6 +918,11 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         }
 
         const success = camera.switchNum(selected.carNumberRaw, groupNum, cameraNum);
+
+        if (success) {
+          clearSelectedCar();
+        }
+
         this.logger.info("Focus on selected car executed");
         this.logger.debug(`Result: ${success}, carNumberRaw: ${selected.carNumberRaw}, carIdx: ${selected.carIdx}`);
         break;

@@ -75,6 +75,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   setSelectedCar: vi.fn(),
   getSelectedCar: vi.fn(() => null),
   onSelectedCarChange: vi.fn(() => vi.fn()),
+  clearSelectedCar: vi.fn(),
   getGlobalTitleSettings: vi.fn(() => ({})),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({

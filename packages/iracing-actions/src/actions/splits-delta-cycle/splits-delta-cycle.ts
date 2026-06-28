@@ -1,5 +1,6 @@
 import {
   assembleIcon,
+  clearSelectedCar,
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
@@ -131,14 +132,15 @@ export function generateSplitsDeltaCycleSvg(
       defaultTitle,
     );
 
-    // Green border when this button is the active selected target
+    // Green border forced on when this button is the active selected target
     const stateColor = isSelected ? "#2ecc71" : undefined;
-    const border = resolveBorderSettings(
+    const resolvedBorder = resolveBorderSettings(
       displayRefCarIconSvg,
       getGlobalBorderSettings(),
       settings.borderOverrides,
       stateColor,
     );
+    const border = isSelected ? { ...resolvedBorder, enabled: true } : resolvedBorder;
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
@@ -251,6 +253,14 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
 
       if (carNumber === null || carNumberRaw === null) {
         this.logger.warn("Cannot select reference car: car number not yet resolved from session info");
+
+        return;
+      }
+
+      // Toggle: deselect if this car is already the active target
+      if (getSelectedCar()?.carIdx === settings.carIdx) {
+        clearSelectedCar();
+        this.logger.info("Reference car deselected");
 
         return;
       }

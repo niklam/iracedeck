@@ -7,6 +7,7 @@
 // ── Icon Imports ────────────────────────────────────────────────
 import {
   assembleIcon,
+  clearSelectedCar,
   CommonSettings,
   ConnectionStateAwareAction,
   getClipboard,
@@ -261,6 +262,10 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     if (success) {
       this.logger.info("Admin command executed");
+
+      if (settings.driverTarget === "selected-car") {
+        clearSelectedCar();
+      }
     } else {
       this.logger.warn("Failed to send admin command");
     }
