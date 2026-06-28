@@ -3,11 +3,12 @@
  *
  * Pure functions for constructing admin chat command strings.
  */
+import { getSelectedCar } from "@iracedeck/deck-core";
 import { buildTemplateContext, resolveTemplate, type SDKController } from "@iracedeck/iracing-sdk";
 
 import { RACE_ADMIN_MODE_META, type RaceAdminMode, type RaceAdminModeMeta } from "./race-admin-modes.js";
 
-export type DriverTarget = "viewed-car" | "specific" | "type-in-chat";
+export type DriverTarget = "viewed-car" | "selected-car" | "specific" | "type-in-chat";
 
 export interface RaceAdminSettings {
   mode: RaceAdminMode;
@@ -40,6 +41,10 @@ export function resolveDriverTarget(
 
   if (settings.driverTarget === "viewed-car") {
     return viewedCarNumber ?? null;
+  }
+
+  if (settings.driverTarget === "selected-car") {
+    return getSelectedCar()?.carNumber ?? null;
   }
 
   if (settings.driverTarget === "specific") {

@@ -10,6 +10,7 @@
 			<sdpi-select id="mode-select" setting="mode" default="cycle">
 				<option value="cycle">Cycle Splits Delta</option>
 				<option value="toggle-ref-car">Toggle Reference Car</option>
+				<option value="select-reference-car">Select Reference Car</option>
 				<option value="custom-sector-start">Custom Sector Start</option>
 				<option value="custom-sector-end">Custom Sector End</option>
 				<option value="active-reset-set">Set Active Reset Point</option>
@@ -25,6 +26,10 @@
 				<option value="next">Next</option>
 				<option value="previous">Previous</option>
 			</sdpi-select>
+		</sdpi-item>
+
+		<sdpi-item id="car-idx-item" label="Car Index" class="hidden">
+			<sdpi-textfield id="car-idx-field" setting="carIdx" default="0" placeholder="0–63" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
 		</sdpi-item>
 
 		<%- include('title-overrides') %>
@@ -52,6 +57,7 @@
 				await customElements.whenDefined("sdpi-select");
 
 				const modeSelect = document.getElementById("mode-select");
+				const carIdxField = document.getElementById("car-idx-field");
 				if (modeSelect) {
 					updateVisibility(modeSelect.value || "cycle");
 
@@ -71,14 +77,31 @@
 						}
 					}, 100);
 				}
+
+				if (carIdxField) {
+					carIdxField.addEventListener("input", () => {
+						const input = carIdxField.shadowRoot
+							? carIdxField.shadowRoot.querySelector("input")
+							: carIdxField.querySelector("input");
+						if (input && input.value !== input.value.replace(/[^0-9]/g, "")) {
+							input.value = input.value.replace(/[^0-9]/g, "");
+						}
+					});
+				}
 			}
 
 			function updateVisibility(mode) {
 				const directionItem = document.getElementById("direction-item");
+				const carIdxItem = document.getElementById("car-idx-item");
 				if (mode === "cycle") {
 					directionItem?.classList.remove("hidden");
+					carIdxItem?.classList.add("hidden");
+				} else if (mode === "select-reference-car") {
+					directionItem?.classList.add("hidden");
+					carIdxItem?.classList.remove("hidden");
 				} else {
 					directionItem?.classList.add("hidden");
+					carIdxItem?.classList.add("hidden");
 				}
 			}
 

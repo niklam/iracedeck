@@ -13,6 +13,7 @@ import {
   getGlobalGraphicSettings,
   getGlobalSettings,
   getGlobalTitleSettings,
+  getSelectedCar,
   ICON_BASE_TEMPLATE,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -92,6 +93,7 @@ const REPLAY_CONTROL_MODES = [
   "jump-to-beginning",
   "jump-to-live",
   "jump-to-my-car",
+  "jump-to-selected-car",
   "jump-to-fastest-lap",
   "next-car",
   "prev-car",
@@ -124,6 +126,7 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "jump-to-beginning": jumpToBeginningIconSvg,
   "jump-to-live": jumpToLiveIconSvg,
   "jump-to-my-car": jumpToMyCarIconSvg,
+  "jump-to-selected-car": jumpToMyCarIconSvg,
   "jump-to-fastest-lap": jumpToFastestLapIconSvg,
   "next-car": nextCarIconSvg,
   "prev-car": prevCarIconSvg,
@@ -154,6 +157,7 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
   "jump-to-beginning": "JUMP TO\nBEGINNING",
   "jump-to-live": "JUMP TO\nLIVE",
   "jump-to-my-car": "JUMP TO\nMY CAR",
+  "jump-to-selected-car": "JUMP TO\nSELECTED",
   "jump-to-fastest-lap": "FASTEST\nLAP",
   "next-car": "CAR\nNEXT",
   "prev-car": "CAR\nPREVIOUS",
@@ -1691,6 +1695,20 @@ export class ReplayControl extends ConnectionStateAwareAction<ReplayControlSetti
         const success = camera.switchNum(carNum, 0, 0);
         this.logger.info("Jump to my car executed");
         this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
+        break;
+      }
+      case "jump-to-selected-car": {
+        const selected = getSelectedCar();
+
+        if (!selected) {
+          this.logger.warn("Cannot jump to selected car: no car selected — press a Select Reference Car button first");
+          break;
+        }
+
+        const jumpCamera = getCommands().camera;
+        const jumpSuccess = jumpCamera.switchNum(selected.carNumberRaw, 0, 0);
+        this.logger.info("Jump to selected car executed");
+        this.logger.debug(`Result: ${jumpSuccess}, carNumberRaw: ${selected.carNumberRaw}, carIdx: ${selected.carIdx}`);
         break;
       }
       case "jump-to-fastest-lap": {

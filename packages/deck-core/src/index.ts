@@ -286,3 +286,12 @@ export {
 
 // Version-check / changelog opener (issue #680)
 export { CHANGELOG_BASE_URL, buildChangelogUrl, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
+
+// Selected-car target singleton (shared across camera, admin, and replay actions)
+export {
+  setSelectedCar,
+  getSelectedCar,
+  clearSelectedCar,
+  onSelectedCarChange,
+  type SelectedCar,
+} from "./selected-car.js";

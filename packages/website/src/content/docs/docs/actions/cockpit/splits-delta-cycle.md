@@ -3,11 +3,11 @@ title: Splits & Reference
 description: Cycle splits delta modes, toggle reference car, mark custom sectors, and use active reset.
 sidebar:
   badge:
-    text: "6 modes"
+    text: "7 modes"
     variant: tip
 ---
 
-Switch between iRacing's split-time delta display modes, toggle the reference car display, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit.
+Switch between iRacing's split-time delta display modes, toggle the reference car display, target a specific reference car for future actions, mark custom sector start and end points, or use active reset to practice specific track sections without leaving the cockpit.
 
 ## Modes
 
@@ -47,6 +47,29 @@ Toggle the reference car overlay on or off. Replaces the old "Display Reference 
 #### Settings
 
 - No additional settings
+
+---
+
+### Select Reference Car
+
+Assign this button to a fixed iRacing driver index (0–63). The button displays that car's number from session info. Pressing the button sets it as the **selected car target** — a shared slot read by Camera Controls (**Focus Selected Car**), Race Admin (**Use Selected Car**), and Replay Control (**Jump to Selected Car**). No camera switch happens on press; this mode is purely for targeting.
+
+A **green border** appears on the button when its car index is the currently active target, so you can see at a glance which car is selected across a row of selector buttons.
+
+#### Details
+
+- **Method:** API (sets the shared selected car target)
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — displays the car number for the assigned driver index
+
+#### Setting: Car Index
+
+The iRacing driver index (0–63) this button is assigned to. Defaults to `0`. The button shows the car number for that index once session info is available.
+
+:::tip
+Place multiple **Select Reference Car** buttons side by side, each assigned to a different car index. The green border tells you which one is the active target. Press a different button to re-target instantly.
+:::
 
 ---
 

@@ -3,7 +3,7 @@ title: Camera Controls
 description: Cycle cameras, change camera groups, and focus on specific targets with a single button or dial.
 sidebar:
   badge:
-    text: "12 modes"
+    text: "13 modes"
     variant: tip
 ---
 
@@ -196,6 +196,26 @@ Switch camera focus to a car by its car number.
 #### Setting: Car Number
 
 The car number to focus. Integer. Defaults to `0`.
+
+---
+
+### Focus Selected Car
+
+Switch camera focus to the car most recently targeted using a **Select Reference Car** button (Splits & Reference action). Useful when you set up a row of car-index buttons and want a second button that switches to whichever one you last pressed.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+:::tip
+Combine with **Select Reference Car** buttons: press the selector to pick a target, then press **Focus Selected Car** (or a Race Admin / Replay Control button) to act on it.
+:::
 
 ---
 

@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "27 modes"
+    text: "28 modes"
     variant: tip
 ---
 
@@ -384,6 +384,23 @@ Jump the replay camera to your own car.
 
 - **Method:** iRacing API
 - **Dial:** Rotation cycles to the next / previous car on track around your position (clockwise = ahead, counter-clockwise = behind)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Jump to Selected Car
+
+Jump the replay camera to the car most recently targeted using a **Select Reference Car** button (Splits & Reference action). If no car has been selected yet, pressing the button does nothing.
+
+#### Details
+
+- **Method:** iRacing API
+- **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
 

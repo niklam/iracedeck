@@ -17,6 +17,7 @@ import {
   getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
+  getSelectedCar,
   type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
@@ -65,7 +66,7 @@ import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./ra
 
 const RaceAdminSettings = CommonSettings.extend({
   mode: z.enum(RACE_ADMIN_MODES).default("yellow"),
-  driverTarget: z.enum(["viewed-car", "specific", "type-in-chat"]).default("type-in-chat"),
+  driverTarget: z.enum(["viewed-car", "selected-car", "specific", "type-in-chat"]).default("type-in-chat"),
   carNumber: z.string().default(""),
   message: z.string().default(""),
   penaltyType: z.enum(["time", "laps", "drivethrough"]).default("time"),
@@ -235,6 +236,13 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     // the command is dispatched normally via the SDK.
     if (meta.needsDriver && settings.driverTarget === "type-in-chat") {
       await this.executeTypeInChat(contextId, mode);
+
+      return;
+    }
+
+    // "Selected car" requires a prior selection via a Select Reference Car button.
+    if (meta.needsDriver && settings.driverTarget === "selected-car" && !getSelectedCar()) {
+      this.logger.warn("Cannot execute admin command: no car selected — press a Select Reference Car button first");
 
       return;
     }

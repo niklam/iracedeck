@@ -520,10 +520,11 @@ Required. Supports template variables.
 
 ### Driver Target
 
-Every mode that accepts a `<driver>` parameter shares a single targeting setting with three options:
+Every mode that accepts a `<driver>` parameter shares a single targeting setting with four options:
 
 - **Type in Chat** (default) — One-tap "open chat with the right command pre-filled, let me type the number myself". The action opens iRacing chat, pastes the command prefix (e.g. `!clear `, with a trailing space), and **stops** — it does not press Enter. You type the car number off the standings sheet and press Enter to submit. Useful for league admins who handle a different driver each lap and don't want to pre-bind a specific number.
 - **Use Viewed Car** — The action reads the car number of the car currently being followed in the replay / broadcast view at send time. View a car and press the button; the command targets that car.
+- **Use Selected Car** — The action uses the car most recently targeted using a **Select Reference Car** button (Splits & Reference action). Press the selector button to lock in a target, then press the admin command button to act on it — no need to have that car in the camera view. If no car has been selected yet, pressing the button does nothing.
 - **Specific Car Number** — Selecting this reveals a number input. The same car number is used on every press, regardless of which car is being viewed, and is also rendered on the button icon so you can tell which car the button targets.
 
 :::caution

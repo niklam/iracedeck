@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 54" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nREFERENCE"},"border":{"color":"#714474"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#412244","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"CAR\nREFERENCE","fontSize":16,"locked":["fontSize"]},"border":{"color":"#714474"}}</desc>
   
 
     <rect x="10" y="2" width="56" height="28" rx="8" fill="none" stroke="{{graphic1Color}}" stroke-width="3"/>

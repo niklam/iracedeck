@@ -122,6 +122,9 @@
         "key": "toggleUiDisplayRefCar"
       }
     },
+    "select-reference-car": {
+      "method": "api"
+    },
     "custom-sector-start": {
       "method": "keybind",
       "binding": {
@@ -2036,6 +2039,9 @@
       "method": "api"
     },
     "jump-to-my-car": {
+      "method": "api"
+    },
+    "jump-to-selected-car": {
       "method": "api"
     },
     "jump-to-fastest-lap": {

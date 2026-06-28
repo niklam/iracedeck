@@ -104,6 +104,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   "splits-delta-cycle": entry("mode", {
     cycle: keybindBy("direction", { next: "splitsDeltaNext", previous: "splitsDeltaPrevious" }),
     "toggle-ref-car": keybind("toggleUiDisplayRefCar"),
+    "select-reference-car": api,
     "custom-sector-start": keybind("splitsDeltaCustomSectorStart"),
     "custom-sector-end": keybind("splitsDeltaCustomSectorEnd"),
     "active-reset-set": keybind("splitsDeltaActiveResetSet"),
@@ -423,6 +424,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "jump-to-beginning",
       "jump-to-live",
       "jump-to-my-car",
+      "jump-to-selected-car",
       "jump-to-fastest-lap",
       "next-car-number",
       "prev-car-number",

@@ -49,9 +49,10 @@
 
 		<!-- Driver targeting (shown for modes that accept a driver parameter) -->
 		<div id="driver-section" class="hidden">
-			<sdpi-item label="Driver Target">
-				<sdpi-select id="driver-target-select" setting="driverTarget" default="type-in-chat">
-					<option value="viewed-car">Use Viewed Car</option>
+				<sdpi-item id="driver-target-item" label="Driver Target">
+					<sdpi-select id="driver-target-select" setting="driverTarget" default="type-in-chat">
+						<option value="viewed-car">Use Viewed Car</option>
+						<option value="selected-car">Use Selected Car</option>
 					<option value="specific">Specific Car Number</option>
 					<option value="type-in-chat">Type in Chat</option>
 				</sdpi-select>

@@ -9,6 +9,7 @@ import {
   getGlobalGraphicSettings,
   getGlobalSettings,
   getGlobalTitleSettings,
+  getSelectedCar,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDidReceiveSettingsEvent,
@@ -79,6 +80,7 @@ const FOCUS_TARGET_VALUES = [
   "focus-on-leader",
   "focus-on-incident",
   "focus-on-most-exciting",
+  "focus-selected-car",
   "switch-by-position",
   "switch-by-car-number",
   "set-camera-state",
@@ -255,6 +257,7 @@ const FOCUS_ICONS: Record<string, string> = {
   "focus-on-leader": focusOnLeaderSvg,
   "focus-on-incident": focusOnIncidentSvg,
   "focus-on-most-exciting": focusOnMostExcitingSvg,
+  "focus-selected-car": switchByCarNumberSvg,
   "switch-by-position": switchByPositionSvg,
   "switch-by-car-number": switchByCarNumberSvg,
   "set-camera-state": setCameraStateSvg,
@@ -265,6 +268,7 @@ const FOCUS_TITLES: Record<string, string> = {
   "focus-on-leader": "FOCUS\nLEADER",
   "focus-on-incident": "FOCUS\nINCIDENT",
   "focus-on-most-exciting": "MOST\nEXCITING",
+  "focus-selected-car": "FOCUS\nSELECTED",
   "switch-by-position": "SWITCH\nPOSITION",
   "switch-by-car-number": "SWITCH\nCAR #",
   "set-camera-state": "SET\nCAM STATE",
@@ -902,6 +906,19 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
         const success = camera.focusOnMostExciting(groupNum, cameraNum);
         this.logger.info("Focus on most exciting executed");
         this.logger.debug(`Result: ${success}`);
+        break;
+      }
+      case "focus-selected-car": {
+        const selected = getSelectedCar();
+
+        if (!selected) {
+          this.logger.warn("Cannot focus selected car: no car has been selected via a Select Reference Car button");
+          break;
+        }
+
+        const success = camera.switchNum(selected.carNumberRaw, groupNum, cameraNum);
+        this.logger.info("Focus on selected car executed");
+        this.logger.debug(`Result: ${success}, carNumberRaw: ${selected.carNumberRaw}, carIdx: ${selected.carIdx}`);
         break;
       }
       case "switch-by-position": {
