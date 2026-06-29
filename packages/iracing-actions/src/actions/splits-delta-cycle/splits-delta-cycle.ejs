@@ -28,8 +28,8 @@
 			</sdpi-select>
 		</sdpi-item>
 
-		<sdpi-item id="car-idx-item" label="Car Index" class="hidden">
-			<sdpi-textfield id="car-idx-field" setting="carIdx" default="0" placeholder="0–63" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
+		<sdpi-item id="slot-index-item" label="Slot Index" class="hidden">
+			<sdpi-textfield id="slot-index-field" setting="slotIndex" default="0" placeholder="0, 1, 2, …" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
 		</sdpi-item>
 
 		<%- include('title-overrides') %>
@@ -57,7 +57,7 @@
 				await customElements.whenDefined("sdpi-select");
 
 				const modeSelect = document.getElementById("mode-select");
-				const carIdxField = document.getElementById("car-idx-field");
+				const slotIndexField = document.getElementById("slot-index-field");
 				if (modeSelect) {
 					updateVisibility(modeSelect.value || "cycle");
 
@@ -78,11 +78,11 @@
 					}, 100);
 				}
 
-				if (carIdxField) {
-					carIdxField.addEventListener("input", () => {
-						const input = carIdxField.shadowRoot
-							? carIdxField.shadowRoot.querySelector("input")
-							: carIdxField.querySelector("input");
+				if (slotIndexField) {
+					slotIndexField.addEventListener("input", () => {
+						const input = slotIndexField.shadowRoot
+							? slotIndexField.shadowRoot.querySelector("input")
+							: slotIndexField.querySelector("input");
 						if (input && input.value !== input.value.replace(/[^0-9]/g, "")) {
 							input.value = input.value.replace(/[^0-9]/g, "");
 						}
@@ -92,16 +92,16 @@
 
 			function updateVisibility(mode) {
 				const directionItem = document.getElementById("direction-item");
-				const carIdxItem = document.getElementById("car-idx-item");
+				const slotIndexItem = document.getElementById("slot-index-item");
 				if (mode === "cycle") {
 					directionItem?.classList.remove("hidden");
-					carIdxItem?.classList.add("hidden");
+					slotIndexItem?.classList.add("hidden");
 				} else if (mode === "select-reference-car") {
 					directionItem?.classList.add("hidden");
-					carIdxItem?.classList.remove("hidden");
+					slotIndexItem?.classList.remove("hidden");
 				} else {
 					directionItem?.classList.add("hidden");
-					carIdxItem?.classList.add("hidden");
+					slotIndexItem?.classList.add("hidden");
 				}
 			}
 

@@ -9,6 +9,88 @@ interface DriverEntry {
   CarNumber: string;
   CarNumberRaw: number;
   CarIsPaceCar?: number;
+  IsSpectator?: number;
+  UserName?: string;
+  CarClassShortName?: string;
+}
+
+/**
+ * A session car entry with driver and class details.
+ * Returned by {@link getActiveSessionCars}.
+ */
+export interface ActiveSessionCar {
+  /** iRacing car index (0–63). Used for all targeting commands. */
+  carIdx: number;
+  /** Display car number string (e.g. "042"), preserving leading zeros. */
+  carNumber: string;
+  /** Raw car number used by the iRacing camera API (e.g. 3042). */
+  carNumberRaw: number;
+  /** Driver display name. Empty string when not available. */
+  driverName: string;
+  /** Car class short name (e.g. "GT3"). Empty string when not available. */
+  carClass: string;
+}
+
+/**
+ * Get all non-pace-car, non-spectator session cars from session info.
+ *
+ * Returns a sorted list of every valid driver: numeric car numbers come first
+ * (sorted ascending), followed by any non-numeric car numbers (sorted
+ * alphabetically). The sort is stable for the same input so the list can be
+ * diffed incrementally.
+ *
+ * Unlike {@link getAllCarNumbers}, this function:
+ * - Excludes spectators
+ * - Includes cars with non-numeric car numbers (sorted at the end)
+ * - Returns driver name and car class
+ *
+ * @param sessionInfo - The iRacing session info object
+ * @returns Sorted array of active session cars
+ */
+export function getActiveSessionCars(sessionInfo: unknown): ActiveSessionCar[] {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
+
+  if (!drivers) return [];
+
+  const result: ActiveSessionCar[] = [];
+
+  for (const driver of drivers) {
+    if (driver.CarIsPaceCar === 1) continue;
+
+    if (driver.IsSpectator === 1) continue;
+
+    const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
+    // If cleaning strips everything (fully non-numeric like "ABC"), keep the
+    // original string so it is sortable alphabetically below numeric cars.
+    const carNumber = cleaned.length > 0 ? cleaned : driver.CarNumber;
+
+    result.push({
+      carIdx: driver.CarIdx,
+      carNumber,
+      carNumberRaw: driver.CarNumberRaw,
+      driverName: driver.UserName ?? "",
+      carClass: driver.CarClassShortName ?? "",
+    });
+  }
+
+  result.sort((a, b) => {
+    const aNum = Number(a.carNumber);
+    const bNum = Number(b.carNumber);
+    const aIsNum = a.carNumber !== "" && !Number.isNaN(aNum);
+    const bIsNum = b.carNumber !== "" && !Number.isNaN(bNum);
+
+    if (aIsNum && bIsNum) return aNum - bNum;
+
+    if (aIsNum) return -1;
+
+    if (bIsNum) return 1;
+
+    // Both non-numeric: alphabetical
+    return a.carNumber.localeCompare(b.carNumber);
+  });
+
+  return result;
 }
 
 /**

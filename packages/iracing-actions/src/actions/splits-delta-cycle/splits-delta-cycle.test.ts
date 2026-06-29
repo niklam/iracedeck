@@ -1,3 +1,4 @@
+import { assembleIcon } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generateSplitsDeltaCycleSvg, GLOBAL_KEY_NAMES } from "./splits-delta-cycle.js";
@@ -188,7 +189,7 @@ describe("SplitsDeltaCycle", () => {
 
     it("should show the selected target car for select-reference-car mode", () => {
       const result = generateSplitsDeltaCycleSvg(
-        { mode: "select-reference-car", direction: "next", carIdx: 5 },
+        { mode: "select-reference-car", direction: "next", slotIndex: 0 },
         false,
         "42",
       );
@@ -200,14 +201,29 @@ describe("SplitsDeltaCycle", () => {
 
     it("should show em-dash for select-reference-car mode when no car resolved", () => {
       const result = generateSplitsDeltaCycleSvg(
-        { mode: "select-reference-car", direction: "next", carIdx: 5 },
+        { mode: "select-reference-car", direction: "next", slotIndex: 0 },
         false,
         null,
       );
       const decoded = decodeURIComponent(result);
 
       expect(result).toContain("data:image/svg+xml");
-      expect(decoded).toContain("\u2014");
+      expect(decoded).toContain("—");
+    });
+
+    it("should apply dim background color when isOffline is true", () => {
+      vi.mocked(assembleIcon).mockClear();
+
+      generateSplitsDeltaCycleSvg(
+        { mode: "select-reference-car", direction: "next", slotIndex: 2 },
+        false,
+        "7",
+        false,
+        true,
+      );
+
+      const call = vi.mocked(assembleIcon).mock.calls[0]?.[0] as { colors: Record<string, string> } | undefined;
+      expect(call?.colors?.backgroundColor).toBe("#333333");
     });
 
     it("should include REFERENCE and CAR labels for toggle-ref-car mode", () => {

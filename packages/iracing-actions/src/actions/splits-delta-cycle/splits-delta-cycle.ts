@@ -28,11 +28,7 @@ import customSectorStartIconSvg from "@iracedeck/icons/splits-delta-cycle/custom
 import displayRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/display-ref-car.svg";
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
-import {
-  getCarNumberFromSessionInfo,
-  getCarNumberRawFromSessionInfo,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { type ActiveSessionCar, getActiveSessionCars, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 const DIRECTION_ICONS: Record<string, string> = {
@@ -68,7 +64,12 @@ const SplitsDeltaCycleSettings = CommonSettings.extend({
     ])
     .default("cycle"),
   direction: z.enum(["next", "previous"]).default("next"),
-  carIdx: z.coerce.number().int().min(0).max(63).default(0),
+  /**
+   * 0-based index into the session car list sorted by car number.
+   * Slot 0 = lowest car number, slot 1 = next lowest, etc.
+   * The real carIdx for targeting is resolved at runtime from the sorted list.
+   */
+  slotIndex: z.coerce.number().int().min(0).default(0),
 });
 
 type SplitsDeltaCycleSettings = z.infer<typeof SplitsDeltaCycleSettings>;
@@ -102,6 +103,7 @@ export function generateSplitsDeltaCycleSvg(
   bindingMissing = false,
   resolvedCarNumber: string | null = null,
   isSelected = false,
+  isOffline = false,
 ): string {
   const { mode, direction } = settings;
 
@@ -123,7 +125,10 @@ export function generateSplitsDeltaCycleSvg(
   }
 
   if (mode === "select-reference-car") {
-    const colors = resolveIconColors(displayRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
+    const baseColors = resolveIconColors(displayRefCarIconSvg, getGlobalColors(), settings.colorOverrides);
+    // Dim the background when the driver is offline/disconnected so the user
+    // knows the slot is occupied but unavailable.
+    const colors = isOffline ? { ...baseColors, backgroundColor: "#333333" } : baseColors;
     const defaultTitle = resolvedCarNumber?.trim() ? `#${resolvedCarNumber.trim()}` : "—";
     const title = resolveTitleSettings(
       displayRefCarIconSvg,
@@ -187,7 +192,18 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   private activeContexts = new Map<string, SplitsDeltaCycleSettings>();
   private resolvedCarNumbers = new Map<string, string | null>();
   private resolvedCarRaws = new Map<string, number | null>();
+  private resolvedCarIdxs = new Map<string, number | null>();
+  private resolvedOfflineStates = new Map<string, boolean>();
   private selectedCarUnsubscribers = new Map<string, () => void>();
+
+  /**
+   * Stable session car list sorted by car number.
+   * Cars are never removed from this list — disconnected drivers remain
+   * so that slot assignments don't shift unexpectedly.
+   */
+  private sessionCarList: ActiveSessionCar[] = [];
+  /** Fast lookup set of carIdxs already present in sessionCarList. */
+  private knownCarIdxSet = new Set<number>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<SplitsDeltaCycleSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -195,10 +211,23 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     this.activeContexts.set(ev.action.id, settings);
     this.setActiveBinding(this.resolveSettingKey(settings));
     await this.updateDisplay(ev, settings);
-    // Subscribe to session info updates to resolve car number for select-reference-car mode
-    this.sdkController.subscribe(ev.action.id, (_telemetry: TelemetryData | null) => {
-      if (settings.mode === "select-reference-car") {
-        this.updateCarFromSession(ev.action.id, settings);
+    // Subscribe to telemetry to keep slot data current (car list + offline status)
+    this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
+      const currentSettings = this.activeContexts.get(ev.action.id);
+
+      if (currentSettings?.mode !== "select-reference-car") return;
+
+      const listChanged = this.updateSessionCarList(this.sdkController.getSessionInfo());
+
+      if (listChanged) {
+        // A new driver joined — refresh all visible select-reference-car buttons
+        for (const [ctxId, ctxSettings] of this.activeContexts) {
+          if (ctxSettings.mode === "select-reference-car") {
+            this.updateCarFromSession(ctxId, ctxSettings, telemetry);
+          }
+        }
+      } else {
+        this.updateCarFromSession(ev.action.id, currentSettings, telemetry);
       }
     });
     // Subscribe to selected-car changes to refresh the active/inactive state
@@ -208,15 +237,18 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
       if (currentSettings?.mode !== "select-reference-car") return;
 
       const carNum = this.resolvedCarNumbers.get(ev.action.id) ?? null;
-      const isSelected = getSelectedCar()?.carIdx === currentSettings.carIdx;
-      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected);
+      const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
+      const isSelected = resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx;
+      const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
+      const svg = generateSplitsDeltaCycleSvg(currentSettings, false, carNum, isSelected, isOffline);
       void this.updateKeyImage(ev.action.id, svg);
     });
     this.selectedCarUnsubscribers.set(ev.action.id, unsubscribe);
 
-    // Initial resolution
+    // Initial resolution: seed the car list from current session info
     if (settings.mode === "select-reference-car") {
-      this.updateCarFromSession(ev.action.id, settings);
+      this.updateSessionCarList(this.sdkController.getSessionInfo());
+      this.updateCarFromSession(ev.action.id, settings, null);
     }
   }
 
@@ -228,6 +260,8 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     this.activeContexts.delete(ev.action.id);
     this.resolvedCarNumbers.delete(ev.action.id);
     this.resolvedCarRaws.delete(ev.action.id);
+    this.resolvedCarIdxs.delete(ev.action.id);
+    this.resolvedOfflineStates.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SplitsDeltaCycleSettings>): Promise<void> {
@@ -237,7 +271,7 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     this.setActiveBinding(this.resolveSettingKey(settings));
 
     if (settings.mode === "select-reference-car") {
-      this.updateCarFromSession(ev.action.id, settings);
+      this.updateCarFromSession(ev.action.id, settings, null);
     }
 
     await this.updateDisplay(ev, settings);
@@ -250,24 +284,27 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     if (settings.mode === "select-reference-car") {
       const carNumber = this.resolvedCarNumbers.get(ev.action.id) ?? null;
       const carNumberRaw = this.resolvedCarRaws.get(ev.action.id) ?? null;
+      const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
 
-      if (carNumber === null || carNumberRaw === null) {
-        this.logger.warn("Cannot select reference car: car number not yet resolved from session info");
+      if (resolvedCarIdx === null || carNumber === null || carNumberRaw === null) {
+        this.logger.warn("Cannot select reference car: no car assigned to this slot");
 
         return;
       }
 
       // Toggle: deselect if this car is already the active target
-      if (getSelectedCar()?.carIdx === settings.carIdx) {
+      if (getSelectedCar()?.carIdx === resolvedCarIdx) {
         clearSelectedCar();
         this.logger.info("Reference car deselected");
 
         return;
       }
 
-      setSelectedCar({ carIdx: settings.carIdx, carNumber, carNumberRaw });
+      setSelectedCar({ carIdx: resolvedCarIdx, carNumber, carNumberRaw });
       this.logger.info("Reference car selected");
-      this.logger.debug(`carIdx: ${settings.carIdx}, carNumber: ${carNumber}, carNumberRaw: ${carNumberRaw}`);
+      this.logger.debug(
+        `slotIndex: ${settings.slotIndex}, carIdx: ${resolvedCarIdx}, carNumber: ${carNumber}, carNumberRaw: ${carNumberRaw}`,
+      );
 
       return;
     }
@@ -327,47 +364,119 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     settings: SplitsDeltaCycleSettings,
   ): Promise<void> {
     const carNum = this.resolveTargetCarNumber(ev.action.id, settings);
-    const isSelected = settings.mode === "select-reference-car" ? getSelectedCar()?.carIdx === settings.carIdx : false;
+    const resolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
+    const isSelected =
+      settings.mode === "select-reference-car"
+        ? resolvedCarIdx !== null && getSelectedCar()?.carIdx === resolvedCarIdx
+        : false;
+    const isOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
     const svgDataUri = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNum,
       isSelected,
+      isOffline,
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentCarNum = this.resolveTargetCarNumber(ev.action.id, settings);
+      const currentResolvedCarIdx = this.resolvedCarIdxs.get(ev.action.id) ?? null;
       const currentIsSelected =
-        settings.mode === "select-reference-car" ? getSelectedCar()?.carIdx === settings.carIdx : false;
+        settings.mode === "select-reference-car"
+          ? currentResolvedCarIdx !== null && getSelectedCar()?.carIdx === currentResolvedCarIdx
+          : false;
+      const currentIsOffline = this.resolvedOfflineStates.get(ev.action.id) ?? false;
 
       return generateSplitsDeltaCycleSvg(
         settings,
         this.isBindingMissing(this.resolveSettingKey(settings)),
         currentCarNum,
         currentIsSelected,
+        currentIsOffline,
       );
     });
   }
 
-  private updateCarFromSession(contextId: string, settings: SplitsDeltaCycleSettings): void {
-    const sessionInfo = this.sdkController.getSessionInfo();
-    const carNumber = getCarNumberFromSessionInfo(sessionInfo, settings.carIdx);
-    const carNumberRaw = getCarNumberRawFromSessionInfo(sessionInfo, settings.carIdx);
+  /**
+   * Integrate new drivers from the latest session info into the stable car list.
+   * Existing entries are never removed — disconnected drivers stay in place so
+   * slot assignments remain stable throughout the session.
+   *
+   * @returns `true` when new drivers were added (callers should refresh all slots).
+   */
+  private updateSessionCarList(sessionInfo: unknown): boolean {
+    const snapshot = getActiveSessionCars(sessionInfo);
+    const newCars = snapshot.filter((c) => !this.knownCarIdxSet.has(c.carIdx));
 
-    const prev = this.resolvedCarNumbers.get(contextId);
+    if (newCars.length === 0) return false;
+
+    for (const car of newCars) {
+      this.sessionCarList.push(car);
+      this.knownCarIdxSet.add(car.carIdx);
+    }
+
+    // Re-sort the combined list by car number (numeric first, then alphabetic)
+    this.sessionCarList.sort((a, b) => {
+      const aNum = Number(a.carNumber);
+      const bNum = Number(b.carNumber);
+      const aIsNum = a.carNumber !== "" && !Number.isNaN(aNum);
+      const bIsNum = b.carNumber !== "" && !Number.isNaN(bNum);
+
+      if (aIsNum && bIsNum) return aNum - bNum;
+
+      if (aIsNum) return -1;
+
+      if (bIsNum) return 1;
+
+      return a.carNumber.localeCompare(b.carNumber);
+    });
+
+    this.logger.debug(`Session car list updated: ${this.sessionCarList.length} cars (added ${newCars.length})`);
+
+    return true;
+  }
+
+  /**
+   * Resolve the car assigned to a button's slot, check its online status, and
+   * re-render the button if anything has changed.
+   */
+  private updateCarFromSession(
+    contextId: string,
+    settings: SplitsDeltaCycleSettings,
+    telemetry: TelemetryData | null,
+  ): void {
+    const car = this.sessionCarList[settings.slotIndex] ?? null;
+
+    const carNumber = car?.carNumber ?? null;
+    const carNumberRaw = car?.carNumberRaw ?? null;
+    const carIdx = car?.carIdx ?? null;
+
+    // Detect offline status: CarIdxTrackSurface is -1 (TrkLoc.NotInWorld) when
+    // the car is not spawned / driver has disconnected.
+    const trackSurfaces = telemetry?.CarIdxTrackSurface as number[] | undefined;
+    const isOffline =
+      carIdx !== null && trackSurfaces !== undefined ? trackSurfaces[carIdx] === TrkLoc.NotInWorld : false;
+
+    const prevCarNumber = this.resolvedCarNumbers.get(contextId);
+    const prevCarIdx = this.resolvedCarIdxs.get(contextId) ?? null;
+    const prevIsOffline = this.resolvedOfflineStates.get(contextId) ?? false;
+
     this.resolvedCarNumbers.set(contextId, carNumber);
     this.resolvedCarRaws.set(contextId, carNumberRaw);
+    this.resolvedCarIdxs.set(contextId, carIdx);
+    this.resolvedOfflineStates.set(contextId, isOffline);
 
-    // Only re-render if the displayed number changed
-    if (carNumber === prev) return;
+    // Only re-render when something visible has changed
+    if (carNumber === prevCarNumber && carIdx === prevCarIdx && isOffline === prevIsOffline) return;
 
-    const isSelected = getSelectedCar()?.carIdx === settings.carIdx;
+    const isSelected = carIdx !== null && getSelectedCar()?.carIdx === carIdx;
     const svg = generateSplitsDeltaCycleSvg(
       settings,
       this.isBindingMissing(this.resolveSettingKey(settings)),
       carNumber,
       isSelected,
+      isOffline,
     );
     void this.updateKeyImage(contextId, svg);
   }

@@ -128,10 +128,12 @@ export { hasPitLimiter, hasVisor, hasWipers, isLiveOnTrack, isPostRace, isPreGre
 // Session info utilities
 export {
   type CameraGroup,
+  type ActiveSessionCar,
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   getAllCarNumbers,
+  getActiveSessionCars,
 } from "./session-utils.js";
 
 // Telemetry snapshot formatting utilities
