@@ -215,6 +215,14 @@ function touchTapEvent(action: ReturnType<typeof dialContext>, settings: Record<
   return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
 }
 
+/** Pulls the telemetry callback registered by onWillAppear via the mocked subscribe. */
+function getTelemetryCallback(act: FuelDial): (telemetry: unknown) => void {
+  const subscribe = (act as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }).sdkController
+    .subscribe;
+
+  return subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
+}
+
 const SESSION_90L = { DriverInfo: { DriverCarFuelMaxLtr: 90, DriverCarMaxFuelPct: 1 } };
 const SESSION_110L = { DriverInfo: { DriverCarFuelMaxLtr: 110, DriverCarMaxFuelPct: 1 } };
 
@@ -1535,6 +1543,79 @@ describe("FuelDial action", () => {
     });
   });
 
+  describe("toggle-off is not re-armed by the continuous fill-to monitor (telemetry lag)", () => {
+    it("a toggle-off press in fill-to mode is NOT undone by a lagging fuel-fill-on tick", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("toff1");
+      // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65.
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      const settings = { unitMode: "liters", stepSize: 1, dialMode: "fill-to", pressAction: "toggle-fueling" };
+      await appear(ctx, settings);
+
+      const onTick = getTelemetryCallback(action);
+
+      // Prime the continuous-monitor baseline (first tick broadcasts add 20).
+      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+
+      // The user presses to turn fueling OFF — this clears the request.
+      await pressDial(ctx, settings);
+
+      expect(mockPitClearFuel).toHaveBeenCalled();
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      // iRacing has not processed the clear yet: PitSvFlags still reports fuel-fill
+      // ON for a few ticks. The continuous monitor must NOT re-broadcast pit.fuel
+      // during this lag window — doing so silently RE-ARMS the fueling the user just
+      // turned off.
+      for (const fuel of [45, 44.9, 44.8]) {
+        mockGetCurrentTelemetry.mockReturnValue({
+          DisplayUnits: 1,
+          PitSvFuel: 20,
+          FuelLevel: fuel,
+          PitSvFlags: FUEL_FILL,
+        });
+        onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: fuel, PitSvFlags: FUEL_FILL });
+      }
+
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("resumes continuous re-sends once fueling is genuinely re-armed", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("toff2");
+      // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65.
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      const settings = { unitMode: "liters", stepSize: 1, dialMode: "fill-to", pressAction: "toggle-fueling" };
+      await appear(ctx, settings);
+
+      const onTick = getTelemetryCallback(action);
+      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL }); // prime
+
+      // Turn fueling OFF, then let the clear land in telemetry (fuel-fill OFF).
+      await pressDial(ctx, settings);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
+      onTick({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 }); // clear observed (fuel OFF)
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      // The user presses again to re-arm (fuel-fill OFF -> request the add).
+      await pressDial(ctx, settings);
+
+      expect(mockPitFuel).toHaveBeenCalledWith(20);
+
+      // Now the continuous monitor must work again: fuel burns past a whole-unit
+      // boundary and the request is re-sent.
+      mockPitFuel.mockClear();
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 44, PitSvFlags: FUEL_FILL });
+      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 44, PitSvFlags: FUEL_FILL }); // need 65-44=21 -> re-send
+
+      expect(mockPitFuel).toHaveBeenCalledWith(21);
+    });
+  });
+
   describe("onKeyDown (keypad fallback)", () => {
     it("fires the press action without rotation", async () => {
       const ctx = keyContext("k1");
@@ -1835,14 +1916,24 @@ describe("FuelDial action", () => {
     it("pushes a pixmap bar and the +add = total readout (add mode) for a dial", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("f1");
-      // current 45, max 90; dial +20 -> add 20, total 65
+      // current 45, max 90; dial +20 -> broadcasts pit.fuel(20).
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       const settings = { unitMode: "liters", stepSize: 20, dialMode: "add-amount" };
       await appear(ctx, settings);
 
       ctx.setFeedback.mockClear();
-      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // dial +20
+
+      // iRacing confirms the 20 L request a tick later; the readout follows
+      // telemetry (#726), so drive the displayed value from the confirmed PitSvFuel.
+      // Settle the leading+trailing throttle flush deterministically (timers AND
+      // microtasks) so the confirming tick's change-render is not gated by an
+      // ordering race on the throttle window.
+      await vi.advanceTimersByTimeAsync(300);
+      const onTick = getTelemetryCallback(action);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
       expect(ctx.setFeedback).toHaveBeenCalled();
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
@@ -1879,12 +1970,19 @@ describe("FuelDial action", () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("f1b");
       mockGetSessionInfo.mockReturnValue(null);
-      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       const settings = { unitMode: "liters", stepSize: 20, dialMode: "add-amount" };
       await appear(ctx, settings);
 
       ctx.setFeedback.mockClear();
-      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // dial +20
+
+      // The readout follows the confirmed PitSvFuel (#726); total = 45 + 20 (no cap).
+      // Settle the throttle flush deterministically before the confirming tick.
+      await vi.advanceTimersByTimeAsync(300);
+      const onTick = getTelemetryCallback(action);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
 
@@ -1909,10 +2007,78 @@ describe("FuelDial action", () => {
 
       vi.advanceTimersByTime(100);
 
+      // The trailing flush is the second (and only other) push — coalescing
+      // setFeedback into one-per-window is the subject here.
       expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
+
+      // The coalesced readout follows TELEMETRY (PitSvFuel 0 -> "+0 = 0 L"), NOT the
+      // dialed +3 — proving the displayed value stays telemetry-driven through a
+      // coalesced spin (#726). The "last value wins" SEND semantics are covered by
+      // the throttle-coalescing send tests.
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
 
-      expect(payload.value).toBe("+3 = 3 L");
+      expect(payload.value).toBe("+0 = 0 L");
+    });
+  });
+
+  describe("display follows telemetry, not the dialed guess (issue #726)", () => {
+    it("add-amount: the readout follows the live PitSvFuel, not the optimistic dialed amount", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("disp726");
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      // Fuel ON, current 45, nothing requested yet.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      const settings = { unitMode: "liters", stepSize: 20, dialMode: "add-amount" };
+      await appear(ctx, settings);
+
+      // The user dials +20 (this broadcasts pit.fuel(20)); telemetry has not confirmed it yet.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      // A tick later iRacing reports the ACTUAL requested add as 18 (e.g. the
+      // integer-liter clamp/round the SDK applies). Settle the throttle flush
+      // deterministically, then deliver the confirming tick: the DISPLAY must follow
+      // telemetry (18), never the optimistically-dialed 20.
+      await vi.advanceTimersByTimeAsync(300);
+      const onTick = getTelemetryCallback(action);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      onTick({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+
+      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+
+      expect(payload.value).toBe("+18 = 63 L");
+    });
+
+    it("add-amount: a PitSvFuel above tank capacity is clamped in the readout (never +95 = 90)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("disp726-cap");
+      // 90 L tank, current 45, but the live pit request is 95 (e.g. set externally or
+      // by a #fuel macro above the dial's max). The displayed add must clamp to the
+      // capacity (90), never render an add larger than the capacity-capped total.
+      mockGetSessionInfo.mockReturnValue(SESSION_90L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 95, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      await appear(ctx, { unitMode: "liters", stepSize: 1, dialMode: "add-amount" });
+
+      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+
+      expect(payload.value).toBe("+90 = 90 L");
+    });
+
+    it("add-amount: a null-telemetry frame shows +0 (display follows telemetry, no stale dialed value)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("disp726-null");
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      await appear(ctx, { unitMode: "liters", stepSize: 1, dialMode: "add-amount" });
+
+      // Telemetry drops to null; the heartbeat repaints. With no pit request to read,
+      // the add follows telemetry to +0 rather than holding a stale dialed value.
+      mockGetCurrentTelemetry.mockReturnValue(null);
+      ctx.setFeedback.mockClear();
+      vi.advanceTimersByTime(5000); // display heartbeat
+
+      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+
+      expect(payload.value).toBe("+0 = 0 L");
     });
   });
 
@@ -2019,19 +2185,23 @@ describe("FuelDial action", () => {
 
       const onTick = telemetryCallback();
 
-      // Past the user-activity grace window so add-mode re-seeds the dialed add
-      // from PitSvFuel (making the displayed signature track the request).
+      // Advance past the change-render throttle so a changing tick can push. The
+      // displayed add follows the live PitSvFuel (#726), so each tick also updates
+      // the telemetry the action reads back via getCurrentTelemetry.
       vi.advanceTimersByTime(3100);
       ctx.setFeedback.mockClear();
 
       // First changing tick pushes; an immediate second changing tick is throttled.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 21, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 21, FuelLevel: 45, PitSvFlags: 0 });
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 22, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 22, FuelLevel: 45, PitSvFlags: 0 });
 
       expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
 
       // After the throttle window, another change pushes again.
       vi.advanceTimersByTime(100);
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 23, FuelLevel: 45, PitSvFlags: 0 });
       onTick({ DisplayUnits: 1, PitSvFuel: 23, FuelLevel: 45, PitSvFlags: 0 });
 
       expect(ctx.setFeedback).toHaveBeenCalledTimes(2);
