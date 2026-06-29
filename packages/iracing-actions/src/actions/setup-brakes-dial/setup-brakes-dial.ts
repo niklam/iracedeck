@@ -454,14 +454,19 @@ export class SetupBrakesDial extends ConnectionStateAwareAction<SetupBrakesDialS
   }
 
   /**
-   * Declares the binding the dial depends on so the base class tracks
+   * Declares the bindings the dial depends on so the base class tracks
    * keyboard/SimHub readiness (per keyboard-shortcuts.md), mirroring the sibling
-   * Setup Brakes action. Rotation needs both directions and the dial has no
-   * `direction` setting, so the increase binding stands in as the primary active
-   * binding (its missing state is also what the #612 warning covers).
+   * Setup Brakes action. Rotation needs BOTH directions (the dial has no
+   * `direction` setting), so both the increase and decrease bindings are declared
+   * active — consistent with the #612 missing-binding check — so readiness
+   * reflects either direction being unconfigured/unready.
    */
   private applyActiveBinding(settings: SetupBrakesDialSettings): void {
-    this.setActiveBinding(rotationKey(settings.setting, "increase") ?? null);
+    const keys = [rotationKey(settings.setting, "increase"), rotationKey(settings.setting, "decrease")].filter(
+      (key): key is string => key !== undefined,
+    );
+
+    this.setActiveBinding(keys.length > 0 ? keys : null);
   }
 
   /**

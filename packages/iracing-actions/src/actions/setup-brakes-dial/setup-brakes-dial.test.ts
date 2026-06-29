@@ -259,6 +259,19 @@ describe("SetupBrakesDial action", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesAbsAdjustIncrease");
     });
+
+    it("dispatches one tap per rotate event regardless of tick magnitude", async () => {
+      const ctx = dialContext("d4");
+      await appear(ctx, { setting: "brake-bias" });
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, { setting: "brake-bias" }, 3) as never);
+
+      // One tap per event by sign (matches the sibling Setup Brakes / black-box dials);
+      // relative key bindings apply immediately in iRacing, so there is nothing to coalesce.
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+    });
   });
 
   describe("press gestures", () => {
@@ -441,18 +454,18 @@ describe("SetupBrakesDial action", () => {
   });
 
   describe("active binding", () => {
-    it("declares the rotation binding on appear and re-declares it on a setting change", async () => {
+    it("declares both rotation bindings on appear and re-declares them on a setting change", async () => {
       const ctx = dialContext("ab1");
       await appear(ctx, { setting: "brake-bias" });
 
       const setActiveBinding = (action as unknown as { setActiveBinding: ReturnType<typeof vi.fn> }).setActiveBinding;
 
-      expect(setActiveBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasIncrease");
+      expect(setActiveBinding).toHaveBeenCalledWith(["setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"]);
 
       setActiveBinding.mockClear();
       await action.onDidReceiveSettings(basicEvent(ctx, { setting: "abs-adjust" }) as never);
 
-      expect(setActiveBinding).toHaveBeenCalledWith("setupBrakesAbsAdjustIncrease");
+      expect(setActiveBinding).toHaveBeenCalledWith(["setupBrakesAbsAdjustIncrease", "setupBrakesAbsAdjustDecrease"]);
     });
   });
 
