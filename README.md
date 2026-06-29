@@ -26,7 +26,7 @@
 
 ## Features
 
-**32 actions** with **263+ modes** across 8 categories:
+**33 actions** with **269+ modes** across 8 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -36,7 +36,7 @@
 | **View & Camera**       | 5       | 89    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 4       | 16    | Fuel, fuel dial, tires, compounds, tearoff, fast repair               |
-| **Car Setup**           | 7       | 44    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
+| **Car Setup**           | 8       | 50    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
 
 **Key highlights:**

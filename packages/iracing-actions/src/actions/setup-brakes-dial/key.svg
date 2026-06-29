@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#3a2a1a"/>
+  <!-- Brake disc with dial pointer -->
+  <circle cx="36" cy="27" r="16" fill="none" stroke="#ffffff" stroke-width="3"/>
+  <circle cx="36" cy="27" r="6.5" fill="none" stroke="#ffffff" stroke-width="2"/>
+  <line x1="36" y1="27" x2="36" y2="13" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>
+  <text x="36" y="56" text-anchor="middle" dominant-baseline="central"
+        fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="bold">BRAKES</text>
+  <text x="36" y="67" text-anchor="middle" dominant-baseline="central"
+        fill="#888888" font-family="Arial, sans-serif" font-size="7">DIAL</text>
+</svg>

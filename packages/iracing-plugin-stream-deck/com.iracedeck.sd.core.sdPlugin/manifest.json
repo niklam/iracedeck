@@ -494,6 +494,32 @@
       ]
     },
     {
+      "Name": "Setup Brakes Dial",
+      "UUID": "com.iracedeck.sd.core.setup-brakes-dial",
+      "Icon": "imgs/actions/setup-brakes-dial/icon",
+      "Tooltip": "Adjust a brake setting with a dial (brake bias, peak bias, bias fine, brake misc, engine braking, ABS)",
+      "PropertyInspectorPath": "ui/setup-brakes-dial.html",
+      "Controllers": [
+        "Keypad",
+        "Encoder"
+      ],
+      "Encoder": {
+        "layout": "layouts/setup-brakes-dial.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust the selected brake setting",
+          "Push": "Configured action (default: toggle ABS)",
+          "Touch": "Configured action"
+        }
+      },
+      "States": [
+        {
+          "Image": "imgs/actions/setup-brakes-dial/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Setup Chassis",
       "UUID": "com.iracedeck.sd.core.setup-chassis",
       "Icon": "imgs/actions/setup-chassis/icon",

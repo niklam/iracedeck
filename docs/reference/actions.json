@@ -632,6 +632,23 @@
           ]
         },
         {
+          "id": "com.iracedeck.sd.core.setup-brakes-dial",
+          "name": "Setup Brakes Dial",
+          "file": "setup-brakes-dial.ts",
+          "encoder": true,
+          "telemetryAware": true,
+          "settingsKeys": ["setting"],
+          "modes": [
+            { "setting": "brake-bias", "label": "Brake Bias", "controlType": "dial" },
+            { "setting": "brake-bias-fine", "label": "Brake Bias Fine", "controlType": "dial" },
+            { "setting": "peak-brake-bias", "label": "Peak Brake Bias", "controlType": "dial" },
+            { "setting": "brake-misc", "label": "Brake Misc", "controlType": "dial" },
+            { "setting": "engine-braking", "label": "Engine Braking", "controlType": "dial" },
+            { "setting": "abs-adjust", "label": "ABS Adjust", "controlType": "dial" }
+          ],
+          "description": "Stream Deck+ dial (Elgato only) that adjusts one brake setup value chosen by the Setting dropdown — brake bias, brake bias fine, peak brake bias, brake misc, engine braking, or ABS adjust. Turning steps the value via the shared Setup Brakes increase/decrease key bindings (clockwise increases); the live telemetry value (dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS) renders as a self-drawn color-coded dash box — a short label (BB/BBF/PEAK/MISC/ENG/ABS) plus a large number, no bar and no % sign — on the touch strip (a single full-cell pixmap) and as the keypad icon. Press runs a configurable gesture — Push (default Toggle ABS), Long Press (default None), plus the Elgato-only Tap Display and Long Touch (default None) — each over {Toggle ABS, None}; Toggle ABS taps the setupBrakesAbsToggle binding. Turning while pressed adjusts the value and fires no press gesture. No View modes (the dial shows the value) and no ABS Toggle rotation mode. On a plain keypad a press runs the Push gesture. Communication: key bindings (the Setup Brakes increase/decrease bindings for rotation; setupBrakesAbsToggle for the gesture)."
+        },
+        {
           "id": "com.iracedeck.sd.core.setup-chassis",
           "name": "Setup Chassis",
           "file": "setup-chassis.ts",

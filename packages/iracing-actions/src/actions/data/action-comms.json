@@ -1320,6 +1320,78 @@
       }
     }
   },
+  "setup-brakes-dial": {
+    "_meta": {
+      "modeSetting": "setting"
+    },
+    "brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasIncrease",
+          "setupBrakesBrakeBiasDecrease"
+        ]
+      }
+    },
+    "brake-bias-fine": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeBiasFineIncrease",
+          "setupBrakesBrakeBiasFineDecrease"
+        ]
+      }
+    },
+    "peak-brake-bias": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesPeakBrakeBiasIncrease",
+          "setupBrakesPeakBrakeBiasDecrease"
+        ]
+      }
+    },
+    "brake-misc": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesBrakeMiscIncrease",
+          "setupBrakesBrakeMiscDecrease"
+        ]
+      }
+    },
+    "engine-braking": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesEngineBrakingIncrease",
+          "setupBrakesEngineBrakingDecrease"
+        ]
+      }
+    },
+    "abs-adjust": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "setupBrakesAbsAdjustIncrease",
+          "setupBrakesAbsAdjustDecrease"
+        ]
+      }
+    },
+    "toggle-abs": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "setupBrakesAbsToggle"
+      }
+    }
+  },
   "setup-chassis": {
     "_meta": {
       "modeSetting": "setting"

@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **32 actions with 292 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **33 actions with 298 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**262 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -25,7 +25,7 @@ Each action entry:
 }
 ```
 
-Dial/encoder support was de-claimed in issue #640 pending a rebuild; that rebuild has begun in issue #681. **Fuel Dial** (`encoder: true`) is the first and reference dial-capable action — it supports a Stream Deck+ dial + touchscreen (and a Mirabox knob). Every other action remains keypad-only (`encoder: false`) until it is individually rebuilt. See `.claude/rules/encoders-and-touchscreen.md` for the per-action dial rules.
+Dial/encoder support was de-claimed in issue #640 pending a rebuild; that rebuild has begun in issue #681. **Fuel Dial** (`encoder: true`) is the first and reference dial-capable action — it supports a Stream Deck+ dial + touchscreen (and a Mirabox knob). **Setup Brakes Dial** (`encoder: true`, #730) is the second — a Stream Deck+ dial (Elgato only) that adjusts one brake setup value by turning. Every other action remains keypad-only (`encoder: false`) until it is individually rebuilt. See `.claude/rules/encoders-and-touchscreen.md` for the per-action dial rules.
 
 ## Communication method (per mode) — `action-comms.json` (#612)
 
@@ -55,9 +55,9 @@ When asked about actions or controls:
 | View & Camera | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 4 | 16 | Fuel, fuel dial (Stream Deck+ encoder), tires, compounds, tearoff, fast repair |
-| Car Setup | 7 | 73 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
+| Car Setup | 8 | 79 | Brakes (incl. a Stream Deck+ Setup Brakes Dial, #730), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540) |
 | Communication | 2 | 34 | Chat, macros (15), whisper, toggle, reply, race admin commands |
-| **Total** | **32** | **292** | |
+| **Total** | **33** | **298** | |
 
 Mode counts reflect the PI Mode/Setting dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
@@ -122,6 +122,7 @@ Mode counts reflect the PI Mode/Setting dropdown choices documented in each acti
 |--------|-------|-------------|
 | Setup Aero | 6 | view-{front-wing, rear-wing} (read-only, live dcFrontWing/dcRearWing), front-wing (+/-), rear-wing (+/-), qualifying-tape (+/-), rf-brake-attached |
 | Setup Brakes | 13 | view-{brake-bias, brake-bias-fine, peak-brake-bias, brake-misc, engine-braking, abs-adjust} (read-only, live dcBrakeBias/dcBrakeBiasFine/dcPeakBrakeBias/dcBrakeMisc/dcEngineBraking/dcABS), abs-toggle, abs-adjust (+/-), brake-bias (+/-), brake-bias-fine (+/-), peak-brake-bias (+/-), brake-misc (+/-), engine-braking (+/-) |
+| Setup Brakes Dial | 6 | brake-bias, brake-bias-fine, peak-brake-bias, brake-misc, engine-braking, abs-adjust (Stream Deck+ dial, `encoder: true`, Elgato only, telemetry-aware; turn adjusts the selected setting via the Setup Brakes increase/decrease bindings, with the live value shown as a self-drawn color-coded "dash box" — short label BB/BBF/PEAK/MISC/ENG/ABS + big number, no bar, no %; Push/Long Press/Tap/Long Touch are configurable gestures over {Toggle ABS, None}, Push defaulting to Toggle ABS; no View modes, no ABS Toggle rotation mode — #730) |
 | Setup Chassis | 22 | view-{diff-preload, diff-entry, diff-middle, diff-exit, anti-roll-front, anti-roll-rear, power-steering, weight-jacker-left, weight-jacker-right} (read-only, live dcDiffPreload/dcDiffEntry/dcDiffMiddle/dcDiffExit/dcAntiRollFront/dcAntiRollRear/dcPowerSteering/dcWeightJackerLeft/dcWeightJackerRight), differential-preload/entry/middle/exit, front/rear ARB, left/right spring, LF/RF/LR/RR shock, power-steering (all +/-) |
 | Setup Engine | 7 | view-{engine-power, throttle-shape, launch-rpm} (read-only, live dcEnginePower/dcThrottleShape/dcLaunchRPM), engine-power (+/-), throttle-shaping (+/-), boost-level (+/-), launch-rpm (+/-) |
 | Setup Fuel | 7 | view-{fuel-mixture, fuel-cut-position} (read-only, live dcFuelMixture/dcFuelCutPosition), fuel-mixture (+/-), fuel-cut-position (+/-), disable-fuel-cut, low-fuel-accept, fcy-mode-toggle |
