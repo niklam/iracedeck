@@ -354,4 +354,24 @@ describe("a towed car stays frozen while it is on pit road (pit-box jump-ahead f
     expect(state.positionFrozen.has(1)).toBe(false);
     expect(state.positionLastKnownScores[1]).toBeCloseTo(5.35, 5);
   });
+
+  it("keeps the towed car frozen while it is on the pit lane (AproachingPits), releasing only once on track", () => {
+    const state = createInitialState();
+    updatePositionTracking(state, mkTel([0.5, 0.2]));
+    // Rival tows to its box → frozen at 5.20.
+    updatePositionTracking(state, mkTel([0.51, 0.3], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall] }));
+    expect(state.positionFrozen.has(1)).toBe(true);
+
+    // Drives out of the box onto the pit lane (AproachingPits), still moving. The
+    // gate treats the pit lane as on pit road too, so it stays frozen at 5.20 —
+    // not released while still at its pit-road position.
+    updatePositionTracking(state, mkTel([0.52, 0.32], { trackSurface: [TrkLoc.OnTrack, TrkLoc.AproachingPits] }));
+    expect(state.positionFrozen.has(1)).toBe(true);
+    expect(state.positionLastKnownScores[1]).toBeCloseTo(5.2, 5);
+
+    // Merges back onto the track and is moving → released to live.
+    updatePositionTracking(state, mkTel([0.53, 0.34], { trackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack] }));
+    expect(state.positionFrozen.has(1)).toBe(false);
+    expect(state.positionLastKnownScores[1]).toBeCloseTo(5.34, 5);
+  });
 });
