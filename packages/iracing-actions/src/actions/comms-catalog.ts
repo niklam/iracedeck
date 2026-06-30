@@ -322,6 +322,21 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "engine-braking": dir("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
   }),
 
+  // Setup Brakes Dial reuses the Setup Brakes bindings. Its rotation modes turn
+  // either way and have no `direction` setting, so each requires BOTH the
+  // increase AND decrease keys (like the view-* modes); the ABS-toggle press
+  // gesture is a single keybind. View modes and ABS Toggle as a rotation mode
+  // are intentionally absent.
+  "setup-brakes-dial": entry("setting", {
+    "brake-bias": pair("setupBrakesBrakeBiasIncrease", "setupBrakesBrakeBiasDecrease"),
+    "brake-bias-fine": pair("setupBrakesBrakeBiasFineIncrease", "setupBrakesBrakeBiasFineDecrease"),
+    "peak-brake-bias": pair("setupBrakesPeakBrakeBiasIncrease", "setupBrakesPeakBrakeBiasDecrease"),
+    "brake-misc": pair("setupBrakesBrakeMiscIncrease", "setupBrakesBrakeMiscDecrease"),
+    "engine-braking": pair("setupBrakesEngineBrakingIncrease", "setupBrakesEngineBrakingDecrease"),
+    "abs-adjust": pair("setupBrakesAbsAdjustIncrease", "setupBrakesAbsAdjustDecrease"),
+    "toggle-abs": keybind("setupBrakesAbsToggle"),
+  }),
+
   "setup-chassis": entry("setting", {
     "view-diff-preload": pair("setupChassisDifferentialPreloadIncrease", "setupChassisDifferentialPreloadDecrease"),
     "view-diff-entry": pair("setupChassisDifferentialEntryIncrease", "setupChassisDifferentialEntryDecrease"),
