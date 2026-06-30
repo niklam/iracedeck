@@ -1223,12 +1223,13 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     expect(state.positionFrozen.has(1)).toBe(true);
     expect(state.pendingOvertakePos).toBe(-1);
 
-    // Rival starts rolling again → released this tick, drops to its live back-of-
-    // field score, and the player inherits P2. The gain must read fromRetirement
-    // (the rival fell back; the player didn't pass it on track), NOT a real pass.
+    // Rival drives back out of the pit onto the track → released this tick (moving
+    // AND off pit road), drops to its live back-of-field score, and the player
+    // inherits P2. The gain must read fromRetirement (the rival fell back; the
+    // player didn't pass it on track), NOT a real pass.
     tickAt(
       state,
-      mkTel([0.51, 0.06, 0.81], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall, TrkLoc.OnTrack] }),
+      mkTel([0.51, 0.06, 0.81], { trackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack] }),
       200,
       emit,
     );
@@ -1240,7 +1241,7 @@ describe("diffOvertakes — finished / retired cars (#603)", () => {
     // Hold elapsed → emits with fromRetirement=true (no "Nice pass").
     tickAt(
       state,
-      mkTel([0.512, 0.06, 0.812], { trackSurface: [TrkLoc.OnTrack, TrkLoc.InPitStall, TrkLoc.OnTrack] }),
+      mkTel([0.512, 0.06, 0.812], { trackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack] }),
       200 + OVERTAKE_HOLD_MS,
       emit,
     );

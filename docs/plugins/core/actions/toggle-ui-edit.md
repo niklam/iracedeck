@@ -10,7 +10,7 @@ Toggles UI edit mode for repositioning on-screen elements.
 | Type | Toggle |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

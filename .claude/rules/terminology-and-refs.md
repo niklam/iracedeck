@@ -3,7 +3,7 @@
 
 - **Property Inspector** - Stream Deck UI for action settings.
 - **Key Icon** - The SVG shown on a Stream Deck button.
-- **Encoder** - Rotary dial on Stream Deck+.
+- **Dial** - Rotary dial on Stream Deck+ (the Elgato SDK and manifest call it an *encoder*).
 - **Action ID** - Format `com.iracedeck.sd.{plugin}.{action-name}`.
 
 References

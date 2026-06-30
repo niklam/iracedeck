@@ -6,6 +6,12 @@
     display: none !important;
   }
 
+  /* Shared accent for PI links (Documentation, Downloads). Single source so a
+     restyle changes every link at once. */
+  :root {
+    --ird-link-color: #4a90d9;
+  }
+
   /* Collapsible section styles */
   .ird-collapsible {
     margin-top: 12px;
@@ -96,7 +102,7 @@
     border-top: 1px solid #3a3a3a;
   }
   .ird-docs-link a {
-    color: #4a90d9;
+    color: var(--ird-link-color);
     font-family: "Segoe UI", Arial, Roboto, Helvetica, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     font-size: 9pt;
     text-decoration: none;
@@ -108,7 +114,7 @@
   .ird-docs-link a:focus-visible {
     color: #6fb0f0;
     text-decoration: underline;
-    outline: 2px solid #4a90d9;
+    outline: 2px solid var(--ird-link-color);
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -122,6 +128,9 @@
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid #3a3a3a;
+  }
+  .ird-version a {
+    color: var(--ird-link-color);
   }
 
   /* Key bindings section styles */

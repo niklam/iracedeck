@@ -12,7 +12,7 @@ Pure internal work (refactors, build/tooling, dependency bumps) with no user-vis
 
 ## The in-development version section
 
-Entries accumulate under the **top** `##` heading — the next unreleased version (the `version` in the root `package.json` with any `-dev` / `-rc` suffix stripped). If that version's section doesn't exist yet, create it at the very top of the list (the list is strictly newest-first). Leave its date line as `_Unreleased_`; **set the real `_YYYY-MM-DD_` by hand when you cut the release** — the release tooling (`release-it` + `scripts/release-hooks.mjs`) bumps `package.json` / `manifest.json` versions but does **not** touch `changelog.mdx`, so nothing stamps the date automatically. Automating this is tracked in #690.
+Entries accumulate under the **top** `##` heading — the next unreleased version (the `version` in the root `package.json` with any `-dev` / `-rc` suffix stripped). If that version's section doesn't exist yet, create it at the very top of the list (the list is strictly newest-first). Leave its date line as `_Unreleased_` — the release tooling **stamps the real `_YYYY-MM-DD_` automatically** when you cut a **stable** release: the `before:bump` hook (`scripts/release-hooks.mjs`, via `scripts/lib/changelog-stamp.mjs`) replaces the matching section's `_Unreleased_` line with the release date (local time) and stages `changelog.mdx` in the same version-bump commit. Pre-releases (`-dev` / `-rc` / `-alpha` / `-beta`) are skipped, and a missing or already-dated section is a logged no-op, so a release never fails on the changelog and you never edit the date by hand.
 
 Pre-release versions (`-alpha` / `-beta` / `-rc`) get **no** section of their own — fold their notes into the eventual stable version's section.
 

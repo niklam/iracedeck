@@ -28,6 +28,7 @@ import {
   getDriverSetupName,
   getLatestTelemetry,
   getLivePosition,
+  getLiveRacePositions,
   getRaceStartConditions,
   getSessionStartConditions,
   getStartingGridPosition,
@@ -214,6 +215,37 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(multiClassTelemetry({ CarIdxClass: undefined, PlayerCarClassPosition: 5 }));
 
       expect(getLivePosition()?.classPosition).toBe(5);
+    });
+  });
+
+  describe("getLiveRacePositions", () => {
+    it("returns the live per-car race order (1-based, indexed by carIdx)", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ DriverInfo: { DriverCarIdx: 0 } });
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Lap scores: car0=10.0, car1=10.5, car2=10.2, car3=9.5 → P1 car1, P2 car2, P3 car0, P4 car3.
+      controller.__tick(
+        telemetry({
+          CarIdxLapCompleted: [10, 10, 10, 9],
+          CarIdxLapDistPct: [0.0, 0.5, 0.2, 0.5],
+        }),
+      );
+
+      const positions = getLiveRacePositions();
+
+      expect(positions).not.toBeNull();
+      expect(positions?.[0]).toBe(3); // player (car0)
+      expect(positions?.[1]).toBe(1); // car1 leads
+      expect(positions?.[2]).toBe(2);
+      expect(positions?.[3]).toBe(4);
+    });
+
+    it("returns null before any telemetry has arrived", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getLiveRacePositions()).toBeNull();
     });
   });
 

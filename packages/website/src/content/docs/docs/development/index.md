@@ -27,6 +27,7 @@ If you find iRaceDeck useful, consider supporting its development: [Support iRac
 ## Learn More
 
 - [Tech Stack](/docs/development/tech-stack/) — packages, architecture, and how iRacing communication works
+- [Architecture](/docs/development/architecture/) — diagrams of how data and control flow from iRacing through to the plugins
 - [Contributing](/docs/development/contributing/) — how to report issues, submit code, and join the community
 - [Setup](/docs/development/setup/) — clone, build, and run iRaceDeck locally for development
 - [Feature Flags](/docs/development/feature-flags/) — how platform-specific features are gated at build time and how to override flags locally

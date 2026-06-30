@@ -57,6 +57,6 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ["./test-setup.ts"],
-    include: ["packages/*/src/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "scripts/**/*.test.mjs"],
   },
 });

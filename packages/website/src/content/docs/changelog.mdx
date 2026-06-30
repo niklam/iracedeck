@@ -18,6 +18,29 @@ _Unreleased_
 - New **Setup Brakes Dial** action: a Stream Deck+ dial that adjusts one brake setup value — brake bias, peak brake bias, brake bias fine, brake misc, engine braking, or ABS adjust — by turning, with the live value shown big and color-coded on the touch strip. Pressing runs a configurable gesture (short and long press), defaulting to Toggle ABS. Reuses your existing Setup Brakes key bindings.
 - Fuel Dial now adapts to your fuel mode: a bare turn adjusts fuel manually, or — when iRacing's autofuel is on — adjusts the autofuel lap margin, with a dedicated autofuel display (`Autofuel` / `AUTO OFF`) and a shared two-segment Add-Fuel bar. Every gesture — Push, Long Press, Push + Turn, Tap Display, and Long Touch — is configurable, with Long Press defaulting to Toggle Autofuel (a blind-safe choice for VR). The touch gestures default to off for VR safety. The Add Amount readout shows the fuel iRacing actually banks (read live from telemetry) instead of briefly showing the dialed value and then resyncing a beat later.
 
+## 1.23.0
+
+_Unreleased_
+
+**Features**
+
+- Template variables gained a `focused` prefix that follows the car your camera is focused on (`{{focused.car_number}}`, `{{focused.name}}`, and the rest of the driver fields), usable anywhere templates are — Telemetry Display, Chat, and Race Admin. Pair a Telemetry Display with a Camera Focus button so it tracks whoever you're watching — handy for spotting, broadcasting, and race control. It works in replays too.
+- Added five more names the Race Engineer can call you by — Dean, Dylan, Ron, Jakub, and Tom — selectable from the Pit Crew action's _Your Name_ setting.
+
+**Improvements**
+
+- Driver-info template prefixes (`self`, `track_ahead`/`track_behind`, `race_ahead`/`race_behind`, `focused`) now report the live race order for both overall and class position — they update continuously as cars move (like the Session Info Position readout while racing on track), instead of only refreshing at the start/finish line.
+- The action list is now sorted alphabetically by name across all devices, so actions are easier to find when adding them to a key.
+
+**Bug Fixes**
+
+- Cars that are towed into the pits no longer briefly jump ahead of you in the running order while they sit in their pit box — they hold their on-track position for the whole stop and drop back only once they rejoin the track. This keeps the Race Engineer's spoken position, the Session Info Position readout, and the driver-info template prefixes from reading a place too high during another car's pit stop.
+- Links in an action's settings (such as Documentation and Downloads) now open in your default web browser instead of the deck app's small built-in browser window.
+
+**Maintenance**
+
+- Standardized on "dial" (instead of "encoder") across the documentation and website, matching Stream Deck's own terminology and the SDK's dial event names.
+
 ## 1.22.2
 
 _2026-06-25_
@@ -399,7 +422,7 @@ _2026-03-20_
 **Features**
 
 - Customizable icon colors: change background, text, and graphic colors on every action. Per-action overrides, global defaults, and preset buttons (Default / White / Black) make it easy to match your Stream Deck layout.
-- Splits & Reference (renamed from Splits Delta Cycle) now includes a "Toggle Reference Car" mode alongside the cycle mode. Encoder rotation always cycles splits delta regardless of mode.
+- Splits & Reference (renamed from Splits Delta Cycle) now includes a "Toggle Reference Car" mode alongside the cycle mode. Dial rotation always cycles splits delta regardless of mode.
 
 **Improvements**
 

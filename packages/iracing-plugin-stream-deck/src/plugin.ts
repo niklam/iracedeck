@@ -159,6 +159,7 @@ import { IRacingNative } from "@iracedeck/iracing-native";
 import {
   getDriverSetupName,
   getLivePosition,
+  getLiveRacePositions,
   getNearestCarGapMeters,
   getOvertakeTelemetryGate,
   getQualifyingInvalidationSnapshot,
@@ -219,6 +220,12 @@ const eventBus = initializeEventBus(adapter.createLogger("EventBus"));
 // Translate sdkController ticks → semantic events on the bus. The only
 // package allowed to read `@iracedeck/iracing-sdk` for telemetry.
 initializeSimEventsIracing(eventBus, getController(), adapter.createLogger("SimEventsIracing"));
+
+// Feed the translator's live per-car race order into the template-context builder
+// so Telemetry Display / Chat / Race Admin driver prefixes report the same
+// continuously-updating positions (overall + class) as the Session Info display,
+// for every car (issue #700).
+getController().setLivePositionsProvider(() => getLiveRacePositions());
 
 // Initialize keyboard for hotkey actions with scan code support for non-US layouts
 const native = new IRacingNative();

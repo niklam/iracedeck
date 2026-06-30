@@ -10,7 +10,7 @@ Enters, exits, or requests a tow for the car.
 | Type | Button |
 | SDK Support | No |
 | Communication Method | Key binding |
-| Encoder Support | No |
+| Dial Support | No |
 
 ## Behavior
 

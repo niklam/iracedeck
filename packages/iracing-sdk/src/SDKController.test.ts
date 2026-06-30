@@ -334,6 +334,70 @@ describe("SDKController", () => {
     });
   });
 
+  describe("live race positions provider", () => {
+    it("returns null when no provider is set", () => {
+      expect(controller.getLiveRacePositions()).toBeNull();
+    });
+
+    it("delegates to the injected provider", () => {
+      controller.setLivePositionsProvider(() => [1, 2, 3]);
+
+      expect(controller.getLiveRacePositions()).toEqual([1, 2, 3]);
+    });
+
+    it("returns null again after the provider is cleared", () => {
+      controller.setLivePositionsProvider(() => [1]);
+      controller.setLivePositionsProvider(null);
+
+      expect(controller.getLiveRacePositions()).toBeNull();
+    });
+
+    it("feeds the injected live order into the template context", () => {
+      const sessionInfo = {
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            {
+              CarIdx: 0,
+              UserName: "Player",
+              AbbrevName: "P",
+              CarNumber: "1",
+              IRating: 3000,
+              LicString: "A 4.99",
+              IsSpectator: 0,
+              CarIsPaceCar: 0,
+            },
+            {
+              CarIdx: 1,
+              UserName: "Other",
+              AbbrevName: "O",
+              CarNumber: "2",
+              IRating: 3000,
+              LicString: "A 4.99",
+              IsSpectator: 0,
+              CarIsPaceCar: 0,
+            },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+      };
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({
+        SessionNum: 0,
+        CarIdxPosition: [5, 6], // stale official standings — must be overridden
+      } as unknown as TelemetryData);
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue(sessionInfo as never);
+
+      // Injected canonical order says the player is P1, the other car P2 —
+      // overriding the stale official CarIdxPosition.
+      controller.setLivePositionsProvider(() => [1, 2]);
+
+      const ctx = controller.getCurrentTemplateContext();
+
+      expect(ctx!.display["self.position"]).toBe("1");
+      expect(ctx!.display["race_behind.name"]).toBe("Other");
+    });
+  });
+
   describe("reconnection", () => {
     it("should attempt reconnection when disconnected", () => {
       vi.mocked(mockSdk.connect).mockReturnValue(false);

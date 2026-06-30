@@ -15,7 +15,7 @@ You help plan and document features for the iRaceDeck project by creating clear,
 
 ### Hardware Constraints
 - **No Long Press Support**: Stream Deck does not support long press detection. Actions requiring multiple behaviors must use Property Inspector settings (e.g., `direction: 'Increase' | 'Decrease'`).
-- **Encoder Support**: Stream Deck+ devices have rotary encoders that support clockwise/counter-clockwise rotation, providing natural bidirectional control.
+- **Dial Support**: Stream Deck+ devices have rotary dials that support clockwise/counter-clockwise rotation, providing natural bidirectional control.
 - **Button-Only Devices**: Standard Stream Deck devices only have buttons, so bidirectional actions need settings to configure direction.
 - **Limited Display**: Icons are 72x72 pixels with an 8px safe margin (56x56 content area).
 

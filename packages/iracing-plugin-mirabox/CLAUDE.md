@@ -13,6 +13,10 @@ Mirrors the structure of `@iracedeck/iracing-plugin-stream-deck` but targets Mir
 
 PI framework (web components, EJS partials, compile plugin, `sdpi-components.js`) comes from `@iracedeck/pi-components`, the same shared package the Elgato plugin consumes. Per-action PI templates, static icons, and template data come from `@iracedeck/iracing-actions` (`src/actions/<name>/*.ejs` + `icon.svg` + `key.svg`, and shared `src/actions/data/*.json`). The `rollup.config.mjs` imports `piTemplatePlugin`, `partialsDir`, and `browserDir` from `@iracedeck/pi-components/build`, computes `actionTemplatesDir` locally from the `@iracedeck/iracing-actions` path, and copies per-action `icon.svg`/`key.svg` into `com.iracedeck.sd.core.sdPlugin/imgs/actions/<name>/`. The plugin-level branding icons in `imgs/plugin/` are still copied from `iracing-plugin-stream-deck` until a dedicated branding package lands. Generated HTML is then stripped of the `lang="en"` attribute (`stripHtmlLangPlugin`) because VSD Craft does not accept it.
 
+## Manifest maintenance
+
+`com.iracedeck.sd.core.sdPlugin/manifest.json` is committed and hand-maintained. When adding/removing an action, update this manifest alongside the Elgato and Ulanzi manifests, keeping the `Actions` array alphabetical by display `Name` (the host renders them in array order). `scripts/manifest-actions-order.test.mjs` enforces that all three manifests stay sorted, duplicate-free, and in sync.
+
 ## Build
 
 ```bash
