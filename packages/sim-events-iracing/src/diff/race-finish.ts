@@ -17,11 +17,15 @@
  * track, and is **frozen at its last-known good value** whenever its telemetry
  * is invalid (`NotInWorld`) or has drifted discontinuously from the last-known
  * point (teleport / tow). A frozen car is held at that score until it **resumes
- * continuous forward motion** — at which point its position rolls back to live,
- * wherever it is (issue #697). Release is judged tick-to-tick, NOT by distance
- * from the now-stale anchor: a towed car returns far from where it vanished, so
- * an anchor-proximity test could never re-open and pinned the car (and the
- * player, after their own tow) at a dead position for the rest of the race.
+ * continuous forward motion while back off pit road** — at which point its
+ * position rolls back to live (issue #697). The pit-road gate matters because a
+ * tow drops the car in its box at a high pit-box `dp`: releasing on the first
+ * creep of service would snap its rank to that pit-box score and make it jump
+ * ahead of cars still racing earlier on the lap, so it is held until it drives
+ * back out. Release is judged tick-to-tick, NOT by distance from the now-stale
+ * anchor: a towed car returns far from where it vanished, so an anchor-proximity
+ * test could never re-open and pinned the car (and the player, after their own
+ * tow) at a dead position for the rest of the race.
  *
  * One rule replaces the per-symptom patches:
  *   - **Blink** (`NotInWorld` for a tick) → held at last → the player's rank
@@ -32,9 +36,10 @@
  *     finishing score (last-known just before vanishing) → the player can't
  *     pass it without finishing too. No separate checkered detection needed.
  *   - **Tow** (teleport to pit stall) → score jumps discontinuously → held at
- *     the pre-tow on-track score while out → released the moment the car drives
- *     off again, so it rejoins the order at its true (dropped-back) position
- *     instead of staying pinned where it was.
+ *     the pre-tow on-track score for the whole pit visit → released only once
+ *     the car drives back out of the pit (off pit road) and is moving, so it
+ *     rejoins the order at its true (dropped-back) position instead of jumping
+ *     ahead at its high pit-box distance or staying pinned where it was.
  *
  * **Celebration rule** (applied by `diffOvertakes`): when the player's rank
  * improves, the gain is `fromRetirement` (no "Nice pass") iff at least one car
@@ -67,13 +72,20 @@ export const TELEPORT_THRESHOLD = 0.05;
  *     last known racing position so nothing reshuffles around it. A car that
  *     merely slows or stops is NOT frozen — it keeps its live position and
  *     correctly loses places to cars still racing.
- *   - **Release when it's moving again.** A frozen car is released the moment it
- *     resumes continuous forward motion (a small positive per-tick advance),
- *     wherever it is, and its position rolls to live. The check is tick-to-tick,
- *     NOT distance from the (now stale) anchor — the old anchor-proximity test
- *     never re-opened once a towed car returned far from where it vanished, so
- *     it pinned the car (and the player, after their own tow) at a dead position
- *     for the rest of the race.
+ *   - **Release when it's moving again AND back on the racing surface.** A frozen
+ *     car is released once it resumes continuous forward motion (a small positive
+ *     per-tick advance) *and* is off pit road — judged from `CarIdxTrackSurface`
+ *     (no longer `InPitStall` / `AproachingPits`), the reliable pit signal, NOT
+ *     `CarIdxOnPitRoad`, which real telemetry shows reading `true` for on-track
+ *     cars and `false` for cars in their box. At that point its position rolls to
+ *     live. The check is tick-to-tick, NOT distance from the (now stale) anchor —
+ *     the old anchor-proximity test never re-opened once a towed car returned far
+ *     from where it vanished, so it pinned the car (and the player, after their
+ *     own tow) at a dead position for the rest of the race. The pit-road gate is
+ *     what keeps a car towed into its box — where it sits at a high pit-box
+ *     LapDistPct — from releasing on the first creep of service and jumping ahead
+ *     of cars still racing earlier on the lap; it stays held at its on-track
+ *     anchor until it drives back out.
  *
  * Cars never seen in-world (no anchor) are seeded on their first in-world tick
  * and stay unfrozen from there.
@@ -126,11 +138,27 @@ export function updatePositionTracking(state: TranslatorState, telemetry: Teleme
     const movingNormally = prev !== undefined && score > prev && score - prev <= TELEPORT_THRESHOLD;
 
     if (state.positionFrozen.has(i)) {
-      // Held after a tow / teleport. Release the moment it's moving normally
-      // again — wherever it is (issue #697) — and roll its position to live.
-      // Flag the release for this tick so the overtake retirement classifier
-      // doesn't read the player's resulting gain as a real on-track pass.
-      if (movingNormally) {
+      // Held after a tow / teleport. Release once it resumes normal motion AND
+      // is back on the racing surface (off pit road). A tow dumps the car in its
+      // pit box at a high pit-box LapDistPct, so releasing the instant it merely
+      // creeps forward in the box (the original #697 "wherever it is" rule)
+      // snapped its anchor to that pit-box score and ranked it AHEAD of cars
+      // still racing earlier on the lap — the car appeared to jump ahead, then
+      // dropped back once you drove past the pits. Hold it at its last on-track
+      // anchor while it is on pit road — its box (`InPitStall`) or the pit lane
+      // (`AproachingPits`) — and roll to live only once it has rejoined the
+      // track. We gate on `CarIdxTrackSurface`, NOT `CarIdxOnPitRoad`: the latter
+      // is unreliable (real telemetry shows it `true` for cars on track and
+      // `false` for cars sitting in their box — see template-context.test.ts), so
+      // it would both miss towed cars and re-pin rejoined ones. A car that
+      // retires in its box never rejoins, so it stays held at its pre-tow anchor
+      // — the intended #603 retirement behavior (the player passes it by lapping
+      // past its anchor). Flag the release for this tick so the overtake
+      // retirement classifier doesn't read the player's resulting gain as a real
+      // on-track pass.
+      const onPitRoad = ts?.[i] === TrkLoc.InPitStall || ts?.[i] === TrkLoc.AproachingPits;
+
+      if (movingNormally && !onPitRoad) {
         state.positionFrozen.delete(i);
         state.positionJustReleased.add(i);
         state.positionLastKnownScores[i] = score;
