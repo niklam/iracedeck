@@ -106,4 +106,15 @@ export interface IDeckPlatformAdapter {
   onDialRotate(callback: () => void): void;
   /** Start the platform connection */
   connect(): void;
+  /**
+   * Switch the given device to a bundled profile distributed with the plugin.
+   *
+   * Profiles are an Elgato Stream Deck concept: the Elgato adapter delegates to
+   * `streamDeck.profiles.switchToProfile`, which prompts the user to install the
+   * profile when it isn't installed yet — the mechanism that installs/updates
+   * bundled profiles. Non-Elgato adapters (Mirabox, Ulanzi) have no profile
+   * system and implement this as a no-op. Omitting `profile` returns to the
+   * device's default profile; `page` optionally selects a page within it.
+   */
+  switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void>;
 }

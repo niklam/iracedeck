@@ -1,0 +1,36 @@
+<%#
+  Stream Deck Profiles (Elgato-only, issue #736). An EJS comment so this
+  documentation is never emitted into the shipped HTML.
+
+  A "Stream Deck Profiles" accordion with one button per bundled profile. Each
+  ird-profile-switch button sends sendToPlugin { event: "switchToProfile", profile },
+  which the Elgato adapter routes to streamDeck.profiles.switchToProfile. Switching
+  prompts the Stream Deck app to install the profile if it isn't installed yet — the
+  mechanism that installs and updates iRaceDeck's bundled profiles.
+
+  Gated to Elgato via the `profiles` platform feature flag: the Mirabox and Ulanzi
+  hosts have no profile system. See .claude/rules/profiles-and-devices.md — this is
+  the home for switch buttons for ALL bundled profiles; add one row per new profile.
+%>
+<% if (locals.platform?.features?.profiles !== false) { %>
+<%
+  var profiles = [
+    { name: 'iRaceDeck Default' },
+    { name: 'iRaceDeck Replay' },
+  ];
+%>
+<%- include('accordion', {
+  title: 'Stream Deck Profiles',
+  accordionId: 'Global Stream Deck Profiles',
+  open: false,
+  content: `
+    <div class="ird-supporting-text">
+      Switch your Stream Deck to a ready-made iRaceDeck profile. The Stream Deck app
+      asks to install the profile the first time you switch to it.
+    </div>
+    ${profiles.map(function (p) {
+      return '<sdpi-item label="' + p.name + '"><ird-profile-switch profile="' + p.name + '" label="Switch"></ird-profile-switch></sdpi-item>';
+    }).join('')}
+  `
+}) %>
+<% } %>

@@ -870,5 +870,19 @@
       "iRacingSim64DX11.exe"
     ]
   },
+  "Profiles": [
+    {
+      "Name": "iRaceDeck Default",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    }
+  ],
   "UUID": "com.iracedeck.sd.core"
 }

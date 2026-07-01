@@ -5,6 +5,7 @@
     "svgPatterns": true
   },
   "features": {
-    "borderGlow": true
+    "borderGlow": true,
+    "profiles": true
   }
 }

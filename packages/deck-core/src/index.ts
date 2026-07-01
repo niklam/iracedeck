@@ -286,3 +286,22 @@ export {
 
 // Version-check / changelog opener (issue #680)
 export { CHANGELOG_BASE_URL, buildChangelogUrl, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
+
+// Device + profile reference (issue #736)
+export {
+  DEVICE_SPECS,
+  DEVICE_SUPPORT,
+  DeviceType,
+  getDeviceSpec,
+  getDeviceSupport,
+  isDeviceSupported,
+  PROFILE_NAMES,
+  PROFILE_NAV_ACTIONS,
+  PROFILE_TARGET_DEVICES,
+  shipsBundledProfiles,
+  type DeviceControlSupport,
+  type DeviceSpec,
+  type DeviceSupport,
+  type ProfileTemplate,
+  type ProfileTemplateStatus,
+} from "./device-profiles.js";

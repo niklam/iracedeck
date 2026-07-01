@@ -49,5 +49,8 @@ export { WarningsBanner } from "./warnings.js";
 // Binding Status - per-mode communication / binding status line under the Mode selector
 export { BindingStatus } from "./binding-status.js";
 
+// Profile Switch - button that asks the plugin to switch to a bundled Stream Deck profile
+export { ProfileSwitch } from "./profile-switch.js";
+
 // Side effect on bundle load: reroute external PI links to the default browser (issue #243).
 installExternalLinkHandler();
