@@ -14,10 +14,13 @@
 %>
 <% if (locals.platform?.features?.profiles !== false) { %>
 <%
-  var profiles = [
-    { name: 'iRaceDeck Default' },
-    { name: 'iRaceDeck Replay' },
-  ];
+  // Unique bundled profile names, sourced from the generated (manifest-derived)
+  // profiles.json so this list can't drift — add a profile via the manifest +
+  // `pnpm generate:action-profiles`, not by editing here.
+  var __profileNames = require('./data/profiles.json').map(function (p) { return p.name; });
+  var profiles = __profileNames
+    .filter(function (name, i) { return __profileNames.indexOf(name) === i; })
+    .map(function (name) { return { name: name }; });
 %>
 <%- include('accordion', {
   title: 'Stream Deck Profiles',

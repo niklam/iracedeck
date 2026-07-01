@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { requestProfileSwitch } from "@iracedeck/deck-core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   availableProfilesForDevice,
   generateSwitchProfileSvg,
   profileTitle,
   SWITCH_PROFILE_UUID,
+  SwitchProfile,
 } from "./switch-profile.js";
 
 vi.mock("@iracedeck/icons/switch-profile/replay.svg", () => ({ default: "<svg>REPLAY</svg>" }));
@@ -32,6 +34,8 @@ vi.mock("@iracedeck/deck-core", () => ({
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
+    async onWillAppear(): Promise<void> {}
+    async onDidReceiveSettings(): Promise<void> {}
   },
   assembleIcon: vi.fn(({ graphicSvg }: { graphicSvg: string }) => `assembled:${graphicSvg}`),
   getGlobalBorderSettings: vi.fn(() => ({})),
@@ -48,6 +52,18 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Build a settings object; the mocked schema keeps it loose. */
 function settings(profile: string): Parameters<typeof generateSwitchProfileSvg>[0] {
   return { profile } as Parameters<typeof generateSwitchProfileSvg>[0];
+}
+
+/** A minimal mock action context (key). */
+function keyAction(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ctx",
+    deviceId: "dev-1",
+    deviceType: 2,
+    setTitle: vi.fn().mockResolvedValue(undefined),
+    setSettings: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
 }
 
 describe("SwitchProfile", () => {
@@ -91,6 +107,51 @@ describe("SwitchProfile", () => {
       expect(generateSwitchProfileSvg(settings("iRaceDeck Default"))).toBe("assembled:<svg>DEFAULT</svg>");
       expect(generateSwitchProfileSvg(settings("Something Else"))).toBe("assembled:<svg>DEFAULT</svg>");
       expect(generateSwitchProfileSvg(settings(""))).toBe("assembled:<svg>DEFAULT</svg>");
+    });
+  });
+
+  describe("class behaviour", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("pushes the device-filtered profile list on appear, then guards against re-push", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+
+      await action.onWillAppear({ action: a, payload: { settings: {} } } as never);
+
+      expect(a.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ _deviceProfiles: ["iRaceDeck Default", "iRaceDeck Replay"] }),
+      );
+
+      // Already up to date → no redundant setSettings (avoids the ping-pong loop).
+      a.setSettings.mockClear();
+      await action.onDidReceiveSettings({
+        action: a,
+        payload: { settings: { _deviceProfiles: ["iRaceDeck Default", "iRaceDeck Replay"] } },
+      } as never);
+
+      expect(a.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("switches to the selected profile on key down, targeting the button's device", async () => {
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({
+        action: keyAction({ deviceId: "dev-9" }),
+        payload: { settings: { profile: "iRaceDeck Replay" } },
+      } as never);
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay");
+    });
+
+    it("no-ops on key down when no profile is selected", async () => {
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({ action: keyAction(), payload: { settings: { profile: "" } } } as never);
+
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
     });
   });
 });
