@@ -5,7 +5,7 @@ description: Use when preparing public release notes or a release announcement f
 
 # Release Notes
 
-Public-facing release announcements for a new iRaceDeck version. The same release ships three different texts:
+Public-facing release announcements for a new iRaceDeck version. The same release ships four different texts:
 
 | Target | Format | Emoji | Length | Ends with |
 |--------|--------|-------|--------|-----------|
@@ -60,9 +60,9 @@ For a large release, delegate this PR/issue research to a subagent that returns 
 - Quote concrete specifics that make it real: exact template tokens (`{{focused.car_number}}`), the actual new names (Dean, Dylan, Ron, Jakub, Tom), the precise behavior.
 - Don't claim "pre-release" for a stable version. Only call it a pre-release if the version carries `-rc`/`-beta`/`-alpha`.
 
-### 5. Write all three versions
+### 5. Write all four versions
 
-Start from the Discord version, then derive Reddit (swap emoji to Unicode, drop `@everyone`), then compress to Marketplace.
+Start from the Discord version, then derive Reddit (swap emoji to Unicode, drop `@everyone`), then compress to Marketplace, and adapt that into the plain-text Mirabox Space version.
 
 ## Footer — Discord & Reddit only
 
