@@ -99,6 +99,10 @@ export class MockPlatformAdapter implements IDeckPlatformAdapter {
     // intentionally unused
   }
 
+  async switchToProfile(_deviceId: string, _profile?: string, _page?: number): Promise<void> {
+    // intentionally unused
+  }
+
   connect(): void {
     // intentionally unused
   }

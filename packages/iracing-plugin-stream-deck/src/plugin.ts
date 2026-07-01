@@ -68,6 +68,7 @@ import {
   initializeSDK,
   initializeSimHub,
   initPluginConfig,
+  initProfileSwitcher,
   onGlobalSettingsChange,
   type PluginConfig,
   resolveActiveDriverName,
@@ -140,6 +141,8 @@ import {
   SetupTraction,
   SPLITS_DELTA_CYCLE_UUID,
   SplitsDeltaCycle,
+  SWITCH_PROFILE_UUID,
+  SwitchProfile,
   TELEMETRY_CONTROL_UUID,
   TELEMETRY_DISPLAY_UUID,
   TelemetryControl,
@@ -801,6 +804,7 @@ adapter.registerAction(SETUP_FUEL_UUID, new SetupFuel(adapter.createLogger("Setu
 adapter.registerAction(SETUP_HYBRID_UUID, new SetupHybrid(adapter.createLogger("SetupHybrid")));
 adapter.registerAction(SETUP_TRACTION_UUID, new SetupTraction(adapter.createLogger("SetupTraction")));
 adapter.registerAction(SPLITS_DELTA_CYCLE_UUID, new SplitsDeltaCycle(adapter.createLogger("SplitsDeltaCycle")));
+adapter.registerAction(SWITCH_PROFILE_UUID, new SwitchProfile(adapter.createLogger("SwitchProfile")));
 adapter.registerAction(TELEMETRY_CONTROL_UUID, new TelemetryControl(adapter.createLogger("TelemetryControl")));
 adapter.registerAction(TELEMETRY_DISPLAY_UUID, new TelemetryDisplay(adapter.createLogger("TelemetryDisplay")));
 adapter.registerAction(TIRE_SERVICE_UUID, new TireService(adapter.createLogger("TireService")));
@@ -809,6 +813,13 @@ adapter.registerAction(VIEW_ADJUSTMENT_UUID, new ViewAdjustment(adapter.createLo
 
 // Initialize global settings listener BEFORE connect - handlers must be registered first
 initGlobalSettings(adapter, adapter.createLogger("GlobalSettings"));
+
+// Wire profile switching (Elgato-only) for the Switch Profile action and the
+// "Stream Deck Profiles" settings buttons (#736)
+initProfileSwitcher(
+  (deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page),
+  adapter.createLogger("ProfileSwitcher"),
+);
 
 // Initialize SimHub AFTER global settings so health check uses configured host/port
 initializeSimHub(adapter.createLogger("SimHub"));

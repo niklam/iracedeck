@@ -51,6 +51,7 @@ export { SETUP_FUEL_UUID, SetupFuel } from "./actions/setup-fuel/setup-fuel.js";
 export { SETUP_HYBRID_UUID, SetupHybrid } from "./actions/setup-hybrid/setup-hybrid.js";
 export { SETUP_TRACTION_UUID, SetupTraction } from "./actions/setup-traction/setup-traction.js";
 export { SPLITS_DELTA_CYCLE_UUID, SplitsDeltaCycle } from "./actions/splits-delta-cycle/splits-delta-cycle.js";
+export { SWITCH_PROFILE_UUID, SwitchProfile } from "./actions/switch-profile/switch-profile.js";
 export { TELEMETRY_CONTROL_UUID, TelemetryControl } from "./actions/telemetry-control/telemetry-control.js";
 export { TELEMETRY_DISPLAY_UUID, TelemetryDisplay } from "./actions/telemetry-display/telemetry-display.js";
 export { TIRE_SERVICE_UUID, TireService } from "./actions/tire-service/tire-service.js";

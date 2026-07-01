@@ -42,6 +42,7 @@ class ElgatoActionContext implements IDeckActionContext {
   constructor(
     private readonly sdAction: {
       id: string;
+      device?: { id: string; type: number };
       setImage(dataUri: string): Promise<void>;
       setTitle(title: string): Promise<void>;
       setSettings(settings: unknown): Promise<void>;
@@ -51,6 +52,14 @@ class ElgatoActionContext implements IDeckActionContext {
 
   get id(): string {
     return this.sdAction.id;
+  }
+
+  get deviceId(): string | undefined {
+    return this.sdAction.device?.id;
+  }
+
+  get deviceType(): number | undefined {
+    return this.sdAction.device?.type;
   }
 
   async setImage(dataUri: string): Promise<void> {
@@ -77,6 +86,7 @@ class ElgatoActionContext implements IDeckActionContext {
 function wrapEvent<T>(ev: {
   action: {
     id: string;
+    device?: { id: string; type: number };
     setImage(dataUri: string): Promise<void>;
     setTitle(title: string): Promise<void>;
     setSettings(settings: unknown): Promise<void>;
@@ -140,7 +150,37 @@ function wrapDialRotateEvent<T>(ev: DialRotateEvent<T & JsonObject>): IDeckDialR
  * Implements IDeckPlatformAdapter by delegating to the Elgato SDK.
  */
 export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
-  constructor(private readonly sd: typeof StreamDeck) {}
+  constructor(private readonly sd: typeof StreamDeck) {
+    // Route "Stream Deck Profiles" settings-accordion button presses — sent from
+    // the Property Inspector via `sendToPlugin` — to `switchToProfile`, targeting
+    // the device whose PI is open (`ev.action.device.id`). Profiles are
+    // Elgato-only, so only this adapter wires it; the non-Elgato adapters
+    // implement `switchToProfile` as a no-op and never receive this message.
+    this.sd.ui.onSendToPlugin((ev) => {
+      this.handleSendToPlugin(ev.action.device.id, ev.payload);
+    });
+  }
+
+  /**
+   * Handle a Property Inspector `sendToPlugin` payload. Currently only the
+   * `switchToProfile` command is recognised; anything else is ignored.
+   */
+  private handleSendToPlugin(deviceId: string, payload: unknown): void {
+    if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+      return;
+    }
+
+    const message = payload as { event?: unknown; profile?: unknown; page?: unknown };
+
+    if (message.event !== "switchToProfile") {
+      return;
+    }
+
+    const profile = typeof message.profile === "string" ? message.profile : undefined;
+    const page = typeof message.page === "number" ? message.page : undefined;
+
+    void this.switchToProfile(deviceId, profile, page);
+  }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {
     this.sd.settings.onDidReceiveGlobalSettings((ev: { settings: unknown }) => {
@@ -241,6 +281,15 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    */
   async openUrl(url: string): Promise<void> {
     await this.sd.system.openUrl(url);
+  }
+
+  /**
+   * Switch a device to a bundled profile via the Elgato SDK. When the profile
+   * isn't installed yet the Stream Deck app prompts the user to install it —
+   * this is how iRaceDeck's bundled profiles get installed and updated.
+   */
+  async switchToProfile(deviceId: string, profile?: string, page?: number): Promise<void> {
+    await this.sd.profiles.switchToProfile(deviceId, profile, page);
   }
 
   connect(): void {
