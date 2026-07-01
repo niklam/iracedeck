@@ -14,6 +14,17 @@ import type { ILogger } from "@iracedeck/logger";
 export interface IDeckActionContext {
   /** Unique identifier for this action instance */
   readonly id: string;
+  /**
+   * Id of the device this action instance is on. Optional — only platforms that
+   * expose it populate it (Elgato does; used for profile switching, #736).
+   */
+  readonly deviceId?: string;
+  /**
+   * Elgato `DeviceType` of the device this action instance is on (see
+   * `device-profiles.ts`). Optional — populated by adapters that expose it
+   * (Elgato); used to filter device-specific bundled profiles.
+   */
+  readonly deviceType?: number;
   /** Set the button/key image */
   setImage(dataUri: string): Promise<void>;
   /** Set the button/key title text */

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 44">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"CHAT"}}</desc>
+  <path d="M8 6 h56 a4 4 0 0 1 4 4 v22 a4 4 0 0 1-4 4 H42 l-6 6 l-6-6 H8 a4 4 0 0 1-4-4 V10 a4 4 0 0 1 4-4 z"
+        fill="none" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+  <line x1="24" y1="26" x2="46" y2="26" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="24" y1="18" x2="46" y2="18" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

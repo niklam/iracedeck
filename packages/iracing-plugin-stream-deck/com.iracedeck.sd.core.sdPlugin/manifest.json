@@ -727,6 +727,23 @@
       ]
     },
     {
+      "Name": "Switch Profile",
+      "UUID": "com.iracedeck.sd.core.switch-profile",
+      "Icon": "imgs/actions/switch-profile/icon",
+      "Tooltip": "Switch your Stream Deck to a bundled iRaceDeck profile",
+      "PropertyInspectorPath": "ui/switch-profile.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/actions/switch-profile/key",
+          "TitleAlignment": "bottom",
+          "FontSize": 14
+        }
+      ]
+    },
+    {
       "Name": "Telemetry Control",
       "UUID": "com.iracedeck.sd.core.telemetry-control",
       "Icon": "imgs/actions/telemetry-control/icon",

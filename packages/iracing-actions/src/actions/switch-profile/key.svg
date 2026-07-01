@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+  <rect x="0" y="0" width="72" height="72" rx="8" fill="#2a2b3a"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 32 a14 14 0 0 1 26 -6"/>
+    <path d="M48 20 l1.6 8.4 l-8.4 1.6"/>
+    <path d="M50 40 a14 14 0 0 1 -26 6"/>
+    <path d="M24 52 l-1.6 -8.4 l8.4 -1.6"/>
+  </g>
+  <text x="36" y="63" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="10" font-weight="bold">PROFILE</text>
+</svg>

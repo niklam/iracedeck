@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <%- include('head-common') %>
+  </head>
+  <body>
+    <%- include('section-header', { title: 'Action Settings' }) %>
+
+    <sdpi-item label="Profile">
+      <ird-profile-select setting="profile" profiles="_deviceProfiles"></ird-profile-select>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      Pressing the button switches your Stream Deck to the selected iRaceDeck profile. The
+      list shows the profiles available for this device; the Stream Deck app asks to install
+      a profile the first time you switch to it.
+    </div>
+
+    <%- include('title-overrides') %>
+    <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>
+    <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>
+    <%- include('graphic-overrides') %>
+    <%- include('common-settings') %>
+
+    <%- include('section-header', { title: 'Global Settings' }) %>
+
+    <%- include('global-title-defaults') %>
+    <%- include('global-color-defaults') %>
+    <%- include('global-border-defaults') %>
+    <%- include('global-graphic-defaults') %>
+    <%- include('global-flag-flash') %>
+    <%- include('global-common-settings') %>
+
+    <%- include('docs-link') %>
+
+    <%- include('version') %>
+  </body>
+</html>

@@ -19,6 +19,12 @@ const manifests = allPluginManifestRelPaths(repoRoot);
 // unambiguous (no two distinct allowed names compare equal).
 const byName = (a, b) => a.localeCompare(b, "en", { sensitivity: "base" });
 
+// Actions intentionally shipped on a single ecosystem (e.g. Elgato-only profile
+// switching, #736 — profiles are an Elgato SDK feature with no Mirabox/Ulanzi
+// equivalent). Excluded from the cross-manifest parity check below so the shared
+// action set is still enforced while a platform-specific action can exist.
+const ECOSYSTEM_SPECIFIC_ACTIONS = new Set(["Switch Profile"]);
+
 function actionNames(manifestRelPath) {
   const manifest = JSON.parse(readFileSync(join(repoRoot, manifestRelPath), "utf-8"));
 
@@ -55,9 +61,10 @@ describe("plugin manifest action lists", () => {
   // Every plugin must expose the same action set; adding an action to one manifest
   // but forgetting another (the documented cross-plugin sync rule) would otherwise
   // ship a device silently missing — or solely carrying — that action.
-  it.each(manifests)("exposes the same action set as the other plugin manifests: %s", (manifestRelPath) => {
-    const reference = [...new Set(actionNames(manifests[0]))].sort(byName);
-    const names = [...new Set(actionNames(manifestRelPath))].sort(byName);
+  it.each(manifests)("exposes the same shared action set as the other plugin manifests: %s", (manifestRelPath) => {
+    const shared = (names) => [...new Set(names)].filter((n) => !ECOSYSTEM_SPECIFIC_ACTIONS.has(n)).sort(byName);
+    const reference = shared(actionNames(manifests[0]));
+    const names = shared(actionNames(manifestRelPath));
 
     expect(names).toEqual(reference);
   });

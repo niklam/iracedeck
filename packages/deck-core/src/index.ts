@@ -305,3 +305,12 @@ export {
   type ProfileTemplate,
   type ProfileTemplateStatus,
 } from "./device-profiles.js";
+
+// Profile switcher singleton (issue #736)
+export {
+  _resetProfileSwitcher,
+  initProfileSwitcher,
+  isProfileSwitcherInitialized,
+  requestProfileSwitch,
+  type ProfileSwitcher,
+} from "./profile-switcher.js";

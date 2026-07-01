@@ -42,6 +42,7 @@ class ElgatoActionContext implements IDeckActionContext {
   constructor(
     private readonly sdAction: {
       id: string;
+      device?: { id: string; type: number };
       setImage(dataUri: string): Promise<void>;
       setTitle(title: string): Promise<void>;
       setSettings(settings: unknown): Promise<void>;
@@ -51,6 +52,14 @@ class ElgatoActionContext implements IDeckActionContext {
 
   get id(): string {
     return this.sdAction.id;
+  }
+
+  get deviceId(): string | undefined {
+    return this.sdAction.device?.id;
+  }
+
+  get deviceType(): number | undefined {
+    return this.sdAction.device?.type;
   }
 
   async setImage(dataUri: string): Promise<void> {
@@ -77,6 +86,7 @@ class ElgatoActionContext implements IDeckActionContext {
 function wrapEvent<T>(ev: {
   action: {
     id: string;
+    device?: { id: string; type: number };
     setImage(dataUri: string): Promise<void>;
     setTitle(title: string): Promise<void>;
     setSettings(settings: unknown): Promise<void>;
