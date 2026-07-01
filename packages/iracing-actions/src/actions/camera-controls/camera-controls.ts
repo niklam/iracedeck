@@ -3,6 +3,7 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   extractGraphicContent,
+  generateTitleText,
   getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
@@ -298,6 +299,7 @@ export function generateCameraControlsSvg(
         enabledNames,
         direction,
         settings.colorOverrides,
+        settings.titleOverrides,
         settings.borderOverrides,
         settings.graphicOverrides,
       );
@@ -496,6 +498,7 @@ export function generateCycleCameraGridSvg(
   enabledGroupNames: string[],
   direction: Direction,
   colorOverrides?: Record<string, string>,
+  titleOverrides?: Partial<CommonSettings>["titleOverrides"],
   borderOverrides?: Partial<CommonSettings>["borderOverrides"],
   graphicOverrides?: Partial<CommonSettings>["graphicOverrides"],
 ): string {
@@ -507,7 +510,7 @@ export function generateCycleCameraGridSvg(
     const iconSvg = CYCLE_ICONS["cycle-camera"][direction];
     const titleText = CYCLE_TITLES["cycle-camera"][direction];
     const colors = resolveIconColors(iconSvg, getGlobalColors(), colorOverrides);
-    const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), undefined, titleText);
+    const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), titleOverrides, titleText);
     const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), borderOverrides);
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), graphicOverrides);
 
@@ -522,6 +525,21 @@ export function generateCycleCameraGridSvg(
   const colors = resolveIconColors(baseSvg, getGlobalColors(), colorOverrides);
   const bgColor = colors.backgroundColor || "#2a3a4a";
   const textColor = colors.textColor || "#ffffff";
+
+  // Resolve the label through the shared title pipeline so the grid honors the
+  // per-action Title Text override (and show/hide, bold, font size, position)
+  // exactly like every other icon. Default label is "CYCLE CAM".
+  const title = resolveTitleSettings(baseSvg, getGlobalTitleSettings(), titleOverrides, "CYCLE CAM");
+  const label = title.showTitle
+    ? generateTitleText({
+        text: title.titleText,
+        fontSize: title.fontSize,
+        bold: title.bold,
+        position: title.position,
+        customPosition: title.customPosition,
+        fill: textColor,
+      })
+    : "";
 
   // Build thumbnail SVGs
   let thumbnails = "";
@@ -549,9 +567,7 @@ export function generateCycleCameraGridSvg(
     thumbnails += `<g transform="translate(${pos.x + offsetX}, ${pos.y + offsetY}) scale(${scale})">${artwork}</g>`;
   }
 
-  const plusIndicator = "";
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g filter="url(#activity-state)"><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${plusIndicator}<text x="72" y="138" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">CYCLE CAM</text></g></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144"><g filter="url(#activity-state)"><rect x="0" y="0" width="144" height="144" fill="${bgColor}"/>${thumbnails}${label}</g></svg>`;
 
   return svgToDataUri(svg);
 }
@@ -975,6 +991,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
           getEnabledGroupNames(settings.cameraGroupSubset),
           settings.direction,
           settings.colorOverrides,
+          settings.titleOverrides,
           settings.borderOverrides,
           settings.graphicOverrides,
         );
@@ -984,6 +1001,7 @@ export class CameraControls extends ConnectionStateAwareAction<CameraControlsSet
             getEnabledGroupNames(settings.cameraGroupSubset),
             settings.direction,
             settings.colorOverrides,
+            settings.titleOverrides,
             settings.borderOverrides,
             settings.graphicOverrides,
           ),
