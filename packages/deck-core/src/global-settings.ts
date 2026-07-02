@@ -805,7 +805,12 @@ export const GlobalSettingsSchema = z
      * alongside the passthrough `_lastSeenVersion` /
      * `_lastChangelogOpenedAt` keys — see `version-check.ts`.
      */
-    changelogNotification: z.enum(CHANGELOG_NOTIFICATION_POLICIES).default("always"),
+    // `.catch("always")` so a malformed persisted value (e.g. a hand-edited
+    // settings file) falls back to the default instead of throwing and
+    // aborting the entire GlobalSettingsSchema.parse — which would stall
+    // every setting, not just this one (the `spotterStillThereSeconds`
+    // precedent).
+    changelogNotification: z.enum(CHANGELOG_NOTIFICATION_POLICIES).default("always").catch("always"),
   })
   .passthrough();
 

@@ -13,6 +13,7 @@ import {
   updateGlobalSettings,
 } from "./global-settings.js";
 import type { IDeckPlatformAdapter } from "./types.js";
+import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -545,13 +546,14 @@ describe("changelogNotification (issue #742)", () => {
     expect(parsed.changelogNotification).toBe("always");
   });
 
-  it.each(["always", "features", "monthly", "never"])("accepts %s", (value) => {
+  it.each(CHANGELOG_NOTIFICATION_POLICIES)("accepts %s", (value) => {
     const parsed = GlobalSettingsSchema.parse({ changelogNotification: value }) as Record<string, unknown>;
     expect(parsed.changelogNotification).toBe(value);
   });
 
-  it("rejects unknown enum values", () => {
-    expect(() => GlobalSettingsSchema.parse({ changelogNotification: "sometimes" })).toThrow();
+  it("falls back to always on a malformed persisted value", () => {
+    const parsed = GlobalSettingsSchema.parse({ changelogNotification: "sometimes" }) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe("always");
   });
 });
 
