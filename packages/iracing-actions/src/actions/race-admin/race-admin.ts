@@ -2,7 +2,8 @@
  * Race Admin Action
  *
  * Sends iRacing session admin chat commands from the Stream Deck.
- * Single action with 27 subcommands organized via optgroups.
+ * Single action with 28 modes organized via optgroups: 27 admin chat commands
+ * plus a car selector (select-car, #732) that picks the shared admin target.
  */
 // ── Icon Imports ────────────────────────────────────────────────
 import {
@@ -11,6 +12,7 @@ import {
   ConnectionStateAwareAction,
   getClipboard,
   getCommands,
+  getDeviceSpec,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -22,10 +24,12 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  requestProfileSwitch,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
+  updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import advanceSessionIconSvg from "@iracedeck/icons/race-admin/advance-session.svg";
 import blackFlagIconSvg from "@iracedeck/icons/race-admin/black-flag.svg";
@@ -57,15 +61,24 @@ import yellowIconSvg from "@iracedeck/icons/race-admin/yellow.svg";
 import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
+import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
+import {
+  computeCarSlotIndex,
+  DEFAULT_SELECTOR_TARGET_PROFILE,
+  generateSelectorSvg,
+  resolveSelectedCar,
+  resolveSlotCar,
+  SELECTED_CAR_KEY,
+} from "./race-admin-selector.js";
 
 // ── Settings Schema ─────────────────────────────────────────────
 
 const RaceAdminSettings = CommonSettings.extend({
   mode: z.enum(RACE_ADMIN_MODES).default("yellow"),
-  driverTarget: z.enum(["viewed-car", "specific", "type-in-chat"]).default("type-in-chat"),
+  driverTarget: z.enum(["viewed-car", "specific", "type-in-chat", "selected-car"]).default("type-in-chat"),
   carNumber: z.string().default(""),
   message: z.string().default(""),
   penaltyType: z.enum(["time", "laps", "drivethrough"]).default("time"),
@@ -74,14 +87,25 @@ const RaceAdminSettings = CommonSettings.extend({
   paceLapsValue: z.string().default("1"),
   gridSetMinutes: z.string().default("5"),
   trackStatePercent: z.string().default("50"),
+  // Car selector (select-car mode, #732). Which page of the selector this button
+  // is on (0-based); the field slot is derived from the grid position + page.
+  // Stored as a string like every other numeric textfield here — a coercing
+  // number schema would fail the WHOLE settings parse on stray non-digit input
+  // and silently reset the button to the default "yellow" mode.
+  selectorPage: z.string().default("0"),
+  // Bundled profile to switch to after a car is picked.
+  selectorTargetProfile: z.string().default(DEFAULT_SELECTOR_TARGET_PROFILE),
 });
 
 type RaceAdminSettings = z.infer<typeof RaceAdminSettings>;
 
 /**
+ * Static per-mode icons. The `select-car` mode renders a dynamic big-number
+ * icon (see `generateSelectorSvg`) instead, so it is excluded here.
+ *
  * @internal Exported for testing
  */
-export const RACE_ADMIN_ICONS: Record<RaceAdminMode, string> = {
+export const RACE_ADMIN_ICONS: Record<Exclude<RaceAdminMode, "select-car">, string> = {
   yellow: yellowIconSvg,
   "black-flag": blackFlagIconSvg,
   "dq-driver": dqDriverIconSvg,
@@ -116,7 +140,17 @@ export const RACE_ADMIN_ICONS: Record<RaceAdminMode, string> = {
 /**
  * @internal Exported for testing
  */
-export function generateRaceAdminSvg(mode: RaceAdminMode, settings: RaceAdminSettings): string {
+export function generateRaceAdminSvg(
+  mode: RaceAdminMode,
+  settings: RaceAdminSettings,
+  resolvedCarNumber: string | null = null,
+): string {
+  // The select-car mode renders a dynamic big-number selector icon; the resolved
+  // number is the car occupying this button's slot (null → blank black key).
+  if (mode === "select-car") {
+    return generateSelectorSvg(resolvedCarNumber, settings);
+  }
+
   const meta = RACE_ADMIN_MODE_META[mode];
   const iconSvg = RACE_ADMIN_ICONS[mode];
 
@@ -128,6 +162,9 @@ export function generateRaceAdminSvg(mode: RaceAdminMode, settings: RaceAdminSet
   // fixed number to display, so fall through to the default subLabel.
   if (meta.needsDriver && settings.driverTarget === "specific" && settings.carNumber?.trim()) {
     subLabel = `#${settings.carNumber.trim()}`;
+  } else if (meta.needsDriver && settings.driverTarget === "selected-car") {
+    // The shared admin target, resolved to the current session number.
+    subLabel = resolvedCarNumber ? `#${resolvedCarNumber}` : "NO CAR";
   }
 
   const defaultTitle = subLabel ? `${subLabel}\n${meta.mainLabel}` : meta.mainLabel;
@@ -150,6 +187,17 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   private activeContexts = new Map<string, RaceAdminSettings>();
   private viewedCarNumbers = new Map<string, string | null>();
   private typeInChatInFlight = new Set<string>();
+  /** Per-context grid position + device type, for the select-car slot math. */
+  private selectorContexts = new Map<string, { column: number; row: number; deviceType?: number }>();
+  /**
+   * Car number last successfully rendered per dynamic-icon context (`null` =
+   * empty slot / no selection). The telemetry refresh dedupes on this BEFORE
+   * assembling the SVG, and only records it AFTER `setImage` succeeds — so a
+   * transient failure retries on the next tick instead of poisoning the cache.
+   */
+  private lastDynamicCar = new Map<string, string | null>();
+  /** Caps live icon re-renders (select-car / selected-car) at ~10 Hz. */
+  private readonly imageThrottle = new IconUpdateThrottle();
 
   private parseSettings(raw: unknown): RaceAdminSettings {
     const { migrated } = migrateUseViewedCarToDriverTarget(raw);
@@ -185,21 +233,29 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.rememberContext(ev);
 
     await this.updateDisplay(ev, settings);
 
-    // Subscribe to telemetry for CamCarIdx (driver targeting)
+    // Subscribe to telemetry: track the viewed car (viewed-car target) and keep
+    // the dynamic select-car / selected-car icon in sync with the live field.
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
       this.updateViewedCar(ev.action.id, telemetry);
+      this.refreshDynamicIcon(ev.action.id);
     });
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<RaceAdminSettings>): Promise<void> {
+    // Clear the pending throttle BEFORE awaiting super so a trailing flush can't
+    // fire against a context that's mid-teardown.
+    this.imageThrottle.clear(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.viewedCarNumbers.delete(ev.action.id);
     this.typeInChatInFlight.delete(ev.action.id);
+    this.selectorContexts.delete(ev.action.id);
+    this.lastDynamicCar.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<RaceAdminSettings>): Promise<void> {
@@ -207,6 +263,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+    this.rememberContext(ev);
     await this.updateDisplay(ev, settings);
   }
 
@@ -215,6 +272,15 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   override async onKeyDown(ev: IDeckKeyDownEvent<RaceAdminSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+
+    // The car selector needs the key's grid coordinates, so it's handled from
+    // the event rather than the coordinate-less executeMode path.
+    if (settings.mode === "select-car") {
+      await this.executeSelect(ev, settings);
+
+      return;
+    }
+
     await this.executeMode(ev.action.id, settings);
   }
 
@@ -228,6 +294,11 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
   private async executeMode(contextId: string, settings: RaceAdminSettings): Promise<void> {
     const { mode } = settings;
+
+    // select-car is keypad-only (needs grid coordinates) and is handled in
+    // onKeyDown; ignore it here (e.g. a dial press) — it has no chat command.
+    if (mode === "select-car") return;
+
     const meta = RACE_ADMIN_MODE_META[mode];
 
     // "Type in chat" only applies to driver-targeted modes — for non-driver
@@ -240,7 +311,8 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     }
 
     const viewedCarNumber = this.viewedCarNumbers.get(contextId) ?? null;
-    const command = buildAdminCommand(mode, settings, viewedCarNumber, this.sdkController);
+    const selectedCarNumber = this.resolveSelectedCarNumber();
+    const command = buildAdminCommand(mode, settings, viewedCarNumber, this.sdkController, selectedCarNumber);
 
     if (!command) {
       this.logger.warn(`Could not build command for mode: ${mode}`);
@@ -327,9 +399,132 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
     settings: RaceAdminSettings,
   ): Promise<void> {
-    const svg = generateRaceAdminSvg(settings.mode, settings);
+    // Drop the dedupe entry first: if the render below fails, the next
+    // telemetry tick re-renders instead of matching a stale cache entry.
+    this.lastDynamicCar.delete(ev.action.id);
+    const carNumber = this.resolveIconCarNumber(ev.action.id, settings);
+    const svg = generateRaceAdminSvg(settings.mode, settings, carNumber);
     await this.setKeyImage(ev, svg);
-    this.setRegenerateCallback(ev.action.id, () => generateRaceAdminSvg(settings.mode, settings));
+    this.lastDynamicCar.set(ev.action.id, carNumber);
+    this.setRegenerateCallback(ev.action.id, () =>
+      generateRaceAdminSvg(settings.mode, settings, this.resolveIconCarNumber(ev.action.id, settings)),
+    );
+  }
+
+  // ── Car Selector (issue #732) ───────────────────────────────
+
+  /** Remember this button's grid position + device type for the selector slot math. */
+  private rememberContext(
+    ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
+  ): void {
+    this.selectorContexts.set(ev.action.id, {
+      column: ev.payload.coordinates?.column ?? 0,
+      row: ev.payload.coordinates?.row ?? 0,
+      deviceType: ev.action.deviceType,
+    });
+  }
+
+  /**
+   * select-car press: resolve the car occupying this key's slot, store its
+   * CarIdx as the shared admin target, and switch to the per-car commands
+   * profile. An empty slot is a no-op.
+   */
+  private async executeSelect(ev: IDeckKeyDownEvent<RaceAdminSettings>, settings: RaceAdminSettings): Promise<void> {
+    const grid = getDeviceSpec(ev.action.deviceType ?? -1)?.grid ?? null;
+    const slot = computeCarSlotIndex(
+      ev.payload.coordinates?.column ?? -1,
+      ev.payload.coordinates?.row ?? -1,
+      grid,
+      Number(settings.selectorPage),
+    );
+    const car = resolveSlotCar(this.sdkController.getSessionInfo(), slot);
+
+    if (!car) {
+      this.logger.info("Select car pressed on an empty slot");
+
+      return;
+    }
+
+    // A cleared PI textfield persists "" (bypassing the Zod default) — fall
+    // back to the bundled per-car profile, mirroring SwitchProfile's guard.
+    const targetProfile = settings.selectorTargetProfile.trim() || DEFAULT_SELECTOR_TARGET_PROFILE;
+
+    this.logger.info("Admin target car selected");
+    this.logger.debug(`Selected CarIdx ${car.carIdx} (#${car.carNumber}); switching to "${targetProfile}"`);
+    updateGlobalSettings({ [SELECTED_CAR_KEY]: { carIdx: car.carIdx, carNumber: car.carNumber } });
+    await requestProfileSwitch(ev.action.deviceId, targetProfile);
+  }
+
+  /**
+   * Car number of the shared admin target, or null when nothing is selected or
+   * the stored CarIdx no longer resolves to the number it was selected as
+   * (session changed — CarIdx assignments are session-scoped).
+   */
+  private resolveSelectedCarNumber(): string | null {
+    const raw = (getGlobalSettings() as Record<string, unknown>)[SELECTED_CAR_KEY];
+
+    return resolveSelectedCar(raw, (carIdx) =>
+      getCarNumberFromSessionInfo(this.sdkController.getSessionInfo(), carIdx),
+    );
+  }
+
+  /**
+   * The car number this button's icon should show: the slot car for select-car,
+   * or the shared admin target for a selected-car command mode. `null` for every
+   * other (static) mode.
+   */
+  private resolveIconCarNumber(contextId: string, settings: RaceAdminSettings): string | null {
+    if (settings.mode === "select-car") {
+      const ctx = this.selectorContexts.get(contextId);
+
+      if (!ctx) return null;
+
+      const grid = getDeviceSpec(ctx.deviceType ?? -1)?.grid ?? null;
+      const slot = computeCarSlotIndex(ctx.column, ctx.row, grid, Number(settings.selectorPage));
+
+      return resolveSlotCar(this.sdkController.getSessionInfo(), slot)?.carNumber ?? null;
+    }
+
+    if (RACE_ADMIN_MODE_META[settings.mode].needsDriver && settings.driverTarget === "selected-car") {
+      return this.resolveSelectedCarNumber();
+    }
+
+    return null;
+  }
+
+  /**
+   * Re-render the icon for dynamic modes (select-car and the selected-car
+   * target) as the live field changes. No-op for static modes; throttled, and
+   * deduped on the RESOLVED car number before any SVG assembly — a selector
+   * page full of keys would otherwise do ~10 full renders/second per key just
+   * to conclude nothing changed.
+   */
+  private refreshDynamicIcon(contextId: string): void {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) return;
+
+    const isSelector = settings.mode === "select-car";
+    const isSelectedTarget =
+      RACE_ADMIN_MODE_META[settings.mode].needsDriver && settings.driverTarget === "selected-car";
+
+    if (!isSelector && !isSelectedTarget) return;
+
+    this.imageThrottle.schedule(contextId, async () => {
+      const current = this.activeContexts.get(contextId);
+
+      if (!current) return;
+
+      const carNumber = this.resolveIconCarNumber(contextId, current);
+
+      if (this.lastDynamicCar.has(contextId) && this.lastDynamicCar.get(contextId) === carNumber) return;
+
+      const svg = generateRaceAdminSvg(current.mode, current, carNumber);
+      await this.updateKeyImage(contextId, svg);
+      // Record only after the image update succeeded — a rejection above
+      // leaves the cache unset so the next tick retries.
+      this.lastDynamicCar.set(contextId, carNumber);
+    });
   }
 
   // ── Telemetry ───────────────────────────────────────────────

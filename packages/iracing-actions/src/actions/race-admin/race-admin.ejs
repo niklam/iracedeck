@@ -41,6 +41,11 @@
 					<option value="message-all">Message All Participants</option>
 					<option value="rc-message">Race Control Message</option>
 				</optgroup>
+				<% if (locals.platform?.features?.profiles !== false) { %>
+				<optgroup label="Car Selection">
+					<option value="select-car">Select Car (Admin Target)</option>
+				</optgroup>
+				<% } %>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -54,6 +59,9 @@
 					<option value="viewed-car">Use Viewed Car</option>
 					<option value="specific">Specific Car Number</option>
 					<option value="type-in-chat">Type in Chat</option>
+					<% if (locals.platform?.features?.profiles !== false) { %>
+					<option value="selected-car">Selected Car</option>
+					<% } %>
 				</sdpi-select>
 			</sdpi-item>
 			<sdpi-item id="car-number-item" label="Car Number" class="hidden">
@@ -110,6 +118,21 @@
 			</sdpi-item>
 		</div>
 
+		<% if (locals.platform?.features?.profiles !== false) { %>
+		<!-- Car selector settings (select-car mode, #732; Elgato-only) -->
+		<div id="car-selector-section" class="hidden">
+			<sdpi-item label="Selector Page">
+				<sdpi-textfield setting="selectorPage" default="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
+			</sdpi-item>
+			<sdpi-item label="Target Profile">
+				<sdpi-textfield setting="selectorTargetProfile" default="iRaceDeck Race Admin Per Car" placeholder="iRaceDeck Race Admin Per Car"></sdpi-textfield>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Auto-fills one car per key (sorted by number) from the live session. Reserve the top-left key for Back to default and the two bottom corners for Previous/Next page. Page is 0-based. On press it stores the car as the shared admin target and switches to the target profile.
+			</div>
+		</div>
+		<% } %>
+
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['race-admin'] }) %>
@@ -155,10 +178,11 @@
 				"disable-chat-all": { driver: false, message: false, extra: [] },
 				"disable-chat-driver": { driver: true, message: false, extra: [] },
 				"message-all": { driver: false, message: true, extra: [] },
-				"rc-message": { driver: false, message: true, extra: [] }
+				"rc-message": { driver: false, message: true, extra: [] },
+				"select-car": { driver: false, message: false, extra: ["car-selector-section"] }
 			};
 
-			var ALL_EXTRA_SECTIONS = ["penalty-section", "pace-laps-section", "grid-set-section", "track-state-section"];
+			var ALL_EXTRA_SECTIONS = ["penalty-section", "pace-laps-section", "grid-set-section", "track-state-section", "car-selector-section"];
 
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");

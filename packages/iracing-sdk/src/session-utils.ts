@@ -9,6 +9,7 @@ interface DriverEntry {
   CarNumber: string;
   CarNumberRaw: number;
   CarIsPaceCar?: number;
+  IsSpectator?: number;
 }
 
 /**
@@ -50,15 +51,18 @@ export function getCarNumberRawFromSessionInfo(sessionInfo: unknown, carIdx: num
 }
 
 /**
- * Get all car numbers from session info, optionally excluding the pace car.
+ * Get all car numbers from session info, optionally excluding the pace car
+ * and/or spectators.
  *
  * @param sessionInfo - The iRacing session info object
  * @param excludePaceCar - Whether to exclude the pace car (default: false)
+ * @param excludeSpectators - Whether to exclude spectator entries (`IsSpectator === 1`, default: false)
  * @returns Array of { carIdx, carNumber, carNumberRaw } sorted by car number ascending
  */
 export function getAllCarNumbers(
   sessionInfo: unknown,
   excludePaceCar = false,
+  excludeSpectators = false,
 ): Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> {
   const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
   const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
@@ -69,6 +73,8 @@ export function getAllCarNumbers(
 
   for (const driver of drivers) {
     if (excludePaceCar && driver.CarIsPaceCar === 1) continue;
+
+    if (excludeSpectators && driver.IsSpectator === 1) continue;
 
     const cleaned = driver.CarNumber.replace(/[^0-9]/g, "");
 

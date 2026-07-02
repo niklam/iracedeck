@@ -147,6 +147,31 @@ describe("getAllCarNumbers", () => {
     ]);
   });
 
+  it("should exclude spectators when requested", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [
+          { CarIdx: 0, CarNumber: "0", CarNumberRaw: 0, CarIsPaceCar: 1 },
+          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
+          { CarIdx: 2, CarNumber: "4", CarNumberRaw: 4, IsSpectator: 1 },
+          { CarIdx: 3, CarNumber: "7", CarNumberRaw: 7, IsSpectator: 0 },
+        ],
+      },
+    };
+
+    expect(getAllCarNumbers(info, true, true)).toEqual([
+      { carIdx: 3, carNumber: "7", carNumberRaw: 7 },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
+    ]);
+
+    // Spectators stay included unless explicitly excluded (existing callers).
+    expect(getAllCarNumbers(info, true)).toEqual([
+      { carIdx: 2, carNumber: "4", carNumberRaw: 4 },
+      { carIdx: 3, carNumber: "7", carNumberRaw: 7 },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
+    ]);
+  });
+
   it("should preserve leading zeros and sort numerically", () => {
     const info = {
       DriverInfo: {

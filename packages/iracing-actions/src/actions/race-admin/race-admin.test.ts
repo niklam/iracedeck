@@ -1,8 +1,10 @@
+import { requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
 import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
+import { computeCarSlotIndex, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -12,6 +14,17 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   getAllCarNumbers: vi.fn(() => []),
   buildTemplateContext: vi.fn(() => ({ display: {}, raw: {} })),
   resolveTemplate: vi.fn((template: string) => template),
+}));
+
+// The car-selector helpers are unit-tested in race-admin-selector.test.ts; here
+// we mock them so the action tests exercise only the lifecycle/dispatch logic.
+vi.mock("./race-admin-selector.js", () => ({
+  SELECTED_CAR_KEY: "_raceAdminSelectedCar",
+  DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
+  computeCarSlotIndex: vi.fn(() => 0),
+  resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24" })),
+  resolveSelectedCar: vi.fn(() => null),
+  generateSelectorSvg: vi.fn((carNumber: string | null) => `data:selector,${carNumber ?? ""}`),
 }));
 
 // Mock all icon imports
@@ -107,7 +120,7 @@ const mockSendKeyCombination = vi.fn(async () => true);
 // vi.hoisted so the object-returning factory is initialized before the hoisted
 // vi.mock("@iracedeck/deck-core") factory references it.
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn(() => ({ chatOpenToPasteDelayMs: 10 })),
+  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ chatOpenToPasteDelayMs: 10 })),
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -131,6 +144,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
+    updateKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
     async onWillAppear(_ev: unknown): Promise<void> {}
     async onWillDisappear(_ev: unknown): Promise<void> {}
@@ -141,6 +155,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     camera: { switchNum: vi.fn(() => true) },
   })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
+  getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
+  requestProfileSwitch: vi.fn(async () => {}),
+  updateGlobalSettings: vi.fn(),
   getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
@@ -184,8 +201,8 @@ describe("RaceAdmin", () => {
   // ── Mode Definitions ────────────────────────────────────────
 
   describe("RACE_ADMIN_MODES", () => {
-    it("should have 27 modes", () => {
-      expect(RACE_ADMIN_MODES).toHaveLength(27);
+    it("should have 28 modes", () => {
+      expect(RACE_ADMIN_MODES).toHaveLength(28);
     });
 
     it("should have metadata for every mode", () => {
@@ -198,12 +215,13 @@ describe("RaceAdmin", () => {
       }
     });
 
-    it("should have 3 optgroups", () => {
+    it("should have 4 optgroups", () => {
       const groups = getModesByOptgroup();
-      expect(groups.size).toBe(3);
+      expect(groups.size).toBe(4);
       expect(groups.has("Race Control")).toBe(true);
       expect(groups.has("Session Management")).toBe(true);
       expect(groups.has("Driver & Chat Management")).toBe(true);
+      expect(groups.has("Car Selection")).toBe(true);
     });
 
     it("should have correct mode counts per optgroup", () => {
@@ -211,6 +229,7 @@ describe("RaceAdmin", () => {
       expect(groups.get("Race Control")).toHaveLength(14);
       expect(groups.get("Session Management")).toHaveLength(4);
       expect(groups.get("Driver & Chat Management")).toHaveLength(9);
+      expect(groups.get("Car Selection")).toHaveLength(1);
     });
   });
 
@@ -260,6 +279,18 @@ describe("RaceAdmin", () => {
       expect(result).toBeNull();
     });
 
+    it("should return the shared selected car number when driverTarget is selected-car", () => {
+      const meta = RACE_ADMIN_MODE_META["black-flag"];
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "selected-car" }, null, meta, "24");
+      expect(result).toBe("24");
+    });
+
+    it("should return null when driverTarget is selected-car but nothing is selected", () => {
+      const meta = RACE_ADMIN_MODE_META["black-flag"];
+      const result = resolveDriverTarget({ ...baseSettings, driverTarget: "selected-car" }, null, meta, null);
+      expect(result).toBeNull();
+    });
+
     it("should return null for modes that do not need a driver", () => {
       const meta = RACE_ADMIN_MODE_META["yellow"];
       const result = resolveDriverTarget(baseSettings, "42", meta);
@@ -306,6 +337,18 @@ describe("RaceAdmin", () => {
       const settings = { ...baseSettings, driverTarget: "specific" as const, carNumber: "7" };
       const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never);
       expect(result).toBe("!dq #7");
+    });
+
+    it("should build commands with driver target (selected car)", () => {
+      const settings = { ...baseSettings, driverTarget: "selected-car" as const };
+      const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never, "24");
+      expect(result).toBe("!dq #24");
+    });
+
+    it("should return null for selected-car when nothing is selected", () => {
+      const settings = { ...baseSettings, driverTarget: "selected-car" as const };
+      const result = buildAdminCommand("dq-driver", settings, null, mockSdkController as never, null);
+      expect(result).toBeNull();
     });
 
     it("should return null when required driver is missing", () => {
@@ -477,6 +520,23 @@ describe("RaceAdmin", () => {
       const yellowSvg = generateRaceAdminSvg("yellow", defaultSettings);
       const pitCloseSvg = generateRaceAdminSvg("pit-close", defaultSettings);
       expect(yellowSvg).not.toBe(pitCloseSvg);
+    });
+
+    it("should render the dynamic selector icon for select-car mode", () => {
+      const settings = { ...defaultSettings, mode: "select-car" as const };
+      expect(generateRaceAdminSvg("select-car", settings, "24")).toBe("data:selector,24");
+    });
+
+    it("should show the resolved car number on the selected-car target", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, "24"));
+      expect(decoded).toContain("#24");
+    });
+
+    it("should show NO CAR on the selected-car target when nothing is selected", () => {
+      const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, null));
+      expect(decoded).toContain("NO CAR");
     });
   });
 
@@ -657,6 +717,109 @@ describe("RaceAdmin", () => {
       expect(mockSendMessage).toHaveBeenCalledTimes(1);
       expect(mockSendMessage).toHaveBeenCalledWith("!dq #42");
       expect(mockSetClipboardText).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Car Selector: select-car mode + selected-car target (#732) ──
+
+  describe("RaceAdmin car selector", () => {
+    const selectorSettings = {
+      mode: "select-car" as const,
+      driverTarget: "type-in-chat" as const,
+      carNumber: "",
+      message: "",
+      penaltyType: "time",
+      penaltyValue: "30",
+      paceLapsOperation: "+",
+      paceLapsValue: "1",
+      gridSetMinutes: "5",
+      trackStatePercent: "50",
+      selectorPage: "0",
+      selectorTargetProfile: "iRaceDeck Race Admin Per Car",
+    };
+
+    function makeSelectorKeyDown(
+      settings: Record<string, unknown>,
+      coordinates: { column: number; row: number } = { column: 1, row: 0 },
+    ) {
+      return {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings, coordinates },
+      } as never;
+    }
+
+    // The selector-helper mocks are re-stubbed here; mockReset in afterEach
+    // restores the factory implementations so nothing leaks past this block.
+    beforeEach(() => {
+      vi.mocked(computeCarSlotIndex).mockReturnValue(0);
+      vi.mocked(resolveSlotCar).mockReturnValue({ carIdx: 5, carNumber: "24" });
+    });
+
+    afterEach(() => {
+      vi.mocked(computeCarSlotIndex).mockReset();
+      vi.mocked(resolveSlotCar).mockReset();
+      vi.mocked(resolveSelectedCar).mockReset();
+    });
+
+    it("stores the selected car (CarIdx + number) and switches to the per-car profile on press", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car");
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when the pressed slot is empty", async () => {
+      vi.mocked(resolveSlotCar).mockReturnValue(null);
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown(selectorSettings));
+
+      expect(updateGlobalSettings).not.toHaveBeenCalled();
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the default per-car profile when the target profile is cleared", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "  " }));
+
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car");
+    });
+
+    it("still selects a car when Selector Page holds non-numeric text (settings parse must not reset)", async () => {
+      const action = new RaceAdmin();
+      await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorPage: "p1" }));
+
+      // The press must stay a selection — NOT fall back to the default
+      // "yellow" mode and throw a real caution flag.
+      expect(updateGlobalSettings).toHaveBeenCalledWith({
+        _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
+      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("dispatches a command against the shared selected car for the selected-car target", async () => {
+      vi.mocked(resolveSelectedCar).mockReturnValueOnce("24");
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!dq #24");
+    });
+
+    it("does not dispatch when the stored selection is stale or missing", async () => {
+      vi.mocked(resolveSelectedCar).mockReturnValueOnce(null);
+
+      const action = new RaceAdmin();
+      await action.onKeyDown(
+        makeSelectorKeyDown({ ...selectorSettings, mode: "dq-driver", driverTarget: "selected-car" }),
+      );
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
 

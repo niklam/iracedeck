@@ -147,7 +147,7 @@ Actions where icon content changes at runtime based on telemetry (e.g., tire col
 
 All dynamic templates include `{{borderDefs}}` (inside `<defs>`) and `{{borderContent}}` (after the background rect) placeholders. Actions must call `resolveBorderSettings(...)` then `generateBorderParts(...)` to obtain `borderDefs` and `borderContent` strings, and pass them when calling `renderIconTemplate()`. Pass `borderDefs: ""` and `borderContent: ""` if border is not used.
 
-Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `tire-service.svg`, `telemetry-display.svg`.
+Current dynamic templates: `car-control-pit-limiter.svg`, `session-info.svg`, `tire-service.svg`, `telemetry-display.svg`, `race-admin-car-selector.svg` (the #732 selector's big-number key).
 
 ## Design Specs
 
