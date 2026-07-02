@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **31 actions with 291 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **31 actions with 295 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**260 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
