@@ -104,9 +104,9 @@ const CAR_CONTROL_STATIC_TITLES: Partial<Record<CarControlType, string>> = {
   "tear-off-visor": "VISOR\nTEAR OFF",
   escape: "ESCAPE",
   handbrake: "HANDBRAKE",
-  "second-clutch": "2ND\nCLUTCH",
-  "second-up-shift": "2ND\nSHIFT UP",
-  "second-down-shift": "2ND\nSHIFT DOWN",
+  "second-clutch": "CLUTCH",
+  "second-up-shift": "SHIFT UP",
+  "second-down-shift": "SHIFT DOWN",
 };
 
 const DEFAULT_PIT_SPEED = 80;

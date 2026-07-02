@@ -850,9 +850,9 @@ describe("CarControl", () => {
     it("should generate valid data URIs with the default titles for all four modes", () => {
       const expected: Record<string, string[]> = {
         handbrake: ["HANDBRAKE"],
-        "second-clutch": ["2ND", "CLUTCH"],
-        "second-up-shift": ["2ND", "SHIFT UP"],
-        "second-down-shift": ["2ND", "SHIFT DOWN"],
+        "second-clutch": ["CLUTCH"],
+        "second-up-shift": ["SHIFT UP"],
+        "second-down-shift": ["SHIFT DOWN"],
       };
 
       for (const [control, labels] of Object.entries(expected)) {

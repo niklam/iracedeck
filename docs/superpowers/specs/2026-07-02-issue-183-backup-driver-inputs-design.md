@@ -76,3 +76,7 @@ Append four options to the Control dropdown: Handbrake, Second Clutch, Second Up
 
 - Second Throttle / Second Brake (analog axes — not button-mappable, listed adjacent in iRacing's controls but excluded by the issue).
 - Telemetry-aware state for any of the four modes (no `dc*` variables exist).
+
+## Amendment (2026-07-02, post-review)
+
+After device-icon review, the "2ND" gold badge and the `2ND\n` title prefix were dropped by user decision — the info added no value on the key. Final default titles: `HANDBRAKE`, `CLUTCH`, `SHIFT UP`, `SHIFT DOWN` (all single-line). The shift icons are plain solid arrows (viewBox retrimmed); the clutch icon was redesigned as a clutch friction disc (outer rim, eight-segment friction band with rivet dots, pressure-plate rings, center hub), all in `{{graphic1Color}}`.
