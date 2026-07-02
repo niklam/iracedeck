@@ -13,6 +13,7 @@ import {
   updateGlobalSettings,
 } from "./global-settings.js";
 import type { IDeckPlatformAdapter } from "./types.js";
+import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -536,6 +537,23 @@ describe("dualPressDirections (issue #540)", () => {
 
   it("rejects unknown enum values", () => {
     expect(() => GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" })).toThrow();
+  });
+});
+
+describe("changelogNotification (issue #742)", () => {
+  it("defaults to always when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe("always");
+  });
+
+  it.each(CHANGELOG_NOTIFICATION_POLICIES)("accepts %s", (value) => {
+    const parsed = GlobalSettingsSchema.parse({ changelogNotification: value }) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe(value);
+  });
+
+  it("falls back to always on a malformed persisted value", () => {
+    const parsed = GlobalSettingsSchema.parse({ changelogNotification: "sometimes" }) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe("always");
   });
 });
 

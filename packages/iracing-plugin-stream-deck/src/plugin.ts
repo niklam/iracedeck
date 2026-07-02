@@ -674,13 +674,19 @@ onGlobalSettingsChange((settings) => {
     // passthrough `_lastSeenVersion` key and persists the running version.
     // No-op for pre-release builds and same/older versions; opens the
     // browser via the Elgato SDK. `type` is the connected device's type id
-    // (best-effort), omitted when no device is connected yet.
+    // (best-effort), omitted when no device is connected yet. The
+    // `changelogNotification` preference (issue #742) decides whether a due
+    // changelog opens, is recorded silently, or stays pending (monthly
+    // window, anchored on the passthrough `_lastChangelogOpenedAt` key).
     void runVersionCheck({
       currentVersion: getPluginVersion(),
       lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      policy: settings.changelogNotification,
+      lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
       ecosystem: getPluginPlatform(),
       deviceType: [...streamDeck.devices].find((d) => d.isConnected)?.type,
       persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
       openUrl: (url) => adapter.openUrl(url),
       logger: adapter.createLogger("VersionCheck"),
     });

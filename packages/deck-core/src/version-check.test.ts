@@ -1,7 +1,15 @@
 import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
-import { buildChangelogUrl, CHANGELOG_BASE_URL, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
+import {
+  buildChangelogUrl,
+  CHANGELOG_BASE_URL,
+  type ChangelogNotificationPolicy,
+  MONTHLY_WINDOW_MS,
+  resolveChangelogDecision,
+  runVersionCheck,
+  shouldOpenChangelog,
+} from "./version-check.js";
 
 function stubLogger(): ILogger {
   const logger: ILogger = {
@@ -80,6 +88,102 @@ describe("buildChangelogUrl", () => {
   });
 });
 
+describe("resolveChangelogDecision", () => {
+  const now = 1_750_000_000_000;
+
+  function decide(overrides: {
+    currentVersion?: string;
+    lastSeenVersion?: string | null;
+    policy?: ChangelogNotificationPolicy;
+    lastOpenedAt?: number | null;
+  }) {
+    return resolveChangelogDecision({
+      currentVersion: "1.24.0",
+      lastSeenVersion: "1.23.0",
+      policy: "always",
+      now,
+      ...overrides,
+    });
+  }
+
+  it.each(["always", "features", "monthly", "never"] as const)(
+    "returns skip for pre-release / invalid / equal / downgrade under %s",
+    (policy) => {
+      expect(decide({ policy, currentVersion: "1.24.0-rc.1" })).toBe("skip");
+      expect(decide({ policy, currentVersion: "abc" })).toBe("skip");
+      expect(decide({ policy, currentVersion: "1.23.0" })).toBe("skip");
+      expect(decide({ policy, currentVersion: "1.22.0" })).toBe("skip");
+    },
+  );
+
+  describe("always", () => {
+    it("opens for a newer stable version", () => {
+      expect(decide({})).toBe("open");
+    });
+
+    it("opens on first run", () => {
+      expect(decide({ lastSeenVersion: null })).toBe("open");
+    });
+  });
+
+  describe("never", () => {
+    it("tracks silently for a newer stable version", () => {
+      expect(decide({ policy: "never" })).toBe("track-silently");
+    });
+
+    it("tracks silently on first run", () => {
+      expect(decide({ policy: "never", lastSeenVersion: null })).toBe("track-silently");
+    });
+  });
+
+  describe("features", () => {
+    it("opens for a minor bump", () => {
+      expect(decide({ policy: "features" })).toBe("open");
+    });
+
+    it("opens for a major bump", () => {
+      expect(decide({ policy: "features", currentVersion: "2.0.0" })).toBe("open");
+    });
+
+    it("tracks silently for a patch bump", () => {
+      expect(decide({ policy: "features", currentVersion: "1.23.1" })).toBe("track-silently");
+    });
+
+    it("opens on first run", () => {
+      expect(decide({ policy: "features", lastSeenVersion: null })).toBe("open");
+    });
+
+    it("tracks silently when a stored pre-release precedes the same stable triple", () => {
+      expect(decide({ policy: "features", currentVersion: "1.24.0", lastSeenVersion: "1.24.0-rc.1" })).toBe(
+        "track-silently",
+      );
+    });
+  });
+
+  describe("monthly", () => {
+    it("opens when no last-opened timestamp exists", () => {
+      expect(decide({ policy: "monthly" })).toBe("open");
+    });
+
+    it("defers while inside the window, leaving the version pending", () => {
+      expect(decide({ policy: "monthly", lastOpenedAt: now - MONTHLY_WINDOW_MS + 1 })).toBe("defer");
+      expect(decide({ policy: "monthly", lastOpenedAt: now - 1 })).toBe("defer");
+    });
+
+    it("opens exactly at the window boundary", () => {
+      expect(decide({ policy: "monthly", lastOpenedAt: now - MONTHLY_WINDOW_MS })).toBe("open");
+    });
+
+    it("opens past the window", () => {
+      expect(decide({ policy: "monthly", lastOpenedAt: now - MONTHLY_WINDOW_MS - 1 })).toBe("open");
+    });
+
+    it("treats an invalid timestamp as missing", () => {
+      expect(decide({ policy: "monthly", lastOpenedAt: Number.NaN })).toBe("open");
+    });
+  });
+});
+
 describe("runVersionCheck", () => {
   let persist: Mock<(version: string) => void>;
   let openUrl: Mock<(url: string) => Promise<void>>;
@@ -154,5 +258,138 @@ describe("runVersionCheck", () => {
 
     expect(persist).not.toHaveBeenCalled();
     expect(openUrl).not.toHaveBeenCalled();
+  });
+
+  describe("changelogNotification policy (issue #742)", () => {
+    const now = 1_750_000_000_000;
+    let persistOpenedAt: Mock<(timestamp: number) => void>;
+
+    beforeEach(() => {
+      persistOpenedAt = vi.fn<(timestamp: number) => void>();
+    });
+
+    it("never: records the version without opening", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "never",
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
+    });
+
+    it("features: a patch update records the version silently", async () => {
+      await runVersionCheck({
+        currentVersion: "1.23.1",
+        lastSeenVersion: "1.23.0",
+        policy: "features",
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.23.1");
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
+    });
+
+    it("features: a minor update opens and stamps the timestamp", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "features",
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).toHaveBeenCalledTimes(1);
+      expect(persistOpenedAt).toHaveBeenCalledWith(now);
+    });
+
+    it("monthly: inside the window is fully inert so the version stays pending", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "monthly",
+        lastOpenedAt: now - 1000,
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).not.toHaveBeenCalled();
+      expect(openUrl).not.toHaveBeenCalled();
+      expect(persistOpenedAt).not.toHaveBeenCalled();
+    });
+
+    it("monthly: past the window opens and stamps the timestamp", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "monthly",
+        lastOpenedAt: now - MONTHLY_WINDOW_MS,
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).toHaveBeenCalledTimes(1);
+      expect(persistOpenedAt).toHaveBeenCalledWith(now);
+    });
+
+    it("defaults to always and stamps the timestamp when the delegate is provided", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        ecosystem: "stream-deck",
+        persist,
+        persistOpenedAt,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(openUrl).toHaveBeenCalledTimes(1);
+      expect(persistOpenedAt).toHaveBeenCalledWith(now);
+    });
+
+    it("opens fine without a persistOpenedAt delegate", async () => {
+      await runVersionCheck({
+        currentVersion: "1.24.0",
+        lastSeenVersion: "1.23.0",
+        policy: "always",
+        ecosystem: "stream-deck",
+        persist,
+        openUrl,
+        logger,
+        now,
+      });
+
+      expect(persist).toHaveBeenCalledWith("1.24.0");
+      expect(openUrl).toHaveBeenCalledTimes(1);
+    });
   });
 });
