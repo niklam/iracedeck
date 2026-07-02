@@ -136,7 +136,11 @@
             { "value": "starter", "label": "Starter", "controlType": "hold" },
             { "value": "enter-exit-tow", "label": "Enter/Exit/Tow", "controlType": "hold", "telemetryAware": true },
             { "value": "escape", "label": "Escape", "controlType": "hold" },
-            { "value": "pause-sim", "label": "Pause Sim" }
+            { "value": "pause-sim", "label": "Pause Sim" },
+            { "value": "handbrake", "label": "Handbrake", "controlType": "hold" },
+            { "value": "second-clutch", "label": "Second Clutch", "controlType": "hold" },
+            { "value": "second-up-shift", "label": "Second Up Shift" },
+            { "value": "second-down-shift", "label": "Second Down Shift" }
           ]
         },
         {

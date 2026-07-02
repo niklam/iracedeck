@@ -251,6 +251,34 @@
         "key": "carControlPauseSim"
       }
     },
+    "handbrake": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlHandbrake"
+      }
+    },
+    "second-clutch": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlSecondClutch"
+      }
+    },
+    "second-up-shift": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlSecondUpShift"
+      }
+    },
+    "second-down-shift": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "carControlSecondDownShift"
+      }
+    },
     "escape": {
       "method": "keybind"
     }

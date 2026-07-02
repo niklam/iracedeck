@@ -127,6 +127,10 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     starter: keybind("carControlStarter"),
     "enter-exit-tow": keybind("carControlEnterExitTow"),
     "pause-sim": keybind("carControlPauseSim"),
+    handbrake: keybind("carControlHandbrake"),
+    "second-clutch": keybind("carControlSecondClutch"),
+    "second-up-shift": keybind("carControlSecondUpShift"),
+    "second-down-shift": keybind("carControlSecondDownShift"),
     // Hardcoded Escape — no user binding.
     escape: keybindFixed(),
   }),
