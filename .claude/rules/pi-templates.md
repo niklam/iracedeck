@@ -115,7 +115,7 @@ Located in `packages/pi-components/partials/`:
 - **global-border-defaults.ejs** - Global border defaults (enable, width, color, glow) in accordion
 - **global-graphic-defaults.ejs** - Global graphic scale default (50-150%, default 100%) in accordion
 - **global-flag-flash.ejs** - Global flag-flash duration default (0-30 seconds, default 15, step 1; `0` = flash forever) in accordion. See issue #490.
-- **global-common-settings.ejs** - Global common settings (window focus, SimHub server) in accordion
+- **global-common-settings.ejs** - Global common settings (window focus, SimHub server, dual-press, replay/chat delays, What's New page preference, diagnostics) in accordion
 - **docs-link.ejs** - Documentation link to the action's page on iracedeck.com (conditional, hidden when no URL mapped). Opens in the default browser (see _External Links_ below).
 - **version.ejs** - Version footer with downloads link. Opens in the default browser (see _External Links_ below).
 

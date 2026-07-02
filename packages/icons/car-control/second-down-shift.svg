@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 46" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SHIFT DOWN"},"border":{"color":"#5a6a5a"}}</desc>
+
+    <polygon points="21,46 0,22 12,22 12,0 30,0 30,22 42,22" fill="{{graphic1Color}}" stroke="none"/>
+
+</svg>

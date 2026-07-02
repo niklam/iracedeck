@@ -39,7 +39,7 @@ deck-core adds global settings readers on top of the pure functions:
 - `scan-code-map.ts` — PS/2 scan code mapping
 - `iracing-hotkeys.ts` — iRacing hotkey presets
 - `unit-conversion.ts` — Fuel unit conversion utilities
-- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `buildChangelogUrl`, `runVersionCheck`); see `.claude/rules/global-settings.md`
+- `version-check.ts` — Startup version-upgrade detection + changelog opener (`shouldOpenChangelog`, `resolveChangelogDecision`, `buildChangelogUrl`, `runVersionCheck`), gated by the `changelogNotification` policy (always/features/monthly/never, issue #742); see `.claude/rules/global-settings.md`
 - `device-profiles.ts` — Stream Deck device + profile reference (issue #736): the `DeviceType` enum, `DEVICE_SPECS` (keys/grid/dials/touch), `DEVICE_SUPPORT` (iRaceDeck control + profile-template policy), `PROFILE_NAMES` / `PROFILE_TARGET_DEVICES` / `PROFILE_NAV_ACTIONS`, and lookup helpers. Canonical device-data source — pairs with `.claude/rules/profiles-and-devices.md` (Elgato-only)
 
 ## Build

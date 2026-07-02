@@ -3,11 +3,11 @@ title: Car Control
 description: Control car functions — starter, ignition, pit limiter, headlights, DRS, Push To Pass, escape, and more.
 sidebar:
   badge:
-    text: "10 modes"
+    text: "14 modes"
     variant: tip
 ---
 
-Quick access to essential car functions: toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape or pause the sim — all from a single button.
+Quick access to essential car functions: toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape, pause the sim, and use backup driver inputs (handbrake, second clutch, second shift) for when primary hardware fails — all from a single button.
 
 ## Modes
 
@@ -195,6 +195,74 @@ Pause the simulation.
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Shift+P`
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Handbrake
+
+Apply the handbrake while the button is held — a backup control for when your handbrake hardware fails mid-session.
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support; press and hold the dial to apply the handbrake, release to let go
+- **Default binding:** No default key binding — Handbrake has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Second Clutch
+
+Engage iRacing's Second Clutch while the button is held — a backup for a failed clutch pedal.
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support; press and hold the dial to engage the clutch, release to let go
+- **Default binding:** No default key binding — Second Clutch has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Second Up Shift
+
+Shift up a gear via iRacing's Second Up Shift control — a backup for a broken upshift paddle.
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — Second Up Shift has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
+- **Telemetry-aware icon:** No
+
+#### Settings
+
+- No additional settings
+
+---
+
+### Second Down Shift
+
+Shift down a gear via iRacing's Second Down Shift control — a backup for a broken downshift paddle.
+
+#### Details
+
+- **Method:** Key binding
+- **Dial:** No rotation support
+- **Default binding:** No default key binding — Second Down Shift has no default iRacing binding, so you must configure it in both iRacing and the Property Inspector
 - **Telemetry-aware icon:** No
 
 #### Settings
