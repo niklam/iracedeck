@@ -68,6 +68,18 @@ vi.mock("@iracedeck/icons/car-control/session-grid.svg", () => ({
 vi.mock("@iracedeck/icons/car-control/session-race.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">session-race</svg>',
 }));
+vi.mock("@iracedeck/icons/car-control/handbrake.svg", () => ({
+  default: "<svg>handbrake-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/second-clutch.svg", () => ({
+  default: "<svg>second-clutch-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/second-up-shift.svg", () => ({
+  default: "<svg>second-up-shift-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
+  default: "<svg>second-down-shift-icon</svg>",
+}));
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
@@ -221,8 +233,40 @@ describe("CarControl", () => {
       expect(CAR_CONTROL_GLOBAL_KEYS["escape"]).toBe("");
     });
 
-    it("should have exactly 10 entries", () => {
-      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(10);
+    it("should have correct mapping for headlight-flash", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["headlight-flash"]).toBe("carControlHeadlightFlash");
+    });
+
+    it("should have correct mapping for push-to-pass", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["push-to-pass"]).toBe("carControlPushToPass");
+    });
+
+    it("should have correct mapping for drs", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["drs"]).toBe("carControlDRS");
+    });
+
+    it("should have correct mapping for tear-off-visor", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["tear-off-visor"]).toBe("carControlTearOffVisor");
+    });
+
+    it("should have correct mapping for handbrake", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["handbrake"]).toBe("carControlHandbrake");
+    });
+
+    it("should have correct mapping for second-clutch", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["second-clutch"]).toBe("carControlSecondClutch");
+    });
+
+    it("should have correct mapping for second-up-shift", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["second-up-shift"]).toBe("carControlSecondUpShift");
+    });
+
+    it("should have correct mapping for second-down-shift", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["second-down-shift"]).toBe("carControlSecondDownShift");
+    });
+
+    it("should have exactly 14 entries", () => {
+      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(14);
     });
   });
 
@@ -793,6 +837,94 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+    });
+  });
+
+  describe("backup driver inputs (issue #183)", () => {
+    let action: CarControl;
+
+    beforeEach(() => {
+      action = new CarControl();
+    });
+
+    it("should generate valid data URIs with the default titles for all four modes", () => {
+      const expected: Record<string, string[]> = {
+        handbrake: ["HANDBRAKE"],
+        "second-clutch": ["2ND", "CLUTCH"],
+        "second-up-shift": ["2ND", "SHIFT UP"],
+        "second-down-shift": ["2ND", "SHIFT DOWN"],
+      };
+
+      for (const [control, labels] of Object.entries(expected)) {
+        const result = generateCarControlSvg({ control: control as any });
+
+        expect(result).toContain("data:image/svg+xml");
+        const decoded = decodeURIComponent(result);
+
+        for (const label of labels) {
+          expect(decoded).toContain(label);
+        }
+      }
+    });
+
+    it("should produce a distinct icon per mode", () => {
+      const controls = ["handbrake", "second-clutch", "second-up-shift", "second-down-shift"] as const;
+      const unique = new Set(controls.map((control) => generateCarControlSvg({ control })));
+
+      expect(unique.size).toBe(controls.length);
+    });
+
+    it("should hold the handbrake binding on keyDown and release on keyUp", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "handbrake" }) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlHandbrake");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should hold the second-clutch binding on keyDown and release on keyUp", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "second-clutch" }) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlSecondClutch");
+      expect(mockTapBinding).not.toHaveBeenCalled();
+
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should hold on dialDown and release on dialUp for handbrake", async () => {
+      await action.onDialDown(fakeEvent("action-1", { control: "handbrake" }) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlHandbrake");
+
+      await action.onDialUp(fakeEvent("action-1") as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
+    });
+
+    it("should tap the second-up-shift binding on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "second-up-shift" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("carControlSecondUpShift");
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should tap the second-down-shift binding on keyDown", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "second-down-shift" }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("carControlSecondDownShift");
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("should release a held handbrake on onWillDisappear", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "handbrake" }) as any);
+      await action.onWillDisappear(fakeEvent("action-1", { control: "handbrake" }) as any);
+
+      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
     });
   });
 

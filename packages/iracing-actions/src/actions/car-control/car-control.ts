@@ -28,10 +28,14 @@ import {
 import enterCarIcon from "@iracedeck/icons/car-control/enter-car.svg";
 import escapeIcon from "@iracedeck/icons/car-control/escape.svg";
 import exitCarIcon from "@iracedeck/icons/car-control/exit-car.svg";
+import handbrakeIcon from "@iracedeck/icons/car-control/handbrake.svg";
 import headlightFlashIcon from "@iracedeck/icons/car-control/headlight-flash.svg";
 import ignitionIcon from "@iracedeck/icons/car-control/ignition.svg";
 import pauseSimIcon from "@iracedeck/icons/car-control/pause-sim.svg";
 import resetToPitsIcon from "@iracedeck/icons/car-control/reset-to-pits.svg";
+import secondClutchIcon from "@iracedeck/icons/car-control/second-clutch.svg";
+import secondDownShiftIcon from "@iracedeck/icons/car-control/second-down-shift.svg";
+import secondUpShiftIcon from "@iracedeck/icons/car-control/second-up-shift.svg";
 import sessionGridIcon from "@iracedeck/icons/car-control/session-grid.svg";
 import sessionQualifyIcon from "@iracedeck/icons/car-control/session-qualify.svg";
 import sessionRaceIcon from "@iracedeck/icons/car-control/session-race.svg";
@@ -69,7 +73,11 @@ type CarControlType =
   | "push-to-pass"
   | "drs"
   | "tear-off-visor"
-  | "escape";
+  | "escape"
+  | "handbrake"
+  | "second-clutch"
+  | "second-up-shift"
+  | "second-down-shift";
 
 /** @internal Exported for testing */
 export type EnterExitTowState = "enter-car" | "exit-car" | "reset-to-pits" | "tow";
@@ -95,6 +103,10 @@ const CAR_CONTROL_STATIC_TITLES: Partial<Record<CarControlType, string>> = {
   "headlight-flash": "FLASH\nHEADLIGHT",
   "tear-off-visor": "VISOR\nTEAR OFF",
   escape: "ESCAPE",
+  handbrake: "HANDBRAKE",
+  "second-clutch": "2ND\nCLUTCH",
+  "second-up-shift": "2ND\nSHIFT UP",
+  "second-down-shift": "2ND\nSHIFT DOWN",
 };
 
 const DEFAULT_PIT_SPEED = 80;
@@ -111,7 +123,13 @@ const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>([
 ]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
-const HOLD_CONTROLS = new Set<CarControlType>(["starter", "headlight-flash", "enter-exit-tow"]);
+const HOLD_CONTROLS = new Set<CarControlType>([
+  "starter",
+  "headlight-flash",
+  "enter-exit-tow",
+  "handbrake",
+  "second-clutch",
+]);
 
 /** Hardcoded ESC key combination (not configurable — ESC is always ESC in iRacing) */
 const ESC_KEY = { key: "escape", code: "Escape" } as const;
@@ -206,6 +224,10 @@ const STATIC_CAR_CONTROL_ICONS: Partial<Record<CarControlType, string>> = {
   "headlight-flash": headlightFlashIcon,
   "tear-off-visor": tearOffVisorIcon,
   escape: escapeIcon,
+  handbrake: handbrakeIcon,
+  "second-clutch": secondClutchIcon,
+  "second-up-shift": secondUpShiftIcon,
+  "second-down-shift": secondDownShiftIcon,
 };
 
 /**
@@ -221,9 +243,13 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "pause-sim": "carControlPauseSim",
   "headlight-flash": "carControlHeadlightFlash",
   "push-to-pass": "carControlPushToPass",
-  drs: "carControlDrs",
+  drs: "carControlDRS",
   "tear-off-visor": "carControlTearOffVisor",
   escape: "",
+  handbrake: "carControlHandbrake",
+  "second-clutch": "carControlSecondClutch",
+  "second-up-shift": "carControlSecondUpShift",
+  "second-down-shift": "carControlSecondDownShift",
 };
 
 /**
@@ -438,6 +464,10 @@ const CarControlSettings = CommonSettings.extend({
       "enter-exit-tow",
       "escape",
       "pause-sim",
+      "handbrake",
+      "second-clutch",
+      "second-up-shift",
+      "second-down-shift",
     ])
     .default("pit-speed-limiter"),
   autoHold: z
@@ -612,8 +642,10 @@ export function generateCarControlSvg(
 /**
  * Car Control Action
  * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause,
- * headlight flash, push to pass, DRS, tear off visor, escape).
- * Starter, headlight flash, and enter/exit/tow use long-press (hold while pressed); all others use tap.
+ * headlight flash, push to pass, DRS, tear off visor, escape, and backup inputs: handbrake,
+ * second clutch, second up/down shift).
+ * Starter, headlight flash, enter/exit/tow, handbrake, and second clutch use long-press
+ * (hold while pressed); all others use tap.
  * Escape uses direct keyboard (hardcoded ESC key) with optional auto-hold.
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
