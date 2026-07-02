@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Quick access to essential car functions: toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape, pause the sim, and backup driver inputs (handbrake, second clutch, second shift) for when primary hardware fails — all from a single button.
+Quick access to essential car functions: toggle the pit speed limiter, headlights, Push To Pass, DRS, starter, ignition, or tear off your visor — plus exit the car with Escape, pause the sim, and use backup driver inputs (handbrake, second clutch, second shift) for when primary hardware fails — all from a single button.
 
 ## Modes
 
