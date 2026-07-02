@@ -650,11 +650,17 @@ onGlobalSettingsChange((settings) => {
     // No-op for pre-release builds and same/older versions. The VSD Craft
     // protocol exposes no device-type id, so `type` is omitted; opening the
     // browser is best-effort (harmless if the Stream Dock host ignores it).
+    // The `changelogNotification` preference (issue #742) decides whether a
+    // due changelog opens, is recorded silently, or stays pending (monthly
+    // window, anchored on the passthrough `_lastChangelogOpenedAt` key).
     void runVersionCheck({
       currentVersion: getPluginVersion(),
       lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      policy: settings.changelogNotification,
+      lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
       ecosystem: getPluginPlatform(),
       persist: (version) => updateGlobalSettings({ _lastSeenVersion: version }),
+      persistOpenedAt: (timestamp) => updateGlobalSettings({ _lastChangelogOpenedAt: timestamp }),
       openUrl: (url) => adapter.openUrl(url),
       logger: adapter.createLogger("VersionCheck"),
     });

@@ -284,8 +284,18 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issue #680)
-export { CHANGELOG_BASE_URL, buildChangelogUrl, runVersionCheck, shouldOpenChangelog } from "./version-check.js";
+// Version-check / changelog opener (issues #680, #742)
+export {
+  buildChangelogUrl,
+  CHANGELOG_BASE_URL,
+  CHANGELOG_NOTIFICATION_POLICIES,
+  type ChangelogDecision,
+  type ChangelogNotificationPolicy,
+  MONTHLY_WINDOW_MS,
+  resolveChangelogDecision,
+  runVersionCheck,
+  shouldOpenChangelog,
+} from "./version-check.js";
 
 // Device + profile reference (issue #736)
 export {

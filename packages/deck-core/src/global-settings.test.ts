@@ -539,6 +539,22 @@ describe("dualPressDirections (issue #540)", () => {
   });
 });
 
+describe("changelogNotification (issue #742)", () => {
+  it("defaults to always when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe("always");
+  });
+
+  it.each(["always", "features", "monthly", "never"])("accepts %s", (value) => {
+    const parsed = GlobalSettingsSchema.parse({ changelogNotification: value }) as Record<string, unknown>;
+    expect(parsed.changelogNotification).toBe(value);
+  });
+
+  it("rejects unknown enum values", () => {
+    expect(() => GlobalSettingsSchema.parse({ changelogNotification: "sometimes" })).toThrow();
+  });
+});
+
 describe("fastestLapSearchDelayMs (issue #577)", () => {
   it("defaults to 400 when not specified", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
