@@ -37,19 +37,14 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 - **Long Press** (held dial button past the **Long-press threshold** — the global setting, default 500 ms — with no turn, fires on `dialUp`): Runs the configured **Long Press** action. Default **Toggle Autofuel** (blind-safe for VR). Available on all platforms.
 - **Push + Turn** (a pressed rotation): Dispatches the configured bidirectional pair (clockwise → `cw` action, counter-clockwise → `ccw`). The Fuel Dial offers **Full / No Fuel** (CW fills the tank to full, CCW empties it — no fuel) or **None** (default). The pair convention is reusable by future dial actions (e.g. Traction Control coarse/fine).
 - Press, long-press, and push+turn are classified at `dialUp` (a duration comparison, with a guard so a push+turn pre-empts both press actions) — there is no mid-hold timer.
-- The touch-strip title and keypad title are a **mode/fuel-fill cue**: `Add Fuel` / `Fuel Target` in manual mode, `Autofuel` in autofuel mode, `FUEL OFF` when fuel-fill is off, `AUTO OFF` when autofuel is unavailable.
+- The touch-strip slot carries a top **status band**: green `REFUEL: ON` / red `REFUEL: OFF` in manual mode, `AUTOFUEL: ON` / `AUTOFUEL: OFF` in autofuel mode, and a gray `AUTOFUEL: N/A` when autofuel is engaged but unavailable (`REFUEL: N/A` when the state is unknown).
 
 ### Touchscreen (Elgato only)
 
-- Always shows a live readout (per-mode, see below) with one continuous two-segment fuel bar over the tank capacity: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fuel-fill is on, gray when off). In **manual Target Amount** mode the add is computed from the dialed target and the live fuel level; in **manual Add Amount** and **autofuel** modes the add comes from `PitSvFuel` (the live pit request, so the bar matches the in-sim black box). Only the outer corners are rounded; the current↔add boundary is flush. Small on-bar labels show the current amount (left, dark over the light current segment) and the amount to add (right, white over the green/gray add segment); a label is omitted when its segment is too narrow to hold it. In manual **Target Amount** mode a thin **red** vertical target line marks the target total, spanning the full bar height (confined to the bar); the target line is suppressed in autofuel mode.
+- The whole 200×100 strip slot is **drawn by the plugin as one pixmap** (the encoder layout `layouts/fuel-dial.json` is a single full-canvas item — the built-in layout text items cannot have a colored background): the status band across the top, a live readout (per-mode, see below), and one continuous two-segment fuel bar over the tank capacity: the current fuel as a neutral first segment and the fuel-to-add butted onto it (green when fueling is on, gray otherwise — the loud state cue is the band, not the bar). In **manual Target Amount** mode the add is computed from the dialed target and the live fuel level; in **manual Add Amount** and **autofuel** modes the add comes from `PitSvFuel` (the live pit request, so the bar matches the in-sim black box). Only the outer corners are rounded; the current↔add boundary is flush. Small on-bar labels show the current amount (left, dark over the light current segment) and the amount to add (right, white over the green/gray add segment); a label is omitted when its segment is too narrow to hold it. In manual **Target Amount** mode a thin **red** vertical target line marks the target total, spanning the full bar height (confined to the bar); the target line is suppressed in autofuel mode.
 - The bar and readout refresh every 5 seconds as a heartbeat **and immediately when the displayed state changes** (the fuel-fill color flips, or a displayed value moves), throttled to stay within the touch-strip update cap — so the readout reacts fast to telemetry rather than lagging the 5-second timer. They also update immediately on any rotate/press/settings change.
 - **Tap Display** (touch-strip tap): Runs the configured **Tap Display** action (independent of the dial-button Push action). Default **None** (VR safety); the readout still shows.
 - **Long Touch** (touch-strip long tap): Runs the configured **Long Touch** action. Default **None** (VR safety).
-
-### Button Press (keypad)
-
-- The icon shows the mode/fuel-fill cue title, the same per-mode readout, and the continuous two-segment bar (with on-bar labels, and the red target line in manual Target Amount mode). No rotation support on a plain keypad.
-- **Press**: Runs the configured Push action.
 
 ### Platform differences
 
@@ -58,7 +53,8 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 | Elgato Stream Deck+        | Yes    | Yes         | Yes                                    | Yes  | Yes                                                                   |
 | Mirabox knob               | Yes    | Yes         | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
 | Ulanzi knob (Dial / D200X) | Yes    | Yes         | No                                     | Yes  | Yes (degrades to a short press if the knob reports release instantly) |
-| Plain keypad               | No     | No          | No                                     | Yes  | No (no dial button)                                                   |
+
+The Fuel Dial is **encoder-only** — it cannot be placed on a keypad button (the manifests declare only `Encoder` / `Knob` controllers). Keypad fuel control is Fuel Service's job.
 
 ## Settings
 
@@ -66,7 +62,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 | ----------- | -------- | ------------------- | ----------------------------------------------------------------------------- |
 | Mode        | Dropdown | Add Amount          | Whether a manual-mode turn sets the amount to add or the target total         |
 | Step Size   | Number   | 1                   | Amount the dialed value changes per detent, in the displayed unit             |
-| Push        | Dropdown | Toggle Fueling      | What a short dial press (or keypad press) does                                |
+| Push        | Dropdown | Toggle Fueling      | What a short dial press does                                                  |
 | Long Press  | Dropdown | Toggle Autofuel     | What a long dial press does                                                   |
 | Push + Turn | Dropdown | None                | What a pressed rotation does — Full / No Fuel (CW fills, CCW empties) or None |
 | Tap Display | Dropdown | None                | What a touch-strip tap does, or None to disable taps (Elgato only)            |
@@ -76,7 +72,7 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 ### Mode Options
 
 - **Add Amount** - A manual-mode turn sets the amount of fuel to add over the full tank range. The add is fixed (it does not change as fuel burns); the readout shows `+<add> = <total>` with the total reflecting live burn
-- **Target Amount** - A manual-mode turn sets the total you want in the tank after the stop, as a whole integer in the displayed unit. The amount to add (target − current, rounded up so you never finish under target) is recomputed continuously as fuel burns and the request is updated whenever the whole-unit amount changes, **while fuel-fill is on**; while fuel-fill is off the amount is **not** updated (rotating still plans the new target, and turning fueling on or pressing sends it). A red vertical target line marks the target on the bar (the on-strip/keypad title cue for this mode is still `Fuel Target`)
+- **Target Amount** - A manual-mode turn sets the total you want in the tank after the stop, as a whole integer in the displayed unit. The amount to add (target − current, rounded up so you never finish under target) is recomputed continuously as fuel burns and the request is updated whenever the whole-unit amount changes, **while fuel-fill is on**; while fuel-fill is off the amount is **not** updated (rotating still plans the new target, and turning fueling on or pressing sends it). A red vertical target line marks the target on the bar (the readout for this mode shows `→ <target>`)
 
 ### Gesture Action Options (Push, Long Press, Tap Display, Long Touch)
 
@@ -99,16 +95,18 @@ The **Toggle Autofuel** gesture taps `fuelServiceToggleAutofuel` to flip between
 
 ## Icon States
 
-The Fuel Dial icon is visually distinguishable from the Fuel Service icons. It shows the mode/fuel-fill cue title, the per-mode readout, and a continuous two-segment fuel bar beneath it (current fuel + fuel-to-add over capacity) with on-bar labels.
+The Fuel Dial has no keypad icon — its display is the self-drawn 200×100 touch-strip slot (Elgato Stream Deck+ only). A full-width **status band** across the top carries the tri-state fueling cue — green / red / gray fill with white text, the same color language as the toggle buttons' status bars but at the top of the slot (#728). Color is always paired with the band text, never color alone. Below the band sit the per-mode readout and a continuous two-segment fuel bar (current fuel + fuel-to-add over capacity, deliberately subtle) with on-bar labels. Text is positioned by explicit baselines — the deck app's QT SVG renderer ignores `dominant-baseline`.
 
-| State                         | Icon                                                                                           |
-| ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| Manual Add Amount, fuel on    | "Add Fuel" title, `+<add> = <total>`, neutral current segment + green add segment              |
-| Manual Target Amount, fuel on | "Fuel Target" title, `→ <target>`, two-segment bar + red vertical target line (within the bar) |
-| Fuel-fill off (either mode)   | "FUEL OFF" title, readout shown, gray add segment (a text cue, not just gray)                  |
-| Autofuel on                   | "Autofuel" title, `AUTO → <add> <unit>` (add sourced from `PitSvFuel`), no red target line     |
-| Autofuel unavailable          | "AUTO OFF" title (red), dash readout, current segment only (`dpFuelAutoFillEnabled` is false)  |
-| Tank capacity unknown         | Readout shown; the bar falls back to the requested span                                        |
+| State                         | Strip slot                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Manual, fueling on            | Green `REFUEL: ON` band, `+<add> = <total>` or `→ <target>` readout, neutral current segment + green add segment |
+| Manual, fueling off           | Red `REFUEL: OFF` band, readout shown, gray add segment                                                          |
+| Manual Target Amount          | Adds a red vertical target line to the bar (within the bar)                                                      |
+| Autofuel on/off               | Green `AUTOFUEL: ON` / red `AUTOFUEL: OFF` band, `AUTO → <add> <unit>` readout (from `PitSvFuel`), no target line |
+| Autofuel unavailable          | Gray `AUTOFUEL: N/A` band, dash readout, current segment only (`dpFuelAutoFillEnabled` is false)                 |
+| State unknown (no telemetry)  | Gray `REFUEL: N/A` band                                                                                          |
+| Tank capacity unknown         | Readout shown; the bar falls back to the requested span                                                          |
+| Autofuel binding missing      | Slot dimmed with the centered #612 warning triangle (a gesture slot needs the unset autofuel binding)            |
 
 ## Telemetry Integration
 

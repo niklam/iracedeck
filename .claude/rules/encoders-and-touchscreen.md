@@ -6,8 +6,9 @@ How Stream Deck+ dials and the LCD touch strip work, what Mirabox knobs actually
 
 The dial-support rebuild (planned in #640) **has begun**. `fuel-dial` is the first and reference consumer:
 
-- **Elgato** declares `"Controllers": ["Keypad", "Encoder"]` with an `Encoder` block whose `layout` points at a committed custom touch layout (`layouts/fuel-dial.json`) and a `TriggerDescription` for Rotate/Push/Touch.
-- **Mirabox** declares `"Controllers": ["Keypad", "Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip (per the Mirabox findings below).
+- **Elgato** declares `"Controllers": ["Encoder"]` (encoder-only — no keypad placement; #728) with an `Encoder` block whose `layout` points at a committed custom touch layout (`layouts/fuel-dial.json`, a single full-canvas 200×100 `box` pixmap the action draws itself) and a `TriggerDescription` for Rotate/Push/Touch.
+- **Mirabox** declares `"Controllers": ["Knob"]` with **no** `Encoder`/`Knob` config block and **no** touch strip (per the Mirabox findings below).
+- A dial action may still declare `Keypad` alongside the encoder when a keypad fallback makes sense (Setup Brakes Dial does); `fuel-dial` deliberately does not — Fuel Service owns keypad fuel control.
 
 There is no longer a blanket prohibition on dial manifests — **follow the rules below and use `fuel-dial` as the reference** when adding a dial-capable action. The "Encoder Support" section in `.claude/rules/stream-deck-actions.md` points here for the per-action mechanics.
 
@@ -43,5 +44,5 @@ For the bundled `@iracedeck/iracing-actions` sources to resolve that constant, e
 3. **Scale steps by `ticks`**, never count events; clamp if a single event's magnitude would overshoot.
 4. **Touch strip is Elgato-only.** Touch input (`onTouchTap` / `IDeckTouchTapEvent`) and feedback (`setFeedback`/`setFeedbackLayout`) only do anything on Elgato; the Mirabox/Ulanzi adapters no-op feedback and deliver no touch tap. Gate touch/feedback work behind `__FEATURE_DIAL_FEEDBACK__`. Default the touch slots (Tap Display, Long Touch) to **None** so a VR driver who can't see the strip isn't surprised by a tap.
 5. **Throttle feedback to ≤ 10 `setFeedback` calls/second per dial.** `fuel-dial` coalesces a continuous spin into a leading/trailing throttled flush so a fast rotation can't exceed the cap.
-6. Declaring an action as `["Keypad", "Encoder"]` (Elgato) / `["Keypad", "Knob"]` (Mirabox) means `willAppear` fires for both surfaces — branch on `ev.action.isKey()` / `ev.action.isDial()`, and remember encoder actions cannot join multi-actions.
+6. Declaring an action as `["Keypad", "Encoder"]` (Elgato) / `["Keypad", "Knob"]` (Mirabox) means `willAppear` fires for both surfaces — branch on `ev.action.isKey()` / `ev.action.isDial()`. Declaring only `["Encoder"]` / `["Knob"]` (fuel-dial, #728) makes the action dial-only — no key branch is needed. Either way, encoder actions cannot join multi-actions.
 7. Before relying on any Mirabox knob support on real hardware, run the hardware-test checklist in `docs/reference/stream-deck-plus-encoders.md` §8 on a real N3/N4-class device; the protocol delivers rotation, press, and release, but no commit/test has yet recorded an observed knob event through our adapter.

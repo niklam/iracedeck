@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildDialReadout,
-  buildDialTitle,
-  buildTitleText,
+  buildRefuelBandText,
   buildTriggerDescription,
   buildValueText,
   clampTargetLtr,
@@ -12,13 +11,14 @@ import {
   formatDisplayValue,
   FUEL_DIAL_UUID,
   FuelDial,
-  generateFuelDialSvg,
   readEffectiveMaxLtr,
   readFuelLevel,
   readPitSvFuel,
   renderFuelBarSvg,
+  renderStripCanvasSvg,
   resolveDialDisplayMode,
   resolveDisplayUnits,
+  resolveFuelFillState,
   roundedBarPath,
   roundToWholeDisplayLtr,
 } from "./fuel-dial.js";
@@ -51,10 +51,6 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   DisplayUnits: { English: 0, Metric: 1 },
   PitSvFlags: { FuelFill: 0x0010 },
   hasFlag: (value: number | undefined, flag: number) => ((value ?? 0) & flag) === flag,
-}));
-
-vi.mock("../../../icons/fuel-dial.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">{{titleContent}}{{iconContent}} {{backgroundColor}}</svg>',
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -165,21 +161,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
 }));
 
-/** Fake key (keypad) action context. */
-function keyContext(id: string) {
-  return {
-    id,
-    isKey: () => true,
-    isDial: () => false,
-    setImage: vi.fn().mockResolvedValue(undefined),
-    setTitle: vi.fn().mockResolvedValue(undefined),
-    setSettings: vi.fn().mockResolvedValue(undefined),
-    setFeedback: vi.fn().mockResolvedValue(undefined),
-    setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
-    setTriggerDescription: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
 /** Fake dial (encoder) action context. */
 function dialContext(id: string) {
   return {
@@ -204,15 +185,17 @@ function rotateEvent(
   return { action, payload: { settings, ticks, pressed } };
 }
 
-function basicEvent(
-  action: ReturnType<typeof dialContext> | ReturnType<typeof keyContext>,
-  settings: Record<string, unknown> = {},
-) {
+function basicEvent(action: ReturnType<typeof dialContext>, settings: Record<string, unknown> = {}) {
   return { action, payload: { settings } };
 }
 
 function touchTapEvent(action: ReturnType<typeof dialContext>, settings: Record<string, unknown>, hold: boolean) {
   return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
+}
+
+/** Decodes the strip's full-canvas pixmap (the `box` feedback key) to raw SVG. */
+function stripCanvas(payload: { box?: string } | undefined): string {
+  return decodeURIComponent(String(payload?.box ?? ""));
 }
 
 /** Pulls the telemetry callback registered by onWillAppear via the mocked subscribe. */
@@ -465,41 +448,57 @@ describe("fuel-dial pure helpers", () => {
 
   describe("renderFuelBarSvg", () => {
     it("renders the add segment green when fuel on, current segment neutral", () => {
-      const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1);
+      const svg = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1);
 
       expect(svg).toContain("<svg");
       expect(svg).toContain("#2ecc71"); // green add segment
       expect(svg).toContain("#9aa7b4"); // neutral current segment color
     });
 
-    it("renders the add segment gray when fuel off", () => {
-      const svg = renderFuelBarSvg(45, 20, 90, false, 184, 30, 1);
+    it("renders the add segment gray when fuel off — the top band carries the loud state", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, "off", 184, 30, 1);
 
-      expect(svg).toContain("#888888");
+      expect(svg).toMatch(/<path[^>]*fill="#888888"/);
       expect(svg).not.toContain("#2ecc71");
+      expect(svg).not.toContain("#e74c3c");
+    });
+
+    it("renders the add segment gray when the fueling state is unknown (n/a)", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, "na", 184, 30, 1);
+
+      expect(svg).toMatch(/<path[^>]*fill="#888888"/);
+      expect(svg).not.toContain("#2ecc71");
+      expect(svg).not.toContain("#e74c3c");
+    });
+
+    it("draws no outline around the track (the status band is the indicator)", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, "off", 184, 30, 1);
+
+      expect(svg).not.toContain('fill="none"');
+      expect(svg).not.toContain("stroke=");
     });
 
     it("omits the add segment when there is nothing to add", () => {
-      const svg = renderFuelBarSvg(45, 0, 90, true, 184, 30, 1);
+      const svg = renderFuelBarSvg(45, 0, 90, "on", 184, 30, 1);
 
-      expect(svg).not.toContain("#2ecc71");
+      expect(svg).not.toMatch(/<path[^>]*fill="#2ecc71"/);
     });
 
     it("uses paths for the segments (rounded outer corners, square boundary) — no clipPath", () => {
-      const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1);
+      const svg = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1);
 
       expect(svg).toContain("<path");
       expect(svg).not.toContain("clipPath");
     });
 
     it("renders on-bar amount labels (current LEFT dark, +add RIGHT white)", () => {
-      const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1);
+      const svg = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1);
 
       expect(svg).toContain('text-anchor="start"');
       expect(svg).toContain('text-anchor="end"');
       expect(svg).toContain(">45<"); // current amount
       expect(svg).toContain(">+20<"); // to-be-added amount
-      // The +add label is white (sits over the green/gray add segment); the
+      // The +add label is white (sits over the green/red/gray add segment); the
       // current label is dark (sits over the light current segment).
       expect(svg).toContain('fill="#ffffff"'); // +add label
       expect(svg).toContain('fill="#0d1117"'); // current label
@@ -507,7 +506,7 @@ describe("fuel-dial pure helpers", () => {
 
     it("omits a segment label when its segment is too narrow to hold it", () => {
       // Tiny add (1L of a 90L tank) -> add segment far too narrow for "+1".
-      const svg = renderFuelBarSvg(45, 1, 90, true, 184, 30, 1);
+      const svg = renderFuelBarSvg(45, 1, 90, "on", 184, 30, 1);
 
       // The current segment is wide enough; its label shows.
       expect(svg).toContain(">45<");
@@ -521,7 +520,7 @@ describe("fuel-dial pure helpers", () => {
       // more fuel burns before the stop. The bar must still cap the green segment to
       // the track — never overflow past the right edge.
       const widthPx = 184;
-      const svg = renderFuelBarSvg(41.9, 49, 90, true, widthPx, 30, 1);
+      const svg = renderFuelBarSvg(41.9, 49, 90, "on", widthPx, 30, 1);
 
       // Every path's geometry stays within [0, widthPx]: pull all x-like numeric
       // coordinates from the segment paths and assert none exceeds the track width
@@ -542,21 +541,27 @@ describe("fuel-dial pure helpers", () => {
     });
 
     it("draws a RED target line ONLY when a target is supplied (fill-to mode)", () => {
-      const withTarget = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1, 65);
+      const withTarget = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1, 65);
 
       // The target marker is a red rect.
       expect(withTarget).toContain('fill="#e74c3c"');
     });
 
     it("omits the target line in add-amount mode (no target supplied)", () => {
-      const withoutTarget = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1);
+      const withoutTarget = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1);
 
       // No red marker rect when no target is supplied.
       expect(withoutTarget).not.toContain('fill="#e74c3c"');
     });
 
+    it("keeps the target marker RED when fueling is off (the gray add segment gives it contrast)", () => {
+      const svg = renderFuelBarSvg(45, 20, 90, "off", 184, 30, 1, 65);
+
+      expect(svg).toMatch(/<rect[^>]*fill="#e74c3c"/);
+    });
+
     it("confines the target line to the full bar height (no overhang, unpadded viewBox)", () => {
-      const svg = renderFuelBarSvg(45, 20, 90, true, 184, 30, 1, 65);
+      const svg = renderFuelBarSvg(45, 20, 90, "on", 184, 30, 1, 65);
 
       // The viewBox spans exactly the bar (no vertical padding) so the track +
       // segments fill the full pixmap rect.
@@ -625,60 +630,24 @@ describe("fuel-dial pure helpers", () => {
     });
   });
 
-  describe("generateFuelDialSvg", () => {
-    it("add-amount: produces a data URI containing the +add = total readout and mode-aware title", () => {
-      // current 45, add 20, max 90 -> total 65
-      const result = generateFuelDialSvg({ dialMode: "add-amount" } as never, "manual", 45, 20, 90, 1, true, 65);
-      const decoded = decodeURIComponent(result);
-
-      expect(result).toContain("data:image/svg+xml");
-      expect(decoded).toContain("+20 = 65 L");
-      // Mode-aware title replaces the static "FUEL".
-      expect(decoded).toContain("Add Fuel");
+  describe("buildRefuelBandText", () => {
+    it("reads REFUEL: ON / REFUEL: OFF in manual mode", () => {
+      expect(buildRefuelBandText("manual", "on")).toBe("REFUEL: ON");
+      expect(buildRefuelBandText("manual", "off")).toBe("REFUEL: OFF");
     });
 
-    it("fill-to: shows the integer target with an arrow and the Fuel Target title", () => {
-      const result = generateFuelDialSvg({ dialMode: "fill-to" } as never, "manual", 45, 20, 90, 1, true, 65);
-      const decoded = decodeURIComponent(result);
-
-      expect(decoded).toContain("→ 65 L");
-      expect(decoded).toContain("Fuel Target");
+    it("reads REFUEL: N/A when the manual fueling state is unknown", () => {
+      expect(buildRefuelBandText("manual", "na")).toBe("REFUEL: N/A");
     });
 
-    it("renders total even when capacity unknown (add-amount, no cap)", () => {
-      const result = generateFuelDialSvg(
-        { dialMode: "add-amount" } as never,
-        "manual",
-        45,
-        20,
-        undefined,
-        1,
-        false,
-        65,
-      );
-      const decoded = decodeURIComponent(result);
-
-      // total still computed (no cap) = 65
-      expect(decoded).toContain("+20 = 65 L");
+    it("reads AUTOFUEL: ON / AUTOFUEL: OFF in autofuel mode", () => {
+      expect(buildRefuelBandText("autofuel", "on")).toBe("AUTOFUEL: ON");
+      expect(buildRefuelBandText("autofuel", "off")).toBe("AUTOFUEL: OFF");
     });
 
-    it("draws the #612 binding-missing overlay only when bindingMissing is set", () => {
-      const without = decodeURIComponent(
-        generateFuelDialSvg({ dialMode: "add-amount" } as never, "manual", 45, 20, 90, 1, true, 65),
-      );
-      const withWarn = decodeURIComponent(
-        generateFuelDialSvg({ dialMode: "add-amount" } as never, "manual", 45, 20, 90, 1, true, 65, true),
-      );
-
-      expect(without).not.toContain("binding-warning");
-      expect(withWarn).toContain("binding-warning");
-    });
-  });
-
-  describe("buildTitleText", () => {
-    it("is mode-aware: Add Fuel vs Fuel Target", () => {
-      expect(buildTitleText("add-amount")).toBe("Add Fuel");
-      expect(buildTitleText("fill-to")).toBe("Fuel Target");
+    it("reads AUTOFUEL: N/A when autofuel is engaged but unavailable", () => {
+      expect(buildRefuelBandText("autofuel-off", "na")).toBe("AUTOFUEL: N/A");
+      expect(buildRefuelBandText("autofuel-off", "on")).toBe("AUTOFUEL: N/A");
     });
   });
 
@@ -701,24 +670,21 @@ describe("fuel-dial pure helpers", () => {
     });
   });
 
-  describe("buildDialTitle", () => {
-    it("shows the manual mode names when fuel-fill is on", () => {
-      expect(buildDialTitle("manual", "add-amount", true)).toBe("Add Fuel");
-      expect(buildDialTitle("manual", "fill-to", true)).toBe("Fuel Target");
+  describe("resolveFuelFillState", () => {
+    it("is on/off from the live fuel-fill checkbox", () => {
+      expect(resolveFuelFillState("manual", { PitSvFlags: FUEL_FILL } as never)).toBe("on");
+      expect(resolveFuelFillState("manual", { PitSvFlags: 0 } as never)).toBe("off");
+      expect(resolveFuelFillState("autofuel", { PitSvFlags: FUEL_FILL } as never)).toBe("on");
+      expect(resolveFuelFillState("autofuel", { PitSvFlags: 0 } as never)).toBe("off");
     });
 
-    it("shows Autofuel in autofuel mode when fuel-fill is on", () => {
-      expect(buildDialTitle("autofuel", "add-amount", true)).toBe("Autofuel");
+    it("is n/a when there is no telemetry (mirrors Fuel Service)", () => {
+      expect(resolveFuelFillState("manual", null)).toBe("na");
     });
 
-    it("shows FUEL OFF when fuel-fill is off (either mode)", () => {
-      expect(buildDialTitle("manual", "add-amount", false)).toBe("FUEL OFF");
-      expect(buildDialTitle("autofuel", "fill-to", false)).toBe("FUEL OFF");
-    });
-
-    it("shows AUTO OFF when autofuel is unavailable, regardless of fuel-fill", () => {
-      expect(buildDialTitle("autofuel-off", "add-amount", true)).toBe("AUTO OFF");
-      expect(buildDialTitle("autofuel-off", "add-amount", false)).toBe("AUTO OFF");
+    it("is n/a when autofuel is engaged but unavailable, regardless of the checkbox", () => {
+      expect(resolveFuelFillState("autofuel-off", { PitSvFlags: FUEL_FILL } as never)).toBe("na");
+      expect(resolveFuelFillState("autofuel-off", { PitSvFlags: 0 } as never)).toBe("na");
     });
   });
 
@@ -737,21 +703,68 @@ describe("fuel-dial pure helpers", () => {
     });
   });
 
-  describe("generateFuelDialSvg — autofuel modes", () => {
-    it("autofuel: renders the AUTO readout and Autofuel title, no red target line", () => {
-      const result = generateFuelDialSvg({ dialMode: "add-amount" } as never, "autofuel", 45, 20, 90, 1, true, 65);
-      const decoded = decodeURIComponent(result);
+  describe("renderStripCanvasSvg", () => {
+    it("is a full 200×100 canvas with the status band, readout, and bar", () => {
+      const svg = renderStripCanvasSvg("manual", "add-amount", "on", 45, 20, 65, 65, 90, 1);
 
-      expect(decoded).toContain("AUTO → 20 L");
-      expect(decoded).toContain("Autofuel");
-      expect(decoded).not.toContain('fill="#e74c3c"');
+      expect(svg).toContain('viewBox="0 0 200 100"');
+      // Green band with the REFUEL: ON cue.
+      expect(svg).toMatch(/<path[^>]*fill="#2ecc71"/);
+      expect(svg).toContain("REFUEL: ON");
+      // Readout and the two-segment bar.
+      expect(svg).toContain(">+20 = 65 L<");
+      expect(svg).toContain("#9aa7b4");
     });
 
-    it("autofuel-off: renders the AUTO OFF cue", () => {
-      const result = generateFuelDialSvg({ dialMode: "add-amount" } as never, "autofuel-off", 45, 0, 90, 1, true, 65);
-      const decoded = decodeURIComponent(result);
+    it("draws a red REFUEL: OFF band when fueling is off", () => {
+      const svg = renderStripCanvasSvg("manual", "add-amount", "off", 45, 20, 65, 65, 90, 1);
 
-      expect(decoded).toContain("AUTO OFF");
+      expect(svg).toMatch(/<path[^>]*fill="#e74c3c"/);
+      expect(svg).toContain("REFUEL: OFF");
+      expect(svg).not.toContain("#2ecc71");
+    });
+
+    it("draws the red target line in manual fill-to mode only", () => {
+      const fillTo = renderStripCanvasSvg("manual", "fill-to", "on", 45, 20, 65, 65, 90, 1);
+      const addMode = renderStripCanvasSvg("manual", "add-amount", "on", 45, 20, 65, 65, 90, 1);
+      const autofuel = renderStripCanvasSvg("autofuel", "add-amount", "on", 45, 20, 65, 65, 90, 1);
+
+      expect(fillTo).toMatch(/<rect[^>]*fill="#e74c3c"/);
+      expect(addMode).not.toMatch(/<rect[^>]*fill="#e74c3c"/);
+      expect(autofuel).not.toMatch(/<rect[^>]*fill="#e74c3c"/);
+    });
+
+    it("shows the AUTOFUEL band and AUTO readout in autofuel mode", () => {
+      const svg = renderStripCanvasSvg("autofuel", "add-amount", "on", 45, 30, 75, 75, 90, 1);
+
+      expect(svg).toContain("AUTOFUEL: ON");
+      expect(svg).toContain(">AUTO → 30 L<");
+    });
+
+    it("shows a gray AUTOFUEL: N/A band and dash readout when autofuel is unavailable", () => {
+      const svg = renderStripCanvasSvg("autofuel-off", "add-amount", "na", 45, 0, 45, 45, 90, 1);
+
+      expect(svg).toContain("AUTOFUEL: N/A");
+      expect(svg).toMatch(/<path[^>]*fill="#888888"/);
+      expect(svg).toContain(">—<");
+    });
+
+    it("positions texts by explicit baselines (QT ignores dominant-baseline) — nudged down", () => {
+      const svg = renderStripCanvasSvg("manual", "add-amount", "on", 45, 20, 65, 65, 90, 1);
+
+      // The deck app's QT renderer ignores dominant-baseline, so y is the text
+      // BASELINE; the values sit texts vertically centered in their areas.
+      expect(svg).not.toContain("dominant-baseline");
+      expect(svg).toContain('y="21"'); // band text baseline (band 0..30)
+      expect(svg).toContain('y="56"'); // readout baseline (band→bar gap 30..66)
+    });
+
+    it("dims the content and draws the #612 warning glyph when the autofuel binding is missing", () => {
+      const without = renderStripCanvasSvg("manual", "add-amount", "on", 45, 20, 65, 65, 90, 1);
+      const withWarn = renderStripCanvasSvg("manual", "add-amount", "on", 45, 20, 65, 65, 90, 1, true);
+
+      expect(without).not.toContain("binding-warning");
+      expect(withWarn).toContain("binding-warning");
     });
   });
 
@@ -779,10 +792,7 @@ describe("FuelDial action", () => {
     vi.unstubAllGlobals();
   });
 
-  async function appear(
-    ctx: ReturnType<typeof dialContext> | ReturnType<typeof keyContext>,
-    settings: Record<string, unknown> = {},
-  ) {
+  async function appear(ctx: ReturnType<typeof dialContext>, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
 
@@ -1616,16 +1626,6 @@ describe("FuelDial action", () => {
     });
   });
 
-  describe("onKeyDown (keypad fallback)", () => {
-    it("fires the press action without rotation", async () => {
-      const ctx = keyContext("k1");
-      await appear(ctx, { pressAction: "toggle-fueling" });
-      await action.onKeyDown(basicEvent(ctx, { pressAction: "toggle-fueling" }) as never);
-
-      expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe("gesture state machine (release-time classification)", () => {
     it("onDialDown fires nothing (no press, no timer)", async () => {
       const ctx = dialContext("g0");
@@ -1938,13 +1938,33 @@ describe("FuelDial action", () => {
       expect(ctx.setFeedback).toHaveBeenCalled();
       const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
 
-      expect(payload.value).toBe("+20 = 65 L");
-      expect(typeof payload.bar).toBe("string");
-      expect(payload.bar).toContain("data:image/svg+xml");
-      // Bar is green because fuel-fill is on
-      expect(decodeURIComponent(payload.bar)).toContain("#2ecc71");
-      // No red target line in add mode.
-      expect(decodeURIComponent(payload.bar)).not.toContain('fill="#e74c3c"');
+      expect(typeof payload.box).toBe("string");
+      expect(payload.box).toContain("data:image/svg+xml");
+      const canvas = stripCanvas(payload);
+
+      expect(canvas).toContain(">+20 = 65 L<");
+      // Band + bar are green because fuel-fill is on
+      expect(canvas).toContain("#2ecc71");
+      // No red target line in add mode (and the ON band is green, not red).
+      expect(canvas).not.toContain('fill="#e74c3c"');
+    });
+
+    it("mirrors the OFF state on the touch strip: red REFUEL: OFF band + gray add segment (#728)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
+      const ctx = dialContext("f1off");
+      mockGetSessionInfo.mockReturnValue(SESSION_90L);
+      // Fuel-fill OFF with a pending 20 L request.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: 0 });
+      await appear(ctx, { unitMode: "liters", dialMode: "add-amount" });
+
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
+
+      // The strip's self-drawn canvas shows the same red band as the keypad icon.
+      expect(canvas).toContain("REFUEL: OFF");
+      expect(canvas).toMatch(/<path[^>]*fill="#e74c3c"/);
+      // The bar stays subtle: gray add segment, no green.
+      expect(canvas).toMatch(/<path[^>]*fill="#888888"/);
+      expect(canvas).not.toContain("#2ecc71");
     });
 
     it("pushes the target readout and a target line in fill-to mode", async () => {
@@ -1959,11 +1979,11 @@ describe("FuelDial action", () => {
       ctx.setFeedback.mockClear();
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
 
-      expect(payload.value).toBe("→ 65 L");
+      expect(canvas).toContain(">→ 65 L<");
       // Red target line present in fill-to mode.
-      expect(decodeURIComponent(payload.bar)).toContain('fill="#e74c3c"');
+      expect(canvas).toMatch(/<rect[^>]*fill="#e74c3c"/);
     });
 
     it("renders the readout when capacity unknown (add mode, no cap)", async () => {
@@ -1984,9 +2004,7 @@ describe("FuelDial action", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("+20 = 65 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+20 = 65 L<");
     });
 
     it("coalesces setFeedback across rapid rotations within one throttle window", async () => {
@@ -2015,9 +2033,7 @@ describe("FuelDial action", () => {
       // dialed +3 — proving the displayed value stays telemetry-driven through a
       // coalesced spin (#726). The "last value wins" SEND semantics are covered by
       // the throttle-coalescing send tests.
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("+0 = 0 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
     });
   });
 
@@ -2043,9 +2059,7 @@ describe("FuelDial action", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       onTick({ DisplayUnits: 1, PitSvFuel: 18, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("+18 = 63 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+18 = 63 L<");
     });
 
     it("add-amount: a PitSvFuel above tank capacity is clamped in the readout (never +95 = 90)", async () => {
@@ -2058,9 +2072,7 @@ describe("FuelDial action", () => {
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 95, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       await appear(ctx, { unitMode: "liters", stepSize: 1, dialMode: "add-amount" });
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("+90 = 90 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+90 = 90 L<");
     });
 
     it("add-amount: a null-telemetry frame shows +0 (display follows telemetry, no stale dialed value)", async () => {
@@ -2076,9 +2088,7 @@ describe("FuelDial action", () => {
       ctx.setFeedback.mockClear();
       vi.advanceTimersByTime(5000); // display heartbeat
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("+0 = 0 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">+0 = 0 L<");
     });
   });
 
@@ -2151,10 +2161,8 @@ describe("FuelDial action", () => {
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
       expect(ctx.setFeedback).toHaveBeenCalledTimes(1);
-      // Bar reflects the new ON color (green).
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(decodeURIComponent(payload.bar)).toContain("#2ecc71");
+      // Band + bar reflect the new ON color (green).
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain("#2ecc71");
     });
 
     it("does NOT push feedback on a tick that leaves the displayed signature unchanged", async () => {
@@ -2261,9 +2269,7 @@ describe("FuelDial action", () => {
       // Feedback was pushed without any 5 s heartbeat advance, and shows the new
       // target (proving the displayed target tracks the dial even at add 0).
       expect(ctx.setFeedback).toHaveBeenCalled();
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
-
-      expect(payload.value).toBe("→ 30 L");
+      expect(stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0])).toContain(">→ 30 L<");
     });
 
     it("clears the display timer on disappear (no leaks, no re-render after)", async () => {
@@ -2376,7 +2382,7 @@ describe("FuelDial action", () => {
       expect(mockPitFuel).not.toHaveBeenCalled();
     });
 
-    it("the autofuel readout reads the add from PitSvFuel (AUTO → readout, Autofuel title)", async () => {
+    it("the autofuel readout reads the add from PitSvFuel (AUTO → readout, AUTOFUEL band title)", async () => {
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
       const ctx = dialContext("af5");
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
@@ -2394,10 +2400,10 @@ describe("FuelDial action", () => {
       ctx.setFeedback.mockClear();
       vi.advanceTimersByTime(5000); // display heartbeat pushes feedback
 
-      const payload = ctx.setFeedback.mock.calls.at(-1)?.[0];
+      const canvas = stripCanvas(ctx.setFeedback.mock.calls.at(-1)?.[0]);
 
-      expect(payload.title).toBe("Autofuel");
-      expect(payload.value).toBe("AUTO → 30 L");
+      expect(canvas).toContain("AUTOFUEL: ON");
+      expect(canvas).toContain(">AUTO → 30 L<");
     });
   });
 
@@ -2483,14 +2489,6 @@ describe("FuelDial action", () => {
 
       expect(desc.touch).toBeUndefined();
       expect(desc.longTouch).toBeUndefined();
-    });
-
-    it("does not set trigger descriptions for a keypad context", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      const ctx = keyContext("tr3");
-      await appear(ctx, {});
-
-      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
     });
 
     it("does not set trigger descriptions when feedback flag is off", async () => {

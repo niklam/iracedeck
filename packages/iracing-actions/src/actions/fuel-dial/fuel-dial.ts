@@ -8,36 +8,27 @@ import {
   type DirectionalPair,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
-  generateBorderParts,
   getCommands,
   getDualPressThresholdMs,
   getFuelUnitSuffix,
-  getGlobalBorderSettings,
-  getGlobalColors,
-  getGlobalTitleSettings,
   type IDeckActionContext,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
-  type IDeckKeyDownEvent,
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,
-  renderIconTemplate,
-  resolveBorderSettings,
-  resolveIconColors,
   resolvePairedAction,
-  resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { DisplayUnits, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-import fuelDialTemplate from "../../../icons/fuel-dial.svg";
+import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
 
 /**
  * The actions a dial-button / touch gesture (Push, Long Press, Tap Display,
@@ -114,7 +105,7 @@ const CURRENT_SEGMENT = "#9aa7b4";
 const BAR_TRACK = "#1a1f26";
 /** Color of the on-bar "current" amount label (dark, sits over the light current segment). */
 const BAR_LABEL = "#0d1117";
-/** Color of the on-bar "+add" amount label (white, sits over the green/gray add segment). */
+/** Color of the on-bar "+add" amount label (white, sits over the green/red/gray add segment). */
 const ADD_LABEL = WHITE;
 /** Color of the "fill-to" target marker line (red, confined to the bar height). */
 const TARGET_LINE = "#e74c3c";
@@ -292,7 +283,7 @@ export function formatDisplayValue(liters: number, displayUnits: number): string
 /**
  * @internal Exported for testing
  *
- * Builds the per-mode value text shown on the touch strip and keypad icon.
+ * Builds the per-mode value text shown on the touch strip.
  *
  * - add-amount: `"+<add> = <total> <unit>"` (e.g. `"+20 = 65 L"`). The total is
  *   `min(current + add, capacity)` and reflects live fuel burn.
@@ -315,18 +306,32 @@ export function buildValueText(
   return `+${formatDisplayValue(addLtr, displayUnits)} = ${formatDisplayValue(totalLtr, displayUnits)} ${suffix}`;
 }
 
+/** Manual / autofuel / autofuel-unavailable, derived from live autofuel telemetry. */
+export type DialDisplayMode = "manual" | "autofuel" | "autofuel-off";
+
+/**
+ * Tri-state fueling indication shown on the key icon and touch strip (#728):
+ * green ON / red OFF / gray N-A — the shared {@link ToggleState} language of
+ * the toggle buttons' status bars and state borders.
+ */
+export type FuelFillState = ToggleState;
+
 /**
  * @internal Exported for testing
  *
- * The mode-aware title shown on the touch strip and keypad icon:
- * `"Add Fuel"` in add-amount mode, `"Fuel Target"` in fill-to mode.
+ * Derives the tri-state fueling indication from the display mode and live
+ * telemetry. N/A when autofuel is engaged but unavailable (`autofuel-off` —
+ * there is no controllable fuel request) or when there is no telemetry at all
+ * (unknown must not read as OFF — mirrors Fuel Service's N/A). Otherwise the
+ * live pit fuel-fill checkbox decides on/off.
  */
-export function buildTitleText(dialMode: FuelDialSettings["dialMode"]): string {
-  return dialMode === "fill-to" ? "Fuel Target" : "Add Fuel";
-}
+export function resolveFuelFillState(mode: DialDisplayMode, telemetry: TelemetryData | null): FuelFillState {
+  if (mode === "autofuel-off") return "na";
 
-/** Manual / autofuel / autofuel-unavailable, derived from live autofuel telemetry. */
-export type DialDisplayMode = "manual" | "autofuel" | "autofuel-off";
+  if (!telemetry) return "na";
+
+  return isFuelFillOn(telemetry) ? "on" : "off";
+}
 
 /**
  * @internal Exported for testing
@@ -346,20 +351,18 @@ export function resolveDialDisplayMode(telemetry: TelemetryData | null): DialDis
 /**
  * @internal Exported for testing
  *
- * The mode/fuel-fill cue shown as the title — the most legible line. Precedence:
- * autofuel-unavailable > fuel-fill-off > mode name, so a glance tells the driver
- * which mode the bare turn adjusts and whether fuel-fill is armed. The
- * fuel-fill-off cue is text (`FUEL OFF`), never colour alone, so VR drivers
- * catching a peripheral look can read the unarmed state.
+ * The status-band text on the key icon, mirrored as the touch-strip title
+ * (#728): the fuel subsystem a bare turn controls (`REFUEL` in manual mode,
+ * `AUTOFUEL` when iRacing's autofuel is engaged) plus the live tri-state —
+ * `ON` / `OFF` / `N/A`. Text, never colour alone, so VR drivers catching a
+ * peripheral look can read the state.
  */
-export function buildDialTitle(mode: DialDisplayMode, dialMode: FuelDialSettings["dialMode"], fuelOn: boolean): string {
-  if (mode === "autofuel-off") return "AUTO OFF";
+export function buildRefuelBandText(mode: DialDisplayMode, fillState: FuelFillState): string {
+  const subject = mode === "manual" ? "REFUEL" : "AUTOFUEL";
 
-  if (!fuelOn) return "FUEL OFF";
+  if (mode === "autofuel-off" || fillState === "na") return `${subject}: N/A`;
 
-  if (mode === "autofuel") return "Autofuel";
-
-  return buildTitleText(dialMode);
+  return `${subject}: ${fillState === "on" ? "ON" : "OFF"}`;
 }
 
 /**
@@ -533,12 +536,14 @@ export function roundedBarPath(
 /**
  * @internal Exported for testing
  *
- * Renders ONE continuous two-segment fuel bar as a full SVG string (used as the
- * pixmap data source on the touch strip and inside the keypad icon).
+ * Renders ONE continuous two-segment fuel bar as a full SVG string (composed
+ * into the touch strip's full-canvas pixmap).
  *
  * - A dark rounded track spans the full width.
  * - The CURRENT segment runs from the left (neutral gray-blue), the ADD segment
- *   is butted directly onto it: GREEN when fuel-fill is ON, GRAY when OFF.
+ *   is butted directly onto it: GREEN when fueling is ON, GRAY otherwise (off
+ *   or state unknown). The bar stays deliberately subtle — the LOUD tri-state
+ *   indicator is the status band at the top of the key (#728).
  * - Only the OUTER corners round (left end of current, right end of add); the
  *   shared current↔add boundary is SQUARE. When add is 0 the current segment
  *   alone rounds both ends; when current is 0 the add segment alone rounds both.
@@ -557,7 +562,7 @@ export function renderFuelBarSvg(
   currentLtr: number,
   addLtr: number,
   maxLtr: number | undefined,
-  fuelOn: boolean,
+  fillState: FuelFillState,
   widthPx: number,
   heightPx: number,
   displayUnits: number,
@@ -567,9 +572,11 @@ export function renderFuelBarSvg(
   const span = maxLtr !== undefined && maxLtr > 0 ? maxLtr : Math.max(currentLtr + addLtr, 1);
   const currentW = Math.max(0, Math.min(widthPx, (currentLtr / span) * widthPx));
   const addW = Math.max(0, Math.min(widthPx - currentW, (addLtr / span) * widthPx));
-  const addColor = fuelOn ? GREEN : GRAY;
+  const addColor = fillState === "on" ? GREEN : GRAY;
   const fontSize = Math.max(8, Math.round(heightPx * 0.5));
-  const labelY = heightPx / 2;
+  // Label y is a BASELINE (the deck app's QT renderer ignores dominant-baseline):
+  // vertical center plus ~0.35 × font size centers the glyphs on the bar.
+  const labelY = Math.round(heightPx / 2 + fontSize * 0.35);
   const pad = Math.max(3, Math.round(heightPx * 0.18));
 
   const parts = [
@@ -605,7 +612,7 @@ export function renderFuelBarSvg(
 
   if (currentW >= currentLabelW) {
     parts.push(
-      `<text x="${pad}" y="${labelY}" text-anchor="start" dominant-baseline="central" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${currentLabel}</text>`,
+      `<text x="${pad}" y="${labelY}" text-anchor="start" fill="${BAR_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${currentLabel}</text>`,
     );
   }
 
@@ -617,7 +624,7 @@ export function renderFuelBarSvg(
   if (addW >= addLabelW) {
     const addRight = currentW + addW;
     parts.push(
-      `<text x="${(addRight - pad).toFixed(2)}" y="${labelY}" text-anchor="end" dominant-baseline="central" fill="${ADD_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${addLabel}</text>`,
+      `<text x="${(addRight - pad).toFixed(2)}" y="${labelY}" text-anchor="end" fill="${ADD_LABEL}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${addLabel}</text>`,
     );
   }
 
@@ -629,71 +636,50 @@ export function renderFuelBarSvg(
 /**
  * @internal Exported for testing
  *
- * Generates the keypad icon (data URI) showing the mode/fuel-fill cue title, the
- * per-mode value readout, and the continuous two-segment fuel bar. The `mode`
- * (manual / autofuel / autofuel-off) selects the cue, readout, the bar's add
- * source (caller-supplied), and whether the red fill-to target line is drawn.
+ * Renders the ENTIRE 200×100 touch-strip slot as one SVG — the encoder layout
+ * (`layouts/fuel-dial.json`) is a single full-canvas pixmap, drawn ourselves
+ * because the built-in layout text items cannot have a colored background
+ * (#728): the status band across the top (green `REFUEL: ON` / red
+ * `REFUEL: OFF` / `AUTOFUEL` variants / gray N-A), the per-mode readout, and
+ * the two-segment fuel bar (with the red target line in manual fill-to mode).
  */
-export function generateFuelDialSvg(
-  settings: FuelDialSettings,
+export function renderStripCanvasSvg(
   mode: DialDisplayMode,
+  dialMode: FuelDialSettings["dialMode"],
+  fillState: FuelFillState,
   currentLtr: number,
   addLtr: number,
+  totalLtr: number,
+  targetLtr: number,
   maxLtr: number | undefined,
   displayUnits: number,
-  fuelOn: boolean,
-  targetLtr: number,
   bindingMissing = false,
 ): string {
-  const colors = resolveIconColors(fuelDialTemplate, getGlobalColors(), settings.colorOverrides) as Record<
-    string,
-    string
-  >;
-  const graphic1 = colors.graphic1Color || WHITE;
-  const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
-  const valueText = buildDialReadout(mode, settings.dialMode, addLtr, totalLtr, targetLtr, displayUnits);
-  // The red target line is drawn only in MANUAL fill-to mode; in autofuel the
-  // current + add already equals the resulting total, so it is suppressed.
-  const barTarget = mode === "manual" && settings.dialMode === "fill-to" ? targetLtr : undefined;
+  const bandText = buildRefuelBandText(mode, fillState);
+  const valueText = buildDialReadout(mode, dialMode, addLtr, totalLtr, targetLtr, displayUnits);
+  // The red target line is drawn only in MANUAL fill-to mode; suppressed in autofuel.
+  const barTarget = mode === "manual" && dialMode === "fill-to" ? targetLtr : undefined;
+  const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fillState, 184, 28, displayUnits, barTarget);
+  const bandHeight = 30;
 
-  // Continuous two-segment fuel bar (current + add) with on-bar labels.
-  const barX = 16;
-  const barY = 100;
-  const barW = 112;
-  const barH = 28;
-  // The add ("+20 = 65 L") and autofuel ("AUTO → 48 L") readouts are wider than
-  // the fill-to target ("→ 65 L"); size the longer strings down to fit 144px.
-  const valueFontSize = mode === "manual" && settings.dialMode === "fill-to" ? 30 : 24;
-  const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, barW, barH, displayUnits, barTarget);
-  const baseIconContent = `
-    <text x="72" y="72" text-anchor="middle" dominant-baseline="central"
-          fill="${graphic1}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${valueText}</text>
-    <g transform="translate(${barX}, ${barY})">${stripSvgWrapper(barSvg)}</g>`;
+  // Text y values are BASELINES — the deck app's QT SVG renderer ignores
+  // dominant-baseline, so each text is centered by an explicit baseline offset
+  // (~0.35 × font size below the intended visual center).
+  const content = [
+    // Status band with rounded top corners (the strip slot itself is square,
+    // the small radius just softens the band edge).
+    `<path d="M 0 ${bandHeight} L 0 8 A 8 8 0 0 1 8 0 L 192 0 A 8 8 0 0 1 200 8 L 200 ${bandHeight} Z" fill="${borderColorForState(fillState)}"/>`,
+    `<text x="100" y="21" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="17" font-weight="bold">${bandText}</text>`,
+    `<text x="100" y="56" text-anchor="middle" fill="${WHITE}" font-family="Arial, sans-serif" font-size="24" font-weight="bold">${valueText}</text>`,
+    `<g transform="translate(8, 66)">${stripSvgWrapper(barSvg)}</g>`,
+  ].join("");
+
   // When a gesture slot needs the autofuel key binding but it's unset, dim the
-  // content and draw the centered #612 warning triangle over it.
-  const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
-
-  // Mode/fuel-fill cue title ("Add Fuel" / "Fuel Target" / "Autofuel" /
-  // "FUEL OFF" / "AUTO OFF") replaces the static "FUEL" label.
-  const resolvedTitle = resolveTitleSettings(fuelDialTemplate, getGlobalTitleSettings(), settings.titleOverrides);
-  const titleText = buildDialTitle(mode, settings.dialMode, fuelOn);
-  const titleFontSize = 18;
-  const titleContent = resolvedTitle.showTitle
-    ? `<text x="72" y="26" text-anchor="middle" dominant-baseline="central" fill="${colors.textColor ?? WHITE}" font-family="Arial, sans-serif" font-size="${titleFontSize}" font-weight="bold">${titleText}</text>`
-    : "";
-
-  const border = resolveBorderSettings(fuelDialTemplate, getGlobalBorderSettings(), settings.borderOverrides);
-  const borderSvg = generateBorderParts(border);
-
-  const svg = renderIconTemplate(fuelDialTemplate, {
-    iconContent: resolvedTitle.showGraphics ? iconContent : "",
-    titleContent,
-    borderDefs: borderSvg.defs,
-    borderContent: borderSvg.rects,
-    ...colors,
-  });
-
-  return svgToDataUri(svg);
+  // slot and draw the centered #612 warning triangle over it (same convention
+  // as Setup Brakes Dial's strip box).
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100">${
+    bindingMissing ? applyBindingWarning(content) : content
+  }</svg>`;
 }
 
 /** Strips the outer `<svg …>…</svg>` wrapper, returning only the inner markup. */
@@ -763,11 +749,11 @@ export function buildTriggerDescription(settings: FuelDialSettings): DeckTrigger
 /**
  * Fuel Dial Action
  *
- * A dial-first action for Stream Deck+. Rotating sets either the amount to add
- * (add-amount mode) or the desired total after the stop (fill-to mode);
- * pressing/tapping runs a configurable action (toggle/clear/fill); the touch
- * strip shows a live "65 / 90 L" readout with a two-segment fuel bar. On a
- * plain keypad it shows the value and a press runs the configured action. All
+ * An ENCODER-ONLY action (no keypad — Fuel Service covers keys). Rotating sets
+ * either the amount to add (add-amount mode) or the desired total after the
+ * stop (fill-to mode); pressing/tapping runs a configurable action
+ * (toggle/clear/fill); the touch strip is one self-drawn pixmap with the
+ * REFUEL/AUTOFUEL status band, a live readout, and a two-segment fuel bar. All
  * communication uses the iRacing API (`pit.fuel` / `pit.clearFuel`).
  */
 export const FUEL_DIAL_UUID = "com.iracedeck.sd.core.fuel-dial" as const;
@@ -794,7 +780,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
     await this.applyTriggerDescription(ctx);
-    await this.render(ctx);
+    await this.renderFeedback(ctx);
 
     this.sdkController.subscribe(ev.action.id, (telemetry) => {
       const current = this.contextsState.get(ev.action.id);
@@ -824,7 +810,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     ctx.settings = settings;
 
     await this.applyTriggerDescription(ctx);
-    await this.render(ctx);
+    await this.renderFeedback(ctx);
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<FuelDialSettings>): Promise<void> {
@@ -885,11 +871,9 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
 
     // Rotating issues pit.fuel (auto-arm). The touch-strip feedback (and the
     // pit.fuel broadcast) are throttled via the send window so a continuous spin
-    // can't exceed the ≤10 setFeedback/sec/dial cap. Render only the keypad icon
-    // per-event here; flushSend issues the broadcast + feedback at the edges.
+    // can't exceed the ≤10 setFeedback/sec/dial cap — flushSend issues the
+    // broadcast + feedback at the window edges, so nothing renders per-event.
     this.scheduleSend(ctx);
-
-    await this.render(ctx, { skipFeedback: true });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelDialSettings>): Promise<void> {
@@ -938,17 +922,6 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     await this.doPress(action, ctx);
   }
 
-  override async onKeyDown(ev: IDeckKeyDownEvent<FuelDialSettings>): Promise<void> {
-    const settings = this.parseSettings(ev.payload.settings);
-    const ctx = this.ensureContext(ev.action, settings);
-    ctx.settings = settings;
-
-    if (settings.pressAction === "none") return;
-
-    this.logger.info("Fuel dial key pressed");
-    await this.doPress(settings.pressAction, ctx);
-  }
-
   override async onTouchTap(ev: IDeckTouchTapEvent<FuelDialSettings>): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
@@ -976,7 +949,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     if (action === "toggle-autofuel-mode") {
       this.logger.info("Fuel dial toggled autofuel");
       await this.tapBinding(TOGGLE_AUTOFUEL_KEY);
-      await this.render(ctx);
+      await this.renderFeedback(ctx);
 
       return;
     }
@@ -990,7 +963,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       ctx.settings = { ...ctx.settings, dialMode: next };
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
-      await this.render(ctx);
+      await this.renderFeedback(ctx);
       await ctx.action.setSettings({ ...ctx.settings });
 
       return;
@@ -1095,7 +1068,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     ctx.lastSentWholeAdd =
       armedLtr === null ? null : Math.round(fuelToDisplayUnits(armedLtr, this.effectiveDisplayUnits(ctx)));
 
-    await this.render(ctx);
+    await this.renderFeedback(ctx);
   }
 
   /**
@@ -1279,6 +1252,11 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   /** Live pit fuel-fill checkbox state. */
   private isFuelFillOn(): boolean {
     return isFuelFillOn(this.sdkController.getCurrentTelemetry());
+  }
+
+  /** Tri-state fueling indication for the display paths (green/red/gray, #728). */
+  private fuelFillState(mode: DialDisplayMode): FuelFillState {
+    return resolveFuelFillState(mode, this.sdkController.getCurrentTelemetry());
   }
 
   /** Effective liters to ADD for a context, from its dialed value + live telemetry. */
@@ -1490,36 +1468,33 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
       this.updateManualFromTelemetry(ctx, telemetry);
     }
 
-    // Render-on-CHANGE (issue #681): the bar's fuel-fill color and the displayed
+    // Render-on-CHANGE (issue #681): the band/bar colors and the displayed
     // values must track telemetry without the up-to-5s lag of the heartbeat
     // timer. When the DISPLAYED signature is UNCHANGED nothing renders at all —
-    // the icon + feedback already reflect the current state and the 5s heartbeat
+    // the feedback already reflects the current state and the 5s heartbeat
     // still refreshes — so an unchanged tick never rebuilds the SVG or pushes an
     // image ~60×/s. When the signature changes, push feedback immediately,
     // throttled to at most once per CHANGE_RENDER_MIN_INTERVAL_MS so a burst of
     // ticks can't blow past the ≤10 setFeedback/sec/dial cap; while inside the
-    // throttle window the keypad icon refreshes (no feedback) and lastRenderSig is
-    // deliberately NOT advanced so the throttled feedback still fires once the
-    // window elapses. The 5s timer remains as a heartbeat.
+    // throttle window lastRenderSig is deliberately NOT advanced so the
+    // throttled feedback still fires once the window elapses. The 5s timer
+    // remains as a heartbeat.
     const sig = this.displayedSignature(ctx);
 
-    if (sig !== ctx.lastRenderSig) {
-      if (Date.now() - ctx.lastChangeRenderAt >= CHANGE_RENDER_MIN_INTERVAL_MS) {
-        ctx.lastRenderSig = sig;
-        ctx.lastChangeRenderAt = Date.now();
-        void this.render(ctx);
-      } else {
-        // Changed but feedback-throttled: refresh the keypad icon now, but do NOT
-        // advance lastRenderSig so the throttled feedback still fires next window.
-        void this.render(ctx, { skipFeedback: true });
-      }
+    if (sig !== ctx.lastRenderSig && Date.now() - ctx.lastChangeRenderAt >= CHANGE_RENDER_MIN_INTERVAL_MS) {
+      ctx.lastRenderSig = sig;
+      ctx.lastChangeRenderAt = Date.now();
+      void this.renderFeedback(ctx);
     }
   }
 
   /**
    * A compact signature of the DISPLAYED state used by the render-on-change path:
-   * the live fuel-fill flag plus the rounded current / add / total values. When
-   * this string differs from the last rendered one, a feedback push is due.
+   * the tri-state fueling indication (on/off/na — mode-gated, so in autofuel-off
+   * it is constantly "na" and a checkbox flip alone doesn't re-render; the mode
+   * element covers entering/leaving that state) plus the rounded current / add /
+   * total values. When this string differs from the last rendered one, a
+   * feedback push is due.
    *
    * In fill-to mode the displayed target (`dialValueLtr`, shown in the "→ <target>"
    * readout and the red target line) can change while the resolved add stays 0 —
@@ -1536,11 +1511,10 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const currentLtr = this.currentLtr();
     const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
-    const fuelOn = this.isFuelFillOn();
 
     return [
       mode,
-      fuelOn ? "on" : "off",
+      this.fuelFillState(mode),
       formatDisplayValue(currentLtr, displayUnits),
       formatDisplayValue(addLtr, displayUnits),
       formatDisplayValue(totalLtr, displayUnits),
@@ -1563,7 +1537,7 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     if (ctx.displayTimer !== null) return;
 
     ctx.displayTimer = setInterval(() => {
-      void this.render(ctx);
+      void this.renderFeedback(ctx);
     }, DISPLAY_REFRESH_MS);
   }
 
@@ -1596,53 +1570,10 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
   }
 
   /**
-   * Renders the keypad icon and (for dials) the touch-strip feedback.
-   *
-   * Pass `skipFeedback: true` for per-rotate renders — the touch-strip feedback
-   * is instead pushed by the throttled `flushSend`, so a continuous spin stays
-   * within the ≤10 `setFeedback`/sec/dial cap. Press/settings/telemetry-driven
-   * renders omit the flag so feedback updates immediately.
+   * Pushes the touch-strip feedback when this is a dial. The Fuel Dial is
+   * encoder-only (no keypad — Fuel Service covers keys), so this is the
+   * action's only render path.
    */
-  private async render(ctx: FuelDialContext, opts?: { skipFeedback?: boolean }): Promise<void> {
-    if (ctx.action.isKey()) {
-      const svg = this.generateIcon(ctx);
-      await this.updateKeyImageForContext(ctx, svg);
-    }
-
-    if (!opts?.skipFeedback) {
-      await this.renderFeedback(ctx);
-    }
-  }
-
-  /** Builds the keypad icon for a context from live telemetry. */
-  private generateIcon(ctx: FuelDialContext): string {
-    const mode = this.displayMode();
-
-    return generateFuelDialSvg(
-      ctx.settings,
-      mode,
-      this.currentLtr(),
-      this.displayAddLtr(ctx, mode),
-      this.effectiveMaxLtr(),
-      this.effectiveDisplayUnits(ctx),
-      this.isFuelFillOn(),
-      ctx.dialValueLtr,
-      this.autofuelBindingMissing(ctx.settings),
-    );
-  }
-
-  /** Stores the icon for a context and pushes it to the device. */
-  private async updateKeyImageForContext(ctx: FuelDialContext, svg: string): Promise<void> {
-    const updated = await this.updateKeyImage(ctx.action.id, svg);
-
-    if (!updated) {
-      // First render for this context — register via setKeyImage so BaseAction tracks it.
-      await this.setKeyImage({ action: ctx.action, payload: { settings: ctx.settings } }, svg);
-      this.setRegenerateCallback(ctx.action.id, () => this.generateIcon(ctx));
-    }
-  }
-
-  /** Pushes the touch-strip feedback when this is a dial. */
   private async renderFeedback(ctx: FuelDialContext): Promise<void> {
     if (!__FEATURE_DIAL_FEEDBACK__) return;
 
@@ -1654,15 +1585,22 @@ export class FuelDial extends ConnectionStateAwareAction<FuelDialSettings> {
     const currentLtr = this.currentLtr();
     const addLtr = this.displayAddLtr(ctx, mode);
     const totalLtr = computeTotalLtr(currentLtr, addLtr, maxLtr);
-    const fuelOn = this.isFuelFillOn();
-    // The red target line is drawn only in MANUAL fill-to mode; suppressed in autofuel.
-    const barTarget = mode === "manual" && ctx.settings.dialMode === "fill-to" ? ctx.dialValueLtr : undefined;
-    const barSvg = renderFuelBarSvg(currentLtr, addLtr, maxLtr, fuelOn, 184, 30, displayUnits, barTarget);
-    const feedback: DeckFeedbackPayload = {
-      title: buildDialTitle(mode, ctx.settings.dialMode, fuelOn),
-      value: buildDialReadout(mode, ctx.settings.dialMode, addLtr, totalLtr, ctx.dialValueLtr, displayUnits),
-      bar: svgToDataUri(barSvg),
-    };
+    const fillState = this.fuelFillState(mode);
+    // The whole strip slot is ONE self-drawn pixmap (band + readout + bar) — the
+    // built-in layout text items can't have the colored band background (#728).
+    const canvasSvg = renderStripCanvasSvg(
+      mode,
+      ctx.settings.dialMode,
+      fillState,
+      currentLtr,
+      addLtr,
+      totalLtr,
+      ctx.dialValueLtr,
+      maxLtr,
+      displayUnits,
+      this.autofuelBindingMissing(ctx.settings),
+    );
+    const feedback: DeckFeedbackPayload = { box: svgToDataUri(canvasSvg) };
     await ctx.action.setFeedback(feedback);
 
     // Reset the change-detector baseline so a pushed feedback (rotate/press/

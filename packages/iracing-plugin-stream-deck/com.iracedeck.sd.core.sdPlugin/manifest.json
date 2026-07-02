@@ -199,7 +199,6 @@
       "Tooltip": "Set fuel to add with a dial; press to toggle, clear or fill fueling",
       "PropertyInspectorPath": "ui/fuel-dial.html",
       "Controllers": [
-        "Keypad",
         "Encoder"
       ],
       "Encoder": {
