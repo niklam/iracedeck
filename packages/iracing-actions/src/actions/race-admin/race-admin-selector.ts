@@ -14,7 +14,7 @@
  *   - bottom-right       = Next page
  * Every other cell is a car slot, filled row-major (left→right, top→bottom),
  * skipping those three reserved cells. The field is sorted by car number
- * (pace car excluded). See `.claude/rules/profiles-and-devices.md`.
+ * (pace car and spectators excluded). See `.claude/rules/profiles-and-devices.md`.
  */
 import {
   escapeXml,
