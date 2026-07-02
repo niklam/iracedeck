@@ -243,7 +243,7 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "pause-sim": "carControlPauseSim",
   "headlight-flash": "carControlHeadlightFlash",
   "push-to-pass": "carControlPushToPass",
-  drs: "carControlDRS",
+  drs: "carControlDrs",
   "tear-off-visor": "carControlTearOffVisor",
   escape: "",
   handbrake: "carControlHandbrake",

@@ -242,7 +242,7 @@ describe("CarControl", () => {
     });
 
     it("should have correct mapping for drs", () => {
-      expect(CAR_CONTROL_GLOBAL_KEYS["drs"]).toBe("carControlDRS");
+      expect(CAR_CONTROL_GLOBAL_KEYS["drs"]).toBe("carControlDrs");
     });
 
     it("should have correct mapping for tear-off-visor", () => {
