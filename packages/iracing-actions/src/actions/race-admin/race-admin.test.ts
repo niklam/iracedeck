@@ -21,10 +21,11 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
 vi.mock("./race-admin-selector.js", () => ({
   SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
+  availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"]),
   computeCarSlotIndex: vi.fn(() => 0),
-  resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24" })),
+  resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24", lastName: "Doe" })),
   resolveSelectedCar: vi.fn(() => null),
-  generateSelectorSvg: vi.fn((carNumber: string | null) => `data:selector,${carNumber ?? ""}`),
+  generateSelectorSvg: vi.fn((car: { carNumber: string } | null) => `data:selector,${car?.carNumber ?? ""}`),
 }));
 
 // Mock all icon imports
@@ -524,12 +525,14 @@ describe("RaceAdmin", () => {
 
     it("should render the dynamic selector icon for select-car mode", () => {
       const settings = { ...defaultSettings, mode: "select-car" as const };
-      expect(generateRaceAdminSvg("select-car", settings, "24")).toBe("data:selector,24");
+      expect(generateRaceAdminSvg("select-car", settings, { carNumber: "24", lastName: "Doe" })).toBe(
+        "data:selector,24",
+      );
     });
 
     it("should show the resolved car number on the selected-car target", () => {
       const settings = { ...defaultSettings, driverTarget: "selected-car" as const };
-      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, "24"));
+      const decoded = decodeURIComponent(generateRaceAdminSvg("black-flag", settings, { carNumber: "24" }));
       expect(decoded).toContain("#24");
     });
 
@@ -752,7 +755,7 @@ describe("RaceAdmin", () => {
     // restores the factory implementations so nothing leaks past this block.
     beforeEach(() => {
       vi.mocked(computeCarSlotIndex).mockReturnValue(0);
-      vi.mocked(resolveSlotCar).mockReturnValue({ carIdx: 5, carNumber: "24" });
+      vi.mocked(resolveSlotCar).mockReturnValue({ carIdx: 5, carNumber: "24", lastName: "Doe" });
     });
 
     afterEach(() => {
@@ -820,6 +823,53 @@ describe("RaceAdmin", () => {
       );
 
       expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("pushes the device profile list for the Target Profile dropdown on appear (select-car only)", async () => {
+      const action = new RaceAdmin();
+      const ev = {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings }, coordinates: { column: 1, row: 0 } },
+      } as never;
+
+      await action.onWillAppear(ev);
+
+      const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+      expect(setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _deviceProfiles: ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"],
+        }),
+      );
+
+      // Second appear with the list already stored: no redundant write (echo-loop guard).
+      setSettings.mockClear();
+      const ev2 = {
+        action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings },
+        payload: {
+          settings: {
+            ...selectorSettings,
+            _deviceProfiles: ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"],
+          },
+          coordinates: { column: 1, row: 0 },
+        },
+      } as never;
+      await action.onWillAppear(ev2);
+      expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it("does not push the profile list for non-selector modes", async () => {
+      const action = new RaceAdmin();
+      const ev = {
+        action: { id: "ctx-cmd", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: {
+          settings: { ...selectorSettings, mode: "yellow", driverTarget: "viewed-car" },
+          coordinates: { column: 1, row: 0 },
+        },
+      } as never;
+
+      await action.onWillAppear(ev);
+
+      expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
     });
   });
 

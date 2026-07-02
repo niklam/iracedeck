@@ -10,6 +10,7 @@ interface DriverEntry {
   CarNumberRaw: number;
   CarIsPaceCar?: number;
   IsSpectator?: number;
+  UserName?: string;
 }
 
 /**
@@ -57,19 +58,19 @@ export function getCarNumberRawFromSessionInfo(sessionInfo: unknown, carIdx: num
  * @param sessionInfo - The iRacing session info object
  * @param excludePaceCar - Whether to exclude the pace car (default: false)
  * @param excludeSpectators - Whether to exclude spectator entries (`IsSpectator === 1`, default: false)
- * @returns Array of { carIdx, carNumber, carNumberRaw } sorted by car number ascending
+ * @returns Array of { carIdx, carNumber, carNumberRaw, userName } sorted by car number ascending
  */
 export function getAllCarNumbers(
   sessionInfo: unknown,
   excludePaceCar = false,
   excludeSpectators = false,
-): Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> {
+): Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }> {
   const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
   const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
 
   if (!drivers) return [];
 
-  const result: Array<{ carIdx: number; carNumber: string; carNumberRaw: number }> = [];
+  const result: Array<{ carIdx: number; carNumber: string; carNumberRaw: number; userName: string }> = [];
 
   for (const driver of drivers) {
     if (excludePaceCar && driver.CarIsPaceCar === 1) continue;
@@ -80,7 +81,12 @@ export function getAllCarNumbers(
 
     if (cleaned.length === 0) continue;
 
-    result.push({ carIdx: driver.CarIdx, carNumber: cleaned, carNumberRaw: driver.CarNumberRaw });
+    result.push({
+      carIdx: driver.CarIdx,
+      carNumber: cleaned,
+      carNumberRaw: driver.CarNumberRaw,
+      userName: driver.UserName ?? "",
+    });
   }
 
   result.sort((a, b) => Number(a.carNumber) - Number(b.carNumber));

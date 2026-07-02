@@ -127,12 +127,12 @@ Every selector page reserves three keys and fills the rest with cars, row-major 
 
 `carsPerPage = cols*rows − 3` (derived from the device grid via `getDeviceSpec`). The `select-car` key carries a 0-based **`selectorPage`** setting; the global field index is `selectorPage * carsPerPage + (row-major position − reserved-before)`. Keep the three reserved keys on every page so the car-slot count stays uniform. The Elgato `willAppear` payload exposes `coordinates` but **no page index**, which is why the page number is a per-key setting.
 
-### The two bundled selector profiles (author in the app, then register)
+### The two bundled selector profiles
 
-- **`iRaceDeck Race Admin Cars`** — the selector page(s): filled with Race Admin keys in `select-car` mode, plus the three nav keys.
+- **`iRaceDeck Race Admin Cars`** — the selector pages: Race Admin keys in `select-car` mode, plus the three nav keys per page.
 - **`iRaceDeck Race Admin Per Car`** — the commands page: Race Admin command keys set to the `selected-car` target, plus Back/nav.
 
-Both are authored + exported like any other profile (see the authoring workflow above), registered in `manifest.json` `Profiles[]` + regenerated into `profiles.json`, and reached from `iRaceDeck Default` via a **Switch Profile** key. The Switch Profile action ships icons for both (`packages/icons/switch-profile/race-admin-cars.svg`, `race-admin-per-car.svg`) keyed by profile name in its `PROFILE_ICONS` map.
+Both ship as XL (`DeviceType: 2`) bundles registered in `manifest.json` `Profiles[]` (with `DontAutoSwitchWhenInstalled: true`, like Replay) and regenerated into `profiles.json`, and are reached from `iRaceDeck Default` via a **Switch Profile** key. The Switch Profile action ships icons for both (`packages/icons/switch-profile/race-admin-cars.svg`, `race-admin-per-car.svg`) keyed by profile name in its `PROFILE_ICONS` map. The select-car PI's **Target Profile** is an `ird-profile-select` dropdown fed by a `_deviceProfiles` push from the Race Admin action (same pattern as Switch Profile); an empty selection falls back to `DEFAULT_SELECTOR_TARGET_PROFILE`.
 
 ## Switching profiles at runtime
 

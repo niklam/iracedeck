@@ -125,7 +125,7 @@
 				<sdpi-textfield setting="selectorPage" default="0" placeholder="0" inputmode="numeric" pattern="[0-9]*"></sdpi-textfield>
 			</sdpi-item>
 			<sdpi-item label="Target Profile">
-				<sdpi-textfield setting="selectorTargetProfile" default="iRaceDeck Race Admin Per Car" placeholder="iRaceDeck Race Admin Per Car"></sdpi-textfield>
+				<ird-profile-select setting="selectorTargetProfile" profiles="_deviceProfiles" placeholder="Default (iRaceDeck Race Admin Per Car)"></ird-profile-select>
 			</sdpi-item>
 			<div class="ird-supporting-text">
 				Auto-fills one car per key (sorted by number) from the live session. Reserve the top-left key for Back to default and the two bottom corners for Previous/Next page. Page is 0-based. On press it stores the car as the shared admin target and switches to the target profile.

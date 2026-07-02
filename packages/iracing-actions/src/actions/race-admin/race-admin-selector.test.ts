@@ -2,6 +2,7 @@ import { getAllCarNumbers } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  availableProfilesForDevice,
   carsPerPage,
   computeCarSlotIndex,
   DEFAULT_SELECTOR_TARGET_PROFILE,
@@ -14,10 +15,27 @@ import {
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getAllCarNumbers: vi.fn(() => []),
+  splitDriverName: vi.fn((userName: string) => {
+    const trimmed = userName.trim();
+    const spaceIndex = trimmed.indexOf(" ");
+
+    if (spaceIndex === -1) return { firstName: trimmed, lastName: "" };
+
+    return { firstName: trimmed.substring(0, spaceIndex), lastName: trimmed.substring(spaceIndex + 1) };
+  }),
 }));
 
 vi.mock("../../../icons/race-admin-car-selector.svg", () => ({
   default: "<svg>{{backgroundColor}}{{borderDefs}}{{borderContent}}{{titleContent}}{{numberContent}}</svg>",
+}));
+
+vi.mock("../data/profiles.json", () => ({
+  default: [
+    { name: "iRaceDeck Default", deviceType: 2 },
+    { name: "iRaceDeck Race Admin Cars", deviceType: 2 },
+    { name: "iRaceDeck Race Admin Per Car", deviceType: 2 },
+    { name: "iRaceDeck Mini", deviceType: 1 },
+  ],
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
@@ -59,6 +77,19 @@ describe("race-admin-selector", () => {
 
     it("defaults the target profile to the bundled per-car profile", () => {
       expect(DEFAULT_SELECTOR_TARGET_PROFILE).toBe("iRaceDeck Race Admin Per Car");
+    });
+  });
+
+  describe("availableProfilesForDevice", () => {
+    it("filters the bundled profile list by device type", () => {
+      expect(availableProfilesForDevice(2)).toEqual([
+        "iRaceDeck Default",
+        "iRaceDeck Race Admin Cars",
+        "iRaceDeck Race Admin Per Car",
+      ]);
+      expect(availableProfilesForDevice(1)).toEqual(["iRaceDeck Mini"]);
+      expect(availableProfilesForDevice(99)).toEqual([]);
+      expect(availableProfilesForDevice(undefined)).toEqual([]);
     });
   });
 
@@ -176,17 +207,23 @@ describe("race-admin-selector", () => {
 
   describe("resolveSlotCar", () => {
     const field = [
-      { carIdx: 3, carNumber: "3", carNumberRaw: 3 },
-      { carIdx: 9, carNumber: "7", carNumberRaw: 7 },
-      { carIdx: 1, carNumber: "24", carNumberRaw: 24 },
+      { carIdx: 3, carNumber: "3", carNumberRaw: 3, userName: "Max Verstappen" },
+      { carIdx: 9, carNumber: "7", carNumberRaw: 7, userName: "Lando" },
+      { carIdx: 1, carNumber: "24", carNumberRaw: 24, userName: "John van der Berg" },
     ];
 
     it("maps a slot index into the car-number-sorted field, excluding pace car and spectators", () => {
       vi.mocked(getAllCarNumbers).mockReturnValue(field);
 
-      expect(resolveSlotCar({}, 0)).toEqual({ carIdx: 3, carNumber: "3" });
-      expect(resolveSlotCar({}, 2)).toEqual({ carIdx: 1, carNumber: "24" });
+      expect(resolveSlotCar({}, 0)).toEqual({ carIdx: 3, carNumber: "3", lastName: "Verstappen" });
+      expect(resolveSlotCar({}, 2)).toEqual({ carIdx: 1, carNumber: "24", lastName: "van der Berg" });
       expect(getAllCarNumbers).toHaveBeenCalledWith({}, true, true);
+    });
+
+    it("yields an empty last name for a single-word user name", () => {
+      vi.mocked(getAllCarNumbers).mockReturnValue(field);
+
+      expect(resolveSlotCar({}, 1)).toEqual({ carIdx: 9, carNumber: "7", lastName: "" });
     });
 
     it("returns null for an empty slot, a null slot, or a negative slot", () => {
@@ -200,13 +237,37 @@ describe("race-admin-selector", () => {
 
   describe("generateSelectorSvg", () => {
     it("renders the car number into a data URI", () => {
-      const uri = generateSelectorSvg("24", {});
+      const uri = generateSelectorSvg({ carNumber: "24", lastName: "Doe" }, {});
       expect(uri).toContain("data:image/svg+xml");
       expect(decodeURIComponent(uri)).toContain("24");
     });
 
-    it("scales down but still renders a 3-digit number", () => {
-      expect(decodeURIComponent(generateSelectorSvg("123", {}))).toContain("123");
+    it("renders every number at the same fixed size (sized to fit 888)", () => {
+      const one = decodeURIComponent(generateSelectorSvg({ carNumber: "1" }, {}));
+      const three = decodeURIComponent(generateSelectorSvg({ carNumber: "888" }, {}));
+      const sizeOf = (svg: string) => /font-size="(\d+)"/.exec(svg)?.[1];
+      expect(sizeOf(one)).toBe(sizeOf(three));
+      expect(three).toContain("888");
+    });
+
+    it("renders the driver's last name below the number, uppercased", () => {
+      const decoded = decodeURIComponent(generateSelectorSvg({ carNumber: "42", lastName: "Norris" }, {}));
+      expect(decoded).toContain("NORRIS");
+    });
+
+    it("shrinks the name font for long names", () => {
+      const short = decodeURIComponent(generateSelectorSvg({ carNumber: "42", lastName: "Sainz" }, {}));
+      const long = decodeURIComponent(generateSelectorSvg({ carNumber: "42", lastName: "Vandoorne-Hulkenberg" }, {}));
+      const sizes = (svg: string) => [...svg.matchAll(/font-size="(\d+)"/g)].map((m) => Number(m[1]));
+      // [number, name] — the number size is identical, the name size shrinks.
+      expect(sizes(short)[0]).toBe(sizes(long)[0]);
+      expect(sizes(long)[1]!).toBeLessThan(sizes(short)[1]!);
+    });
+
+    it("renders only the number when the driver has no last name", () => {
+      const decoded = decodeURIComponent(generateSelectorSvg({ carNumber: "7", lastName: "" }, {}));
+      expect(decoded).toContain("7");
+      expect([...decoded.matchAll(/<text/g)]).toHaveLength(1);
     });
 
     it("renders a blank key (no number) for an empty slot", () => {

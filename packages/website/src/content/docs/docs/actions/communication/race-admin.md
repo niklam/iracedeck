@@ -529,7 +529,7 @@ This mode sends no iRacing command itself; it's navigation plus shared state.
 - **Method:** Navigation (stores the admin target, switches profile) — no iRacing command
 - **Dial:** No rotation support (keypad only)
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — shows the car's number, big and centered, updating as the field changes. An empty slot (fewer cars than keys) shows a blank black key.
+- **Telemetry-aware icon:** Yes — shows the car's number big and centered (fixed size, fits 3-digit numbers) with the driver's last name below, updating as the field changes. An empty slot (fewer cars than keys) shows a blank black key.
 
 #### How keys map to cars
 
@@ -541,7 +541,7 @@ The field is sorted by car number (pace car and spectators excluded), then laid 
 
 #### Setting: Target Profile
 
-The bundled profile to switch to after a car is picked. Defaults to **iRaceDeck Race Admin Per Car**.
+The bundled profile to switch to after a car is picked, chosen from the profiles available for this device. Leaving it unset uses **iRaceDeck Race Admin Per Car**.
 
 ## Shared settings
 

@@ -129,21 +129,21 @@ describe("getAllCarNumbers", () => {
   it("should return all car numbers sorted ascending by numeric value", () => {
     const result = getAllCarNumbers(sessionInfo);
     expect(result).toEqual([
-      { carIdx: 0, carNumber: "0", carNumberRaw: 0 },
-      { carIdx: 2, carNumber: "4", carNumberRaw: 4 },
-      { carIdx: 4, carNumber: "7", carNumberRaw: 7 },
-      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
-      { carIdx: 3, carNumber: "99", carNumberRaw: 99 },
+      { carIdx: 0, carNumber: "0", carNumberRaw: 0, userName: "" },
+      { carIdx: 2, carNumber: "4", carNumberRaw: 4, userName: "" },
+      { carIdx: 4, carNumber: "7", carNumberRaw: 7, userName: "" },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42, userName: "" },
+      { carIdx: 3, carNumber: "99", carNumberRaw: 99, userName: "" },
     ]);
   });
 
   it("should exclude pace car when requested", () => {
     const result = getAllCarNumbers(sessionInfo, true);
     expect(result).toEqual([
-      { carIdx: 2, carNumber: "4", carNumberRaw: 4 },
-      { carIdx: 4, carNumber: "7", carNumberRaw: 7 },
-      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
-      { carIdx: 3, carNumber: "99", carNumberRaw: 99 },
+      { carIdx: 2, carNumber: "4", carNumberRaw: 4, userName: "" },
+      { carIdx: 4, carNumber: "7", carNumberRaw: 7, userName: "" },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42, userName: "" },
+      { carIdx: 3, carNumber: "99", carNumberRaw: 99, userName: "" },
     ]);
   });
 
@@ -152,23 +152,23 @@ describe("getAllCarNumbers", () => {
       DriverInfo: {
         Drivers: [
           { CarIdx: 0, CarNumber: "0", CarNumberRaw: 0, CarIsPaceCar: 1 },
-          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
+          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42, UserName: "Jane Doe" },
           { CarIdx: 2, CarNumber: "4", CarNumberRaw: 4, IsSpectator: 1 },
-          { CarIdx: 3, CarNumber: "7", CarNumberRaw: 7, IsSpectator: 0 },
+          { CarIdx: 3, CarNumber: "7", CarNumberRaw: 7, IsSpectator: 0, UserName: "Max Power" },
         ],
       },
     };
 
     expect(getAllCarNumbers(info, true, true)).toEqual([
-      { carIdx: 3, carNumber: "7", carNumberRaw: 7 },
-      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
+      { carIdx: 3, carNumber: "7", carNumberRaw: 7, userName: "Max Power" },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42, userName: "Jane Doe" },
     ]);
 
     // Spectators stay included unless explicitly excluded (existing callers).
     expect(getAllCarNumbers(info, true)).toEqual([
-      { carIdx: 2, carNumber: "4", carNumberRaw: 4 },
-      { carIdx: 3, carNumber: "7", carNumberRaw: 7 },
-      { carIdx: 1, carNumber: "42", carNumberRaw: 42 },
+      { carIdx: 2, carNumber: "4", carNumberRaw: 4, userName: "" },
+      { carIdx: 3, carNumber: "7", carNumberRaw: 7, userName: "Max Power" },
+      { carIdx: 1, carNumber: "42", carNumberRaw: 42, userName: "Jane Doe" },
     ]);
   });
 
@@ -183,9 +183,9 @@ describe("getAllCarNumbers", () => {
       },
     };
     expect(getAllCarNumbers(info)).toEqual([
-      { carIdx: 1, carNumber: "9", carNumberRaw: 9 },
-      { carIdx: 0, carNumber: "070", carNumberRaw: 3070 },
-      { carIdx: 2, carNumber: "100", carNumberRaw: 100 },
+      { carIdx: 1, carNumber: "9", carNumberRaw: 9, userName: "" },
+      { carIdx: 0, carNumber: "070", carNumberRaw: 3070, userName: "" },
+      { carIdx: 2, carNumber: "100", carNumberRaw: 100, userName: "" },
     ]);
   });
 
@@ -208,8 +208,8 @@ describe("getAllCarNumbers", () => {
       },
     };
     expect(getAllCarNumbers(info)).toEqual([
-      { carIdx: 2, carNumber: "5", carNumberRaw: 5 },
-      { carIdx: 0, carNumber: "10", carNumberRaw: 10 },
+      { carIdx: 2, carNumber: "5", carNumberRaw: 5, userName: "" },
+      { carIdx: 0, carNumber: "10", carNumberRaw: 10, userName: "" },
     ]);
   });
 });

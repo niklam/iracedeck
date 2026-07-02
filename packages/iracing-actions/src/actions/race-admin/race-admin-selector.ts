@@ -29,9 +29,10 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getAllCarNumbers } from "@iracedeck/iracing-sdk";
+import { getAllCarNumbers, splitDriverName } from "@iracedeck/iracing-sdk";
 
 import selectorTemplate from "../../../icons/race-admin-car-selector.svg";
+import profilesData from "../data/profiles.json" with { type: "json" };
 
 /**
  * Internal passthrough global-settings key holding the currently selected admin
@@ -48,10 +49,36 @@ export const SELECTED_CAR_KEY = "_raceAdminSelectedCar" as const;
 /** The profile a select-car press switches to when none is configured. */
 export const DEFAULT_SELECTOR_TARGET_PROFILE = "iRaceDeck Race Admin Per Car" as const;
 
+/**
+ * Bundled profile names available for a device type, read from the generated
+ * `data/profiles.json` (mirrors the manifest). Feeds the Target Profile
+ * dropdown's `_deviceProfiles` list; same shape as the Switch Profile action's
+ * helper of the same name.
+ *
+ * @internal Exported for testing
+ */
+export function availableProfilesForDevice(deviceType: number | undefined): string[] {
+  if (deviceType === undefined) return [];
+
+  return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
+}
+
 /** The shared admin target persisted under `SELECTED_CAR_KEY`. */
 export interface SelectedCar {
   carIdx: number;
   carNumber: string;
+}
+
+/** A car occupying a selector slot: the persisted target plus display fields. */
+export interface SlotCar extends SelectedCar {
+  /** Driver's last name (empty when the session has no name for the entry). */
+  lastName: string;
+}
+
+/** What the selector key renders: the car number plus an optional driver name. */
+export interface SelectorDisplayCar {
+  carNumber: string;
+  lastName?: string;
 }
 
 /**
@@ -141,13 +168,15 @@ export function computeCarSlotIndex(
  *
  * @internal Exported for testing
  */
-export function resolveSlotCar(sessionInfo: unknown, slotIndex: number | null): SelectedCar | null {
+export function resolveSlotCar(sessionInfo: unknown, slotIndex: number | null): SlotCar | null {
   if (slotIndex === null || slotIndex < 0) return null;
 
   const cars = getAllCarNumbers(sessionInfo, true, true);
   const car = cars[slotIndex];
 
-  return car ? { carIdx: car.carIdx, carNumber: car.carNumber } : null;
+  if (!car) return null;
+
+  return { carIdx: car.carIdx, carNumber: car.carNumber, lastName: splitDriverName(car.userName).lastName };
 }
 
 /**
@@ -177,26 +206,44 @@ type SelectorRenderSettings = {
   borderOverrides?: Parameters<typeof resolveBorderSettings>[2];
 };
 
-/** Big, centered car-number text. Font scales down so 3-digit numbers still fit. */
-function bigNumberContent(carNumber: string, textColor: string): string {
-  const digits = carNumber.length;
-  const fontSize = digits >= 3 ? 78 : digits === 2 ? 100 : 112;
+/**
+ * Fixed number font size, chosen so a 3-digit number ("888") fits the 144px
+ * key with margins. Deliberately NOT scaled per digit count — every key on the
+ * selector grid renders its number at the same size.
+ */
+const NUMBER_FONT_SIZE = 76;
 
-  return `<text x="72" y="74" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(carNumber)}</text>`;
+/**
+ * Big centered car number at a fixed size, with the driver's last name below.
+ * The name shrinks to fit long names (uppercase Arial bold ≈ 0.68em per char
+ * into ~130px of usable width) but never below a readable floor.
+ */
+function carDisplayContent(car: SelectorDisplayCar, textColor: string): string {
+  const numberText = `<text x="72" y="58" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${NUMBER_FONT_SIZE}" font-weight="bold">${escapeXml(car.carNumber)}</text>`;
+
+  const name = car.lastName?.trim().toUpperCase() ?? "";
+
+  if (!name) return numberText;
+
+  const nameFontSize = Math.max(11, Math.min(26, Math.floor(130 / (0.68 * name.length))));
+  const nameText = `<text x="72" y="118" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${nameFontSize}" font-weight="bold">${escapeXml(name)}</text>`;
+
+  return `${numberText}\n    ${nameText}`;
 }
 
 /**
- * Render the selector key icon: a pure-black button with one big, centered car
- * number (white-on-black by default, themeable via the standard color / border /
- * title overrides). An empty slot renders as a blank black key.
+ * Render the selector key icon: a pure-black button with a big fixed-size car
+ * number and the driver's last name below (white-on-black by default,
+ * themeable via the standard color / border / title overrides). An empty slot
+ * renders as a blank black key.
  *
  * @internal Exported for testing
  */
-export function generateSelectorSvg(carNumber: string | null, settings: SelectorRenderSettings): string {
+export function generateSelectorSvg(car: SelectorDisplayCar | null, settings: SelectorRenderSettings): string {
   const colors = resolveIconColors(selectorTemplate, getGlobalColors(), settings.colorOverrides);
   const textColor = colors.textColor;
 
-  const numberContent = carNumber ? bigNumberContent(carNumber, textColor) : "";
+  const numberContent = car ? carDisplayContent(car, textColor) : "";
 
   const resolvedTitle = resolveTitleSettings(selectorTemplate, getGlobalTitleSettings(), settings.titleOverrides, "");
   const titleContent =
