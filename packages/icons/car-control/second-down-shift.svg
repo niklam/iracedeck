@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 58 64" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"2ND\nSHIFT DOWN"},"border":{"color":"#5a6a5a"}}</desc>
+
+    <polygon points="25,46 4,22 16,22 16,0 34,0 34,22 46,22" fill="{{graphic1Color}}" stroke="none"/>
+    <rect x="28" y="46" width="30" height="18" rx="4" fill="#f39c12" stroke="none"/>
+    <text x="43" y="55" text-anchor="middle" dominant-baseline="central" fill="#2a2a2a" font-family="Arial, sans-serif" font-size="11" font-weight="bold" stroke="none">2ND</text>
+
+</svg>
