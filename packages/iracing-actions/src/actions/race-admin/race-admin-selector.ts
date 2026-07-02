@@ -211,7 +211,7 @@ type SelectorRenderSettings = {
  * key with margins. Deliberately NOT scaled per digit count — every key on the
  * selector grid renders its number at the same size.
  */
-const NUMBER_FONT_SIZE = 76;
+const NUMBER_FONT_SIZE = 70;
 
 /**
  * Big centered car number at a fixed size, with the driver's last name below.
@@ -219,14 +219,14 @@ const NUMBER_FONT_SIZE = 76;
  * into ~130px of usable width) but never below a readable floor.
  */
 function carDisplayContent(car: SelectorDisplayCar, textColor: string): string {
-  const numberText = `<text x="72" y="58" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${NUMBER_FONT_SIZE}" font-weight="bold">${escapeXml(car.carNumber)}</text>`;
+  const numberText = `<text x="72" y="78" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${NUMBER_FONT_SIZE}" font-weight="bold">${escapeXml(car.carNumber)}</text>`;
 
   const name = car.lastName?.trim().toUpperCase() ?? "";
 
   if (!name) return numberText;
 
-  const nameFontSize = Math.max(11, Math.min(26, Math.floor(130 / (0.68 * name.length))));
-  const nameText = `<text x="72" y="118" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${nameFontSize}" font-weight="bold">${escapeXml(name)}</text>`;
+  const nameFontSize = Math.max(11, Math.min(22, Math.floor(130 / (0.68 * name.length))));
+  const nameText = `<text x="72" y="121" text-anchor="middle" dominant-baseline="central" fill="${textColor}" font-family="Arial, sans-serif" font-size="${nameFontSize}" font-weight="bold">${escapeXml(name)}</text>`;
 
   return `${numberText}\n    ${nameText}`;
 }

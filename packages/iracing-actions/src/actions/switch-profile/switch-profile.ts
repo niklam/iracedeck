@@ -49,13 +49,22 @@ const SwitchProfileSettings = CommonSettings.extend({
 type SwitchProfileSettings = z.infer<typeof SwitchProfileSettings>;
 
 /**
+ * Multi-line title overrides for profiles whose stripped name is too long for
+ * a single line on the key. Anything not listed renders as one line.
+ */
+const PROFILE_TITLES: Record<string, string> = {
+  "iRaceDeck Race Admin Cars": "RACE ADMIN\nCARS",
+  "iRaceDeck Race Admin Per Car": "RACE ADMIN\nPER CAR",
+};
+
+/**
  * @internal Exported for testing. Short, upper-cased key-title for a profile
  * (drops the `iRaceDeck` prefix); a generic label when nothing is selected.
  */
 export function profileTitle(profile: string): string {
   if (!profile) return "SWITCH\nPROFILE";
 
-  return profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
+  return PROFILE_TITLES[profile] ?? profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
 }
 
 /**
