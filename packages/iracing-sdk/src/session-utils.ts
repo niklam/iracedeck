@@ -23,19 +23,6 @@ interface DriverEntry {
 export type CarNumberTargetClass = "user" | "ai" | "unknown";
 
 /**
- * Classify a car-number target against the current session's driver list.
- *
- * User-management admin commands (`!admin`, `!nadmin`, per-driver `!chat` /
- * `!nchat`, `!remove`) act on *users*, and iRacing's failure mode for a target
- * that matches no user (an AI car, or a number not in the session) has been
- * observed to apply the command to the SENDER instead (issue #747) — so
- * callers refuse to dispatch such commands unless the target classifies as
- * `"user"`.
- *
- * Matching uses the same digit-cleaned, leading-zero-preserving convention as
- * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
- */
-/**
  * The player's own (display) car number, cleaned to digits with leading zeros
  * preserved — resolved via `DriverInfo.DriverCarIdx`. `null` when session info
  * is missing or the player has no numbered car entry.
@@ -49,6 +36,19 @@ export function getPlayerCarNumberFromSessionInfo(sessionInfo: unknown): string 
   return getCarNumberFromSessionInfo(sessionInfo, playerCarIdx);
 }
 
+/**
+ * Classify a car-number target against the current session's driver list.
+ *
+ * User-management admin commands (`!admin`, `!nadmin`, per-driver `!chat` /
+ * `!nchat`, `!remove`) act on *users*, and iRacing's failure mode for a target
+ * that matches no user (an AI car, or a number not in the session) has been
+ * observed to apply the command to the SENDER instead (issue #747) — so
+ * callers refuse to dispatch such commands unless the target classifies as
+ * `"user"`.
+ *
+ * Matching uses the same digit-cleaned, leading-zero-preserving convention as
+ * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
+ */
 export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string): CarNumberTargetClass {
   const target = carNumber.replace(/[^0-9]/g, "");
 
