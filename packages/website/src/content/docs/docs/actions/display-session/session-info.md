@@ -93,7 +93,9 @@ Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaul
 
 ### Fuel
 
-Show fuel amount or fuel percentage remaining.
+Show the fuel remaining in the tank, the fuel you used on your last lap, or a rolling average consumption per lap — the numbers you plan a stint around, without an external overlay.
+
+The consumption values only count clean flying laps: laps with a pit stop, an out-lap or in-lap, or a tow are excluded automatically, so a stop never corrupts the average and the display keeps showing the last clean value instead of flickering. The icon shows `--` until the first clean lap has been completed. The data survives garage visits and replay watching — you can tweak the setup in the garage with your consumption numbers still on the key — and after a session change the previous session's values stay visible until you're back in the car and running (in a race, until the green flag), then reset and rebuild from the new session's laps. Values respect your iRacing display units (liters or gallons) and show two decimals.
 
 #### Details
 
@@ -101,10 +103,24 @@ Show fuel amount or fuel percentage remaining.
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — the fuel reading updates live
 
+#### Setting: Fuel Value
+
+Which fuel number to display. Defaults to **Current level**.
+
+- **Current level** (default) — The fuel remaining in the tank
+- **Used last lap** — Fuel consumed over the most recent clean lap
+- **Average per lap** — Mean consumption over the last few clean laps (see **Lap Window**). If fewer clean laps exist than the window asks for, the average covers what's there.
+
 #### Setting: Fuel Format
+
+Only applies to **Current level**.
 
 - **Amount** (default) — Show the absolute fuel amount, respecting your iRacing display units (liters or gallons)
 - **Percentage** — Show fuel as a percentage of tank capacity
+
+#### Setting: Lap Window
+
+How many recent clean laps the **Average per lap** value covers (1–20). Defaults to `5`. Only shown for **Average per lap**.
 
 #### Setting: Font Size
 

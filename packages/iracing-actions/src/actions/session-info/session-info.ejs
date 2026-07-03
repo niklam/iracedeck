@@ -33,12 +33,27 @@
 			<sdpi-checkbox setting="positionShowTotal"></sdpi-checkbox>
 		</sdpi-item>
 
+		<sdpi-item id="fuel-submode-settings" label="Fuel Value" class="hidden">
+			<sdpi-select id="fuel-submode-select" setting="fuelSubMode" default="now">
+				<option value="now">Current level</option>
+				<option value="lastLap">Used last lap</option>
+				<option value="avgN">Average per lap</option>
+			</sdpi-select>
+		</sdpi-item>
+
 		<sdpi-item id="fuel-settings" label="Fuel Display" class="hidden">
 			<sdpi-select setting="fuelFormat" default="amount">
 				<option value="amount">Amount (L / gal)</option>
 				<option value="percentage">Percentage</option>
 			</sdpi-select>
 		</sdpi-item>
+
+		<sdpi-item id="fuel-window-settings" label="Lap Window" class="hidden">
+			<ird-range-input setting="fuelLapWindow" min="1" max="20" step="1" default="5" showlabels></ird-range-input>
+		</sdpi-item>
+		<div id="fuel-window-help" class="ird-supporting-text hidden">
+			How many recent valid laps the average covers. Laps with a pit stop or tow are skipped.
+		</div>
 
 		<sdpi-item id="flags-settings" label="UI" class="hidden">
 			<sdpi-checkbox setting="blankWhenNoFlag" label="Blank when no flag"></sdpi-checkbox>
@@ -49,27 +64,41 @@
 				await customElements.whenDefined("sdpi-select");
 
 				const modeSelect = document.getElementById("mode-select");
+				const fuelSubModeSelect = document.getElementById("fuel-submode-select");
 				if (!modeSelect) return;
 
-				updateVisibility(modeSelect.value || "incidents");
+				updateVisibility();
 
-				modeSelect.addEventListener("change", (ev) => updateVisibility(ev.target.value));
-				modeSelect.addEventListener("input", (ev) => updateVisibility(ev.target.value));
+				modeSelect.addEventListener("change", updateVisibility);
+				modeSelect.addEventListener("input", updateVisibility);
+				fuelSubModeSelect?.addEventListener("change", updateVisibility);
+				fuelSubModeSelect?.addEventListener("input", updateVisibility);
 
 				let lastMode = modeSelect.value || "incidents";
+				let lastFuelSubMode = fuelSubModeSelect?.value || "now";
 				setInterval(() => {
-					const current = modeSelect.value;
-					if (current && current !== lastMode) {
-						lastMode = current;
-						updateVisibility(current);
+					const currentMode = modeSelect.value;
+					const currentFuelSubMode = fuelSubModeSelect?.value;
+					if (
+						(currentMode && currentMode !== lastMode) ||
+						(currentFuelSubMode && currentFuelSubMode !== lastFuelSubMode)
+					) {
+						lastMode = currentMode || lastMode;
+						lastFuelSubMode = currentFuelSubMode || lastFuelSubMode;
+						updateVisibility();
 					}
 				}, 100);
 			}
 
-			function updateVisibility(mode) {
+			function updateVisibility() {
+				const mode = document.getElementById("mode-select")?.value || "incidents";
+				const fuelSubMode = document.getElementById("fuel-submode-select")?.value || "now";
 				const positionTypeSettings = document.getElementById("position-type-settings");
 				const positionSettings = document.getElementById("position-settings");
+				const fuelSubModeSettings = document.getElementById("fuel-submode-settings");
 				const fuelSettings = document.getElementById("fuel-settings");
+				const fuelWindowSettings = document.getElementById("fuel-window-settings");
+				const fuelWindowHelp = document.getElementById("fuel-window-help");
 				const flagsSettings = document.getElementById("flags-settings");
 
 				if (positionTypeSettings) {
@@ -78,8 +107,18 @@
 				if (positionSettings) {
 					positionSettings.classList.toggle("hidden", mode !== "position");
 				}
+				if (fuelSubModeSettings) {
+					fuelSubModeSettings.classList.toggle("hidden", mode !== "fuel");
+				}
 				if (fuelSettings) {
-					fuelSettings.classList.toggle("hidden", mode !== "fuel");
+					// The amount/percentage format only applies to the tank-level display.
+					fuelSettings.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "now");
+				}
+				if (fuelWindowSettings) {
+					fuelWindowSettings.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "avgN");
+				}
+				if (fuelWindowHelp) {
+					fuelWindowHelp.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "avgN");
 				}
 				if (flagsSettings) {
 					flagsSettings.classList.toggle("hidden", mode !== "flags");

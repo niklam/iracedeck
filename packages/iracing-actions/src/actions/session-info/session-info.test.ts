@@ -1,5 +1,5 @@
 import { FLAG_DEFINITIONS, resolveActiveFlag, SessionState, TrackWetness } from "@iracedeck/iracing-sdk";
-import { getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
+import { getFuelStats, getLivePosition, getStartingGridPosition } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,7 +22,10 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 // getLivePosition is the translator-singleton class-aware resolver; mock it so the
 // position-mode tests control the frozen overall + authoritative class numbers.
 // getStartingGridPosition is the qualifying-grid resolver used pre-green (issue #647).
+// getFuelStats is the validated fuel lap history accessor (issue #465).
 vi.mock("@iracedeck/sim-events-iracing", () => ({
+  FUEL_LAP_HISTORY_CAP: 20,
+  getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, samples: 0 })),
   getLivePosition: vi.fn(() => null),
   getStartingGridPosition: vi.fn(() => null),
 }));
@@ -35,6 +38,8 @@ vi.mock("@iracedeck/deck-core", () => ({
         positionType: "class",
         positionShowTotal: false,
         fuelFormat: "amount",
+        fuelSubMode: "now",
+        fuelLapWindow: 5,
         blankWhenNoFlag: false,
       };
       const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"];
@@ -45,6 +50,12 @@ vi.mock("@iracedeck/deck-core", () => ({
         if ("positionShowTotal" in merged) merged.positionShowTotal = coerceBool(merged.positionShowTotal);
 
         if ("blankWhenNoFlag" in merged) merged.blankWhenNoFlag = coerceBool(merged.blankWhenNoFlag);
+
+        if ("fuelLapWindow" in merged) {
+          // Mirrors the real schema: round + clamp, never hard-fail.
+          const window = Math.round(Number(merged.fuelLapWindow));
+          merged.fuelLapWindow = Number.isFinite(window) ? Math.min(20, Math.max(1, window)) : 5;
+        }
 
         return merged;
       };
@@ -121,6 +132,8 @@ function defaultSettings(
     positionType: "class" | "overall";
     positionShowTotal: boolean;
     fuelFormat: "amount" | "percentage";
+    fuelSubMode: "now" | "lastLap" | "avgN";
+    fuelLapWindow: number;
     blankWhenNoFlag: boolean;
   }> = {},
 ) {
@@ -129,6 +142,8 @@ function defaultSettings(
     positionType: "class" as const,
     positionShowTotal: false,
     fuelFormat: "amount" as const,
+    fuelSubMode: "now" as const,
+    fuelLapWindow: 5,
     blankWhenNoFlag: false,
     ...overrides,
   };
@@ -200,6 +215,11 @@ describe("SessionInfo", () => {
 
     it("should format imperial fuel in gallons", () => {
       expect(formatFuelAmount(3.78541, 0)).toBe("1.0 gal");
+    });
+
+    it("should honor a custom decimal count", () => {
+      expect(formatFuelAmount(2.845, 1, 2)).toBe("2.85 L");
+      expect(formatFuelAmount(7.57082, 0, 2)).toBe("2.00 gal");
     });
 
     it("should default to liters when DisplayUnits is undefined", () => {
@@ -611,6 +631,36 @@ describe("SessionInfo", () => {
       expect(decoded).toContain("FUEL");
     });
 
+    it("should use LAST LAP title for the fuel lastLap sub-mode", () => {
+      const result = generateSessionInfoSvg(defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" }), "2.8 L", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("LAST LAP");
+    });
+
+    it("should include the lap window in the fuel avgN sub-mode title", () => {
+      const result = generateSessionInfoSvg(
+        defaultSettings({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: 10 }),
+        "2.8 L",
+        false,
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("AVG 10 LAPS");
+    });
+
+    it("should use the singular LAP in the avgN title for a 1-lap window", () => {
+      const result = generateSessionInfoSvg(
+        defaultSettings({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: 1 }),
+        "2.8 L",
+        false,
+      );
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("AVG 1 LAP");
+      expect(decoded).not.toContain("AVG 1 LAPS");
+    });
+
     it("should use FLAGS title for flags mode", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "flags" }), "GREEN", false);
       const decoded = decodeURIComponent(result);
@@ -928,6 +978,32 @@ describe("SessionInfo", () => {
       expect(action["activeContexts"].get("action-1")?.fuelFormat).toBe("percentage");
     });
 
+    it("should parse fuelSubMode setting", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { mode: "fuel", fuelSubMode: "lastLap" }) as any);
+
+      expect(action["activeContexts"].get("action-1")?.fuelSubMode).toBe("lastLap");
+    });
+
+    it("should default fuelSubMode to now", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { mode: "fuel" }) as any);
+
+      expect(action["activeContexts"].get("action-1")?.fuelSubMode).toBe("now");
+    });
+
+    it("should parse fuelLapWindow setting from the PI's string value", async () => {
+      await action.onWillAppear(
+        fakeEvent("action-1", { mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: "10" }) as any,
+      );
+
+      expect(action["activeContexts"].get("action-1")?.fuelLapWindow).toBe(10);
+    });
+
+    it("should default fuelLapWindow to 5", async () => {
+      await action.onWillAppear(fakeEvent("action-1", { mode: "fuel", fuelSubMode: "avgN" }) as any);
+
+      expect(action["activeContexts"].get("action-1")?.fuelLapWindow).toBe(5);
+    });
+
     it("should initialize lastFlagKey for flags mode", async () => {
       await action.onWillAppear(fakeEvent("action-1", { mode: "flags" }) as any);
 
@@ -946,6 +1022,81 @@ describe("SessionInfo", () => {
       await action.onWillDisappear(fakeEvent("action-1") as any);
 
       expect(action["flagPulseTimers"].has("action-1")).toBe(false);
+    });
+
+    describe("fuel consumption sub-modes (issue #465)", () => {
+      const telemetry = { FuelLevel: 42.3, FuelLevelPct: 0.55, DisplayUnits: 1 } as any;
+
+      // vi.clearAllMocks() only clears call history, not implementations — a
+      // mockReturnValue set in one test would otherwise leak into the next.
+      beforeEach(() => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+      });
+
+      it("keeps showing the current fuel level in the default 'now' sub-mode", () => {
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "now" });
+
+        expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("42.3 L");
+        expect(getFuelStats).not.toHaveBeenCalled();
+      });
+
+      it("formats the last valid lap's consumption in liters", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.84, avg: 2.9, samples: 5 });
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" });
+
+        expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.84 L");
+      });
+
+      it("formats the last lap consumption in gallons under imperial DisplayUnits", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.57082, avg: 7.6, samples: 5 });
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" });
+        const imperial = { ...telemetry, DisplayUnits: 0 };
+
+        expect(action["extractDisplayValue"](settings as any, imperial)).toBe("2.00 gal");
+      });
+
+      it("formats the rolling average and passes the configured window to getFuelStats", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.53, samples: 10 });
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: 10 });
+
+        expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.53 L");
+        expect(getFuelStats).toHaveBeenCalledWith(10);
+      });
+
+      it("formats the rolling average in gallons under imperial DisplayUnits", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 7.6, avg: 7.57082, samples: 5 });
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "avgN" });
+        const imperial = { ...telemetry, DisplayUnits: 0 };
+
+        expect(action["extractDisplayValue"](settings as any, imperial)).toBe("2.00 gal");
+      });
+
+      it("shows -- while no valid laps have been recorded", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+
+        expect(
+          action["extractDisplayValue"](defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" }) as any, telemetry),
+        ).toBe("--");
+        expect(
+          action["extractDisplayValue"](defaultSettings({ mode: "fuel", fuelSubMode: "avgN" }) as any, telemetry),
+        ).toBe("--");
+      });
+
+      it("shows -- without telemetry in the consumption sub-modes", () => {
+        expect(
+          action["extractDisplayValue"](defaultSettings({ mode: "fuel", fuelSubMode: "lastLap" }) as any, null),
+        ).toBe("--");
+        expect(action["extractDisplayValue"](defaultSettings({ mode: "fuel", fuelSubMode: "avgN" }) as any, null)).toBe(
+          "--",
+        );
+      });
+
+      it("ignores the percentage fuelFormat in the consumption sub-modes", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, samples: 5 });
+        const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap", fuelFormat: "percentage" });
+
+        expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.80 L");
+      });
     });
 
     describe("flags mode display value", () => {
