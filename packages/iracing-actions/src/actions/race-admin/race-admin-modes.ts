@@ -58,6 +58,12 @@ export interface RaceAdminModeMeta {
    * car-targeted race-control commands, which are valid against AI cars.
    */
   targetsUser?: boolean;
+  /**
+   * Whether the command must never be aimed at the sender's OWN car. Revoking
+   * your own admin (`!nadmin` on yourself) can end the session you're hosting
+   * — an easy slip with the viewed-car or selected-car targets (#747).
+   */
+  refusesSelfTarget?: boolean;
   /** Whether the command accepts an optional [message] parameter with mustache templates. */
   hasMessage: boolean;
   /** Whether the message parameter is required (e.g., /all, /rc). */
@@ -297,6 +303,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
     command: "!nadmin",
     needsDriver: true,
     targetsUser: true,
+    refusesSelfTarget: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],

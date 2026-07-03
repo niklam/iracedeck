@@ -133,6 +133,7 @@ export {
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
 } from "./session-utils.js";
 

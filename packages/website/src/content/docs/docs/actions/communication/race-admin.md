@@ -560,7 +560,7 @@ Every mode that accepts a `<driver>` parameter shares a single targeting setting
 
 ### Driver-management modes refuse non-user targets
 
-**Grant Admin**, **Revoke Admin**, **Enable Chat (Driver)**, **Mute Driver**, and **Remove Driver** manage *users*, not cars — and iRacing applies them to *you* when the target isn't a real user, which can revoke your own admin and end your session. So these five modes refuse to send when the resolved target is an AI car, the pace car, or a car number that isn't in the current session: the key flashes a warning and nothing is sent. Race-control commands (Black Flag, EOL, DQ, Clear Penalties, Wave Around) are car-targeted and still work against AI cars. The **Type in Chat** target bypasses this check — you type the number yourself and submit manually.
+**Grant Admin**, **Revoke Admin**, **Enable Chat (Driver)**, **Mute Driver**, and **Remove Driver** manage *users*, not cars — and iRacing applies them to *you* when the target isn't a real user, which can revoke your own admin and end your session. So these five modes refuse to send when the resolved target is an AI car, the pace car, or a car number that isn't in the current session: the key flashes a warning and nothing is sent. **Revoke Admin** additionally refuses your own car — revoking your own admin can end the session you're hosting, and it's an easy slip with the Use Viewed Car or Selected Car targets. Race-control commands (Black Flag, EOL, DQ, Clear Penalties, Wave Around) are car-targeted and still work against AI cars. The **Type in Chat** target bypasses these checks — you type the number yourself and submit manually.
 
 ### Message templates
 

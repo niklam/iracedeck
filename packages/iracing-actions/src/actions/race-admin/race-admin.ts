@@ -59,7 +59,12 @@ import singleFileRestartIconSvg from "@iracedeck/icons/race-admin/single-file-re
 import trackStateIconSvg from "@iracedeck/icons/race-admin/track-state.svg";
 import waveAroundIconSvg from "@iracedeck/icons/race-admin/wave-around.svg";
 import yellowIconSvg from "@iracedeck/icons/race-admin/yellow.svg";
-import { classifyCarNumberTarget, getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  classifyCarNumberTarget,
+  getCarNumberFromSessionInfo,
+  getPlayerCarNumberFromSessionInfo,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import z from "zod";
 
 import { IconUpdateThrottle } from "../../shared/icon-update-throttle.js";
@@ -337,19 +342,36 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     // User-management commands (grant/revoke admin, per-driver chat, remove)
     // act on USERS; iRacing has been observed to apply them to the SENDER when
     // the target matches no user — revoking your own admin can end the session
-    // (issue #747). Refuse AI/pace-car and not-in-session targets outright.
-    if (meta.needsDriver && meta.targetsUser) {
+    // (issue #747). Refuse AI/pace-car and not-in-session targets outright,
+    // and refuse the sender's own car for modes that must never self-target
+    // (revoke-admin — an easy slip with the viewed-car / selected-car targets).
+    if (meta.needsDriver && (meta.targetsUser || meta.refusesSelfTarget)) {
       const target = resolveDriverTarget(settings, viewedCarNumber, meta, selectedCarNumber);
 
       if (target) {
-        const targetClass = classifyCarNumberTarget(this.sdkController.getSessionInfo(), target);
+        const sessionInfo = this.sdkController.getSessionInfo();
 
-        if (targetClass !== "user") {
-          const reason = targetClass === "ai" ? "an AI/pace car, not a user" : "not in the session";
-          this.logger.warn(`Refusing ${mode}: target #${target} is ${reason}`);
-          await action.showAlert?.();
+        if (meta.targetsUser) {
+          const targetClass = classifyCarNumberTarget(sessionInfo, target);
 
-          return;
+          if (targetClass !== "user") {
+            const reason = targetClass === "ai" ? "an AI/pace car, not a user" : "not in the session";
+            this.logger.warn(`Refusing ${mode}: target #${target} is ${reason}`);
+            await action.showAlert?.();
+
+            return;
+          }
+        }
+
+        if (meta.refusesSelfTarget) {
+          const ownNumber = getPlayerCarNumberFromSessionInfo(sessionInfo);
+
+          if (ownNumber !== null && ownNumber === target.replace(/[^0-9]/g, "")) {
+            this.logger.warn(`Refusing ${mode}: target #${target} is your own car`);
+            await action.showAlert?.();
+
+            return;
+          }
         }
       }
     }

@@ -6,7 +6,34 @@ import {
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  getPlayerCarNumberFromSessionInfo,
 } from "./session-utils.js";
+
+describe("getPlayerCarNumberFromSessionInfo", () => {
+  it("resolves the player's own car number via DriverCarIdx", () => {
+    const info = {
+      DriverInfo: {
+        DriverCarIdx: 2,
+        Drivers: [
+          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
+          { CarIdx: 2, CarNumber: "07", CarNumberRaw: 3007 },
+        ],
+      },
+    };
+    expect(getPlayerCarNumberFromSessionInfo(info)).toBe("07");
+  });
+
+  it("returns null when DriverCarIdx is missing, invalid, or unmatched", () => {
+    expect(getPlayerCarNumberFromSessionInfo(null)).toBeNull();
+    expect(getPlayerCarNumberFromSessionInfo({})).toBeNull();
+    expect(getPlayerCarNumberFromSessionInfo({ DriverInfo: { DriverCarIdx: -1, Drivers: [] } })).toBeNull();
+    expect(
+      getPlayerCarNumberFromSessionInfo({
+        DriverInfo: { DriverCarIdx: 9, Drivers: [{ CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 }] },
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("classifyCarNumberTarget", () => {
   const sessionInfo = {

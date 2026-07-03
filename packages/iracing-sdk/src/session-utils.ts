@@ -35,6 +35,20 @@ export type CarNumberTargetClass = "user" | "ai" | "unknown";
  * Matching uses the same digit-cleaned, leading-zero-preserving convention as
  * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
  */
+/**
+ * The player's own (display) car number, cleaned to digits with leading zeros
+ * preserved — resolved via `DriverInfo.DriverCarIdx`. `null` when session info
+ * is missing or the player has no numbered car entry.
+ */
+export function getPlayerCarNumberFromSessionInfo(sessionInfo: unknown): string | null {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const playerCarIdx = driverInfo?.DriverCarIdx;
+
+  if (typeof playerCarIdx !== "number" || playerCarIdx < 0) return null;
+
+  return getCarNumberFromSessionInfo(sessionInfo, playerCarIdx);
+}
+
 export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string): CarNumberTargetClass {
   const target = carNumber.replace(/[^0-9]/g, "");
 
