@@ -11,6 +11,56 @@ interface DriverEntry {
   CarIsPaceCar?: number;
   IsSpectator?: number;
   UserName?: string;
+  CarIsAI?: number;
+}
+
+/**
+ * What a car-number target refers to in the current session:
+ * - `"user"` — a car with a human driver (a connected iRacing user)
+ * - `"ai"` — an AI car or the pace car (no user behind it)
+ * - `"unknown"` — no car with that number in the session
+ */
+export type CarNumberTargetClass = "user" | "ai" | "unknown";
+
+/**
+ * The player's own (display) car number, cleaned to digits with leading zeros
+ * preserved — resolved via `DriverInfo.DriverCarIdx`. `null` when session info
+ * is missing or the player has no numbered car entry.
+ */
+export function getPlayerCarNumberFromSessionInfo(sessionInfo: unknown): string | null {
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const playerCarIdx = driverInfo?.DriverCarIdx;
+
+  if (typeof playerCarIdx !== "number" || playerCarIdx < 0) return null;
+
+  return getCarNumberFromSessionInfo(sessionInfo, playerCarIdx);
+}
+
+/**
+ * Classify a car-number target against the current session's driver list.
+ *
+ * User-management admin commands (`!admin`, `!nadmin`, per-driver `!chat` /
+ * `!nchat`, `!remove`) act on *users*, and iRacing's failure mode for a target
+ * that matches no user (an AI car, or a number not in the session) has been
+ * observed to apply the command to the SENDER instead (issue #747) — so
+ * callers refuse to dispatch such commands unless the target classifies as
+ * `"user"`.
+ *
+ * Matching uses the same digit-cleaned, leading-zero-preserving convention as
+ * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
+ */
+export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string): CarNumberTargetClass {
+  const target = carNumber.replace(/[^0-9]/g, "");
+
+  if (!target) return "unknown";
+
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
+  const driver = drivers?.find((d) => d.CarNumber?.replace(/[^0-9]/g, "") === target);
+
+  if (!driver) return "unknown";
+
+  return driver.CarIsAI === 1 || driver.CarIsPaceCar === 1 ? "ai" : "user";
 }
 
 /**

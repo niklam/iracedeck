@@ -1,11 +1,84 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyCarNumberTarget,
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  getPlayerCarNumberFromSessionInfo,
 } from "./session-utils.js";
+
+describe("getPlayerCarNumberFromSessionInfo", () => {
+  it("resolves the player's own car number via DriverCarIdx", () => {
+    const info = {
+      DriverInfo: {
+        DriverCarIdx: 2,
+        Drivers: [
+          { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
+          { CarIdx: 2, CarNumber: "07", CarNumberRaw: 3007 },
+        ],
+      },
+    };
+    expect(getPlayerCarNumberFromSessionInfo(info)).toBe("07");
+  });
+
+  it("returns null when DriverCarIdx is missing, invalid, or unmatched", () => {
+    expect(getPlayerCarNumberFromSessionInfo(null)).toBeNull();
+    expect(getPlayerCarNumberFromSessionInfo({})).toBeNull();
+    expect(getPlayerCarNumberFromSessionInfo({ DriverInfo: { DriverCarIdx: -1, Drivers: [] } })).toBeNull();
+    expect(
+      getPlayerCarNumberFromSessionInfo({
+        DriverInfo: { DriverCarIdx: 9, Drivers: [{ CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 }] },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("classifyCarNumberTarget", () => {
+  const sessionInfo = {
+    DriverInfo: {
+      Drivers: [
+        { CarIdx: 0, CarNumber: "0", CarNumberRaw: 0, CarIsPaceCar: 1 },
+        { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42, UserName: "Jane Doe", CarIsAI: 0 },
+        { CarIdx: 2, CarNumber: "7", CarNumberRaw: 7, UserName: "AI Driver", CarIsAI: 1 },
+        { CarIdx: 3, CarNumber: "070", CarNumberRaw: 3070, UserName: "Zero Fan" },
+      ],
+    },
+  };
+
+  it("classifies a human driver's car as user", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "42")).toBe("user");
+  });
+
+  it("classifies an AI car as ai", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "7")).toBe("ai");
+  });
+
+  it("classifies the pace car as ai (not a user)", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "0")).toBe("ai");
+  });
+
+  it("classifies a number not in the session as unknown", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "99")).toBe("unknown");
+  });
+
+  it("matches leading-zero numbers exactly (04 and 4 are distinct)", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "070")).toBe("user");
+    expect(classifyCarNumberTarget(sessionInfo, "70")).toBe("unknown");
+  });
+
+  it("cleans non-digits from the target before matching", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "#42")).toBe("user");
+  });
+
+  it("returns unknown for empty targets and missing session info", () => {
+    expect(classifyCarNumberTarget(sessionInfo, "")).toBe("unknown");
+    expect(classifyCarNumberTarget(sessionInfo, "#")).toBe("unknown");
+    expect(classifyCarNumberTarget(null, "42")).toBe("unknown");
+    expect(classifyCarNumberTarget({}, "42")).toBe("unknown");
+  });
+});
 
 describe("getCarNumberFromSessionInfo", () => {
   const sessionInfo = {

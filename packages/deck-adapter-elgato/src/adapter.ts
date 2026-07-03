@@ -47,6 +47,8 @@ class ElgatoActionContext implements IDeckActionContext {
       setTitle(title: string): Promise<void>;
       setSettings(settings: unknown): Promise<void>;
       isKey(): boolean;
+      /** Present on KeyAction only (dials have no warning indicator). */
+      showAlert?(): Promise<void>;
     },
   ) {}
 
@@ -76,6 +78,10 @@ class ElgatoActionContext implements IDeckActionContext {
 
   isKey(): boolean {
     return this.sdAction.isKey();
+  }
+
+  async showAlert(): Promise<void> {
+    await this.sdAction.showAlert?.();
   }
 }
 

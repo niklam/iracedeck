@@ -1,5 +1,10 @@
 import { requestProfileSwitch, updateGlobalSettings } from "@iracedeck/deck-core";
-import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
+import {
+  buildTemplateContext,
+  classifyCarNumberTarget,
+  getPlayerCarNumberFromSessionInfo,
+  resolveTemplate,
+} from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
@@ -12,6 +17,8 @@ import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 vi.mock("@iracedeck/iracing-sdk", () => ({
   getCarNumberFromSessionInfo: vi.fn(),
   getAllCarNumbers: vi.fn(() => []),
+  classifyCarNumberTarget: vi.fn(() => "user"),
+  getPlayerCarNumberFromSessionInfo: vi.fn(() => null),
   buildTemplateContext: vi.fn(() => ({ display: {}, raw: {} })),
   resolveTemplate: vi.fn((template: string) => template),
 }));
@@ -870,6 +877,117 @@ describe("RaceAdmin", () => {
       await action.onWillAppear(ev);
 
       expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── User-target guard: AI / unknown targets (#747) ──────────
+
+  describe("RaceAdmin user-management target guard", () => {
+    const baseSettings = {
+      mode: "revoke-admin" as const,
+      driverTarget: "specific" as const,
+      carNumber: "7",
+      message: "",
+      penaltyType: "time",
+      penaltyValue: "30",
+      paceLapsOperation: "+",
+      paceLapsValue: "1",
+      gridSetMinutes: "5",
+      trackStatePercent: "50",
+    };
+
+    function makeEvent(settings: Record<string, unknown>) {
+      return {
+        action: { id: "ctx-guard", showAlert: vi.fn(async () => {}), setSettings: vi.fn(async () => {}) },
+        payload: { settings },
+      } as never;
+    }
+
+    // clearAllMocks keeps implementations, so restore the factory default
+    // ("user") after each test to avoid leaking a stubbed classification.
+    afterEach(() => {
+      vi.mocked(classifyCarNumberTarget).mockReset();
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReset();
+    });
+
+    it("refuses a user-management command aimed at an AI car and flashes the key alert", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("ai");
+      const action = new RaceAdmin();
+      const ev = makeEvent(baseSettings);
+
+      await action.onKeyDown(ev);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect((ev as { action: { showAlert: ReturnType<typeof vi.fn> } }).action.showAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a user-management command aimed at a number not in the session", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("unknown");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings));
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("dispatches normally when the target is a human user's car", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("user");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!nadmin #7");
+    });
+
+    it("does not guard car-targeted race-control commands (valid against AI cars)", async () => {
+      vi.mocked(classifyCarNumberTarget).mockReturnValue("ai");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent({ ...baseSettings, mode: "black-flag", penaltyType: "drivethrough" }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!black #7 D");
+      expect(classifyCarNumberTarget).not.toHaveBeenCalled();
+    });
+
+    it("refuses revoke-admin aimed at the sender's own car", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("7");
+      const action = new RaceAdmin();
+      const ev = makeEvent(baseSettings); // revoke-admin, target #7
+
+      await action.onKeyDown(ev);
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect((ev as { action: { showAlert: ReturnType<typeof vi.fn> } }).action.showAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it("revoke-admin still dispatches against someone else's car", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("42");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent(baseSettings)); // target #7, own car #42
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!nadmin #7");
+    });
+
+    it("grant-admin on the sender's own car is not blocked (only revoke refuses self)", async () => {
+      vi.mocked(getPlayerCarNumberFromSessionInfo).mockReturnValue("7");
+      const action = new RaceAdmin();
+
+      await action.onKeyDown(makeEvent({ ...baseSettings, mode: "grant-admin" }));
+
+      expect(mockSendMessage).toHaveBeenCalledWith("!admin #7");
+    });
+
+    it("flags exactly revoke-admin as refusesSelfTarget", () => {
+      const flagged = RACE_ADMIN_MODES.filter((m) => RACE_ADMIN_MODE_META[m].refusesSelfTarget === true);
+      expect(flagged).toEqual(["revoke-admin"]);
+    });
+
+    it("flags exactly the five user-management modes as targetsUser", () => {
+      const flagged = RACE_ADMIN_MODES.filter((m) => RACE_ADMIN_MODE_META[m].targetsUser === true);
+      expect([...flagged].sort()).toEqual(
+        ["disable-chat-driver", "enable-chat-driver", "grant-admin", "remove-driver", "revoke-admin"].sort(),
+      );
     });
   });
 
