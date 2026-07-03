@@ -9,6 +9,7 @@
 export {
   _resetSimEventsIracing,
   getDriverSetupName,
+  getFuelStats,
   getLatestTelemetry,
   getLivePosition,
   getLiveRacePositions,
@@ -32,6 +33,7 @@ export {
 export { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 export { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 export { FUEL_THRESHOLDS } from "./diff/fuel.js";
+export { FUEL_LAP_HISTORY_CAP, type FuelLap, type FuelStats } from "./diff/fuel-laps.js";
 export { OVERTAKE_HOLD_MS, OVERTAKE_MAX_JUMP } from "./diff/overtakes.js";
 export { PIT_APPROACH_COOLDOWN_MS } from "./diff/pit-lane.js";
 export { resolveRadarState } from "./diff/radar.js";

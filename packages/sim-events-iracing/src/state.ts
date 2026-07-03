@@ -432,6 +432,9 @@ export type TranslatorState = {
   fuelHistory: number[];
   fuelFiredThresholds: Set<number>;
   lastLapsRemaining: number | null;
+  // NOTE: the validated fuel lap history (issue #465) deliberately does NOT
+  // live here — it's the instance-level `FuelLapTracker` (see `fuel-laps.ts`)
+  // so replay/garage state wipes and session changes don't destroy it.
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —

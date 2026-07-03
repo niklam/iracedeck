@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { piTemplatePlugin } from "./pi-template-plugin.mjs";
@@ -7,7 +8,10 @@ import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 type AnyFunction = (...args: any[]) => any;
 
 describe("piTemplatePlugin", () => {
-  const testDir = path.join(process.cwd(), "test-pi-templates");
+  // OS temp dir, NOT the repo root — a scratch directory inside the working
+  // tree flickers in and out of `git status` and races the release-hooks
+  // test's clean-tree snapshot when vitest workers run in parallel.
+  const testDir = mkdtempSync(path.join(os.tmpdir(), "iracedeck-pi-templates-"));
   const templatesDir = path.join(testDir, "templates");
   const partialsDir = path.join(testDir, "partials");
   const outputDir = path.join(testDir, "output");

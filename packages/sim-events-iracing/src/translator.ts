@@ -40,6 +40,13 @@ import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { diffDamage } from "./diff/damage.js";
 import { diffFlags } from "./diff/flags.js";
+import {
+  computeFuelStats,
+  createFuelLapTracker,
+  diffFuelLaps,
+  type FuelLapTracker,
+  type FuelStats,
+} from "./diff/fuel-laps.js";
 import { diffFuel } from "./diff/fuel.js";
 import { diffIncidents } from "./diff/incidents.js";
 import { diffLaps } from "./diff/laps.js";
@@ -118,6 +125,16 @@ type TranslatorInstance = {
    * Cleared by `handleDisconnect` so a reconnect re-checks.
    */
   freshConnectFireChecked: boolean;
+  /**
+   * Validated per-lap fuel consumption history (issue #465). Instance-level
+   * — NOT `TranslatorState` — so the replay guard's per-tick state wipes and
+   * `resetPerSessionState` don't destroy the accumulated stats: garage visits
+   * (replay-mode ticks) keep the data visible for fuel planning, and a
+   * session change only arms `pendingSessionWipe`, which `diffFuelLaps`
+   * executes on the first live-in-car tick of the new session. Fully reset by
+   * `handleDisconnect`. Read via `getFuelStats()`.
+   */
+  fuelLaps: FuelLapTracker;
 };
 
 let instance: TranslatorInstance | null = null;
@@ -149,6 +166,7 @@ export function initializeSimEventsIracing(
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
+    fuelLaps: createFuelLapTracker(),
   };
 
   instance = self;
@@ -200,6 +218,26 @@ export function getTrackDirection(): TrackDirection {
   const sessionInfo = (instance?.controller.getSessionInfo() ?? null) as Record<string, unknown> | null;
 
   return resolveTrackDirection(sessionInfo);
+}
+
+/**
+ * Rolling fuel consumption statistics over the validated per-lap fuel history
+ * (issue #465): the most recent valid lap's usage, the mean over the last
+ * `windowLaps` valid laps, and how many laps actually contributed. Values are
+ * liters — callers handle `DisplayUnits` formatting. Returns empty stats
+ * (`samples: 0`) when the translator isn't initialized or no valid laps have
+ * been recorded yet. Backed by `diffFuelLaps`, which gates out refuel /
+ * out-lap / in-lap / towed laps so the average never ingests garbage.
+ *
+ * The history survives replay/garage visits and stays readable after a
+ * session change until the driver is back in the car (deferred wipe) — so the
+ * previous session's consumption remains available for garage fuel planning.
+ * Only a disconnect (or the diff's Lap-decrease fence) clears it immediately.
+ */
+export function getFuelStats(windowLaps: number): FuelStats {
+  if (!instance) return { lastLap: null, avg: null, samples: 0 };
+
+  return computeFuelStats(instance.fuelLaps.history, windowLaps);
 }
 
 /**
@@ -795,6 +833,10 @@ function handleDisconnect(self: TranslatorInstance): void {
   // Re-arm the fresh-connect session.changed synthesis so a reconnect into a
   // session re-checks the SessionState gate (issues #568, #668).
   self.freshConnectFireChecked = false;
+  // The fuel lap history survives replays and session changes, but a
+  // disconnect means the sim is gone — reset it fully so a later reconnect
+  // seeds cleanly (issue #465).
+  self.fuelLaps = createFuelLapTracker();
 }
 
 /**
@@ -850,6 +892,12 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
   Object.assign(self.state, preservedLifecycle);
 
   self.firstOnTrackFired = false;
+
+  // Fuel lap history (issue #465): don't wipe here — the previous session's
+  // consumption stays readable while the driver sits in the garage planning
+  // fuel. `diffFuelLaps` executes the wipe on the first live-in-car tick of
+  // the new session.
+  self.fuelLaps.pendingSessionWipe = true;
 }
 
 /**
@@ -1064,6 +1112,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
       self.state = createInitialState();
       self.lastTickInReplay = true;
+      // Fuel lap history (issue #465): survives the wipe (it lives on the
+      // instance), but telemetry will have jumped by the time live ticks
+      // resume — a garage visit moves the car, fuel, and lap counter — so the
+      // open segment must re-anchor as partial on the first tick back.
+      self.fuelLaps.resumePartial = true;
     }
 
     return;
@@ -1199,6 +1252,22 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
   diffPitBoxCountdown(self.state, telemetry, resolvePitBoxTrkPct(sessionInfo), trackLengthMeters, emit);
   diffFuel(self.state, telemetry, isRaceSession, emit);
+
+  // Validated per-lap fuel history (issue #465) — tracker-only, no events.
+  // Deliberately NOT race-gated: consumption stats are just as useful on a
+  // practice long run. Read via `getFuelStats()`. The `replayOnlySession`
+  // gate matters even after the main replay guard (the diffPitsOpen
+  // precedent, #655): a paused / frame-scrubbed replay reads
+  // `IsReplayPlaying === false` while `SimMode === "replay"`, and feeding
+  // that replay-timeline telemetry into the tracker would record bogus laps
+  // or trip the session-restart fence on a backward scrub. Treat those ticks
+  // as a gap instead, like any other replay visit.
+  if (replayOnlySession) {
+    self.fuelLaps.resumePartial = true;
+  } else {
+    diffFuelLaps(self.fuelLaps, telemetry);
+  }
+
   diffRadar(self.state, telemetry, emit);
   diffTrackWetness(self.state, telemetry, emit);
 

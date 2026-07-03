@@ -26,6 +26,7 @@ import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import {
   _resetSimEventsIracing,
   getDriverSetupName,
+  getFuelStats,
   getLatestTelemetry,
   getLivePosition,
   getLiveRacePositions,
@@ -349,6 +350,119 @@ describe("sim-events-iracing translator", () => {
 
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "" } });
       expect(getDriverSetupName()).toBeUndefined();
+    });
+  });
+
+  describe("getFuelStats", () => {
+    /**
+     * Seed mid-lap (partial segment, discarded at its crossing), then run one
+     * full line-to-line lap burning 3 L over 90 s — leaves `getFuelStats`
+     * reporting exactly one valid lap.
+     */
+    function driveOneCleanLap(controller: MockController): void {
+      controller.__tick(telemetry({ Lap: 0, LapDistPct: 0.9, SessionTime: 40, FuelLevel: 50, PlayerCarTowTime: 0 }));
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.05, SessionTime: 100, FuelLevel: 50, PlayerCarTowTime: 0 }));
+      controller.__tick(telemetry({ Lap: 1, LapDistPct: 0.9, SessionTime: 189, FuelLevel: 47.2, PlayerCarTowTime: 0 }));
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.05, SessionTime: 190, FuelLevel: 47, PlayerCarTowTime: 0 }));
+    }
+
+    it("returns empty stats before initialization", () => {
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    });
+
+    it("tracks per-lap fuel consumption through handleTick", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveOneCleanLap(controller);
+
+      const stats = getFuelStats(5);
+      expect(stats.samples).toBe(1);
+      expect(stats.lastLap).toBeCloseTo(3);
+      expect(stats.avg).toBeCloseTo(3);
+    });
+
+    it("clears the stats on disconnect", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveOneCleanLap(controller);
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      controller.__tick(null, false);
+
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
+    });
+
+    it("preserves the stats across a replay/garage visit", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveOneCleanLap(controller);
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // Into the garage: iRacing reports replay-mode ticks. The stats stay
+      // visible for planning while adjusting the setup.
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionTime: 300 }));
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // Back in the car in the same session — the history is still there.
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.5, SessionTime: 400, FuelLevel: 46 }));
+
+      expect(getFuelStats(5).samples).toBe(1);
+      expect(getFuelStats(5).lastLap).toBeCloseTo(3);
+    });
+
+    it("ignores paused replay-only ticks (IsReplayPlaying false while SimMode is replay)", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveOneCleanLap(controller);
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // Paused / frame-scrubbed replay: IsReplayPlaying reads false but the
+      // session YAML says SimMode "replay" (#655 precedent) — the replayed
+      // Lap-0 telemetry must not reach the tracker (its rewound Lap + clock
+      // would otherwise trip the session-restart fence and wipe the history).
+      controller.__setSessionInfo({ WeekendInfo: { SimMode: "replay" } });
+      controller.__tick(telemetry({ Lap: 0, LapDistPct: 0.3, SessionTime: 20, FuelLevel: 60, IsOnTrack: false }));
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // Back to the live session — history intact.
+      controller.__setSessionInfo(null);
+      controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.5, SessionTime: 400, FuelLevel: 46 }));
+
+      expect(getFuelStats(5).samples).toBe(1);
+      expect(getFuelStats(5).lastLap).toBeCloseTo(3);
+    });
+
+    it("defers the session-change wipe until the driver is back in the car", () => {
+      const controller = createMockController();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      driveOneCleanLap(controller);
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // Session change lands while the driver is out of the car — the old
+      // session's stats keep displaying (garage fuel planning).
+      controller.__tick(
+        telemetry({ SessionNum: 1, IsOnTrack: false, Lap: 0, LapDistPct: 0.3, SessionTime: 500, FuelLevel: 55 }),
+      );
+
+      expect(getFuelStats(5).samples).toBe(1);
+
+      // First tick back in the car → wiped, rebuilding from the new session.
+      controller.__tick(
+        telemetry({ SessionNum: 1, IsOnTrack: true, Lap: 0, LapDistPct: 0.4, SessionTime: 520, FuelLevel: 55 }),
+      );
+
+      expect(getFuelStats(5)).toEqual({ lastLap: null, avg: null, samples: 0 });
     });
   });
 
