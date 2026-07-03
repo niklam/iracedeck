@@ -558,6 +558,10 @@ Every mode that accepts a `<driver>` parameter shares a single targeting setting
 **Type in Chat** leaves the command prefix on your OS clipboard after firing — same trade-off as the existing chat-send pipeline. If you have a clipboard manager that pops up on every change, you'll see the prefix queued there. Restoring the previous clipboard contents was deliberately skipped because clipboard-manager apps that watch `WM_CLIPBOARDUPDATE` can steal focus away from iRacing during the paste.
 :::
 
+### Driver-management modes refuse non-user targets
+
+**Grant Admin**, **Revoke Admin**, **Enable Chat (Driver)**, **Mute Driver**, and **Remove Driver** manage *users*, not cars — and iRacing applies them to *you* when the target isn't a real user, which can revoke your own admin and end your session. So these five modes refuse to send when the resolved target is an AI car, the pace car, or a car number that isn't in the current session: the key flashes a warning and nothing is sent. Race-control commands (Black Flag, EOL, DQ, Clear Penalties, Wave Around) are car-targeted and still work against AI cars. The **Type in Chat** target bypasses this check — you type the number yourself and submit manually.
+
 ### Message templates
 
 Every `[message]` parameter supports [template variables](/docs/features/template-variables/), so you can include live telemetry or session data in the messages you send. Examples:

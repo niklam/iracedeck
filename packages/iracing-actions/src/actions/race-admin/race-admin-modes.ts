@@ -48,6 +48,16 @@ export interface RaceAdminModeMeta {
   command: string;
   /** Whether the command requires a driver target. */
   needsDriver: boolean;
+  /**
+   * Whether the driver target must be a human USER (not just a car). iRacing's
+   * user-management commands (`!admin`, `!nadmin`, per-driver `!chat`/`!nchat`,
+   * `!remove`) have been observed to apply to the SENDER when the target
+   * matches no user — e.g. an AI car (issue #747: revoking admin on an AI car
+   * revoked the host's own admin and ended the session). Dispatch refuses
+   * these modes unless the target classifies as a user. Omitted (falsy) for
+   * car-targeted race-control commands, which are valid against AI cars.
+   */
+  targetsUser?: boolean;
   /** Whether the command accepts an optional [message] parameter with mustache templates. */
   hasMessage: boolean;
   /** Whether the message parameter is required (e.g., /all, /rc). */
@@ -274,6 +284,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "grant-admin": {
     command: "!admin",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -285,6 +296,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "revoke-admin": {
     command: "!nadmin",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -296,6 +308,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "remove-driver": {
     command: "!remove",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: true,
     messageRequired: false,
     extraSettings: [],
@@ -318,6 +331,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "enable-chat-driver": {
     command: "!chat",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],
@@ -340,6 +354,7 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
   "disable-chat-driver": {
     command: "!nchat",
     needsDriver: true,
+    targetsUser: true,
     hasMessage: false,
     messageRequired: false,
     extraSettings: [],

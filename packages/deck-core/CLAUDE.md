@@ -6,7 +6,7 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 
 ### Platform Abstraction (`types.ts`)
 
-- `IDeckActionContext` — Handle to a single action instance (wraps `setImage`, `setTitle`, `isKey`, `id`)
+- `IDeckActionContext` — Handle to a single action instance (wraps `setImage`, `setTitle`, `isKey`, `id`; optional `showAlert?()` flashes the host's warning indicator where supported — Elgato keys only)
 - `IDeckEvent<T>` and variants (`IDeckKeyDownEvent`, `IDeckWillAppearEvent`, etc.) — Platform-neutral events
 - `IDeckActionHandler<T>` — Interface for action lifecycle handlers
 - `IDeckPlatformAdapter` — Interface that platform adapters implement (Elgato, VSDinside, etc.)

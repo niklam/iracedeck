@@ -33,6 +33,13 @@ export interface IDeckActionContext {
   setSettings(settings: Record<string, unknown>): Promise<void>;
   /** Whether this context is a key (button) rather than a dial/encoder */
   isKey(): boolean;
+  /**
+   * Briefly flash the host's warning indicator on the key (Elgato: the yellow
+   * warning triangle). Optional — adapters whose host has no equivalent omit
+   * it; callers invoke via `action.showAlert?.()`. Used for refused actions
+   * that would otherwise be silent no-ops (e.g. the #747 AI-target guard).
+   */
+  showAlert?(): Promise<void>;
 }
 
 /**

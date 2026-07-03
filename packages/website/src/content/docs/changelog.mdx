@@ -26,6 +26,7 @@ _Unreleased_
 **Bug Fixes**
 
 - Camera Controls' **Cycle Camera** mode now applies your custom Title Text to the button instead of always showing "CYCLE CAM", and its mode selector is now labeled **Mode** (it was mislabeled **Target**).
+- Race Admin's driver-management commands — Grant Admin, Revoke Admin, Enable/Mute Chat for a driver, and Remove Driver — now refuse to send when the target is an AI car, the pace car, or a car number that isn't in the session (the key flashes a warning instead). iRacing applies these commands to *you* when the target isn't a real user, which could revoke your own admin and end your session. Race-control commands (black flag, EOL, DQ, and the rest) still work against AI cars as before.
 
 ## 1.23.0
 
