@@ -235,6 +235,10 @@
     "textColor": "#ffffff",
     "graphic1Color": "#ffffff"
   },
+  "race-admin-car-selector": {
+    "backgroundColor": "#000000",
+    "textColor": "#ffffff"
+  },
   "session-info": {
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff"

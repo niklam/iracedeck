@@ -17,6 +17,8 @@ import {
 } from "@iracedeck/deck-core";
 import chatIconSvg from "@iracedeck/icons/switch-profile/chat.svg";
 import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
+import raceAdminCarsIconSvg from "@iracedeck/icons/switch-profile/race-admin-cars.svg";
+import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
 import z from "zod";
 
@@ -30,6 +32,8 @@ import profilesData from "../data/profiles.json" with { type: "json" };
 const PROFILE_ICONS: Record<string, string> = {
   "iRaceDeck Replay": replayIconSvg,
   "iRaceDeck Chat": chatIconSvg,
+  "iRaceDeck Race Admin Cars": raceAdminCarsIconSvg,
+  "iRaceDeck Race Admin Per Car": raceAdminPerCarIconSvg,
 };
 
 const SwitchProfileSettings = CommonSettings.extend({
@@ -45,13 +49,22 @@ const SwitchProfileSettings = CommonSettings.extend({
 type SwitchProfileSettings = z.infer<typeof SwitchProfileSettings>;
 
 /**
+ * Multi-line title overrides for profiles whose stripped name is too long for
+ * a single line on the key. Anything not listed renders as one line.
+ */
+const PROFILE_TITLES: Record<string, string> = {
+  "iRaceDeck Race Admin Cars": "RACE ADMIN\nCARS",
+  "iRaceDeck Race Admin Per Car": "RACE ADMIN\nPER CAR",
+};
+
+/**
  * @internal Exported for testing. Short, upper-cased key-title for a profile
  * (drops the `iRaceDeck` prefix); a generic label when nothing is selected.
  */
 export function profileTitle(profile: string): string {
   if (!profile) return "SWITCH\nPROFILE";
 
-  return profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
+  return PROFILE_TITLES[profile] ?? profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
 }
 
 /**

@@ -1,7 +1,9 @@
 /**
  * Race Admin Mode Definitions
  *
- * All 27 subcommands with metadata for command building, PI visibility, and icon rendering.
+ * All 28 modes with metadata for command building, PI visibility, and icon
+ * rendering: 27 admin chat commands plus the select-car car selector (#732),
+ * which has no chat command (its `command` is empty).
  */
 
 export const RACE_ADMIN_MODES = [
@@ -35,6 +37,8 @@ export const RACE_ADMIN_MODES = [
   "disable-chat-driver",
   "message-all",
   "rc-message",
+  // Car Selection
+  "select-car",
 ] as const;
 
 export type RaceAdminMode = (typeof RACE_ADMIN_MODES)[number];
@@ -365,6 +369,22 @@ export const RACE_ADMIN_MODE_META: Record<RaceAdminMode, RaceAdminModeMeta> = {
     displayName: "Race Control Message",
     mainLabel: "MSG",
     subLabel: "RC",
+  },
+
+  // ── Car Selection ─────────────────────────────────────────────
+  // Not a chat command: this mode auto-populates a car button from live session
+  // data and, on press, stores the car's CarIdx as the shared admin target and
+  // switches to the per-car commands profile (issue #732, Elgato-only).
+  "select-car": {
+    command: "",
+    needsDriver: false,
+    hasMessage: false,
+    messageRequired: false,
+    extraSettings: ["car-selector-section"],
+    optgroup: "Car Selection",
+    displayName: "Select Car (Admin Target)",
+    mainLabel: "SELECT",
+    subLabel: "CAR",
   },
 };
 

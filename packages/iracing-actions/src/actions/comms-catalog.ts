@@ -465,9 +465,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     ...allApi(["start-recording", "stop-recording", "restart-recording"]),
   }),
 
-  "race-admin": entry(
-    "mode",
-    allChat([
+  "race-admin": entry("mode", {
+    ...allChat([
       "yellow",
       "black-flag",
       "dq-driver",
@@ -496,5 +495,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "message-all",
       "rc-message",
     ]),
-  ),
+    // Navigation only (#732) — stores the shared admin target and switches
+    // profile; no iRacing command and nothing to configure.
+    "select-car": keybindFixed(),
+  }),
 };

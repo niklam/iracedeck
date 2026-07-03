@@ -7,7 +7,7 @@ import { buildTemplateContext, resolveTemplate, type SDKController } from "@irac
 
 import { RACE_ADMIN_MODE_META, type RaceAdminMode, type RaceAdminModeMeta } from "./race-admin-modes.js";
 
-export type DriverTarget = "viewed-car" | "specific" | "type-in-chat";
+export type DriverTarget = "viewed-car" | "specific" | "type-in-chat" | "selected-car";
 
 export interface RaceAdminSettings {
   mode: RaceAdminMode;
@@ -29,17 +29,27 @@ export interface RaceAdminSettings {
  * full command string at all. The caller (`executeMode`) must branch on
  * `driverTarget === "type-in-chat"` before calling `buildAdminCommand`.
  *
+ * `selectedCarNumber` is the car number resolved from the shared admin target
+ * (`_raceAdminSelectedCar` CarIdx → current session number); the caller resolves
+ * it because this function has no session access. It's `null` when nothing is
+ * selected or the selected car is no longer in the session.
+ *
  * @internal Exported for testing
  */
 export function resolveDriverTarget(
   settings: RaceAdminSettings,
   viewedCarNumber: string | null,
   meta: RaceAdminModeMeta,
+  selectedCarNumber: string | null = null,
 ): string | null {
   if (!meta.needsDriver) return null;
 
   if (settings.driverTarget === "viewed-car") {
     return viewedCarNumber ?? null;
+  }
+
+  if (settings.driverTarget === "selected-car") {
+    return selectedCarNumber ?? null;
   }
 
   if (settings.driverTarget === "specific") {
@@ -56,8 +66,9 @@ export function resolveDriverTarget(
  * space). Used by the `type-in-chat` flow which pastes the prefix and lets
  * the user type the driver number themselves.
  *
- * Returns null for camera modes (no `meta.command`) — currently unreachable
- * since all 27 modes have a command, but kept defensive.
+ * Returns null for modes with no `meta.command` (e.g. the select-car
+ * navigation mode). Unreachable in practice — callers only pass driver-targeted
+ * chat modes here — but kept defensive.
  *
  * @internal Exported for testing
  */
@@ -126,17 +137,18 @@ export function buildAdminCommand(
   settings: RaceAdminSettings,
   viewedCarNumber: string | null,
   sdkController: SDKController,
+  selectedCarNumber: string | null = null,
 ): string | null {
   const meta = RACE_ADMIN_MODE_META[mode];
 
-  // Camera modes don't use chat commands
+  // Modes with no chat command (e.g. the select-car navigation mode) don't build one.
   if (!meta.command) return null;
 
   let cmd = meta.command;
 
   // Append driver target if needed
   if (meta.needsDriver) {
-    const target = resolveDriverTarget(settings, viewedCarNumber, meta);
+    const target = resolveDriverTarget(settings, viewedCarNumber, meta, selectedCarNumber);
 
     if (!target) return null;
 

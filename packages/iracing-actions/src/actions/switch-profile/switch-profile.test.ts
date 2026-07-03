@@ -77,6 +77,11 @@ describe("SwitchProfile", () => {
       expect(profileTitle("iRaceDeck Default")).toBe("DEFAULT");
     });
 
+    it("wraps the long Race Admin profile titles onto two lines", () => {
+      expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("RACE ADMIN\nCARS");
+      expect(profileTitle("iRaceDeck Race Admin Per Car")).toBe("RACE ADMIN\nPER CAR");
+    });
+
     it("returns a generic two-line label when nothing is selected", () => {
       expect(profileTitle("")).toBe("SWITCH\nPROFILE");
     });

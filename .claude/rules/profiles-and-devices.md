@@ -107,6 +107,33 @@ Multi-page navigation inside a profile uses **built-in Elgato actions**, not iRa
 
 These are exposed as `PROFILE_NAV_ACTIONS` in `device-profiles.ts`. Because child-page UUIDs are minted by the app, this navigation is authored in the app, not generated.
 
+## Race Admin car selector (#732)
+
+The dynamic Race Admin / RC car selector is **not** a new action — it's two additions to the existing **Race Admin** action (`packages/iracing-actions/src/actions/race-admin/`), plus two bundled profiles you author in the app:
+
+- **`select-car` mode** — a placeholder key that auto-fills with one car from the live session (by grid position, spectators and pace car excluded) and, on press, stores that car as the shared admin target and switches to the per-car commands profile. Pure helpers (slot math, session→car, icon) live in `race-admin-selector.ts`; the dynamic big-number template is `packages/iracing-actions/icons/race-admin-car-selector.svg`.
+- **`selected-car` driver target** — the 4th Driver Target on the command modes (alongside viewed-car / specific / type-in-chat). It reads the shared target and resolves it to the current session car number for the `!cmd #<number>` command and the key icon.
+- **Shared state** — the selection is stored as a **`{ carIdx, carNumber }`** record in the internal passthrough global key **`_raceAdminSelectedCar`** (`SELECTED_CAR_KEY`), the same `_`-prefixed convention as `_warnings` / `_lastSeenVersion` (no `GlobalSettingsSchema` field). Written by `select-car`, read by `selected-car`. The number doubles as a **staleness guard**: CarIdx assignments are session-scoped while global settings persist, so `resolveSelectedCar` voids the selection when the stored CarIdx no longer resolves to the stored number (session changed) — never trust the bare CarIdx across sessions.
+
+Both `select-car` and `selected-car` are gated to Elgato in the PI via the `profiles` platform feature flag (profiles are Elgato-only), and `requestProfileSwitch` is a no-op on other hosts anyway.
+
+### Selector layout convention (baked into `computeCarSlotIndex`)
+
+Every selector page reserves three keys and fills the rest with cars, row-major (left→right, top→bottom), sorted by car number (pace car excluded):
+
+- **top-left** `(col 0, row 0)` — Back to default profile
+- **bottom-left** `(col 0, row rows-1)` — Previous page
+- **bottom-right** `(col cols-1, row rows-1)` — Next page
+
+`carsPerPage = cols*rows − 3` (derived from the device grid via `getDeviceSpec`). The `select-car` key carries a 0-based **`selectorPage`** setting; the global field index is `selectorPage * carsPerPage + (row-major position − reserved-before)`. Keep the three reserved keys on every page so the car-slot count stays uniform. The Elgato `willAppear` payload exposes `coordinates` but **no page index**, which is why the page number is a per-key setting.
+
+### The two bundled selector profiles
+
+- **`iRaceDeck Race Admin Cars`** — the selector pages: Race Admin keys in `select-car` mode, plus the three nav keys per page.
+- **`iRaceDeck Race Admin Per Car`** — the commands page: Race Admin command keys set to the `selected-car` target, plus Back/nav.
+
+Both ship as XL (`DeviceType: 2`) bundles registered in `manifest.json` `Profiles[]` (with `DontAutoSwitchWhenInstalled: true`, like Replay) and regenerated into `profiles.json`, and are reached from `iRaceDeck Default` via a **Switch Profile** key. The Switch Profile action ships icons for both (`packages/icons/switch-profile/race-admin-cars.svg`, `race-admin-per-car.svg`) keyed by profile name in its `PROFILE_ICONS` map. The select-car PI's **Target Profile** is an `ird-profile-select` dropdown fed by a `_deviceProfiles` push from the Race Admin action (same pattern as Switch Profile); an empty selection falls back to `DEFAULT_SELECTOR_TARGET_PROFILE`.
+
 ## Switching profiles at runtime
 
 Switching goes through the platform abstraction, not the Elgato SDK directly:

@@ -899,6 +899,18 @@
       "DeviceType": 2,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Cars",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
     }
   ],
   "UUID": "com.iracedeck.sd.core"

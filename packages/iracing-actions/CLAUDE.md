@@ -17,6 +17,7 @@ src/
     race-admin/                          # Same layout plus helpers
       race-admin-commands.ts             # Helper (no action class)
       race-admin-modes.ts                # Helper (no action class)
+      race-admin-selector.ts             # Helper (no action class) — #732 car-selector slot math + icon
     data/                                # Shared template data
       icon-defaults.json
       key-bindings.json
@@ -25,6 +26,7 @@ src/
       settings.ejs
 icons/                                   # Dynamic SVG templates (telemetry-driven)
   car-control-pit-limiter.svg
+  race-admin-car-selector.svg
   session-info.svg
   telemetry-display.svg
   tire-service.svg

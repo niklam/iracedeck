@@ -3,7 +3,7 @@ title: Race Admin
 description: Session admin commands for league race directors — yellows, penalties, pit control, and chat management.
 sidebar:
   badge:
-    text: "27 modes"
+    text: "28 modes"
     variant: tip
 ---
 
@@ -17,7 +17,7 @@ Commands that accept a `<driver>` parameter share a **Driver Target** setting th
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector. The dropdown is grouped by **Race Control**, **Session Management**, and **Driver & Chat Management**.
+Select the mode from the **Mode** dropdown in the Property Inspector. The dropdown is grouped by **Race Control**, **Session Management**, **Driver & Chat Management**, and — on Elgato Stream Deck — **Car Selection**.
 
 ### Throw Yellow Flag
 
@@ -516,15 +516,43 @@ Send a message visible only to administrators — sends `/rc <message>`.
 
 Required. Supports template variables.
 
+---
+
+### Select Car (Admin Target)
+
+**Elgato Stream Deck only.** Turns a key into a self-populating car button for a race-control car selector. It auto-fills with one car from the live session and, when pressed, remembers that car as the shared **admin target** and switches to your per-car commands profile. Combine it with the bundled **iRaceDeck Race Admin Cars** selector profile and any command mode set to the **Selected Car** target (see **Shared settings**) so a whole page of admin commands acts on the car you picked — instead of hand-building a page per car number. The selection is per-session: when a new session starts (car numbers reshuffle), a stale selection is voided rather than silently pointing at a different driver.
+
+This mode sends no iRacing command itself; it's navigation plus shared state.
+
+#### Details
+
+- **Method:** Navigation (stores the admin target, switches profile) — no iRacing command
+- **Dial:** No rotation support (keypad only)
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — shows the car's number big and centered (fixed size, fits 3-digit numbers) with the driver's last name below, updating as the field changes. An empty slot (fewer cars than keys) shows a blank black key.
+
+#### How keys map to cars
+
+The field is sorted by car number (pace car and spectators excluded), then laid out across the selector page(s). The standard iRaceDeck selector layout reserves three keys on every page — **top-left** for Back to default profile, and the two **bottom corners** for Previous / Next page — and fills every other key with a car, left-to-right and top-to-bottom.
+
+#### Setting: Selector Page
+
+`0`-based page number for this key. Leave at `0` for a single-page selector; on a multi-page selector, set it to the page each key lives on so the cars stay in order across pages.
+
+#### Setting: Target Profile
+
+The bundled profile to switch to after a car is picked, chosen from the profiles available for this device. Leaving it unset uses **iRaceDeck Race Admin Per Car**.
+
 ## Shared settings
 
 ### Driver Target
 
-Every mode that accepts a `<driver>` parameter shares a single targeting setting with three options:
+Every mode that accepts a `<driver>` parameter shares a single targeting setting:
 
-- **Type in Chat** (default) — One-tap "open chat with the right command pre-filled, let me type the number myself". The action opens iRacing chat, pastes the command prefix (e.g. `!clear `, with a trailing space), and **stops** — it does not press Enter. You type the car number off the standings sheet and press Enter to submit. Useful for league admins who handle a different driver each lap and don't want to pre-bind a specific number.
+- **Type in Chat** (default) — One-tap "open chat with the right command pre-filled, let me type the number myself". The action opens iRacing chat, pastes the command prefix (e.g. `!clear` followed by a trailing space), and **stops** — it does not press Enter. You type the car number off the standings sheet and press Enter to submit. Useful for league admins who handle a different driver each lap and don't want to pre-bind a specific number.
 - **Use Viewed Car** — The action reads the car number of the car currently being followed in the replay / broadcast view at send time. View a car and press the button; the command targets that car.
 - **Specific Car Number** — Selecting this reveals a number input. The same car number is used on every press, regardless of which car is being viewed, and is also rendered on the button icon so you can tell which car the button targets.
+- **Selected Car** (Elgato only) — Targets whichever car was last picked with a **Select Car** button (the shared admin target). The button shows the selected car's number, or `NO CAR` when nothing is selected. This is the target you put on a per-car commands page so every command acts on the car chosen in the selector.
 
 :::caution
 **Type in Chat** leaves the command prefix on your OS clipboard after firing — same trade-off as the existing chat-send pipeline. If you have a clipboard manager that pops up on every change, you'll see the prefix queued there. Restoring the previous clipboard contents was deliberately skipped because clipboard-manager apps that watch `WM_CLIPBOARDUPDATE` can steal focus away from iRacing during the paste.

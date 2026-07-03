@@ -2280,6 +2280,9 @@
     },
     "rc-message": {
       "method": "chat"
+    },
+    "select-car": {
+      "method": "keybind"
     }
   }
 }
