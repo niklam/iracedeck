@@ -23,10 +23,12 @@
  * - previous-label: when present, renders an extra "back to previous profile"
  *   option with this label, stored as the `__previous` sentinel (must match
  *   `PREVIOUS_PROFILE_VALUE` in the Switch Profile action).
- * - default: profile name displayed as selected while the setting is empty
- *   (issue #755) — a real default selection instead of the placeholder. The
- *   default is display-only (never persisted); when it isn't among the current
- *   device's options, the placeholder shows instead.
+ * - default: profile name displayed as selected while the setting is empty or
+ *   holds a name not available on this device (issue #755). With a default
+ *   there is no "nothing selected" state, so the empty placeholder option is
+ *   not rendered at all — every choice does something. The default is
+ *   display-only (never persisted); the action's own fallback keeps the press
+ *   behavior in sync.
  */
 
 let styleInjected = false;
@@ -144,14 +146,16 @@ export class ProfileSelect extends HTMLElement {
   private renderOptions(names: string[]): void {
     if (!this.select) return;
 
-    const placeholder = this.getAttribute("placeholder") ?? DEFAULT_PLACEHOLDER;
-
     this.select.replaceChildren();
 
-    const emptyOption = document.createElement("option");
-    emptyOption.value = EMPTY_VALUE;
-    emptyOption.textContent = placeholder;
-    this.select.appendChild(emptyOption);
+    // A dropdown with a real `default` has no "nothing selected" state, so the
+    // empty placeholder option is omitted — every choice does something (#755).
+    if (!this.getAttribute("default")) {
+      const emptyOption = document.createElement("option");
+      emptyOption.value = EMPTY_VALUE;
+      emptyOption.textContent = this.getAttribute("placeholder") ?? DEFAULT_PLACEHOLDER;
+      this.select.appendChild(emptyOption);
+    }
 
     const previousLabel = this.getAttribute("previous-label");
 
@@ -175,22 +179,20 @@ export class ProfileSelect extends HTMLElement {
 
     const has = (value: string) => Array.from(this.select!.options).some((opt) => opt.value === value);
 
-    // An empty setting displays the `default` profile when it's available for
-    // this device (#755) — display-only, never persisted, so the stored value
-    // stays empty and the action's own default fallback stays authoritative.
-    const fallback = this.getAttribute("default");
-
-    if (this.savedValue === EMPTY_VALUE && fallback && has(fallback)) {
-      this.select.value = fallback;
+    if (has(this.savedValue) && this.savedValue !== EMPTY_VALUE) {
+      this.select.value = this.savedValue;
 
       return;
     }
 
-    // If the saved profile is no longer among the options (e.g. moved to a
-    // different device), fall back to the empty placeholder in the UI. Don't
-    // persist that fallback — the saved name may become valid again once the
-    // profiles list for this device arrives.
-    this.select.value = has(this.savedValue) ? this.savedValue : EMPTY_VALUE;
+    // An empty setting — or a saved profile not among this device's options
+    // (e.g. moved to a different device) — displays the `default` profile when
+    // available (#755). Display-only, never persisted: the stored value stays
+    // as-is (a stray name may become valid again once the profiles list for
+    // this device arrives), and the action's own fallback keeps the press
+    // behavior in sync. Without a default, fall back to the placeholder.
+    const fallback = this.getAttribute("default");
+    this.select.value = fallback && has(fallback) ? fallback : EMPTY_VALUE;
   }
 }
 

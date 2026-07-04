@@ -84,6 +84,14 @@ describe("ird-profile-select", () => {
   });
 
   describe("default attribute (#755)", () => {
+    it("renders no placeholder option — with a default, every choice does something", () => {
+      const el = mount({ default: "iRaceDeck Default", "previous-label": "Back to previous" });
+      emit("_deviceProfiles", JSON.stringify(["iRaceDeck Default", "iRaceDeck Replay"]));
+
+      const opts = Array.from(el.querySelector("select")!.options).map((o) => o.value);
+      expect(opts).toEqual(["__previous", "iRaceDeck Default", "iRaceDeck Replay"]);
+    });
+
     it("displays the default profile while the setting is empty, without persisting it", () => {
       const el = mount({ default: "iRaceDeck Default" });
       emit("profile", "");
@@ -101,7 +109,15 @@ describe("ird-profile-select", () => {
       expect(el.querySelector("select")!.value).toBe("iRaceDeck Replay");
     });
 
-    it("shows the placeholder when the default is not available for this device", () => {
+    it("displays the default when the saved profile is not available for this device", () => {
+      const el = mount({ default: "iRaceDeck Default" });
+      emit("profile", "iRaceDeck Pit Actions");
+      emit("_deviceProfiles", JSON.stringify(["iRaceDeck Default"]));
+
+      expect(el.querySelector("select")!.value).toBe("iRaceDeck Default");
+    });
+
+    it("shows no selection when the default itself is not available for this device", () => {
       const el = mount({ default: "iRaceDeck Default" });
       emit("profile", "");
       emit("_deviceProfiles", JSON.stringify(["iRaceDeck Mini Only"]));
