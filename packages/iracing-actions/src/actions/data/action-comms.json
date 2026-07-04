@@ -7,13 +7,13 @@
       "method": "api"
     },
     "add-fuel": {
-      "method": "chat"
+      "method": "api"
     },
     "reduce-fuel": {
-      "method": "chat"
+      "method": "api"
     },
     "set-fuel-amount": {
-      "method": "chat"
+      "method": "api"
     },
     "clear-fuel": {
       "method": "api"
@@ -38,11 +38,6 @@
         "scope": "global",
         "key": "fuelServiceLapMarginDecrease"
       }
-    }
-  },
-  "fuel-dial": {
-    "_meta": {
-      "modeSetting": "pressAction"
     },
     "toggle-fueling": {
       "method": "api"

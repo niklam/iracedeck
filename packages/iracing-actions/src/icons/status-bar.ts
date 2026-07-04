@@ -5,7 +5,7 @@ const GRAY = "#888888";
 
 /**
  * Tri-state toggle indication shared by the status bars, state-driven key
- * borders, and the Fuel Dial's bar styling: on (green) / off (red) / na (gray).
+ * borders, and the Fuel Service dial's bar styling: on (green) / off (red) / na (gray).
  */
 export type ToggleState = "on" | "off" | "na";
 

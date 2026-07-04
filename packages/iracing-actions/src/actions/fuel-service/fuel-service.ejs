@@ -6,61 +6,165 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Mode">
-			<sdpi-select id="mode-select" setting="mode" default="toggle-fuel-fill">
-				<option value="toggle-fuel-fill">Toggle Fuel Fill</option>
-				<option value="add-fuel">Add Fuel</option>
-				<option value="reduce-fuel">Reduce Fuel</option>
-				<option value="set-fuel-amount">Set Fuel Amount</option>
-				<option value="clear-fuel">Clear Fuel Checkbox</option>
-				<option value="toggle-autofuel">Toggle Autofuel</option>
-				<option value="lap-margin-increase">Lap Margin Increase</option>
-				<option value="lap-margin-decrease">Lap Margin Decrease</option>
-			</sdpi-select>
-		</sdpi-item>
+		<% var __comms = require('./data/action-comms.json')['fuel-service']; %>
 
-		<% var fuelComms = require('./data/action-comms.json')['fuel-service']; %>
-		<ird-binding-status mode-setting="<%= fuelComms._meta.modeSetting %>" comms='<%= JSON.stringify(fuelComms) %>'></ird-binding-status>
+		<!-- Keypad settings — hidden when this instance is a dial (#759). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Mode">
+				<sdpi-select id="mode-select" setting="mode" default="toggle-fuel-fill">
+					<option value="toggle-fuel-fill">Toggle Fuel Fill</option>
+					<option value="add-fuel">Add Fuel</option>
+					<option value="reduce-fuel">Reduce Fuel</option>
+					<option value="set-fuel-amount">Set Fuel Amount</option>
+					<option value="clear-fuel">Clear Fuel Checkbox</option>
+					<option value="toggle-autofuel">Toggle Autofuel</option>
+					<option value="lap-margin-increase">Lap Margin Increase</option>
+					<option value="lap-margin-decrease">Lap Margin Decrease</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
-		<div id="fuel-settings" class="hidden">
+			<div id="fuel-settings" class="hidden">
+				<sdpi-item label="Amount">
+					<sdpi-textfield
+						id="amount"
+						setting="amount"
+						placeholder="1"
+						type="number"
+						min="0.1"
+						max="999"
+						step="0.1"
+					></sdpi-textfield>
+				</sdpi-item>
+
+				<sdpi-item label="Unit">
+					<sdpi-select setting="unit" default="auto">
+						<option value="auto">Auto (from iRacing)</option>
+						<option value="l">Liters</option>
+						<option value="g">Gallons</option>
+						<option value="k">Kilograms</option>
+					</sdpi-select>
+				</sdpi-item>
+			</div>
+
+			<div id="fueling-on-change-section" class="hidden">
+				<sdpi-item label="Auto-enable fueling">
+					<sdpi-checkbox
+						setting="enableFuelingOnChange"
+						label="Auto-enable fueling when adjusting fuel or lap margin"
+						global
+						default="true"
+					></sdpi-checkbox>
+				</sdpi-item>
+				<div class="ird-supporting-text">
+					Applies to button presses only — a fuel dial always enables fueling when turned.
+				</div>
+			</div>
+		</div>
+
+		<!-- Dial settings — shown only when this instance is a dial (#759). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Mode">
+				<sdpi-select setting="dial.mode" default="add-amount">
+					<option value="add-amount">Add Amount</option>
+					<option value="fill-to">Target Amount</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Add Amount dials the fuel to add.
+				<br>
+				Target Amount dials the total you want in the tank after the stop, kept
+				topped up as you burn. In autofuel mode the turn adjusts the autofuel lap
+				margin instead.
+			</div>
+
 			<sdpi-item label="Amount">
 				<sdpi-textfield
-					id="amount"
-					setting="amount"
+					id="step-size"
+					setting="dial.stepSize"
 					placeholder="1"
 					type="number"
 					min="0.1"
-					max="999"
+					max="50"
 					step="0.1"
 				></sdpi-textfield>
 			</sdpi-item>
 
 			<sdpi-item label="Unit">
-				<sdpi-select setting="unit" default="l">
+				<sdpi-select setting="unit" default="auto">
+					<option value="auto">Auto (from iRacing)</option>
 					<option value="l">Liters</option>
 					<option value="g">Gallons</option>
-					<option value="k">Kilograms</option>
 				</sdpi-select>
 			</sdpi-item>
-		</div>
 
-		<div id="fueling-on-change-section" class="hidden">
-			<sdpi-item label="Auto-enable fueling">
-				<sdpi-checkbox
-					setting="enableFuelingOnChange"
-					label="Auto-enable fueling when adjusting fuel or lap margin"
-					global
-					default="true"
-				></sdpi-checkbox>
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="toggle-fueling">
+					<option value="toggle-fueling">Toggle Fueling</option>
+					<option value="fill-to-max">Toggle Full / No Fuel</option>
+					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
+					<option value="switch-mode">Switch Mode</option>
+					<option value="none">None</option>
+				</sdpi-select>
 			</sdpi-item>
+			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="toggle-autofuel-mode">
+					<option value="toggle-fueling">Toggle Fueling</option>
+					<option value="fill-to-max">Toggle Full / No Fuel</option>
+					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
+					<option value="switch-mode">Switch Mode</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Push + Turn">
+				<sdpi-select setting="dial.pushTurnAction" default="none">
+					<option value="none">None</option>
+					<option value="full-empty">Full / No Fuel</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text">
+				Press and turn the dial: clockwise fills to full, counter-clockwise empties
+				(no fuel).
+			</div>
+
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fueling">Toggle Fueling</option>
+					<option value="fill-to-max">Toggle Full / No Fuel</option>
+					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
+					<option value="switch-mode">Switch Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.tapAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="toggle-fueling">Toggle Fueling</option>
+					<option value="fill-to-max">Toggle Full / No Fuel</option>
+					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
+					<option value="switch-mode">Switch Mode</option>
+				</sdpi-select>
+			</sdpi-item>
+			<ird-binding-status mode-setting="dial.longTouchAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+			<% } %>
 		</div>
 
-		<%- include('title-overrides') %>
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['fuel-service'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['fuel-service'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['fuel-service'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['fuel-service'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -70,29 +174,61 @@
 			}) %>
 		</div>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
-			const FUEL_MACRO_MODES = ["add-fuel", "reduce-fuel", "set-fuel-amount"];
-			const FUELING_ON_CHANGE_MODES = [...FUEL_MACRO_MODES, "lap-margin-increase", "lap-margin-decrease"];
+			const FUEL_AMOUNT_MODES = ["add-fuel", "reduce-fuel", "set-fuel-amount"];
+			const FUELING_ON_CHANGE_MODES = [...FUEL_AMOUNT_MODES, "lap-margin-increase", "lap-margin-decrease"];
 			const KEYBOARD_MODES = ["toggle-autofuel", "lap-margin-increase", "lap-margin-decrease"];
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#759).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
+				// The dial gestures use the shared fuel key bindings — always show them.
+				document.getElementById("key-bindings-section")?.classList.remove("hidden");
+			}
 
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
-				const modeSelect = document.getElementById("mode-select");
-				const amountInput = document.getElementById("amount");
+				for (const id of ["amount", "step-size"]) {
+					const input = document.getElementById(id);
 
-				if (amountInput) {
-					amountInput.addEventListener("input", (e) => {
-						e.target.value = e.target.value.replace(",", ".");
-					});
+					if (input) {
+						input.addEventListener("input", (e) => {
+							e.target.value = e.target.value.replace(",", ".");
+						});
+					}
 				}
+
+				// Wire the keypad mode visibility FIRST so a slow/failed controller
+				// lookup still leaves a fully functional keypad PI (the default view).
+				const modeSelect = document.getElementById("mode-select");
 
 				if (modeSelect) {
 					updateVisibility(modeSelect.value || "toggle-fuel-fill");
@@ -114,6 +250,10 @@
 						}
 					}, 100);
 				}
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
+				}
 			}
 
 			function updateVisibility(mode) {
@@ -121,7 +261,7 @@
 				const keyBindings = document.getElementById("key-bindings-section");
 				const fuelingOnChange = document.getElementById("fueling-on-change-section");
 
-				if (FUEL_MACRO_MODES.includes(mode)) {
+				if (FUEL_AMOUNT_MODES.includes(mode)) {
 					fuelSettings?.classList.remove("hidden");
 				} else {
 					fuelSettings?.classList.add("hidden");

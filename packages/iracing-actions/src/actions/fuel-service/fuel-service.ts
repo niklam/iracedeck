@@ -1,12 +1,11 @@
 import {
   applyBindingWarning,
   assembleIcon,
-  CommonSettings,
   ConnectionStateAwareAction,
   fuelToDisplayUnits,
+  gallonsToLiters,
   generateBorderParts,
   generateTitleText,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -14,9 +13,11 @@ import {
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isAutofuelActive,
@@ -36,27 +37,27 @@ import lapMarginIncreaseIcon from "@iracedeck/icons/fuel-service/lap-margin-incr
 import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
 import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
 import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
-import { type TelemetryData } from "@iracedeck/iracing-sdk";
-import z from "zod";
+import { DisplayUnits, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
+import { FuelDialSurface, readPitSvFuel } from "./fuel-dial-surface.js";
+import { FuelPipeline } from "./fuel-pipeline.js";
+import {
+  FUEL_SERVICE_GLOBAL_KEYS,
+  type FuelServiceMode,
+  type FuelServiceSettings,
+  type FuelUnit,
+  parseFuelServiceSettings,
+} from "./fuel-service-settings.js";
 
-type FuelServiceMode =
-  | "toggle-fuel-fill"
-  | "add-fuel"
-  | "reduce-fuel"
-  | "set-fuel-amount"
-  | "clear-fuel"
-  | "toggle-autofuel"
-  | "lap-margin-increase"
-  | "lap-margin-decrease";
+export { FUEL_SERVICE_GLOBAL_KEYS } from "./fuel-service-settings.js";
 
 /**
- * Display labels for fuel unit setting values
+ * Display labels for the resolved fuel unit
  */
-const UNIT_DISPLAY: Record<FuelUnit, string> = {
+const UNIT_DISPLAY: Record<"l" | "g" | "k", string> = {
   l: "L",
   g: "GAL",
   k: "KG",
@@ -65,7 +66,7 @@ const UNIT_DISPLAY: Record<FuelUnit, string> = {
 /**
  * Label configuration for static fuel service modes.
  * Uses inverted layout: line1 = bold/bottom (primary), line2 = subdued/top (secondary).
- * Fuel macro modes (add-fuel, reduce-fuel, set-fuel-amount) use dynamic labels computed in getFuelServiceLabels().
+ * Fuel amount modes (add-fuel, reduce-fuel, set-fuel-amount) use dynamic labels computed in getFuelServiceLabels().
  * Telemetry-aware modes (toggle-fuel-fill, toggle-autofuel) use title metadata from their SVG instead.
  */
 const FUEL_SERVICE_LABELS: Partial<Record<FuelServiceMode, { line1: string; line2: string }>> = {
@@ -91,47 +92,17 @@ const FUEL_SERVICE_ICONS: Partial<Record<FuelServiceMode, string>> = {
 };
 
 /**
- * @internal Exported for testing
- *
- * Mapping from keyboard-based fuel service modes to global settings keys.
- * Chat macro modes (add-fuel, reduce-fuel, set-fuel-amount) and SDK modes (clear-fuel, toggle-fuel-fill) are NOT included.
- */
-export const FUEL_SERVICE_GLOBAL_KEYS: Record<string, string> = {
-  "toggle-autofuel": "fuelServiceToggleAutofuel",
-  "lap-margin-increase": "fuelServiceLapMarginIncrease",
-  "lap-margin-decrease": "fuelServiceLapMarginDecrease",
-};
-
-/**
  * Modes that use telemetry-driven dynamic icons.
  * Keep in sync with getTelemetryState() and buildStateKey().
  */
 const TELEMETRY_AWARE_MODES = new Set<FuelServiceMode>(["toggle-fuel-fill", "toggle-autofuel"]);
 
-const FuelUnit = z.enum(["l", "g", "k"]);
-type FuelUnit = z.infer<typeof FuelUnit>;
-
-const FuelServiceSettings = CommonSettings.extend({
-  mode: z
-    .enum([
-      "toggle-fuel-fill",
-      "add-fuel",
-      "reduce-fuel",
-      "set-fuel-amount",
-      "clear-fuel",
-      "toggle-autofuel",
-      "lap-margin-increase",
-      "lap-margin-decrease",
-    ])
-    .default("toggle-fuel-fill"),
-  amount: z.preprocess(
-    (val) => (typeof val === "string" ? val.replace(",", ".") : val),
-    z.coerce.number().min(0).default(1),
-  ),
-  unit: FuelUnit.default("l"),
-});
-
-type FuelServiceSettings = z.infer<typeof FuelServiceSettings>;
+/**
+ * The fuel amount modes (SDK `pit.fuel` against the live `PitSvFuel` baseline,
+ * #759). Their key labels depend on the resolved unit, so with `unit: "auto"` a
+ * DisplayUnits change re-renders them (see buildStateKey / updateDisplayFromTelemetry).
+ */
+const AMOUNT_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel", "set-fuel-amount"]);
 
 /**
  * @internal Exported for testing
@@ -190,28 +161,49 @@ function fuelFillGraphicContent(telemetryState: FuelServiceTelemetryState, graph
 /**
  * @internal Exported for testing
  *
- * Builds a pit macro string for fuel operations.
- * Uses iRacing pit macro syntax: #fuel [[+|-]<amount>[l|g|k]]$
- * The $ suffix auto-executes without showing the chat window.
+ * Resolves the shared `unit` setting to a concrete keypad unit. `auto` follows
+ * iRacing's live DisplayUnits (gallons when english, liters when metric or
+ * unknown); explicit units pass through.
  */
-export function buildFuelMacro(
-  mode: FuelServiceMode,
-  amount: number,
-  unit: FuelUnit,
-  preserveFueling = false,
-): string | null {
-  const rounded = Math.round(amount * 10) / 10;
-  const prefix = preserveFueling ? "#-fuel" : "#fuel";
+export function resolveKeypadUnit(unit: FuelUnit, displayUnits: number | undefined): "l" | "g" | "k" {
+  if (unit !== "auto") return unit;
 
-  switch (mode) {
-    case "add-fuel":
-      return `${prefix} +${rounded}${unit}$`;
-    case "reduce-fuel":
-      return `${prefix} -${rounded}${unit}$`;
-    case "set-fuel-amount":
-      return `${prefix} ${rounded}${unit}$`;
-    default:
-      return null;
+  return displayUnits === DisplayUnits.English ? "g" : "l";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Reads `DriverInfo.DriverCarFuelKgPerLtr` (fuel weight, kg per liter) from
+ * session info, or undefined when unavailable/invalid.
+ */
+export function readFuelKgPerLtr(sessionInfo: SessionInfo | null): number | undefined {
+  const driverInfo = (sessionInfo as Record<string, unknown> | null)?.DriverInfo as Record<string, unknown> | undefined;
+
+  if (!driverInfo) return undefined;
+
+  const kgPerLtr = driverInfo.DriverCarFuelKgPerLtr;
+
+  return typeof kgPerLtr === "number" && Number.isFinite(kgPerLtr) && kgPerLtr > 0 ? kgPerLtr : undefined;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Converts a user-configured amount in the resolved unit to liters for the
+ * `pit.fuel` broadcast. Gallons use the shared conversion factor; kilograms
+ * divide by the car's fuel weight (`DriverCarFuelKgPerLtr`, #759) — `null`
+ * when that weight is unavailable so callers can warn-and-skip instead of
+ * sending a garbage amount.
+ */
+export function amountToLiters(amount: number, unit: "l" | "g" | "k", kgPerLtr: number | undefined): number | null {
+  switch (unit) {
+    case "l":
+      return amount;
+    case "g":
+      return gallonsToLiters(amount);
+    case "k":
+      return kgPerLtr === undefined ? null : amount / kgPerLtr;
   }
 }
 
@@ -221,36 +213,29 @@ const REPEATABLE_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
 const REPEAT_HOLD_THRESHOLD_MS = 400;
 /**
  * Gap between the completion of one repeat send and the start of the next.
- * The loop is self-awaiting — it does not queue up a backlog — so the effective
- * cadence is `native_send_duration + REPEAT_GAP_MS` (roughly 440ms + this value).
- * Keep this small so releases feel instant but the event loop still breathes.
+ * The `pit.fuel` broadcast is effectively instant (unlike the former ~440 ms
+ * chat pipeline), so this interval alone sets the repeat cadence — a deliberate
+ * ~4 adjustments/sec keeps a held button controllable (#759). Telemetry updates
+ * at 60 Hz, so the `PitSvFuel` baseline is fresh again well before each repeat.
  */
-const REPEAT_GAP_MS = 100;
+const REPEAT_GAP_MS = 250;
 /** Maximum duration for long-press repeat before auto-stop (safety net for missed keyUp) */
 const REPEAT_MAX_DURATION_MS = 15_000;
-
-/** Modes that support encoder rotation for +/- adjustments */
-const ROTATABLE_MACRO_MODES = new Set<FuelServiceMode>(["add-fuel", "reduce-fuel"]);
-const ROTATABLE_KEYBOARD_MODES = new Set<FuelServiceMode>(["lap-margin-increase", "lap-margin-decrease"]);
-
-/** Determine the opposite mode for encoder rotation */
-const ROTATION_PAIRS: Partial<Record<FuelServiceMode, FuelServiceMode>> = {
-  "add-fuel": "reduce-fuel",
-  "reduce-fuel": "add-fuel",
-  "lap-margin-increase": "lap-margin-decrease",
-  "lap-margin-decrease": "lap-margin-increase",
-};
 
 /**
  * @internal Exported for testing
  *
- * Returns display labels for a fuel service mode.
- * Fuel macro modes compute dynamic labels from amount/unit settings.
+ * Returns display labels for a fuel service mode. Fuel amount modes compute
+ * dynamic labels from the amount setting and the RESOLVED unit (`auto` follows
+ * the live DisplayUnits passed by the caller).
  */
-export function getFuelServiceLabels(settings: FuelServiceSettings): { line1: string; line2: string } {
-  const { mode, amount, unit } = settings;
+export function getFuelServiceLabels(
+  settings: FuelServiceSettings,
+  displayUnits?: number,
+): { line1: string; line2: string } {
+  const { mode, amount } = settings;
   const rounded = Math.round(amount * 10) / 10;
-  const unitLabel = UNIT_DISPLAY[unit];
+  const unitLabel = UNIT_DISPLAY[resolveKeypadUnit(settings.unit, displayUnits)];
 
   switch (mode) {
     case "add-fuel":
@@ -351,7 +336,7 @@ export function generateFuelServiceSvg(
 
   // Static modes
   const iconSvg = FUEL_SERVICE_ICONS[mode] ?? FUEL_SERVICE_ICONS["add-fuel"]!;
-  const { line1, line2 } = getFuelServiceLabels(settings);
+  const { line1, line2 } = getFuelServiceLabels(settings, telemetryState?.displayUnits);
   // Convert inverted layout (line2=subLabel/top, line1=mainLabel/bottom) to title format (top\nbottom)
   const defaultTitle = line2 ? `${line2}\n${line1}` : line1;
 
@@ -366,10 +351,16 @@ export function generateFuelServiceSvg(
 
 /**
  * Fuel Service Action
- * Provides fuel management for pit stops (add/reduce fuel, set amount, clear,
- * autofuel toggle, lap margin adjustments, fuel fill toggle).
- * Fuel modes use pit macro chat commands; clear-fuel and toggle-fuel-fill use SDK;
- * keyboard-based modes use global key bindings.
+ *
+ * One fuel action for both surfaces (#759). On a KEYPAD button it provides
+ * fuel management for pit stops (add/reduce fuel, set amount, clear, autofuel
+ * toggle, lap margin adjustments, fuel fill toggle). On a DIAL it is the full
+ * fuel dial: rotate to set the add amount / target, gestures to toggle, clear
+ * or fill fueling, with the self-drawn touch-strip display (see
+ * {@link FuelDialSurface}).
+ *
+ * All fuel values go through the iRacing SDK (`pit.fuel` via the shared
+ * {@link FuelPipeline}); keyboard-based modes use global key bindings.
  */
 export const FUEL_SERVICE_UUID = "com.iracedeck.sd.core.fuel-service" as const;
 
@@ -377,6 +368,19 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   private activeContexts = new Map<string, FuelServiceSettings>();
   private lastState = new Map<string, string>();
   private readonly repeat = new RepeatController(this.logger);
+  /** Shared iRacing fuel-request pipeline — one per action, used by BOTH surfaces. */
+  private readonly pipeline = new FuelPipeline(this.logger);
+  /** The dial half of the action; all IDeck dial events route here. */
+  private readonly dialSurface = new FuelDialSurface(
+    {
+      logger: this.logger,
+      getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+      getSessionInfo: () => this.sdkController.getSessionInfo(),
+      tapBinding: (settingKey) => this.tapBinding(settingKey),
+      isBindingMissing: (keys) => this.isBindingMissing(keys),
+    },
+    this.pipeline,
+  );
 
   /** @internal Compat accessor — tests read repeat state via this field. */
   private get repeatIntervals() {
@@ -415,6 +419,34 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   override async onWillAppear(ev: IDeckWillAppearEvent<FuelServiceSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.willAppear(ev.action, settings);
+      this.sdkController.subscribe(ev.action.id, (telemetry) => {
+        this.dialSurface.onTelemetry(ev.action.id, telemetry);
+      });
+
+      return;
+    }
+
+    // Persist the effective unit the first time a keypad instance appears
+    // without one (#759, one-shot): a pre-#759 instance (a persisted `mode`
+    // exists) keeps liters — the old default its amounts used — while a fresh
+    // instance persists the new `auto` default. Persisting BOTH closes the
+    // ambiguous "mode set, unit absent" shape: the PI only persists a control's
+    // value once touched, so a post-#759 instance whose user picks a mode but
+    // never opens the Unit dropdown would otherwise be indistinguishable from a
+    // legacy instance on a later parse and wrongly coerced to liters. Because
+    // willAppear runs before the PI can be opened, a fresh instance always has
+    // `unit: "auto"` banked before `mode` can ever be persisted alone. Only the
+    // unit key is written so untouched fields keep tracking future schema
+    // defaults; the next appear sees `unit` set and writes nothing.
+    const raw = ev.payload.settings as Record<string, unknown> | undefined;
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw) && raw.unit === undefined) {
+      await ev.action.setSettings({ ...raw, unit: raw.mode !== undefined ? "l" : "auto" });
+    }
+
     this.activeContexts.set(ev.action.id, settings);
     const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
     this.setActiveBinding(activeKey ?? null);
@@ -432,6 +464,7 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<FuelServiceSettings>): Promise<void> {
     this.repeat.clear(ev.action.id);
+    this.dialSurface.willDisappear(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.activeContexts.delete(ev.action.id);
@@ -440,9 +473,16 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<FuelServiceSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (ev.action.isDial()) {
+      await this.dialSurface.didReceiveSettings(ev.action, settings);
+
+      return;
+    }
+
     // Defensive: settings changes can arrive mid-hold; drop any pending/active repeat.
     this.repeat.clear(ev.action.id);
-    const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.lastState.delete(ev.action.id);
     const activeKey = FUEL_SERVICE_GLOBAL_KEYS[settings.mode];
@@ -485,44 +525,38 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     this.repeat.onKeyUp(ev.action.id);
   }
 
-  override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {
-    this.logger.info("Dial down received");
+  override async onDialRotate(ev: IDeckDialRotateEvent<FuelServiceSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
-    await this.executeMode(settings.mode, settings);
+    await this.dialSurface.rotate(ev.action, settings, ev.payload.ticks, ev.payload.pressed === true);
   }
 
-  override async onDialRotate(ev: IDeckDialRotateEvent<FuelServiceSettings>): Promise<void> {
-    this.logger.info("Dial rotated");
+  override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+    this.dialSurface.down(ev.action, settings);
+  }
 
-    if (!ROTATABLE_MACRO_MODES.has(settings.mode) && !ROTATABLE_KEYBOARD_MODES.has(settings.mode)) {
-      this.logger.debug(`Rotation ignored for ${settings.mode}`);
+  override async onDialUp(ev: IDeckDialUpEvent<FuelServiceSettings>): Promise<void> {
+    await this.dialSurface.up(ev.action.id);
+  }
 
-      return;
-    }
-
-    // Clockwise (ticks > 0) = current mode, counter-clockwise = opposite mode
-    const effectiveMode = ev.payload.ticks > 0 ? settings.mode : (ROTATION_PAIRS[settings.mode] ?? settings.mode);
-
-    await this.executeMode(effectiveMode, settings);
+  override async onTouchTap(ev: IDeckTouchTapEvent<FuelServiceSettings>): Promise<void> {
+    const settings = this.parseSettings(ev.payload.settings);
+    await this.dialSurface.touchTap(ev.action, settings, ev.payload.hold === true);
   }
 
   private parseSettings(settings: unknown): FuelServiceSettings {
-    const parsed = FuelServiceSettings.safeParse(settings);
-
-    return parsed.success ? parsed.data : FuelServiceSettings.parse({});
+    return parseFuelServiceSettings(settings);
   }
 
   private async executeMode(mode: FuelServiceMode, settings: FuelServiceSettings): Promise<void> {
     switch (mode) {
-      // Chat macro-based modes
+      // SDK amount modes (pit.fuel against the live PitSvFuel baseline, #759)
       case "add-fuel":
       case "reduce-fuel":
       case "set-fuel-amount":
-        await this.executeFuelMacro(mode, settings);
+        this.executeSdkFuelAdjust(mode, settings);
         break;
 
-      // SDK-based modes
       case "clear-fuel":
         this.executeSdkClearFuel();
         break;
@@ -546,10 +580,12 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
         await this.tapBinding(settingKey);
 
         // Lap margin changes through the black box enable the fuel fill checkbox.
-        // When enableFuelingOnChange is off and fuel fill was off, clear it to restore the off state.
+        // When enableFuelingOnChange is off and fuel fill was off, clear it to
+        // restore the off state. Forced: the arming happened in the black box,
+        // outside the pipeline, so the no-double-clear guard must not skip it.
         if (mode !== "toggle-autofuel" && this.shouldPreserveFuelingState()) {
           this.logger.debug("Clearing fuel fill to preserve off state after lap margin change");
-          const cleared = getCommands().pit.clearFuel();
+          const cleared = this.pipeline.forceClearFuel();
 
           if (!cleared) {
             this.logger.warn("Failed to clear fuel fill when preserving off state");
@@ -562,10 +598,13 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
   }
 
   /**
-   * Determines whether the fuel fill checkbox state should be preserved
-   * (i.e., use #-fuel prefix instead of #fuel).
-   * When enableFuelingOnChange is false AND fuel fill is currently off,
-   * we preserve the off state so the user's checkbox isn't auto-enabled.
+   * Determines whether the fuel fill checkbox state should be preserved after a
+   * fuel or lap-margin adjustment: when enableFuelingOnChange is false AND fuel
+   * fill is currently off, a follow-up `pit.clearFuel` restores the off state so
+   * the user's checkbox isn't auto-enabled. KEYPAD-ONLY (#759): the dial always
+   * auto-arms on rotate — its state machine (clear-guard, continuous fill-to
+   * monitor, live checkbox display) depends on it, and a fuel+clear pair per
+   * rotation window would spam iRacing.
    */
   private shouldPreserveFuelingState(): boolean {
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
@@ -580,41 +619,89 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     return !isFuelFillOn(telemetry);
   }
 
-  private async executeFuelMacro(mode: FuelServiceMode, settings: FuelServiceSettings): Promise<void> {
-    const preserveFueling = this.shouldPreserveFuelingState();
-    const macro = buildFuelMacro(mode, settings.amount, settings.unit, preserveFueling);
+  /**
+   * Adjusts the pit fuel request via the SDK (#759). `pit.fuel` sets an
+   * ABSOLUTE add amount, so add/reduce compute against the live `PitSvFuel`
+   * baseline (fresh on every press — telemetry is 60 Hz vs the ~250 ms repeat
+   * cadence). iRacing banks whole liters, so the target is rounded; a target at
+   * or below zero empties the request instead (`pit.fuel(0)` would mean "keep
+   * the existing amount"). With preserve-off active, a follow-up clear restores
+   * the user's unchecked fuel box (the former `#-fuel` chat behavior).
+   */
+  private executeSdkFuelAdjust(
+    mode: "add-fuel" | "reduce-fuel" | "set-fuel-amount",
+    settings: FuelServiceSettings,
+  ): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
 
-    if (!macro) {
-      this.logger.warn(`No macro for mode: ${mode}`);
-
-      return;
-    }
-
-    this.logger.debug(`Sending fuel macro: ${macro}`);
-
-    let success = false;
-
-    try {
-      success = await getCommands().chat.sendMessage(macro);
-    } catch (err) {
-      this.logger.warn(`Failed to send fuel macro: ${err}`);
-      this.logger.debug(`Failed macro: ${macro}`);
+    if (!telemetry) {
+      this.logger.warn("No telemetry available for fuel adjustment");
 
       return;
     }
 
-    if (success) {
-      this.logger.info("Fuel macro sent");
-      this.logger.debug(`Macro: ${macro}`);
-    } else {
-      this.logger.warn("Failed to send fuel macro");
-      this.logger.debug(`Failed macro: ${macro}`);
+    const telemetryUnits = telemetry.DisplayUnits;
+    const resolvedUnit = resolveKeypadUnit(
+      settings.unit,
+      typeof telemetryUnits === "number" ? telemetryUnits : undefined,
+    );
+    const deltaLtr = amountToLiters(
+      settings.amount,
+      resolvedUnit,
+      readFuelKgPerLtr(this.sdkController.getSessionInfo()),
+    );
+
+    if (deltaLtr === null) {
+      this.logger.warn("Fuel weight (kg per liter) unavailable — cannot convert kg amount, skipping");
+
+      return;
     }
+
+    // Read the preserve decision BEFORE sending — pit.fuel arms the checkbox.
+    const preserve = this.shouldPreserveFuelingState();
+    const currentLtr = readPitSvFuel(telemetry) ?? 0;
+
+    let targetLtr: number;
+
+    switch (mode) {
+      case "add-fuel":
+        targetLtr = currentLtr + deltaLtr;
+        break;
+      case "reduce-fuel":
+        targetLtr = currentLtr - deltaLtr;
+        break;
+      case "set-fuel-amount":
+        targetLtr = deltaLtr;
+        break;
+    }
+
+    const roundedLtr = Math.round(targetLtr);
+
+    if (roundedLtr <= 0) {
+      // Empty the banked amount and leave fueling off — already the preserved state.
+      this.pipeline.sendNoFuel();
+      this.logger.info("Fuel request emptied");
+      this.logger.debug(`${mode}: target ${targetLtr.toFixed(2)}L ≤ 0 — sent no-fuel`);
+
+      return;
+    }
+
+    this.pipeline.fuel(roundedLtr);
+
+    if (preserve) {
+      this.pipeline.clearFuel();
+    }
+
+    this.logger.info("Fuel request sent");
+    this.logger.debug(
+      `${mode}: ${settings.amount} ${resolvedUnit} → pit.fuel(${roundedLtr}) (baseline ${currentLtr.toFixed(2)}L)${preserve ? ", cleared to preserve off state" : ""}`,
+    );
   }
 
   private executeSdkClearFuel(): void {
-    const pit = getCommands().pit;
-    const success = pit.clearFuel();
+    // Forced: an explicit Clear Fuel press must always send, even right after
+    // another clear (the arming may have happened outside this pipeline).
+    const success = this.pipeline.forceClearFuel();
     this.logger.info("Clear fuel checkbox executed");
     this.logger.debug(`Result: ${success}`);
   }
@@ -628,9 +715,10 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
       return;
     }
 
-    const pit = getCommands().pit;
     const isSet = isFuelFillOn(telemetry);
-    const success = isSet ? pit.clearFuel() : pit.fuel(0);
+    // Toggle ON arms keeping the banked amount (pit.fuel(0)); toggle OFF is a
+    // deliberate user clear, forced past the dedup guard.
+    const success = isSet ? this.pipeline.forceClearFuel() : this.pipeline.arm();
     this.logger.info("Fuel fill toggled");
     this.logger.debug(`Action: ${isSet ? "cleared" : "requested"}, result: ${success}`);
   }
@@ -662,6 +750,14 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
 
     if (settings.mode === "toggle-autofuel") {
       return `autofuel|${telemetryState.autofuelEnabled ?? true}|${telemetryState.autofuelActive ?? "na"}|${borderKey}|${warn}`;
+    }
+
+    if (AMOUNT_MODES.has(settings.mode)) {
+      // The resolved unit is part of the label; with unit "auto" a DisplayUnits
+      // change must re-render the key (#759).
+      const unitLabel = UNIT_DISPLAY[resolveKeypadUnit(settings.unit, telemetryState.displayUnits)];
+
+      return `${settings.mode}|${unitLabel}|${warn}`;
     }
 
     return `${settings.mode}|${warn}`;
@@ -699,7 +795,10 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
     telemetry: TelemetryData | null,
     settings: FuelServiceSettings,
   ): Promise<void> {
-    if (!TELEMETRY_AWARE_MODES.has(settings.mode)) return;
+    // Amount modes re-render too: their label's resolved unit follows live
+    // DisplayUnits when unit is "auto" (#759). The state-key comparison keeps
+    // unchanged ticks free.
+    if (!TELEMETRY_AWARE_MODES.has(settings.mode) && !AMOUNT_MODES.has(settings.mode)) return;
 
     const telemetryState = this.getTelemetryState(telemetry);
     const stateKey = this.buildStateKey(settings, telemetryState);
