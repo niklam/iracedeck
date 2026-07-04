@@ -11,13 +11,17 @@
  * and a beep around each number would be noise. Each scenario plays a single
  * clip from its pool.
  *
- * **Lowest band — idle-only, never queued (issue #646).** The count-in sits in
- * the lowest weight band (`weight: WEIGHT.TRANSIENT`) with `queueable: false`, so
- * it plays ONLY when the bus is idle and is DROPPED whenever any other audio is
- * in flight. It never preempts a higher-weight line and never defers/replays — a
- * dropped count-in is simply gone. This keeps the pit-entry service readback from
- * being chopped by the countdown: the readback outranks the count-in and cancels
- * it, while a count-in that fires during the readback is dropped outright.
+ * **Countdown wins the CHATTER band (issue #758, reverses #646).** The
+ * count-in carries an explicit weight between `CHATTER` (10) and `NORMAL`
+ * (50) plus `interrupt: true`, so a mark that fires while the pit-entry
+ * service readback is playing CUTS it immediately — the countdown is the
+ * time-critical callout on approach, and the interrupted readback (queueable
+ * + resumable) resumes from where it left off once the count-in is done.
+ * `queueable: false` stays: a mark that loses the bus to a `NORMAL`-or-above
+ * line (pit-status, flags, fuel-critical) is dropped, never deferred — a
+ * stale number replayed after the moment passed is worse than silence.
+ * `pendingHoldMs` keeps the bus's pending replay held between marks so the
+ * displaced readback doesn't stutter back into the ~1 s gaps of the train.
  *
  * **Family preemption.** All six share `family: "pit-box"` so a faster approach
  * that crosses two marks in quick succession still supersedes the in-flight
@@ -29,8 +33,24 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { PitBoxMark, SimEventOf } from "@iracedeck/event-bus";
 
-import { WEIGHT } from "../../dsl.js";
 import type { Scenario } from "../../dsl.js";
+
+/**
+ * Explicit integer between `WEIGHT.CHATTER` (10) and `WEIGHT.NORMAL` (50) —
+ * the #655 pit-window precedent for a callout that slots between named bands.
+ * The count-in outranks the readback and other background commentary but
+ * still loses (drops) against ordinary and safety callouts.
+ */
+export const PIT_BOX_COUNT_IN_WEIGHT = 30;
+
+/**
+ * How long the pending replay stays held after each mark finishes. Marks
+ * arrive ~1 s apart at pit-lane speed (20 m spacing) and stretch out as the
+ * driver brakes into the box, so the window must comfortably bridge the
+ * slowest inter-mark gap; after the final mark it delays the readback resume
+ * by the same amount, which lands while the car is stopping in the stall.
+ */
+export const PIT_BOX_PENDING_HOLD_MS = 2500;
 
 function pitBoxScenario(mark: PitBoxMark): Scenario {
   return {
@@ -38,8 +58,10 @@ function pitBoxScenario(mark: PitBoxMark): Scenario {
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
-    weight: WEIGHT.TRANSIENT,
+    weight: PIT_BOX_COUNT_IN_WEIGHT,
+    interrupt: true,
     queueable: false,
+    pendingHoldMs: PIT_BOX_PENDING_HOLD_MS,
     family: "pit-box",
     sequence: [`pool:pit-box-${mark}`],
     when: {

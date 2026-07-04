@@ -249,13 +249,17 @@ function readbackScenario(reason: "entry" | "exit", getSnap: ReadbackSnapshotRes
     // `weight: WEIGHT.CHATTER` keeps the readback deferring behind ordinary
     // callouts: it still loses the bus to flags / normal callouts (pit-approach,
     // pit-exit chatter, limiter callouts) and replays once the bus goes idle via
-    // `queueable: true` — same as the unregistered service-reminder. But
-    // `interrupt: true` lets it cancel a running pit-box count-in (the only
-    // lower-weight band, `WEIGHT.TRANSIENT`) so the service confirmation is never
-    // chopped by the countdown (issue #646).
+    // `queueable: true` — same as the unregistered service-reminder. The
+    // pit-box count-in OUTRANKS the readback and cuts it (issue #758,
+    // reversing #646 — the countdown is the time-critical callout on
+    // approach); `resumable: true` makes the interrupted readback continue
+    // from the clip it was cut on once the count-in finishes, instead of
+    // re-firing from the top. The engine re-expands before resuming, so a
+    // snapshot that changed while stashed still falls back to a full fresh
+    // replay (the #481 freshness guarantee).
     weight: WEIGHT.CHATTER,
     queueable: true,
-    interrupt: true,
+    resumable: true,
     family: "pit-readback",
     sequence: [
       "@pit-crew.radio-open",

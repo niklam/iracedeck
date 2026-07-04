@@ -116,6 +116,43 @@ describe("validateScenario", () => {
     expect(errorLogs.join("\n")).toContain("unknown clips");
   });
 
+  it("flags resumable without queueable (issue #758)", () => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      resumable: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("resumable requires queueable: true");
+  });
+
+  it("accepts resumable when queueable is set (issue #758)", () => {
+    engine.defineScenario({
+      id: "good-resumable",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      queueable: true,
+      resumable: true,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs).toEqual([]);
+  });
+
+  it("flags a negative pendingHoldMs (issue #758)", () => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      pendingHoldMs: -1,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("pendingHoldMs must be a non-negative number");
+  });
+
   it("accepts a valid scenario", () => {
     engine.definePool("connector", ["pit-crew/connector/and.mp3"]);
     engine.defineVar("name", () => "pit-crew/greeting/a.mp3");
