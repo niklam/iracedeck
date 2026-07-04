@@ -3,14 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   availableProfilesForDevice,
-  carsPerPage,
-  computeCarSlotIndex,
   DEFAULT_SELECTOR_TARGET_PROFILE,
   generateSelectorSvg,
+  pageStartSlot,
   parseSelectedCar,
+  parseSelectorPage,
   resolveSelectedCar,
   resolveSlotCar,
   SELECTED_CAR_KEY,
+  selectorOrdinal,
 } from "./race-admin-selector.js";
 
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -60,10 +61,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   })),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
 }));
-
-const XL = [8, 4] as const;
-const SD = [5, 3] as const;
-const PLUS_XL = [6, 6] as const;
 
 describe("race-admin-selector", () => {
   beforeEach(() => {
@@ -127,81 +124,69 @@ describe("race-admin-selector", () => {
     });
   });
 
-  describe("carsPerPage", () => {
-    it("subtracts the three reserved nav cells from the grid", () => {
-      expect(carsPerPage(XL)).toBe(29);
-      expect(carsPerPage(SD)).toBe(12);
-      expect(carsPerPage(PLUS_XL)).toBe(33);
+  describe("parseSelectorPage", () => {
+    it("parses a 0-based page string", () => {
+      expect(parseSelectorPage("0")).toBe(0);
+      expect(parseSelectorPage("3")).toBe(3);
+      expect(parseSelectorPage("2.9")).toBe(2);
     });
 
-    it("returns 0 for unknown grids", () => {
-      expect(carsPerPage(null)).toBe(0);
-      expect(carsPerPage(undefined)).toBe(0);
-    });
-
-    it("dedupes coinciding reserved corners on single-row/column grids", () => {
-      expect(carsPerPage([1, 3])).toBe(1); // top-left + one bottom corner reserved
-      expect(carsPerPage([4, 1])).toBe(2); // both left corners coincide
-      expect(carsPerPage([1, 5])).toBe(3); // both bottom corners coincide
+    it("treats invalid, negative, or missing values as page 0", () => {
+      expect(parseSelectorPage("")).toBe(0);
+      expect(parseSelectorPage("abc")).toBe(0);
+      expect(parseSelectorPage("-2")).toBe(0);
+      expect(parseSelectorPage(undefined)).toBe(0);
     });
   });
 
-  describe("computeCarSlotIndex (XL 8×4, page 0)", () => {
-    it("fills row-major starting at the cell after the top-left back button", () => {
-      expect(computeCarSlotIndex(1, 0, XL, 0)).toBe(0);
-      expect(computeCarSlotIndex(2, 0, XL, 0)).toBe(1);
-      expect(computeCarSlotIndex(7, 0, XL, 0)).toBe(6);
-      expect(computeCarSlotIndex(0, 1, XL, 0)).toBe(7);
-      expect(computeCarSlotIndex(7, 2, XL, 0)).toBe(22);
+  describe("selectorOrdinal", () => {
+    // A partial page: five keys scattered around the grid, corners included —
+    // there are no reserved cells anymore (#754).
+    const keys = [
+      { column: 0, row: 0 },
+      { column: 3, row: 0 },
+      { column: 1, row: 1 },
+      { column: 0, row: 2 },
+      { column: 7, row: 2 },
+    ];
+
+    it("assigns row-major ordinals regardless of placement or count", () => {
+      expect(selectorOrdinal({ column: 0, row: 0 }, keys)).toBe(0);
+      expect(selectorOrdinal({ column: 3, row: 0 }, keys)).toBe(1);
+      expect(selectorOrdinal({ column: 1, row: 1 }, keys)).toBe(2);
+      expect(selectorOrdinal({ column: 0, row: 2 }, keys)).toBe(3);
+      expect(selectorOrdinal({ column: 7, row: 2 }, keys)).toBe(4);
     });
 
-    it("keeps the car slots contiguous across the bottom-row nav cells", () => {
-      expect(computeCarSlotIndex(1, 3, XL, 0)).toBe(23); // right after bottom-left (prev page)
-      expect(computeCarSlotIndex(6, 3, XL, 0)).toBe(28); // just before bottom-right (next page)
+    it("works when self is not part of the list", () => {
+      expect(selectorOrdinal({ column: 2, row: 1 }, keys)).toBe(3); // after (0,0), (3,0), (1,1)
     });
 
-    it("returns null for the three reserved navigation cells", () => {
-      expect(computeCarSlotIndex(0, 0, XL, 0)).toBeNull(); // back to default
-      expect(computeCarSlotIndex(0, 3, XL, 0)).toBeNull(); // previous page
-      expect(computeCarSlotIndex(7, 3, XL, 0)).toBeNull(); // next page
-    });
-
-    it("returns null for out-of-range coordinates or unknown grid", () => {
-      expect(computeCarSlotIndex(8, 0, XL, 0)).toBeNull();
-      expect(computeCarSlotIndex(0, 4, XL, 0)).toBeNull();
-      expect(computeCarSlotIndex(-1, 0, XL, 0)).toBeNull();
-      expect(computeCarSlotIndex(1, 0, null, 0)).toBeNull();
-    });
-  });
-
-  describe("computeCarSlotIndex (paging)", () => {
-    it("offsets by page × carsPerPage", () => {
-      expect(computeCarSlotIndex(1, 0, XL, 1)).toBe(29);
-      expect(computeCarSlotIndex(0, 1, XL, 2)).toBe(65); // 2*29 + 7
-    });
-
-    it("treats a negative/non-finite page as 0", () => {
-      expect(computeCarSlotIndex(1, 0, XL, -3)).toBe(0);
-      expect(computeCarSlotIndex(1, 0, XL, Number.NaN)).toBe(0);
+    it("is 0 for a single key wherever it sits", () => {
+      expect(selectorOrdinal({ column: 5, row: 3 }, [{ column: 5, row: 3 }])).toBe(0);
     });
   });
 
-  describe("computeCarSlotIndex (degenerate single-row/column grids)", () => {
-    it("handles a single-row grid where the left corners coincide", () => {
-      const grid = [4, 1] as const;
-      expect(computeCarSlotIndex(0, 0, grid, 0)).toBeNull(); // back + prev coincide
-      expect(computeCarSlotIndex(3, 0, grid, 0)).toBeNull(); // next page
-      expect(computeCarSlotIndex(1, 0, grid, 0)).toBe(0);
-      expect(computeCarSlotIndex(2, 0, grid, 0)).toBe(1);
-      expect(computeCarSlotIndex(1, 0, grid, 1)).toBe(2); // page 1 continues the field
+  describe("pageStartSlot", () => {
+    it("starts page 0 at slot 0 even with no learned counts", () => {
+      expect(pageStartSlot(0, new Map())).toBe(0);
     });
 
-    it("handles a single-column grid where the bottom corners coincide", () => {
-      const grid = [1, 5] as const;
-      expect(computeCarSlotIndex(0, 0, grid, 0)).toBeNull();
-      expect(computeCarSlotIndex(0, 4, grid, 0)).toBeNull();
-      expect(computeCarSlotIndex(0, 1, grid, 0)).toBe(0);
-      expect(computeCarSlotIndex(0, 3, grid, 0)).toBe(2);
+    it("sums the learned counts of all earlier pages — uneven counts included", () => {
+      const counts = new Map([
+        [0, 29],
+        [1, 12],
+        [2, 5],
+      ]);
+      expect(pageStartSlot(1, counts)).toBe(29);
+      expect(pageStartSlot(2, counts)).toBe(41);
+      expect(pageStartSlot(3, counts)).toBe(46);
+    });
+
+    it("returns null while any earlier page's count is unknown", () => {
+      const counts = new Map([[1, 12]]); // page 0 never visited
+      expect(pageStartSlot(1, counts)).toBeNull();
+      expect(pageStartSlot(2, counts)).toBeNull();
     });
   });
 

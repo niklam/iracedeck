@@ -533,7 +533,9 @@ This mode sends no iRacing command itself; it's navigation plus shared state.
 
 #### How keys map to cars
 
-The field is sorted by car number (pace car and spectators excluded), then laid out across the selector page(s). The standard iRaceDeck selector layout reserves three keys on every page — **top-left** for Back to default profile, and the two **bottom corners** for Previous / Next page — and fills every other key with a car, left-to-right and top-to-bottom.
+The field is sorted by car number (pace car and spectators excluded), then fills your Select Car keys left-to-right, top-to-bottom. Place **any number of keys anywhere** on the page — corners included, mixed freely with other actions — and every page of a multi-page selector may hold a **different number** of car keys. Nothing is reserved: the Back-to-profile and Previous/Next page keys in the bundled profile are ordinary keys that simply aren't Select Car keys.
+
+On a multi-page selector, the plugin learns how many car keys each page holds as you visit the pages. Profile switches always land on the first page and page navigation moves one page at a time, so the counts are known by the time you reach a later page. If a later page briefly shows blank keys (for example right after a plugin restart mid-browse), step back to the first page once and the field fills in.
 
 #### Setting: Selector Page
 
