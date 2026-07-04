@@ -9,19 +9,18 @@ import {
   computeAddLtr,
   computeTotalLtr,
   formatDisplayValue,
-  FUEL_DIAL_UUID,
-  FuelDial,
   readEffectiveMaxLtr,
   readFuelLevel,
   readPitSvFuel,
   renderFuelBarSvg,
   renderStripCanvasSvg,
   resolveDialDisplayMode,
-  resolveDisplayUnits,
   resolveFuelFillState,
   roundedBarPath,
   roundToWholeDisplayLtr,
-} from "./fuel-dial.js";
+} from "./fuel-dial-surface.js";
+import { resolveDisplayUnits } from "./fuel-service-settings.js";
+import { FUEL_SERVICE_UUID, FuelService } from "./fuel-service.js";
 
 const {
   mockPitClearFuel,
@@ -53,113 +52,176 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number | undefined, flag: number) => ((value ?? 0) & flag) === flag,
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
-  CommonSettings: {
-    extend: () => {
-      const defaults = {
-        dialMode: "add-amount",
-        stepSize: 1,
-        pressAction: "toggle-fueling",
-        longPressAction: "toggle-autofuel-mode",
-        pushTurnAction: "none",
-        tapAction: "none",
-        longTouchAction: "none",
-        unitMode: "auto",
-      };
-      const schema = {
-        parse: (data: Record<string, unknown>) => ({ ...defaults, ...data }),
-        safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...defaults, ...data } }),
-      };
+vi.mock("@iracedeck/deck-core", async () => {
+  const { z } = await import("zod");
 
-      return schema;
+  return {
+    // REAL zod semantics for the extended settings schema (defaults, the `dial`
+    // prefault, enum validation) — only the CommonSettings base fields are absent.
+    CommonSettings: {
+      extend: (shape: never) => z.object(shape).passthrough(),
     },
-    parse: (data: Record<string, unknown>) => ({ ...data }),
-    safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
-  },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = {
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-      getCurrentTelemetry: mockGetCurrentTelemetry,
-      getSessionInfo: mockGetSessionInfo,
-    };
-    setKeyImage = vi.fn().mockResolvedValue(undefined);
-    setRegenerateCallback = vi.fn();
-    updateKeyImage = vi.fn().mockResolvedValue(false);
-    setActiveBinding = vi.fn();
-    tapBinding = mockTapBinding;
-    holdBinding = vi.fn().mockResolvedValue(undefined);
-    releaseBinding = vi.fn().mockResolvedValue(undefined);
-    isBindingMissing = vi.fn(() => false);
-    async onWillAppear() {}
-    async onDidReceiveSettings() {}
-    async onWillDisappear() {}
-  },
-  getCommands: mockGetCommands,
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalTitleSettings: vi.fn(() => ({})),
-  generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
-  resolveBorderSettings: vi.fn(() => ({
-    enabled: false,
-    borderWidth: 7,
-    borderColor: "#00aaff",
-    glowEnabled: true,
-    glowWidth: 18,
-  })),
-  resolveIconColors: vi.fn(() => ({ graphic1Color: "#ffffff", textColor: "#ffffff", backgroundColor: "#2a3340" })),
-  resolveTitleSettings: vi.fn(() => ({
-    showTitle: true,
-    showGraphics: true,
-    titleText: "FUEL",
-    bold: true,
-    fontSize: 18,
-    position: "top" as const,
-    customPosition: 0,
-  })),
-  renderIconTemplate: vi.fn(
-    (_template: string, data: Record<string, string>) =>
-      `<svg>${data.titleContent || ""}${data.iconContent || ""}</svg>`,
-  ),
-  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-  // #612 binding-missing overlay — appends a recognizable marker for assertions.
-  applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
-  fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) =>
-    displayUnits === 1 ? liters : liters * 0.264172,
-  ),
-  fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
-    displayUnits === 1 ? amount : amount * 3.78541,
-  ),
-  getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
-  // "Long-press threshold" global setting reader (drives the dial release classifier).
-  getDualPressThresholdMs: () => mockDualPressThreshold.value,
-  // Shared dial-gesture convention (release-time classifier + paired-action resolver).
-  DIAL_LONG_PRESS_THRESHOLD_MS: 500,
-  classifyDialRelease: (args: {
-    pressStartMs: number;
-    nowMs: number;
-    rotatedWhilePressed: boolean;
-    thresholdMs?: number;
-  }) => {
-    if (args.rotatedWhilePressed) return "push-turn";
+    ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      sdkController = {
+        subscribe: vi.fn(),
+        unsubscribe: vi.fn(),
+        getCurrentTelemetry: mockGetCurrentTelemetry,
+        getSessionInfo: mockGetSessionInfo,
+      };
+      setKeyImage = vi.fn().mockResolvedValue(undefined);
+      setRegenerateCallback = vi.fn();
+      updateKeyImage = vi.fn().mockResolvedValue(false);
+      setActiveBinding = vi.fn();
+      tapBinding = mockTapBinding;
+      holdBinding = vi.fn().mockResolvedValue(undefined);
+      releaseBinding = vi.fn().mockResolvedValue(undefined);
+      isBindingMissing = vi.fn(() => false);
+      async onWillAppear() {}
+      async onDidReceiveSettings() {}
+      async onWillDisappear() {}
+    },
+    getCommands: mockGetCommands,
+    getGlobalBorderSettings: vi.fn(() => ({})),
+    getGlobalColors: vi.fn(() => ({})),
+    getGlobalTitleSettings: vi.fn(() => ({})),
+    generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+    resolveBorderSettings: vi.fn(() => ({
+      enabled: false,
+      borderWidth: 7,
+      borderColor: "#00aaff",
+      glowEnabled: true,
+      glowWidth: 18,
+    })),
+    resolveIconColors: vi.fn(() => ({ graphic1Color: "#ffffff", textColor: "#ffffff", backgroundColor: "#2a3340" })),
+    resolveTitleSettings: vi.fn(() => ({
+      showTitle: true,
+      showGraphics: true,
+      titleText: "FUEL",
+      bold: true,
+      fontSize: 18,
+      position: "top" as const,
+      customPosition: 0,
+    })),
+    renderIconTemplate: vi.fn(
+      (_template: string, data: Record<string, string>) =>
+        `<svg>${data.titleContent || ""}${data.iconContent || ""}</svg>`,
+    ),
+    svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+    // #612 binding-missing overlay — appends a recognizable marker for assertions.
+    applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+    fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) =>
+      displayUnits === 1 ? liters : liters * 0.264172,
+    ),
+    fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
+      displayUnits === 1 ? amount : amount * 3.78541,
+    ),
+    getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
+    // "Long-press threshold" global setting reader (drives the dial release classifier).
+    getDualPressThresholdMs: () => mockDualPressThreshold.value,
+    // Shared dial-gesture convention (release-time classifier + paired-action resolver).
+    DIAL_LONG_PRESS_THRESHOLD_MS: 500,
+    classifyDialRelease: (args: {
+      pressStartMs: number;
+      nowMs: number;
+      rotatedWhilePressed: boolean;
+      thresholdMs?: number;
+    }) => {
+      if (args.rotatedWhilePressed) return "push-turn";
 
-    return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
-  },
-  resolvePairedAction: (pair: { cw: unknown; ccw: unknown } | null | undefined, ticks: number) => {
-    if (!pair) return null;
+      return args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500) ? "long" : "short";
+    },
+    resolvePairedAction: (pair: { cw: unknown; ccw: unknown } | null | undefined, ticks: number) => {
+      if (!pair) return null;
 
-    if (ticks > 0) return pair.cw;
+      if (ticks > 0) return pair.cw;
 
-    if (ticks < 0) return pair.ccw;
+      if (ticks < 0) return pair.ccw;
 
-    return null;
-  },
-  // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
-  isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
-  isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
-  isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
+      return null;
+    },
+    // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
+    isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
+    isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
+    isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
+    // Keypad-icon exports used by fuel-service.ts (not exercised by the dial suite).
+    assembleIcon: vi.fn(() => "data:image/svg+xml,assembled"),
+    resolveGraphicSettings: vi.fn(() => ({ scaleMode: "inherit" as const, scale: 100 })),
+    getGlobalGraphicSettings: vi.fn(() => ({})),
+    getGlobalSettings: vi.fn(() => ({})),
+    generateTitleText: vi.fn(() => ""),
+    gallonsToLiters: (gallons: number) => gallons * 3.78541,
+  };
+});
+
+// fuel-service.ts pulls the keypad icon SVGs; vitest has no .svg loader, so mock them.
+vi.mock("../../../icons/fuel-service.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">{{iconContent}} {{backgroundColor}}</svg>',
 }));
+vi.mock("@iracedeck/icons/fuel-service/add-fuel.svg", () => ({
+  default: "<svg>add-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/reduce-fuel.svg", () => ({
+  default: "<svg>reduce-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/set-fuel-amount.svg", () => ({
+  default: "<svg>set-fuel-amount-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/clear-fuel.svg", () => ({
+  default: "<svg>clear-fuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/toggle-autofuel.svg", () => ({
+  default: "<svg>toggle-autofuel-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/lap-margin-increase.svg", () => ({
+  default: "<svg>lap-margin-increase-icon</svg>",
+}));
+vi.mock("@iracedeck/icons/fuel-service/lap-margin-decrease.svg", () => ({
+  default: "<svg>lap-margin-decrease-icon</svg>",
+}));
+
+/**
+ * Translates this suite's FLAT dial settings (the pre-#759 Fuel Dial shape) into
+ * the merged Fuel Service shape: dial fields under the `dial` root, `unitMode`
+ * mapped onto the shared `unit`. Applied inside the event helpers so the test
+ * bodies keep the original literals.
+ */
+function toMergedSettings(flat: Record<string, unknown> = {}): Record<string, unknown> {
+  const {
+    dialMode,
+    stepSize,
+    pressAction,
+    longPressAction,
+    pushTurnAction,
+    tapAction,
+    longTouchAction,
+    unitMode,
+    ...rest
+  } = flat;
+  const dial: Record<string, unknown> = {};
+
+  if (dialMode !== undefined) dial.mode = dialMode;
+
+  if (stepSize !== undefined) dial.stepSize = stepSize;
+
+  if (pressAction !== undefined) dial.pressAction = pressAction;
+
+  if (longPressAction !== undefined) dial.longPressAction = longPressAction;
+
+  if (pushTurnAction !== undefined) dial.pushTurnAction = pushTurnAction;
+
+  if (tapAction !== undefined) dial.tapAction = tapAction;
+
+  if (longTouchAction !== undefined) dial.longTouchAction = longTouchAction;
+
+  const merged: Record<string, unknown> = { ...rest, dial };
+
+  if (unitMode !== undefined) {
+    merged.unit = unitMode === "liters" ? "l" : unitMode === "gallons" ? "g" : unitMode;
+  }
+
+  return merged;
+}
 
 /** Fake dial (encoder) action context. */
 function dialContext(id: string) {
@@ -182,15 +244,15 @@ function rotateEvent(
   ticks: number,
   pressed = false,
 ) {
-  return { action, payload: { settings, ticks, pressed } };
+  return { action, payload: { settings: toMergedSettings(settings), ticks, pressed } };
 }
 
 function basicEvent(action: ReturnType<typeof dialContext>, settings: Record<string, unknown> = {}) {
-  return { action, payload: { settings } };
+  return { action, payload: { settings: toMergedSettings(settings) } };
 }
 
 function touchTapEvent(action: ReturnType<typeof dialContext>, settings: Record<string, unknown>, hold: boolean) {
-  return { action, payload: { settings, tapPos: [0, 0] as [number, number], hold } };
+  return { action, payload: { settings: toMergedSettings(settings), tapPos: [0, 0] as [number, number], hold } };
 }
 
 /** Decodes the strip's full-canvas pixmap (the `box` feedback key) to raw SVG. */
@@ -199,7 +261,7 @@ function stripCanvas(payload: { box?: string } | undefined): string {
 }
 
 /** Pulls the telemetry callback registered by onWillAppear via the mocked subscribe. */
-function getTelemetryCallback(act: FuelDial): (telemetry: unknown) => void {
+function getTelemetryCallback(act: FuelService): (telemetry: unknown) => void {
   const subscribe = (act as unknown as { sdkController: { subscribe: ReturnType<typeof vi.fn> } }).sdkController
     .subscribe;
 
@@ -209,14 +271,14 @@ function getTelemetryCallback(act: FuelDial): (telemetry: unknown) => void {
 const SESSION_90L = { DriverInfo: { DriverCarFuelMaxLtr: 90, DriverCarMaxFuelPct: 1 } };
 const SESSION_110L = { DriverInfo: { DriverCarFuelMaxLtr: 110, DriverCarMaxFuelPct: 1 } };
 
-describe("fuel-dial pure helpers", () => {
+describe("fuel-dial-surface pure helpers", () => {
   describe("resolveDisplayUnits", () => {
-    it("forces metric for liters mode", () => {
-      expect(resolveDisplayUnits("liters", 0)).toBe(1);
+    it("forces metric for liters", () => {
+      expect(resolveDisplayUnits("l", 0)).toBe(1);
     });
 
-    it("forces english for gallons mode", () => {
-      expect(resolveDisplayUnits("gallons", 1)).toBe(0);
+    it("forces english for gallons", () => {
+      expect(resolveDisplayUnits("g", 1)).toBe(0);
     });
 
     it("follows telemetry in auto mode", () => {
@@ -226,6 +288,12 @@ describe("fuel-dial pure helpers", () => {
 
     it("defaults to metric in auto mode when telemetry unknown", () => {
       expect(resolveDisplayUnits("auto", undefined)).toBe(1);
+    });
+
+    it("treats keypad-only kg like auto (no dial representation)", () => {
+      expect(resolveDisplayUnits("k", 0)).toBe(0);
+      expect(resolveDisplayUnits("k", 1)).toBe(1);
+      expect(resolveDisplayUnits("k", undefined)).toBe(1);
     });
   });
 
@@ -584,7 +652,7 @@ describe("fuel-dial pure helpers", () => {
   describe("buildTriggerDescription", () => {
     it("rides the dial-button long-press on push as a hold hint; Tap Display → touch", () => {
       const desc = buildTriggerDescription({
-        dialMode: "add-amount",
+        mode: "add-amount",
         pressAction: "toggle-fueling",
         longPressAction: "toggle-autofuel-mode",
         pushTurnAction: "none",
@@ -601,7 +669,7 @@ describe("fuel-dial pure helpers", () => {
 
     it("uses the fill-to rotate label, plain push when no long-press, and omits none slots", () => {
       const desc = buildTriggerDescription({
-        dialMode: "fill-to",
+        mode: "fill-to",
         pressAction: "fill-to-max",
         longPressAction: "none",
         pushTurnAction: "none",
@@ -617,7 +685,7 @@ describe("fuel-dial pure helpers", () => {
 
     it("maps the Long Touch slot to longTouch", () => {
       const desc = buildTriggerDescription({
-        dialMode: "add-amount",
+        mode: "add-amount",
         pressAction: "none",
         longPressAction: "none",
         pushTurnAction: "none",
@@ -769,12 +837,12 @@ describe("fuel-dial pure helpers", () => {
   });
 
   it("exposes the action UUID", () => {
-    expect(FUEL_DIAL_UUID).toBe("com.iracedeck.sd.core.fuel-dial");
+    expect(FUEL_SERVICE_UUID).toBe("com.iracedeck.sd.core.fuel-service");
   });
 });
 
-describe("FuelDial action", () => {
-  let action: FuelDial;
+describe("FuelService dial surface", () => {
+  let action: FuelService;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -783,7 +851,7 @@ describe("FuelDial action", () => {
     mockGetSessionInfo.mockReturnValue(SESSION_110L);
     // Default telemetry: metric, no current fuel, no pending request, fuel off.
     mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
-    action = new FuelDial();
+    action = new FuelService();
   });
 
   afterEach(() => {
@@ -906,7 +974,8 @@ describe("FuelDial action", () => {
 
     /** Reads the dialed target (liters) off the action's private context map. */
     function dialValue(id: string): number {
-      const contexts = (action as unknown as { contextsState: Map<string, { dialValueLtr: number }> }).contextsState;
+      const contexts = (action as unknown as { dialSurface: { contextsState: Map<string, { dialValueLtr: number }> } })
+        .dialSurface.contextsState;
 
       return contexts.get(id)?.dialValueLtr ?? Number.NaN;
     }
@@ -1506,11 +1575,12 @@ describe("FuelDial action", () => {
     it("does NOT re-send when fuel-fill is OFF (respects toggle-off)", async () => {
       const ctx = dialContext("cm4");
       vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      const settings = { stepSize: 65, unitMode: "liters", dialMode: "fill-to" };
+      // stepSize is schema-capped at 50 (the old mock let 65 through unvalidated).
+      const settings = { stepSize: 50, unitMode: "liters", dialMode: "fill-to" };
       // Fuel OFF.
       mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
       await appear(ctx, settings);
-      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // target 110
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never); // target 95
       vi.advanceTimersByTime(100);
       mockPitFuel.mockClear();
 
@@ -1821,7 +1891,9 @@ describe("FuelDial action", () => {
       await pressDial(ctx, settings);
 
       // Persists the flipped mode so it sticks and the PI reflects it.
-      expect(ctx.setSettings).toHaveBeenCalledWith(expect.objectContaining({ dialMode: "fill-to" }));
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dial: expect.objectContaining({ mode: "fill-to" }) }),
+      );
       // Switch Mode talks to nothing — no pit command.
       expect(mockPitFuel).not.toHaveBeenCalled();
       expect(mockPitClearFuel).not.toHaveBeenCalled();
@@ -1834,7 +1906,9 @@ describe("FuelDial action", () => {
 
       await pressDial(ctx, settings);
 
-      expect(ctx.setSettings).toHaveBeenCalledWith(expect.objectContaining({ dialMode: "add-amount" }));
+      expect(ctx.setSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ dial: expect.objectContaining({ mode: "add-amount" }) }),
+      );
     });
   });
 
@@ -1889,16 +1963,6 @@ describe("FuelDial action", () => {
       await action.onTouchTap(touchTapEvent(ctx, { tapAction: "toggle-fueling" }, false) as never);
 
       expect(mockPitClearFuel).not.toHaveBeenCalled();
-    });
-
-    it("migrates a legacy touchAction onto the Tap Display slot", async () => {
-      vi.stubGlobal("__FEATURE_DIAL_FEEDBACK__", true);
-      const ctx = dialContext("tt-legacy");
-      await appear(ctx, { touchAction: "toggle-fueling" });
-
-      await action.onTouchTap(touchTapEvent(ctx, { touchAction: "toggle-fueling" }, false) as never);
-
-      expect(mockPitClearFuel).toHaveBeenCalledTimes(1);
     });
 
     it("routes a tap to fill-to-max", async () => {
@@ -2229,9 +2293,12 @@ describe("FuelDial action", () => {
       await appear(ctx, settings);
 
       const sig = (ctx2: { dialValueLtr: number }) =>
-        (action as unknown as { displayedSignature: (c: unknown) => string }).displayedSignature(ctx2 as never);
+        (
+          action as unknown as { dialSurface: { displayedSignature: (c: unknown) => string } }
+        ).dialSurface.displayedSignature(ctx2 as never);
 
-      const contexts = (action as unknown as { contextsState: Map<string, { dialValueLtr: number }> }).contextsState;
+      const contexts = (action as unknown as { dialSurface: { contextsState: Map<string, { dialValueLtr: number }> } })
+        .dialSurface.contextsState;
       const liveCtx = contexts.get("dr-target-sig")!;
 
       // Dial the target DOWN below current fuel (50 -> 30). The add stays 0 (target

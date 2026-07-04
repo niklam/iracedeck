@@ -65,23 +65,25 @@ function pair(increase: string, decrease: string): CommDescriptor {
 }
 
 export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
+  // One entry for BOTH Fuel Service surfaces (#759): the keypad modes (keyed by
+  // the `mode` setting) and the dial gesture-slot values (the dial PI passes its
+  // own mode-setting per slot, e.g. `dial.pressAction`) share one map — the keys
+  // don't collide. All fuel-value modes are `api` since the chat→SDK switch.
   "fuel-service": entry("mode", {
     "toggle-fuel-fill": api,
-    "add-fuel": chat,
-    "reduce-fuel": chat,
-    "set-fuel-amount": chat,
+    "add-fuel": api,
+    "reduce-fuel": api,
+    "set-fuel-amount": api,
     "clear-fuel": api,
     "toggle-autofuel": keybind("fuelServiceToggleAutofuel"),
     "lap-margin-increase": keybind("fuelServiceLapMarginIncrease"),
     "lap-margin-decrease": keybind("fuelServiceLapMarginDecrease"),
-  }),
-
-  "fuel-dial": entry("pressAction", {
+    // Dial gesture-slot values. "switch-mode" and "none" intentionally omitted —
+    // they issue no iRacing command, so the binding-status line renders nothing
+    // for them.
     "toggle-fueling": api,
     "fill-to-max": api,
     "toggle-autofuel-mode": keybind("fuelServiceToggleAutofuel"),
-    // "switch-mode" and "none" intentionally omitted — they issue no iRacing
-    // command, so the binding-status line renders nothing for them.
   }),
 
   "tire-service": entry("mode", {

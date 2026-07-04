@@ -13,7 +13,7 @@ Platform-agnostic core interfaces, base classes, and utilities for deck device p
 
 ### Encoder Touch-Strip Feedback (`feedback-types.ts`)
 
-- `DeckFeedbackPayload` — Platform-neutral Stream Deck+ touch-strip ("touch strip") feedback payload, keyed by the layout item's `key`. Each value is either a primitive shorthand (`number` for bar/gbar fill, `string` for text/pixmap source) or a partial item override (`DeckFeedbackBarItem` / `DeckFeedbackTextItem` / `DeckFeedbackPixmapItem`) for mutable visual properties. Passed to `IDeckActionContext.setFeedback`. Platforms without a plugin-drawable touch strip (Mirabox) ignore it. Reference consumer: the `fuel-dial` action.
+- `DeckFeedbackPayload` — Platform-neutral Stream Deck+ touch-strip ("touch strip") feedback payload, keyed by the layout item's `key`. Each value is either a primitive shorthand (`number` for bar/gbar fill, `string` for text/pixmap source) or a partial item override (`DeckFeedbackBarItem` / `DeckFeedbackTextItem` / `DeckFeedbackPixmapItem`) for mutable visual properties. Passed to `IDeckActionContext.setFeedback`. Platforms without a plugin-drawable touch strip (Mirabox) ignore it. Reference consumer: the Fuel Service dial surface (`fuel-service/fuel-dial-surface.ts`).
 
 ### Base Classes
 

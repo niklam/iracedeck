@@ -188,7 +188,7 @@ export {
   formatFuelSettingWithUnit,
 } from "./unit-conversion.js";
 
-// Shared pit fuel-fill / autofuel telemetry readers (Fuel Service + Fuel Dial)
+// Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)
 export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled } from "./fuel-telemetry.js";
 
 // Shared dial-gesture convention (Push + Turn pair + release-time classifier)

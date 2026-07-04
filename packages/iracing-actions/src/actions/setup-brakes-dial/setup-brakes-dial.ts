@@ -30,7 +30,7 @@ const BOX_BACKGROUND = "#0d0d0d";
  * Minimum gap (ms) between change-driven feedback pushes. A fast spin moves the
  * telemetry value rapidly; the display re-renders the moment the value changes,
  * but no more than once per this window so a burst of telemetry can't exceed the
- * documented ≤10 `setFeedback`/sec/dial cap (mirrors Fuel Dial).
+ * documented ≤10 `setFeedback`/sec/dial cap (mirrors the Fuel Service dial).
  */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 

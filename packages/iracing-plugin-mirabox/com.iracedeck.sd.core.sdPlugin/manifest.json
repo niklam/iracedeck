@@ -192,30 +192,14 @@
       ]
     },
     {
-      "Name": "Fuel Dial",
-      "UUID": "com.iracedeck.sd.core.fuel-dial",
-      "Icon": "imgs/actions/fuel-dial/icon",
-      "Tooltip": "Set fuel to add with a dial; press to toggle, clear or fill fueling",
-      "PropertyInspectorPath": "ui/fuel-dial.html",
-      "Controllers": [
-        "Knob"
-      ],
-      "States": [
-        {
-          "Image": "imgs/actions/fuel-dial/key",
-          "TitleAlignment": "bottom",
-          "FontSize": 14
-        }
-      ]
-    },
-    {
       "Name": "Fuel Service",
       "UUID": "com.iracedeck.sd.core.fuel-service",
       "Icon": "imgs/actions/fuel-service/icon",
-      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
+      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin); on a knob: set fuel to add, toggle/clear/fill fueling",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Knob"
       ],
       "States": [
         {

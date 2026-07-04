@@ -26,7 +26,7 @@
 
 ## Features
 
-**33 actions** with **269+ modes** across 8 categories:
+**32 actions** with **268+ modes** across 8 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
@@ -35,7 +35,7 @@
 | **Cockpit & Interface** | 5       | 34    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 5       | 89    | FOV, replay, camera controls, broadcast tools                         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
-| **Pit Service**         | 4       | 16    | Fuel, fuel dial, tires, compounds, tearoff, fast repair               |
+| **Pit Service**         | 3       | 15    | Fuel (button and dial), tires, compounds, tearoff, fast repair        |
 | **Car Setup**           | 8       | 50    | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction control |
 | **Communication**       | 2       | 34    | Chat, macros, whisper, reply, race admin commands                     |
 

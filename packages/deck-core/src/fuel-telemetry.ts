@@ -4,8 +4,8 @@ import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk"
  * Shared pit fuel-fill / autofuel telemetry readers.
  *
  * These derive pit-service state directly from live iRacing telemetry — never a
- * sticky local flag — and are consumed by both the Fuel Service and Fuel Dial
- * actions, so they live here rather than being copied per action.
+ * sticky local flag — and are consumed by both of Fuel Service's surfaces
+ * (keypad and dial), so they live here rather than being copied per consumer.
  */
 
 /**
@@ -21,8 +21,8 @@ export function isFuelFillOn(telemetry: TelemetryData | null): boolean {
 
 /**
  * Whether autofuel is active for the next pit stop (`dpFuelAutoFillActive`).
- * The Fuel Dial reads this live to decide which mode it is in (manual vs
- * autofuel).
+ * The Fuel Service dial surface reads this live to decide which mode it is in
+ * (manual vs autofuel).
  */
 export function isAutofuelActive(telemetry: TelemetryData | null): boolean {
   if (!telemetry || telemetry.dpFuelAutoFillActive === undefined) return false;
