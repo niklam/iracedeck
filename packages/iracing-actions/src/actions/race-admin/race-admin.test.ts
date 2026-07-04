@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
-import { computeCarSlotIndex, resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
+import { resolveSelectedCar, resolveSlotCar } from "./race-admin-selector.js";
 import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
@@ -23,13 +23,33 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   resolveTemplate: vi.fn((template: string) => template),
 }));
 
-// The car-selector helpers are unit-tested in race-admin-selector.test.ts; here
-// we mock them so the action tests exercise only the lifecycle/dispatch logic.
+// The session-touching selector helpers are mocked (unit-tested in
+// race-admin-selector.test.ts); the pure slot-math helpers keep their real
+// logic so the lifecycle tests exercise genuine ordinal/paging behavior (#754).
 vi.mock("./race-admin-selector.js", () => ({
   SELECTED_CAR_KEY: "_raceAdminSelectedCar",
   DEFAULT_SELECTOR_TARGET_PROFILE: "iRaceDeck Race Admin Per Car",
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars", "iRaceDeck Race Admin Per Car"]),
-  computeCarSlotIndex: vi.fn(() => 0),
+  parseSelectorPage: (raw: string | undefined) => {
+    const n = Number(raw);
+
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  },
+  selectorOrdinal: (self: { column: number; row: number }, keys: readonly { column: number; row: number }[]): number =>
+    keys.filter((k) => k.row < self.row || (k.row === self.row && k.column < self.column)).length,
+  pageStartSlot: (page: number, counts: ReadonlyMap<number, number>): number | null => {
+    let start = 0;
+
+    for (let p = 0; p < page; p++) {
+      const count = counts.get(p);
+
+      if (count === undefined || count <= 0) return null;
+
+      start += count;
+    }
+
+    return start;
+  },
   resolveSlotCar: vi.fn(() => ({ carIdx: 5, carNumber: "24", lastName: "Doe" })),
   resolveSelectedCar: vi.fn(() => null),
   generateSelectorSvg: vi.fn((car: { carNumber: string } | null) => `data:selector,${car?.carNumber ?? ""}`),
@@ -761,12 +781,10 @@ describe("RaceAdmin", () => {
     // The selector-helper mocks are re-stubbed here; mockReset in afterEach
     // restores the factory implementations so nothing leaks past this block.
     beforeEach(() => {
-      vi.mocked(computeCarSlotIndex).mockReturnValue(0);
       vi.mocked(resolveSlotCar).mockReturnValue({ carIdx: 5, carNumber: "24", lastName: "Doe" });
     });
 
     afterEach(() => {
-      vi.mocked(computeCarSlotIndex).mockReset();
       vi.mocked(resolveSlotCar).mockReset();
       vi.mocked(resolveSelectedCar).mockReset();
     });
@@ -778,7 +796,8 @@ describe("RaceAdmin", () => {
       expect(updateGlobalSettings).toHaveBeenCalledWith({
         _raceAdminSelectedCar: { carIdx: 5, carNumber: "24" },
       });
-      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car");
+      // Page 0: the target profile always opens on its first page (#754).
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car", 0);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
@@ -795,7 +814,93 @@ describe("RaceAdmin", () => {
       const action = new RaceAdmin();
       await action.onKeyDown(makeSelectorKeyDown({ ...selectorSettings, selectorTargetProfile: "  " }));
 
-      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car");
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Race Admin Per Car", 0);
+    });
+
+    function makeSelectorAppear(id: string, column: number, row: number, settings: Record<string, unknown>) {
+      return {
+        action: { id, deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...settings }, coordinates: { column, row } },
+      } as never;
+    }
+
+    it("assigns slots by row-major ordinal among the visible select-car keys — any placement, corners included (#754)", async () => {
+      const action = new RaceAdmin();
+      // Two keys: the top-left corner (no longer reserved) and one mid-grid.
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 0, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 4, 2, selectorSettings));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-b", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings }, coordinates: { column: 4, row: 2 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(1);
+    });
+
+    it("offsets a later page by the learned key counts of the earlier pages — uneven counts included (#754)", async () => {
+      const action = new RaceAdmin();
+      // Page 0 has two keys; page 1's first key must start at slot 2.
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 2, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(2);
+    });
+
+    it("re-records the old page when a key's Selector Page setting changes", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 2, 0, selectorSettings));
+      // PI edit moves ctx-b to page 1: page 0 now holds one key, so ctx-b's
+      // page-1 slot must start at 1, not at the stale count of 2.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-b", 2, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-b", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 2, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(1);
+    });
+
+    it("forgets a page's count when its last key moves away (later pages blank until revisited)", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      // ctx-a was page 0's only key; moving it to page 2 must forget page 0's
+      // count rather than leave the stale 1 behind.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-a", 1, 0, { ...selectorSettings, selectorPage: "2" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBeNull();
+    });
+
+    it("resolves no car while an earlier page's key count is unknown (#754)", async () => {
+      const action = new RaceAdmin();
+      // Page 1 key appears without page 0 ever having been visited.
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBeNull();
     });
 
     it("still selects a car when Selector Page holds non-numeric text (settings parse must not reset)", async () => {

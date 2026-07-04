@@ -12,7 +12,6 @@ import {
   ConnectionStateAwareAction,
   getClipboard,
   getCommands,
-  getDeviceSpec,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -73,14 +72,28 @@ import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from 
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
 import {
   availableProfilesForDevice,
-  computeCarSlotIndex,
   DEFAULT_SELECTOR_TARGET_PROFILE,
   generateSelectorSvg,
+  pageStartSlot,
+  parseSelectorPage,
   resolveSelectedCar,
   resolveSlotCar,
   SELECTED_CAR_KEY,
   type SelectorDisplayCar,
+  type SelectorKeyPosition,
+  selectorOrdinal,
 } from "./race-admin-selector.js";
+
+/**
+ * How long after a select-car key disappears before its page's key count is
+ * re-recorded. A page switch tears every key down in a burst — recounting
+ * immediately would record a half-torn-down page and corrupt the learned
+ * count; after the settle, an emptied page is a page switch (skip) while a
+ * remaining shrunken set is a real layout edit (record).
+ *
+ * @internal Exported for testing
+ */
+export const SELECTOR_COUNT_SETTLE_MS = 500;
 
 function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
@@ -204,8 +217,20 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
   private activeContexts = new Map<string, RaceAdminSettings>();
   private viewedCarNumbers = new Map<string, string | null>();
   private typeInChatInFlight = new Set<string>();
-  /** Per-context grid position + device type, for the select-car slot math. */
-  private selectorContexts = new Map<string, { column: number; row: number; deviceType?: number }>();
+  /** Per-context grid position, device, and selector page for the select-car slot math (#754). */
+  private selectorContexts = new Map<
+    string,
+    { column: number; row: number; deviceId: string; page: number; isSelector: boolean }
+  >();
+  /**
+   * Learned select-car key count per device per page (#754). Filled as pages
+   * are visited (entry always lands on page 0, page nav is ±1, so page N's
+   * earlier counts are known by the time it shows). In-memory only: a plugin
+   * restart mid-browse renders later pages blank until page 0 is revisited.
+   */
+  private selectorPageCounts = new Map<string, Map<number, number>>();
+  /** Pending settle-recount timers per `device|page` (see SELECTOR_COUNT_SETTLE_MS). */
+  private selectorRecountTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /**
    * Display key (car number + driver name) last successfully rendered per
    * dynamic-icon context (`null` = empty slot / no selection). The telemetry
@@ -256,7 +281,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.rememberContext(ev);
+    this.rememberContext(ev, settings);
     await this.pushDeviceProfiles(ev, settings);
 
     await this.updateDisplay(ev, settings);
@@ -278,8 +303,15 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.activeContexts.delete(ev.action.id);
     this.viewedCarNumbers.delete(ev.action.id);
     this.typeInChatInFlight.delete(ev.action.id);
+    const ctx = this.selectorContexts.get(ev.action.id);
     this.selectorContexts.delete(ev.action.id);
     this.lastDynamicCar.delete(ev.action.id);
+
+    // Re-record the page's key count after the teardown settles (#754): a page
+    // switch empties the page (skip), a live layout edit leaves a smaller set.
+    if (ctx?.isSelector) {
+      this.scheduleSelectorRecount(ctx.deviceId, ctx.page);
+    }
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<RaceAdminSettings>): Promise<void> {
@@ -287,7 +319,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    this.rememberContext(ev);
+    this.rememberContext(ev, settings);
     await this.pushDeviceProfiles(ev, settings);
     await this.updateDisplay(ev, settings);
   }
@@ -477,15 +509,117 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
   // ── Car Selector (issue #732) ───────────────────────────────
 
-  /** Remember this button's grid position + device type for the selector slot math. */
+  /**
+   * Remember this button's grid position, device, and selector page for the
+   * slot math (#754), and — for a select-car key — record its page's live key
+   * count. Recording on appear is safe: during a page-appear burst the count
+   * only grows, so the last write is the full page.
+   */
   private rememberContext(
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
+    settings: RaceAdminSettings,
   ): void {
-    this.selectorContexts.set(ev.action.id, {
+    const previous = this.selectorContexts.get(ev.action.id);
+    const ctx = {
       column: ev.payload.coordinates?.column ?? 0,
       row: ev.payload.coordinates?.row ?? 0,
-      deviceType: ev.action.deviceType,
-    });
+      // Single-device hosts may not report a device id — group under "".
+      deviceId: ev.action.deviceId ?? "",
+      page: parseSelectorPage(settings.selectorPage),
+      isSelector: settings.mode === "select-car",
+    };
+    this.selectorContexts.set(ev.action.id, ctx);
+
+    if (ctx.isSelector) {
+      this.recordPageCount(ctx.deviceId, ctx.page);
+    }
+
+    // A settings edit can move a select-car key off its previous page
+    // (selectorPage change) or out of the selector entirely (mode change).
+    // Re-record the page it left — or forget that page's count when this was
+    // its last key (unknown → blank until revisited) — so pageStartSlot
+    // doesn't stay offset by the departed key.
+    if (previous?.isSelector && (previous.page !== ctx.page || !ctx.isSelector)) {
+      const remaining = this.visibleSelectorKeys(previous.deviceId, previous.page).length;
+
+      if (remaining > 0) {
+        this.recordPageCount(previous.deviceId, previous.page);
+      } else {
+        this.selectorPageCounts.get(previous.deviceId)?.delete(previous.page);
+      }
+    }
+  }
+
+  /** Visible select-car keys on `deviceId` whose settings claim `page`. */
+  private visibleSelectorKeys(deviceId: string, page: number): SelectorKeyPosition[] {
+    const keys: SelectorKeyPosition[] = [];
+
+    for (const ctx of this.selectorContexts.values()) {
+      if (ctx.isSelector && ctx.deviceId === deviceId && ctx.page === page) {
+        keys.push({ column: ctx.column, row: ctx.row });
+      }
+    }
+
+    return keys;
+  }
+
+  /**
+   * Record the live select-car key count for a device page. A count of 0 is
+   * never recorded — page-switch teardown must not erase what was learned.
+   */
+  private recordPageCount(deviceId: string, page: number): void {
+    const count = this.visibleSelectorKeys(deviceId, page).length;
+
+    if (count <= 0) return;
+
+    let device = this.selectorPageCounts.get(deviceId);
+
+    if (!device) {
+      device = new Map();
+      this.selectorPageCounts.set(deviceId, device);
+    }
+
+    device.set(page, count);
+  }
+
+  /**
+   * After a select-car key disappears, re-record its page's count once the
+   * teardown settles (see SELECTOR_COUNT_SETTLE_MS): an emptied page was a
+   * page switch (recordPageCount skips 0), a remaining shrunken set was a real
+   * layout edit.
+   */
+  private scheduleSelectorRecount(deviceId: string, page: number): void {
+    const key = `${deviceId}|${page}`;
+    const pending = this.selectorRecountTimers.get(key);
+
+    if (pending) clearTimeout(pending);
+
+    this.selectorRecountTimers.set(
+      key,
+      setTimeout(() => {
+        this.selectorRecountTimers.delete(key);
+        this.recordPageCount(deviceId, page);
+      }, SELECTOR_COUNT_SETTLE_MS),
+    );
+  }
+
+  /**
+   * Field slot of a visible select-car key (#754): the sum of the learned key
+   * counts of all earlier pages plus this key's row-major ordinal among its
+   * page's visible keys. `null` when an earlier page hasn't been visited yet
+   * this run (unknown prefix — render blank rather than guess) or the context
+   * isn't a select-car key.
+   */
+  private selectorSlot(contextId: string): number | null {
+    const ctx = this.selectorContexts.get(contextId);
+
+    if (!ctx?.isSelector) return null;
+
+    const start = pageStartSlot(ctx.page, this.selectorPageCounts.get(ctx.deviceId) ?? new Map());
+
+    if (start === null) return null;
+
+    return start + selectorOrdinal(ctx, this.visibleSelectorKeys(ctx.deviceId, ctx.page));
   }
 
   /**
@@ -518,14 +652,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
    * profile. An empty slot is a no-op.
    */
   private async executeSelect(ev: IDeckKeyDownEvent<RaceAdminSettings>, settings: RaceAdminSettings): Promise<void> {
-    const grid = getDeviceSpec(ev.action.deviceType ?? -1)?.grid ?? null;
-    const slot = computeCarSlotIndex(
-      ev.payload.coordinates?.column ?? -1,
-      ev.payload.coordinates?.row ?? -1,
-      grid,
-      Number(settings.selectorPage),
-    );
-    const car = resolveSlotCar(this.sdkController.getSessionInfo(), slot);
+    const car = resolveSlotCar(this.sdkController.getSessionInfo(), this.selectorSlot(ev.action.id));
 
     if (!car) {
       this.logger.info("Select car pressed on an empty slot");
@@ -540,7 +667,9 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     this.logger.info("Admin target car selected");
     this.logger.debug(`Selected CarIdx ${car.carIdx} (#${car.carNumber}); switching to "${targetProfile}"`);
     updateGlobalSettings({ [SELECTED_CAR_KEY]: { carIdx: car.carIdx, carNumber: car.carNumber } });
-    await requestProfileSwitch(ev.action.deviceId, targetProfile);
+    // Page 0 so re-entering the selector's own profile always starts the
+    // page-count learning from a known page (#754).
+    await requestProfileSwitch(ev.action.deviceId, targetProfile, 0);
   }
 
   /**
@@ -563,14 +692,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
    */
   private resolveIconCar(contextId: string, settings: RaceAdminSettings): SelectorDisplayCar | null {
     if (settings.mode === "select-car") {
-      const ctx = this.selectorContexts.get(contextId);
-
-      if (!ctx) return null;
-
-      const grid = getDeviceSpec(ctx.deviceType ?? -1)?.grid ?? null;
-      const slot = computeCarSlotIndex(ctx.column, ctx.row, grid, Number(settings.selectorPage));
-
-      return resolveSlotCar(this.sdkController.getSessionInfo(), slot);
+      return resolveSlotCar(this.sdkController.getSessionInfo(), this.selectorSlot(contextId));
     }
 
     if (RACE_ADMIN_MODE_META[settings.mode].needsDriver && settings.driverTarget === "selected-car") {

@@ -98,14 +98,15 @@ Verified from a real exported iRaceDeck profile. A `.streamDeckProfile` is a **Z
 - **Page `manifest.json`**: `Controllers: [{ Type: "Keypad", Actions: { "col,row": {…} } }]`. Buttons are keyed `"col,row"` (0-indexed); each carries `ActionID` (instance UUID), `UUID` (action type, e.g. `com.iracedeck.sd.core.tire-service`), `Plugin`, **`Settings`** (the action's own settings JSON — same shape as its Zod schema), `State`, and `States[]`.
 - UUIDs are app-managed. **Reusing a profile/page UUID across plugin versions makes the app refuse the re-import** — always re-export rather than editing UUIDs by hand.
 
-## Folder navigation (relevant to #732)
+## Folder and page navigation (relevant to #732)
 
-Multi-page navigation inside a profile uses **built-in Elgato actions**, not iRaceDeck actions:
+Navigation inside a profile uses **built-in Elgato actions**, not iRaceDeck actions:
 
+- **`com.elgato.streamdeck.page.previous` / `com.elgato.streamdeck.page.next`** — move ±1 between a profile's pages. This is what the bundled selector profile actually uses (verified from the exported bundle).
 - **`com.elgato.streamdeck.profile.openchild`** — enter a child folder page; its `Settings.ProfileUUID` is the child page's UUID.
-- **`com.elgato.streamdeck.profile.backtoparent`** — return to the parent page.
+- **`com.elgato.streamdeck.profile.backtoparent`** — return to the parent folder.
 
-These are exposed as `PROFILE_NAV_ACTIONS` in `device-profiles.ts`. Because child-page UUIDs are minted by the app, this navigation is authored in the app, not generated.
+The folder pair is exposed as `PROFILE_NAV_ACTIONS` in `device-profiles.ts`. Because child-page UUIDs are minted by the app, folder navigation is authored in the app, not generated. Page navigation is strictly ±1 on the device — a property the selector's page-count learning relies on (below).
 
 ## Race Admin car selector (#732)
 
@@ -117,15 +118,16 @@ The dynamic Race Admin / RC car selector is **not** a new action — it's two ad
 
 Both `select-car` and `selected-car` are gated to Elgato in the PI via the `profiles` platform feature flag (profiles are Elgato-only), and `requestProfileSwitch` is a no-op on other hosts anyway.
 
-### Selector layout convention (baked into `computeCarSlotIndex`)
+### Selector slot assignment — ordinal + learned page counts (#754)
 
-Every selector page reserves three keys and fills the rest with cars, row-major (left→right, top→bottom), sorted by car number (pace car excluded):
+A `select-car` key's field slot is its **row-major ordinal among the select-car keys visible on the same device + page**, offset by the **learned key counts of all earlier pages**. There are **no reserved cells and no grid assumptions**: any number of keys, placed anywhere (corners included), on devices with or without a fixed grid (`DEVICE_SPECS.grid` is not consulted), and every page may hold a different number of keys.
 
-- **top-left** `(col 0, row 0)` — Back to default profile
-- **bottom-left** `(col 0, row rows-1)` — Previous page
-- **bottom-right** `(col cols-1, row rows-1)` — Next page
+- Pure helpers in `race-admin-selector.ts`: `selectorOrdinal` (row-major position among visible keys), `pageStartSlot` (prefix sum of learned counts; `null` while any earlier page is unknown → the key renders blank rather than guessing), `parseSelectorPage`.
+- The action (`race-admin.ts`) tracks visible select-car contexts per device (`selectorContexts`) and learns each page's key count as pages are visited (`selectorPageCounts`). Counts record immediately on `willAppear` (monotonic during a page-appear burst) and on a **settled** recount after `willDisappear` (`SELECTOR_COUNT_SETTLE_MS`) — an emptied page is a page switch and is skipped, so teardown never corrupts a learned count.
+- **Entry lands on page 0**: every named profile switch (Switch Profile action, the select-car target switch) passes `page 0`, and device page nav is strictly ±1 — so by the time page N is visible, pages 0..N−1 have been counted. The counts are in-memory: after a plugin restart mid-browse, later pages stay blank until page 0 is revisited.
+- The `select-car` key still carries a 0-based **`selectorPage`** setting (the Elgato `willAppear` payload exposes `coordinates` but **no page index**), which identifies which page a key belongs to.
 
-`carsPerPage = cols*rows − 3` (derived from the device grid via `getDeviceSpec`). The `select-car` key carries a 0-based **`selectorPage`** setting; the global field index is `selectorPage * carsPerPage + (row-major position − reserved-before)`. Keep the three reserved keys on every page so the car-slot count stays uniform. The Elgato `willAppear` payload exposes `coordinates` but **no page index**, which is why the page number is a per-key setting.
+The field is sorted by car number (pace car and spectators excluded). The **Elgato** Race Admin manifest entry uses the committed neutral `imgs/blank-key` as its `States[0].Image` so page flips show blank black keys instead of flashing the static Race Admin artwork before the dynamic icons render. The Mirabox and Ulanzi manifests deliberately keep the static `imgs/actions/race-admin/key` image — those hosts have no profile pages to flip (the flash this fixes is Elgato-specific), and select-car is Elgato-gated anyway.
 
 ### The two bundled selector profiles
 

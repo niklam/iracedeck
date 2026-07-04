@@ -400,7 +400,7 @@
       },
       "States": [
         {
-          "Image": "imgs/actions/race-admin/key",
+          "Image": "imgs/blank-key",
           "TitleAlignment": "bottom",
           "FontSize": 14
         }
