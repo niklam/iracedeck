@@ -51,7 +51,7 @@ const LITERS_PER_GALLON = 3.78541;
 
 const SessionInfoSettings = CommonSettings.extend({
   mode: z
-    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"])
+    .enum(["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness", "laps-to-empty"])
     .default("incidents"),
   fontSize: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? undefined : val),
@@ -268,6 +268,7 @@ export function generateSessionInfoSvg(
     position: "POSITION",
     fuel: "FUEL",
     flags: "FLAGS",
+    "laps-to-empty": "LAPS TO\nEMPTY",
   };
   // Track-wetness uses the live state name as its title so the icon shows the
   // current state in one line. The fuel consumption sub-modes carry their own
@@ -472,6 +473,8 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
         return settings.fuelFormat === "percentage" ? "--%" : "-- L";
       }
 
+      if (settings.mode === "laps-to-empty") return "--";
+
       if (settings.mode === "flags") return settings.blankWhenNoFlag ? "" : "--";
 
       return "--:--";
@@ -588,6 +591,20 @@ export class SessionInfo extends ConnectionStateAwareAction<SessionInfoSettings>
       if (level === undefined) return "-- L";
 
       return formatFuelAmount(level, telemetry.DisplayUnits);
+    }
+
+    // Laps to empty (issue #748): live tank level ÷ the same validated mean
+    // the avgN sub-mode displays, so the two keys always agree. Deliberately
+    // NOT the conservative max-of-recent-laps the fuel warning thresholds use
+    // — a pessimistic variant would be a setting, never a silent difference.
+    // Both operands are liters, so the ratio needs no DisplayUnits handling.
+    if (settings.mode === "laps-to-empty") {
+      const stats = getFuelStats(settings.fuelLapWindow);
+      const level = telemetry.FuelLevel;
+
+      if (stats.avg === null || level === undefined) return "--";
+
+      return (level / stats.avg).toFixed(2);
     }
 
     if (settings.mode === "flags") {
