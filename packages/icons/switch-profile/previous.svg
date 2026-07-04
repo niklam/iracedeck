@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":""}}</desc>
+  <desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":""},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}</desc>
   <!-- Deliberately authored on a padded 144 canvas (not trimmed): the render-time
        scaler fills ~90% of the key, and this glyph must stay a modest centered
        chevron rather than a key-filling one. -->

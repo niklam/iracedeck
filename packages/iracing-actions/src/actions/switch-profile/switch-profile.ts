@@ -9,6 +9,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  PROFILE_NAMES,
   requestProfileSwitch,
   requestProfileSwitchBack,
   resolveBorderSettings,
@@ -48,8 +49,13 @@ const PROFILE_ICONS: Record<string, string> = {
 };
 
 const SwitchProfileSettings = CommonSettings.extend({
-  /** The bundled profile name to switch to (matches the manifest `Profiles[].Name`). */
-  profile: z.string().default(""),
+  /**
+   * The bundled profile name to switch to (matches the manifest
+   * `Profiles[].Name`). Defaults to the default profile (issue #755) so a
+   * freshly-placed key works without any configuration; an empty string
+   * (persisted by older installs) falls back to the same at press time.
+   */
+  profile: z.string().default(PROFILE_NAMES.default),
   /**
    * Runtime-populated list of profiles available for this action's device,
    * pushed by the action for the PI dropdown. Not user-editable.
@@ -70,13 +76,15 @@ const PROFILE_TITLES: Record<string, string> = {
 
 /**
  * @internal Exported for testing. Short, upper-cased key-title for a profile
- * (drops the `iRaceDeck` prefix); a generic label when nothing is selected.
+ * (drops the `iRaceDeck` prefix). The default profile — and an empty selection,
+ * which behaves as the default — shows no title: the iRaceDeck logo is clear
+ * enough on its own (issue #755). Back-to-previous likewise shows only its
+ * chevron glyph.
  */
 export function profileTitle(profile: string): string {
-  // Back-to-previous shows only the chevron glyph — no title.
   if (profile === PREVIOUS_PROFILE_VALUE) return "";
 
-  if (!profile) return "SWITCH\nPROFILE";
+  if (!profile || profile === PROFILE_NAMES.default) return "";
 
   return PROFILE_TITLES[profile] ?? profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
 }
@@ -146,19 +154,18 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
       return;
     }
 
-    if (!settings.profile) {
-      this.logger.info("Switch Profile pressed with no profile selected");
-
-      return;
-    }
+    // An empty selection (older installs persisted "", and a cleared PI field
+    // bypasses the Zod default) behaves as the default profile (#755) — a
+    // Switch Profile key is never a no-op.
+    const profile = settings.profile || PROFILE_NAMES.default;
 
     this.logger.info("Switch Profile triggered");
-    this.logger.debug(`Switching device ${ev.action.deviceId ?? "(unknown)"} to profile "${settings.profile}"`);
+    this.logger.debug(`Switching device ${ev.action.deviceId ?? "(unknown)"} to profile "${profile}"`);
     // Page 0: named switches always open a profile on its first page — needed
     // by the Race Admin selector's page-count learning (#754), and predictable
     // everywhere else. Back-to-previous above deliberately restores the page
     // you left instead.
-    await requestProfileSwitch(ev.action.deviceId, settings.profile, 0);
+    await requestProfileSwitch(ev.action.deviceId, profile, 0);
   }
 
   /**
