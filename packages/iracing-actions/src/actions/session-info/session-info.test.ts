@@ -42,7 +42,16 @@ vi.mock("@iracedeck/deck-core", () => ({
         fuelLapWindow: 5,
         blankWhenNoFlag: false,
       };
-      const validModes = ["incidents", "time-remaining", "laps", "position", "fuel", "flags", "track-wetness"];
+      const validModes = [
+        "incidents",
+        "time-remaining",
+        "laps",
+        "position",
+        "fuel",
+        "flags",
+        "track-wetness",
+        "laps-to-empty",
+      ];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
         const merged: Record<string, unknown> = { ...defaults, ...data };
@@ -127,7 +136,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 /** Default settings factory for tests */
 function defaultSettings(
   overrides: Partial<{
-    mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags" | "track-wetness";
+    mode: "incidents" | "time-remaining" | "laps" | "position" | "fuel" | "flags" | "track-wetness" | "laps-to-empty";
     fontSize: number;
     positionType: "class" | "overall";
     positionShowTotal: boolean;
@@ -661,6 +670,13 @@ describe("SessionInfo", () => {
       expect(decoded).not.toContain("AVG 1 LAPS");
     });
 
+    it("should use the two-line LAPS TO EMPTY title for laps-to-empty mode", () => {
+      const result = generateSessionInfoSvg(defaultSettings({ mode: "laps-to-empty" }), "12.45", false);
+      const decoded = decodeURIComponent(result);
+
+      expect(decoded).toContain("LAPS TO\nEMPTY");
+    });
+
     it("should use FLAGS title for flags mode", () => {
       const result = generateSessionInfoSvg(defaultSettings({ mode: "flags" }), "GREEN", false);
       const decoded = decodeURIComponent(result);
@@ -1096,6 +1112,104 @@ describe("SessionInfo", () => {
         const settings = defaultSettings({ mode: "fuel", fuelSubMode: "lastLap", fuelFormat: "percentage" });
 
         expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("2.80 L");
+      });
+    });
+
+    describe("laps to empty mode (issue #748)", () => {
+      const telemetry = { FuelLevel: 42.3, DisplayUnits: 1 } as any;
+
+      // vi.clearAllMocks() only clears call history, not implementations — a
+      // mockReturnValue set in one test would otherwise leak into the next.
+      beforeEach(() => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: null, avg: null, samples: 0 });
+      });
+
+      it("parses the laps-to-empty mode from settings", async () => {
+        await action.onWillAppear(fakeEvent("action-1", { mode: "laps-to-empty" }) as any);
+
+        expect(action["activeContexts"].get("action-1")?.mode).toBe("laps-to-empty");
+      });
+
+      it("divides the live fuel level by the rolling average and shows two decimals", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+        const settings = defaultSettings({ mode: "laps-to-empty" });
+
+        // 42.3 / 3.4 = 12.4411…
+        expect(action["extractDisplayValue"](settings as any, telemetry)).toBe("12.44");
+      });
+
+      it("rounds the estimate at the second decimal", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, samples: 5 });
+        const fuel = { ...telemetry, FuelLevel: 37.338 }; // 37.338 / 3 = 12.446
+
+        expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, fuel)).toBe("12.45");
+      });
+
+      it("passes the configured window through to getFuelStats", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 2.8, avg: 2.5, samples: 10 });
+        const settings = defaultSettings({ mode: "laps-to-empty", fuelLapWindow: 10 });
+
+        action["extractDisplayValue"](settings as any, telemetry);
+
+        expect(getFuelStats).toHaveBeenCalledWith(10);
+      });
+
+      it("is unit-independent — imperial DisplayUnits shows the same lap count", () => {
+        // Both FuelLevel and the average are liters, so the ratio is a lap
+        // count with no unit conversion — unlike the consumption sub-modes.
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+        const imperial = { ...telemetry, DisplayUnits: 0 };
+
+        expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, imperial)).toBe(
+          "12.44",
+        );
+      });
+
+      it("shows -- while no valid laps have been recorded", () => {
+        expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, telemetry)).toBe("--");
+      });
+
+      it("shows -- when FuelLevel is unavailable", () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3.4, avg: 3.4, samples: 5 });
+
+        expect(
+          action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, { DisplayUnits: 1 } as any),
+        ).toBe("--");
+      });
+
+      it("shows -- without telemetry", () => {
+        expect(action["extractDisplayValue"](defaultSettings({ mode: "laps-to-empty" }) as any, null)).toBe("--");
+      });
+
+      it("re-renders as the live fuel level burns down between lap completions", async () => {
+        vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, samples: 5 });
+        action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
+
+        await action.onWillAppear(fakeEvent("action-1", { mode: "laps-to-empty" }) as any);
+
+        const telemetryCallback = action["sdkController"].subscribe.mock.calls[0][1];
+
+        await telemetryCallback({ FuelLevel: 42.3, DisplayUnits: 1 });
+
+        const callsAfterFirst = action["updateKeyImage"].mock.calls.length;
+        expect(callsAfterFirst).toBeGreaterThan(0);
+        expect(decodeURIComponent(action["updateKeyImage"].mock.calls[callsAfterFirst - 1][1] as string)).toContain(
+          "14.10",
+        );
+
+        // Same average, less fuel — the state key busts on the live tank level alone.
+        await telemetryCallback({ FuelLevel: 39.3, DisplayUnits: 1 });
+
+        const calls = action["updateKeyImage"].mock.calls;
+        expect(calls.length).toBeGreaterThan(callsAfterFirst);
+        expect(decodeURIComponent(calls[calls.length - 1][1] as string)).toContain("13.10");
+
+        // A refuel raises the estimate immediately — the tank level is live
+        // even though the refuel lap itself is excluded from the average.
+        await telemetryCallback({ FuelLevel: 60, DisplayUnits: 1 });
+
+        const callsAfterRefuel = action["updateKeyImage"].mock.calls;
+        expect(decodeURIComponent(callsAfterRefuel[callsAfterRefuel.length - 1][1] as string)).toContain("20.00");
       });
     });
 

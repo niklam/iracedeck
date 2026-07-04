@@ -28,6 +28,11 @@
               "description": "Class (default) or overall race position, optionally shows total cars (scoped to class or full field)"
             },
             { "value": "fuel", "label": "Fuel", "description": "Fuel level as amount or percentage" },
+            {
+              "value": "laps-to-empty",
+              "label": "Laps to Empty",
+              "description": "Laps the current tank will last — live fuel level divided by the average per-lap consumption over the configurable 1-20 lap window"
+            },
             { "value": "flags", "label": "Flags", "description": "Active race flags with colors and pulsing" },
             {
               "value": "track-wetness",

@@ -13,6 +13,7 @@
 				<option value="laps">Laps</option>
 				<option value="position">Position</option>
 				<option value="fuel">Fuel</option>
+				<option value="laps-to-empty">Laps to Empty</option>
 				<option value="flags">Race Flags</option>
 				<option value="track-wetness">Track Wetness</option>
 			</sdpi-select>
@@ -114,11 +115,14 @@
 					// The amount/percentage format only applies to the tank-level display.
 					fuelSettings.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "now");
 				}
+				// The lap window drives the average behind both the fuel avgN
+				// sub-mode and the laps-to-empty estimate.
+				const hideFuelWindow = (mode !== "fuel" || fuelSubMode !== "avgN") && mode !== "laps-to-empty";
 				if (fuelWindowSettings) {
-					fuelWindowSettings.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "avgN");
+					fuelWindowSettings.classList.toggle("hidden", hideFuelWindow);
 				}
 				if (fuelWindowHelp) {
-					fuelWindowHelp.classList.toggle("hidden", mode !== "fuel" || fuelSubMode !== "avgN");
+					fuelWindowHelp.classList.toggle("hidden", hideFuelWindow);
 				}
 				if (flagsSettings) {
 					flagsSettings.classList.toggle("hidden", mode !== "flags");

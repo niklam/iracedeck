@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, fuel, flags, and track wetness.
+description: Display live session information — incidents, time, laps, position, fuel, laps to empty, flags, and track wetness.
 sidebar:
   badge:
-    text: "7 modes"
+    text: "8 modes"
     variant: tip
 ---
 
@@ -121,6 +121,30 @@ Only applies to **Current level**.
 #### Setting: Lap Window
 
 How many recent clean laps the **Average per lap** value covers (1–20). Defaults to `5`. Only shown for **Average per lap**.
+
+#### Setting: Font Size
+
+Size of the rendered value, in PI units (5–36, doubled for SVG render). Defaults to `14`.
+
+---
+
+### Laps to Empty
+
+Show how many laps the fuel currently in the tank will last — the live tank level divided by your average consumption per lap, displayed with two decimals (e.g., `12.45`). Mid-stint it answers the one question that matters: how many laps until you must pit?
+
+The average is the same mean the Fuel mode's **Average per lap** value shows, over the same **Lap Window** — the two keys always agree. Only clean flying laps feed it: laps with a pit stop, out-laps and in-laps, and towed laps are excluded automatically, so a stop never corrupts the estimate. The icon shows `--` until the first clean lap has been completed. Because the tank level is read live, the estimate shortens continuously as you burn fuel and jumps up the moment you refuel. Like the Fuel consumption values, the data survives garage visits and replays, and after a session change the previous session's average stays in use until you're back in the car and running (in a race, until the green flag).
+
+The value is a lap count, so it's independent of your iRacing display units.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the estimate updates live as fuel burns down
+
+#### Setting: Lap Window
+
+How many recent clean laps the average covers (1–20). Defaults to `5`. Shared with the Fuel mode's **Average per lap** value.
 
 #### Setting: Font Size
 
