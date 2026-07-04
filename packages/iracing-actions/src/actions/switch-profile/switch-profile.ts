@@ -10,6 +10,7 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   requestProfileSwitch,
+  requestProfileSwitchBack,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -17,12 +18,21 @@ import {
 } from "@iracedeck/deck-core";
 import chatIconSvg from "@iracedeck/icons/switch-profile/chat.svg";
 import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
+import previousIconSvg from "@iracedeck/icons/switch-profile/previous.svg";
 import raceAdminCarsIconSvg from "@iracedeck/icons/switch-profile/race-admin-cars.svg";
 import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
 import z from "zod";
 
 import profilesData from "../data/profiles.json" with { type: "json" };
+
+/**
+ * Sentinel `profile` value for the "Back to previous" mode: instead of a named
+ * profile, the press calls `switchToProfile` with no profile, which returns the
+ * device to the profile it came from. Must match the option value rendered by
+ * `ird-profile-select` (`packages/pi-components/src/components/profile-select.ts`).
+ */
+export const PREVIOUS_PROFILE_VALUE = "__previous" as const;
 
 /**
  * Icon artwork keyed by the exact profile name. Anything not listed (including
@@ -34,6 +44,7 @@ const PROFILE_ICONS: Record<string, string> = {
   "iRaceDeck Chat": chatIconSvg,
   "iRaceDeck Race Admin Cars": raceAdminCarsIconSvg,
   "iRaceDeck Race Admin Per Car": raceAdminPerCarIconSvg,
+  [PREVIOUS_PROFILE_VALUE]: previousIconSvg,
 };
 
 const SwitchProfileSettings = CommonSettings.extend({
@@ -62,6 +73,9 @@ const PROFILE_TITLES: Record<string, string> = {
  * (drops the `iRaceDeck` prefix); a generic label when nothing is selected.
  */
 export function profileTitle(profile: string): string {
+  // Back-to-previous shows only the chevron glyph — no title.
+  if (profile === PREVIOUS_PROFILE_VALUE) return "";
+
   if (!profile) return "SWITCH\nPROFILE";
 
   return PROFILE_TITLES[profile] ?? profile.replace(/^iRaceDeck\s+/i, "").toUpperCase();
@@ -121,6 +135,16 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
 
   override async onKeyDown(ev: IDeckKeyDownEvent<SwitchProfileSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
+
+    // Back to previous: go back by name via the plugin's own switch history
+    // (the app-level "no profile" pop only works one level deep, right after a
+    // plugin-pushed switch — see requestProfileSwitchBack).
+    if (settings.profile === PREVIOUS_PROFILE_VALUE) {
+      this.logger.info("Switch Profile triggered (back to previous)");
+      await requestProfileSwitchBack(ev.action.deviceId);
+
+      return;
+    }
 
     if (!settings.profile) {
       this.logger.info("Switch Profile pressed with no profile selected");

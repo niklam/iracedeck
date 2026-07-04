@@ -144,7 +144,7 @@ adapter.switchToProfile(deviceId, "iRaceDeck Default", page); // IDeckPlatformAd
 
 - Implemented by `ElgatoPlatformAdapter` via `streamDeck.profiles.switchToProfile(deviceId, profile?, page?)`. **Mirabox and Ulanzi implement it as a no-op** — their hosts have no profile system.
 - The `profile` argument is the **profile name** matching `Profiles[].Name` — **there is no switch-by-UUID**, because install-time UUIDs are unknown to the plugin. Any cross-profile link (e.g. #732's Main → selector → per-car flow) must use the profile **name** + the built-in folder nav, never a hard-coded installed UUID.
-- Omitting `profile` returns the device to its default profile; `page` optionally selects a page within the profile.
+- Omitting `profile` asks the app to return to the previously active profile, but **the app only honors this while the current profile was pushed by this plugin** (a one-shot back-link, consumed on use) — anywhere else it logs `Profile not found` and does nothing (verified from Stream Deck app logs; the `@elgato/streamdeck` SDK JSDoc oversells it). Switch Profile's "Back to previous" mode therefore uses `requestProfileSwitchBack` (deck-core `profile-switcher.ts`), which tracks the plugin's own named switches per device and goes back **by name**, using the app-level pop only as a no-history fallback. `page` optionally selects a page within the profile (requires Stream Deck app 6.5+).
 - A plugin can only switch to profiles **it ships**; it has no access to user-defined profiles.
 
 ## Installing / switching from the PI — the "Stream Deck Profiles" accordion

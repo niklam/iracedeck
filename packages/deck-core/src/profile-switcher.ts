@@ -10,11 +10,27 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
-/** Switches `deviceId` to a bundled profile by name. Omitting `profile` returns to the default profile. */
+/**
+ * Switches `deviceId` to a bundled profile by name. Omitting `profile` asks the
+ * Stream Deck app to return to the previously active profile — but the app only
+ * honors that while the CURRENT profile was switched to by this plugin (a
+ * one-shot back-link, consumed on use); in any other state it logs "Profile not
+ * found" and does nothing (verified against Stream Deck app logs, app 7.x).
+ * Prefer `requestProfileSwitchBack`, which tracks the plugin's own switch
+ * history and goes back by name.
+ */
 export type ProfileSwitcher = (deviceId: string, profile?: string, page?: number) => Promise<void>;
 
 let switcher: ProfileSwitcher | undefined;
 let logger: ILogger | undefined;
+
+/**
+ * Per-device history of the plugin's own named switches: the profile most
+ * recently switched to, and the one before it. Used by
+ * `requestProfileSwitchBack` — the plugin cannot query the device's active
+ * profile, so its own switches are the only history available.
+ */
+const switchHistory = new Map<string, { current?: string; previous?: string }>();
 
 /** Register the concrete profile switcher. Call once at plugin startup (Elgato only). */
 export function initProfileSwitcher(fn: ProfileSwitcher, log?: ILogger): void {
@@ -49,11 +65,49 @@ export async function requestProfileSwitch(
     return;
   }
 
+  if (profile) {
+    const rec = switchHistory.get(deviceId) ?? {};
+
+    if (rec.current !== profile) {
+      switchHistory.set(deviceId, { current: profile, previous: rec.current });
+    }
+  }
+
   await switcher(deviceId, profile, page);
+}
+
+/**
+ * Switch back to the previous profile (the Switch Profile "Back to previous"
+ * mode). When this plugin has switched the device between two named profiles,
+ * go back BY NAME to the earlier one (pressing again toggles between the two —
+ * the named re-switch records history like any other switch). Without any
+ * history, fall back to the app-level "no profile" pop, which works exactly
+ * when the current profile was just pushed by this plugin and can return to a
+ * profile we can't name (e.g. the user's own profile); anywhere else the app
+ * ignores it ("Profile not found").
+ */
+export async function requestProfileSwitchBack(deviceId: string | undefined): Promise<void> {
+  if (!deviceId) {
+    logger?.debug("requestProfileSwitchBack called without a deviceId; ignoring");
+
+    return;
+  }
+
+  const previous = switchHistory.get(deviceId)?.previous;
+
+  if (previous) {
+    await requestProfileSwitch(deviceId, previous);
+
+    return;
+  }
+
+  logger?.debug("No switch history for device; falling back to the app-level previous-profile pop");
+  await requestProfileSwitch(deviceId);
 }
 
 /** @internal Reset for tests. */
 export function _resetProfileSwitcher(): void {
   switcher = undefined;
   logger = undefined;
+  switchHistory.clear();
 }
