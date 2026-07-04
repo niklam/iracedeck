@@ -6,6 +6,11 @@
   <body>
     <%- include('section-header', { title: 'Action Settings' }) %>
 
+    <%# The `default` attribute must match PROFILE_NAMES.default in deck-core (the
+        action's press-time fallback). It can't be imported here — PI templates can
+        only require() from the shared data dir — and a divergence would be
+        display-only, since the action's own fallback drives the press behavior.
+        The #753 profile-naming rework centralizes these names. %>
     <sdpi-item label="Profile">
       <ird-profile-select setting="profile" profiles="_deviceProfiles" previous-label="Back to previous" default="iRaceDeck Default"></ird-profile-select>
     </sdpi-item>

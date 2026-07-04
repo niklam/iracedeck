@@ -530,6 +530,21 @@ describe("resolveBorderSettings", () => {
       expect(result.enabled).toBe(true);
       expect(result.glowEnabled).toBe(true);
     });
+
+    it("skips global settings for a locked color field — the icon color default wins", () => {
+      const graphic = `<svg><desc>{"colors":{},"border":{"color":"#111111","locked":["color"]}}</desc></svg>`;
+      const global: GlobalBorderSettings = { borderColor: "#ffffff" };
+      const result = resolveBorderSettings(graphic, global);
+      expect(result.borderColor).toBe("#111111");
+    });
+
+    it("skips global settings for locked width fields, falling back to BORDER_DEFAULTS", () => {
+      const graphic = `<svg><desc>{"colors":{},"border":{"locked":["borderWidth","glowWidth"]}}</desc></svg>`;
+      const global: GlobalBorderSettings = { borderWidth: 12, glowWidth: 40 };
+      const result = resolveBorderSettings(graphic, global);
+      expect(result.borderWidth).toBe(BORDER_DEFAULTS.borderWidth);
+      expect(result.glowWidth).toBe(BORDER_DEFAULTS.glowWidth);
+    });
   });
 });
 
