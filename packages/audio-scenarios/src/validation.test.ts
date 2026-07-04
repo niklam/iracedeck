@@ -153,6 +153,21 @@ describe("validateScenario", () => {
     expect(errorLogs.join("\n")).toContain("pendingHoldMs must be a non-negative number");
   });
 
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("flags a non-finite pendingHoldMs: %s (issue #758)", (_label, value) => {
+    engine.defineScenario({
+      id: "bad",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      pendingHoldMs: value,
+      sequence: ["pit-crew/greeting/a.mp3"],
+    });
+
+    expect(errorLogs.join("\n")).toContain("pendingHoldMs must be a non-negative number");
+  });
+
   it("accepts a valid scenario", () => {
     engine.definePool("connector", ["pit-crew/connector/and.mp3"]);
     engine.defineVar("name", () => "pit-crew/greeting/a.mp3");
