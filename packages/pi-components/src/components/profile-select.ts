@@ -20,6 +20,9 @@
  * - profiles: per-action setting holding the available profile names as a JSON
  *   string array (default: `_deviceProfiles`).
  * - placeholder: label for the empty option (default: `Select a profile…`).
+ * - previous-label: when present, renders an extra "back to previous profile"
+ *   option with this label, stored as the `__previous` sentinel (must match
+ *   `PREVIOUS_PROFILE_VALUE` in the Switch Profile action).
  */
 
 let styleInjected = false;
@@ -28,6 +31,7 @@ const DEFAULT_SETTING = "profile";
 const DEFAULT_PROFILES_SETTING = "_deviceProfiles";
 const DEFAULT_PLACEHOLDER = "Select a profile…";
 const EMPTY_VALUE = "";
+const PREVIOUS_VALUE = "__previous";
 
 /** Normalize a `profiles` setting value (JSON string array, or already an array) to string names. */
 export function parseProfileNames(value: unknown): string[] {
@@ -144,6 +148,15 @@ export class ProfileSelect extends HTMLElement {
     emptyOption.value = EMPTY_VALUE;
     emptyOption.textContent = placeholder;
     this.select.appendChild(emptyOption);
+
+    const previousLabel = this.getAttribute("previous-label");
+
+    if (previousLabel) {
+      const prevOption = document.createElement("option");
+      prevOption.value = PREVIOUS_VALUE;
+      prevOption.textContent = previousLabel;
+      this.select.appendChild(prevOption);
+    }
 
     for (const name of names) {
       const opt = document.createElement("option");

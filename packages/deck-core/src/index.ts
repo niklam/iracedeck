@@ -322,5 +322,6 @@ export {
   initProfileSwitcher,
   isProfileSwitcherInitialized,
   requestProfileSwitch,
+  requestProfileSwitchBack,
   type ProfileSwitcher,
 } from "./profile-switcher.js";
