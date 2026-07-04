@@ -429,15 +429,22 @@ export class FuelService extends ConnectionStateAwareAction<FuelServiceSettings>
       return;
     }
 
-    // Materialize the legacy-unit migration (see migrateLegacyUnit): persist the
-    // coerced `l` so the PI's Unit dropdown shows the instance's real unit
-    // instead of the new `auto` default. One-shot — the next parse sees `unit`
-    // set and the condition never fires again. Only the migrated key is written
-    // so untouched fields keep tracking future schema defaults.
+    // Persist the effective unit the first time a keypad instance appears
+    // without one (#759, one-shot): a pre-#759 instance (a persisted `mode`
+    // exists) keeps liters — the old default its amounts used — while a fresh
+    // instance persists the new `auto` default. Persisting BOTH closes the
+    // ambiguous "mode set, unit absent" shape: the PI only persists a control's
+    // value once touched, so a post-#759 instance whose user picks a mode but
+    // never opens the Unit dropdown would otherwise be indistinguishable from a
+    // legacy instance on a later parse and wrongly coerced to liters. Because
+    // willAppear runs before the PI can be opened, a fresh instance always has
+    // `unit: "auto"` banked before `mode` can ever be persisted alone. Only the
+    // unit key is written so untouched fields keep tracking future schema
+    // defaults; the next appear sees `unit` set and writes nothing.
     const raw = ev.payload.settings as Record<string, unknown> | undefined;
 
-    if (raw && typeof raw === "object" && !Array.isArray(raw) && raw.mode !== undefined && raw.unit === undefined) {
-      await ev.action.setSettings({ ...raw, unit: "l" });
+    if (raw && typeof raw === "object" && !Array.isArray(raw) && raw.unit === undefined) {
+      await ev.action.setSettings({ ...raw, unit: raw.mode !== undefined ? "l" : "auto" });
     }
 
     this.activeContexts.set(ev.action.id, settings);

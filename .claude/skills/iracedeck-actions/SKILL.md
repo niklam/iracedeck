@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **33 actions with 298 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**262 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **32 actions with 297 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**266 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -153,8 +153,9 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 1. **`docs/reference/actions.json`** — add/update the action entry with all modes
 2. **This skill file** (`SKILL.md`) — update the category overview table (counts) and the per-category action tables
 3. **`packages/website/src/content/docs/index.mdx`** — update category cards and stats if counts changed
-4. **`packages/website/src/content/docs/docs/actions/`** — add/update the action's documentation page
-5. **`packages/website/astro.config.mjs`** — add new action slugs to the sidebar if a new action was created
+4. **`packages/website/src/content/docs/docs/actions/overview.md`** — update the header totals and category table if counts changed
+5. **`packages/website/src/content/docs/docs/actions/`** — add/update the action's documentation page
+6. **`packages/website/astro.config.mjs`** — add new action slugs to the sidebar if a new action was created
 
 ## Key Project Files
 

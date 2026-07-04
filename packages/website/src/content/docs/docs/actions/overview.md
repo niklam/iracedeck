@@ -3,7 +3,7 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 31 actions with 260 modes for iRacing, organized into 9 categories.
+iRaceDeck provides 32 actions with 266 modes for iRacing, organized into 9 categories.
 
 ## Categories
 
@@ -16,7 +16,7 @@ iRaceDeck provides 31 actions with 260 modes for iRacing, organized into 9 categ
 | [View & Camera](/docs/actions/view-camera/view-adjustment/) | 5 | 88 | FOV, replay, camera controls, broadcast tools |
 | [Media](/docs/actions/media/media-capture/) | 1 | 7 | Video recording, screenshots, texture management |
 | [Pit Service](/docs/actions/pit-service/pit-quick-actions/) | 3 | 15 | Fuel (button and dial), tires, compounds, tearoff, fast repair |
-| [Car Setup](/docs/actions/car-setup/setup-aero/) | 7 | 44 | Brakes, chassis, aero, engine, fuel mix, hybrid/ERS, traction |
+| [Car Setup](/docs/actions/car-setup/setup-aero/) | 8 | 50 | Brakes (incl. the Setup Brakes Dial), chassis, aero, engine, fuel mix, hybrid/ERS, traction |
 | [Communication](/docs/actions/communication/chat/) | 2 | 34 | Chat, macros, whisper, reply, race admin commands |
 
 ## How Actions Work

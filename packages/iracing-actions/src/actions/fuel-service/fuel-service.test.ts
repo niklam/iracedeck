@@ -827,7 +827,7 @@ describe("FuelService", () => {
     });
   });
 
-  describe("legacy unit persist-back (#759)", () => {
+  describe("unit persist-back on first appear (#759)", () => {
     let action: FuelService;
 
     beforeEach(() => {
@@ -842,6 +842,26 @@ describe("FuelService", () => {
       expect(ev.action.setSettings).toHaveBeenCalledWith({ mode: "add-fuel", amount: 5, unit: "l" });
     });
 
+    it("should persist unit 'auto' for a fresh instance (no mode persisted)", async () => {
+      // Banking `auto` before the PI can ever persist a mode closes the
+      // ambiguous "mode set, unit absent" shape: a post-#759 instance whose
+      // user picks a mode but never touches the Unit dropdown must not later
+      // be mistaken for a legacy instance and coerced to liters.
+      const ev = fakeEvent("action-1", {});
+
+      await action.onWillAppear(ev as any);
+
+      expect(ev.action.setSettings).toHaveBeenCalledWith({ unit: "auto" });
+    });
+
+    it("should persist unit 'auto' when other keys exist but mode was never set", async () => {
+      const ev = fakeEvent("action-1", { flagsOverlay: true });
+
+      await action.onWillAppear(ev as any);
+
+      expect(ev.action.setSettings).toHaveBeenCalledWith({ flagsOverlay: true, unit: "auto" });
+    });
+
     it("should not touch settings when unit is already persisted", async () => {
       const ev = fakeEvent("action-1", { mode: "add-fuel", unit: "g" });
 
@@ -850,8 +870,8 @@ describe("FuelService", () => {
       expect(ev.action.setSettings).not.toHaveBeenCalled();
     });
 
-    it("should not touch settings for a fresh instance (no mode persisted)", async () => {
-      const ev = fakeEvent("action-1", {});
+    it("should not touch settings when only unit is persisted", async () => {
+      const ev = fakeEvent("action-1", { unit: "auto" });
 
       await action.onWillAppear(ev as any);
 

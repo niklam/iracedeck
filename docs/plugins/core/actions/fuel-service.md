@@ -96,7 +96,7 @@ The Property Inspector shows the settings for the surface the instance sits on: 
 - **Auto (from iRacing)** (default for new instances) - Follows iRacing's configured display units (liters when metric, gallons when english)
 - **Liters** / **Gallons** / **Kilograms** - Force the amount's unit. Kilograms convert via the car's fuel weight (`DriverCarFuelKgPerLtr`)
 
-Instances configured before the merge keep their previous behavior: a persisted Mode with no persisted Unit is migrated to **Liters** (the old default) and the migration is saved back so the PI shows it.
+Instances configured before the merge keep their previous behavior: a persisted Mode with no persisted Unit is migrated to **Liters** (the old default) and the migration is saved back so the PI shows it. Fresh instances persist **Auto** the first time they appear, before the PI can ever save a Mode — so a new button whose user never opens the Unit dropdown can't be mistaken for a legacy one.
 
 ### Dial settings
 
