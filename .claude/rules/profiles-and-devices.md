@@ -127,7 +127,7 @@ A `select-car` key's field slot is its **row-major ordinal among the select-car 
 - **Entry lands on page 0**: every named profile switch (Switch Profile action, the select-car target switch) passes `page 0`, and device page nav is strictly ±1 — so by the time page N is visible, pages 0..N−1 have been counted. The counts are in-memory: after a plugin restart mid-browse, later pages stay blank until page 0 is revisited.
 - The `select-car` key still carries a 0-based **`selectorPage`** setting (the Elgato `willAppear` payload exposes `coordinates` but **no page index**), which identifies which page a key belongs to.
 
-The field is sorted by car number (pace car and spectators excluded). The Race Admin manifest entry uses the committed neutral `imgs/blank-key` as its `States[0].Image` so page flips show blank black keys instead of flashing the static Race Admin artwork before the dynamic icons render.
+The field is sorted by car number (pace car and spectators excluded). The **Elgato** Race Admin manifest entry uses the committed neutral `imgs/blank-key` as its `States[0].Image` so page flips show blank black keys instead of flashing the static Race Admin artwork before the dynamic icons render. The Mirabox and Ulanzi manifests deliberately keep the static `imgs/actions/race-admin/key` image — those hosts have no profile pages to flip (the flash this fixes is Elgato-specific), and select-car is Elgato-gated anyway.
 
 ### The two bundled selector profiles
 

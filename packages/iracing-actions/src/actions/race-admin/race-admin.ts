@@ -519,6 +519,7 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
     settings: RaceAdminSettings,
   ): void {
+    const previous = this.selectorContexts.get(ev.action.id);
     const ctx = {
       column: ev.payload.coordinates?.column ?? 0,
       row: ev.payload.coordinates?.row ?? 0,
@@ -531,6 +532,21 @@ export class RaceAdmin extends ConnectionStateAwareAction<RaceAdminSettings> {
 
     if (ctx.isSelector) {
       this.recordPageCount(ctx.deviceId, ctx.page);
+    }
+
+    // A settings edit can move a select-car key off its previous page
+    // (selectorPage change) or out of the selector entirely (mode change).
+    // Re-record the page it left — or forget that page's count when this was
+    // its last key (unknown → blank until revisited) — so pageStartSlot
+    // doesn't stay offset by the departed key.
+    if (previous?.isSelector && (previous.page !== ctx.page || !ctx.isSelector)) {
+      const remaining = this.visibleSelectorKeys(previous.deviceId, previous.page).length;
+
+      if (remaining > 0) {
+        this.recordPageCount(previous.deviceId, previous.page);
+      } else {
+        this.selectorPageCounts.get(previous.deviceId)?.delete(previous.page);
+      }
     }
   }
 

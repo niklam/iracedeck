@@ -855,6 +855,40 @@ describe("RaceAdmin", () => {
       expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(2);
     });
 
+    it("re-records the old page when a key's Selector Page setting changes", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-b", 2, 0, selectorSettings));
+      // PI edit moves ctx-b to page 1: page 0 now holds one key, so ctx-b's
+      // page-1 slot must start at 1, not at the stale count of 2.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-b", 2, 0, { ...selectorSettings, selectorPage: "1" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-b", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 2, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBe(1);
+    });
+
+    it("forgets a page's count when its last key moves away (later pages blank until revisited)", async () => {
+      const action = new RaceAdmin();
+      await action.onWillAppear(makeSelectorAppear("ctx-a", 1, 0, selectorSettings));
+      await action.onWillAppear(makeSelectorAppear("ctx-p1", 0, 0, { ...selectorSettings, selectorPage: "1" }));
+      // ctx-a was page 0's only key; moving it to page 2 must forget page 0's
+      // count rather than leave the stale 1 behind.
+      await action.onDidReceiveSettings(makeSelectorAppear("ctx-a", 1, 0, { ...selectorSettings, selectorPage: "2" }));
+      vi.mocked(resolveSlotCar).mockClear();
+
+      await action.onKeyDown({
+        action: { id: "ctx-p1", deviceId: "dev-1", deviceType: 2, setSettings: vi.fn(async () => {}) },
+        payload: { settings: { ...selectorSettings, selectorPage: "1" }, coordinates: { column: 0, row: 0 } },
+      } as never);
+
+      expect(vi.mocked(resolveSlotCar).mock.lastCall?.[1]).toBeNull();
+    });
+
     it("resolves no car while an earlier page's key count is unknown (#754)", async () => {
       const action = new RaceAdmin();
       // Page 1 key appears without page 0 ever having been visited.
