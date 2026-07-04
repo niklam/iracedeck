@@ -129,6 +129,16 @@ export function parseIconTitleDefaults(svgTemplate: string): IconTitleDefaults {
 
 export interface IconBorderDefaults {
   borderColor?: string;
+  enabled?: boolean;
+  glowEnabled?: boolean;
+  /**
+   * Border fields protected from global border defaults (issue #755) — same
+   * semantics as the title `locked` array: a locked field skips the global
+   * step and uses the icon default, while a per-action override still wins.
+   * Lockable field names: `enabled`, `borderWidth`, `color`, `glowEnabled`,
+   * `glowWidth`.
+   */
+  locked?: string[];
 }
 
 export function parseIconBorderDefaults(svgTemplate: string): IconBorderDefaults {
@@ -142,6 +152,15 @@ export function parseIconBorderDefaults(svgTemplate: string): IconBorderDefaults
 
   return {
     borderColor: typeof border.color === "string" ? border.color : undefined,
+    enabled: typeof border.enabled === "boolean" ? border.enabled : undefined,
+    glowEnabled: typeof border.glowEnabled === "boolean" ? border.glowEnabled : undefined,
+    locked: (() => {
+      if (!Array.isArray(border.locked)) return undefined;
+
+      const filtered = border.locked.filter((item): item is string => typeof item === "string");
+
+      return filtered.length > 0 ? filtered : undefined;
+    })(),
   };
 }
 

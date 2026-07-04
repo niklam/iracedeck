@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144">
-  <desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff"}}</desc>
+  <desc>{"colors":{"backgroundColor":"#000000","textColor":"#ffffff"},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}</desc>
   {{borderDefs}}
   <g filter="url(#activity-state)">
     <!-- Pure black background (dynamic color for theming + flash effect) -->

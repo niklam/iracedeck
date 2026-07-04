@@ -42,7 +42,13 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getGlobalTitleSettings: vi.fn(() => ({})),
+  PROFILE_NAMES: {
+    default: "iRaceDeck Default",
+    pitActions: "iRaceDeck Pit Actions",
+    replay: "iRaceDeck Replay",
+  },
   requestProfileSwitch: vi.fn(),
+  requestProfileSwitchBack: vi.fn(),
   resolveBorderSettings: vi.fn(() => ({})),
   resolveGraphicSettings: vi.fn(() => ({})),
   resolveIconColors: vi.fn(() => ({})),
@@ -74,7 +80,6 @@ describe("SwitchProfile", () => {
   describe("profileTitle", () => {
     it("drops the iRaceDeck prefix and upper-cases the rest", () => {
       expect(profileTitle("iRaceDeck Replay")).toBe("REPLAY");
-      expect(profileTitle("iRaceDeck Default")).toBe("DEFAULT");
     });
 
     it("wraps the long Race Admin profile titles onto two lines", () => {
@@ -82,8 +87,12 @@ describe("SwitchProfile", () => {
       expect(profileTitle("iRaceDeck Race Admin Per Car")).toBe("RACE ADMIN\nPER CAR");
     });
 
-    it("returns a generic two-line label when nothing is selected", () => {
-      expect(profileTitle("")).toBe("SWITCH\nPROFILE");
+    it("shows no title for the default profile — the logo speaks for itself (#755)", () => {
+      expect(profileTitle("iRaceDeck Default")).toBe("");
+    });
+
+    it("shows no title for an empty selection (which behaves as the default profile)", () => {
+      expect(profileTitle("")).toBe("");
     });
   });
 
@@ -151,12 +160,12 @@ describe("SwitchProfile", () => {
       expect(requestProfileSwitch).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay");
     });
 
-    it("no-ops on key down when no profile is selected", async () => {
+    it("switches to the default profile when no profile is selected (#755)", async () => {
       const action = new SwitchProfile();
 
       await action.onKeyDown({ action: keyAction(), payload: { settings: { profile: "" } } } as never);
 
-      expect(requestProfileSwitch).not.toHaveBeenCalled();
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Default");
     });
   });
 });

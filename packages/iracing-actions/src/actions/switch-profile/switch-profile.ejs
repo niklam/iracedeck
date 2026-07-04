@@ -7,13 +7,13 @@
     <%- include('section-header', { title: 'Action Settings' }) %>
 
     <sdpi-item label="Profile">
-      <ird-profile-select setting="profile" profiles="_deviceProfiles" previous-label="Back to previous"></ird-profile-select>
+      <ird-profile-select setting="profile" profiles="_deviceProfiles" previous-label="Back to previous" default="iRaceDeck Default"></ird-profile-select>
     </sdpi-item>
     <div class="ird-supporting-text">
-      Pressing the button switches your Stream Deck to the selected iRaceDeck profile. The
-      list shows the profiles available for this device; the Stream Deck app asks to install
-      a profile the first time you switch to it. "Back to previous" returns to the profile
-      you came from.
+      Pressing the button switches your Stream Deck to the selected iRaceDeck profile —
+      iRaceDeck Default unless you pick another. The list shows the profiles available for
+      this device; the Stream Deck app asks to install a profile the first time you switch
+      to it. "Back to previous" returns to the profile you came from.
     </div>
 
     <%- include('title-overrides') %>

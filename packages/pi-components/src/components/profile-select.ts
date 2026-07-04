@@ -23,6 +23,10 @@
  * - previous-label: when present, renders an extra "back to previous profile"
  *   option with this label, stored as the `__previous` sentinel (must match
  *   `PREVIOUS_PROFILE_VALUE` in the Switch Profile action).
+ * - default: profile name displayed as selected while the setting is empty
+ *   (issue #755) — a real default selection instead of the placeholder. The
+ *   default is display-only (never persisted); when it isn't among the current
+ *   device's options, the placeholder shows instead.
  */
 
 let styleInjected = false;
@@ -169,12 +173,24 @@ export class ProfileSelect extends HTMLElement {
   private applySavedValue(): void {
     if (!this.select) return;
 
+    const has = (value: string) => Array.from(this.select!.options).some((opt) => opt.value === value);
+
+    // An empty setting displays the `default` profile when it's available for
+    // this device (#755) — display-only, never persisted, so the stored value
+    // stays empty and the action's own default fallback stays authoritative.
+    const fallback = this.getAttribute("default");
+
+    if (this.savedValue === EMPTY_VALUE && fallback && has(fallback)) {
+      this.select.value = fallback;
+
+      return;
+    }
+
     // If the saved profile is no longer among the options (e.g. moved to a
     // different device), fall back to the empty placeholder in the UI. Don't
     // persist that fallback — the saved name may become valid again once the
     // profiles list for this device arrives.
-    const exists = Array.from(this.select.options).some((opt) => opt.value === this.savedValue);
-    this.select.value = exists ? this.savedValue : EMPTY_VALUE;
+    this.select.value = has(this.savedValue) ? this.savedValue : EMPTY_VALUE;
   }
 }
 

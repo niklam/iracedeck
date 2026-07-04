@@ -496,6 +496,41 @@ describe("resolveBorderSettings", () => {
       expect(result.glowEnabled).toBe(true);
     });
   });
+
+  describe("icon border defaults + locked fields (#755)", () => {
+    const GRAPHIC_LOCKED_OFF = `<svg><desc>{"colors":{},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}</desc></svg>`;
+    const GRAPHIC_UNLOCKED_DEFAULTS = `<svg><desc>{"colors":{},"border":{"enabled":false,"glowEnabled":false}}</desc></svg>`;
+
+    it("uses icon enabled/glowEnabled defaults when nothing else is set", () => {
+      const result = resolveBorderSettings(GRAPHIC_UNLOCKED_DEFAULTS, {});
+      expect(result.enabled).toBe(false);
+      expect(result.glowEnabled).toBe(false);
+    });
+
+    it("lets global settings beat unlocked icon defaults", () => {
+      const global: GlobalBorderSettings = { enabled: true, glowEnabled: true };
+      const result = resolveBorderSettings(GRAPHIC_UNLOCKED_DEFAULTS, global);
+      expect(result.enabled).toBe(true);
+      expect(result.glowEnabled).toBe(true);
+    });
+
+    it("skips global settings for locked fields — the icon stays border-less", () => {
+      const global: GlobalBorderSettings = { enabled: true, glowEnabled: true, borderWidth: 12 };
+      const result = resolveBorderSettings(GRAPHIC_LOCKED_OFF, global);
+      expect(result.enabled).toBe(false);
+      expect(result.glowEnabled).toBe(false);
+      // Unlocked fields still take the global value.
+      expect(result.borderWidth).toBe(12);
+    });
+
+    it("lets per-action overrides beat a locked field", () => {
+      const global: GlobalBorderSettings = { enabled: true };
+      const overrides = { enabled: true, glowEnabled: true };
+      const result = resolveBorderSettings(GRAPHIC_LOCKED_OFF, global, overrides);
+      expect(result.enabled).toBe(true);
+      expect(result.glowEnabled).toBe(true);
+    });
+  });
 });
 
 describe("getGlobalBorderSettings", () => {

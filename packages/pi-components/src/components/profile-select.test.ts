@@ -83,6 +83,33 @@ describe("ird-profile-select", () => {
     expect(el.querySelector("select")!.value).toBe("");
   });
 
+  describe("default attribute (#755)", () => {
+    it("displays the default profile while the setting is empty, without persisting it", () => {
+      const el = mount({ default: "iRaceDeck Default" });
+      emit("profile", "");
+      emit("_deviceProfiles", JSON.stringify(["iRaceDeck Default", "iRaceDeck Replay"]));
+
+      expect(el.querySelector("select")!.value).toBe("iRaceDeck Default");
+      expect(saves["profile"]).not.toHaveBeenCalled();
+    });
+
+    it("keeps an explicit saved selection over the default", () => {
+      const el = mount({ default: "iRaceDeck Default" });
+      emit("profile", "iRaceDeck Replay");
+      emit("_deviceProfiles", JSON.stringify(["iRaceDeck Default", "iRaceDeck Replay"]));
+
+      expect(el.querySelector("select")!.value).toBe("iRaceDeck Replay");
+    });
+
+    it("shows the placeholder when the default is not available for this device", () => {
+      const el = mount({ default: "iRaceDeck Default" });
+      emit("profile", "");
+      emit("_deviceProfiles", JSON.stringify(["iRaceDeck Mini Only"]));
+
+      expect(el.querySelector("select")!.value).toBe("");
+    });
+  });
+
   describe("parseProfileNames", () => {
     it("parses JSON strings, accepts arrays, and rejects junk", () => {
       expect(parseProfileNames('["a","b"]')).toEqual(["a", "b"]);
