@@ -2,19 +2,20 @@
  * Race Admin — Car Selector helpers (issue #732)
  *
  * The `select-car` Race Admin mode turns a Stream Deck key into a "placeholder"
- * car button: it derives its slot from its grid position, shows the matching
- * car's number, and on press stores that car's `CarIdx` as the shared admin
- * target (read back by the `selected-car` driver target). These are the pure,
- * side-effect-free pieces (slot math, session→car resolution, icon rendering)
- * so they can be unit-tested without the action lifecycle.
+ * car button: it shows the car occupying its slot and on press stores that
+ * car's `CarIdx` as the shared admin target (read back by the `selected-car`
+ * driver target). These are the pure, side-effect-free pieces (slot math,
+ * session→car resolution, icon rendering) so they can be unit-tested without
+ * the action lifecycle.
  *
- * Layout convention (the standard iRaceDeck selector layout, baked here):
- *   - top-left           = Back to default profile
- *   - bottom-left        = Previous page
- *   - bottom-right       = Next page
- * Every other cell is a car slot, filled row-major (left→right, top→bottom),
- * skipping those three reserved cells. The field is sorted by car number
- * (pace car and spectators excluded). See `.claude/rules/profiles-and-devices.md`.
+ * Slot assignment (issue #754): a key's slot is its row-major ORDINAL among
+ * the select-car keys visible on the same device + page — any number of keys,
+ * placed anywhere, no reserved cells — offset by the learned key counts of all
+ * earlier pages (`pageStartSlot`). The action learns each page's count as the
+ * user visits it (entry always lands on page 0; Stream Deck page nav is ±1,
+ * so by the time page N shows, pages 0..N−1 are known). The field is sorted by
+ * car number (pace car and spectators excluded). See
+ * `.claude/rules/profiles-and-devices.md`.
  */
 import {
   escapeXml,
@@ -97,67 +98,56 @@ export function parseSelectedCar(raw: unknown): SelectedCar | null {
   return { carIdx, carNumber };
 }
 
-/**
- * The three reserved (navigation) cells as row-major linear indices, deduped —
- * on degenerate grids (single row/column) the corners coincide.
- */
-function reservedLinear(cols: number, rows: number): Set<number> {
-  const topLeft = 0;
-  const bottomLeft = (rows - 1) * cols;
-  const bottomRight = (rows - 1) * cols + (cols - 1);
-
-  return new Set([topLeft, bottomLeft, bottomRight]);
+/** Grid position of a visible select-car key. */
+export interface SelectorKeyPosition {
+  column: number;
+  row: number;
 }
 
 /**
- * Number of car slots available per page for a device grid: every cell minus
- * the reserved navigation cells (three on a normal grid; fewer coincide on a
- * degenerate single-row/column grid). `0` when the grid is unknown or has no
- * free cell.
+ * Parse the `selectorPage` textfield value (0-based). Anything non-numeric,
+ * non-finite, or negative is page `0`.
  *
  * @internal Exported for testing
  */
-export function carsPerPage(grid: readonly [number, number] | null | undefined): number {
-  if (!grid) return 0;
+export function parseSelectorPage(raw: string | undefined): number {
+  const n = Number(raw);
 
-  const [cols, rows] = grid;
-
-  if (cols <= 0 || rows <= 0) return 0;
-
-  return Math.max(0, cols * rows - reservedLinear(cols, rows).size);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 /**
- * Compute the 0-based field index a selector button represents from its grid
- * position + page. Returns `null` when the cell is a reserved navigation cell,
- * the coordinates are out of range, or the grid is unknown/too small.
+ * Row-major ordinal (0-based) of `self` among the select-car keys visible on
+ * the same device + page. Any number of keys, placed anywhere, works: cars fill
+ * the placed keys left→right, top→bottom, with no reserved cells (issue #754).
+ * `keys` may include `self`; only keys strictly before it count.
  *
  * @internal Exported for testing
  */
-export function computeCarSlotIndex(
-  column: number,
-  row: number,
-  grid: readonly [number, number] | null | undefined,
-  page: number,
-): number | null {
-  if (!grid) return null;
+export function selectorOrdinal(self: SelectorKeyPosition, keys: readonly SelectorKeyPosition[]): number {
+  return keys.filter((k) => k.row < self.row || (k.row === self.row && k.column < self.column)).length;
+}
 
-  const [cols, rows] = grid;
+/**
+ * First field slot of `page`, from the learned per-page key counts: the sum of
+ * the counts of all earlier pages. Page 0 always starts at 0. Returns `null`
+ * when any earlier page's count is unknown (that page hasn't been visited this
+ * run) — the caller renders blank rather than guessing (issue #754).
+ *
+ * @internal Exported for testing
+ */
+export function pageStartSlot(page: number, pageCounts: ReadonlyMap<number, number>): number | null {
+  let start = 0;
 
-  if (carsPerPage(grid) === 0) return null;
+  for (let p = 0; p < page; p++) {
+    const count = pageCounts.get(p);
 
-  if (column < 0 || row < 0 || column >= cols || row >= rows) return null;
+    if (count === undefined || count <= 0) return null;
 
-  const linear = row * cols + column;
-  const reserved = reservedLinear(cols, rows);
+    start += count;
+  }
 
-  if (reserved.has(linear)) return null;
-
-  const reservedBefore = [...reserved].filter((r) => r < linear).length;
-  const inPage = linear - reservedBefore;
-  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 0;
-
-  return safePage * carsPerPage(grid) + inPage;
+  return start;
 }
 
 /**

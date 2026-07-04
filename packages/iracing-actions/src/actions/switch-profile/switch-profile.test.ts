@@ -140,7 +140,7 @@ describe("SwitchProfile", () => {
       expect(a.setSettings).not.toHaveBeenCalled();
     });
 
-    it("switches to the selected profile on key down, targeting the button's device", async () => {
+    it("switches to the selected profile on key down, targeting the button's device and its first page", async () => {
       const action = new SwitchProfile();
 
       await action.onKeyDown({
@@ -148,7 +148,8 @@ describe("SwitchProfile", () => {
         payload: { settings: { profile: "iRaceDeck Replay" } },
       } as never);
 
-      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay");
+      // Page 0: named switches always open the profile on its first page (#754).
+      expect(requestProfileSwitch).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay", 0);
     });
 
     it("no-ops on key down when no profile is selected", async () => {

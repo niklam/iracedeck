@@ -154,7 +154,11 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
 
     this.logger.info("Switch Profile triggered");
     this.logger.debug(`Switching device ${ev.action.deviceId ?? "(unknown)"} to profile "${settings.profile}"`);
-    await requestProfileSwitch(ev.action.deviceId, settings.profile);
+    // Page 0: named switches always open a profile on its first page — needed
+    // by the Race Admin selector's page-count learning (#754), and predictable
+    // everywhere else. Back-to-previous above deliberately restores the page
+    // you left instead.
+    await requestProfileSwitch(ev.action.deviceId, settings.profile, 0);
   }
 
   /**
