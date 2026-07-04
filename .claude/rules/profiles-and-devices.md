@@ -73,10 +73,11 @@ A `.streamDeckProfile` is **authored in the Stream Deck app and exported** — t
 
 1. In the Stream Deck app, build the layout on (or for) the **exact target device** — the grid and dial count must match that `DeviceType`.
 2. Give it a clean profile name (no `(dev)` / test suffixes — the internal name is what users see).
-3. Right-click the profile → **Export** → `<Name>.streamDeckProfile`.
-4. Drop the file next to `manifest.json` in `com.iracedeck.sd.core.sdPlugin/`.
-5. Add the `Profiles[]` entry with the matching `DeviceType`.
-6. **Validate in the app** — install the plugin build and confirm the profile imports and switches. This can't be unit-tested; it's a manual check.
+3. **Set the host-profile marker** on every Switch Profile key in the profile: its *Placed in profile* dropdown must name the profile being authored (#762). This is how the plugin learns the active profile at runtime — the Elgato SDK cannot query it — so the Back-to-previous history stays correct across manual navigation and plugin restarts. Every bundled profile page that can be entered should contain at least one marked key.
+4. Right-click the profile → **Export** → `<Name>.streamDeckProfile`.
+5. Drop the file next to `manifest.json` in `com.iracedeck.sd.core.sdPlugin/`.
+6. Add the `Profiles[]` entry with the matching `DeviceType`.
+7. **Validate in the app** — install the plugin build and confirm the profile imports and switches. This can't be unit-tested; it's a manual check.
 
 ## Distributed bundle format (reference only — never hand-edit)
 
@@ -146,7 +147,7 @@ adapter.switchToProfile(deviceId, "iRaceDeck Default", page); // IDeckPlatformAd
 
 - Implemented by `ElgatoPlatformAdapter` via `streamDeck.profiles.switchToProfile(deviceId, profile?, page?)`. **Mirabox and Ulanzi implement it as a no-op** — their hosts have no profile system.
 - The `profile` argument is the **profile name** matching `Profiles[].Name` — **there is no switch-by-UUID**, because install-time UUIDs are unknown to the plugin. Any cross-profile link (e.g. #732's Main → selector → per-car flow) must use the profile **name** + the built-in folder nav, never a hard-coded installed UUID.
-- Omitting `profile` asks the app to return to the previously active profile, but **the app only honors this while the current profile was pushed by this plugin** (a one-shot back-link, consumed on use) — anywhere else it logs `Profile not found` and does nothing (verified from Stream Deck app logs; the `@elgato/streamdeck` SDK JSDoc oversells it). Switch Profile's "Back to previous" mode therefore uses `requestProfileSwitchBack` (deck-core `profile-switcher.ts`), which tracks the plugin's own named switches per device and goes back **by name**, using the app-level pop only as a no-history fallback. `page` optionally selects a page within the profile (requires Stream Deck app 6.5+).
+- Omitting `profile` asks the app to return to the previously active profile, but **the app only honors this while the current profile was pushed by this plugin** (a one-shot back-link, consumed on use) — anywhere else it logs `Profile not found` and does nothing (verified from Stream Deck app logs; the `@elgato/streamdeck` SDK JSDoc oversells it). Switch Profile's "Back to previous" mode therefore uses `requestProfileSwitchBack` (deck-core `profile-switcher.ts`), which walks a per-device **stack** of visited profiles **by name** (#762). The stack is fed by the plugin's own named switches (Switch Profile keys, the PI "Stream Deck Profiles" accordion via the adapter's `sendToPlugin` routing, the Race Admin selector) and by `notifyProfileVisible` reports from keys carrying the **host-profile marker** (the Switch Profile `hostProfile` setting, authored into the bundled profiles) — the only ways to know the active profile, since the SDK can't be queried for it. Re-switching to a profile already on the stack unwinds to it; with nothing left to pop, Back switches to the device's bundled Default profile (resolved via `profiles.json`), and only without that falls back to the app-level pop. Named forward switches pass `page 0` (#754); Back passes no page, so the app restores the page you left. `page` optionally selects a page within the profile (requires Stream Deck app 6.5+).
 - A plugin can only switch to profiles **it ships**; it has no access to user-defined profiles.
 
 ## Installing / switching from the PI — the "Stream Deck Profiles" accordion

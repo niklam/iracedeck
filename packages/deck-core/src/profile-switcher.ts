@@ -16,7 +16,7 @@ import type { ILogger } from "@iracedeck/logger";
  * honors that while the CURRENT profile was switched to by this plugin (a
  * one-shot back-link, consumed on use); in any other state it logs "Profile not
  * found" and does nothing (verified against Stream Deck app logs, app 7.x).
- * Prefer `requestProfileSwitchBack`, which tracks the plugin's own switch
+ * Prefer `requestProfileSwitchBack`, which tracks the plugin's own profile
  * history and goes back by name.
  */
 export type ProfileSwitcher = (deviceId: string, profile?: string, page?: number) => Promise<void>;
@@ -24,13 +24,46 @@ export type ProfileSwitcher = (deviceId: string, profile?: string, page?: number
 let switcher: ProfileSwitcher | undefined;
 let logger: ILogger | undefined;
 
+/** Oldest entries are dropped once a device's history grows past this depth. */
+const MAX_PROFILE_HISTORY = 10;
+
 /**
- * Per-device history of the plugin's own named switches: the profile most
- * recently switched to, and the one before it. Used by
- * `requestProfileSwitchBack` — the plugin cannot query the device's active
- * profile, so its own switches are the only history available.
+ * Per-device history of the profiles this plugin knows the device visited, as a
+ * stack whose last entry is the current profile (issue #762). Fed by the
+ * plugin's own named switches AND by `notifyProfileVisible` reports from keys
+ * that carry a host-profile marker — the Elgato SDK cannot query the active
+ * profile, so these are the only observations available. Used by
+ * `requestProfileSwitchBack` to walk back by name.
  */
-const switchHistory = new Map<string, { current?: string; previous?: string }>();
+const switchHistory = new Map<string, string[]>();
+
+/**
+ * Record that `profile` became (or is) the device's current profile. Matching
+ * the top is a no-op; a profile already deeper in the stack unwinds to it (the
+ * user navigated back); anything else is pushed, dropping the oldest entry past
+ * `MAX_PROFILE_HISTORY`.
+ */
+function recordProfileVisit(deviceId: string, profile: string): void {
+  const stack = switchHistory.get(deviceId) ?? [];
+
+  if (stack[stack.length - 1] === profile) {
+    return;
+  }
+
+  const existing = stack.indexOf(profile);
+
+  if (existing >= 0) {
+    stack.length = existing + 1;
+  } else {
+    stack.push(profile);
+
+    if (stack.length > MAX_PROFILE_HISTORY) {
+      stack.shift();
+    }
+  }
+
+  switchHistory.set(deviceId, stack);
+}
 
 /** Register the concrete profile switcher. Call once at plugin startup (Elgato only). */
 export function initProfileSwitcher(fn: ProfileSwitcher, log?: ILogger): void {
@@ -41,6 +74,29 @@ export function initProfileSwitcher(fn: ProfileSwitcher, log?: ILogger): void {
 /** Whether a profile switcher has been registered. */
 export function isProfileSwitcherInitialized(): boolean {
   return switcher !== undefined;
+}
+
+/**
+ * Report that a profile is visible on a device — called by keys that carry a
+ * host-profile marker when they appear (issue #762). This is how the plugin
+ * learns the profile the user is standing on when it didn't perform the switch
+ * itself (manual navigation, app-level pop, plugin restart), so that
+ * `requestProfileSwitchBack` can return there by name. Safe no-op without a
+ * registered switcher, a device, or a profile name.
+ */
+export function notifyProfileVisible(deviceId: string | undefined, profile: string | undefined): void {
+  if (!deviceId || !profile) {
+    logger?.debug("notifyProfileVisible called without a deviceId or profile; ignoring");
+
+    return;
+  }
+
+  if (!switcher) {
+    return;
+  }
+
+  recordProfileVisit(deviceId, profile);
+  logger?.debug(`Profile "${profile}" reported visible on device ${deviceId}`);
 }
 
 /**
@@ -66,11 +122,7 @@ export async function requestProfileSwitch(
   }
 
   if (profile) {
-    const rec = switchHistory.get(deviceId) ?? {};
-
-    if (rec.current !== profile) {
-      switchHistory.set(deviceId, { current: profile, previous: rec.current });
-    }
+    recordProfileVisit(deviceId, profile);
   }
 
   await switcher(deviceId, profile, page);
@@ -78,25 +130,34 @@ export async function requestProfileSwitch(
 
 /**
  * Switch back to the previous profile (the Switch Profile "Back to previous"
- * mode). When this plugin has switched the device between two named profiles,
- * go back BY NAME to the earlier one (pressing again toggles between the two —
- * the named re-switch records history like any other switch). Without any
- * history, fall back to the app-level "no profile" pop, which works exactly
- * when the current profile was just pushed by this plugin and can return to a
- * profile we can't name (e.g. the user's own profile); anywhere else the app
- * ignores it ("Profile not found").
+ * mode). Pops the device's profile history and switches BY NAME to the entry
+ * below, so repeated presses walk back through the visited profiles (issue
+ * #762). With nothing left to pop, switch to `fallbackProfile` (typically the
+ * device's bundled Default profile) and make it the new history root; without a
+ * fallback, fall back to the app-level "no profile" pop, which works exactly
+ * when the current profile was just pushed by this plugin — anywhere else the
+ * app ignores it ("Profile not found").
  */
-export async function requestProfileSwitchBack(deviceId: string | undefined): Promise<void> {
+export async function requestProfileSwitchBack(deviceId: string | undefined, fallbackProfile?: string): Promise<void> {
   if (!deviceId) {
     logger?.debug("requestProfileSwitchBack called without a deviceId; ignoring");
 
     return;
   }
 
-  const previous = switchHistory.get(deviceId)?.previous;
+  const stack = switchHistory.get(deviceId);
 
-  if (previous) {
-    await requestProfileSwitch(deviceId, previous);
+  if (stack && stack.length >= 2) {
+    stack.pop();
+    await requestProfileSwitch(deviceId, stack[stack.length - 1]);
+
+    return;
+  }
+
+  if (fallbackProfile) {
+    logger?.debug(`No profile to walk back to on device ${deviceId}; switching to fallback "${fallbackProfile}"`);
+    switchHistory.set(deviceId, [fallbackProfile]);
+    await requestProfileSwitch(deviceId, fallbackProfile);
 
     return;
   }

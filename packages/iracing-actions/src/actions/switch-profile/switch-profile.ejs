@@ -21,6 +21,16 @@
       to it. "Back to previous" returns to the profile you came from.
     </div>
 
+    <sdpi-item label="Placed in profile">
+      <ird-profile-select setting="hostProfile" profiles="_deviceProfiles" placeholder="Not in a bundled profile"></ird-profile-select>
+    </sdpi-item>
+    <div class="ird-supporting-text">
+      If this key lives inside a bundled iRaceDeck profile, select that profile here. It
+      lets the plugin know which profile is on screen, so "Back to previous" can find its
+      way back — Stream Deck offers no other way to tell. Leave unset for keys in your own
+      profiles.
+    </div>
+
     <%- include('title-overrides') %>
     <%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>
     <%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['switch-profile'] }) %>

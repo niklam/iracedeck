@@ -9,6 +9,7 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
+  notifyProfileVisible,
   PROFILE_NAMES,
   requestProfileSwitch,
   requestProfileSwitchBack,
@@ -57,6 +58,14 @@ const SwitchProfileSettings = CommonSettings.extend({
    */
   profile: z.string().default(PROFILE_NAMES.default),
   /**
+   * Host-profile marker (issue #762): the bundled profile this key is placed
+   * in, set while authoring the bundled profiles. When non-empty, the key
+   * reports it via `notifyProfileVisible` on appear, which is how the plugin
+   * learns the active profile (the Elgato SDK cannot query it) so that
+   * Back-to-previous can return to it by name. Empty for user-placed keys.
+   */
+  hostProfile: z.string().default(""),
+  /**
    * Runtime-populated list of profiles available for this action's device,
    * pushed by the action for the PI dropdown. Not user-editable.
    */
@@ -97,6 +106,15 @@ export function availableProfilesForDevice(deviceType: number | undefined): stri
   if (deviceType === undefined) return [];
 
   return profilesData.filter((p) => p.deviceType === deviceType).map((p) => p.name);
+}
+
+/**
+ * @internal Exported for testing. The bundled Default profile name for a device
+ * type, or `undefined` when the device ships none. Used as the Back-to-previous
+ * fallback destination when the profile history is empty (issue #762).
+ */
+export function defaultProfileForDevice(deviceType: number | undefined): string | undefined {
+  return availableProfilesForDevice(deviceType).find((name) => name === PROFILE_NAMES.default);
 }
 
 /**
@@ -144,12 +162,13 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
   override async onKeyDown(ev: IDeckKeyDownEvent<SwitchProfileSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
 
-    // Back to previous: go back by name via the plugin's own switch history
-    // (the app-level "no profile" pop only works one level deep, right after a
-    // plugin-pushed switch — see requestProfileSwitchBack).
+    // Back to previous: walk back by name through the plugin's profile history,
+    // falling back to the device's bundled Default profile when the history is
+    // empty (the app-level "no profile" pop only works one level deep, right
+    // after a plugin-pushed switch — see requestProfileSwitchBack, #762).
     if (settings.profile === PREVIOUS_PROFILE_VALUE) {
       this.logger.info("Switch Profile triggered (back to previous)");
-      await requestProfileSwitchBack(ev.action.deviceId);
+      await requestProfileSwitchBack(ev.action.deviceId, defaultProfileForDevice(ev.action.deviceType));
 
       return;
     }
@@ -170,7 +189,8 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
 
   /**
    * Push the device-filtered profile list to the PI (once — guarded against the
-   * setSettings→onDidReceiveSettings loop) and refresh the icon.
+   * setSettings→onDidReceiveSettings loop), report the host-profile marker to
+   * the profile history (#762), and refresh the icon.
    */
   private async sync(
     ev: IDeckWillAppearEvent<SwitchProfileSettings> | IDeckDidReceiveSettingsEvent<SwitchProfileSettings>,
@@ -183,7 +203,13 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
       await ev.action.setSettings({ ...raw, _deviceProfiles: available });
     }
 
-    await this.updateDisplay(ev, this.parseSettings(ev.payload.settings));
+    const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.hostProfile) {
+      notifyProfileVisible(ev.action.deviceId, settings.hostProfile);
+    }
+
+    await this.updateDisplay(ev, settings);
   }
 
   private parseSettings(settings: unknown): SwitchProfileSettings {

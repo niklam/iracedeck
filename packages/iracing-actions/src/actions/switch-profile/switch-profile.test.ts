@@ -1,8 +1,9 @@
-import { requestProfileSwitch } from "@iracedeck/deck-core";
+import { notifyProfileVisible, requestProfileSwitch, requestProfileSwitchBack } from "@iracedeck/deck-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   availableProfilesForDevice,
+  defaultProfileForDevice,
   generateSwitchProfileSvg,
   profileTitle,
   SWITCH_PROFILE_UUID,
@@ -37,16 +38,17 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onWillAppear(): Promise<void> {}
     async onDidReceiveSettings(): Promise<void> {}
   },
-  assembleIcon: vi.fn(({ graphicSvg }: { graphicSvg: string }) => `assembled:${graphicSvg}`),
-  getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalTitleSettings: vi.fn(() => ({})),
   PROFILE_NAMES: {
     default: "iRaceDeck Default",
     pitActions: "iRaceDeck Pit Actions",
     replay: "iRaceDeck Replay",
   },
+  assembleIcon: vi.fn(({ graphicSvg }: { graphicSvg: string }) => `assembled:${graphicSvg}`),
+  getGlobalBorderSettings: vi.fn(() => ({})),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalGraphicSettings: vi.fn(() => ({})),
+  getGlobalTitleSettings: vi.fn(() => ({})),
+  notifyProfileVisible: vi.fn(),
   requestProfileSwitch: vi.fn(),
   requestProfileSwitchBack: vi.fn(),
   resolveBorderSettings: vi.fn(() => ({})),
@@ -105,6 +107,17 @@ describe("SwitchProfile", () => {
 
     it("returns empty when the device type is unknown", () => {
       expect(availableProfilesForDevice(undefined)).toEqual([]);
+    });
+  });
+
+  describe("defaultProfileForDevice", () => {
+    it("returns the bundled Default profile name when the device ships one", () => {
+      expect(defaultProfileForDevice(2)).toBe("iRaceDeck Default");
+    });
+
+    it("returns undefined when the device has no bundled Default profile", () => {
+      expect(defaultProfileForDevice(1)).toBeUndefined();
+      expect(defaultProfileForDevice(undefined)).toBeUndefined();
     });
   });
 
@@ -167,6 +180,50 @@ describe("SwitchProfile", () => {
       await action.onKeyDown({ action: keyAction(), payload: { settings: { profile: "" } } } as never);
 
       expect(requestProfileSwitch).toHaveBeenCalledWith("dev-1", "iRaceDeck Default", 0);
+    });
+
+    it("walks back with the device's Default profile as fallback in Back-to-previous mode (#762)", async () => {
+      const action = new SwitchProfile();
+
+      await action.onKeyDown({
+        action: keyAction({ deviceId: "dev-9", deviceType: 2 }),
+        payload: { settings: { profile: "__previous" } },
+      } as never);
+
+      expect(requestProfileSwitchBack).toHaveBeenCalledWith("dev-9", "iRaceDeck Default");
+      expect(requestProfileSwitch).not.toHaveBeenCalled();
+    });
+
+    it("reports the host profile on appear when the marker is set (#762)", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+
+      await action.onWillAppear({
+        action: a,
+        payload: { settings: { hostProfile: "iRaceDeck Replay" } },
+      } as never);
+
+      expect(notifyProfileVisible).toHaveBeenCalledWith("dev-1", "iRaceDeck Replay");
+    });
+
+    it("reports the host profile again when settings change", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+
+      await action.onDidReceiveSettings({
+        action: a,
+        payload: { settings: { hostProfile: "iRaceDeck Default" } },
+      } as never);
+
+      expect(notifyProfileVisible).toHaveBeenCalledWith("dev-1", "iRaceDeck Default");
+    });
+
+    it("does not report a host profile when the marker is empty", async () => {
+      const action = new SwitchProfile();
+
+      await action.onWillAppear({ action: keyAction(), payload: { settings: {} } } as never);
+
+      expect(notifyProfileVisible).not.toHaveBeenCalled();
     });
   });
 });
