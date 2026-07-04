@@ -18,18 +18,19 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
-import type {
-  IDeckActionContext,
-  IDeckActionHandler,
-  IDeckDialDownEvent,
-  IDeckDialRotateEvent,
-  IDeckDialUpEvent,
-  IDeckDidReceiveSettingsEvent,
-  IDeckKeyDownEvent,
-  IDeckKeyUpEvent,
-  IDeckPlatformAdapter,
-  IDeckWillAppearEvent,
-  IDeckWillDisappearEvent,
+import {
+  type IDeckActionContext,
+  type IDeckActionHandler,
+  type IDeckDialDownEvent,
+  type IDeckDialRotateEvent,
+  type IDeckDialUpEvent,
+  type IDeckDidReceiveSettingsEvent,
+  type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
+  type IDeckPlatformAdapter,
+  type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
+  requestProfileSwitch,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -185,7 +186,10 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     const profile = typeof message.profile === "string" ? message.profile : undefined;
     const page = typeof message.page === "number" ? message.page : undefined;
 
-    void this.switchToProfile(deviceId, profile, page);
+    // Route through the deck-core switcher singleton (not this.switchToProfile
+    // directly) so the switch is recorded in the per-device profile history and
+    // the Switch Profile "Back to previous" mode can walk back to it (#762).
+    void requestProfileSwitch(deviceId, profile, page);
   }
 
   onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void {

@@ -321,6 +321,7 @@ export {
   _resetProfileSwitcher,
   initProfileSwitcher,
   isProfileSwitcherInitialized,
+  notifyProfileVisible,
   requestProfileSwitch,
   requestProfileSwitchBack,
   type ProfileSwitcher,

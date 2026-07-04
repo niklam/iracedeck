@@ -1,5 +1,6 @@
 import type StreamDeck from "@elgato/streamdeck";
-import { describe, expect, it, vi } from "vitest";
+import { _resetProfileSwitcher, initProfileSwitcher, requestProfileSwitchBack } from "@iracedeck/deck-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ElgatoPlatformAdapter } from "./adapter.js";
 
@@ -55,9 +56,22 @@ describe("ElgatoPlatformAdapter.switchToProfile", () => {
 });
 
 describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () => {
+  afterEach(() => {
+    _resetProfileSwitcher();
+  });
+
+  /** Create the adapter and wire the profile switcher exactly as plugin.ts does. */
+  function setup() {
+    const mock = createSdMock();
+    const adapter = new ElgatoPlatformAdapter(mock.sd);
+
+    initProfileSwitcher((deviceId, profile, page) => adapter.switchToProfile(deviceId, profile, page));
+
+    return mock;
+  }
+
   it("switches profile for the PI's device on a switchToProfile message", () => {
-    const { sd, switchToProfile, emitSendToPlugin } = createSdMock();
-    new ElgatoPlatformAdapter(sd);
+    const { switchToProfile, emitSendToPlugin } = setup();
 
     emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Replay" });
 
@@ -65,8 +79,7 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
   });
 
   it("forwards an optional page", () => {
-    const { sd, switchToProfile, emitSendToPlugin } = createSdMock();
-    new ElgatoPlatformAdapter(sd);
+    const { switchToProfile, emitSendToPlugin } = setup();
 
     emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default", page: 3 });
 
@@ -74,17 +87,26 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
   });
 
   it("defaults the profile to undefined when omitted (returns to the default profile)", () => {
-    const { sd, switchToProfile, emitSendToPlugin } = createSdMock();
-    new ElgatoPlatformAdapter(sd);
+    const { switchToProfile, emitSendToPlugin } = setup();
 
     emitSendToPlugin("dev-1", { event: "switchToProfile" });
 
     expect(switchToProfile).toHaveBeenCalledWith("dev-1", undefined, undefined);
   });
 
+  it("records accordion switches in the profile history so Back can walk them (#762)", async () => {
+    const { switchToProfile, emitSendToPlugin } = setup();
+
+    emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Default" });
+    emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Replay" });
+
+    await requestProfileSwitchBack("dev-9");
+
+    expect(switchToProfile).toHaveBeenLastCalledWith("dev-9", "iRaceDeck Default", undefined);
+  });
+
   it("ignores unrelated events and non-object payloads", () => {
-    const { sd, switchToProfile, emitSendToPlugin } = createSdMock();
-    new ElgatoPlatformAdapter(sd);
+    const { switchToProfile, emitSendToPlugin } = setup();
 
     emitSendToPlugin("dev-1", { event: "somethingElse" });
     emitSendToPlugin("dev-1", "not-an-object");
