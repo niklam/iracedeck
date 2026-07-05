@@ -873,6 +873,18 @@ describe("FuelService dial surface", () => {
     await action.onDialUp(basicEvent(ctx, settings) as never);
   }
 
+  describe("deck-app dial image", () => {
+    it("pushes the two-line name icon on appear (#775)", async () => {
+      const ctx = dialContext("img1");
+      await appear(ctx);
+
+      const img = decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string);
+
+      expect(img).toContain(">FUEL<");
+      expect(img).toContain(">SERVICE<");
+    });
+  });
+
   describe("onDialRotate — step scaling & clamping", () => {
     it("scales a single positive tick by step size (metric)", async () => {
       const ctx = dialContext("d1");

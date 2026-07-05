@@ -34,6 +34,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
+import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -733,6 +734,10 @@ export class FuelDialSurface {
     const ctx = this.ensureContext(action, settings);
     // Seed the dialed value from current pit fuel request on appear.
     this.seedFromTelemetry(ctx, true);
+
+    // The deck-app image for the dial: just the action name (#775). Without
+    // this the app falls back to keypad iconography for the dial slot.
+    void action.setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }));
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);

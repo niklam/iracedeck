@@ -390,6 +390,16 @@ describe("SetupBrakes dial surface", () => {
       expect(ctx.setTriggerDescription).toHaveBeenCalled();
     });
 
+    it("pushes the two-line name icon as the deck-app dial image (#775)", async () => {
+      const ctx = dialContext("f7");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      const img = decodeURIComponent(ctx.setImage.mock.calls.at(-1)?.[0] as string);
+
+      expect(img).toContain(">SETUP<");
+      expect(img).toContain(">BRAKES<");
+    });
+
     it("throttles feedback to the change-render window so the setFeedback cap holds", async () => {
       const ctx = dialContext("f4");
       mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54 });

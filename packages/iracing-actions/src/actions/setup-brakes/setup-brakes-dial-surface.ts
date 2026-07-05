@@ -21,6 +21,7 @@ import {
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
+import { renderDialNameIcon } from "../../shared/dial-name-icon.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
   type GestureSlot,
@@ -252,6 +253,10 @@ export class SetupBrakesDialSurface {
 
   async willAppear(action: IDeckActionContext, settings: SetupBrakesSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
+
+    // The deck-app image for the dial: just the action name (#775). Without
+    // this the app falls back to keypad iconography for the dial slot.
+    void action.setImage(renderDialNameIcon({ line1: "SETUP", line2: "BRAKES", backgroundColor: "#3a2a1a" }));
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
