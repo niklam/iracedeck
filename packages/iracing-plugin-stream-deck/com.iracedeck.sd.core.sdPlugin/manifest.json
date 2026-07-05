@@ -25,11 +25,20 @@
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
+      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar); on a dial: rotate for volume, push to talk or mute",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/audio-controls/dial",
+        "layout": "layouts/audio-controls.json",
+        "TriggerDescription": {
+          "Rotate": "Adjust volume",
+          "Push": "Push to talk / mute"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/audio-controls/key",

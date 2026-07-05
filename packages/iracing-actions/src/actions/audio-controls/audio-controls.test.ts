@@ -14,6 +14,17 @@ const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolume
 vi.mock("../../audio/audio-volume.js", () => ({
   stepRadarVolume: mockStepRadarVolume,
   stepRaceEngineerVolume: mockStepRaceEngineerVolume,
+  stepRadarVolumeBy: vi.fn(() => 50),
+  stepRaceEngineerVolumeBy: vi.fn(() => 50),
+  readRadarVolume: vi.fn(() => 50),
+  readRaceEngineerVolume: vi.fn(() => 50),
+  isRadarEnabled: vi.fn(() => true),
+  isRaceEngineerEnabled: vi.fn(() => true),
+}));
+
+vi.mock("../../audio/audio-toggles.js", () => ({
+  toggleRaceEngineerFeature: vi.fn(() => true),
+  toggleRadarFeature: vi.fn(() => true),
 }));
 
 vi.mock("@iracedeck/icons/audio-controls/race-engineer-volume-up.svg", () => ({
@@ -107,6 +118,9 @@ vi.mock("@iracedeck/deck-core", () => ({
     stopRole: vi.fn().mockResolvedValue(true),
   })),
   getGlobalTitleSettings: vi.fn(() => ({})),
+  onGlobalSettingsChange: vi.fn(() => () => {}),
+  svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+  applyBindingWarning: vi.fn((content: string) => content),
   resolveIconColors: vi.fn((_svg, _global, _overrides) => ({})),
   resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
     enabled: false,
@@ -134,36 +148,21 @@ vi.mock("@iracedeck/deck-core", () => ({
   ),
 }));
 
-/** Create a minimal fake event with the given action ID and settings. */
+/**
+ * Create a minimal fake KEYPAD event with the given action ID and settings.
+ * Dial behavior is covered in `audio-dial-surface.test.ts` (#782), which
+ * drives the action with dial-shaped contexts and real-zod settings.
+ */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
   return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+    action: { id: actionId, isDial: () => false, isKey: () => true, setTitle: vi.fn(), setImage: vi.fn() },
     payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial rotate event. */
-function fakeDialRotateEvent(actionId: string, settings: Record<string, unknown>, ticks: number) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings, ticks },
   };
 }
 
 /** Create a minimal fake key up event. */
 function fakeKeyUpEvent(actionId: string, settings: Record<string, unknown> = {}) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings },
-  };
-}
-
-/** Create a minimal fake dial up event. */
-function fakeDialUpEvent(actionId: string, settings: Record<string, unknown> = {}) {
-  return {
-    action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
-    payload: { settings },
-  };
+  return fakeEvent(actionId, settings);
 }
 
 describe("AudioControls", () => {
@@ -347,13 +346,6 @@ describe("AudioControls", () => {
       expect(mockTapBinding).toHaveBeenCalledWith("audioMasterVolumeDown");
     });
 
-    it("should call tapGlobalBinding on dialDown", async () => {
-      // For voice-chat category, dialDown always sends mute regardless of action setting
-      await action.onDialDown(fakeEvent("action-1", { category: "voice-chat", action: "volume-up" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
-    });
-
     it("should call tapGlobalBinding even when no key binding is configured", async () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "voice-chat", action: "volume-up" }) as any);
 
@@ -370,53 +362,6 @@ describe("AudioControls", () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "voice-chat", action: "mute" }) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
-    });
-  });
-
-  describe("encoder behavior", () => {
-    let action: AudioControls;
-
-    beforeEach(() => {
-      action = new AudioControls();
-    });
-
-    it("should call tapGlobalBinding for volume-up on clockwise rotation", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "voice-chat", action: "mute" }, 1) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeUp");
-    });
-
-    it("should call tapGlobalBinding for volume-down on counter-clockwise rotation", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "voice-chat", action: "mute" }, -1) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeDown");
-    });
-
-    it("should call tapGlobalBinding for volume-up for master on clockwise rotation", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { category: "master", action: "volume-down" }, 2) as any,
-      );
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioMasterVolumeUp");
-    });
-
-    it("should call tapGlobalBinding for mute on dial press for voice-chat", async () => {
-      await action.onDialDown(fakeEvent("action-1", { category: "voice-chat", action: "volume-down" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
-    });
-
-    it("should call tapGlobalBinding for configured action on dial press for master (no mute)", async () => {
-      await action.onDialDown(fakeEvent("action-1", { category: "master", action: "volume-down" }) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioMasterVolumeDown");
-    });
-
-    it("should always control volume on rotation regardless of action setting", async () => {
-      // Even when action is set to "mute", rotation should send volume-up
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "voice-chat", action: "mute" }, 1) as any);
-
-      expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeUp");
     });
   });
 
@@ -445,25 +390,6 @@ describe("AudioControls", () => {
 
       expect(mockHoldBinding).not.toHaveBeenCalled();
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeUp");
-    });
-
-    it("should call holdBinding on dialDown for push-to-talk", async () => {
-      await action.onDialDown(fakeEvent("action-1", { category: "push-to-talk" }) as any);
-
-      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "audioControlsPushToTalk");
-    });
-
-    it("should call releaseBinding on dialUp for push-to-talk", async () => {
-      await action.onDialUp(fakeDialUpEvent("action-1", { category: "push-to-talk" }) as any);
-
-      expect(mockReleaseBinding).toHaveBeenCalledWith("action-1");
-    });
-
-    it("should ignore dial rotation for push-to-talk", async () => {
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "push-to-talk" }, 1) as any);
-
-      expect(mockTapBinding).not.toHaveBeenCalled();
-      expect(mockHoldBinding).not.toHaveBeenCalled();
     });
 
     it("should release binding on willDisappear", async () => {
@@ -533,24 +459,6 @@ describe("AudioControls", () => {
       await action.onKeyDown(fakeEvent("action-1", { category: "radar", action: "volume-down" }) as any);
 
       expect(mockStepRadarVolume).toHaveBeenCalledWith("down");
-    });
-
-    it("ignores dial rotation for internal categories (dial out of scope)", async () => {
-      await action.onDialRotate(
-        fakeDialRotateEvent("action-1", { category: "race-engineer", action: "volume-up" }, 1) as any,
-      );
-      await action.onDialRotate(fakeDialRotateEvent("action-1", { category: "radar", action: "volume-up" }, -1) as any);
-
-      expect(mockStepRaceEngineerVolume).not.toHaveBeenCalled();
-      expect(mockStepRadarVolume).not.toHaveBeenCalled();
-      expect(mockTapBinding).not.toHaveBeenCalled();
-    });
-
-    it("ignores dial press for internal categories", async () => {
-      await action.onDialDown(fakeEvent("action-1", { category: "radar", action: "volume-up" }) as any);
-
-      expect(mockStepRadarVolume).not.toHaveBeenCalled();
-      expect(mockTapBinding).not.toHaveBeenCalled();
     });
   });
 });
