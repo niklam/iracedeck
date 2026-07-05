@@ -18,8 +18,13 @@
  * grid. The crossing tracked is therefore the pace car's
  * (`CarIdxLapDistPct[paceCarIdx]`, resolved from `DriverInfo.PaceCarIdx` /
  * `CarIsPaceCar` at the formation's entry edge), with the player's own
- * `LapDistPct` as the fallback whenever the pace car can't be resolved or its
- * per-car telemetry is invalid — missing data must never silence the cue.
+ * `LapDistPct` as the fallback whenever the pace car can't be resolved, its
+ * per-car telemetry is invalid, or it has peeled into the pits
+ * (`CarIdxTrackSurface` — a pace car in pit lane still passes the timing
+ * line at most tracks, which would false-fire on a 1-lap formation) —
+ * missing data must never silence the cue. The source flips back to the
+ * pace car when its data returns valid, and every flip re-anchors the
+ * baseline without folding a delta across the jump.
  *
  * **Distinguishing the completion crossing from the grid release.** The grid
  * release also crosses S/F as the field is let go into `ParadeLaps`. Both
@@ -41,7 +46,7 @@
  * synthesizes the cue (same caveat as the gantry bits). State resets on any
  * non-`ParadeLaps` tick, so the next session's formation re-arms cleanly.
  */
-import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import { resolveStandingStart } from "../start-lights.js";
 import type { TranslatorState } from "../state.js";
@@ -98,17 +103,6 @@ export function resolvePaceCarIdx(sessionInfo: Record<string, unknown> | null): 
   return null;
 }
 
-/** The tracked car's lap-distance fraction for this tick — pace car or player. */
-function readTrackedDist(state: TranslatorState, telemetry: TelemetryData): unknown {
-  if (state.paceLapSourceCarIdx !== null) {
-    const perCar = telemetry.CarIdxLapDistPct;
-
-    return Array.isArray(perCar) ? perCar[state.paceLapSourceCarIdx] : undefined;
-  }
-
-  return telemetry.LapDistPct;
-}
-
 export function diffPaceLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -135,39 +129,44 @@ export function diffPaceLaps(
     state.onePaceLapToGoFired = false;
     state.lastTickInParadeLaps = false;
     state.paceLapSourceCarIdx = null;
+    state.paceLapPaceCarIdx = null;
 
     return;
   }
 
-  // On the (potential) entry tick, pick the crossing source for this formation
-  // (issue #773): the pace car when it resolves AND reports a valid distance
-  // this tick, the player otherwise. Decided once at the entry edge so the
-  // accrual never mixes two cars' positions.
+  // Resolve the pace car once per formation attempt: (potential) entry ticks
+  // re-resolve from session YAML; every later tick reuses the stored idx.
   if (!state.lastTickInParadeLaps) {
-    const paceCarIdx = resolvePaceCarIdx(sessionInfo);
-    const perCar = telemetry.CarIdxLapDistPct;
-
-    state.paceLapSourceCarIdx =
-      paceCarIdx !== null && Array.isArray(perCar) && isValidDist(perCar[paceCarIdx]) ? paceCarIdx : null;
+    state.paceLapPaceCarIdx = resolvePaceCarIdx(sessionInfo);
   }
 
-  let lapDistPct = readTrackedDist(state, telemetry);
+  // The pace car is a usable crossing source this tick when it reports a
+  // valid distance AND is on the racing surface. The pit gate reads
+  // `CarIdxTrackSurface` (the reliable per-car pit signal — NOT
+  // `CarIdxOnPitRoad`, which real telemetry shows reading true for on-track
+  // cars; see `diff/race-finish.ts`): the pace car peels into pit lane at
+  // the end of the FINAL pace lap, and pit lane passes the timing line at
+  // most tracks — tracking it there would wrap S/F with a full lap accrued
+  // and false-fire "one pace lap to go" on a 1-lap formation moments before
+  // the green. A missing surface array is treated as on-track (don't punish
+  // missing data).
+  const perCar = telemetry.CarIdxLapDistPct;
+  const paceDist =
+    state.paceLapPaceCarIdx !== null && Array.isArray(perCar) ? perCar[state.paceLapPaceCarIdx] : undefined;
+  const paceSurface =
+    state.paceLapPaceCarIdx !== null && Array.isArray(telemetry.CarIdxTrackSurface)
+      ? telemetry.CarIdxTrackSurface[state.paceLapPaceCarIdx]
+      : undefined;
+  const paceInPits = paceSurface === TrkLoc.InPitStall || paceSurface === TrkLoc.AproachingPits;
+  const paceUsable = isValidDist(paceDist) && !paceInPits;
 
-  // Mid-parade loss of the pace car's telemetry — switch to the player and
-  // re-anchor the baseline at the player's position, WITHOUT folding a delta
-  // across the source jump (which could read as a phantom S/F wrap). Accrued
-  // distance carries over: both cars measure distance driven since the
-  // formation started, and the 0.5-lap guard tolerates the small offset.
-  if (state.paceLapSourceCarIdx !== null && state.lastTickInParadeLaps && !isValidDist(lapDistPct)) {
-    const playerDist = telemetry.LapDistPct;
-
-    if (isValidDist(playerDist)) {
-      state.paceLapSourceCarIdx = null;
-      state.paceLapLastDistPct = playerDist;
-    }
-
-    return;
-  }
+  // Desired source this tick — the pace car whenever usable, the player
+  // otherwise. A transient telemetry blip downgrades to the player only
+  // until the pace car's data returns valid (the switch is NOT one-way —
+  // a one-tick hiccup must not push the cue back to the player's own late
+  // crossing for the rest of the formation).
+  const desiredSourceCarIdx = paceUsable ? state.paceLapPaceCarIdx : null;
+  const trackedDist = desiredSourceCarIdx !== null ? (paceDist as number) : telemetry.LapDistPct;
 
   // Need a valid, finite, non-negative lap distance to track crossings. `NaN`
   // passes `typeof === "number"` (and `NaN < 0` is false), so check
@@ -176,13 +175,16 @@ export function diffPaceLaps(
   // `lastTickInParadeLaps` here: on the entry tick that would consume the entry
   // edge and the diff would never arm — leave it so the next valid tick is still
   // seen as the `*→ParadeLaps` entry.
-  if (!isValidDist(lapDistPct)) {
+  if (!isValidDist(trackedDist)) {
     return;
   }
+
+  const lapDistPct = trackedDist;
 
   // Entry edge — arm on a genuine `*→ParadeLaps` transition and anchor the
   // distance baseline. The grid-release crossing then accrues from ~0.
   if (!state.lastTickInParadeLaps) {
+    state.paceLapSourceCarIdx = desiredSourceCarIdx;
     state.paceLapArmed = true;
     state.paceLapAccrued = 0;
     state.paceLapLastDistPct = lapDistPct;
@@ -192,6 +194,18 @@ export function diffPaceLaps(
   }
 
   if (!state.paceLapArmed) return;
+
+  // Source flip (either direction) — re-anchor the baseline at the new
+  // source's position WITHOUT folding a delta across the jump, which could
+  // read as a phantom S/F wrap with enough accrued to false-fire. Accrued
+  // distance carries over: both cars measure distance driven since the
+  // formation started, and the 0.5-lap guard tolerates the small offset.
+  if (desiredSourceCarIdx !== state.paceLapSourceCarIdx) {
+    state.paceLapSourceCarIdx = desiredSourceCarIdx;
+    state.paceLapLastDistPct = lapDistPct;
+
+    return;
+  }
 
   // Forward distance since the last tick. A small backward `LapDistPct` jitter
   // (the packed grid concertinas the longitudinal position back a touch) must

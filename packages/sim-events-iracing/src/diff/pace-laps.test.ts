@@ -6,7 +6,7 @@
  * the green is not yet held — NOT on the grid-release crossing (≈0 accrued) and
  * never on a standing start or after the race finishes.
  */
-import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
@@ -31,6 +31,7 @@ function feed(
   lapDistPct: number,
   sessionFlags: number = FORMATION_FLAGS,
   carIdxLapDistPct?: Array<number | undefined>,
+  carIdxTrackSurface?: number[],
 ): PendingEvent[] {
   const events: PendingEvent[] = [];
   const telemetry = {
@@ -38,6 +39,7 @@ function feed(
     LapDistPct: lapDistPct,
     SessionFlags: sessionFlags,
     ...(carIdxLapDistPct !== undefined ? { CarIdxLapDistPct: carIdxLapDistPct } : {}),
+    ...(carIdxTrackSurface !== undefined ? { CarIdxTrackSurface: carIdxTrackSurface } : {}),
   } as unknown as TelemetryData;
   diffPaceLaps(state, telemetry, sessionInfo, (e) => events.push(e));
 
@@ -285,6 +287,45 @@ describe("diffPaceLaps — pace car crossing source (issue #773)", () => {
     feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.99, FORMATION_FLAGS, [-1, 0.99]);
     const events = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.02, FORMATION_FLAGS, [-1, 0.02]);
     expect(events).toEqual([ONE_PACE_LAP]);
+  });
+
+  it("re-acquires the pace car after a transient telemetry blip", () => {
+    const state = createInitialState();
+    feed(state, ROLLING_PACE, SessionState.Warmup, 0.5, FORMATION_FLAGS, [0.3, 0.1]);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.1, FORMATION_FLAGS, [0.3, 0.1]); // entry — pace car
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.3, FORMATION_FLAGS, [0.9, 0.3]); // accrued 0.6
+
+    // One-tick blip — downgrade to the player (re-anchored).
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.35, FORMATION_FLAGS, [-1, 0.35]);
+    expect(state.paceLapSourceCarIdx).toBeNull();
+
+    // Pace car data returns — the source flips straight back (re-anchored),
+    // so the cue still keys on the pace car's crossing, not the player's.
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.4, FORMATION_FLAGS, [0.93, 0.4]);
+    expect(state.paceLapSourceCarIdx).toBe(0);
+
+    const events = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.45, FORMATION_FLAGS, [0.02, 0.45]);
+    expect(events).toEqual([ONE_PACE_LAP]);
+  });
+
+  it("ignores the pace car once it peels into pit lane — no false fire on a 1-lap formation", () => {
+    const state = createInitialState();
+    const onTrack = [TrkLoc.OnTrack, TrkLoc.OnTrack];
+    const paceInPits = [TrkLoc.AproachingPits, TrkLoc.OnTrack];
+    feed(state, ROLLING_PACE, SessionState.Warmup, 0.5, FORMATION_FLAGS, [0.3, 0.1], onTrack);
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.1, FORMATION_FLAGS, [0.3, 0.1], onTrack); // entry
+    feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.5, FORMATION_FLAGS, [0.9, 0.5], onTrack); // accrued 0.6
+
+    // The pace car dives into pit lane at the end of the single pace lap —
+    // the source flips to the player (re-anchored) and the pace car's
+    // pit-lane pass of the timing line no longer counts as a crossing.
+    const peel = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.55, FORMATION_FLAGS, [0.95, 0.55], paceInPits);
+    expect(peel).toEqual([]);
+    expect(state.paceLapSourceCarIdx).toBeNull();
+
+    const pitPass = feed(state, ROLLING_PACE, SessionState.ParadeLaps, 0.6, FORMATION_FLAGS, [0.02, 0.6], paceInPits);
+    expect(pitPass).toEqual([]);
+    expect(state.onePaceLapToGoFired).toBe(false);
   });
 
   it("resolvePaceCarIdx prefers PaceCarIdx, falls back to the scan, and returns null otherwise", () => {
