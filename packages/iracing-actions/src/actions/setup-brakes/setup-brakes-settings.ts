@@ -60,10 +60,11 @@ export type SetupBrakesDialSetting = (typeof ROTATION_SETTINGS)[number];
 export const GESTURE_ACTIONS = ["toggle-abs", "none"] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
-type DirectionType = "increase" | "decrease";
+/** The +/- direction of a directional brake adjustment (shared by both surfaces). */
+export type SetupBrakesDirection = "increase" | "decrease";
 
 /** Resolves the shared Setup Brakes global key binding for a dial setting + direction. */
-export function rotationKey(setting: SetupBrakesDialSetting, direction: DirectionType): string | undefined {
+export function rotationKey(setting: SetupBrakesDialSetting, direction: SetupBrakesDirection): string | undefined {
   return SETUP_BRAKES_GLOBAL_KEYS[`${setting}-${direction}`];
 }
 
@@ -88,6 +89,31 @@ export const DialSettings = z
   .prefault({});
 
 export type DialSettings = z.infer<typeof DialSettings>;
+
+/**
+ * Seeds the dial config from a pre-#775 encoder placement. Before the merge,
+ * dial events drove the flat keypad `setting` (the bare handlers Ulanzi
+ * encoder placements used in the 2.0 alphas); afterwards they read
+ * `dial.setting`. When a dial instance appears with a persisted flat `setting`
+ * that is a valid rotation value and no `dial` object yet, carry the choice
+ * over so the knob keeps adjusting what the user configured. Returns the
+ * seeded raw settings to persist, or null when no migration applies (fresh
+ * instances have no flat `setting`; keypad instances never reach this — the
+ * caller only invokes it for dial contexts).
+ */
+export function seedDialFromLegacySetting(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const obj = raw as Record<string, unknown>;
+
+  if (obj.dial !== undefined) return null;
+
+  const legacy = obj.setting;
+
+  if (typeof legacy !== "string" || !(ROTATION_SETTINGS as readonly string[]).includes(legacy)) return null;
+
+  return { ...obj, dial: { setting: legacy } };
+}
 
 export const SetupBrakesSettings = CommonSettings.extend({
   setting: z
@@ -122,7 +148,11 @@ export const SetupBrakesSettings = CommonSettings.extend({
     .union([z.boolean(), z.string()])
     .transform((v) => v === true || v === "true")
     .default(true),
-  dial: DialSettings,
+  // catch: garbage inside the dial subtree (e.g. a value written by a newer
+  // plugin version after a downgrade) degrades to dial defaults instead of
+  // failing the whole parse — which would silently reset a KEYPAD instance's
+  // behavior to brake-bias via the full-defaults fallback below.
+  dial: DialSettings.catch(() => DialSettings.parse({})),
 });
 
 export type SetupBrakesSettings = z.infer<typeof SetupBrakesSettings>;

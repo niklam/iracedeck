@@ -27,6 +27,7 @@ import {
   rotationKey,
   SETUP_BRAKES_GLOBAL_KEYS,
   type SetupBrakesDialSetting,
+  type SetupBrakesDirection,
   type SetupBrakesSettings,
 } from "./setup-brakes-settings.js";
 
@@ -88,8 +89,6 @@ const MODE_LABEL: Record<SetupBrakesDialSetting, string> = {
   "engine-braking": "Engine Braking",
   "abs-adjust": "ABS",
 };
-
-type DirectionType = "increase" | "decrease";
 
 /**
  * @internal Exported for testing
@@ -287,7 +286,7 @@ export class SetupBrakesDialSurface {
       ctx.rotatedWhilePressed = true;
     }
 
-    const direction: DirectionType = ticks > 0 ? "increase" : "decrease";
+    const direction: SetupBrakesDirection = ticks > 0 ? "increase" : "decrease";
     await this.dispatchRotation(ctx, direction);
   }
 
@@ -355,7 +354,26 @@ export class SetupBrakesDialSurface {
     // lastRenderSig, so the throttled feedback still fires next window.
     if (Date.now() - ctx.lastChangeRenderAt < CHANGE_RENDER_MIN_INTERVAL_MS) return;
 
+    // Advance the baseline SYNCHRONOUSLY before the async render: 60 Hz ticks
+    // arriving while the setFeedback push is still in flight would otherwise
+    // each fire another push inside the same 100 ms window, defeating the
+    // ≤10 setFeedback/sec/dial throttle.
+    ctx.lastRenderSig = sig;
+    ctx.lastChangeRenderAt = Date.now();
     void this.renderFeedback(ctx);
+  }
+
+  /**
+   * Re-renders every dial context (settings-memo busted). Called by the owning
+   * action on global-settings changes so the strip's #612 missing-binding
+   * warning tracks live binding configuration even while iRacing is offline
+   * (no telemetry ticks arrive to trigger the render-on-change path).
+   */
+  refreshAll(): void {
+    for (const ctx of this.contextsState.values()) {
+      ctx.lastRenderSig = null;
+      void this.renderFeedback(ctx);
+    }
   }
 
   private ensureContext(action: IDeckActionContext, settings: SetupBrakesSettings): SetupBrakesDialContext {
@@ -380,7 +398,7 @@ export class SetupBrakesDialSurface {
   }
 
   /** Taps the shared Setup Brakes increase/decrease binding for the bound setting. */
-  private async dispatchRotation(ctx: SetupBrakesDialContext, direction: DirectionType): Promise<void> {
+  private async dispatchRotation(ctx: SetupBrakesDialContext, direction: SetupBrakesDirection): Promise<void> {
     const key = rotationKey(ctx.settings.dial.setting, direction);
 
     if (!key) {

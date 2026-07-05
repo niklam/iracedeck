@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { parseSetupBrakesSettings, rotationKey, SETUP_BRAKES_GLOBAL_KEYS } from "./setup-brakes-settings.js";
+import {
+  parseSetupBrakesSettings,
+  rotationKey,
+  seedDialFromLegacySetting,
+  SETUP_BRAKES_GLOBAL_KEYS,
+} from "./setup-brakes-settings.js";
 
 vi.mock("@iracedeck/deck-core", async () => {
   // REAL zod so parse/defaults/prefault behave exactly like production.
@@ -68,6 +73,42 @@ describe("setup-brakes settings", () => {
 
       expect(parsed.setting).toBe("brake-bias");
       expect(parsed.dial.pressAction).toBe("toggle-abs");
+    });
+
+    it("degrades dial garbage to dial defaults without resetting the keypad surface", () => {
+      // A broken dial subtree must not flip a keypad ABS Toggle button to
+      // brake-bias via the full-defaults fallback.
+      const parsed = parseSetupBrakesSettings({ setting: "abs-toggle", dial: { setting: "bogus" } });
+
+      expect(parsed.setting).toBe("abs-toggle");
+      expect(parsed.dial.setting).toBe("brake-bias");
+      expect(parsed.dial.pressAction).toBe("toggle-abs");
+    });
+  });
+
+  describe("seedDialFromLegacySetting (#775 migration)", () => {
+    it("seeds dial.setting from a valid flat rotation setting when no dial object is persisted", () => {
+      expect(seedDialFromLegacySetting({ setting: "engine-braking", direction: "decrease" })).toEqual({
+        setting: "engine-braking",
+        direction: "decrease",
+        dial: { setting: "engine-braking" },
+      });
+    });
+
+    it("returns null when a dial object already exists", () => {
+      expect(seedDialFromLegacySetting({ setting: "engine-braking", dial: {} })).toBeNull();
+    });
+
+    it("returns null for non-rotation flat settings (View modes, abs-toggle)", () => {
+      expect(seedDialFromLegacySetting({ setting: "view-brake-bias" })).toBeNull();
+      expect(seedDialFromLegacySetting({ setting: "abs-toggle" })).toBeNull();
+    });
+
+    it("returns null for fresh or non-object settings", () => {
+      expect(seedDialFromLegacySetting({})).toBeNull();
+      expect(seedDialFromLegacySetting(undefined)).toBeNull();
+      expect(seedDialFromLegacySetting(null)).toBeNull();
+      expect(seedDialFromLegacySetting([1])).toBeNull();
     });
   });
 });

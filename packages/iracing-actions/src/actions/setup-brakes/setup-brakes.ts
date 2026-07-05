@@ -16,6 +16,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -45,7 +46,9 @@ import {
 import { SetupBrakesDialSurface } from "./setup-brakes-dial-surface.js";
 import {
   parseSetupBrakesSettings,
+  seedDialFromLegacySetting,
   SETUP_BRAKES_GLOBAL_KEYS,
+  type SetupBrakesDirection,
   type SetupBrakesSettings,
 } from "./setup-brakes-settings.js";
 
@@ -65,8 +68,6 @@ type SetupBrakesAdjustSetting =
  * IDs in `setup-view.ts`. Code paths narrow back to `SetupBrakesAdjustSetting` after
  * `isViewSetting` gates the View branch; nothing needs the full union as a name.
  */
-
-type DirectionType = "increase" | "decrease";
 
 /** Controls that have +/- direction */
 const DIRECTIONAL_CONTROLS: Set<SetupBrakesAdjustSetting> = new Set([
@@ -120,7 +121,7 @@ const SETUP_BRAKES_TITLES: Record<string, string> = {
  * Resolves the flat icon lookup key for a given adjustment setting and direction.
  * View sub-modes use a separate render path (`generateSetupViewSvg`) and never reach this.
  */
-function resolveIconKey(setting: SetupBrakesAdjustSetting, direction: DirectionType): string {
+function resolveIconKey(setting: SetupBrakesAdjustSetting, direction: SetupBrakesDirection): string {
   if (DIRECTIONAL_CONTROLS.has(setting)) {
     return `${setting}-${direction}`;
   }
@@ -202,11 +203,31 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 
+  /**
+   * Keeps the dial strips' #612 missing-binding warning live: telemetry ticks
+   * only arrive while iRacing is connected, so without this a binding
+   * configured (or removed) with the sim closed would leave the strip's
+   * warning state frozen until the next connect or settings change. The
+   * subscription lives for the plugin's lifetime, like the action instance.
+   */
+  private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SetupBrakesSettings>): Promise<void> {
     await super.onWillAppear(ev);
-    const settings = this.parseSettings(ev.payload.settings);
+    let settings = this.parseSettings(ev.payload.settings);
 
     if (ev.action.isDial()) {
+      // One-shot #775 migration: a pre-merge encoder placement (Ulanzi 2.0
+      // alphas) drove the flat keypad `setting` — carry a valid rotation value
+      // over to `dial.setting` so the knob keeps adjusting what the user
+      // configured, and persist so the PI shows it.
+      const seeded = seedDialFromLegacySetting(ev.payload.settings);
+
+      if (seeded) {
+        await ev.action.setSettings(seeded);
+        settings = this.parseSettings(seeded);
+      }
+
       await this.dialSurface.willAppear(ev.action, settings);
       this.sdkController.subscribe(ev.action.id, (telemetry) => {
         this.dialSurface.onTelemetry(ev.action.id, telemetry);
@@ -292,8 +313,8 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
       return;
     }
 
-    const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
-    const longDir: DirectionType = tapDir === "increase" ? "decrease" : "increase";
+    const tapDir: SetupBrakesDirection = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+    const longDir: SetupBrakesDirection = tapDir === "increase" ? "decrease" : "increase";
     const direction = this.dualPress.computeOutcome(ev.action.id, tapDir, longDir);
 
     if (direction === undefined) {
@@ -350,7 +371,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
       // readiness overlay tracks that binding. (Long-press fires the opposite,
       // but a single chip can only show one — pick the tap.)
       const adjustMode = getAdjustmentModeForView(settings.setting);
-      const tapDir: DirectionType = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
+      const tapDir: SetupBrakesDirection = getDualPressDirections() === "tap-increases" ? "increase" : "decrease";
       const activeKey = adjustMode ? (SETUP_BRAKES_GLOBAL_KEYS[`${adjustMode}-${tapDir}`] ?? null) : null;
       this.setActiveBinding(activeKey);
 
@@ -364,7 +385,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     }
   }
 
-  private async executeSetting(setting: SetupBrakesAdjustSetting, direction: DirectionType): Promise<void> {
+  private async executeSetting(setting: SetupBrakesAdjustSetting, direction: SetupBrakesDirection): Promise<void> {
     const settingKey = this.resolveGlobalKey(setting, direction);
 
     if (!settingKey) {
@@ -376,7 +397,7 @@ export class SetupBrakes extends ConnectionStateAwareAction<SetupBrakesSettings>
     await this.tapBinding(settingKey);
   }
 
-  private resolveGlobalKey(setting: SetupBrakesAdjustSetting, direction: DirectionType): string | null {
+  private resolveGlobalKey(setting: SetupBrakesAdjustSetting, direction: SetupBrakesDirection): string | null {
     if (DIRECTIONAL_CONTROLS.has(setting)) {
       const key = `${setting}-${direction}`;
 

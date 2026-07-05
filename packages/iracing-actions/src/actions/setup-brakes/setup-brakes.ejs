@@ -61,11 +61,18 @@
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<% if (locals.platform?.features?.dialFeedback !== false) { %>
 			<div class="ird-supporting-text">
 				Turn the dial to adjust the selected brake setting; the touch strip shows
 				its live value. Both the increase and decrease key bindings must be set
 				below.
 			</div>
+			<% } else { %>
+			<div class="ird-supporting-text">
+				Turn the knob to adjust the selected brake setting. Both the increase and
+				decrease key bindings must be set below.
+			</div>
+			<% } %>
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="toggle-abs">

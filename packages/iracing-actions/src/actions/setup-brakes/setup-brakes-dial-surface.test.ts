@@ -4,13 +4,16 @@ import { buildTriggerDescription, formatDialValue, renderBrakeDialBoxSvg } from 
 import { parseSetupBrakesSettings } from "./setup-brakes-settings.js";
 import { SetupBrakes } from "./setup-brakes.js";
 
-const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold } = vi.hoisted(() => ({
-  mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
-  mockTapBinding: vi.fn().mockResolvedValue(undefined),
-  mockIsBindingMissing: vi.fn(() => false),
-  // Mutable "Long-press threshold" global setting value (ms) for tests.
-  mockDualPressThreshold: { value: 500 },
-}));
+const { mockGetCurrentTelemetry, mockTapBinding, mockIsBindingMissing, mockDualPressThreshold, globalListeners } =
+  vi.hoisted(() => ({
+    mockGetCurrentTelemetry: vi.fn<() => unknown>(() => null),
+    mockTapBinding: vi.fn().mockResolvedValue(undefined),
+    mockIsBindingMissing: vi.fn(() => false),
+    // Mutable "Long-press threshold" global setting value (ms) for tests.
+    mockDualPressThreshold: { value: 500 },
+    // Captured onGlobalSettingsChange listeners (one per constructed action).
+    globalListeners: [] as Array<() => void>,
+  }));
 
 vi.mock("@iracedeck/deck-core", async () => {
   // REAL zod semantics for the extended settings schema (defaults, the `dial`
@@ -48,6 +51,11 @@ vi.mock("@iracedeck/deck-core", async () => {
     },
     getDualPressDirections: vi.fn(() => "tap-increases"),
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
+    onGlobalSettingsChange: vi.fn((listener: () => void) => {
+      globalListeners.push(listener);
+
+      return vi.fn();
+    }),
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -204,6 +212,7 @@ describe("SetupBrakes dial surface", () => {
     mockDualPressThreshold.value = 500;
     mockIsBindingMissing.mockReturnValue(false);
     mockGetCurrentTelemetry.mockReturnValue({ dcBrakeBias: 54, dcABS: 3 });
+    globalListeners.length = 0;
     action = new SetupBrakes();
   });
 
@@ -438,6 +447,59 @@ describe("SetupBrakes dial surface", () => {
 
       expect(decoded).toContain(">ABS<");
       expect(decoded).toContain(">3<");
+    });
+  });
+
+  describe("legacy flat-setting migration (#775)", () => {
+    it("seeds dial.setting from a pre-merge encoder placement's flat setting and persists it", async () => {
+      const ctx = dialContext("m1");
+      // Pre-#775 Ulanzi encoder placement: flat keypad settings, no dial root.
+      const legacy = { setting: "engine-braking", direction: "decrease" };
+      await appear(ctx, legacy);
+
+      expect(ctx.setSettings).toHaveBeenCalledWith({ ...legacy, dial: { setting: "engine-braking" } });
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, { ...legacy, dial: { setting: "engine-braking" } }, 1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesEngineBrakingIncrease");
+    });
+
+    it("does not seed when a dial object is already persisted or the flat setting is not a rotation value", async () => {
+      const ctx1 = dialContext("m2");
+      await appear(ctx1, { setting: "engine-braking", dial: { setting: "brake-bias" } });
+
+      expect(ctx1.setSettings).not.toHaveBeenCalled();
+
+      const ctx2 = dialContext("m3");
+      await appear(ctx2, { setting: "view-brake-bias" });
+
+      expect(ctx2.setSettings).not.toHaveBeenCalled();
+
+      const ctx3 = dialContext("m4");
+      await appear(ctx3, {});
+
+      expect(ctx3.setSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("global-settings refresh", () => {
+    it("re-renders the strip when global settings change so the #612 warning tracks live bindings", async () => {
+      const ctx = dialContext("g1");
+      await appear(ctx, dialSettings({ setting: "brake-bias" }));
+
+      expect(globalListeners.length).toBeGreaterThan(0);
+      ctx.setFeedback.mockClear();
+
+      // The binding was configured while iRacing is offline (no telemetry ticks).
+      mockIsBindingMissing.mockReturnValue(true);
+
+      for (const listener of globalListeners) listener();
+
+      expect(ctx.setFeedback).toHaveBeenCalled();
+      const decoded = decodeURIComponent((ctx.setFeedback.mock.calls.at(-1)?.[0] as { box: string }).box);
+
+      expect(decoded).toContain("binding-warning");
     });
   });
 
