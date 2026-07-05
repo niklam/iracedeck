@@ -24,11 +24,10 @@
       "Name": "Audio Controls",
       "UUID": "com.iracedeck.sd.core.audio-controls",
       "Icon": "imgs/actions/audio-controls/icon",
-      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar); on a knob: rotate for volume, push to talk or mute",
+      "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -196,11 +195,10 @@
       "Name": "Fuel Service",
       "UUID": "com.iracedeck.sd.core.fuel-service",
       "Icon": "imgs/actions/fuel-service/icon",
-      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin); on a knob: set fuel to add, toggle/clear/fill fueling",
+      "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {
@@ -405,11 +403,10 @@
       "Name": "Setup Brakes",
       "UUID": "com.iracedeck.sd.core.setup-brakes",
       "Icon": "imgs/actions/setup-brakes/icon",
-      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking); on a knob: adjust one brake setting, press to toggle ABS",
+      "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
-        "Keypad",
-        "Knob"
+        "Keypad"
       ],
       "States": [
         {

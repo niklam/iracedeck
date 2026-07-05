@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Full control over your pit stop fueling strategy — from a button or a dial. On a regular key, pick a mode: toggle fuel fill with live telemetry feedback, adjust the fuel amount, toggle autofuel, or fine-tune the lap margin. Placed on a **Stream Deck+ dial** (or Mirabox knob), the same action becomes a fuel controller with a live touch-strip readout — see [On a dial](#on-a-dial) below. Every fuel value goes through the iRacing API, so nothing ever opens the chat window.
+Full control over your pit stop fueling strategy — from a button or a dial. On a regular key, pick a mode: toggle fuel fill with live telemetry feedback, adjust the fuel amount, toggle autofuel, or fine-tune the lap margin. Placed on a **Stream Deck+ dial**, the same action becomes a fuel controller with a live touch-strip readout — see [On a dial](#on-a-dial) below. Every fuel value goes through the iRacing API, so nothing ever opens the chat window.
 
 ## Modes
 
@@ -168,7 +168,7 @@ Lower the autofuel lap margin by one. Pressing the button taps the iRacing "Lap 
 
 ## On a dial
 
-Placed on a Stream Deck+ dial (or a Mirabox knob), Fuel Service becomes a fuel controller: a bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. Five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, and you watch the live readout with a continuous two-segment fuel bar on the touch strip. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
+Placed on a Stream Deck+ dial, Fuel Service becomes a fuel controller: a bare turn adjusts fuel — and when autofuel is engaged in iRacing, it adjusts the autofuel lap margin instead. Five configurable gesture slots (Push, Long Press, Push + Turn, Tap Display, Long Touch) each run a fuel action, and you watch the live readout with a continuous two-segment fuel bar on the touch strip. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
 The dial is **modal**, read live from iRacing — never a stored setting. In **manual** mode a bare turn sets fuel; in **autofuel** mode (iRacing's autofuel is on) a bare turn adjusts the autofuel lap margin. The two manual sub-modes are deliberately distinct: **Add Amount** dials a fixed amount to add over the full tank range and shows `+<add> = <total>`, where the displayed add is the fuel iRacing actually banked (read live from telemetry, not the dialed value) and the total reflects live fuel burn; **Target Amount** dials the whole-number total you want after the stop, marks it with a red target line on the bar, and recomputes the request continuously as fuel burns. Whether fueling is armed is unmistakable at a glance: a full-width status band across the top reads `REFUEL: ON` on green when the next stop takes fuel and `REFUEL: OFF` on red when it won't — with `AUTOFUEL: ON` / `AUTOFUEL: OFF` / a gray `AUTOFUEL: N/A` in autofuel mode — drawn across the top of the dial's touch-strip display.
 
@@ -188,7 +188,8 @@ The touch-strip slot is drawn by the plugin as one full pixmap: a full-width **s
 #### Controls
 
 - **Elgato Stream Deck+** — dial rotation, Push + Turn, a touchscreen readout that always shows, and a press (short or long). A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-- **Mirabox** — knob rotation, Push + Turn, and a press (short or long). There is no touchscreen, so the Tap Display and Long Touch settings do not apply; the long press works, degrading to a short press only if a particular knob reports release instantly.
+
+Dials are currently Stream Deck+ only — the action can't be placed on Mirabox knobs or Ulanzi dials yet (see [Dials](/docs/features/dials/)).
 
 #### Setting: Mode
 
@@ -213,7 +214,7 @@ What a short dial press does. Defaults to **Toggle Fueling**.
 
 #### Setting: Long Press
 
-What a long dial press does. Defaults to **Toggle Autofuel** — a blind-safe default for VR, since you can change fuel mode without looking at the strip. Available on all platforms; a long press is classified when you release the dial button, so on a Mirabox knob that reports release instantly it simply behaves like a short press.
+What a long dial press does. Defaults to **Toggle Autofuel** — a blind-safe default for VR, since you can change fuel mode without looking at the strip. A long press is classified when you release the dial button.
 
 - **Toggle Autofuel** (default) — Switches the dial between manual and autofuel mode.
 - **Toggle Fueling** — Requests or clears the fuel request based on the live fuel-fill state.

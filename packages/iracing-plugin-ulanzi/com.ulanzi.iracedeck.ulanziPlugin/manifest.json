@@ -46,17 +46,13 @@
       "Tooltip": "Audio volume and mute controls (iRacing voice chat & master; iRaceDeck Race Engineer & Radar)",
       "PropertyInspectorPath": "ui/audio-controls.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/audio-controls/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Black Box Selector",
@@ -65,17 +61,13 @@
       "Tooltip": "Cycle through or select iRacing black boxes",
       "PropertyInspectorPath": "ui/black-box-selector.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/black-box-selector/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Camera Controls",
@@ -84,17 +76,13 @@
       "Tooltip": "Cycle through cameras and focus on targets (your car, leader, incidents, positions)",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Camera Cycle (Legacy)",
@@ -103,18 +91,14 @@
       "Tooltip": "Legacy action — use Camera Controls instead",
       "PropertyInspectorPath": "ui/camera-focus.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/camera-focus/key"
         }
       ],
-      "VisibleInActionsList": false,
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      "VisibleInActionsList": false
     },
     {
       "Name": "Camera Editor Adjustments",
@@ -123,17 +107,13 @@
       "Tooltip": "Camera editor adjustments for position, rotation, zoom, and other parameters",
       "PropertyInspectorPath": "ui/camera-editor-adjustments.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/camera-editor-adjustments/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Camera Editor Controls",
@@ -142,17 +122,13 @@
       "Tooltip": "Camera editor toggles and management controls for broadcasters and content creators",
       "PropertyInspectorPath": "ui/camera-editor-controls.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/camera-editor-controls/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Car Control",
@@ -161,17 +137,13 @@
       "Tooltip": "Control car operations (starter, ignition, pit limiter, and more)",
       "PropertyInspectorPath": "ui/car-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/car-control/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Chat",
@@ -180,17 +152,13 @@
       "Tooltip": "Text chat operations (open, reply, whisper, send message, macros)",
       "PropertyInspectorPath": "ui/chat.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/chat/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Cockpit Misc",
@@ -199,17 +167,13 @@
       "Tooltip": "Miscellaneous cockpit controls (toggle/trigger wipers, FFB, latency, dash pages, in-lap mode)",
       "PropertyInspectorPath": "ui/cockpit-misc.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/cockpit-misc/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Force Feedback",
@@ -218,17 +182,13 @@
       "Tooltip": "Force feedback controls (FFB force, wheel LFE, bass shaker, haptic intensity)",
       "PropertyInspectorPath": "ui/force-feedback.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/force-feedback/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Fuel Service",
@@ -237,17 +197,13 @@
       "Tooltip": "Fuel management for pit stops (add/reduce fuel, autofuel, lap margin)",
       "PropertyInspectorPath": "ui/fuel-service.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/fuel-service/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Look Direction",
@@ -256,17 +212,13 @@
       "Tooltip": "Change the driver's view direction",
       "PropertyInspectorPath": "ui/look-direction.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/look-direction/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Media Capture",
@@ -275,17 +227,13 @@
       "Tooltip": "Video recording, screenshots, and texture management",
       "PropertyInspectorPath": "ui/media-capture.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/media-capture/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Pit Crew",
@@ -309,17 +257,13 @@
       "Tooltip": "Quick pit stop controls (clear all, windshield tearoff, fast repair)",
       "PropertyInspectorPath": "ui/pit-quick-actions.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/pit-quick-actions/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Race Admin",
@@ -328,17 +272,13 @@
       "Tooltip": "Session admin commands for race directors (yellows, penalties, pit control, chat)",
       "PropertyInspectorPath": "ui/race-admin.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/race-admin/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Replay Control",
@@ -347,17 +287,13 @@
       "Tooltip": "Unified replay controls: transport, speed, and navigation",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/replay-control/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Replay Navigation",
@@ -366,18 +302,14 @@
       "Tooltip": "Jump to sessions, laps, incidents, or specific positions in replay",
       "PropertyInspectorPath": "ui/replay-navigation.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/replay-navigation/key"
         }
       ],
-      "VisibleInActionsList": false,
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      "VisibleInActionsList": false
     },
     {
       "Name": "Replay Speed",
@@ -386,18 +318,14 @@
       "Tooltip": "Increase or decrease replay playback speed",
       "PropertyInspectorPath": "ui/replay-speed.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/replay-speed/key"
         }
       ],
-      "VisibleInActionsList": false,
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      "VisibleInActionsList": false
     },
     {
       "Name": "Replay Transport",
@@ -406,18 +334,14 @@
       "Tooltip": "Replay playback controls (play, pause, fast forward, rewind, slow motion, frame step)",
       "PropertyInspectorPath": "ui/replay-transport.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/replay-transport/key"
         }
       ],
-      "VisibleInActionsList": false,
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      "VisibleInActionsList": false
     },
     {
       "Name": "Session Info",
@@ -441,17 +365,13 @@
       "Tooltip": "Aerodynamic adjustments (front wing, rear wing, qualifying tape, RF brake)",
       "PropertyInspectorPath": "ui/setup-aero.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-aero/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Brakes",
@@ -460,17 +380,13 @@
       "Tooltip": "Brake adjustments (ABS, brake bias, peak bias, engine braking)",
       "PropertyInspectorPath": "ui/setup-brakes.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-brakes/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Chassis",
@@ -479,17 +395,13 @@
       "Tooltip": "Chassis adjustments (differential, ARB, springs, shocks, power steering)",
       "PropertyInspectorPath": "ui/setup-chassis.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-chassis/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Engine",
@@ -498,17 +410,13 @@
       "Tooltip": "Engine adjustments (power, throttle shaping, boost, launch RPM)",
       "PropertyInspectorPath": "ui/setup-engine.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-engine/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Fuel",
@@ -517,17 +425,13 @@
       "Tooltip": "Fuel adjustments (mixture, fuel cut, low fuel, FCY mode)",
       "PropertyInspectorPath": "ui/setup-fuel.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-fuel/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Hybrid",
@@ -536,17 +440,13 @@
       "Tooltip": "Hybrid/ERS adjustments (MGU-K regen, deploy modes, HYS boost/regen)",
       "PropertyInspectorPath": "ui/setup-hybrid.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-hybrid/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Setup Traction",
@@ -555,17 +455,13 @@
       "Tooltip": "Traction control adjustments (TC Toggle, TC Slots 1-4)",
       "PropertyInspectorPath": "ui/setup-traction.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/setup-traction/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Splits & Reference",
@@ -574,17 +470,13 @@
       "Tooltip": "Cycle splits delta display modes or toggle reference car",
       "PropertyInspectorPath": "ui/splits-delta-cycle.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/splits-delta-cycle/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Telemetry Control",
@@ -593,17 +485,13 @@
       "Tooltip": "Telemetry logging and recording controls",
       "PropertyInspectorPath": "ui/telemetry-control.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/telemetry-control/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Telemetry Display",
@@ -627,17 +515,13 @@
       "Tooltip": "Tire management for pit stops (toggle tires, change compound, clear)",
       "PropertyInspectorPath": "ui/tire-service.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/tire-service/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "Toggle UI Elements",
@@ -646,17 +530,13 @@
       "Tooltip": "Toggle iRacing UI elements on or off",
       "PropertyInspectorPath": "ui/toggle-ui-elements.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/toggle-ui-elements/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     },
     {
       "Name": "View Adjustment",
@@ -665,17 +545,13 @@
       "Tooltip": "Adjust camera and view settings (FOV, horizon, driver height, VR recenter, UI size)",
       "PropertyInspectorPath": "ui/view-adjustment.html",
       "Controllers": [
-        "Keypad",
-        "Encoder"
+        "Keypad"
       ],
       "States": [
         {
           "Image": "imgs/actions/view-adjustment/key"
         }
-      ],
-      "Encoder": {
-        "layout": "$UA1"
-      }
+      ]
     }
   ]
 }

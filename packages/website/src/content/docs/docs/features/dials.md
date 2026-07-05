@@ -3,7 +3,7 @@ title: Dials
 description: How rotary dial (encoder) actions work in iRaceDeck — turn, press, long press, push + turn, and touch gestures.
 ---
 
-Some iRaceDeck actions are built for a **rotary dial** (encoder) — the knobs on a Stream Deck+, Mirabox, or Ulanzi device. A dial action also works as a plain keypad button where no dial is present. This page explains the gestures every dial action shares; each action's own page describes what those gestures do for it.
+Some iRaceDeck actions are built for a **rotary dial** (encoder) — currently the dials on an Elgato **Stream Deck+**. A dial action also works as a plain keypad button where no dial is present. Mirabox knobs and Ulanzi dials are not supported yet, so dial actions don't appear on those devices for now; support will return once it has been verified on that hardware. This page explains the gestures every dial action shares; each action's own page describes what those gestures do for it.
 
 ## Gestures
 
@@ -18,11 +18,11 @@ A dial exposes more than one gesture. In an action's Property Inspector, each co
 
 ## How presses are classified
 
-Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. There is no mid-hold timer, so the three gestures never conflict with one another. This also means a knob that reports its release instantly simply treats a hold as a short press — dial gestures work on Stream Deck+, Mirabox, and Ulanzi knobs alike, degrading gracefully where the hardware can't distinguish a hold.
+Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. There is no mid-hold timer, so the three gestures never conflict with one another. This also means a dial that reports its release instantly simply treats a hold as a short press, degrading gracefully where the hardware can't distinguish a hold.
 
 ## The touch strip is Stream Deck+ only
 
-**Tap Display** and **Long Touch** act on the Stream Deck+ touchscreen. Mirabox and Ulanzi devices have no plugin-facing touch strip, so those gestures don't apply there.
+**Tap Display** and **Long Touch** act on the Stream Deck+ touchscreen.
 
 Both touch gestures **default to None** for safety: in VR you can't see the strip and a stray brush could fire an action you didn't intend. Turn them on only if you can see the strip (pancake or triple-screen). The action's live readout still shows on the strip regardless — the setting only controls what a _tap_ does.
 
