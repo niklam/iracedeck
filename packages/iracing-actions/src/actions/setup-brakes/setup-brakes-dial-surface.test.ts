@@ -68,6 +68,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     },
     // #612 binding-missing overlay — appends a recognizable marker for assertions.
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   };
 });

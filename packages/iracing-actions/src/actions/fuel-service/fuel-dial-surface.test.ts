@@ -107,6 +107,7 @@ vi.mock("@iracedeck/deck-core", async () => {
       (_template: string, data: Record<string, string>) =>
         `<svg>${data.titleContent || ""}${data.iconContent || ""}</svg>`,
     ),
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     // #612 binding-missing overlay — appends a recognizable marker for assertions.
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,

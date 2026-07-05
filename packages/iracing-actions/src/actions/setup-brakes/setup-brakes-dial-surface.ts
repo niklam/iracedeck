@@ -256,7 +256,11 @@ export class SetupBrakesDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    void action.setImage(renderDialNameIcon({ line1: "SETUP", line2: "BRAKES", backgroundColor: "#3a2a1a" }));
+    action
+      .setImage(renderDialNameIcon({ line1: "SETUP", line2: "BRAKES", backgroundColor: "#3a2a1a" }))
+      .catch((err) => {
+        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
+      });
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
@@ -365,7 +369,9 @@ export class SetupBrakesDialSurface {
     // ≤10 setFeedback/sec/dial throttle.
     ctx.lastRenderSig = sig;
     ctx.lastChangeRenderAt = Date.now();
-    void this.renderFeedback(ctx);
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial feedback render failed: ${String(err)}`);
+    });
   }
 
   /**
@@ -377,7 +383,9 @@ export class SetupBrakesDialSurface {
   refreshAll(): void {
     for (const ctx of this.contextsState.values()) {
       ctx.lastRenderSig = null;
-      void this.renderFeedback(ctx);
+      this.renderFeedback(ctx).catch((err) => {
+        this.host.logger.debug(`Dial feedback refresh failed: ${String(err)}`);
+      });
     }
   }
 

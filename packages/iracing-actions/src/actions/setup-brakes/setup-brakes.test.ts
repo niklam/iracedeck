@@ -88,6 +88,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     getDualPressThresholdMs: vi.fn(() => 500),
     getDualPressDirections: vi.fn(() => "tap-increases"),
     onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     // Shared dial-gesture release classifier (used by the dial surface).
     classifyDialRelease: (args: {
       pressStartMs: number;
@@ -195,7 +196,7 @@ function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {})
       isKey: () => false,
       isDial: () => true,
       setTitle: vi.fn(),
-      setImage: vi.fn(),
+      setImage: vi.fn().mockResolvedValue(undefined),
       setFeedback: vi.fn().mockResolvedValue(undefined),
       setTriggerDescription: vi.fn().mockResolvedValue(undefined),
     },

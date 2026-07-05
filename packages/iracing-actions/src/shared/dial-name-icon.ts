@@ -9,16 +9,19 @@
  * `dial.svg` copies of the same design back the Elgato manifest `Encoder.Icon`
  * default.
  */
-import { svgToDataUri } from "@iracedeck/deck-core";
+import { escapeXml, svgToDataUri } from "@iracedeck/deck-core";
 
 /**
  * Renders the 72×72 two-line name icon as an SVG data URI. Matches the
  * per-action `key.svg` canvas conventions (rounded rect in the action's
  * background color, bold white text, explicit baselines — the deck app's QT
- * renderer ignores `dominant-baseline`).
+ * renderer ignores `dominant-baseline`). Inputs are escaped so a future
+ * caller with less controlled strings can't break the markup.
  */
 export function renderDialNameIcon(args: { line1: string; line2: string; backgroundColor: string }): string {
-  const { line1, line2, backgroundColor } = args;
+  const line1 = escapeXml(args.line1);
+  const line2 = escapeXml(args.line2);
+  const backgroundColor = escapeXml(args.backgroundColor);
 
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">` +

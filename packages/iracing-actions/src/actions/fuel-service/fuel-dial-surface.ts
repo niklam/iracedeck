@@ -737,7 +737,11 @@ export class FuelDialSurface {
 
     // The deck-app image for the dial: just the action name (#775). Without
     // this the app falls back to keypad iconography for the dial slot.
-    void action.setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }));
+    action
+      .setImage(renderDialNameIcon({ line1: "FUEL", line2: "SERVICE", backgroundColor: "#3a2a2a" }))
+      .catch((err) => {
+        this.host.logger.debug(`Dial name icon push failed: ${String(err)}`);
+      });
 
     // Start the periodic display refresh so the bar + value track live burn.
     this.startDisplayTimer(ctx);
