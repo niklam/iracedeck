@@ -125,6 +125,20 @@ export type TranslatorState = {
    * of a lap before the player reaches the line.
    */
   checkeredPendingCross: boolean;
+  /**
+   * True once `flag.white-last-lap.raised` has fired for the current white
+   * episode (issue #772) — the player's S/F crossing under the white flag,
+   * the start of THEIR last lap. Re-arms when the White bit drops.
+   */
+  whiteLastLapFired: boolean;
+  /**
+   * Timestamp (ms) the white-flag heads-up (`flag.white.raised`) was emitted
+   * for the current white episode (issue #772); `0` when none was (fresh
+   * state, or the leader skip replaced it with the last-lap line). Drives
+   * the `WHITE_LAST_LAP_MIN_GAP_MS` guard so a close follower's crossing
+   * can't preempt the still-playing heads-up. Reset when the bit drops.
+   */
+  whiteRaisedAt: number;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -574,6 +588,8 @@ export function createInitialState(): TranslatorState {
     flagLastLapCompleted: null,
     flagLastCrossedAt: 0,
     checkeredPendingCross: false,
+    whiteLastLapFired: false,
+    whiteRaisedAt: 0,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

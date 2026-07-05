@@ -62,7 +62,7 @@ When the engineer is enabled, the Pit Crew catalog calls out every flag transiti
 - **Yellow cleared** — engineer announces when the yellow drops. It fires only when every yellow-ish flag (static and waving, local and full) has cleared — escalating a static yellow to its waving variant never triggers a false "all clear".
 - **Green** — race-restart / race-on callout. Suppressed at the race start itself (the Start Lights family below owns the start); it still fires on restarts (caution → green).
 - **Blue** — alternates between two recorded variants ("faster car approaching" / "check your mirrors").
-- **White** — final-lap alert.
+- **White** — a two-stage final-lap alert in races: a heads-up when the white flag comes out (iRacing shows it while the leader is closing on the line to start the final lap — *"White flag. We're about to start the final lap."*), then *"This is the last lap."* as you cross start/finish and begin yours — leader included. If you cross while the heads-up is still playing, you keep just the heads-up (the two lines never talk over each other). Practice and qualifying keep their single raise-time line. Both stages share the White callout toggle.
 - **Crossed** — "Crossed flags." (leaders and tail-enders sharing the track at the halfway point).
 - **One pace lap to go** — a heads-up that one pace lap remains on a rolling start, given as the pace car crosses start/finish to begin the final pace lap (the engineer assumes at most two pace laps). The engineer rotates through several recorded variants.
 - **Green held** — the green is being held a moment longer: a "green any second, get ready" heads-up as the field bunches up (several recorded variants).

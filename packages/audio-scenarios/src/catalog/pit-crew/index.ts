@@ -329,6 +329,8 @@ const SCENARIO_ID_TO_FLAG_ID: Record<string, FlagCalloutId> = {
   "pit-crew.flag-green": "green",
   "pit-crew.flag-blue": "blue",
   "pit-crew.flag-white": "white",
+  // Stage 2 of the two-stage white (issue #772) — same subject, same opt-in.
+  "pit-crew.flag-white-last-lap": "white",
   "pit-crew.flag-red": "red",
   "pit-crew.flag-black": "black",
   "pit-crew.flag-checkered": "checkered",

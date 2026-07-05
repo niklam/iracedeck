@@ -45,6 +45,21 @@
  * via the winner grace ({@link FLAG_CROSS_GRACE_MS}, gated on leading the
  * race per the canonical live order, which `handleTick` passes in as
  * `playerIsLeader`).
+ *
+ * Two-stage white (issue #772) — RACE sessions only: iRacing shows the
+ * White to the whole field while the LEADER is still ~5–10 s from starting
+ * the final lap, so the raise precedes everyone's crossing. The raise stays
+ * the heads-up (`flag.white.raised`, "about to start the final lap"), and a
+ * second event (`flag.white-last-lap.raised`) fires at the player's own S/F
+ * crossing under the flag — the start of THEIR last lap — guarded by
+ * {@link WHITE_LAST_LAP_MIN_GAP_MS} so a crossing landing while the
+ * heads-up is still playing skips the second line instead of preempting it
+ * mid-sentence. Should the bit ever land at/after the race leader's scored
+ * crossing, the leader skip (`leaderTookTheLine`) speaks only the last-lap
+ * line — a safety net mirroring the checkered grace. Practice/qualifying
+ * keep the single raise-time callout: their white is shown to the player
+ * when THEY start their own final lap, so a split would swallow the callout
+ * entirely (the last-lap scenario is race-only).
  */
 import type { FlagScope } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -90,6 +105,19 @@ export const FURLED_DEBOUNCE_MS = 1000;
  * final lap.
  */
 export const FLAG_CROSS_GRACE_MS = 1000;
+
+/**
+ * Minimum gap (ms) between the white-flag heads-up and the last-lap call
+ * (issue #772). Its ONLY job is to keep stage 2 from same-family-preempting
+ * the heads-up while that line is still playing (~4.5 s including the radio
+ * frame), so it hugs that duration with a little margin. iRacing shows the
+ * white while the leader is still ~5–10 s from the line, so under real
+ * timing even the leader's crossing usually lands past this guard and gets
+ * the clean at-the-line call; only a crossing landing mid-heads-up skips
+ * the second line (the line that just played already covers it — skipped,
+ * not delayed, since a late "this is the last lap" would be stale).
+ */
+export const WHITE_LAST_LAP_MIN_GAP_MS = 6000;
 
 type FlagKey =
   | "green"
@@ -233,6 +261,19 @@ export function diffFlags(
 
   if (crossedThisTick) state.flagLastCrossedAt = now;
 
+  // The player's own crossing plausibly raised a flag this tick: they lead a
+  // RACE (per the canonical live order, passed in by `handleTick`) and their
+  // scored crossing landed on the raise tick or within the grace window.
+  // Observed iRacing behavior shows the white/checkered AHEAD of a car's
+  // crossing (even the leader's), so this is a SAFETY NET for any timing
+  // where the bit instead trails the leader's crossing by a tick or two
+  // (see FLAG_CROSS_GRACE_MS). Consumed by the checkered deferral (issue
+  // #771) and the white two-stage split (issue #772).
+  const leaderTookTheLine =
+    isRaceSession &&
+    playerIsLeader &&
+    (crossedThisTick || (state.flagLastCrossedAt !== 0 && now - state.flagLastCrossedAt <= FLAG_CROSS_GRACE_MS));
+
   // Set when the checkered raise arms its deferral on THIS tick — the
   // resolution block below must not consume a crossing that landed on the
   // raise tick itself (a non-leader crossing just as the flag rises predates
@@ -274,7 +315,25 @@ export function diffFlags(
           emit({ event: "flag.red.raised", data: {} });
           break;
         case "white":
-          emit({ event: "flag.white.raised", data: {} });
+          // Two-stage white (issue #772): the raise is the heads-up
+          // ("about to start the final lap" — iRacing shows the white while
+          // the leader is still ~5-10 s from the line); the player's S/F
+          // crossing under the flag is the definitive last-lap call. Should
+          // the raise ever land at/after the race leader's own crossing
+          // (`leaderTookTheLine` — race- and leader-gated), skip the
+          // heads-up and speak the last-lap line directly — playing both
+          // back-to-back would preempt one mid-sentence.
+          // Practice/qualifying always take the plain raise: their white is
+          // shown when the PLAYER starts their own final lap, so the split
+          // would swallow the callout (the last-lap scenario is race-only).
+          if (leaderTookTheLine) {
+            emit({ event: "flag.white-last-lap.raised", data: {} });
+            state.whiteLastLapFired = true;
+          } else {
+            emit({ event: "flag.white.raised", data: {} });
+            state.whiteRaisedAt = now;
+          }
+
           break;
         case "checkered": {
           // Deferral (issue #771) — iRacing raises the bit for the whole
@@ -286,16 +345,11 @@ export function diffFlags(
           // tracked (never hold a callout hostage to missing data), the
           // player is already in the pits in qualifying (parked in the box
           // at expiry — the common case; no crossing is ever coming), or
-          // the player's own finish raised the flag (the race-leader grace
-          // — see FLAG_CROSS_GRACE_MS; a same-tick crossing counts only for
-          // the leader too, since a mid-pack car crossing on the raise tick
-          // is scored for one more lap). In a race, a car on pit road at
-          // the raise still defers — it finishes by crossing the line.
-          const wonAtTheLine =
-            isRaceSession &&
-            playerIsLeader &&
-            (crossedThisTick ||
-              (state.flagLastCrossedAt !== 0 && now - state.flagLastCrossedAt <= FLAG_CROSS_GRACE_MS));
+          // the player's own finish raised the flag (`leaderTookTheLine` —
+          // race-gated, and a same-tick crossing counts only for the leader
+          // too, since a mid-pack car crossing on the raise tick is scored
+          // for one more lap). In a race, a car on pit road at the raise
+          // still defers — it finishes by crossing the line.
           const parkedInPits =
             !isRaceSession && (telemetry.OnPitRoad === true || telemetry.PlayerCarInPitStall === true);
 
@@ -304,7 +358,7 @@ export function diffFlags(
             telemetry.IsOnTrack !== true ||
             lapCompleted === null ||
             parkedInPits ||
-            wonAtTheLine
+            leaderTookTheLine
           ) {
             emit({ event: "flag.checkered.raised", data: {} });
           } else {
@@ -363,6 +417,33 @@ export function diffFlags(
       emit({ event: "flag.checkered.raised", data: {} });
       state.checkeredPendingCross = false;
     }
+  }
+
+  // Last-lap start (issue #772) — race sessions only: the player crosses S/F
+  // while the white flag flies, starting THEIR last lap. Latched once per
+  // white episode; the latch and the raise timestamp re-arm when the flag
+  // drops. Two extra guards: the checkered must not be up (the two bits can
+  // overlap for a tick on the finish crossing — the checkered call owns that
+  // crossing), and the crossing must land at least WHITE_LAST_LAP_MIN_GAP_MS
+  // after the heads-up — a close follower crosses seconds after the leader
+  // raised the white, and firing stage 2 then would same-family-preempt the
+  // still-playing heads-up mid-sentence (a crossing inside the gap is
+  // already covered by the heads-up that just played, so it's skipped, not
+  // delayed). A zero raise timestamp (connect mid-white — no heads-up was
+  // ever spoken) allows the last-lap line immediately. The raise-tick leader
+  // case above already latched, so it can't double-fire here.
+  if (!current.has("white")) {
+    state.whiteLastLapFired = false;
+    state.whiteRaisedAt = 0;
+  } else if (
+    isRaceSession &&
+    !state.whiteLastLapFired &&
+    crossedThisTick &&
+    !current.has("checkered") &&
+    (state.whiteRaisedAt === 0 || now - state.whiteRaisedAt >= WHITE_LAST_LAP_MIN_GAP_MS)
+  ) {
+    emit({ event: "flag.white-last-lap.raised", data: {} });
+    state.whiteLastLapFired = true;
   }
 
   // Yellow cleared transition (issue #671 — validated clear). The drop edge

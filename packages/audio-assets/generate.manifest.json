@@ -58,12 +58,12 @@
       "requestId": "SbLwTdPctqIV628j6FOD"
     },
     "voice/default/flags/white-race-01.mp3": {
-      "hash": "8118a8184c6364e7",
+      "hash": "7545c635a5864e17",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "White flag.",
-      "generatedAt": "2026-05-14T18:37:04.366Z",
-      "requestId": "0QfahGReVYvTIR5M5ipw"
+      "textPreview": "White flag. <break time=\"0.3s\" /> We're about to start the final lap.",
+      "generatedAt": "2026-07-05T10:02:23.514Z",
+      "requestId": "LIZMgsunLEtRNtiYpuPe"
     },
     "voice/default/openers/alright.mp3": {
       "hash": "66e01719b7be9656",
@@ -1802,12 +1802,12 @@
       "requestId": "j9Ll6mwg7hjGRI74ViNS"
     },
     "voice/default/flags/white-race-02.mp3": {
-      "hash": "39be990b267662bd",
+      "hash": "aec203540fdc98d2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "White flag and the final lap... Let's make it count.",
-      "generatedAt": "2026-05-14T18:37:04.617Z",
-      "requestId": "zO4QlI9NtkFhbXSpeXiQ"
+      "textPreview": "White flag is out. <break time=\"0.3s\" /> Final lap coming up.",
+      "generatedAt": "2026-07-05T10:02:23.773Z",
+      "requestId": "ri7rXFfKHxZMOxhncMgD"
     },
     "voice/titan/flags/white-02.mp3": {
       "hash": "bba7b81a361af4bd",
@@ -9296,6 +9296,22 @@
       "textPreview": "Come on, Tom.",
       "generatedAt": "2026-06-26T17:45:10.589Z",
       "requestId": "yuwaX8Shu47v2BCoJtoc"
+    },
+    "voice/default/flags/white-last-lap-01.mp3": {
+      "hash": "0900e2006ebdf984",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "This is the last lap. <break time=\"0.3s\" /> Give it everything.",
+      "generatedAt": "2026-07-05T10:02:24.014Z",
+      "requestId": "PT5LEgbHjCU7dwgeZGfG"
+    },
+    "voice/default/flags/white-last-lap-02.mp3": {
+      "hash": "0fdbd22e9ac76c65",
+      "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
+      "model": "eleven_flash_v2_5",
+      "textPreview": "Final lap now. <break time=\"0.3s\" /> Make it count.",
+      "generatedAt": "2026-07-05T10:02:24.301Z",
+      "requestId": "SFL4lvCjdqfJpnRZ251E"
     }
   }
 }

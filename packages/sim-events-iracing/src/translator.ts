@@ -904,6 +904,11 @@ function wipeStateForReplay(self: TranslatorInstance): void {
   const preservedFlagDeferrals = {
     checkeredPendingCross: self.state.checkeredPendingCross,
     flagLastCrossedAt: self.state.flagLastCrossedAt,
+    // The white two-stage latch + raise timestamp (issue #772): a replay
+    // glance during the last lap must not replay the last-lap line (latch)
+    // nor drop the heads-up gap guard (timestamp).
+    whiteLastLapFired: self.state.whiteLastLapFired,
+    whiteRaisedAt: self.state.whiteRaisedAt,
   };
 
   self.state = createInitialState();

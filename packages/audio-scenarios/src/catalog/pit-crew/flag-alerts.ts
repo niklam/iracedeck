@@ -161,6 +161,29 @@ const WHITE: Scenario = {
   when: { event: "flag.white.raised" },
 };
 
+// Stage 2 of the two-stage white (issue #772): the player crosses S/F while
+// the white flag flies — the start of THEIR last lap. Race-only BOTH in the
+// translator's diff (in practice/qualifying the white is shown exactly when
+// the player starts their own final lap, so a split would swallow the only
+// callout those sessions get) and on the scenario `where:` here (belt and
+// suspenders — it also keeps a harness-fired event honest about the session
+// the catalog designed it for). Shares `family: "flag"`, so
+// when the player IS the leader the diff skips the heads-up entirely rather
+// than letting this fire preempt it mid-sentence. Rides the same
+// `calloutEnabledFlagWhite` opt-in as the raise (a stage of the same callout,
+// the #572 modifier precedent).
+// `queueable: true` (the YELLOW_CLEARED / FURLED precedent): the crossing is
+// a one-shot event and the last lap is a sustained state, so a fire deferred
+// behind an equal-weight line (a spotter call while battling into the last
+// lap — exactly when this fires) must replay when the bus idles instead of
+// being silently dropped; the translator's per-episode latch means it would
+// never re-fire.
+const WHITE_LAST_LAP: Scenario = {
+  ...flagScenario("white-last-lap", ["pool:flag-white-last-lap"]),
+  queueable: true,
+  when: { event: "flag.white-last-lap.raised", where: () => raceOnly() },
+};
+
 const RED: Scenario = {
   ...flagScenario("red", ["pool:flag-red"]),
   when: { event: "flag.red.raised" },
@@ -393,6 +416,7 @@ export const FLAG_ALERTS: readonly Scenario[] = [
   GREEN,
   BLUE,
   WHITE,
+  WHITE_LAST_LAP,
   RED,
   BLACK,
   CHECKERED,

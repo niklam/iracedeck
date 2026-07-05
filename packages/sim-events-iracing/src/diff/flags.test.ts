@@ -13,7 +13,13 @@ import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffFlags, FLAG_CROSS_GRACE_MS, FURLED_DEBOUNCE_MS, YELLOW_CLEARED_HOLD_MS } from "./flags.js";
+import {
+  diffFlags,
+  FLAG_CROSS_GRACE_MS,
+  FURLED_DEBOUNCE_MS,
+  WHITE_LAST_LAP_MIN_GAP_MS,
+  YELLOW_CLEARED_HOLD_MS,
+} from "./flags.js";
 import type { PendingEvent } from "./types.js";
 
 const T0 = 1_000_000;
@@ -618,6 +624,198 @@ describe("diffFlags — checkered deferral (issue #771)", () => {
 
     expect(events).toEqual([]);
     expect(state.checkeredPendingCross).toBe(false);
+  });
+});
+
+describe("diffFlags — white two-stage (issue #772)", () => {
+  const whiteRaised = (e: PendingEvent) => e.event === "flag.white.raised";
+  const lastLap = (e: PendingEvent) => e.event === "flag.white-last-lap.raised";
+  const RACE = true;
+  const LEADER = true;
+
+  it("the raise without a crossing emits only the heads-up", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, emit, RACE, !LEADER);
+
+    expect(events.filter(whiteRaised)).toHaveLength(1);
+    expect(events.filter(lastLap)).toHaveLength(0);
+  });
+
+  it("the player's S/F crossing under the white emits the last-lap event exactly once", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER); // heads-up
+
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 30_000, cross.emit, RACE, !LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(1);
+    expect(cross.events.filter(whiteRaised)).toHaveLength(0);
+
+    // Latched — a further crossing under the same white episode is silent.
+    const again = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 12 }), T0 + 90_000, again.emit, RACE, !LEADER);
+    expect(again.events.filter(lastLap)).toHaveLength(0);
+  });
+
+  it("quali/practice keep the single raise-time callout — no split, even on a same-tick crossing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, false, LEADER);
+
+    // In quali the white is shown exactly when the player starts their own
+    // final lap — the raise and their crossing land on the same tick.
+    const raise = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 100, raise.emit, false, LEADER);
+    expect(raise.events.filter(whiteRaised)).toHaveLength(1);
+    expect(raise.events.filter(lastLap)).toHaveLength(0);
+
+    // And no stage 2 at the next crossing either — the split is race-only.
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 12 }), T0 + 90_000, cross.emit, false, LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(0);
+  });
+
+  it("leader case: a crossing on the raise tick emits ONLY the last-lap event", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, LEADER);
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 100, emit, RACE, LEADER);
+
+    expect(events.filter(lastLap)).toHaveLength(1);
+    expect(events.filter(whiteRaised)).toHaveLength(0);
+  });
+
+  it("leader grace: crossed just before the raise while leading emits only the last-lap event", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, LEADER);
+    diffFlags(state, liveTick(0, { LapCompleted: 11 }), T0 + 100, () => {}, RACE, LEADER); // the crossing that raises the flag
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 300, emit, RACE, LEADER);
+
+    expect(events.filter(lastLap)).toHaveLength(1);
+    expect(events.filter(whiteRaised)).toHaveLength(0);
+  });
+
+  it("close follower: a crossing inside WHITE_LAST_LAP_MIN_GAP_MS of the heads-up is skipped, not delayed", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER); // heads-up
+
+    // P2 crosses two seconds after the leader raised the white — the
+    // heads-up is still playing; stage 2 must NOT preempt it.
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 2100, cross.emit, RACE, !LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(0);
+
+    // No late replay either — the heads-up already covered it.
+    const later = collect();
+    diffFlags(
+      state,
+      liveTick(Flags.White, { LapCompleted: 11 }),
+      T0 + 100 + WHITE_LAST_LAP_MIN_GAP_MS + 1000,
+      later.emit,
+      RACE,
+      !LEADER,
+    );
+    expect(later.events.filter(lastLap)).toHaveLength(0);
+  });
+
+  it("mid-pack: crossed just before the raise while NOT leading gets the heads-up, then the last-lap at the next crossing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(0, { LapCompleted: 11 }), T0 + 100, () => {}, RACE, !LEADER);
+
+    const raise = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 300, raise.emit, RACE, !LEADER);
+    expect(raise.events.filter(whiteRaised)).toHaveLength(1);
+    expect(raise.events.filter(lastLap)).toHaveLength(0);
+
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 12 }), T0 + 60_000, cross.emit, RACE, !LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(1);
+  });
+
+  it("a crossing while the checkered is also up speaks the checkered, never the last lap", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER); // heads-up
+    // Leader finishes — checkered joins the still-set white for a tick.
+    diffFlags(
+      state,
+      liveTick(Flags.White | Flags.Checkered, { LapCompleted: 10 }),
+      T0 + 30_000,
+      () => {},
+      RACE,
+      !LEADER,
+    );
+
+    const cross = collect();
+    diffFlags(
+      state,
+      liveTick(Flags.White | Flags.Checkered, { LapCompleted: 11 }),
+      T0 + 60_000,
+      cross.emit,
+      RACE,
+      !LEADER,
+    );
+
+    expect(cross.events.filter((e) => e.event === "flag.checkered.raised")).toHaveLength(1);
+    expect(cross.events.filter(lastLap)).toHaveLength(0);
+  });
+
+  it("the latch re-arms when the white drops — a fresh episode fires both stages again", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0 + 100, () => {}, RACE, !LEADER); // heads-up
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 30_000, () => {}, RACE, !LEADER); // last-lap
+    diffFlags(state, liveTick(0, { LapCompleted: 11 }), T0 + 60_000, () => {}, RACE, !LEADER); // white drops
+
+    const raise = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 90_000, raise.emit, RACE, !LEADER);
+    expect(raise.events.filter(whiteRaised)).toHaveLength(1);
+
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 12 }), T0 + 120_000, cross.emit, RACE, !LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(1);
+  });
+
+  it("a crossing without the white flag flying emits nothing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 10 }), T0, () => {}, RACE, !LEADER);
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(0, { LapCompleted: 11 }), T0 + 100, emit, RACE, !LEADER);
+
+    expect(events).toEqual([]);
+  });
+
+  it("connecting mid-white seeds silently, then the first crossing still speaks the last lap", () => {
+    const state = createInitialState();
+
+    const seed = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 10 }), T0, seed.emit, RACE, !LEADER); // first tick — seed
+    expect(seed.events).toEqual([]);
+
+    // No heads-up was ever spoken (whiteRaisedAt is 0), so the gap guard
+    // does not apply and the crossing speaks immediately.
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.White, { LapCompleted: 11 }), T0 + 5000, cross.emit, RACE, !LEADER);
+    expect(cross.events.filter(lastLap)).toHaveLength(1);
+    expect(cross.events.filter(whiteRaised)).toHaveLength(0);
   });
 });
 
