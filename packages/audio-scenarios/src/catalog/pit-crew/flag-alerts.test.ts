@@ -300,8 +300,16 @@ describe("FLAG_ALERTS structure", () => {
     expect(meatball.family).toBeUndefined();
   });
 
-  it("furled, furled-cleared and yellow-cleared are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
-    const queueableIds = ["pit-crew.flag-furled", "pit-crew.flag-furled-cleared", "pit-crew.flag-yellow-cleared"];
+  it("furled, furled-cleared, yellow-cleared and white-last-lap are queueable (defer behind a busy bus) — and they're the only flags that are", () => {
+    const queueableIds = [
+      "pit-crew.flag-furled",
+      "pit-crew.flag-furled-cleared",
+      "pit-crew.flag-yellow-cleared",
+      // Issue #772: the last-lap crossing is one-shot and the translator
+      // latch never re-fires, so a fire displaced by an equal-weight line
+      // (spotter call) must replay at idle instead of being dropped.
+      "pit-crew.flag-white-last-lap",
+    ];
 
     for (const id of queueableIds) {
       expect(findScenario(id).queueable).toBe(true);

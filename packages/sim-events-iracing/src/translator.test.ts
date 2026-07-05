@@ -466,6 +466,31 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  describe("checkered deferral across a replay glance (issue #771)", () => {
+    it("keeps a pending checkered through replay-mode ticks and speaks it at the crossing", () => {
+      const controller = createMockController();
+      const bus = getEventBus();
+      const handler = vi.fn();
+      bus.subscribe("flag.checkered.raised", handler);
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      // Live mid-lap, then the checkered flies — deferred, nothing spoken yet.
+      controller.__tick(telemetry({ LapCompleted: 5, LapDistPct: 0.4 }));
+      controller.__tick(telemetry({ LapCompleted: 5, LapDistPct: 0.5, SessionFlags: Flags.Checkered }));
+      expect(handler).not.toHaveBeenCalled();
+
+      // A replay glance wipes translator state — the pending fire must
+      // survive the wipe (issue #771 review follow-up).
+      controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionFlags: Flags.Checkered }));
+      controller.__tick(telemetry({ LapCompleted: 5, LapDistPct: 0.8, SessionFlags: Flags.Checkered }));
+      expect(handler).not.toHaveBeenCalled();
+
+      // Takes the flag at the line.
+      controller.__tick(telemetry({ LapCompleted: 6, LapDistPct: 0.01, SessionFlags: Flags.Checkered }));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("pit lane", () => {
     it("emits pitLane.entered on off→on transition", () => {
       const controller = createMockController();

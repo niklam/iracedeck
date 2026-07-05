@@ -728,6 +728,25 @@ export function getLiveRacePositions(): number[] | null {
 }
 
 /**
+ * Whether the player currently LEADS the race per the canonical live order
+ * (issue #771 — the winner grace on the checkered deferral). Consumes the
+ * same frozen calculation as {@link getLivePosition} per
+ * `.claude/rules/race-positions.md`; the official `PlayerCarPosition` is the
+ * fallback only when the player's slot can't be read from the live order
+ * (no car index yet / not classified).
+ */
+function resolvePlayerIsLeader(self: TranslatorInstance, telemetry: TelemetryData, playerCarIdx: number): boolean {
+  if (playerCarIdx >= 0) {
+    const positions = calculateFrozenRacePositions(self.state, telemetry);
+    const position = positions[playerCarIdx] ?? 0;
+
+    if (position > 0) return position === 1;
+  }
+
+  return telemetry.PlayerCarPosition === 1;
+}
+
+/**
  * Player's STARTING GRID position (overall + class, both 1-based) from the
  * qualifying results — the source the race-start callout already uses
  * ({@link resolveStartingGridPosition}). Exposed for the Session Info position
@@ -871,6 +890,31 @@ function handleDisconnect(self: TranslatorInstance): void {
  * invalidate via `resolvePitSpeedLimit`'s `${TrackID}|${SessionNum}` cache key
  * and need no reset here.
  */
+/**
+ * Wipe `TranslatorState` for a replay-mode transition (both edges — entering
+ * and leaving replay), preserving the checkered-deferral cluster (issue
+ * #771): a checkered held for the player's S/F crossing must survive a
+ * replay glance mid-deferral, or the callout is silently lost — the flag
+ * diff's post-wipe re-seed sees the `Checkered` bit already set and never
+ * re-emits. The flag seed deliberately leaves these fields alone. A genuine
+ * session change still clears them (`resetPerSessionState` wipes without
+ * preservation), so a pending checkered can't leak into the next session.
+ */
+function wipeStateForReplay(self: TranslatorInstance): void {
+  const preservedFlagDeferrals = {
+    checkeredPendingCross: self.state.checkeredPendingCross,
+    flagLastCrossedAt: self.state.flagLastCrossedAt,
+    // The white two-stage latch + raise timestamp (issue #772): a replay
+    // glance during the last lap must not replay the last-lap line (latch)
+    // nor drop the heads-up gap guard (timestamp).
+    whiteLastLapFired: self.state.whiteLastLapFired,
+    whiteRaisedAt: self.state.whiteRaisedAt,
+  };
+
+  self.state = createInitialState();
+  Object.assign(self.state, preservedFlagDeferrals);
+}
+
 function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData): void {
   if (self.state.radarState !== "clear") {
     publish(
@@ -1110,7 +1154,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
         );
       }
 
-      self.state = createInitialState();
+      wipeStateForReplay(self);
       self.lastTickInReplay = true;
       // Fuel lap history (issue #465): survives the wipe (it lives on the
       // instance), but telemetry will have jumped by the time live ticks
@@ -1123,7 +1167,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   }
 
   if (self.lastTickInReplay) {
-    self.state = createInitialState();
+    wipeStateForReplay(self);
     self.lastTickInReplay = false;
   }
 
@@ -1176,7 +1220,13 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   );
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
-  diffFlags(self.state, telemetry, now, emit);
+  // Checkered deferral (issue #771): the leader guard on the winner grace
+  // consumes the canonical live order (`.claude/rules/race-positions.md`),
+  // falling back to the official position only when no live order exists —
+  // the same read `getLivePosition()` serves between ticks (the freeze
+  // tracking is updated further down this tick, so the anchors are at most
+  // one tick stale here, which the leader check tolerates).
+  diffFlags(self.state, telemetry, now, emit, isRaceSession, resolvePlayerIsLeader(self, telemetry, playerCarIdx));
   // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
   // diffFlags (after the replay guard) and reads the already-resolved
   // `sessionInfo` for the standing-start / AI-race gates.
