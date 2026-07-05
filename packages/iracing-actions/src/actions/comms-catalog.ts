@@ -273,6 +273,25 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     radar: keybindFixed(),
   }),
 
+  // The dial surface of Audio Controls (#782): rotation is keyed by
+  // `dial.category` (BOTH volume keys required for the keybind categories; the
+  // internal categories drive plugin audio — no binding), press by
+  // `dial.pressAction` — one shared map, the value sets don't collide (the
+  // #759 shared-map pattern). A separate entry from the keypad map because
+  // the same category values need different descriptors per surface (keypad
+  // resolves one key via the `action` setting; dial rotation needs the pair).
+  // The PI hides the press status line for internal-category Mute / Unmute
+  // (plugin audio, nothing to configure); "none" is omitted so its line
+  // renders nothing.
+  "audio-controls-dial": entry("dial.category", {
+    "voice-chat": pair("audioVoiceChatVolumeUp", "audioVoiceChatVolumeDown"),
+    master: pair("audioMasterVolumeUp", "audioMasterVolumeDown"),
+    "race-engineer": keybindFixed(),
+    radar: keybindFixed(),
+    "push-to-talk": keybind("audioControlsPushToTalk"),
+    "mute-unmute": keybindBy("dial.category", { "voice-chat": "audioVoiceChatMute" }),
+  }),
+
   "toggle-ui-elements": entry("element", {
     "dash-box": keybind("toggleUiDashBox"),
     "speed-gear-pedals": keybind("toggleUiSpeedGearPedals"),

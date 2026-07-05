@@ -6,41 +6,80 @@
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
-		<sdpi-item label="Mode">
-			<sdpi-select id="category-select" setting="category" default="push-to-talk">
-				<optgroup label="iRacing audio">
-					<option value="push-to-talk">Push to Talk</option>
-					<option value="voice-chat">Voice Chat</option>
-					<option value="master">Master</option>
-				</optgroup>
-				<optgroup label="iRaceDeck audio">
-					<option value="race-engineer">Race Engineer Volume</option>
-					<option value="radar">Radar Volume</option>
-				</optgroup>
-			</sdpi-select>
-		</sdpi-item>
-
 		<% var __comms = require('./data/action-comms.json')['audio-controls']; %>
-		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+		<% var __dialComms = require('./data/action-comms.json')['audio-controls-dial']; %>
 
-		<sdpi-item label="Action" id="action-item">
-			<sdpi-select id="action-select" setting="action" default="volume-up">
-				<option value="volume-up">Volume Up</option>
-				<option value="volume-down">Volume Down</option>
-				<option value="mute" id="mute-option">Mute</option>
-			</sdpi-select>
-		</sdpi-item>
+		<!-- Keypad settings — hidden when this instance is a dial (#782). -->
+		<div id="keypad-settings">
+			<sdpi-item label="Mode">
+				<sdpi-select id="category-select" setting="category" default="push-to-talk">
+					<optgroup label="iRacing audio">
+						<option value="push-to-talk">Push to Talk</option>
+						<option value="voice-chat">Voice Chat</option>
+						<option value="master">Master</option>
+					</optgroup>
+					<optgroup label="iRaceDeck audio">
+						<option value="race-engineer">Race Engineer Volume</option>
+						<option value="radar">Radar Volume</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
 
-		<div class="ird-supporting-text hidden" id="internal-volume-note">
-			Adjusts iRaceDeck's own audio level.
+			<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+			<sdpi-item label="Action" id="action-item">
+				<sdpi-select id="action-select" setting="action" default="volume-up">
+					<option value="volume-up">Volume Up</option>
+					<option value="volume-down">Volume Down</option>
+					<option value="mute" id="mute-option">Mute</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<div class="ird-supporting-text hidden" id="internal-volume-note">
+				Adjusts iRaceDeck's own audio level.
+			</div>
 		</div>
 
-		<%- include('title-overrides') %>
+		<!-- Dial settings — shown only when this instance is a dial (#782). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Volume">
+				<sdpi-select id="dial-category-select" setting="dial.category" default="voice-chat">
+					<optgroup label="iRacing audio">
+						<option value="voice-chat">Voice Chat</option>
+						<option value="master">Master</option>
+					</optgroup>
+					<optgroup label="iRaceDeck audio">
+						<option value="race-engineer">Race Engineer</option>
+						<option value="radar">Radar</option>
+					</optgroup>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-supporting-text hidden" id="dial-internal-note">
+				Adjusts iRaceDeck's own audio level — the touch display shows the live level.
+			</div>
+			<ird-binding-status mode-setting="dial.category" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
 
-		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['audio-controls'] }) %>
-		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['audio-controls'] }) %>
-		<%- include('graphic-overrides') %>
-		<%- include('common-settings') %>
+			<sdpi-item label="Press Action">
+				<sdpi-select id="dial-press-select" setting="dial.pressAction" default="none">
+					<option value="push-to-talk">Push to Talk</option>
+					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div id="dial-press-status">
+				<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			</div>
+		</div>
+
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
+			<%- include('title-overrides') %>
+
+			<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color', 'graphic2Color'], defaults: require('./data/icon-defaults.json')['audio-controls'] }) %>
+			<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['audio-controls'] }) %>
+			<%- include('graphic-overrides') %>
+			<%- include('common-settings') %>
+		</div>
 
 		<%- include('section-header', { title: 'Global Settings' }) %>
 
@@ -48,11 +87,14 @@
 			keyBindings: require('./data/key-bindings.json').audioControls
 		}) %>
 
-		<%- include('global-title-defaults') %>
-		<%- include('global-color-defaults') %>
-		<%- include('global-border-defaults') %>
-		<%- include('global-graphic-defaults') %>
-		<%- include('global-flag-flash') %>
+		<div id="keypad-global-appearance">
+			<%- include('global-title-defaults') %>
+			<%- include('global-color-defaults') %>
+			<%- include('global-border-defaults') %>
+			<%- include('global-graphic-defaults') %>
+			<%- include('global-flag-flash') %>
+		</div>
+
 		<%- include('global-common-settings') %>
 
 		<script>
@@ -100,6 +142,71 @@
 				}
 			}
 
+			// ── Dial surface (#782) ─────────────────────────────────────────────
+
+			// Which surface this instance sits on: the PI registration's
+			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+			// may report "Knob"). Anything unknown or unavailable falls back to the
+			// keypad view (#759 pattern).
+			async function resolveController() {
+				try {
+					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+					const info = client && (await client.getConnectionInfo());
+					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+				} catch (err) {
+					return "Keypad";
+				}
+			}
+
+			function applyDialView() {
+				document.getElementById("keypad-settings")?.classList.add("hidden");
+				document.getElementById("keypad-appearance")?.classList.add("hidden");
+				document.getElementById("keypad-global-appearance")?.classList.add("hidden");
+				document.getElementById("dial-settings")?.classList.remove("hidden");
+			}
+
+			// Master has no Mute / Unmute (iRacing has no master-mute keybind): detach
+			// the option (same sdpi-select re-render caveat as the keypad mute option).
+			// The press status line is hidden for internal-category Mute / Unmute —
+			// that mute is plugin-internal, there is nothing to configure.
+			const DIAL_MUTABLE_CATEGORIES = new Set(["voice-chat", "race-engineer", "radar"]);
+			let dialMuteOption = null;
+			let dialMuteOptionParent = null;
+
+			function updateDialVisibility() {
+				const categorySelect = document.getElementById("dial-category-select");
+				const pressSelect = document.getElementById("dial-press-select");
+				const category = (categorySelect && categorySelect.value) || "voice-chat";
+				const press = (pressSelect && pressSelect.value) || "none";
+				const internalNote = document.getElementById("dial-internal-note");
+				const pressStatus = document.getElementById("dial-press-status");
+
+				if (internalNote) {
+					internalNote.classList.toggle("hidden", !INTERNAL_VOLUME_CATEGORIES.has(category));
+				}
+
+				if (pressStatus) {
+					const hideStatus = press === "mute-unmute" && INTERNAL_VOLUME_CATEGORIES.has(category);
+					pressStatus.classList.toggle("hidden", hideStatus);
+				}
+
+				if (!dialMuteOption || !dialMuteOptionParent) return;
+
+				const isAttached = dialMuteOption.parentNode === dialMuteOptionParent;
+
+				if (!DIAL_MUTABLE_CATEGORIES.has(category)) {
+					if (pressSelect && pressSelect.value === "mute-unmute") {
+						pressSelect.value = "none";
+						pressSelect.dispatchEvent(new Event("input", { bubbles: true }));
+						pressSelect.dispatchEvent(new Event("change", { bubbles: true }));
+					}
+					if (isAttached) dialMuteOption.remove();
+				} else if (!isAttached) {
+					dialMuteOptionParent.appendChild(dialMuteOption);
+				}
+			}
+
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
@@ -127,6 +234,23 @@
 							updateVisibility(currentValue);
 						}
 					}, 100);
+				}
+
+				// Dial section wiring — polling fallback covers both selects at once.
+				dialMuteOption = document.querySelector('#dial-press-select option[value="mute-unmute"]');
+				dialMuteOptionParent = dialMuteOption ? dialMuteOption.parentNode : null;
+
+				for (const id of ["dial-category-select", "dial-press-select"]) {
+					const el = document.getElementById(id);
+					if (!el) continue;
+					el.addEventListener("change", updateDialVisibility);
+					el.addEventListener("input", updateDialVisibility);
+				}
+				updateDialVisibility();
+				setInterval(updateDialVisibility, 100);
+
+				if ((await resolveController()) === "Encoder") {
+					applyDialView();
 				}
 			}
 

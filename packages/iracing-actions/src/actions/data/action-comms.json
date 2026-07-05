@@ -969,6 +969,56 @@
       "method": "keybind"
     }
   },
+  "audio-controls-dial": {
+    "_meta": {
+      "modeSetting": "dial.category"
+    },
+    "voice-chat": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "audioVoiceChatVolumeUp",
+          "audioVoiceChatVolumeDown"
+        ]
+      }
+    },
+    "master": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "audioMasterVolumeUp",
+          "audioMasterVolumeDown"
+        ]
+      }
+    },
+    "race-engineer": {
+      "method": "keybind"
+    },
+    "radar": {
+      "method": "keybind"
+    },
+    "push-to-talk": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "key": "audioControlsPushToTalk"
+      }
+    },
+    "mute-unmute": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keyBy": {
+          "setting": "dial.category",
+          "map": {
+            "voice-chat": "audioVoiceChatMute"
+          }
+        }
+      }
+    }
+  },
   "toggle-ui-elements": {
     "_meta": {
       "modeSetting": "element"
