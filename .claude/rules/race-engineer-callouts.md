@@ -88,7 +88,7 @@ In `packages/event-bus/src/event-catalog.ts`:
 
 In `packages/audio-assets/configs/default.voice.json` (and every other voice file — `voice-parity.test.ts` enforces matching `<group>/<entry-name>` sets across voices, even though text can differ):
 - Add (or extend) a group with one entry per `(direction × subject)` combination.
-- Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, `seed` (use `"seed": 1` by default on new entries; bump it for a different take when the generated clip doesn't sound right — the seed feeds the hash, so the change re-cuts only that clip), optional `previous_request_ids` to bias prosody continuity.
+- Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, optionally `seed` (omit it on new entries — the generator defaults an omitted seed to `1` — or set `"seed": 1` explicitly; NEVER an arbitrary/random value, since the seed only selects which take ElevenLabs produces. Bump it deliberately for a different take when the generated clip doesn't sound right — the seed feeds the hash, so the change re-cuts only that clip), optional `previous_request_ids` to bias prosody continuity.
 - Use `<break time="0.3s" />` for natural pauses inside a single line.
 - Per-entry overrides for `model_id`, `language_code` (inside `voice_settings`), `output_format`, normalization flags etc. are supported and shallow-merge on top of the voice's defaults.
 
