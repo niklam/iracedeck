@@ -161,8 +161,25 @@ export type TranslatorState = {
    * completion crossing sits at ~1 — the `>= 0.5` fire guard separates them.
    */
   paceLapAccrued: number;
-  /** Previous-tick `LapDistPct`, for the per-tick forward-distance delta. */
+  /** Previous-tick lap-distance of the tracked car, for the per-tick forward-distance delta. */
   paceLapLastDistPct: number;
+  /**
+   * `CarIdx` of the car whose S/F crossings the pace-lap diff is tracking
+   * THIS tick (issue #773): the PACE CAR whenever its telemetry is usable,
+   * `null` to track the player's own `LapDistPct` instead. The pace car
+   * crosses S/F — committing the field to another pace lap — before the
+   * player does, so the cue keys on its crossing whenever possible; a
+   * telemetry blip or a pit-lane peel-off flips to the player (with a
+   * baseline re-anchor) and flips back when the pace car's data returns.
+   */
+  paceLapSourceCarIdx: number | null;
+  /**
+   * The pace car's `CarIdx` as resolved from session YAML at the formation's
+   * entry edge (issue #773), `null` when unresolvable. Kept separate from
+   * `paceLapSourceCarIdx` so a mid-parade downgrade to the player can
+   * re-acquire the pace car when its telemetry returns valid.
+   */
+  paceLapPaceCarIdx: number | null;
   /**
    * Once-per-formation latch for `flag.one-pace-lap-to-go.raised`. Set when the
    * cue fires; cleared (with the rest of the pace-lap state) on any
@@ -579,6 +596,8 @@ export function createInitialState(): TranslatorState {
     paceLapArmed: false,
     paceLapAccrued: 0,
     paceLapLastDistPct: 0,
+    paceLapSourceCarIdx: null,
+    paceLapPaceCarIdx: null,
     onePaceLapToGoFired: false,
 
     rollingStartInitialized: false,

@@ -1225,16 +1225,19 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // falling back to the official position only when no live order exists —
   // the same read `getLivePosition()` serves between ticks (the freeze
   // tracking is updated further down this tick, so the anchors are at most
-  // one tick stale here, which the leader check tolerates). Practice-like
-  // sessions (Practice / Testing — the classifyLapSessionType convention)
-  // are flagged so the checkered speaks immediately at the raise there.
+  // one tick stale here, which the leader check tolerates). Leader
+  // resolution is gated on race sessions — the winner grace it feeds is
+  // race-only, so non-race ticks skip the frozen-order computation.
+  // Practice-like sessions (Practice / Testing — the classifyLapSessionType
+  // convention) are flagged so the checkered speaks immediately at the
+  // raise there.
   diffFlags(
     self.state,
     telemetry,
     now,
     emit,
     isRaceSession,
-    resolvePlayerIsLeader(self, telemetry, playerCarIdx),
+    isRaceSession && resolvePlayerIsLeader(self, telemetry, playerCarIdx),
     sessionType.includes("Practice") || sessionType.includes("Testing"),
   );
   // Start-light gantry + numeric pre-start countdown (issue #480). Sits beside
