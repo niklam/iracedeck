@@ -104,6 +104,27 @@ export type TranslatorState = {
    * neither event.
    */
   furledAnnounced: boolean;
+  /**
+   * Previous-tick `LapCompleted`, for detecting the player's start/finish
+   * crossings inside the flag diff (issue #771). `null` until a valid value
+   * has been observed.
+   */
+  flagLastLapCompleted: number | null;
+  /**
+   * Timestamp (ms) of the player's most recent scored S/F crossing (a
+   * `LapCompleted` increment) as seen by the flag diff (issue #771). `0`
+   * when no crossing has been observed yet. Drives the winner grace window
+   * (`FLAG_CROSS_GRACE_MS`): the leader's own finish CAUSES the checkered
+   * bit to rise, possibly a tick or two after their crossing was scored.
+   */
+  flagLastCrossedAt: number;
+  /**
+   * True while a raised checkered is being held back until the player takes
+   * the flag at the S/F line (issue #771). iRacing raises the `Checkered`
+   * bit for the whole field the moment the session ends, which can be most
+   * of a lap before the player reaches the line.
+   */
+  checkeredPendingCross: boolean;
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
@@ -533,6 +554,9 @@ export function createInitialState(): TranslatorState {
     yellowClearPendingSince: null,
     furledPendingAt: 0,
     furledAnnounced: false,
+    flagLastLapCompleted: null,
+    flagLastCrossedAt: 0,
+    checkeredPendingCross: false,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

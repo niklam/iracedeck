@@ -13,13 +13,17 @@ import { Flags, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffFlags, FURLED_DEBOUNCE_MS, YELLOW_CLEARED_HOLD_MS } from "./flags.js";
+import { diffFlags, FLAG_CROSS_GRACE_MS, FURLED_DEBOUNCE_MS, YELLOW_CLEARED_HOLD_MS } from "./flags.js";
 import type { PendingEvent } from "./types.js";
 
 const T0 = 1_000_000;
 
 function tick(sessionFlags: number): TelemetryData {
   return { SessionFlags: sessionFlags } as unknown as TelemetryData;
+}
+
+function liveTick(sessionFlags: number, extra: Record<string, unknown> = {}): TelemetryData {
+  return { SessionFlags: sessionFlags, IsOnTrack: true, ...extra } as unknown as TelemetryData;
 }
 
 function collect(): { events: PendingEvent[]; emit: (e: PendingEvent) => void } {
@@ -356,6 +360,167 @@ describe("diffFlags — yellow.cleared hold window (issue #671)", () => {
     const { events, emit } = collect();
     diffFlags(fresh, tick(0), T0 + YELLOW_CLEARED_HOLD_MS, emit);
     expect(events.some((e) => e.event === "flag.yellow.cleared")).toBe(false);
+  });
+});
+
+describe("diffFlags — checkered deferral (issue #771)", () => {
+  const checkered = (e: PendingEvent) => e.event === "flag.checkered.raised";
+
+  it("emits immediately when the player is not in the car", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, tick(Flags.Checkered), T0, emit); // no IsOnTrack in the fixture
+
+    expect(events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
+  it("emits immediately when crossings can't be tracked (no LapCompleted)", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered), T0, emit);
+
+    expect(events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
+  it("defers while on track mid-lap, then emits exactly once at the next S/F crossing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0, () => {}); // baseline
+
+    const raise = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0 + 100, raise.emit);
+    expect(raise.events.filter(checkered)).toHaveLength(0);
+    expect(state.checkeredPendingCross).toBe(true);
+
+    // Still on the lap — nothing.
+    const mid = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0 + 30_000, mid.emit);
+    expect(mid.events.filter(checkered)).toHaveLength(0);
+
+    // Takes the flag at the line.
+    const cross = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6 }), T0 + 60_000, cross.emit);
+    expect(cross.events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+
+    // No re-fire afterwards.
+    const after = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6 }), T0 + 90_000, after.emit);
+    expect(after.events.filter(checkered)).toHaveLength(0);
+  });
+
+  it("emits immediately when the raise lands on the same tick as the player's crossing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0, () => {}); // baseline
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6 }), T0 + 100, emit);
+
+    expect(events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
+  it("winner grace: crossing just before the raise while P1 emits immediately", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5, PlayerCarPosition: 1 }), T0, () => {});
+    diffFlags(state, liveTick(0, { LapCompleted: 6, PlayerCarPosition: 1 }), T0 + 100, () => {}); // finish crossing
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6, PlayerCarPosition: 1 }), T0 + 100 + 200, emit);
+
+    expect(events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
+  it("no winner grace when the player is not P1 — defers to the next crossing", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5, PlayerCarPosition: 4 }), T0, () => {});
+    diffFlags(state, liveTick(0, { LapCompleted: 6, PlayerCarPosition: 4 }), T0 + 100, () => {}); // crossed just before the leader finished
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 6, PlayerCarPosition: 4 }), T0 + 100 + 200, emit);
+
+    expect(events.filter(checkered)).toHaveLength(0);
+    expect(state.checkeredPendingCross).toBe(true);
+  });
+
+  it("no winner grace once the window has expired, even for P1", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5, PlayerCarPosition: 1 }), T0, () => {});
+    diffFlags(state, liveTick(0, { LapCompleted: 6, PlayerCarPosition: 1 }), T0 + 100, () => {});
+
+    const { events, emit } = collect();
+    diffFlags(
+      state,
+      liveTick(Flags.Checkered, { LapCompleted: 6, PlayerCarPosition: 1 }),
+      T0 + 100 + FLAG_CROSS_GRACE_MS + 1,
+      emit,
+    );
+
+    expect(events.filter(checkered)).toHaveLength(0);
+    expect(state.checkeredPendingCross).toBe(true);
+  });
+
+  it("emits when the player leaves the car while the crossing is still pending", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0, () => {});
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0 + 100, () => {}); // defer
+    expect(state.checkeredPendingCross).toBe(true);
+
+    // A tick with IsOnTrack MISSING is unknown, not "left the car" — stays pending.
+    const unknown = collect();
+    diffFlags(state, tick(Flags.Checkered), T0 + 5000, unknown.emit);
+    expect(unknown.events.filter(checkered)).toHaveLength(0);
+    expect(state.checkeredPendingCross).toBe(true);
+
+    // An explicit IsOnTrack: false (tow / garage) resolves the pending fire.
+    const exit = collect();
+    diffFlags(
+      state,
+      { SessionFlags: Flags.Checkered, IsOnTrack: false, LapCompleted: 5 } as unknown as TelemetryData,
+      T0 + 6000,
+      exit.emit,
+    );
+    expect(exit.events.filter(checkered)).toHaveLength(1);
+    expect(state.checkeredPendingCross).toBe(false);
+  });
+
+  it("dies silently when the checkered bit drops while still pending", () => {
+    const state = createInitialState();
+    state.flagStateInitialized = true;
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0, () => {});
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0 + 100, () => {}); // defer
+
+    const drop = collect();
+    diffFlags(state, liveTick(0, { LapCompleted: 5 }), T0 + 5000, drop.emit);
+    expect(drop.events.filter(checkered)).toHaveLength(0);
+    expect(state.checkeredPendingCross).toBe(false);
+
+    // A later crossing doesn't resurrect it.
+    const cross = collect();
+    diffFlags(state, liveTick(0, { LapCompleted: 6 }), T0 + 10_000, cross.emit);
+    expect(cross.events.filter(checkered)).toHaveLength(0);
+  });
+
+  it("first-tick seeding with the checkered set neither fires nor pends", () => {
+    const state = createInitialState();
+
+    const { events, emit } = collect();
+    diffFlags(state, liveTick(Flags.Checkered, { LapCompleted: 5 }), T0, emit);
+
+    expect(events).toEqual([]);
+    expect(state.checkeredPendingCross).toBe(false);
   });
 });
 

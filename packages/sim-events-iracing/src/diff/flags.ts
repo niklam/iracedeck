@@ -27,6 +27,16 @@
  * Blue is suppressed when Green is active (race-start sets both). Green is
  * suppressed when `StartGo` is set — a standing/rolling race-start go is owned
  * by the start-light family (issue #480); restarts (no `StartGo`) still fire.
+ *
+ * Checkered deferral (issue #771): iRacing raises the `Checkered` bit for the
+ * entire field the moment the session ends (qualifying clock expires, race
+ * leader finishes) — often most of a lap before the player takes the flag. So
+ * the checkered raise is held until the player's own scored S/F crossing (a
+ * `LapCompleted` increment). It still fires immediately when the player isn't
+ * in the car or crossings can't be tracked (never hold a callout hostage to
+ * missing data), and when the player's own finish is what raised the flag
+ * (the winner — their crossing lands within {@link FLAG_CROSS_GRACE_MS} of
+ * the bit while they hold P1).
  */
 import type { FlagScope } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -52,6 +62,18 @@ export const YELLOW_CLEARED_HOLD_MS = 3000;
  * arms this window; the bit clearing meanwhile drops the announcement.
  */
 export const FURLED_DEBOUNCE_MS = 1000;
+
+/**
+ * Winner grace window (ms) for the checkered deferral (issue #771). When the
+ * PLAYER's own finish is what ends the session, the `Checkered` bit rises on
+ * — or a frame or two after — their scored crossing; waiting for the NEXT
+ * crossing would delay the callout by a whole cool-down lap. A raise landing
+ * within this window of the player's latest crossing, while the player holds
+ * P1, is treated as the player taking the flag and speaks immediately. The
+ * P1 guard keeps a mid-pack car that crossed just before the leader finished
+ * (about to be lapped at the line) from getting an early call.
+ */
+export const FLAG_CROSS_GRACE_MS = 1000;
 
 type FlagKey =
   | "green"
@@ -152,6 +174,15 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
   const sessionFlags = telemetry.SessionFlags ?? 0;
   const { flags: current, yellowScope, anyYellow } = resolveActiveFlags(sessionFlags);
 
+  // Player S/F crossing tracking (issue #771). A scored `LapCompleted`
+  // increment is the player taking the line — the signal the checkered
+  // deferral resolves on. A decrement (session restart resets the counter)
+  // just moves the baseline.
+  const lapCompleted =
+    typeof telemetry.LapCompleted === "number" && Number.isFinite(telemetry.LapCompleted)
+      ? telemetry.LapCompleted
+      : null;
+
   // First tick — seed without firing.
   if (!state.flagStateInitialized) {
     state.flagStateInitialized = true;
@@ -161,9 +192,19 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
     state.yellowClearPendingSince = null;
     state.furledPendingAt = 0;
     state.furledAnnounced = false;
+    state.flagLastLapCompleted = lapCompleted;
+    state.flagLastCrossedAt = 0;
+    state.checkeredPendingCross = false;
 
     return;
   }
+
+  const crossedThisTick =
+    lapCompleted !== null && state.flagLastLapCompleted !== null && lapCompleted > state.flagLastLapCompleted;
+
+  if (lapCompleted !== null) state.flagLastLapCompleted = lapCompleted;
+
+  if (crossedThisTick) state.flagLastCrossedAt = now;
 
   // New "raised" transitions
   for (const flag of current) {
@@ -202,9 +243,26 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
         case "white":
           emit({ event: "flag.white.raised", data: {} });
           break;
-        case "checkered":
-          emit({ event: "flag.checkered.raised", data: {} });
+        case "checkered": {
+          // Deferral (issue #771) — iRacing raises the bit for the whole
+          // field at once; hold the callout until the player takes the flag
+          // at the line. Immediate when the player isn't in the car or
+          // crossings can't be tracked, when the crossing landed this very
+          // tick, or when the player's own finish raised the flag (the
+          // winner grace — see FLAG_CROSS_GRACE_MS).
+          const wonAtTheLine =
+            state.flagLastCrossedAt !== 0 &&
+            now - state.flagLastCrossedAt <= FLAG_CROSS_GRACE_MS &&
+            telemetry.PlayerCarPosition === 1;
+
+          if (telemetry.IsOnTrack !== true || lapCompleted === null || crossedThisTick || wonAtTheLine) {
+            emit({ event: "flag.checkered.raised", data: {} });
+          } else {
+            state.checkeredPendingCross = true;
+          }
+
           break;
+        }
         case "debris":
           emit({ event: "flag.debris.raised", data: {} });
           break;
@@ -230,6 +288,24 @@ export function diffFlags(state: TranslatorState, telemetry: TelemetryData, now:
           emit({ event: "flag.caution-waving.raised", data: {} });
           break;
       }
+    }
+  }
+
+  // Deferred checkered resolution (issue #771): the flag is flying and the
+  // callout is waiting for the player to take it at the line. Resolves on
+  // the player's next scored S/F crossing, or immediately when the player
+  // leaves the car (tow / garage — they will never take the flag, so speak
+  // now rather than never). If the bit drops while still pending (cool-down
+  // rolling into the next session's grid), the stale fire dies silently —
+  // the flag is no longer flying. The raise tick itself can't double-emit
+  // here: it only sets pending when `crossedThisTick` was false and the
+  // player was on track.
+  if (state.checkeredPendingCross) {
+    if (!current.has("checkered")) {
+      state.checkeredPendingCross = false;
+    } else if (crossedThisTick || telemetry.IsOnTrack === false) {
+      emit({ event: "flag.checkered.raised", data: {} });
+      state.checkeredPendingCross = false;
     }
   }
 
