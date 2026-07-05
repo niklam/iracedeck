@@ -153,7 +153,7 @@ export function renderBrakeDialBoxSvg(args: {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
     `<rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" fill="${BOX_BACKGROUND}"/>` +
     `<rect x="${inset}" y="${inset}" width="${w - 2 * inset}" height="${h - 2 * inset}" rx="${Math.max(0, radius - inset)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"/>` +
-    `${bindingMissing ? applyBindingWarning(content) : content}</svg>`
+    `${bindingMissing ? applyBindingWarning(content, { width: w, height: h }) : content}</svg>`
   );
 }
 

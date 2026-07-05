@@ -203,6 +203,7 @@
         "Encoder"
       ],
       "Encoder": {
+        "Icon": "imgs/actions/fuel-service/dial",
         "layout": "layouts/fuel-service.json",
         "TriggerDescription": {
           "Rotate": "Adjust fuel to add",
@@ -419,6 +420,7 @@
         "Encoder"
       ],
       "Encoder": {
+        "Icon": "imgs/actions/setup-brakes/dial",
         "layout": "layouts/setup-brakes.json",
         "TriggerDescription": {
           "Rotate": "Adjust the selected brake setting",
