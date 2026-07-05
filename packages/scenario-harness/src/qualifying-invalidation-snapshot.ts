@@ -102,6 +102,19 @@ export function validateQualifyingInvalidationSnapshot(body: unknown): Qualifyin
     lapStartedFromPits = b.lapStartedFromPits;
   }
 
+  // `lapCounted` is optional too, defaulting to `true` (the typical "counted
+  // flying lap" case — issue #776). Only the beyond-counted-laps shortcut
+  // sets it to `false`.
+  let lapCounted = true;
+
+  if (b.lapCounted !== undefined && b.lapCounted !== null) {
+    if (typeof b.lapCounted !== "boolean") {
+      return "lapCounted must be a boolean (or omitted)";
+    }
+
+    lapCounted = b.lapCounted;
+  }
+
   return {
     sessionType,
     sessionNum,
@@ -109,5 +122,6 @@ export function validateQualifyingInvalidationSnapshot(body: unknown): Qualifyin
     lapLimited: b.lapLimited,
     lapCompleted: b.lapCompleted,
     lapStartedFromPits,
+    lapCounted,
   };
 }

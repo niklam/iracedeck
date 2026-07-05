@@ -260,6 +260,16 @@ export type RaceStartSnapshot = RaceStartConditions & {
  * any mid-session post-pit-exit lap. Neither is a timed attempt, so an
  * incident there shouldn't fire the "this lap will be invalidated" line.
  *
+ * `lapCounted` is the beyond-counted-laps detector (issue #776). In a
+ * lap-limited qualifying iRacing lets the driver keep circulating after
+ * their counted laps are done — on those extra laps the raw
+ * `SessionLapsRemainEx` reads 0 (not even the current lap remains), which
+ * the `lapsRemaining` clamp would otherwise collapse into the same `0` the
+ * final counted lap reports. `false` means the current lap is not a counted
+ * attempt at all, so an incident invalidates nothing and the whole callout
+ * stays silent. Time-limited sessions and missing telemetry report `true`
+ * (don't punish missing data).
+ *
  * Sim-agnostic: any future translator can populate the same shape.
  */
 export type QualifyingInvalidationSnapshot = {
@@ -269,6 +279,7 @@ export type QualifyingInvalidationSnapshot = {
   lapLimited: boolean;
   lapCompleted: number;
   lapStartedFromPits: boolean;
+  lapCounted: boolean;
 };
 
 /**

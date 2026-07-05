@@ -612,6 +612,14 @@ const UNLIMITED_LAPS = 32767;
  *     pit-lane diff (set true on `pitLane.exited`) and the lifecycle diff
  *     (cleared on `lap.started`). Covers both the session out-lap and any
  *     mid-session post-pit-exit lap.
+ *   - `lapCounted` (issue #776) = whether the current lap is still a counted
+ *     attempt. In a lap-limited qualifying the driver commonly keeps
+ *     circulating after the counted laps are done; there `SessionLapsRemainEx`
+ *     reads 0 — a value the `lapsRemaining` clamp collapses into the same `0`
+ *     the final counted lap (raw 1) reports. This flag preserves the
+ *     distinction: `false` only when the session is lap-limited AND the raw
+ *     reading says not even the current lap remains. Time-limited sessions
+ *     and a missing reading report `true` (don't punish missing data).
  *
  * Read at fire time (same deferred-snapshot rationale as
  * {@link getReadbackSnapshot}) so a callout that gets queued behind another
@@ -623,6 +631,7 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
   const lapsTotal = telemetry.SessionLapsTotal ?? 0;
+  const lapLimited = lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS;
   const rawLapsRemaining =
     typeof telemetry.SessionLapsRemainEx === "number" && telemetry.SessionLapsRemainEx >= 0
       ? telemetry.SessionLapsRemainEx
@@ -632,9 +641,10 @@ export function getQualifyingInvalidationSnapshot(): QualifyingInvalidationSnaps
     sessionType: classifyLapSessionType(resolveSessionType(sessionInfo, telemetry)),
     sessionNum: typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : undefined,
     lapsRemaining: rawLapsRemaining !== undefined ? Math.max(0, rawLapsRemaining - 1) : undefined,
-    lapLimited: lapsTotal > 0 && lapsTotal < UNLIMITED_LAPS,
+    lapLimited,
     lapCompleted: typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : 0,
     lapStartedFromPits: instance.state.lapStartedFromPits,
+    lapCounted: !lapLimited || rawLapsRemaining === undefined || rawLapsRemaining > 0,
   };
 }
 
