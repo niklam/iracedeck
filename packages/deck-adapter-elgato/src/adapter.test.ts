@@ -25,9 +25,9 @@ function createSdMock() {
     sd: sd as unknown as typeof StreamDeck,
     switchToProfile: sd.profiles.switchToProfile,
     openUrl: sd.system.openUrl,
-    /** Simulate a Property Inspector `sendToPlugin` message from the given device. */
-    emitSendToPlugin(deviceId: string, payload: unknown) {
-      sendToPluginListener?.({ action: { device: { id: deviceId } }, payload });
+    /** Simulate a Property Inspector `sendToPlugin` message from the given device (an XL by default). */
+    emitSendToPlugin(deviceId: string, payload: unknown, deviceType: number | undefined = 2) {
+      sendToPluginListener?.({ action: { device: { id: deviceId, type: deviceType } }, payload });
     },
   };
 }
@@ -70,12 +70,33 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
     return mock;
   }
 
-  it("switches profile for the PI's device on a switchToProfile message", () => {
+  it("switches profile for the PI's device, resolving the device-suffixed name (#753)", () => {
     const { switchToProfile, emitSendToPlugin } = setup();
 
+    // The accordion sends clean display names; the adapter appends the
+    // pressing device's suffix (an XL here).
     emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Replay" });
 
-    expect(switchToProfile).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay", undefined);
+    expect(switchToProfile).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay XL", undefined);
+  });
+
+  it("passes an already-suffixed profile name through unchanged", () => {
+    const { switchToProfile, emitSendToPlugin } = setup();
+
+    emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Replay XL" });
+
+    expect(switchToProfile).toHaveBeenCalledWith("dev-9", "iRaceDeck Replay XL", undefined);
+  });
+
+  it("passes the profile name through unchanged when the device has no suffix", () => {
+    const { switchToProfile, emitSendToPlugin } = setup();
+
+    // Device type 10 (Studio) has no bundled-profile suffix; 99 is unknown.
+    emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Replay" }, 10);
+    emitSendToPlugin("dev-9", { event: "switchToProfile", profile: "iRaceDeck Default" }, 99);
+
+    expect(switchToProfile).toHaveBeenNthCalledWith(1, "dev-9", "iRaceDeck Replay", undefined);
+    expect(switchToProfile).toHaveBeenNthCalledWith(2, "dev-9", "iRaceDeck Default", undefined);
   });
 
   it("forwards an optional page", () => {
@@ -83,7 +104,7 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
 
     emitSendToPlugin("dev-1", { event: "switchToProfile", profile: "iRaceDeck Default", page: 3 });
 
-    expect(switchToProfile).toHaveBeenCalledWith("dev-1", "iRaceDeck Default", 3);
+    expect(switchToProfile).toHaveBeenCalledWith("dev-1", "iRaceDeck Default XL", 3);
   });
 
   it("defaults the profile to undefined when omitted (returns to the default profile)", () => {
@@ -102,7 +123,7 @@ describe("ElgatoPlatformAdapter sendToPlugin → switchToProfile routing", () =>
 
     await requestProfileSwitchBack("dev-9");
 
-    expect(switchToProfile).toHaveBeenLastCalledWith("dev-9", "iRaceDeck Default", undefined);
+    expect(switchToProfile).toHaveBeenLastCalledWith("dev-9", "iRaceDeck Default XL", undefined);
   });
 
   it("ignores unrelated events and non-object payloads", () => {

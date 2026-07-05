@@ -19,6 +19,7 @@ import {
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
 import {
+  deviceProfileName,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialDownEvent,
@@ -164,7 +165,7 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
     // Elgato-only, so only this adapter wires it; the non-Elgato adapters
     // implement `switchToProfile` as a no-op and never receive this message.
     this.sd.ui.onSendToPlugin((ev) => {
-      this.handleSendToPlugin(ev.action.device.id, ev.payload);
+      this.handleSendToPlugin(ev.action.device.id, ev.action.device.type, ev.payload);
     });
   }
 
@@ -172,7 +173,7 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    * Handle a Property Inspector `sendToPlugin` payload. Currently only the
    * `switchToProfile` command is recognised; anything else is ignored.
    */
-  private handleSendToPlugin(deviceId: string, payload: unknown): void {
+  private handleSendToPlugin(deviceId: string, deviceType: number | undefined, payload: unknown): void {
     if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
       return;
     }
@@ -183,7 +184,10 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
       return;
     }
 
-    const profile = typeof message.profile === "string" ? message.profile : undefined;
+    // The "Stream Deck Profiles" accordion sends clean display names (one row
+    // per template); resolve to the pressing device's manifest name by
+    // appending its suffix (#753). Idempotent for already-suffixed names.
+    const profile = typeof message.profile === "string" ? deviceProfileName(message.profile, deviceType) : undefined;
     const page = typeof message.page === "number" ? message.page : undefined;
 
     // Route through the deck-core switcher singleton (not this.switchToProfile

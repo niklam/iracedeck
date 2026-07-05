@@ -297,17 +297,22 @@ export {
   shouldOpenChangelog,
 } from "./version-check.js";
 
-// Device + profile reference (issue #736)
+// Device + profile reference (issues #736, #753)
 export {
   DEVICE_SPECS,
   DEVICE_SUPPORT,
+  deviceProfileName,
   DeviceType,
   getDeviceSpec,
   getDeviceSupport,
   isDeviceSupported,
+  PROFILE_DEVICE_SUFFIXES,
+  profileDeviceSuffix,
+  profileDisplayName,
   PROFILE_NAMES,
   PROFILE_NAV_ACTIONS,
   PROFILE_TARGET_DEVICES,
+  resolveProfileNameForDevice,
   shipsBundledProfiles,
   type DeviceControlSupport,
   type DeviceSpec,

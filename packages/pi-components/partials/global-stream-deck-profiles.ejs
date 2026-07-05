@@ -1,25 +1,30 @@
 <%#
-  Stream Deck Profiles (Elgato-only, issue #736). An EJS comment so this
+  Stream Deck Profiles (Elgato-only, issues #736/#753). An EJS comment so this
   documentation is never emitted into the shipped HTML.
 
-  A "Stream Deck Profiles" accordion with one button per bundled profile. Each
-  ird-profile-switch button sends sendToPlugin { event: "switchToProfile", profile },
-  which the Elgato adapter routes to streamDeck.profiles.switchToProfile. Switching
-  prompts the Stream Deck app to install the profile if it isn't installed yet — the
+  A "Stream Deck Profiles" accordion with one button per bundled profile
+  TEMPLATE (clean display name, no device suffix). Each ird-profile-switch
+  button sends sendToPlugin { event: "switchToProfile", profile } with the
+  display name; the Elgato adapter appends the pressing device's suffix (#753)
+  and routes to streamDeck.profiles.switchToProfile. Switching prompts the
+  Stream Deck app to install the profile if it isn't installed yet — the
   mechanism that installs and updates iRaceDeck's bundled profiles.
 
   Gated to Elgato via the `profiles` platform feature flag: the Mirabox and Ulanzi
   hosts have no profile system. See .claude/rules/profiles-and-devices.md — this is
-  the home for switch buttons for ALL bundled profiles; add one row per new profile.
+  the home for switch buttons for ALL bundled profiles; a new profile template
+  gets a row automatically once its files are registered in the manifest.
 %>
 <% if (locals.platform?.features?.profiles !== false) { %>
 <%
-  // Unique bundled profile names, sourced from the generated (manifest-derived)
-  // profiles.json so this list can't drift — add a profile via the manifest +
-  // `pnpm generate:action-profiles`, not by editing here.
-  var __profileNames = require('./data/profiles.json').map(function (p) { return p.name; });
-  var profiles = __profileNames
-    .filter(function (name, i) { return __profileNames.indexOf(name) === i; })
+  // Unique bundled profile templates (display names), sourced from the
+  // generated (manifest-derived) profiles.json so this list can't drift — add
+  // a profile via the manifest + `pnpm generate:action-profiles`, not by
+  // editing here. Device variants of one template collapse into a single row;
+  // the plugin resolves the device-suffixed manifest name at switch time.
+  var __displayNames = require('./data/profiles.json').map(function (p) { return p.displayName || p.name; });
+  var profiles = __displayNames
+    .filter(function (name, i) { return __displayNames.indexOf(name) === i; })
     .map(function (name) { return { name: name }; });
 %>
 <%- include('accordion', {

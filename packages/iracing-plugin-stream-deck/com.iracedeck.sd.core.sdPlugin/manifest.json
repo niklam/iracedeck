@@ -889,26 +889,50 @@
   },
   "Profiles": [
     {
-      "Name": "iRaceDeck Default",
+      "Name": "iRaceDeck Default XL",
       "DeviceType": 2,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": false
     },
     {
-      "Name": "iRaceDeck Replay",
+      "Name": "iRaceDeck Replay XL",
       "DeviceType": 2,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
     },
     {
-      "Name": "iRaceDeck Race Admin Cars",
+      "Name": "iRaceDeck Race Admin Cars XL",
       "DeviceType": 2,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
     },
     {
-      "Name": "iRaceDeck Race Admin Per Car",
+      "Name": "iRaceDeck Race Admin Per Car XL",
       "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Default SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Cars SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car SD",
+      "DeviceType": 0,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true
     }
